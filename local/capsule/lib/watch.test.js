@@ -2,9 +2,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Watches, notice, watchWords } from "./watch.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 test("watch: fires once when the thread finishes, with the last thing it said", () => {
   const w = new Watches();
@@ -35,7 +35,7 @@ test("watch: asks, failures and stops, each by what was asked for", () => {
 });
 
 test("watch: kept in a 0600 file across restarts", t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-watch-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-watch-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "capsule", "watches.json");
   const a = new Watches({ file });

@@ -59,7 +59,7 @@ function tailnet(box, net, port = 0) {
 }
 
 /** A box and a Mac, both running, with a work folder on each. */
-async function pair(t, { approve = true } = {}) {
+async function pair(t, { approve = true, health = undefined } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
@@ -69,7 +69,7 @@ async function pair(t, { approve = true } = {}) {
   const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX), address: "" };
   // Two peers on the simulated tailnet: the box, and the phone, whose node the box's address does not match.
   linkSeams.set(macRoot, { peers: async () => [{ ip: "127.0.0.1", dns: "test-box", stableId: "nBOX" }, { ip: "127.0.0.1", dns: "test-phone", stableId: "nPHONE" }],
-    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat: 100, hostname: "test-mac", timeout: 1500, ttl: 0 });
+    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat: 100, hostname: "test-mac", timeout: 1500, ttl: 0, ...(health ? { health } : {}) });
   // Spotlight, simulated: every file under the Mac's work folder whose name holds the query.
   fileSeams.set(macRoot, { platform: "darwin", remoteTimeout: 1500,
     mdfind: async args => fs.readdirSync(args[1]).filter(n => n.toLowerCase().includes(String(args[2]).toLowerCase())).map(n => path.join(args[1], n)) });
@@ -344,4 +344,89 @@ test("link: approving a pairing needs the owner's presence, whoever calls, and t
   const summary = await box.registry.tools.get("link.pair.approve").presence.summary({ code: p.code });
   assert.match(summary, /work laptop/);
   assert.ok(!summary.includes(p.code) && !summary.includes(p.code.replace("-", "")), "the code is never in the prompt");
+});
+
+/**
+ * A fake tailscale binary for link.health: `status --json` and `ping` answered from world.json
+ * beside it, every call logged to calls.log. Both vyreds in this process share it, as the Mac's
+ * and the box's own CLIs would each know both nodes.
+ */
+function fakeTailscale(t, dir, world) {
+  const bin = path.join(dir, "tailscale");
+  fs.writeFileSync(path.join(dir, "world.json"), JSON.stringify(world));
+  fs.writeFileSync(bin, `#!/usr/bin/env node
+const fs = require("node:fs"), path = require("node:path");
+const here = ${JSON.stringify(dir)};
+const args = process.argv.slice(2);
+fs.appendFileSync(path.join(here, "calls.log"), args.join(" ") + "\\n");
+const w = JSON.parse(fs.readFileSync(path.join(here, "world.json"), "utf8"));
+if (args[0] === "status") { process.stdout.write(JSON.stringify(w.status)); process.exit(0); }
+if (args[0] === "ping") { const ip = args[args.length - 1]; const line = w.ping[ip]; if (!line) { process.stderr.write("timeout waiting for ping reply\\n"); process.exit(1); } process.stdout.write(line + "\\n"); process.exit(0); }
+process.stderr.write("the fake does not do " + args[0] + "\\n"); process.exit(1);
+`, { mode: 0o755 });
+  const prev = process.env.VYRE_TAILSCALE_BIN;
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  t.after(() => { if (prev === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prev; });
+  return { calls: () => { try { return fs.readFileSync(path.join(dir, "calls.log"), "utf8").trim().split("\n").filter(Boolean); } catch { return []; } } };
+}
+
+test("link: link.health on the Mac is the box's node, and on the box the calling device or a paired Mac", async t => {
+  const s = await pair(t);
+  const node = (id, ip, extra = {}) => ({ ID: id, HostName: id, DNSName: `${id}.tail0000.ts.net.`, TailscaleIPs: [ip], Online: true,
+    CurAddr: "", Relay: "fra", PeerRelay: "", LastHandshake: "2026-09-27T10:00:00Z", RxBytes: 10, TxBytes: 20, ...extra });
+  const dir = fs.mkdtempSync(path.join(s.macRoot, "..", "vyre-ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ts = fakeTailscale(t, dir, {
+    status: { BackendState: "Running", Self: { ID: "nSELF" }, Peer: {
+      a: node("nBOX", "100.64.0.5", { CurAddr: "203.0.113.7:41641" }),
+      b: node("nMAC", "100.64.0.2"),
+      c: node("nPHONE", "100.64.0.3", { LastHandshake: "0001-01-01T00:00:00Z" }) } },
+    ping: { "100.64.0.5": "pong from box (100.64.0.5) via 203.0.113.7:41641 in 12ms",
+      "100.64.0.2": "pong from alex-mac (100.64.0.2) via DERP(fra) in 80ms",
+      "100.64.0.3": "pong from phone (100.64.0.3) via DERP(fra) in 95ms" },
+  });
+
+  // The Mac: its paired box, direct.
+  const mac = await s.macCall("link.health");
+  assert.ok(!mac.error, JSON.stringify(mac.error));
+  assert.deepEqual({ path: mac.data.path, relay: mac.data.relay, latencyMs: mac.data.latencyMs, online: mac.data.online, cached: mac.data.cached },
+    { path: "direct", relay: null, latencyMs: 12, online: true, cached: false });
+  assert.equal(mac.data.lastHandshake, Date.parse("2026-09-27T10:00:00Z"));
+  assert.equal((await s.macCall("link.health")).data.cached, true, "a second ask inside the minute is the cached answer");
+  assert.equal(ts.calls().filter(c => c.startsWith("ping")).length, 1);
+  assert.ok(ts.calls().includes("ping --c 1 --until-direct=false --timeout 3s 100.64.0.5"));
+
+  // The box: the calling device by default (the Mac over the tailnet), relayed.
+  const self = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: MAC });
+  assert.equal(self.data.path, "relay");
+  assert.equal(self.data.relay, "fra");
+  assert.equal(self.data.latencyMs, 80);
+  // A paired Mac by node id, from the box's terminal; its id is in link.peers.
+  const peers = (await s.boxCall("link.peers")).data;
+  assert.equal(peers[0].stable_id, "nMAC");
+  assert.equal((await s.boxCall("link.health", { node: "nMAC" })).data.cached, true);
+  // Another node is not a paired Mac, unless it is the caller itself or a module asks.
+  assert.match((await s.boxCall("link.health", { node: "nPHONE" })).error.message, /not a paired Mac/);
+  const phone = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: PHONE });
+  assert.equal(phone.data.latencyMs, 95);
+  assert.equal(phone.data.lastHandshake, null, "never shook hands: null, not year one");
+  assert.equal((await s.boxCall("link.health", { node: "nPHONE" }, "module:glass")).data.cached, true);
+  // Nothing named and no calling node: unknown, with the reason.
+  const bare = await s.boxCall("link.health");
+  assert.equal(bare.data.path, "unknown");
+  assert.match(bare.data.why, /say which node/);
+});
+
+test("link: link.health on an unpaired Mac is unknown with a reason, and the seam can stand in", async t => {
+  const s = await pair(t, { approve: false });
+  const r = await s.macCall("link.health");
+  assert.equal(r.data.path, "unknown");
+  assert.match(r.data.why, /not paired/);
+  assert.equal(r.data.cached, false);
+
+  const asked = [];
+  const stub = { check: async which => { asked.push(which); return { path: "peer-relay", relay: null, latencyMs: 40, lastHandshake: null, online: true, checkedAt: 1, cached: false }; } };
+  const p = await pair(t, { health: stub });
+  assert.equal((await p.macCall("link.health")).data.path, "peer-relay");
+  assert.deepEqual(asked, [{ stableId: "nBOX" }]);
 });

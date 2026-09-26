@@ -1,7 +1,8 @@
 // @ts-check
-// A throwaway world for looking at the Deck: a temp VYRE_HOME under /tmp/vy-deck-*, the fictional
-// corpus written as real transcripts, a real vyred, two projects made with `vyre new`, and a
-// plain HTTP proxy from 127.0.0.1 to vyred's unix socket so a browser can open the Deck.
+// A throwaway world for looking at the Deck: a temp VYRE_HOME under the test SCRATCH folder, the
+// fictional corpus written as real transcripts, a real vyred, two projects made with `vyre new`,
+// juno, kit, a few vault items, and a plain HTTP proxy from 127.0.0.1 to vyred's unix socket so a
+// browser can open the Deck.
 //
 // A test helper, not part of the product. Never touches ~/.vyre.
 //
@@ -11,12 +12,14 @@
 // (apps/test/world.js) builds the same world and differs only in how requests reach vyred.
 
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = path.join(REPO, "bin", "vyre");
@@ -37,8 +40,8 @@ export function buildHome(root, extra = {}) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
     name: "alex", projectsDir: path.join(root, "projects"), roots: [work], transcripts: [transcripts],
     recall: { vectors: false, download: false },
-    // The file keystore: a throwaway world never writes to the login keychain.
-    vault: { keystore: "file" },
+    // A key file in the temp home, never the login keychain, and no breach lookups over the network.
+    vault: { keystore: "file", breach: "off" },
     // Two fictional senders, so the Gate has something real to hold: the vault items are never
     // fetched here (nothing is approved), only named, so no credential is needed to look at Now
     // or a held item.
@@ -72,6 +75,56 @@ export async function makeProjects({ work, env, threads }) {
 }
 
 /**
+ * Start a vyred on the home and wait until it answers.
+ * @param {string} root
+ * @param {Record<string, any>} env
+ * @param {string} [main] the daemon's entry point
+ */
+export async function startVyred(root, env, main = path.join(REPO, "core", "daemon", "main.js")) {
+  const { call } = await import("../../core/daemon/client.js");
+  const d = spawn(process.execPath, [main], { env, stdio: "inherit" });
+  const answers = () => call("system.info", {}, { root, timeout: 1000 }).then(r => !!r.data, () => false);
+  for (let i = 0; i < 100 && !(await answers()); i++) await new Promise(r => setTimeout(r, 100));
+  if (!(await answers())) throw new Error("vyred did not come up");
+  return d;
+}
+
+/**
+ * The vault items, through a vyred that finds a person at every call (a test fixture that
+ * refuses any home outside the temp folder): vault.put asks for presence, and a world has no one
+ * to press Touch ID. That vyred stops before the real one starts, so nothing done later (a Send at
+ * the Gate, say) is ever approved without a person. Every value is random and fictional.
+ * @param {{ root: string, env: Record<string, any> }} w
+ */
+export async function seedVault({ root, env }) {
+  const { call } = await import("../../core/daemon/client.js");
+  const seeding = await startVyred(root, env, path.join(REPO, "test", "fixtures", "vyred-present.js"));
+  const fake = () => crypto.randomBytes(18).toString("base64url");
+  const put = async (/** @type {any} */ x) => { const r = await call("vault.put", x, { root, caller: "cli" }); if (r.error) console.error(`world: vault.put ${x.name}: ${r.error.message}`); };
+  await put({ name: "harlow-gmail", kind: "login", description: "Harlow Legal's mailbox, for client updates.", url: "https://mail.google.com", fields: { username: "alex@harlowlegal.com", password: fake() } });
+  await put({ name: "northwind-ads", kind: "api-key", description: "Northwind Bakery's ad account.", hosts: ["https://api.example.com"], fields: { value: fake() } });
+  await put({ name: "claude-setup-token", kind: "secret", description: "The Claude subscription token juno and kit run on.", fields: { value: fake() } });
+  await put({ name: "northwind-card", kind: "card", description: "Northwind Bakery's company card.", fields: { name: "Sam Okafor", number: "4242424242424242", expiry: "09/29", cvc: "123" } });
+  await put({ name: "office-wifi", kind: "note", fields: { text: "Network harlow-guest. Ask Dana for the printer code." } });
+  await put({ name: "harlow-site-env", kind: "env-set", description: "The Harlow Legal site's production settings.", fields: { DATABASE_URL: "postgres://sample/" + fake(), MAIL_KEY: fake() } });
+  await new Promise(r => { seeding.once("exit", r); seeding.kill("SIGTERM"); });
+}
+
+/**
+ * The assistant and one agent, as the CLI would make them. agents.create only records an agent:
+ * it starts no claude and no computer.
+ * @param {string} root
+ */
+export async function makeAgents(root) {
+  const { call } = await import("../../core/daemon/client.js");
+  const cli = (/** @type {string} */ tool, /** @type {any} */ input) => call(tool, input, { root, caller: "cli" }).then(r => { if (r.error) console.error(`world: ${tool}: ${r.error.message}`); });
+  await cli("agents.create", { name: "juno", kind: "assistant", auth: { vault: "claude-setup-token", budget_usd: 20 },
+    instructions: "Run alex's week: keep every project moving, draft client updates, and ask before anything goes out." });
+  await cli("agents.create", { name: "kit", kind: "agent", projects: ["harlow-legal", "northwind-bakery"], computer: true, auth: { vault: "claude-setup-token", budget_usd: 15 },
+    instructions: "Run marketing for Harlow Legal and Northwind Bakery. Write ad copy, audit campaigns, and ask before spending money or publishing anything." });
+}
+
+/**
  * The two items held at the Gate, as gate.request inputs. request() only holds; nothing is sent.
  * @param {string[]} threads the corpus thread ids, in order
  */
@@ -90,24 +143,24 @@ export function heldItems(threads) {
 
 async function main() {
   const PORT = Number(process.argv[2] || 4747);
-  const w = buildHome(fs.realpathSync(fs.mkdtempSync("/tmp/vy-deck-")));
+  const w = buildHome(fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-deck-"))));
   const { root, env } = w;
 
-  // Belt and suspenders on the /tmp/vy-deck-* home: the "exit" event fires for every path out of
+  // Belt and suspenders on the vy-deck-* home: the "exit" event fires for every path out of
   // this process (Ctrl-C below, an uncaught exception, a thrown "vyred did not come up"), not just
   // a clean quit, so the temp dir does not outlive the process. fs.rmSync is sync, which "exit"
   // handlers require.
   process.on("exit", () => { try { fs.rmSync(root, { recursive: true, force: true }); } catch {} });
 
-  const daemon = spawn(process.execPath, [path.join(REPO, "core", "daemon", "main.js")], { env, stdio: "inherit" });
   const { socketPath } = await import("../../core/config/index.js");
   const sock = socketPath(root);
-  for (let i = 0; i < 100 && !fs.existsSync(sock); i++) await new Promise(r => setTimeout(r, 100));
-  if (!fs.existsSync(sock)) throw new Error("vyred did not come up");
+  await seedVault(w);
+  const daemon = await startVyred(root, env);
 
   // Let the first Recall pass land so the catalogue and search see the corpus.
   await new Promise(r => setTimeout(r, 1500));
   await makeProjects(w);
+  await makeAgents(root);
 
   const server = http.createServer((req, res) => {
     const up = http.request({ socketPath: sock, path: req.url, method: req.method, headers: req.headers }, r => {

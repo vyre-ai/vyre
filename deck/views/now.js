@@ -11,6 +11,8 @@ import { attempt } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
+import { setupCard } from "../js/phone-setup.js";
+import { pairRequests } from "../js/pair.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 
 /** @param {any} ctx */
@@ -24,10 +26,17 @@ export default async function now(ctx) {
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
   const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
 
+  // A Mac asking to pair waits on the person, so it sits above everything else.
+  const pairing = pairRequests();
+  ctx.cleanup(pairing.stop);
+
   put(ctx.root, h("div", { class: "now" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
+      // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
+      pairing.el,
+      setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, working, learned, recentProjects)));
 
@@ -148,7 +157,7 @@ export default async function now(ctx) {
       h("div", { class: "work-row" },
         h("span", { class: "initial", "aria-hidden": "true" }, icon("projects", 14)),
         h("div", { class: "work-main" },
-          h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet" }, p.name)),
+          h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet ellipsis" }, p.name)),
           h("div", { class: "code ellipsis" }, plural(p.threads, "thread"))),
         h("div", { class: "code faint work-since" }, p.last ? since(p.last) : "")))));
   };
@@ -239,7 +248,7 @@ function workRow(t) {
     h("span", { class: "initial", "aria-hidden": "true" }, initial(t.agent || t.name)),
     h("div", { class: "work-agent" }, t.agent || "you"),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet" }, t.name || t.id), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, t.name || t.id), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
       h("div", { class: "code ellipsis" }, t.activity || "")),
     h("div", { class: "code faint work-since" }, since(t.started)),
     link(t.agent ? `/agents/${encodeURIComponent(t.agent)}` : href, { class: "btn btn-ghost btn-sm work-watch" }, icon("watch", 14), "Watch"),

@@ -7,18 +7,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Clipboard } from "./clipboard.js";
 import { Helper } from "./mac/helper.js";
 import { writeFakes, writeFakePb } from "./mac/fakes.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const canary = () => `fixture-canary-${crypto.randomBytes(12).toString("hex")}`;
 const sha = v => crypto.createHash("sha256").update(v).digest("hex");
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 function tmp(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-clip-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-clip-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
@@ -116,14 +116,21 @@ test("off a Mac, copy is refused with words a person can act on", async () => {
 const real = process.platform === "darwin" && fs.existsSync("/usr/bin/swiftc");
 
 test("the real Swift helper builds, copies to a private pasteboard, and clears it", { skip: !real }, async t => {
-  const dir = tmp(t);
+  // Not tmp(t): after hooks run in the order they were added, and the release below starts the
+  // helper again, which rebuilds it into a folder already removed. Release first, then remove.
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-clip-"));
   const out = path.join(dir, "helpers");
   const helper = new Helper({ name: "clip", dir: out });
+  /** @type {Clipboard|null} */
+  let clip = null;
+  t.after(async () => {
+    if (clip) { try { await clip.request({ op: "release" }); } catch { /* gone */ } clip.stopChild(); }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
   const built = await helper.ensure();
   assert.ok(fs.existsSync(built.path));
   const name = `vyre-test-${crypto.randomBytes(8).toString("hex")}`;
-  const clip = new Clipboard({ helper, platform: "darwin", pasteboard: name, timers: timers() });
-  t.after(async () => { try { await clip.request({ op: "release" }); } catch { /* gone */ } clip.stopChild(); });
+  clip = new Clipboard({ helper, platform: "darwin", pasteboard: name, timers: timers() });
   const v = canary();
   const r = await clip.copy(v);
   assert.equal(r.via, "helper");

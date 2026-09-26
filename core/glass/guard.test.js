@@ -5,10 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { DENY, checkRel, resolveIn, deniedSegments, hidden, checkName } from "./guard.js";
 import { LocalTree } from "./providers/box.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 /**
  * One example per DENY entry. Link's files module keeps the same list; if a DENY entry is added
@@ -27,7 +27,7 @@ export const DENIED_EXAMPLES = {
 const ALLOWED = ["notes.txt", "config.json", ".config/app.json", "environment.md", "keys.txt", "tls.key.txt", "my-secrets-plan.md", ".envrc.example"];
 
 function temp(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-guard-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-guard-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

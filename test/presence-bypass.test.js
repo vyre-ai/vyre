@@ -47,9 +47,9 @@ function raw(socketPath, url, body, headers) {
 function child(args, env, input = "") {
   return new Promise(resolve => {
     const p = spawn(process.execPath, args, { env: { ...process.env, ...env, NO_COLOR: "1" }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
-    let out = "";
-    p.stdout.on("data", c => (out += c)); p.stderr.on("data", c => (out += c));
-    p.on("close", code => resolve({ code, out }));
+    let out = "", stdout = "";
+    p.stdout.on("data", c => { out += c; stdout += c; }); p.stderr.on("data", c => (out += c));
+    p.on("close", code => resolve({ code, out, stdout }));
     p.stdin.end(input);
   });
 }
@@ -134,12 +134,12 @@ test("bypass: a Bash tool call that tries it is denied by the floor, with vyred 
   const hook = command => child([HOOK, "rules"], { VYRE_HOME: b.root }, JSON.stringify({ session_id: "s1", cwd: "/tmp", tool_name: "Bash", tool_input: { command } }));
   for (const command of tries) {
     const r = await hook(command);
-    assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, "deny", command);
+    assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny", command);
   }
   await b.d.stop();
   for (const command of tries) {
     const r = await hook(command);
-    assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, "deny", "vyred down: " + command);
+    assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny", "vyred down: " + command);
   }
   assert.equal(b.mail.got.length, 0);
 });

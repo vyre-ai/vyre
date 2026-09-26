@@ -8,16 +8,16 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFs, TRASH } from "./fs.js";
+import { SCRATCH } from "../../../../test/scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN = "fake-computerd-token-0123";
 
 function home(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "computerd-fs-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-fs-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, "docs"));
   fs.writeFileSync(path.join(dir, "docs", "readme.md"), "# hello\n");
@@ -88,7 +88,7 @@ test("fs: bad paths are 400, denied ones 403, and neither is cleaned up", async 
 
 test("fs: symlinks resolve inside the root or not at all", async t => {
   const dir = home(t);
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "computerd-out-"));
+  const outside = fs.mkdtempSync(path.join(SCRATCH, "computerd-out-"));
   t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
   fs.writeFileSync(path.join(outside, "x.txt"), "outside");
   fs.symlinkSync(outside, path.join(dir, "escape"));

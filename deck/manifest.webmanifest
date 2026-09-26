@@ -1,15 +1,26 @@
 {
+  "id": "/now",
   "name": "Vyre",
   "short_name": "Vyre",
   "description": "Your agents, sessions and memory, on your own box.",
   "start_url": "/now",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone"],
+  "orientation": "any",
   "background_color": "#0E0D0C",
   "theme_color": "#0E0D0C",
+  "categories": ["productivity", "developer"],
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" },
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Now", "url": "/now", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Chat", "url": "/chat", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Find", "url": "/find", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

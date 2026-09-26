@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
@@ -18,6 +17,7 @@ import { register } from "./tools/share.js";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const fakeSk = () => `V2-Q7M2XK-${crypto.randomBytes(16).toString("hex").toUpperCase().slice(0, 26)}`;
 
@@ -76,7 +76,7 @@ test("serveKit expires unopened", async () => {
 });
 
 test("vault.kit tool: the Secret Key reaches the page and nowhere else", async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-kit-"));
+  const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-kit-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const events = [], logs = [];
