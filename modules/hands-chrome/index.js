@@ -58,6 +58,13 @@ export default {
       onEvent: (agent, m) => { if (m.method === "Inspector.detached" || m.method === "Target.targetCrashed") ctx.log(`${agent}'s Chrome: ${m.method}`); },
     });
 
+    // A shield (a person signing in, ADR 0005 decision 3) drops the connection, so nothing
+    // already attached can see the page; may-act refuses a new one until the shield is down.
+    const unshielded = ctx.events.on("computer.shielded", e => {
+      const agent = e && e.payload && e.payload.agent;
+      if (agent) pool.drop(String(agent)).catch(err => ctx.log(`dropping ${agent}'s Chrome: ${err.message}`));
+    });
+
     const act_ = (agent, action, ok, why, extra = {}) => {
       ctx.events.emit("chrome.acted", { agent, action, ok, ...(why ? { why } : {}), ...extra });
     };
@@ -184,7 +191,7 @@ export default {
 
     return {
       pool,
-      async stop() { await pool.closeAll(); },
+      async stop() { unshielded(); await pool.closeAll(); },
     };
   },
 };

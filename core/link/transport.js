@@ -32,11 +32,20 @@ export function isTailnet(ip) {
   return net.isIPv4(a) ? V4.check(a, "ipv4") : net.isIPv6(a) ? V6.check(a, "ipv6") : false;
 }
 
-/** The tailscale CLI: VYRE_TAILSCALE_BIN (tests' fake), on the PATH, or inside the Mac app. */
-function tailscaleBin() {
+export const REAL_APP = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+
+/**
+ * The tailscale CLI: VYRE_TAILSCALE_BIN when set (tests point it at a fake), else the Mac app's
+ * binary, else `tailscale` on the PATH. Under `node --test` the real one is never used unless a
+ * test opts in with VYRE_TEST_REAL_TAILSCALE=1: a test that starts vyred or runs `vyre up` on a
+ * Mac would otherwise query the user's own Tailscale. Null means "no tailscale here", which every
+ * caller already treats as an unknown peer.
+ * @returns {string|null}
+ */
+export function tailscaleBin() {
   if (process.env.VYRE_TAILSCALE_BIN) return process.env.VYRE_TAILSCALE_BIN;
-  const app = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
-  return process.platform === "darwin" && fs.existsSync(app) ? app : "tailscale";
+  if (process.env.NODE_TEST_CONTEXT && process.env.VYRE_TEST_REAL_TAILSCALE !== "1") return null;
+  return process.platform === "darwin" && fs.existsSync(REAL_APP) ? REAL_APP : "tailscale";
 }
 
 /**
@@ -45,8 +54,10 @@ function tailscaleBin() {
  * @returns {Promise<{ stableId: string, node: string, login: string|null, tagged: boolean } | null>}
  */
 export function whois(ip) {
+  const bin = tailscaleBin();
+  if (!bin) return Promise.resolve(null);
   return new Promise(resolve => {
-    execFile(tailscaleBin(), ["whois", "--json", normalize(ip)], { timeout: 5000 }, (err, out) => {
+    execFile(bin, ["whois", "--json", normalize(ip)], { timeout: 5000 }, (err, out) => {
       if (err) return resolve(null);
       try {
         const j = JSON.parse(out);
@@ -143,8 +154,10 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
  * @returns {Promise<{ ip: string, dns: string, stableId: string, host: string }[]>}
  */
 export function tailnetPeers() {
+  const bin = tailscaleBin();
+  if (!bin) return Promise.resolve([]);
   return new Promise(resolve => {
-    execFile(tailscaleBin(), ["status", "--json"], { timeout: 5000, maxBuffer: 8_000_000 }, (err, out) => {
+    execFile(bin, ["status", "--json"], { timeout: 5000, maxBuffer: 8_000_000 }, (err, out) => {
       if (err) return resolve([]);
       try {
         const peers = Object.values(JSON.parse(out).Peer || {});

@@ -29,10 +29,11 @@ import { createServer } from "node:http";
 import { connect } from "node:net";
 import { spawn } from "node:child_process";
 import { URL } from "node:url";
+import { createFs } from "./fs.js";
 
 const CHROME = { host: "127.0.0.1", port: 9222 };
 
-const PORT = 7000;
+const PORT = Number(process.env.COMPUTERD_PORT || 7000);
 const TOKEN = process.env.COMPUTERD_TOKEN || "";
 if (!TOKEN) {
   console.error("computerd: COMPUTERD_TOKEN is not set; refusing to start with no way to authenticate callers");
@@ -40,6 +41,14 @@ if (!TOKEN) {
 }
 
 const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
+
+// Glass's file routes (fs.js), and the shield: while a person signs in, the routes that see or
+// touch the screen answer 423 (ADR 0005, decision 3). In memory, so a restart starts unshielded.
+const files = createFs();
+let shielded = false;
+/** Open CDP pipes, so raising the shield can cut every one already attached. */
+const cdpPipes = new Set();
+const SHIELDED_ROUTES = new Set(["GET /tree", "GET /screenshot", "POST /act", "POST /input"]);
 
 /** Run a subprocess, collect stdout/stderr, resolve/reject on exit. Never throws synchronously. */
 function run(cmd, args, { input, timeout = 15_000, binary = false } = {}) {
@@ -189,9 +198,13 @@ function proxyCdpUpgrade(req, socket, head) {
   const token = url.searchParams.get("token") || "";
   if (token !== TOKEN) { socket.end("HTTP/1.1 401 Unauthorized\r\nconnection: close\r\n\r\n"); return; }
   if (!url.pathname.startsWith("/cdp/")) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
+  // While a person signs in, no one attaches to Chrome: a CDP session could read the form.
+  if (shielded) { socket.end("HTTP/1.1 423 Locked\r\nconnection: close\r\n\r\n"); return; }
   const targetPath = url.pathname.slice("/cdp".length);
 
   const upstream = connect(CHROME.port, CHROME.host);
+  cdpPipes.add(socket);
+  socket.on("close", () => { cdpPipes.delete(socket); try { upstream.destroy(); } catch {} });
   upstream.on("error", () => { try { socket.destroy(); } catch {} });
   socket.on("error", () => { try { upstream.destroy(); } catch {} });
   upstream.on("connect", () => {
@@ -228,6 +241,15 @@ const server = createServer(async (req, res) => {
 
     const url = new URL(req.url || "/", "http://computerd");
     const { pathname } = url;
+
+    if (pathname.startsWith("/fs/")) return files(req, res, url);
+    if (req.method === "POST" && pathname === "/shield") {
+      const body = await readBody(req);
+      shielded = Boolean(body && body.on === true);
+      if (shielded) for (const pipe of cdpPipes) { try { pipe.destroy(); } catch {} }
+      return send(200, { shielded });
+    }
+    if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 
     if (req.method === "GET" && pathname === "/health") {
       return send(200, await health());

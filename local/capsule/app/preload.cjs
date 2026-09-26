@@ -23,6 +23,14 @@ contextBridge.exposeInMainWorld("vyre", {
   cancel: () => ipcRenderer.invoke("capsule:cancel"),
   // Only the user's own click puts text on the clipboard.
   copy: text => ipcRenderer.invoke("capsule:copy", text),
+  // A direct message with an agent: its thread as history, live while open.
+  dmOpen: agent => ipcRenderer.invoke("capsule:dm-open", agent),
+  dmClose: () => ipcRenderer.invoke("capsule:dm-close"),
+  // Watches: tell me when a thread is done or asks. Reports come back in the state.
+  watch: (thread, label) => ipcRenderer.invoke("capsule:watch", thread, label),
+  unwatch: thread => ipcRenderer.invoke("capsule:unwatch", thread),
+  reportRead: id => ipcRenderer.invoke("capsule:report-read", id),
+  onReport: fn => ipcRenderer.on("capsule:report", (_e, id) => fn(id)),
   // The page says how tall it is; the window follows. Width never changes.
   size: h => ipcRenderer.send("capsule:size", h),
   // Escape: the window goes away, which is the only reliable way to hand the keyboard back.

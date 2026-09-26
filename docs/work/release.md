@@ -35,8 +35,6 @@ scripts/release-check.sh --skip-tests --live
 
 ## Needs from others
 
-- link: the 30s heartbeat (core/link/mac.js) fails perf-check's 60s timer budget.
-- perf: CPU max is a single sample and fails on a loaded machine; `--perf` stays opt-in.
 - capsule: sign the whole bundle in `vyre capsule build --app` (build-mac-zip does it for now).
 - box: `pull_policy: build` in compose.build.yml quiets "pull access denied".
 - The user: npm publish, a Developer ID with notarization, and a ghcr image.

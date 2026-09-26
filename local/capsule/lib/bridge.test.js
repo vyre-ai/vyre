@@ -548,3 +548,106 @@ test("real switchboard: a question goes to a fast model in the Capsule's folder,
   assert.deepEqual([after?.finished, after?.ok, after?.error], [true, false, "stopped"]);
   assert.ok(String(after?.text).length < 3006, "it did not run to the end");
 });
+
+// ------------------------------------------------------------ DMs with the real switchboard
+
+test("real switchboard: a DM loads the agent's history in order, and nothing is fetched until it is open", async t => {
+  const { b, cli } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  for (const q of ["first", "second", "third"]) assert.equal((await cli("agents.ask", { agent: "juno", text: q })).data.text, `echo: ${q}`);
+  await b.refresh();
+  assert.equal(b.snapshot().dm, null, "no DM until one is opened");
+  const once = await b.dm("assistant");
+  assert.equal(once.agent, "juno");
+  assert.deepEqual(once.messages.map(m => [m.role, m.text, m.surface ?? null]), [
+    ["user", "first", "cli"], ["agent", "echo: first", null], ["user", "second", "cli"], ["agent", "echo: second", null],
+    ["user", "third", "cli"], ["agent", "echo: third", null]]);
+  assert.deepEqual([once.busy, once.holder, once.asks], [false, null, []]);
+  assert.ok(once.messages.every((m, i, all) => i === 0 || m.at >= all[i - 1].at), "oldest first");
+  assert.equal((await b.dm("juno", { limit: 2 })).messages.map(m => m.text).join("|"), "third|echo: third");
+  assert.equal(b.snapshot().dm, null, "reading one is not opening it");
+  assert.match(String((await b.dm("nobody")).error), /no agent called nobody/);
+});
+
+test("real switchboard: in an open DM a send shows pending, then streams, once; another surface's words carry it; close clears", async t => {
+  const { b, cli } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  assert.ok((await cli("agents.create", { name: "kit", projects: [] })).data);
+  await b.refresh();
+  // kit has no thread yet: the DM is empty, and its first words start one.
+  const opened = await b.openDm("kit");
+  assert.deepEqual([opened.agent, opened.thread, opened.messages], ["kit", null, []]);
+  const seen = [];
+  b.on("change", () => { const d = b.snapshot().dm; if (d) seen.push(d.messages.map(m => `${m.role}:${m.pending ? "pending:" : ""}${m.text}`).join(" / ")); });
+  // Long enough that the switchboard's 20-a-second throttle sends it in more than one piece.
+  const words = "hello kit " + "and more ".repeat(60).trim();
+  const d = (await b.destinations(b.complete("kit")[0], words)).options[0];
+  const sent = await b.send(d, words);
+  assert.equal(sent.error, undefined, sent.error);
+  assert.equal(seen[0], `user:pending:${words}`, "shown at once, pending");
+  await until(() => b.snapshot().dm?.messages.at(-1)?.done, "kit's reply to finish in the DM");
+  let dm = b.snapshot().dm;
+  assert.equal(dm?.thread, sent.thread);
+  assert.deepEqual(dm?.messages.map(m => [m.role, m.text, Boolean(m.pending)]), [["user", words, false], ["agent", `echo: ${words}`, false]]);
+  assert.ok(seen.some(x => x.startsWith(`user:${words} / agent:echo: hello`) && x !== `user:${words} / agent:echo: ${words}`), "the reply streamed in pieces");
+  assert.ok(seen.every(x => x.split(" / ").filter(m => m.startsWith("user:")).length <= 1), "the user's words never appear twice");
+  assert.equal(dm?.busy, false);
+  assert.equal(dm?.holder, "capsule", "agents.ask wait:false keeps the keyboard for the Capsule");
+
+  // The Deck types into kit's thread: it shows as the user's, from the deck.
+  await b.releaseLease();
+  assert.equal((await cli("threads.send", { thread: sent.thread, text: "from the deck", surface: "deck" })).data.sent, true);
+  await until(() => b.snapshot().dm?.messages.at(-1)?.text === "echo: from the deck" && b.snapshot().dm?.messages.at(-1)?.done, "the deck's turn");
+  dm = b.snapshot().dm;
+  assert.deepEqual(dm?.messages.slice(-2).map(m => [m.role, m.text, m.surface ?? null]), [["user", "from the deck", "deck"], ["agent", "echo: from the deck", null]]);
+  assert.equal(dm?.holder, "deck");
+
+  // A second open reads the same history back from vyred, whole.
+  const again = await b.openDm("kit");
+  assert.deepEqual(again.messages.map(m => [m.role, m.text, m.surface ?? null]), dm?.messages.map(m => [m.role, m.text, m.surface ?? null]));
+
+  assert.deepEqual(b.closeDm(), { ok: true });
+  assert.equal(b.snapshot().dm, null);
+  const finished = async () => (await cli("threads.get", { thread: sent.thread })).data.events.filter(e => e.type === "thread.finished").length;
+  const turns = await finished();
+  await cli("threads.release", { thread: sent.thread, surface: "deck" });
+  await cli("threads.send", { thread: sent.thread, text: "while closed", surface: "cli" });
+  await until(async () => (await finished()) > turns, "the turn while closed");
+  assert.equal(b.snapshot().dm, null, "a closed DM folds nothing");
+  assert.equal(b.chat, null);
+});
+
+test("real switchboard: an ask in the DM's thread shows in dm.asks and in the waiting list, and goes when answered", async t => {
+  const { b, cli, work } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  await b.refresh();
+  await b.openDm("juno");
+  const target = path.join(work, "dm-notes.txt");
+  const d = (await b.destinations(null, `write ${target}`)).options[0];
+  assert.equal(d.kind, "assistant");
+  const sent = await b.send(d, `write ${target}`);
+  assert.equal(sent.error, undefined, sent.error);
+  await until(() => b.snapshot().dm?.asks.length === 1, "the ask in the DM");
+  const snap = b.snapshot();
+  const ask = snap.dm?.asks[0];
+  assert.equal(ask?.thread, sent.thread);
+  assert.equal(ask?.tool, "Write");
+  assert.match(String(ask?.title), /^juno asks to Write .*dm-notes\.txt/);
+  assert.deepEqual(snap.waiting.map(w => w.id), [ask?.id], "still in the global waiting list");
+  assert.equal(snap.dm?.busy, true);
+  assert.equal(snap.dm?.messages.at(-1)?.tools?.[0]?.summary.startsWith("Write "), true, "the tool call is one line");
+
+  // Reopened mid-question, the ask comes from the table, not the stream.
+  const re = await b.openDm("juno");
+  assert.deepEqual(re.asks.map(a => a.id), [ask?.id]);
+
+  assert.deepEqual(await b.answer(/** @type {any} */ (ask), "allow"), { ok: true });
+  await until(() => fs.existsSync(target), "the file the answer allowed");
+  await until(() => b.snapshot().dm?.asks.length === 0 && b.snapshot().dm?.busy === false, "the ask to go from the DM and the turn to end");
+  assert.deepEqual(b.snapshot().waiting, []);
+  const last = b.snapshot().dm?.messages.at(-1);
+  assert.deepEqual([last?.role, last?.text, last?.tools?.[0]?.done, last?.tools?.[0]?.error], ["agent", "Wrote it.", true, false]);
+  b.closeDm();
+  assert.equal(b.snapshot().dm, null);
+  await b.releaseLease();
+});

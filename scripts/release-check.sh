@@ -1,10 +1,10 @@
 #!/bin/sh
 # release-check.sh: everything that must hold before a release goes out.
 #
-#   scripts/release-check.sh [--skip-tests] [--perf] [--claude] [--live]
+#   scripts/release-check.sh [--skip-tests] [--skip-perf] [--claude] [--live]
 #
-#   1. the suite (npm test), unless --skip-tests; with --perf, then scripts/perf-check (idle
-#      budgets, SPEC section 2 principle 8; about a minute; a busy machine can fail it)
+#   1. the suite (npm test) and scripts/perf-check (idle budgets, SPEC section 2 principle 8;
+#      about a minute), unless --skip-tests or --skip-perf
 #   2. npm pack, and the tarball holds what it should and nothing it should not
 #   3. a global install of that tarball into a temp prefix, never the real one
 #   4. vyre up, status, modules, call and down, in a temp HOME and VYRE_HOME
@@ -18,13 +18,13 @@
 set -eu
 
 TESTS=1
-PERF=0
+PERF=1
 CLAUDE=0
 LIVE=0
 for a in "$@"; do
   case "$a" in
     --skip-tests) TESTS=0 ;;
-    --perf) PERF=1 ;;
+    --skip-perf) PERF=0 ;;
     --claude) CLAUDE=1 ;;
     --live) LIVE=1 ;;
     -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
