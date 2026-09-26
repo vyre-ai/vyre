@@ -37,9 +37,10 @@ export default {
       description: "Save a note.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string" } } },
       run: async ({ text }) => {
-        ctx.store.db.prepare("INSERT INTO notes_items (body, at) VALUES (?, ?)").run(text, Date.now());
-        ctx.events.emit("note.added", { text });
-        return { saved: true };
+        const r = ctx.store.db.prepare("INSERT INTO notes_items (body, at) VALUES (?, ?)").run(text, Date.now());
+        const id = Number(r.lastInsertRowid);
+        ctx.events.emit("note.added", { id });
+        return { id };
       },
     });
     return { async stop() {} };
@@ -51,7 +52,16 @@ export default {
 
 ```
 vyre down && vyre up
+vyre modules
 vyre call notes.add '{"text":"call the printer people"}'
+```
+
+`vyre modules` lists `notes` as `running`, or `failed` or `invalid` with the reason. The call prints what `run` returned:
+
+```output
+{
+  "id": 1
+}
 ```
 
 The one definition becomes an MCP tool Claude can call (the Harness's `vyre` server lists every
@@ -66,20 +76,65 @@ A module runs on both a box and a Mac unless its manifest sets `roles` to `["box
 ## The rules the loader enforces
 
 - Tool names start with the module name: `notes.add`, never `add`.
-- Tables start with the module name and an underscore: `notes_items`.
-- A tool must be listed under `does.tools`; an event under `watches.emits`. Anything else fails
-  the module at start.
+- Tables start with the module name and an underscore: `notes_items`. `ctx.store.migrate`
+  refuses any other `CREATE TABLE`.
+- A tool must be listed under `does.tools`, and an event under `watches.emits`. Registering an
+  unlisted tool in `start` throws, which fails the module. Emitting an unlisted event throws at
+  the moment you emit it, so the tool call that emitted it fails.
 - Event names read `noun.past-verb`: `note.added`, `watcher.fired`.
-- Event payloads never carry secrets. The log refuses anything that looks like one.
+- Event payloads never carry secrets, and the log refuses anything that looks like one. Leave
+  out what the user typed, too: every module and the Deck can read the log. That is why
+  `note.added` above carries the note's id, not its text.
 - Input is checked against the tool's schema before `run` sees it.
-- Every call passes through the rules first, whether it came from Claude, the Deck or the CLI.
 - If `start` throws, the module is marked failed and the rest keep running. `vyre modules` shows
   why.
 
 ## Test it
 
-Use `test/helpers.js`: `tempHome(t)` gives each test its own `VYRE_HOME`, and `writeModule`
-writes a module folder. Never point a test at the real `~/.vyre`.
+To try a change without touching your real `~/.vyre`, run a throwaway vyred in a temporary
+home. Export `VYRE_HOME` so every command in the shell uses it:
+
+```
+export VYRE_HOME=$(mktemp -d)
+mkdir -p "$VYRE_HOME/modules" && cp -R ~/.vyre/modules/notes "$VYRE_HOME/modules/"
+vyre up --json
+vyre call notes.add '{"text":"call the printer people"}'
+vyre down
+unset VYRE_HOME
+```
+
+`--json` keeps `vyre up` on a Mac from asking where your box runs. A temporary home never
+raises a Touch ID or keychain dialog.
+
+Inside the Vyre repository, tests use `test/helpers.js`: `tempHome(t)` gives each test its own
+`VYRE_HOME` and removes it after, and `writeModule(root, name, manifest, source)` writes a module
+folder. A test that loads the module above (its `index.js` saved as a fixture) and calls its
+tool:
+
+```js
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { start } from "../core/daemon/index.js";
+import { call } from "../core/daemon/client.js";
+import { tempHome, writeModule } from "./helpers.js";
+
+const SOURCE = fs.readFileSync(new URL("./fixtures/notes/index.js", import.meta.url), "utf8");
+
+test("notes.add saves a note and refuses one with no text", async t => {
+  const root = tempHome(t);
+  writeModule(path.join(root, "modules"), "notes",
+    { does: { tools: ["notes.add"] }, watches: { emits: ["note.added"] } }, SOURCE);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const r = await call("notes.add", { text: "call the printer people" }, { root });
+  assert.deepEqual(r, { data: { id: 1 } });
+  assert.equal((await call("notes.add", {}, { root })).error.code, "bad_input");
+});
+```
+
+See [Testing](../contributing/testing.md) for the rest of the helpers.
 
 ## Where to go next
 

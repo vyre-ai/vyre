@@ -25,17 +25,18 @@ else.
 
 ## Install the package
 
-```
-npm install -g vyre
-```
-
-Vyre is not on npm yet. Until it is, install the same tarball the Docker box builds from:
+Vyre is not on npm yet, so install the same tarball the Docker box builds from:
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz
 ```
 
-## On a Mac
+Once Vyre is published, this becomes `npm install -g vyre`.
+
+## Run it
+
+::: tabs
+::: tab On a Mac
 
 ```
 vyre up                  # role local: this Mac talks to your box
@@ -44,15 +45,17 @@ vyre up --connect https://vyre.tail1234.ts.net   # a box you already set up
 ```
 
 A Mac's role is `local` by default. `vyre up` starts vyred for this Mac, finds your box on the
-tailnet (or asks where Vyre should run), pairs the Mac with it and opens the Capsule. The full
-walk-through is [Onboarding](onboarding.md).
+tailnet (or asks where Vyre should run), asks the box to pair this Mac, and opens the Capsule
+if it is installed (`--no-capsule` skips that). The full walk-through is
+[Onboarding](onboarding.md).
 
 `vyre up --box` sets the role to `box` and prints the onboarding link. On a Mac it also opens
 the link in your browser. The Mac then serves your phone, so it has to stay awake for the
 phone to reach it.
 
-There is no login item. Any `vyre` command starts vyred when it is not running; `vyre up` also
-restarts it when the installed version or the role has changed. The rest:
+There is no login item. `vyre up` starts vyred, and restarts it when the installed version or
+the role has changed. Some commands, such as `vyre recall`, `vyre start` and `vyre capsule`, also
+start it when it is not running; others, such as `vyre status`, only report. The rest:
 
 ```
 vyre status              # is it running, and what is it running
@@ -61,9 +64,9 @@ vyre modules             # every module and whether it started
 ```
 
 vyred's own output goes to `~/.vyre/logs/vyred.out`, and its log to `~/.vyre/logs/`, one file
-per day.
+per day (`2026-09-27.log`).
 
-## On Linux, under systemd
+::: tab On Linux
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz
@@ -71,7 +74,7 @@ sudo vyre up --system --user alex
 vyre up
 ```
 
-`--user` names the account vyred runs as; it can never be root. Under sudo it defaults to the
+This installs vyred under systemd. `--user` names the account vyred runs as; it can never be root. Under sudo it defaults to the
 account that ran sudo. Add `--dry-run` to see every change without making one.
 
 `vyre up --system` does this, and running it again changes only what differs:
@@ -94,14 +97,18 @@ Then plain `vyre up`, as that account, prints the onboarding link and, over SSH,
 line to reach it from your own computer. The steps from there are in
 [Onboarding](onboarding.md).
 
-Without systemd, `vyre up --system` stops and says so. Run `vyre daemon` (vyred in the
-foreground) as the account under your own supervisor, with `VYRE_HOME` set, and restart it
-when it exits.
+> [!SNAG] vyre up --system says systemd is required
+> Without systemd there is no system install. Run `vyre daemon` (vyred in the foreground) as the
+> account under your own supervisor, with `VYRE_HOME` set, and restart it when it exits.
+
+> [!SNAG] The onboarding stops at the Tailscale step
+> "Tailscale runs in userspace networking mode; Vyre needs its network interface." Run Tailscale
+> with its `tailscale0` interface (the default on Linux), not with `--tun=userspace-networking`.
 
 ### Upgrade
 
 ```
-sudo npm install -g vyre@latest && vyre up
+sudo npm install -g https://vyre.run/box/vyre.tgz && vyre up
 ```
 
 `vyre up` sees vyred running an older version, stops it, and systemd starts the new one. If an
@@ -120,6 +127,8 @@ sudo npm rm -g vyre
 config) stays unless you add `--purge`, which deletes it and cannot be undone. `--dry-run`
 works here too.
 
+:::
+
 ## Back up and restore
 
 The same two commands as on a Docker box, run as the account itself:
@@ -131,8 +140,10 @@ vyre restore vyre-backup-2026-09-27.tar.gz --force
 vyre up
 ```
 
-Under systemd, stop it with `sudo systemctl stop vyre` instead of `vyre down`. What a backup
-holds is in [Install on a server](install.md#backup).
+Under systemd, stop it with `sudo systemctl stop vyre` instead of `vyre down`. The backup
+holds `config.json`, the store (`vyre.db`), the sealed vault, watchers, module data,
+certificates and names: keep it somewhere only
+you can read.
 
 ## Where to go next
 

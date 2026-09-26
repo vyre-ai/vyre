@@ -25,13 +25,25 @@ local/*/lib/*.test.js
 
 A new test file anywhere under those paths is picked up without registering it.
 
-Two lifecycle scripts wrap the run. `pretest` and `posttest` run `test/tmp-guard.mjs`, which lists this checkout's scratch folder before and after, and fails the run if a test left a temp directory behind.
+Two lifecycle scripts wrap the run. `pretest` and `posttest` run `test/tmp-guard.mjs`, the leak guard. It fails the run when a test left something behind:
+
+- a folder under this checkout's scratch folder (below) that appeared during the run;
+- a new `vyre-*`, `vy-*`, `vssh-*` or `computerd-*` entry left bare in `$TMPDIR`. Only entries that did not exist before the run and changed after it began count, so another worktree's old leftovers do not fail yours. `vyre-presence-<uid>`, the Touch ID helper's build cache, is meant to stay and is never counted.
+
+For a leaked test home, the guard names the test file and the test that made it.
 
 ## The scratch folder
 
 `test/scratch.mjs` exports `SCRATCH`: the one folder under `$TMPDIR` that tests in this checkout may create directories in. Its name is `vt-` plus six hex characters hashed from the checkout's path, so two worktrees running the suite at once never see each other's folders. It is short on purpose: a test's `vyred` puts its unix socket under its `VYRE_HOME`, and macOS limits a socket path to about 100 bytes.
 
-Make temp folders under `SCRATCH`, never bare in `os.tmpdir()`, and remove them in `t.after`.
+Make temp folders under `SCRATCH`, never bare in `os.tmpdir()`, and remove them in `t.after`. A module that saves on a timer (a 500 ms debounce, say) must save or stop before the test removes its folder, or the timer makes the folder again after the test ends.
+
+`test/scratch.mjs` also sets `VYRE_TMPDIR` to `SCRATCH`, for this process and every `vyre` or `vyred` a test spawns. Product code that makes its own temp folders (backup staging in `core/names/backup.js`, image thumbnails in `core/files/index.js`) puts them under `VYRE_TMPDIR` when it is set, so those stay inside `SCRATCH` too.
+
+`tempHome` writes one line per home to `<SCRATCH>.homes` (the folder, the test file, the test name). The file sits beside `SCRATCH`, not in it, so it survives the home's removal; the leak guard reads it to name the test behind a leak.
+
+> [!SNAG] tmp-guard fails with a folder you did not make
+> A sibling worktree running an older suite at the same moment can leave a bare `vyre-*` entry that lands inside your run's window. The guard prints the entry's name; if no test in your checkout makes a folder with that prefix, rerun `npm test` once the other run is done.
 
 ## Helpers
 
@@ -39,7 +51,7 @@ Make temp folders under `SCRATCH`, never bare in `os.tmpdir()`, and remove them 
 
 | Helper | What it does |
 | --- | --- |
-| `tempHome(t)` | Makes a folder under `SCRATCH`, sets `VYRE_HOME` to it for the test, and restores it after. Throws if the folder would be the real `~/.vyre`. Points `VYRE_TAILSCALE_BIN` at a path that does not exist, so nothing reaches your Tailscale, and stops any `vyred` the test started. |
+| `tempHome(t)` | Makes a folder under `SCRATCH`, sets `VYRE_HOME` to it for the test, and restores it after. Throws if the folder would be the real `~/.vyre`. Points `VYRE_TAILSCALE_BIN` at a path that does not exist, so nothing reaches your Tailscale. After the test it stops any `vyred` the test started in that home, then removes the folder. |
 | `writeModule(root, name, manifest, source)` | Writes a module folder (`module.json` and `index.js`) for loader and contract tests. |
 | `present` | A presence verifier that always finds a person, for testing what a tool does after approval. Presence's own tests use the real one. |
 | `upPresent(home)` | Starts `vyred` in a child process for a temp home with `present` as its verifier (`test/fixtures/vyred-present.js`, which refuses any home outside the temp folder). |
@@ -77,6 +89,8 @@ The fakes themselves:
 - `deck/fixtures/*.json`: canned tool replies for Deck views.
 
 The rule from the spec still holds: anything that talks to Claude Code, Tailscale or a network is also exercised for real once before it merges. A fake proves the logic, not the integration.
+
+The suite also runs on Linux. Where Node has no Argon2id (before 24.7), the vault tests' cheap password key uses scrypt at its test floor instead (`TEST_KDF` in `core/vault/testing.js`), and the tests of the real Capsule helpers skip off macOS.
 
 ## Dialogs
 

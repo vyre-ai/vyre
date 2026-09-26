@@ -12,7 +12,7 @@ Vyre runs Claude Code, and agents, on a machine you own, with your credentials w
 
 ## The floor
 
-Nine rules, enforced in the Harness's Rules hook and the Gate, not by asking the model. None can be configured away. The one that matters most for credentials is rule 8: no vault value appears on any screen, log or event, except to a person who has just proved presence on their own device, for that one value. Never to a model, an agent, a log or an event.
+Nine rules, enforced by the Harness's Rules hook, presence checks in `vyred`, the Gate and the event log, not by asking the model. None can be configured away. The one that matters most for credentials is rule 8: no vault value appears on any screen, log or event, except to a person who has just proved presence on their own device, for that one value. Never to a model, an agent, a log or an event.
 
 Read them all, with what each means in practice, in [The security floor](../concepts/floor.md). The source is [Section 11 of the spec](../architecture/spec.md#11-the-security-floor).
 
@@ -20,16 +20,17 @@ Presence is how Vyre knows a person, not a process, is asking: a passkey or Touc
 
 ## The vault
 
-- **Only `node:crypto`.** AES-256-GCM, HKDF-SHA256, scrypt, Ed25519 and X25519. No dependency can read what the vault encrypts.
-- **One master key, kept out of the data folder.** On macOS it is in the keychain. On Linux it is `vault/key`, mode 0600, owned by the account `vyred` runs as. With the `passphrase` keystore it is nowhere at rest: it is wrapped by a key derived with scrypt, and the vault stays locked until `vyre vault unlock`.
-- **A key per item, bound to the item.** Each item is sealed with its own HKDF-derived key, and its id and name are bound into the authenticated data, so a sealed file moved into another item's slot fails to decrypt.
+- **Only `node:crypto`.** AES-256-GCM, HKDF-SHA256, HMAC-SHA256, Argon2id (scrypt where Node has no Argon2id), Ed25519 and X25519. No dependency can read what the vault encrypts.
+- **A device key, kept out of the data folder.** On a Mac it is in the login keychain, written by a small helper that is the only app allowed to read it (only for the real `~/.vyre`). On Linux it is `vault/key`, mode 0600, owned by the account `vyred` runs as. With the `passphrase` keystore it is nowhere at rest: it is wrapped by a key derived from your passphrase, and the vault stays locked until `vyre vault unlock`.
+- **Two vaults.** The device key opens the agents' vault, which holds what agents and modules may be granted. Your personal vault, once you create an account (`vyre vault account create`), opens only with your password and Secret Key, or with Touch ID on a Mac you enrolled. The device key alone does not open it.
+- **A key per item version.** Each item version is sealed under its own random key, which is wrapped under its vault's key. The vault, the item's id, its version and its name are bound into the authenticated data, and each row in `vyre.db` carries an HMAC, so a sealed file moved into another slot, or an older version put back, fails to open.
 - **Names are listable, values are sealed.** The store holds names, kinds, field names and hosts. Every field value is in `vault/items/`, which the Rules deny to any tool.
 - **Release by grant.** A module gets a value only with a grant for exactly that module. When Claude asks for a grant or a pass, it waits as pending until you run `vyre vault approve <id>`.
 - **Sharing without handing over.** A pass is relayed by default: the other person's calls go through your box, which adds the credential on the way out, bound to the hosts it may be sent to. Revoking ends access at once. `vyre vault offboard <person>` revokes everything a person holds and lists the sealed items to rotate.
 
 What it does not defend, stated plainly in the ADR: code running as the `vyred` user can read the key the same way `vyred` does; a module you granted an item to is trusted with it; and a process started by `vyre vault run` receives the values in its environment by design (its output is scrubbed of them, which stops accidents, not a determined program).
 
-Details: [ADR 0001](../adr/0001-vault-crypto.md), autofill in [ADR 0010](../adr/0010-vault-autofill.md), and the proposed next steps in [ADR 0006](../adr/0006-vault-next.md). How to use it: [The vault](../using/vault.md).
+Details: [ADR 0001](../adr/0001-vault-crypto.md), the key hierarchy in [ADR 0006](../adr/0006-vault-next.md), and autofill in [ADR 0010](../adr/0010-vault-autofill.md). How to use it: [The vault](../using/vault.md).
 
 ## Network and identity
 
@@ -38,7 +39,7 @@ Details: [ADR 0001](../adr/0001-vault-crypto.md), autofill in [ADR 0010](../adr/
 - **One owner.** The box serves one Tailscale login, set at onboarding (`vyre owner` changes it).
 - **Onboarding is loopback only.** Before an owner exists, `vyred` serves one route: the onboarding page, on loopback, behind a one-time token that expires after an hour. It checks the `Host` header, so a page on another site cannot reach it through DNS rebinding.
 - **No root.** `vyred` runs as uid 1000 in the container, or as your own login account without Docker, never root. On Linux without Docker, systemd owns port 443 on `tailscale0` and hands it to `vyred`, so `vyred` needs no capability.
-- **Nothing about you reaches Vyre AI** beyond a DNS record for your name.
+- **Vyre keeps nothing about you on its own servers.** The one public trace is the DNS record of a `vyre.run` name, if you claim one: the name and your box's tailnet address, which nothing off your tailnet can reach. (Claude Code and Tailscale talk to their own services as they always do.)
 
 Details: [ADR 0002](../adr/0002-network-and-identity.md), [The tailnet](../concepts/tailnet.md).
 

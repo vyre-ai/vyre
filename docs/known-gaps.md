@@ -42,9 +42,12 @@ Owner: e2e with integrator. Pages: [onboarding](get-started/onboarding.md),
 ## vyre box update does not upgrade the Mac
 
 ADR 0008 says `vyre box update` also updates the Mac's own vyred when the box is newer. It
-upgrades the box, then prints the command to upgrade the Mac, which you run yourself.
+upgrades the box, then prints a command to upgrade the Mac, which you run yourself. That command
+is `npm i -g vyre@latest && vyre up`, and it fails: Vyre is not on npm yet. Run
+`npm install -g https://vyre.run/box/vyre.tgz && vyre up` instead.
 
-Owner: integrator. Pages: [looking after your box](using/box-care.md), [the CLI](using/cli.md).
+Owner: integrator. Pages: [looking after your box](using/box-care.md), [the CLI](using/cli.md),
+[onboarding](get-started/onboarding.md), [troubleshooting](get-started/troubleshooting.md).
 
 ## The Deck's setup commands name a flag the CLI lacks
 
@@ -68,3 +71,21 @@ The description of `vault.caps` (and so the [tools reference](reference/tools.md
 off by default. vyred returns `reveal: true`: the Deck can reveal a field, behind presence.
 
 Owner: core/vault (the lead routes it). Page: [the Vault](using/vault.md).
+
+## The vault CLI never proves presence
+
+Most `vyre vault` verbs call a tool that needs a person to prove presence: `put`, `import`,
+`grant`, `approve`, `share`, `offboard`, `get --copy`, `get --reveal`, `totp`, `read`, `run`,
+`inject`, `unlock`, `account unlock`, `delete`, `kit` and `backup`. The command calls vyred
+without a proof and never asks for one, so vyred answers `presence_required` and the command exits
+with code 3. Use the Deck, or run the tool through `vyre call`, which asks for Touch ID on the Mac.
+Never put a value or a password in a `vyre call` line.
+
+Owner: polish-cli. Page: [the Vault](using/vault.md).
+
+## vyre memory correct, merge and split never prove presence
+
+These three tools need presence, and the CLI calls them without a proof, so they stop with
+`presence_required`. Correct memory in the Deck, or run the tool through `vyre call`.
+
+Owner: polish-cli. Page: [memory](using/memory.md).

@@ -8,27 +8,40 @@ status: draft
 
 # Your first day
 
-Onboarding left you with a box at your own address, a paired Mac, and an assistant. This page walks through the five things most people do next, each in the fewest steps. Every step works from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
+Onboarding left you with a box at your own address, a paired Mac, and an assistant. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
 
-Before you start, check that everything is up. On the Mac:
+## Check that everything is up
+
+On the Mac:
 
 ```
 vyre status
 vyre link
 ```
 
-`vyre status` says whether `vyred` is running and which modules started. `vyre link` says whether this Mac is paired with your box and whether the box answers. If either is wrong, see [Troubleshooting](troubleshooting.md).
+```output
+  vyred running · 0.0.1 · local · pid 4242 · up 380s
+  17 modules running
+  ● linked to vyre.tail1234.ts.net
+```
+
+`vyre status` says whether `vyred` is running and how many modules started (a failed one is named with `vyre modules`). `vyre link` says whether this Mac is paired with your box and whether the box answers. If either is wrong, see [Troubleshooting](troubleshooting.md).
 
 ## Open the Capsule
 
 Press Control twice, in any app. The Capsule opens over what you are doing, with the caret in its box. Press Escape to put it away.
 
-- Type a question and press Return. By default it goes to your assistant, which can see every project and every session.
+- Type a question and press Return. It goes to your assistant, which can see every project and every session. The Capsule shows where a message goes before you send it.
 - Type `@` to pick who hears it: an agent (`@kit`), a project, or a thread. Talking to a thread types into that session directly.
 - Anything that came from memory rather than a model shows in gold, with its source.
 - Anything waiting on you (a permission question from a thread, a message held before sending) shows in the Capsule and can be answered there.
 
-If Control twice does nothing, run `vyre capsule` to open it wired to this Mac's `vyred`, and check that macOS granted the app Input Monitoring. More in [The Capsule](../using/capsule.md).
+> [!SNAG] Control twice does nothing
+> Click the Capsule's menu bar icon. If a line there starts `Double-Control is off:`, it says why. If the
+> helper is not built, run `vyre capsule build`. Otherwise grant Input Monitoring in System
+> Settings, Privacy & Security, then run `vyre capsule` to open it wired to this Mac's `vyred`.
+
+More in [The Capsule](../using/capsule.md).
 
 ## Start a thread in a project
 
@@ -100,7 +113,15 @@ Recall searches every session you have had, on this machine and indexed from you
 vyre recall "retainer template"
 ```
 
-Each hit shows the session, how long ago it was (`6d ago`), who said it, the folder it ran in, and the matching words in gold. Resume the session with `claude --resume <id>`, or open it in its project with `vyre resume <thread>`. Add `--here` to search only sessions from the current folder, `--user` for only what you said.
+```output
+  Retainer template for Harlow Legal
+    6f1c2a90-1b7e-4c11-9a52-0d3e8b1f4a77 · 6d ago · user · /Users/alex/Work/harlow-legal
+    can you draft the retainer template from the one we used for Northwind Bakery
+
+  resume one with: claude --resume <id>  ·  vyre call recall.thread '{"session":"<id>"}'
+```
+
+Each hit shows the session's name, its id, how long ago it was, who said it (`user` or `assistant`), the folder it ran in, and the matching words in gold. Resume the session with `claude --resume <id>`, or open it in its project with `vyre resume <thread>`. Add `--here` to search only sessions from the current folder, `--user` for only what you said.
 
 Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Deck: its threads are listed newest first.
 

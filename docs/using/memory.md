@@ -28,15 +28,47 @@ Chat next to a thread, and in the Capsule when memory answers.
 
 ```
 vyre recall stripe webhook retries
-vyre recall "the engagement letter for Dana" --here    # only sessions in this folder
-vyre recall invoice --user --limit 20                  # only what you said
+vyre recall "the engagement letter for Dana" --here    # only sessions started in this folder
+vyre recall invoice --user --limit 20                  # only what you said (--assistant: only Claude)
 vyre recall invoice --keyword                          # full-text only, no embeddings
 ```
 
 Each hit shows the session's name, its full id, how long ago, who said it and the folder, with
-the matching words in gold. Resume one with `claude --resume <id>` or `vyre resume <id>`. With no
-query, `vyre recall` says how much is indexed and whether search can rank by meaning.
-`vyre index` indexes new and changed sessions now; vyred also does this on its own.
+the matching words in gold:
+
+```output
+  Harlow billing export
+    3f9c2a10-7d4e-4b1a-9c55-0e2f8a6b1d77 · 2d ago · user · /work/harlow-legal
+    the «stripe webhook» retries three times, then marks the invoice as failed
+
+  resume one with: claude --resume <id>  ·  vyre call recall.thread '{"session":"<id>"}'
+```
+
+Resume a hit with `claude --resume <id>`, or `vyre resume <thread>` to open it with its project's
+brief.
+
+### Keep the index up to date
+
+vyred indexes on its own: a session a moment after each Claude Code turn ends, and every folder
+every 5 minutes (`recall.every` in `config.json`; 0 turns the timer off). `vyre index` indexes
+new and changed sessions now.
+
+With no query, `vyre recall` says how much is indexed and whether search can rank by meaning:
+
+```output
+  412 sessions · 18230 turns indexed
+  vectors: on (Xenova/all-MiniLM-L6-v2) · 18230 embedded, 0 to go
+  vyre recall <query> to search
+```
+
+> [!WHY] Why does the first search after an install only match words?
+> Search by meaning needs a small embedding model. vyred downloads it once (23 MB) into
+> `~/.vyre/models` and embeds your sessions in the background. Until that finishes, recall
+> searches full text only, and `vyre status` says "downloading the search model".
+
+> [!SNAG] vyre recall says nothing matches
+> On a new install the first pass takes a while: `vyre recall` with no query says "indexing now"
+> while it runs. Run `vyre index` to index now. See [troubleshooting](../get-started/troubleshooting.md).
 
 Elsewhere:
 
@@ -52,7 +84,15 @@ Elsewhere:
 vyre memory                          # counts, and the most recent facts
 vyre memory "Harlow Legal"           # everything about one thing
 vyre memory "Dana Reyes" --project harlow-legal
-vyre why "<fact id>"                 # the turns a fact came from
+vyre why '<fact id>'                 # the turns a fact came from
+```
+
+Each fact prints on two lines, then the commands for it:
+
+```output
+  · Dana Reyes works at Harlow Legal
+      3 weeks ago · confidence 0.9 · Harlow intake #14
+      vyre why '<fact id>' · vyre memory correct '<fact id>' wrong|ended|replace|confirm
 ```
 
 Each fact shows its age, a confidence and its source (`session #turn`). Facts fade at read time:
@@ -61,7 +101,11 @@ facts do not fade. A fact two projects disagree about is marked "two projects di
 
 In the Deck, **Memory** (`/memory`) draws the graph as a floor plan, one room per project, with
 people, things and threads inside and each fact as a gold dot on its link. Choose a fact to see
-its source turns. **Now** shows what memory learned today, each fact with its source thread.
+its source turns. **Now** shows **Memory learned today**, each fact with its source thread.
+
+> [!SNAG] The Deck says "Memory is not available."
+> The Memory view could not read the graph from vyred. Choose **Try again**. If it keeps failing,
+> check that vyred runs (`vyre status`) and that the memory module started (`vyre modules`).
 
 ## How projects keep memory apart
 
@@ -77,11 +121,19 @@ terminal, the Deck, the Capsule), to the assistant, and to an agent granted ever
 You are the only one who can change memory: correcting, merging and splitting are open to your
 own surfaces and ask you to prove presence. A session never writes memory.
 
+> [!GAP]
+> `vyre memory correct`, `merge` and `split` do not yet ask you to prove presence, so vyred refuses
+> them with `presence_required`. Correct in the Deck, or run the tool through `vyre call`, which
+> asks for Touch ID on the Mac: `vyre call memory.correct '{"fact":"<fact id>","action":"wrong"}'`.
+> `corrections`, `uncorrect`, `pin` and `mute` work as shown. See
+> [known gaps](../known-gaps.md#vyre-memory-correct-merge-and-split-never-prove-presence).
+
 ```
 vyre memory correct '<fact id>' wrong                  # never true
 vyre memory correct '<fact id>' ended --at 2026-08-01  # stopped being true
 vyre memory correct '<fact id>' replace Northwind Bakery
 vyre memory correct '<fact id>' confirm                # sure; it no longer fades
+vyre memory correct 'Dana Reyes|works_at|Harlow Legal' add   # a fact memory missed
 vyre memory merge "D. Reyes" "Dana Reyes"              # two nodes are one
 vyre memory split "Dana Reyes" --project harlow-legal  # that project's Dana is someone else
 vyre memory corrections

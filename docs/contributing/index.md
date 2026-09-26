@@ -18,15 +18,23 @@ cd vyre
 npm test
 ```
 
-Try a change against a throwaway home, never your real `~/.vyre`:
+Try a change against a throwaway home, never your real `~/.vyre`. Export `VYRE_HOME`, so every command after it uses the same home:
 
 ```
-VYRE_HOME=$(mktemp -d) bin/vyre up
+export VYRE_HOME=$(mktemp -d)
+bin/vyre up --json
 bin/vyre call system.echo '{"text":"hi"}'
 bin/vyre down
+unset VYRE_HOME
 ```
 
-A temp `VYRE_HOME` also means Vyre raises no dialogs (Touch ID, keychain, browser tabs) unless you set `VYRE_ALLOW_DIALOGS=1`. See [Testing](testing.md#dialogs).
+```output
+{
+  "text": "hi"
+}
+```
+
+`--json` keeps `vyre up` on a Mac from asking where your box runs. A temp `VYRE_HOME` also means Vyre raises no dialogs (Touch ID, keychain, browser tabs) unless you set `VYRE_ALLOW_DIALOGS=1`. See [Testing](testing.md#dialogs).
 
 ## Where things live
 
@@ -62,7 +70,7 @@ The full tree is [Section 3 of the spec](../architecture/spec.md#3-repository-la
 
 ## Decision records
 
-Write an ADR in `docs/adr/` for any decision a future contributor would ask about: a trade-off, a boundary, a thing you chose not to do. Number it next in sequence, and follow the shape of the existing ones: a title line `ADR NNNN · <decision>`, a status line (proposed or accepted, the date, the workstream, the spec sections it touches), then **The problem**, **Decision**, and **Consequences**. Add it to `docs/nav.json` and give it front matter like any page. The list is in [Architecture](../architecture/index.md#decision-records).
+Write an ADR in `docs/adr/` for any decision a future contributor would ask about: a trade-off, a boundary, a thing you chose not to do. Number it next in sequence, and follow the shape of the existing ones: front matter like any page, a title `ADR NNNN: <decision>`, a status line (proposed or accepted, the date, the workstream, the spec sections it touches), then the problem, the decision, and its consequences. Add it to `docs/nav.json`. The list is in [Architecture](../architecture/index.md#decision-records).
 
 ## Run the tests
 

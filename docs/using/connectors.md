@@ -26,11 +26,18 @@ not offered. Inside an agent's thread, an agent that is not the assistant is not
 that drive other sessions (`threads.*`, `agents.*`), and its `recall_search` is held to its
 projects' folders.
 
-To see what Claude can call:
+To see every tool vyred has, with its description:
 
 ```
 vyre tools
 ```
+
+This lists the tools under their own names (`recall.search`) and includes the `harness.*` hooks'
+tools. Claude sees the same list with `.` turned into `_` and those hooks' tools left out.
+
+> [!SNAG] A `/vyre` command says a tool is missing
+> vyred, or the module that owns the tool, is not running. Run `vyre up`, then `vyre modules` to
+> see which module failed and why.
 
 The Harness also adds a `/vyre` command inside Claude Code: `/vyre status`, `/vyre project`,
 `/vyre recall <query>`, `/vyre remember <text>` and `/vyre lessons`.
@@ -54,7 +61,7 @@ The connectors workstream is building, on its own branch:
 - outward tools from those servers held at the Gate for your approval, like Vyre's own;
 - one entry point: the Harness `vyre` server lists hub tools beside module tools, as
   `<server>__<tool>`;
-- `vyre connect add|list|remove|test` and a Connections section in Deck Settings;
+- a `connect` command (add, list, remove, test) and a Connections section in Deck Settings;
 - native Google mail and calendar, with sends and invites through the Gate.
 
 None of this is on this branch. This page will describe it when it merges.

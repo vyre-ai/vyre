@@ -18,7 +18,8 @@
     "eval:memory": "node scripts/eval-memory.js",
     "docs:check": "node scripts/docs-check",
     "docs:build": "node scripts/build-docs",
-    "docs:ref": "node scripts/gen-docs-reference"
+    "docs:ref": "node scripts/gen-docs-reference",
+    "docs:shots": "node scripts/docs-shots"
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^4.3.0"

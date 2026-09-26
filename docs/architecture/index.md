@@ -12,7 +12,7 @@ Vyre is one small daemon, `vyred`, on each machine you own, plus a Claude Code p
 
 ## One process per machine
 
-`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). On the box it runs Core; on the Mac it runs Local. It is the same code with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
+`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). It is the same code on the box and on the Mac, with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). Most Core modules run on both; a few run only on the box (names, onboarding, agents' computers, Glass), and the Local modules run only on the Mac. The exact split is in [The box and the Mac](../concepts/box-and-mac.md#one-process-per-machine). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
 
 Everything is a module, including the core services, and every module uses the same contract: a `module.json` manifest and an entry file that registers tools and emits events. See [Modules](../concepts/modules.md) and [The module contract](../build/module-contract.md). The loaded set on this branch is listed in the [module reference](../reference/modules.md).
 
@@ -21,10 +21,10 @@ Everything is a module, including the core services, and every module uses the s
 | Layer | Where it runs | What it is | Code |
 | --- | --- | --- | --- |
 | Core | the box (and the Mac, for the parts a Mac needs) | The services inside `vyred`: config, the store (SQLite through `node:sqlite`), the event log, the module loader, projects and threads, recall, memory, the vault, watchers, the Gate, the Switchboard (headless sessions), agents, computers, names and certificates, pairing, files, presence, learning, push. | `core/` |
-| Harness | inside every Claude Code session Vyre starts | A Claude Code plugin, loaded with `--plugin-dir` so your global Claude Code setup is never changed. Hooks (Brief, Enrich, Rules, Learn, Stream, Check), the `vyre` MCP server that exposes module tools to Claude, three skills and the `/vyre` command. Each hook is a few lines that call `vyred`; if `vyred` is not running they exit silently. | `harness/` |
+| Harness | inside every Claude Code session Vyre starts | A Claude Code plugin, loaded with `--plugin-dir` so your global Claude Code setup is never changed. Hooks (Brief at session start, Enrich on each prompt, Rules before each tool call, Learn after file changes and commands, Stop at the end of each turn), the `vyre` MCP server that exposes module tools to Claude, three skills and the `/vyre` command. All hooks run one script, `harness/hooks/hook.js`, which calls `vyred`. If `vyred` is not running, Rules still runs in-process, so the floor holds. | `harness/` |
 | Local | the Mac only | The Capsule (the Control-twice command bar) and `hands-mac` (computer use through the macOS accessibility tree). | `local/` |
 
-Optional first-party modules live in `modules/`: `hands-desktop` and `hands-chrome` for agents' computers, and `vault-extension` for browser autofill.
+Optional first-party modules live in `modules/`: `hands-desktop` and `hands-chrome` (module name `chrome`) for agents' computers. `modules/vault-extension` is not a vyred module: it is the browser extension for vault autofill.
 
 The box and the Mac are paired into one system by `core/link`: the Mac can call the box's tools, and the box's events reach the Mac. See [The box and the Mac](../concepts/box-and-mac.md).
 
@@ -34,12 +34,12 @@ Every surface talks to `vyred`'s API. None reads the store directly ([Section 9 
 
 | Surface | What it is | Built from |
 | --- | --- | --- |
-| CLI | `vyre`: home, projects, threads, agents, vault, up, status. Anything the Deck can do, `vyre` can do. | `core/cli` |
+| CLI | `vyre`: home, projects, threads, agents, vault, up, status, and `vyre call` for any tool. | `core/cli` |
 | Capsule | The command bar on the Mac: press Control twice, talk to the assistant, an agent or a session. | `local/capsule` |
 | Deck | The web app at your address: Now, Projects, Memory, Agents, Chat, Vault, Settings. | `deck/` |
-| Chat | Projects, then sessions, each session the terminal mirrored as a readable conversation, driving the same Claude Code sessions as the terminal. | `deck/chat` |
+| Chat | Projects, then every Claude Code session on the machine, each shown as a readable conversation that follows the terminal live. Sending from Chat drives the same session. | `deck/chat` |
 | Glass | An agent's screen, live, with take-over. | `deck/glass` and `core/computers` |
-| Phone | The Deck installed on the phone, with a phone layout (Now, Projects, Ask, Agents) and Web Push. A native app is not built. | `deck/` |
+| Phone | The Deck installed on the phone, with a phone tab bar (Now, Projects, Chat, Ask, Agents) and Web Push. A native app is not built. | `deck/` |
 
 A thread is one thing wherever it is viewed, and one screen types into it at a time (floor rules 3 and 4). Every session is a real Claude Code session, in a terminal or headless under the Switchboard; Vyre never imitates Claude Code.
 
@@ -48,7 +48,7 @@ A thread is one thing wherever it is viewed, and one screen types into it at a t
 The full tree is [Section 3 of the spec](spec.md#3-repository-layout). In short:
 
 ```
-bin/vyre          the CLI entry (thin: parses argv, calls core/cli)
+bin/vyre          the CLI entry (thin: checks the Node version, calls core/cli)
 core/             services that run inside vyred, one folder each
 harness/          the Claude Code plugin: hooks, MCP server, skills, commands
 local/            Mac-only modules: capsule, hands-mac
@@ -70,7 +70,7 @@ The nine principles are in [Section 2 of the spec](spec.md#2-principles). The on
 - **Public Claude Code surfaces only.** Plugins, hooks, MCP and documented CLI flags. Reading transcript files is the one exception, kept in a single adapter, `core/transcripts`.
 - **Local first.** Nothing leaves your machines except through the Gate.
 - **Boring, readable code.** Node 22.5 or newer, ES modules, plain JavaScript with JSDoc types and `// @ts-check`, no build step for the core, `node:sqlite`, `node:test`. A dependency needs a reason in the changelog.
-- **Light by default.** Idle budgets for `vyred`, the Capsule and the Deck, checked by `scripts/perf-check` in CI. See [Performance](performance.md).
+- **Light by default.** Idle budgets for `vyred`, the Capsule and the Deck. `scripts/perf-check` holds `vyred` to its budget in CI; the Capsule and the Deck are measured by hand. See [Performance](performance.md).
 - **The security floor cannot be configured away.** See [the floor](../concepts/floor.md) and [Security](../security/index.md).
 
 ## Decision records
@@ -91,7 +91,7 @@ Architecture decision records live in `docs/adr/`. Each states the problem, the 
 | [0010](../adr/0010-vault-autofill.md) | Vault autofill |
 | [0011](../adr/0011-web-push.md) | Web Push for the moments you are needed |
 | [0012](../adr/0012-cdp-proxy.md) | Chrome's debugging port never leaves the container unauthenticated |
-| [0019](../adr/0019-docs-site.md) | This docs site (accepted pending sign-off) |
+| [0019](../adr/0019-docs-site.md) | This docs site: one source in `docs/`, checked and built without a framework |
 
 ## Where to go next
 

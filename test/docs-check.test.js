@@ -79,6 +79,57 @@ test("docs-check: broken links, anchors, unpublished targets and site paths", as
   assert.ok(only(lines, /missing\.md/)[0].startsWith("docs/index.md:15: "), "the line number is the link's line");
 });
 
+test("docs-check: tabs, demos, snags and the colors directive are understood", async t => {
+  const root = tree(t, {
+    "index.md": FM("Home") + [
+      "# Home", "",
+      "[server](#check-it-works) [mac](#check-it-works-1) [snag](#the-page-says-no) [in install](get-started/install.md#vyre-is-not-found)", "",
+      "::: tabs", "::: tab On a server", "### Check it works", "", "Yes.", "::: tab On this Mac", "### Check it works", "", "Also.", ":::", "",
+      "> [!SNAG] The page says `no`", "> Reload it.", "",
+      "> [!WHY] Why two places?", "> Because.", "",
+      "::: demo capsule", "Fallback.", ":::", "",
+      "<!-- colors: dark -->", "",
+      "```md", "::: demo nonsense", "> [!SNAG]", "<!-- colors: purple -->", "```", "",
+    ].join("\n"),
+    "get-started/install.md": FM("Install") + "# Install\n\n> [!SNAG] `vyre` is not found\n> Open a new terminal.\n",
+  });
+  assert.deepEqual(await run(root), [], "headings in tabs and snag titles are anchors; directives are not prose, not includes, not problems");
+});
+
+test("docs-check: page syntax problems", async t => {
+  const root = tree(t, {
+    "a.md": FM() + [
+      "# A", "",
+      "::: demo", ":::",
+      "::: demo carousel", ":::",
+      "::: tab Stray",
+      "::: tabs", ":::",
+      ":::",
+      "::: tabs", "::: tab", "x", ":::",
+      "::: widget", "",
+      "> [!SNAG]", "> body", "",
+      "> [!WHY]", "> body", "",
+      "<!-- colors: purple -->",
+      "::: tabs", "::: tab Open", "never closed",
+    ].join("\n"),
+  });
+  const lines = await run(root);
+  const syntax = only(lines, /^docs\/a\.md:\d+: /).map(l => l.replace(/^docs\/a\.md:/, ""));
+  assert.deepEqual(syntax, [
+    "11: ::: demo needs a widget name (capsule, onboarding)",
+    "13: ::: demo carousel: no such widget (capsule, onboarding)",
+    "15: ::: tab outside a ::: tabs group",
+    "16: ::: tabs has no ::: tab in it",
+    "18: ::: closes nothing",
+    "20: ::: tab needs a label",
+    "23: unknown container ::: widget (tabs, tab, demo)",
+    "25: [!SNAG] needs a title: what the reader sees, on the same line",
+    "28: [!WHY] needs a question on the same line",
+    "31: colors directive must be dark or light, not purple",
+    "32: ::: tabs is never closed with a ::: line",
+  ], lines.join("\n"));
+});
+
 test("docs-check: front matter is required and its values are checked", async t => {
   const root = tree(t, {
     "none.md": "# No front matter\n",

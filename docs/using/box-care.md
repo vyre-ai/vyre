@@ -17,18 +17,36 @@ tasks. How the box was installed, and what each folder and volume holds, is in
 
 ## Check on it
 
-From the Mac:
-
+::: tabs
+::: tab On the Mac
 ```
 vyre box       # the box's address and SSH target, and whether it answers from here
 ```
 
-On the box, or on any machine running vyred:
-
+```output
+  your box  https://vyre.tail1234.ts.net · alex@192.0.2.10
+  answering · 0.0.1
+```
+::: tab On the box
 ```
 vyre status    # running or not, version, role, how many modules started
 vyre modules   # each module, and the error of any that failed
 ```
+
+```output
+  vyred running · 0.0.1 · box · pid 7 · up 5312s
+  17 modules running
+```
+:::
+
+> [!SNAG] `vyre box` says "no box yet: vyre box add <user@host>"
+> The `vyre box` commands work only for a box this Mac knows the SSH target of. If you installed
+> the box with the curl installer on the server, run `vyre box add alex@192.0.2.10` once: it finds
+> Vyre already there and carries on from where it stands.
+
+> [!SNAG] `vyre box` says "not answering from here"
+> This Mac is not on your tailnet, or the box is down. Open Tailscale on the Mac, then check the
+> box with `vyre status` on the server. See [Tailscale](tailscale.md).
 
 ## Read its logs
 
@@ -44,26 +62,35 @@ vyred also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker
 
 ## Upgrade
 
-From the Mac:
+::: tabs
+::: tab On the Mac
+1. Run:
 
-```
-vyre box update
-```
+   ```
+   vyre box update
+   ```
 
-That runs `vyre update` on the server, then compares versions. If the box is newer than your Mac,
-it tells you to upgrade the Mac too:
+   It runs `vyre update` on the server over SSH, then compares versions.
+
+2. If the box is now newer than your Mac, it says so and prints the command that upgrades the
+   Mac. Run it:
+
+   ```output
+     the box runs 0.0.2, newer than this Mac's 0.0.1: npm i -g vyre@latest && vyre up
+   ```
 
 > [!GAP]
 > ADR 0008 says `vyre box update` also upgrades the Mac. It does not: run the command it prints. See [known gaps](../known-gaps.md#vyre-box-update-does-not-upgrade-the-mac).
-
+::: tab On the box
 ```
-npm install -g vyre@latest && vyre up
+vyre update
 ```
+:::
 
-On the server, `vyre update` does the same by hand. It pulls new images, or, when the image is
-built from source, rebuilds it (a box installed from `vyre.tgz` downloads the new one and checks
-it against `SHA256SUMS` first). Then it recreates what changed and waits for vyred. Your volumes
-carry over, and each module migrates its own data at start.
+`vyre update` pulls new images, or, when the image is built from source, rebuilds it (a box
+installed from `vyre.tgz` downloads the new one and checks it against `SHA256SUMS` first). Then it
+recreates what changed, waits up to a minute for vyred, and prints the link or address as
+`vyre up` does. Your volumes carry over, and each module migrates its own data at start.
 
 To update the box files themselves (`compose.yml` and the rest), run the installer again. It
 rewrites them and leaves `.env` and `vyre.env` alone:
@@ -152,24 +179,26 @@ then run `vyre up`. See [Glass](glass.md) for using them.
 
 ## Remove it
 
-From the Mac:
+If you claimed a `vyre.run` name, run `vyre name release` on the box first to free it.
 
+::: tabs
+::: tab On the Mac
 ```
 vyre box remove           # stop the stack, remove /usr/local/bin/vyre, keep the volumes
 vyre box remove --purge   # also delete the volumes, after the server asks
 ```
 
-On the server:
-
+It lists what it will do and asks first. Afterwards this Mac forgets the box.
+::: tab On the box
 ```
-curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall [--purge]
+curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall
+curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall --purge
 ```
+:::
 
 Without `--purge`, the volumes and `/srv/vyre` stay, so a reinstall picks up where it left off.
 `--purge` deletes every Vyre volume: the vault, Claude's sign-in and `/work`. The installer never
 removes Docker, and leaves the images.
-
-If you claimed a `vyre.run` name, run `vyre name release` first to free it.
 
 On the Mac, `vyre down && npm rm -g vyre` removes Vyre and leaves `~/.vyre`.
 

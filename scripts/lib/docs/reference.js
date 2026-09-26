@@ -12,6 +12,8 @@
 //   events.md   each manifest's watches, with the payload fields read from the emit calls
 //   config.md   core/config/index.js (the Config and Network typedefs, and the defaults) and every
 //               process.env.VYRE_ read in the shipped code
+//   index.md    and docs/index.json: every thing above plus screens and concepts, with every page
+//               and line that mentions it (terms.js)
 //
 // Everything is sorted and nothing depends on the machine: the harvest runs with a temporary
 // HOME, which the pages show as ~, and platform-dependent defaults are shown as their source.
@@ -22,13 +24,14 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { slugger } from "./slug.js";
+import { generateIndex, INDEX_JSON } from "./terms.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, "../../..");
 export const GENERATOR = "scripts/gen-docs-reference";
 export const PAGES = ["reference/cli.md", "reference/tools.md", "reference/events.md", "reference/config.md", "reference/modules.md"];
 const MODULE_ROOTS = ["core", "local", "modules"];
-const SHIPPED = ["bin", "core", "harness", "local", "modules"];
+export const SHIPPED = ["bin", "core", "harness", "local", "modules"];
 
 const byName = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const code = s => "`" + String(s).replace(/`/g, "'") + "`";
@@ -55,7 +58,7 @@ export function manifests(root = REPO) {
 }
 
 /** Source files under a folder, leaving out tests, fixtures, build output and dependencies. */
-function sources(dir, exts = /\.(js|mjs)$/) {
+export function sources(dir, exts = /\.(js|mjs)$/) {
   const out = [];
   let entries = [];
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
@@ -90,7 +93,7 @@ export function harvest({ root = REPO, tmp = os.tmpdir() } = {}) {
 }
 
 /** The text of a balanced {...} starting at text[i], skipping strings and comments. */
-function balanced(text, i) {
+export function balanced(text, i) {
   let depth = 0;
   for (let j = i; j < text.length; j++) {
     const c = text[j];
@@ -107,7 +110,7 @@ function balanced(text, i) {
 }
 
 /** Split the inside of an object literal at its top-level commas. */
-function topLevel(inner) {
+export function topLevel(inner) {
   const parts = [];
   let depth = 0, start = 0;
   for (let j = 0; j < inner.length; j++) {
@@ -506,7 +509,7 @@ const MEANING = {
 };
 
 /** The fields of a JSDoc object type, top level only: [{ key, optional, type }]. */
-function typedefFields(text) {
+export function typedefFields(text) {
   const body = text.trim().replace(/^\{/, "").replace(/\}$/, "");
   return topLevel(body.replace(/\n\s*\*/g, " ")).map(part => {
     const m = part.match(/^([A-Za-z_$][\w$]*)(\?)?\s*:\s*([\s\S]+)$/);
@@ -514,7 +517,7 @@ function typedefFields(text) {
   }).filter(Boolean);
 }
 
-function typedef(src, name) {
+export function typedef(src, name) {
   const re = new RegExp(`@typedef\\s*\\{(\\{(?:(?!@typedef)[\\s\\S])*?\\})\\}\\s*${name}\\b`);
   const m = src.match(re);
   return m ? typedefFields(m[1]) : [];
@@ -609,19 +612,34 @@ function configPage(root) {
 }
 
 /**
- * Every reference page, as { "reference/cli.md": text, ... }.
+ * Every generated page, as { "reference/cli.md": text, ... }, including the index page
+ * (reference/index.md, from terms.js). The index's data file is in generateAll.
  * @param {{ root?: string, tmp?: string, harvested?: any }} [opts]
  */
-export function generate({ root = REPO, tmp, harvested } = {}) {
+export function generate(opts = {}) {
+  const all = generateAll(opts);
+  delete all[INDEX_JSON];
+  return all;
+}
+
+/**
+ * Every generated file under docs/: the reference pages, docs/reference/index.md and
+ * docs/index.json. The index reads every published page, so it changes when a page does.
+ * @param {{ root?: string, tmp?: string, harvested?: any }} [opts]
+ */
+export function generateAll({ root = REPO, tmp, harvested } = {}) {
   const data = harvested || harvest({ root, tmp });
   const mods = manifests(root);
   const byModule = collectTools(root, mods, data);
   const tools = { internal: name => (byModule.get(name) || []).filter(t => t.internal).length };
-  return {
+  /** @type {Record<string, string>} */
+  const pages = {
     "reference/cli.md": cliPage(data.commands),
     "reference/tools.md": toolsPage(mods, byModule),
     "reference/events.md": eventsPage(root, mods),
     "reference/config.md": configPage(root),
     "reference/modules.md": modulesPage(mods, tools),
   };
+  if (fs.existsSync(path.join(root, "docs/nav.json"))) Object.assign(pages, generateIndex({ root, reference: pages }));
+  return pages;
 }

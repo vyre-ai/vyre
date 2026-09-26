@@ -20,18 +20,25 @@ disagrees with the terminal or the [Capsule](capsule.md).
 
 Run `vyre up` on the box, or on your Mac once it is paired. It prints the address:
 
-```
+```output
   Vyre is ready.
 
     your box        https://vyre.tail1234.ts.net
+    your assistant  juno
+    next            vyre      (your projects and threads)
 ```
 
 Open that address in a browser on any device signed in to your tailnet as the box's owner. A
-device signed in as anyone else gets `403 not_owner`.
+device signed in as anyone else gets `403 not_owner` ("This Vyre serves only its owner.").
+
+> [!SNAG] The last line reads "Almost there: your box has no address yet."
+> The address step of the onboarding is not done, and the Deck is served only at the address.
+> Finish that step: see [Onboarding](../get-started/onboarding.md).
 
 ## What is on each view
 
-The rail on the left (the tab bar on a phone) holds the views:
+The rail on the left holds the views. On a phone, a tab bar holds Now, Projects, Chat, Ask and
+Agents; your initials at the top open Settings.
 
 | View | Path | What it shows |
 | --- | --- | --- |
@@ -42,22 +49,27 @@ The rail on the left (the tab bar on a phone) holds the views:
 | Chat | `/chat` | sessions as conversations; see [Chat](chat.md) |
 | Vault | `/vault` | credentials, never their values; see [Vault](vault.md) |
 | Settings | `/settings` | setup, network, notifications, passkeys, modules, appearance |
-| Ask | `/ask` | talk to your assistant or any agent (a tab on the phone) |
+| Ask | `/ask` | talk to your assistant or any agent (a tab on the phone only) |
 
 A view whose module is not running says which module is missing instead of failing.
+
+## Search what was said
+
+Type in the search box at the top (Command-K) to search every session's words, the same search
+as `vyre recall`. Pick a hit to open that thread.
 
 ## Approve or change a held draft
 
 When an agent wants to send something, the Gate holds it and Now lists it in the Beacon colour.
 
 1. Open it from Now (on a phone, it opens full screen at `/needs/<id>`).
-2. Click a field (To, Subject, Body, or for a payment the method, URL and body) to edit it. The
-   fields read as text until you click them.
+2. Click a field to edit it: To, Subject and Body for an email; for a web request, Method, URL,
+   Headers and Body. The fields read as text until you click them.
 3. Press Send to send exactly what is on screen, or Discard to drop it.
 
 Sending is a person's action, so the box asks for proof that you are there. When it does, the
 Deck shows a passkey prompt (see [Add a passkey](#add-a-passkey)). If the send fails, the item goes
-back to held with your edits kept and the error shown above the fields.
+back to held with the error shown above the fields ("Held again: ...").
 
 ## Answer a permission question
 
@@ -66,25 +78,29 @@ and choose Allow or Deny.
 
 ## Follow and type into a thread
 
-Open a project, then a thread. Its output streams in as the session works: text as it is written,
-tool calls as lines. The box at the bottom types into the session as you. Only one surface holds
-a session's keyboard at a time; the thread says who has it, and typing takes it.
+1. Open Projects, then a project, then a thread. Its output streams in as the session works:
+   text as it is written, tool calls as lines.
+2. Type in the box at the bottom. It types into the session as you.
 
-To start a thread, open a project and start a new one from there. To put an existing thread into
-a project, use the project picker on the thread.
+Only one surface holds a session's keyboard at a time. When another holds it, the box reads
+"<surface> is typing"; press **Take the keyboard** to take it.
+
+To start a thread, open a project and press **New thread**. A thread that is in no project opens at
+`/threads/<id>` with **Add to a project**.
 
 ## Look after an agent
 
 Open Agents, then an agent. You see what it is doing, its threads, and its usage: money spent
 against its budget for an agent on an API key, or turns and time for one on a subscription. From
 here you can change its instructions and model, stop it, give it a computer or restart that
-computer, and open its screen in [Glass](glass.md).
+computer, and open its screen in [Glass](glass.md). **New agent** on the Agents list makes one;
+see [Agents](agents.md).
 
 ## Finish setup, or change it
 
 Settings starts with Setup: every onboarding step (you, Claude Code, Tailscale, your address,
-your history, your devices), whether it is done, and a way to finish one you skipped. `vyre index`
-does the history step from a terminal.
+your history, your devices) and whether it is done. **Finish** beside a skipped step opens the
+onboarding at that step. `vyre index` does the history step from a terminal.
 
 > [!GAP]
 > The command shown beside each step (`vyre up --step ...`) does not exist in the CLI. Finish the step in the Deck or run `vyre up` again. See [known gaps](../known-gaps.md#the-decks-setup-commands-name-a-flag-the-cli-lacks).
@@ -98,20 +114,27 @@ modules, appearance (dark or paper), and this machine. `/settings#security` or
 
 A passkey proves a person is at the device, for a Gate approval or a Glass take-over
 ([ADR 0004](../adr/0004-presence.md)).
-In Settings, Security:
 
-1. On the box, run `vyre presence code` for a one-time code. The first passkey needs it.
-2. Paste the code, name the device, and follow the browser's passkey prompt.
 
-The browser must reach the Deck at its real address over your tailnet; a passkey cannot be made
-on `127.0.0.1`.
+1. On the box, run `vyre presence code`. It prints a one-time code. The Deck asks for one for
+   every passkey it adds.
+2. In the Deck, open Settings, Security.
+3. Paste the code, name the device, press **Add a passkey**, and follow the browser's prompt.
 
-## Offline
+```output
+Passkey added.
+```
+
+> [!SNAG] "This browser cannot create or use a passkey."
+> The browser must reach the Deck at its real address over your tailnet, in Safari or Chrome. A
+> passkey cannot be made on `127.0.0.1` or through an SSH tunnel.
+
+## When the box is out of reach
 
 The Deck's files are cached, so it opens when the box is briefly out of reach. Now shows
 "Offline. As of ... ago" with counts from the last visit, never a draft's words. Only two reads,
-`projects.list` and `threads.get` for threads you opened, are kept for offline use, for up to a
-week. Nothing you can send or approve works offline.
+`projects.list` and `threads.get` for threads you opened, are kept for offline use: the last 20,
+for up to a week. Nothing you can send or approve works offline.
 
 ## What it will not do
 

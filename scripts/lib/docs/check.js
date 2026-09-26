@@ -13,7 +13,16 @@
 //   characters    an em dash or a section sign, in a page or in a file it includes
 //   hygiene       a real person's or business's name, a secret, an email address or IP address
 //                 that is not an example (scripts/lib/hygiene.js)
-//   reference     a generated page under docs/reference/ that differs from what the code makes
+//   reference     a generated page under docs/reference/ (or docs/index.json) that differs from
+//                 what the code and the pages make
+//   stale         inline code or a command line naming a Vyre thing the code no longer has
+//   syntax        a `:::` container that is unknown, stray or never closed, a demo no widget
+//                 draws, a `[!SNAG]` or `[!WHY]` with no title, a colors directive that is not
+//                 dark or light
+//
+// `:::` lines and `<!-- colors: ... -->` lines are page syntax, not prose: nothing that reads prose
+// sees them. Headings inside tabs make anchors like any other, and a `> [!SNAG] Title` makes one
+// from its title, from the same pool as the headings (as the build does).
 //
 // Pages in the nav's "unpublished" folders are not checked at all: they are internal notes.
 
@@ -21,6 +30,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanText } from "../hygiene.js";
+import { DEMOS, directive, isDirective } from "./markdown.js";
 import { slugger } from "./slug.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -79,6 +89,7 @@ function prose(text, fn) {
     const f = raw.match(/^\s{0,3}(`{3,}|~{3,})/);
     if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !raw.trim().slice(f[1].length).trim()) fence = null; return; }
     if (f) { fence = f[1]; return; }
+    if (isDirective(raw)) return;
     fn(raw.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, m => " ".repeat(m.length)), i + 1, raw);
   });
 }
@@ -95,12 +106,61 @@ function anchorsOf(text, slug = slugger(), into = new Set()) {
   let prev = "";
   prose(body(text).text, (line, n, raw) => {
     const atx = raw.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+    const snag = raw.match(SNAG);
     if (atx) into.add(slug(atx[2]));
+    else if (snag) into.add(slug(snag[1] || "If this happens"));
     else if (/^\s{0,3}(=+|-+)\s*$/.test(raw) && prev.trim() && !/^\s{0,3}([-*+]|\d+[.)])\s|^\s*\||^\s*>|^\s{0,3}#/.test(prev) && !/^\s*-+\s*$/.test(prev)) into.add(slug(prev.trim()));
     for (const m of line.matchAll(/<[a-z][^>]*\s(?:id|name)=["']([^"']+)["']/gi)) into.add(m[1]);
     prev = raw;
   });
   return into;
+}
+
+const SNAG = /^\s*(?:>\s?)+\s*\[!SNAG\](?:[ \t]+(.*?))?\s*$/i;
+const TITLED = /^\s*(?:>\s?)+\s*\[!(SNAG|WHY)\]\s*$/i;
+
+/**
+ * Page syntax problems in a markdown text: `:::` containers and the colors directive, and the
+ * alerts that need a title. Lines inside fenced code are examples and are skipped.
+ * @param {string} text @param {number} offset
+ * @returns {{ line: number, problem: string }[]}
+ */
+export function syntaxOf(text, offset = 0) {
+  const out = [];
+  /** @type {{ kind: string, line: number, tabs: number }[]} */
+  const open = [];
+  let fence = null;
+  text.split("\n").forEach((raw, i) => {
+    const n = i + 1 + offset;
+    const f = raw.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !raw.trim().slice(f[1].length).trim()) fence = null; return; }
+    if (f) { fence = f[1]; return; }
+    const t = raw.match(TITLED);
+    if (t) out.push({ line: n, problem: t[1].toUpperCase() === "SNAG" ? "[!SNAG] needs a title: what the reader sees, on the same line" : "[!WHY] needs a question on the same line" });
+    const d = directive(raw);
+    if (!d) return;
+    const top = open[open.length - 1];
+    if (d.kind === "tabs") open.push({ kind: "tabs", line: n, tabs: 0 });
+    else if (d.kind === "demo") {
+      open.push({ kind: "demo", line: n, tabs: 0 });
+      if (!d.arg) out.push({ line: n, problem: `::: demo needs a widget name (${DEMOS.join(", ")})` });
+      else if (!DEMOS.includes(d.arg.toLowerCase())) out.push({ line: n, problem: `::: demo ${d.arg}: no such widget (${DEMOS.join(", ")})` });
+    } else if (d.kind === "tab") {
+      if (!top || top.kind !== "tabs") out.push({ line: n, problem: "::: tab outside a ::: tabs group" });
+      else top.tabs++;
+      if (!d.arg) out.push({ line: n, problem: "::: tab needs a label" });
+    } else if (d.kind === "close") {
+      if (!top) out.push({ line: n, problem: "::: closes nothing" });
+      else {
+        open.pop();
+        if (top.kind === "tabs" && !top.tabs) out.push({ line: top.line, problem: "::: tabs has no ::: tab in it" });
+      }
+    } else if (d.kind === "colors") {
+      if (d.arg !== "dark" && d.arg !== "light") out.push({ line: n, problem: `colors directive must be dark or light, not ${d.arg || "empty"}` });
+    } else out.push({ line: n, problem: `unknown container ::: ${d.arg} (tabs, tab, demo)` });
+  });
+  for (const o of open) out.push({ line: o.line, problem: `::: ${o.kind} is never closed with a ::: line` });
+  return out;
 }
 
 /** Links in a markdown text: [{ target, line }]. */
@@ -195,6 +255,13 @@ export async function check({ root = REPO, tmp, reference } = {}) {
     if (d.owner && !OWNERS.includes(d.owner)) add(file, at("owner"), "front-matter", `owner ${d.owner} is not a known team (${OWNERS.join(", ")})`);
   }
 
+  // Page syntax: containers, directives and titled alerts.
+  for (const r of published) {
+    if (isStub(r)) continue;
+    const { text: b, offset } = body(/** @type {string} */ (text.get(r)));
+    for (const p of syntaxOf(b, offset)) add(`docs/${r}`, p.line, "syntax", p.problem);
+  }
+
   // Includes, characters and hygiene: every published page and every file it includes.
   /** @type {Map<string, string[]>} included files (repo-relative) per page */
   const includes = new Map();
@@ -233,8 +300,12 @@ export async function check({ root = REPO, tmp, reference } = {}) {
     const parts = t.split("\n");
     let chunk = [];
     const flush = () => { anchorsOf(chunk.join("\n"), slug, set); chunk = []; };
+    let fence = null; // an include line inside fenced code is an example, not an include
     for (const l of parts) {
-      const m = l.match(INCLUDE);
+      const f = l.match(/^\s{0,3}(`{3,}|~{3,})/);
+      if (fence && f && f[1][0] === fence[0] && f[1].length >= fence.length && !l.trim().slice(f[1].length).trim()) fence = null;
+      else if (!fence && f) fence = f[1];
+      const m = !fence && l.match(INCLUDE);
       if (!m) { chunk.push(l); continue; }
       flush();
       const abs = path.resolve(path.dirname(path.join(docs, r)), m[1]);
@@ -297,10 +368,14 @@ export async function check({ root = REPO, tmp, reference } = {}) {
     }
   }
 
+  // Stale mentions: a command, tool, config key or VYRE_ variable a page names that the code no
+  // longer has (scripts/lib/docs/terms.js).
+  for (const p of (await import("./terms.js")).staleMentions(root, published.filter(r => !isStub(r)).map(r => ({ rel: r, source: /** @type {string} */ (text.get(r)) })))) problems.push(p);
+
   // Generated reference pages.
   if (reference !== false) {
     /** @type {Record<string, string>} */ let pages = {};
-    try { pages = reference ? reference() : (await import("./reference.js")).generate({ root, tmp }); }
+    try { pages = reference ? reference() : (await import("./reference.js")).generateAll({ root, tmp }); }
     catch (e) { add("scripts/gen-docs-reference", 1, "reference", `could not build the reference pages: ${/** @type {Error} */ (e).message}`); }
     for (const [r, want] of Object.entries(pages)) {
       let now = null;
@@ -314,6 +389,8 @@ export async function check({ root = REPO, tmp, reference } = {}) {
       }
     }
   }
+
+  problems.push(...(await import("./shots.js")).checkShots({ root })); // screenshots older than the code they show (kind `shots`)
 
   return problems.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line || (a.problem < b.problem ? -1 : 1)));
 }

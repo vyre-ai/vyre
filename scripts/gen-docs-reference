@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // @ts-check
-// gen-docs-reference: writes docs/reference/{cli,tools,events,config,modules}.md from the code.
+// gen-docs-reference: writes docs/reference/{cli,tools,events,config,modules}.md from the code, and
+// the index of every thing the docs name: docs/reference/index.md and docs/index.json (built from
+// the code and every published page, so run it after editing a page too).
 // The pages say they are generated; edit the code they come from, then run `npm run docs:ref`.
 // scripts/docs-check fails when a committed page differs from what this would write.
 //
@@ -12,10 +14,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { generate, REPO } from "./lib/docs/reference.js";
+import { generateAll, REPO } from "./lib/docs/reference.js";
 
 const check = process.argv.includes("--check");
-const pages = generate();
+const pages = generateAll();
 let stale = 0;
 for (const [rel, text] of Object.entries(pages)) {
   const file = path.join(REPO, "docs", rel);

@@ -85,8 +85,9 @@ vyre vault grant billing-inbox watchers --watcher harlow-invoices
 ```
 
 Until you run it, the dry run fails with "billing-inbox is not granted to
-watchers/harlow-invoices". If Claude asked for the grant itself, it waits as pending: run
-`vyre vault pending` and `vyre vault approve <id>`. Any value released during a run is scrubbed
+watchers/harlow-invoices", followed by the grant command to run. If Claude asked for the grant
+itself, it waits as pending: run `vyre vault pending` and `vyre vault approve <id>` (see the
+[Vault](vault.md) page for a known problem with `approve`). Any value released during a run is scrubbed
 from the run's logs and errors, and an item that carries one fails the run, so a credential never
 reaches a project or memory.
 
@@ -94,7 +95,7 @@ reaches a project or memory.
 
 ```
 vyre watchers                          # every watcher: state, project, schedule, items filed, next run
-vyre watchers test harlow-invoices     # dry-run it now
+vyre watchers test harlow-invoices     # dry-run it now; files nothing
 vyre watchers create harlow-invoices   # turn on what was just dry-run
 vyre watchers pause harlow-invoices
 vyre watchers resume harlow-invoices   # also clears its failure count
@@ -102,12 +103,35 @@ vyre watchers logs harlow-invoices     # recent runs: when, why, items seen and 
 vyre watchers items harlow-invoices    # what it filed; a project slug lists that project's items
 ```
 
-States are `draft`, `on`, `paused`, `changed` and `invalid`. After three failed runs in a row a
-watcher pauses itself and says why.
+A dry run says what it would file, then lists up to ten items:
+
+```output
+  harlow-invoices would file 3 items into harlow-legal · every 15 minutes · 640ms
+  · Invoice 1042 from Northwind Bakery  https://mail.example/m/81
+      invoice.seen · 2026-09-26 09:14
+
+  vyre watchers create harlow-invoices to turn it on
+```
+
+States are `draft`, `on`, `paused`, `changed` and `invalid`. `vyre watchers items` with no name
+lists every watcher's items.
+
+> [!SNAG] A watcher paused itself after three failed runs
+> After three failed runs in a row a watcher pauses itself and says why. Read the runs with
+> `vyre watchers logs <name>`, fix the cause (often a revoked grant, or a source that answered
+> with an error), then `vyre watchers resume <name>`, which also clears the failure count.
+
+> [!SNAG] A run fails with "the vault is not running on this machine"
+> The watchers runtime starts without the Vault, so a watcher that needs an item fails until the
+> vault module runs. Check `vyre modules`.
+
+> [!SNAG] A watcher shows `changed` and does not run
+> One of its files changed after you turned it on. Dry-run it again with
+> `vyre watchers test <name>`, check the items, then `vyre watchers create <name>`.
 
 For a `"webhook"` watcher, `vyre watchers create` prints the route (`POST
-/v1/watchers/<name>/hook`), the header name and the token the sender must use. The request body
-reaches the watcher as `hook`.
+/v1/watchers/<name>/hook`), the header (`x-vyre-token`) and the token the sender must use. The
+request body reaches the watcher as `hook`.
 
 In the Deck, an agent's board (`/agents/<name>`) lists its watchers with a pause switch. Filed
 items appear in the project and in its memory room.

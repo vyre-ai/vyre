@@ -18,11 +18,13 @@ and for the box. It runs on the box as the `glass` module. The design is in
 
 ## Before you start
 
-- Agents' computers must be on. On a Docker box that is the `computers` profile: add
-  `COMPOSE_PROFILES=computers` to `/srv/vyre/.env`, then run `vyre up`. See
-  [Box care](box-care.md).
-- The agent needs a computer. In the Deck, open Agents, then the agent, and give it one.
-- Taking the keyboard needs a passkey on this device (see [Deck](deck.md#add-a-passkey)).
+1. Turn agents' computers on. On a Docker box that is the `computers` profile: add
+   `COMPOSE_PROFILES=computers` to `/srv/vyre/.env`, then run `vyre up`. See
+   [Box care](box-care.md).
+2. Give the agent a computer: in the Deck, open Agents, then the agent, then **Give juno a
+   computer**. Or run `vyre call agents.update '{"name":"juno","computer":true}'`.
+3. Add a passkey on this device (see [Deck](deck.md#add-a-passkey)). Taking the keyboard and
+   handing it back both ask for it.
 
 ## Open an agent's screen
 
@@ -36,23 +38,37 @@ Any of these opens the same page:
 The Screen tab shows the agent's desktop live. While you only watch, nothing you type or click
 reaches it. A computer nobody is watching is frozen and uses almost nothing; opening Glass wakes it.
 
+> [!SNAG] "No box is paired yet" or "juno's computer runs on your box"
+> You opened Glass on a Deck that has no box behind it, such as your Mac's own. Agents' computers
+> run on the box. Put Vyre on a server with `vyre box add you@your-server`, or open the box's
+> Deck instead.
+
+> [!SNAG] "The box is not answering."
+> vyred did not answer. Check the box with `vyre status` on it, or `vyre box` from the Mac.
+
 ## Take the keyboard, then hand it back
 
-1. Press Take over (or `T`). Confirm with your passkey if asked.
+1. Press **Take over** (or `T`). Confirm with your passkey.
 2. The agent's hands stop. You type and click; everyone else watching is read-only. The bar
    counts how long you have held it.
-3. Press Hand back (or Control+Enter when focus is outside the screen). You can leave a note for
-   the agent's thread about what you changed.
+3. Optionally, write a note for the agent about what you changed (up to 280 characters).
+4. Press **Hand back to juno** (or Control-Enter when focus is outside the screen), and confirm
+   with your passkey.
 
-If you close the tab, or the hold lapses on the box, the keyboard goes back to the agent on its
-own.
+```output
+You handed the keyboard back to juno. Your note is in its thread.
+```
+
+The agent carries on from where it stopped, with a note in its thread: who had the keyboard, for
+how long, and your note. Never what you typed. If you close the tab, or the hold lapses on the
+box, the keyboard goes back to the agent on its own.
 
 ## Sign in to a site for the agent
 
 Take over leaves the agent's link to Chrome open, so it could read the page. For a password, use
 Sign in privately instead:
 
-1. Press Sign in privately, then Start.
+1. Press **Sign in privately**, then **Start**, and confirm with your passkey.
 2. The agent can no longer see the page. Sign in to the site in its Chrome.
 3. Hand back. The agent sees the page again and can use the signed-in session.
 
@@ -62,9 +78,10 @@ The Files tab browses the agent's home, or on `/glass/box` the box's folders. Yo
 preview text and images, download, upload, make folders, move and trash. Every change says what
 happened. Downloads and uploads use a one-time ticket, so a link cannot be reused.
 
-Secret places are hidden and refused at any depth: `.vyre`, `.claude`, `.ssh`, `.gnupg`, `.aws`,
-`.env` and `.env.*`, `*.pem`, `*.key`, `id_*`, browser cookie and login stores, and any file whose
-first bytes are a private key.
+Secret places are hidden and refused at any depth, whatever their case. Among them: `.vyre`,
+`.claude`, `.ssh`, `.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.npmrc`, `.env` and `.env.*`,
+`*.pem`, `*.key`, `*.kdbx`, `id_*`, `credentials.json`, browser cookie and login stores, and any
+file whose first bytes are a private key. Trash goes to a `.vyre-trash` folder, not away.
 
 ## On a phone
 

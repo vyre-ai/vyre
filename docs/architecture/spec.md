@@ -151,7 +151,7 @@ vyre/
   harness/                 a Claude Code plugin
     .claude-plugin/plugin.json
     hooks/hooks.json       Brief, Enrich, Rules, Learn, Stream entry points
-    hooks/*.js             each hook calls vyred; none holds logic of its own
+    hooks/hook.js          the one script every hook runs; it calls vyred
     skills/                write-a-watcher, use-the-vault, work-in-a-project
     commands/              /vyre slash commands
     mcp/                   the Vyre MCP server (tools Claude can call)

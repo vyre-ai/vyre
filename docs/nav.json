@@ -44,7 +44,8 @@
       "reference/tools.md",
       "reference/events.md",
       "reference/config.md",
-      "reference/modules.md"
+      "reference/modules.md",
+      "reference/index.md"
     ]},
     { "title": "Architecture", "pages": [
       "architecture/index.md",

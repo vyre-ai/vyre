@@ -14,15 +14,17 @@
 // stub (`redirect:` in front matter); those become 301s in _redirects.
 //
 // Also writes search-index.json, llms.txt and llms-full.txt, sitemap.xml, robots.txt, 404.html,
-// _headers, and one CSS and one JS file under assets/ with a content hash in the name. The same
-// input builds the same bytes. The Markdown renderer and the loader live in scripts/lib/docs/, so
+// _headers, and one CSS and one JS file under assets/ with a content hash in the name (plus the demo
+// widgets' CSS and JS, which only pages with a `::: demo` load). The same input builds the same
+// bytes. `<!-- colors: dark -->` in a page shows the palette from core/config/theme.js. The Markdown renderer and the loader live in scripts/lib/docs/, so
 // scripts/docs-check and the tests use the same code.
 //
 // Deploy afterwards with:
 //   npx wrangler pages deploy docs-site --project-name vyre-docs --branch main
 
+import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "./lib/docs/build.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -49,6 +51,12 @@ if (path.resolve(out) === REPO || REPO.startsWith(path.resolve(out) + path.sep) 
 }
 
 const started = process.hrtime.bigint();
-const result = build({ root: REPO, out, log: msg => console.error(msg) });
+const themeFile = path.join(REPO, "core", "config", "theme.js");
+let palette = null;
+if (fs.existsSync(themeFile)) {
+  const m = await import(pathToFileURL(themeFile).href);
+  if (m.THEME_COLORS) palette = { colors: m.THEME_COLORS, use: m.THEME_USE || {} };
+}
+const result = build({ root: REPO, out, log: msg => console.error(msg), palette });
 const ms = Number((process.hrtime.bigint() - started) / 1_000_000n);
 console.log(`build-docs: ${result.pages} pages, ${result.redirects} redirects, ${result.files.length} files in ${path.relative(process.cwd(), out) || "."} (${ms} ms)`);

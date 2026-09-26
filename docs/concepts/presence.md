@@ -61,7 +61,10 @@ vyre presence remove <id>
 ```
 
 - The Capsule enrolls its key at first run, with Touch ID.
-- On a box, the first passkey comes from onboarding: `onboard.finish` hands you a Deck link carrying a code. A code enrolls a passkey on a box only when the call comes from `tailnet:<owner>`, which is reachable only from another of your devices. The box never takes a terminal code, because a model on your Mac could `ssh -t` to it.
+- On a box, the first passkey comes from onboarding: `onboard.finish` hands you a Deck link carrying a code. A code enrolls a passkey on a box only when the call comes from `tailnet:<owner>`, which is reachable only from another of your devices. The box never takes a terminal code: there, the Deck's passkey is the only proof.
+
+> [!WHY] Why does the box refuse a terminal code?
+> A model on your Mac can often `ssh -t` to the box, since the Mac usually holds your SSH key, and get a real terminal there. Inside the box's container, `vyre` reaches vyred through `docker compose exec`, whose terminal no login record lists, so vyred cannot tell your terminal from Claude's. A passkey needs a person at a device.
 
 ## Sessions in the Deck
 

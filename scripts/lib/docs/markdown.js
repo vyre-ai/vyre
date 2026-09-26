@@ -15,14 +15,31 @@
 //
 // What it does not: indented code blocks (a four-space indent is a paragraph), raw HTML. Every `<`
 // in the source is escaped and shows as text, which is what the docs want (`<you>.vyre.run`).
-// HTML comments are dropped. One comment is special: a line `<!-- include: ../CHANGELOG.md -->`
-// splices that file in, through the `include` option, with links inside it resolved from its own
-// folder.
+// HTML comments are dropped. Two are special: a line `<!-- include: ../CHANGELOG.md -->` splices
+// that file in, through the `include` option, with links inside it resolved from its own folder;
+// a line `<!-- colors: dark -->` (or light) renders the palette from the `palette` option as a
+// table of live swatches.
+//
+// Vyre's own blocks (docs/CONTRIBUTING-DOCS.md has the syntax), each useful with JavaScript off:
+//
+//   `::: tabs` / `::: tab Label` / `:::`   tab panels, stacked with their labels until docs.js
+//                                           turns them into a tab bar
+//   `::: demo name` ... `:::`              a widget from demos.js; the Markdown inside is the
+//                                           fallback it replaces
+//   `> [!WARNING] Title`                   an alert may carry a title after its marker
+//   `> [!SNAG] What you see`               an "If this happens" box, with an anchor from its title
+//   `> [!WHY] Question`                    a collapsed <details> that answers the question
+//   ```output                              expected output, labelled "You should see"
+//   ```console / ```sh                     `$ ` prompts (and console output lines) are marked so
+//                                           the Copy button copies only the commands
+//   an image alone in a paragraph          a <figure>, captioned with its title or alt text, with
+//                                           a `.dark.png` sibling shown in the dark theme
 //
 // Heading ids follow GitHub's rule (lowercase, drop punctuation, spaces to hyphens, `-1`, `-2` for
-// repeats), so an anchor that works on github.com works here too.
+// repeats), so an anchor that works on github.com works here too. A [!SNAG]'s id comes from its
+// title by the same rule, from the same pool.
 
-/** @typedef {{ level: number, text: string, id: string }} Heading */
+/** @typedef {{ level: number, text: string, id: string, tab?: string }} Heading */
 /** @typedef {{ href: string, url: string, base: string, kind: "link" | "image" | "autolink" }} Link */
 /**
  * @typedef {object} RenderOptions
@@ -31,7 +48,13 @@
  * @property {(path: string, base: string) => ({ text: string, base: string } | null)} [include]
  *   returns the text of an included file and its own base folder, or null to drop the include.
  * @property {string} [base] the base folder of the page itself ("" for docs/).
+ * @property {(href: string, base: string) => (ImageInfo | null)} [image] what the build knows
+ *   about an image as written: its size, and a dark-theme sibling (already resolved).
+ * @property {Palette | null} [palette] the colours `<!-- colors: dark -->` shows.
  */
+/** @typedef {{ width?: number, height?: number, dark?: { src: string, width?: number, height?: number } }} ImageInfo */
+/** @typedef {{ colors: Record<string, Record<string, string>>, use: Record<string, string> }} Palette */
+/** @typedef {{ text: string, id: string, body: string }} Snag */
 
 const ESCAPABLE = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 const PUNCT = /[\p{P}\p{S}]/u;
@@ -47,9 +70,41 @@ const reSetext1 = /^ {0,3}=+[ \t]*$/;
 const reSetext2 = /^ {0,3}-+[ \t]*$/;
 const reDelimRow = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 const reRefDef = /^ {0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/;
-const reAlert = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|GAP)\][ \t]*$/i;
-// `> [!GAP]` is Vyre's own: a place the code does not yet do what the docs or the spec say.
-const ALERT_LABEL = { gap: "Known gap" };
+const reAlert = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|GAP|SNAG|WHY)\](?:[ \t]+(.*?))?[ \t]*$/i;
+const reOpen = /^ {0,3}:::[ \t]*(tabs|demo)(?:[ \t]+(.*?))?[ \t]*$/;
+const reTab = /^ {0,3}:::[ \t]*tab(?:[ \t]+(.*?))?[ \t]*$/;
+const reClose = /^ {0,3}:::[ \t]*$/;
+const reColors = /^ {0,3}<!--\s*colors:\s*(\S*?)\s*-->\s*$/;
+// `> [!GAP]`, `[!SNAG]` and `[!WHY]` are Vyre's own: a place the code does not yet do what the
+// docs say, a problem the reader may hit, and a question the page answers for the curious.
+const ALERT_LABEL = { gap: "Known gap", snag: "If this happens", why: "Why" };
+/** The widgets scripts/lib/docs/assets/demos.js mounts. */
+export const DEMOS = ["capsule", "onboarding"];
+/** Code block languages whose `$ ` prompts are not copied. */
+const SHELLS = new Set(["sh", "console", "shell", "bash", "zsh"]);
+
+/**
+ * A line that is page syntax rather than prose: a `:::` container line or a colors directive.
+ * docs-check skips these when it reads prose.
+ * @param {string} line
+ */
+export function isDirective(line) {
+  return /^ {0,3}:::(?:[ \t]|$)/.test(line) || reColors.test(line);
+}
+
+/**
+ * What a directive line is, for docs-check: `{ kind: "tabs" | "tab" | "demo" | "close" | "colors", arg }`.
+ * @param {string} line
+ */
+export function directive(line) {
+  let m;
+  if ((m = reOpen.exec(line))) return { kind: m[1], arg: (m[2] || "").trim() };
+  if ((m = reTab.exec(line))) return { kind: "tab", arg: (m[1] || "").trim() };
+  if (reClose.test(line)) return { kind: "close", arg: "" };
+  if ((m = reColors.exec(line))) return { kind: "colors", arg: m[1] };
+  if (/^ {0,3}:::(?:[ \t]|$)/.test(line)) return { kind: "unknown", arg: line.trim().slice(3).trim() };
+  return null;
+}
 
 /** @param {string} s */
 export function escapeHtml(s) {
@@ -70,6 +125,10 @@ export function renderMarkdown(md, opts = {}) {
   const ctx = {
     resolveLink: opts.resolveLink || (h => h),
     include: opts.include || null,
+    image: opts.image || null,
+    palette: opts.palette || null,
+    /** @type {Snag[]} */ snags: [],
+    /** @type {string[]} */ demos: [],
     base: opts.base || "",
     /** @type {Heading[]} */ headings: [],
     /** @type {Link[]} */ links: [],
@@ -80,7 +139,7 @@ export function renderMarkdown(md, opts = {}) {
   const lines = collectRefs(prepare(md), ctx);
   const blocks = parseBlocks(lines, ctx);
   const html = renderBlocks(blocks, ctx, false);
-  return { html: html ? html + "\n" : "", headings: ctx.headings, links: ctx.links };
+  return { html: html ? html + "\n" : "", headings: ctx.headings, links: ctx.links, snags: ctx.snags, demos: [...new Set(ctx.demos)].sort() };
 }
 
 // ---- blocks ------------------------------------------------------------------------------------
@@ -153,7 +212,7 @@ function listMarker(line) {
 
 /** Whether a line starts a block that ends a paragraph. @param {string} l */
 function interrupts(l) {
-  if (reAtx.test(l) || reHr.test(l) || reQuote.test(l) || reComment.test(l)) return true;
+  if (reAtx.test(l) || reHr.test(l) || reQuote.test(l) || reComment.test(l) || reOpen.test(l) || reTab.test(l) || reClose.test(l)) return true;
   const f = reFence.exec(l);
   if (f && !(f[2][0] === "`" && f[3].includes("`"))) return true;
   const mk = listMarker(l);
@@ -220,6 +279,27 @@ function parseBlocks(lines, ctx) {
       continue;
     }
 
+    if ((m = reOpen.exec(line))) {
+      const kind = m[1], arg = (m[2] || "").trim();
+      const { body, end } = containerBody(lines, i + 1);
+      i = end;
+      if (kind === "demo") {
+        out.push({ type: "demo", name: arg.toLowerCase(), blocks: parseBlocks(body, ctx) });
+        continue;
+      }
+      /** @type {{ label: string, lines: string[] }[]} */
+      const tabs = [];
+      /** @type {string[]} */
+      const intro = [];
+      eachTopLevel(body, (l, top) => {
+        const t = top ? reTab.exec(l) : null;
+        if (t) { tabs.push({ label: (t[1] || "").trim() || `Option ${tabs.length + 1}`, lines: [] }); return; }
+        (tabs.length ? tabs[tabs.length - 1].lines : intro).push(l);
+      });
+      out.push({ type: "tabs", intro: parseBlocks(intro, ctx), tabs: tabs.map(t => ({ label: t.label, blocks: parseBlocks(t.lines, ctx) })) });
+      continue;
+    }
+
     if ((m = reAtx.exec(line))) {
       const text = m[2].replace(/(?:^|[ \t]+)#+[ \t]*$/, "").trim();
       out.push({ type: "heading", level: m[1].length, text });
@@ -228,6 +308,8 @@ function parseBlocks(lines, ctx) {
     }
 
     if (reComment.test(line)) {
+      const col = reColors.exec(line);
+      if (col) { out.push({ type: "colors", mode: col[1].toLowerCase() }); i++; continue; }
       const inc = reInclude.exec(line);
       if (inc) {
         const got = ctx.include && ctx.depth < 4 ? ctx.include(inc[1], ctx.base) : null;
@@ -260,13 +342,13 @@ function parseBlocks(lines, ctx) {
         if (!isBlank(l) && buf.length && !isBlank(buf[buf.length - 1]) && !interrupts(l)) { buf.push(l); i++; continue; }
         break;
       }
-      let alert = null;
+      let alert = null, title = "";
       const firstIdx = buf.findIndex(l => !isBlank(l));
       if (firstIdx >= 0) {
         const a = reAlert.exec(buf[firstIdx].trim());
-        if (a) { alert = a[1].toLowerCase(); buf.splice(firstIdx, 1); }
+        if (a) { alert = a[1].toLowerCase(); title = (a[2] || "").trim(); buf.splice(firstIdx, 1); }
       }
-      out.push({ type: "quote", alert, blocks: parseBlocks(buf, ctx) });
+      out.push({ type: "quote", alert, title, blocks: parseBlocks(buf, ctx) });
       continue;
     }
 
@@ -340,6 +422,54 @@ function parseBlocks(lines, ctx) {
   return out;
 }
 
+/**
+ * The lines of a `:::` container, from `start` up to its own closing `:::` (nested containers and
+ * fenced code skipped), and the index after that close. An unclosed container runs to the end.
+ * @param {string[]} lines @param {number} start
+ */
+function containerBody(lines, start) {
+  const body = [];
+  let depth = 0, i = start, done = false;
+  const walk = fenceWalker();
+  for (; i < lines.length && !done; i++) {
+    const l = lines[i];
+    if (!walk(l)) {
+      if (reOpen.test(l)) depth++;
+      else if (reClose.test(l)) { if (depth === 0) { done = true; continue; } depth--; }
+    }
+    body.push(l);
+  }
+  return { body, end: i };
+}
+
+/** Call fn for each line, saying whether it is outside fenced code and nested containers. */
+function eachTopLevel(/** @type {string[]} */ lines, /** @type {(l: string, top: boolean) => void} */ fn) {
+  let depth = 0;
+  const walk = fenceWalker();
+  for (const l of lines) {
+    if (walk(l)) { fn(l, false); continue; }
+    const top = depth === 0;
+    if (reOpen.test(l)) depth++;
+    else if (reClose.test(l) && depth > 0) depth--;
+    fn(l, top);
+  }
+}
+
+/** A line-by-line fence tracker: returns true for lines that open, sit in or close fenced code. */
+function fenceWalker() {
+  /** @type {string | null} */
+  let fence = null;
+  return (/** @type {string} */ l) => {
+    const f = reFence.exec(l);
+    if (fence) {
+      if (f && f[2][0] === fence[0] && f[2].length >= fence.length && !f[3].trim()) fence = null;
+      return true;
+    }
+    if (f && !(f[2][0] === "`" && f[3].includes("`"))) { fence = f[2]; return true; }
+    return false;
+  };
+}
+
 /** Whether a blank line separates two top-level blocks of a list item (which makes it loose). */
 function blankSeparatesTop(/** @type {string[]} */ body) {
   /** @type {string | null} */
@@ -368,7 +498,10 @@ function renderBlocks(blocks, ctx, tight) {
   for (const b of blocks) {
     switch (b.type) {
       case "para": {
-        const html = renderInline(b.text, ctx);
+        const nodes = parseInlines(b.text, ctx);
+        const solid = nodes.filter(nd => !(nd.t === "text" && !nd.v.trim()));
+        if (solid.length === 1 && solid[0].t === "img") { out.push(figure(solid[0], ctx)); break; }
+        const html = nodesToHtml(nodes, ctx);
         out.push(tight ? html : `<p>${html}</p>`);
         break;
       }
@@ -376,7 +509,7 @@ function renderBlocks(blocks, ctx, tight) {
         const nodes = parseInlines(b.text, ctx);
         const text = nodesToText(nodes).trim();
         const id = uniqueSlug(text, ctx);
-        ctx.headings.push({ level: b.level, text, id });
+        ctx.headings.push(ctx.tab ? { level: b.level, text, id, tab: ctx.tab } : { level: b.level, text, id });
         const anchor = b.level >= 2 && b.level <= 4 ? `<a class="anchor" href="#${escapeHtml(encodeURIComponent(id))}" aria-hidden="true" tabindex="-1">#</a>` : "";
         out.push(`<h${b.level} id="${escapeHtml(id)}">${nodesToHtml(nodes, ctx)}${anchor}</h${b.level}>`);
         break;
@@ -384,18 +517,60 @@ function renderBlocks(blocks, ctx, tight) {
       case "code": {
         const lang = /^[\w+#.-]+$/.test(b.lang) ? b.lang : "";
         const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
-        out.push(`<pre><code${cls}>${escapeHtml(b.text)}${b.text ? "\n" : ""}</code></pre>`);
+        const pre = `<pre><code${cls}>${SHELLS.has(lang) ? shellHtml(b.text, lang) : escapeHtml(b.text) + (b.text ? "\n" : "")}</code></pre>`;
+        out.push(lang === "output" ? `<div class="output">\n<p class="output-label">You should see</p>\n${pre}\n</div>` : pre);
         break;
       }
       case "hr": out.push("<hr>"); break;
       case "quote": {
+        if (!b.alert) { out.push(`<blockquote>\n${renderBlocks(b.blocks, ctx, false)}\n</blockquote>`); break; }
+        const label = ALERT_LABEL[b.alert] || b.alert[0].toUpperCase() + b.alert.slice(1);
+        const titleNodes = b.title ? parseInlines(b.title, ctx) : [];
+        const titleHtml = b.title ? nodesToHtml(titleNodes, ctx) : "";
+        if (b.alert === "why") {
+          const inner = renderBlocks(b.blocks, ctx, false);
+          out.push(`<details class="callout callout-why">\n<summary><span class="callout-title">${label}</span> <span class="why-q">${titleHtml || label}</span></summary>\n<div class="why-body">\n${inner}\n</div>\n</details>`);
+          break;
+        }
+        if (b.alert === "snag") {
+          const text = nodesToText(titleNodes).trim() || label;
+          const id = uniqueSlug(text, ctx);
+          const snag = { text, id, body: "" };
+          ctx.snags.push(snag);
+          const inner = renderBlocks(b.blocks, ctx, false);
+          snag.body = htmlToText(inner);
+          const anchor = `<a class="anchor" href="#${escapeHtml(encodeURIComponent(id))}" aria-hidden="true" tabindex="-1">#</a>`;
+          const head = titleHtml ? `\n<p class="callout-heading">${titleHtml}${anchor}</p>` : "";
+          out.push(`<blockquote class="callout callout-snag" id="${escapeHtml(id)}">\n<p class="callout-title">${label}</p>${head}\n${inner}\n</blockquote>`);
+          break;
+        }
         const inner = renderBlocks(b.blocks, ctx, false);
-        if (b.alert) {
-          const label = ALERT_LABEL[b.alert] || b.alert[0].toUpperCase() + b.alert.slice(1);
-          out.push(`<blockquote class="callout callout-${b.alert}">\n<p class="callout-title">${label}</p>\n${inner}\n</blockquote>`);
-        } else out.push(`<blockquote>\n${inner}\n</blockquote>`);
+        const head = titleHtml ? `\n<p class="callout-heading">${titleHtml}</p>` : "";
+        out.push(`<blockquote class="callout callout-${b.alert}">\n<p class="callout-title">${label}</p>${head}\n${inner}\n</blockquote>`);
         break;
       }
+      case "tabs": {
+        const intro = renderBlocks(b.intro, ctx, false);
+        if (intro) out.push(intro);
+        if (!b.tabs.length) break;
+        const panels = b.tabs.map((/** @type {any} */ t) => {
+          const saved = ctx.tab;
+          ctx.tab = t.label;
+          const inner = renderBlocks(t.blocks, ctx, false);
+          ctx.tab = saved;
+          return `<section class="tab-panel" data-tab="${escapeHtml(t.label)}">\n<p class="tab-label">${escapeHtml(t.label)}</p>\n${inner}\n</section>`;
+        });
+        out.push(`<div class="tabs">\n${panels.join("\n")}\n</div>`);
+        break;
+      }
+      case "demo": {
+        const name = /^[a-z0-9-]+$/.test(b.name) ? b.name : "";
+        if (name) ctx.demos.push(name);
+        const inner = renderBlocks(b.blocks, ctx, false);
+        out.push(`<div class="demo" data-demo="${escapeHtml(name)}">\n${inner}\n</div>`);
+        break;
+      }
+      case "colors": out.push(swatches(b.mode, ctx)); break;
       case "list": {
         const tag = b.ordered ? "ol" : "ul";
         const start = b.ordered && b.start !== 1 ? ` start="${b.start}"` : "";
@@ -427,6 +602,93 @@ function renderBlocks(blocks, ctx, tight) {
     }
   }
   return out.join("\n");
+}
+
+/**
+ * A shell block's lines, with each `$ ` prompt in a span.gp and, in a console block that has
+ * prompts, each output line in a span.go, so the Copy button can leave both out. A command that
+ * ends with a backslash continues on the next line.
+ * @param {string} text @param {string} lang
+ */
+function shellHtml(text, lang) {
+  if (!text) return "";
+  const lines = text.split("\n");
+  const prompts = lines.some(l => l.startsWith("$ ") || l === "$");
+  let cont = false;
+  return lines.map(l => {
+    const nl = "\n";
+    if (l.startsWith("$ ") || l === "$") {
+      cont = /\\$/.test(l);
+      return `<span class="gp">${escapeHtml(l.slice(0, 2))}</span>${escapeHtml(l.slice(2))}${nl}`;
+    }
+    if (cont) { cont = /\\$/.test(l); return escapeHtml(l) + nl; }
+    if (lang === "console" && prompts) return `<span class="go">${escapeHtml(l)}${nl}</span>`;
+    return escapeHtml(l) + nl;
+  }).join("");
+}
+
+/**
+ * An image alone in its paragraph: a figure, captioned by its title, else by its alt text.
+ * @param {any} nd @param {any} ctx
+ */
+function figure(nd, ctx) {
+  const alt = nodesToText(nd.children);
+  const img = imageHtml({ ...nd, title: undefined }, ctx);
+  const caption = nd.title || alt;
+  const cap = caption ? `<figcaption${caption === alt ? ` aria-hidden="true"` : ""}>${escapeHtml(caption)}</figcaption>` : "";
+  return `<figure class="shot">${img}${cap}</figure>`;
+}
+
+/**
+ * An <img>, sized from the file when the build knows it, and paired with its dark-theme sibling.
+ * @param {any} nd @param {any} ctx
+ */
+function imageHtml(nd, ctx) {
+  const base = nd.base ?? ctx.base;
+  const url = safeHref(ctx.resolveLink(nd.href, base));
+  ctx.links.push({ href: nd.href, url, base, kind: "image" });
+  const alt = escapeHtml(nodesToText(nd.children));
+  const title = nd.title ? ` title="${escapeHtml(nd.title)}"` : "";
+  /** @type {ImageInfo | null} */
+  const info = ctx.image ? ctx.image(nd.href, base) : null;
+  const size = (/** @type {any} */ o) => (o && o.width && o.height ? ` width="${o.width}" height="${o.height}"` : "");
+  if (!info || !info.dark) return `<img src="${escapeHtml(url)}" alt="${alt}"${title}${size(info)} loading="lazy">`;
+  const dark = safeHref(info.dark.src);
+  return `<img class="shot-light" src="${escapeHtml(url)}" alt="${alt}"${title}${size(info)} loading="lazy">` +
+    `<img class="shot-dark" src="${escapeHtml(dark)}" alt="${alt}"${title}${size(info.dark)} loading="lazy">`;
+}
+
+/** A CSS colour value we are willing to put in a style attribute. @param {string} v */
+const safeColor = v => /^(#[0-9a-f]{3,8}|(rgba?|hsla?)\([0-9.,%\s]+\))$/i.test(v.trim());
+
+/**
+ * `<!-- colors: dark -->`: the palette as a table of live swatches.
+ * @param {string} mode @param {any} ctx
+ */
+function swatches(mode, ctx) {
+  /** @type {Palette | null} */
+  const pal = ctx.palette;
+  const colors = pal && pal.colors && pal.colors[mode];
+  if (!colors) return `<p class="swatch-none">No ${escapeHtml(mode || "unnamed")} palette: core/config/theme.js has no THEME_COLORS.${escapeHtml(mode || "?")}.</p>`;
+  const rows = Object.entries(colors).map(([token, value]) => {
+    const v = String(value);
+    const chip = safeColor(v) ? `<span class="swatch" style="background:${escapeHtml(v.trim())}" aria-hidden="true"></span>` : "";
+    const use = (pal.use && pal.use[token]) || "";
+    return `<tr><td>${chip}</td><td><code>--${escapeHtml(token)}</code></td><td><code>${escapeHtml(v)}</code></td><td>${escapeHtml(use)}</td></tr>`;
+  });
+  return `<div class="table-wrap"><table class="swatches" data-colors="${escapeHtml(mode)}">\n<thead><tr><th><span class="sr-only">Swatch</span></th><th>Token</th><th>Value</th><th>Use</th></tr></thead>\n<tbody>\n${rows.join("\n")}\n</tbody>\n</table></div>`;
+}
+
+/**
+ * The Markdown a colors directive becomes in the raw .md the site serves.
+ * @param {string} mode @param {Palette | null} pal
+ */
+export function colorsMarkdown(mode, pal) {
+  const colors = pal && pal.colors && pal.colors[mode];
+  if (!colors) return "";
+  const cell = (/** @type {string} */ s) => String(s).replace(/\|/g, "\\|");
+  const rows = Object.entries(colors).map(([t, v]) => `| \`--${t}\` | \`${cell(v)}\` | ${cell((pal.use && pal.use[t]) || "")} |`);
+  return ["| Token | Value | Use |", "| --- | --- | --- |", ...rows].join("\n");
 }
 
 /** @param {string} text @param {any} ctx */
@@ -682,14 +944,13 @@ function nodesToHtml(nodes, ctx) {
         out += `<a href="${escapeHtml(url)}">${escapeHtml(nd.v)}</a>`;
         break;
       }
-      case "link":
-      case "img": {
+      case "img": out += imageHtml(nd, ctx); break;
+      case "link": {
         const base = nd.base ?? ctx.base;
         const url = safeHref(ctx.resolveLink(nd.href, base));
-        ctx.links.push({ href: nd.href, url, base, kind: nd.t === "img" ? "image" : "link" });
+        ctx.links.push({ href: nd.href, url, base, kind: "link" });
         const title = nd.title ? ` title="${escapeHtml(nd.title)}"` : "";
-        if (nd.t === "img") out += `<img src="${escapeHtml(url)}" alt="${escapeHtml(nodesToText(nd.children))}"${title} loading="lazy">`;
-        else out += `<a href="${escapeHtml(url)}"${title}>${nodesToHtml(nd.children, ctx)}</a>`;
+        out += `<a href="${escapeHtml(url)}"${title}>${nodesToHtml(nd.children, ctx)}</a>`;
         break;
       }
     }
@@ -708,6 +969,20 @@ function nodesToText(nodes) {
     else if (nd.children) out += nodesToText(nd.children);
   }
   return out;
+}
+
+/**
+ * Rendered HTML as plain text for search: inline tags vanish, block tags become a space, the
+ * heading anchors' "#" goes, entities are decoded.
+ * @param {string} html
+ */
+export function htmlToText(html) {
+  return decodeEntities(html
+    .replace(/<a class="anchor"[^>]*>#<\/a>/g, "")
+    .replace(/<\/?(?:a|code|em|strong|del|span|kbd|mark|b|i)(?:\s[^>]*)?>/g, "")
+    .replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 const NAMED = /** @type {Record<string, string>} */ ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", middot: "·", hellip: "…", mdash: "—", ndash: "–", rarr: "→", larr: "←", copy: "©", times: "×", bull: "•" });

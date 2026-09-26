@@ -113,7 +113,7 @@ export default {
 |---|---|
 | `ctx.name` | the module's name |
 | `ctx.config` | the loaded `~/.vyre/config.json`, with defaults |
-| `ctx.paths` | the paths under `VYRE_HOME` (`root`, `db`, `socket`, `modules`, `logs` and others) |
+| `ctx.paths` | the paths under `VYRE_HOME`: `root`, `config`, `db`, `vault`, `modules`, `watchers`, `logs`, `models`, `certs`, `names`, `env`, `sessions`, `socket`, `pid` |
 | `ctx.store.db` | the `node:sqlite` connection to `vyre.db`. Reads may join any table; write only your own. Nothing stops a write to another module's table, so this is a rule you keep, not one the loader checks |
 | `ctx.store.migrate(steps)` | run numbered SQL migrations, once each, recorded per module |
 | `ctx.log(msg, extra?)` | a line in vyred's log, prefixed with the module name |
@@ -127,10 +127,8 @@ export default {
 | `ctx.route(name, fn)` | a raw HTTP route at `/v1/<module>/<name>` on vyred's socket |
 | `ctx.handler(policy)` | vyred's router, for a module that opens a listener of its own (`names`, `onboard`) |
 
-The spec also names `ctx.projects`. It does not exist; call `ctx.call("projects.list", {})` instead.
-
 > [!GAP]
-> Spec Section 5.2 lists `ctx.projects`; the code has none. See [known gaps](../known-gaps.md#ctxprojects-does-not-exist).
+> Spec Section 5.2 lists `ctx.projects`; the code has none. Call `ctx.call("projects.list", {})` and the other `projects.*` tools instead. See [known gaps](../known-gaps.md#ctxprojects-does-not-exist).
 
 Never import another module's files. `ctx.call` is the only way one module uses another.
 
@@ -154,7 +152,7 @@ ctx.tool("invoices.file", {
 | `run` | `async (input, meta)`. Return any JSON value; it becomes `{ data }`. Throw to fail |
 | `callers` | caller kinds that may use it: `cli`, `local`, `deck`, `capsule`, `mcp`, `module` and others. Omitted means any. Others get `denied` and do not see it in listings |
 | `internal` | only other modules may call it, and it is left out of every listing |
-| `hook` | for a tool named `<module>.hook` only: reachable only through the webhook route `POST /v1/<module>/<name>/hook`, which calls it with `{ name, token, body }` as the caller `hook`. The tool checks the token itself |
+| `hook` | the tool answers only the webhook route and no other caller. The route `POST /v1/<module>/<name>/hook` calls the tool `<module>.hook` with `{ name, token, body }` as the caller `hook`, so name the tool `<module>.hook`. The tool checks the token itself |
 | `presence` | the call needs a person present. See [presence](../concepts/presence.md) |
 
 `meta` holds what vyred verified, not what the input claims: `caller` (a label), `thread` and `agent` (only when proved with a key the Switchboard or the SessionStart hook gave out), `peer` (the tailnet node a listener identified), and `presence` (`{ method, keyId }` after a proof). A thread or agent named in the input is only a claim.
@@ -179,14 +177,13 @@ Every call runs these checks, in order:
 | the caller's kind is in `callers` | `denied` | 403 |
 | the input matches the schema | `bad_input` | 400 |
 | a person proved presence, for a presence tool and a caller that is not a module | `presence_required` | 403 |
+| a Touch ID proof was asked for where Vyre may raise no dialog (under tests, or a home other than `~/.vyre`) | `no_dialog` | 403 |
 | `run` succeeds | the thrown code, or `failed` | 500 |
 
 Responses are `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 
-The spec says every call also passes through the Rules. The registry has the hook for it, but vyred does not wire one in today; the Rules run in Claude Code's `PreToolUse` hook instead. See [the security floor](../concepts/floor.md).
-
 > [!GAP]
-> vyred does not run the Rules on tool calls yet. See [known gaps](../known-gaps.md#rules-do-not-run-on-calls-through-vyred).
+> The spec says every call also passes through the Rules. The registry has the hook for it, but vyred does not wire one in: the Rules run only in Claude Code's `PreToolUse` hook, so a call from a module or a surface is not checked by them. See [the security floor](../concepts/floor.md) and [known gaps](../known-gaps.md#rules-do-not-run-on-calls-through-vyred).
 
 ## Next
 

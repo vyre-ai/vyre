@@ -5,7 +5,9 @@
 //   <out>/index.html, using/capsule.html, ...   the pages (see load.js for the URL scheme)
 //   <out>/index.md, using/capsule.md, ...       each page's source, front matter kept, includes spliced
 //   <out>/assets/docs.<hash>.css, .js           one stylesheet, one script, named by content hash
-//   <out>/search-index.json                     what the search box searches, offline once loaded
+//   <out>/assets/demos.<hash>.css, .js          the demo widgets, linked only from pages with a demo
+//   <out>/search-index.json                     what the search box searches: pages, and one item
+//                                               per heading and per [!SNAG], with its anchor
 //   <out>/llms.txt, llms-full.txt               the llms.txt convention: an index, and everything
 //   <out>/sitemap.xml, robots.txt, 404.html, favicon.svg
 //   <out>/_redirects                            a 301 for every moved page, pretty and .md
@@ -17,14 +19,16 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { listOf, parseFrontMatter } from "./frontmatter.js";
-import { decodeEntities, escapeHtml, renderMarkdown } from "./markdown.js";
+import { colorsMarkdown, decodeEntities, escapeHtml, htmlToText, renderMarkdown } from "./markdown.js";
 import { isUnpublished, loadDocs, pageUrl, resolveDocLink } from "./load.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, "assets");
-const BODY_CHARS = 6000;
+// Search text per item: the words under a heading (or a page's intro), enough to match on.
+const ITEM_CHARS = 1000;
 
 const FONTS = "https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap";
 
@@ -42,10 +46,43 @@ const ICON_MOON = `<svg class="i-moon" width="16" height="16" viewBox="0 0 16 16
 const THEME_BOOT = `(function(){var t;try{t=localStorage.getItem("vyre-docs-theme")}catch(e){}if(t!=="light"&&t!=="dark"){t=window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}document.documentElement.setAttribute("data-theme",t)})();`;
 
 /**
- * @param {{ root: string, out: string, log?: (msg: string) => void }} opts
+ * The palette `<!-- colors: dark -->` shows: THEME_COLORS and THEME_USE from core/config/theme.js.
+ * scripts/build-docs imports it and passes it in; called without one, the build loads it here.
+ * @param {string} root @param {(msg: string) => void} log
+ * @returns {import("./markdown.js").Palette | null}
+ */
+export function loadPalette(root, log = () => {}) {
+  const file = path.join(root, "core", "config", "theme.js");
+  if (!fs.existsSync(file)) return null;
+  try {
+    const m = createRequire(import.meta.url)(file);
+    return m && m.THEME_COLORS ? { colors: m.THEME_COLORS, use: m.THEME_USE || {} } : null;
+  } catch (e) {
+    log(`build-docs: could not load core/config/theme.js: ${/** @type {Error} */ (e).message}`);
+    return null;
+  }
+}
+
+/**
+ * Width and height from a PNG's header, or null for anything that is not a PNG.
+ * @param {string} file
+ */
+export function pngSize(file) {
+  try {
+    const fd = fs.openSync(file, "r");
+    const b = Buffer.alloc(24);
+    try { fs.readSync(fd, b, 0, 24, 0); } finally { fs.closeSync(fd); }
+    if (b.readUInt32BE(0) !== 0x89504e47 || b.readUInt32BE(4) !== 0x0d0a1a0a || b.toString("latin1", 12, 16) !== "IHDR") return null;
+    return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+  } catch { return null; }
+}
+
+/**
+ * @param {{ root: string, out: string, log?: (msg: string) => void, palette?: import("./markdown.js").Palette | null }} opts
  * @returns {{ pages: number, redirects: number, missing: string[], files: string[] }}
  */
-export function build({ root, out, log = () => {} }) {
+export function build({ root, out, log = () => {}, palette }) {
+  const pal = palette === undefined ? loadPalette(root, log) : palette;
   const docs = loadDocs(root);
   const site = {
     title: docs.site.title || "Vyre docs",
@@ -70,9 +107,14 @@ export function build({ root, out, log = () => {} }) {
   const jsName = `assets/docs.${hash(js)}.js`;
   put(cssName, css);
   put(jsName, js);
+  const demoCss = fs.readFileSync(path.join(ASSETS, "demos.css"), "utf8");
+  const demoJs = fs.readFileSync(path.join(ASSETS, "demos.js"), "utf8");
+  const demoCssName = `assets/demos.${hash(demoCss)}.css`;
+  const demoJsName = `assets/demos.${hash(demoJs)}.js`;
+  let demosUsed = false;
   const favicon = path.join(root, "site", "favicon.svg");
   if (fs.existsSync(favicon)) put("favicon.svg", fs.readFileSync(favicon));
-  const assets = { css: "/" + cssName, js: "/" + jsName };
+  const assets = { css: "/" + cssName, js: "/" + jsName, demoCss: "/" + demoCssName, demoJs: "/" + demoJsName };
 
   /** Files under docs/ that pages link to or show (images), copied as they are. */
   const copies = new Set();
@@ -103,6 +145,29 @@ export function build({ root, out, log = () => {} }) {
     return `${site.repo}/blob/main/docs/${encodePath(p)}${frag}`;
   };
 
+  /** Sizes, and the `.dark` sibling, of images under docs/. */
+  const imageCache = new Map();
+  /** @param {string} href @param {string} base */
+  const image = (href, base) => {
+    const r = resolveDocLink(href, base);
+    if (r.kind !== "doc" || !r.path) return null;
+    const key = r.path;
+    if (!imageCache.has(key)) {
+      const abs = path.join(docsDir, r.path);
+      const info = /** @type {any} */ (pngSize(abs) || {});
+      const darkRel = r.path.replace(/(\.[A-Za-z0-9]+)$/, ".dark$1");
+      if (darkRel !== r.path && !/\.dark\.[^./]+$/.test(r.path) && fs.existsSync(path.join(docsDir, darkRel))) {
+        info.darkRel = darkRel;
+        info.darkSize = pngSize(path.join(docsDir, darkRel));
+      }
+      imageCache.set(key, info);
+    }
+    const info = imageCache.get(key);
+    if (!info.darkRel) return info.width ? { width: info.width, height: info.height } : null;
+    const darkHref = href.replace(/(\.[A-Za-z0-9]+)((?:[?#].*)?)$/, ".dark$1$2");
+    return { width: info.width, height: info.height, dark: { src: resolveLink(darkHref, base), ...(info.darkSize || {}) } };
+  };
+
   /** @param {string} rel @param {string} base */
   const readInclude = (rel, base) => {
     const file = path.resolve(docsDir, base, rel);
@@ -118,32 +183,30 @@ export function build({ root, out, log = () => {} }) {
   const nav = docs.sections.filter(s => s.pages.length);
   /** @type {any[]} */
   const index = [];
+  /** @type {any[]} */
+  const items = [];
   const fullParts = [];
 
   for (let k = 0; k < order.length; k++) {
     const page = order[k];
     const base = path.posix.dirname(page.path).replace(/^\.$/, "");
-    const r = renderMarkdown(page.body, { resolveLink, include: readInclude, base });
-    const html = renderPage({ site, page, nav, prev: order[k - 1], next: order[k + 1], body: r.html, headings: r.headings, assets });
+    const r = renderMarkdown(page.body, { resolveLink, include: readInclude, base, image, palette: pal });
+    if (r.demos.length) demosUsed = true;
+    const html = renderPage({ site, page, nav, prev: order[k - 1], next: order[k + 1], body: r.html, headings: r.headings, assets, demos: r.demos.length > 0 });
     put(page.htmlFile, html);
 
-    const md = spliceIncludes(page.source, base, readInclude);
+    const md = spliceIncludes(page.source, base, readInclude, pal);
     put(page.path, md);
 
-    index.push({
-      t: page.title,
-      u: page.url,
-      s: page.section,
-      d: page.summary,
-      h: r.headings.filter(h => h.level >= 2 && h.level <= 3).map(h => [h.text, h.id]),
-      b: plainText(r.html).slice(0, BODY_CHARS),
-    });
+    index.push({ t: page.title, u: page.url, s: page.section, d: page.summary });
+    for (const it of searchItems(r)) items.push({ p: k, ...it });
     fullParts.push(`---\ntitle: ${page.title}\nurl: ${site.url}${page.mdUrl}\n---\n\n${parseFrontMatter(md).body.trim()}\n`);
   }
 
   for (const p of [...copies].sort()) put(p, fs.readFileSync(path.join(docsDir, p)));
 
-  put("search-index.json", JSON.stringify(index));
+  if (demosUsed) { put(demoCssName, demoCss); put(demoJsName, demoJs); }
+  put("search-index.json", JSON.stringify({ pages: index, items }));
   put("llms.txt", llmsTxt(site, nav));
   put("llms-full.txt", `# ${site.title}\n\n> ${site.summary}\n\n${fullParts.join("\n")}`);
   put("sitemap.xml", sitemap(site, order));
@@ -190,29 +253,51 @@ function packageDescription(root) {
   try { return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).description || ""; } catch { return ""; }
 }
 
-/** Replace each include line outside fenced code with the file it names (front matter stripped). */
-function spliceIncludes(/** @type {string} */ text, /** @type {string} */ base, /** @type {any} */ read, depth = 0) {
+/**
+ * Replace each include line outside fenced code with the file it names (front matter stripped),
+ * and each colors directive with the palette as a Markdown table.
+ */
+function spliceIncludes(/** @type {string} */ text, /** @type {string} */ base, /** @type {any} */ read, /** @type {any} */ pal, depth = 0) {
   let fence = "";
   return text.split("\n").map(line => {
     const f = line.match(/^ {0,3}(`{3,}|~{3,})/);
     if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !line.trim().slice(f[1].length).trim()) fence = ""; return line; }
     if (f) { fence = f[1]; return line; }
+    const c = line.match(/^ {0,3}<!--\s*colors:\s*(\S*?)\s*-->[ \t]*$/);
+    if (c) return colorsMarkdown(c[1].toLowerCase(), pal) || line;
     const m = line.match(/^ {0,3}<!--\s*include:\s*(\S+?)\s*-->[ \t]*$/);
     if (!m) return line;
     if (depth > 3) return "";
     const got = read(m[1], base);
-    return got ? spliceIncludes(got.text.trim(), got.base, read, depth + 1) : "";
+    return got ? spliceIncludes(got.text.trim(), got.base, read, pal, depth + 1) : "";
   }).join("\n");
 }
 
-/** Rendered HTML to searchable text. @param {string} html */
-function plainText(html) {
-  return decodeEntities(html
-    .replace(/<a class="anchor"[^>]*>#<\/a>/g, "")
-    .replace(/<[^>]+>/g, " "))
-    .replace(/\s+/g, " ")
-    .trim();
+/**
+ * What search finds on one page: its intro (no heading), each h2 to h4 with the words under it up
+ * to the next heading, and each [!SNAG] box. Headings inside tabs count like any other.
+ * @param {{ html: string, headings: { level: number, text: string, id: string }[], snags: { text: string, id: string, body: string }[] }} r
+ */
+function searchItems(r) {
+  const text = new Map(r.headings.map(h => [h.id, h.tab ? `${h.text} · ${h.tab}` : h.text]));
+  const re = /<h([2-4]) id="([^"]*)">/g;
+  const cuts = [];
+  for (const m of r.html.matchAll(re)) cuts.push({ at: m.index ?? 0, id: decodeEntities(m[2]) });
+  const out = [];
+  const first = cuts.length ? cuts[0].at : r.html.length;
+  const intro = plainText(r.html.slice(0, first).replace(/<h1[ >][\s\S]*?<\/h1>/, ""));
+  out.push({ h: "", a: "", b: intro.slice(0, ITEM_CHARS) });
+  cuts.forEach((c, i) => {
+    const end = i + 1 < cuts.length ? cuts[i + 1].at : r.html.length;
+    const body = r.html.slice(c.at, end).replace(/^<h[2-4][^>]*>[\s\S]*?<\/h[2-4]>/, "");
+    out.push({ h: text.get(c.id) || c.id, a: c.id, b: plainText(body).slice(0, ITEM_CHARS) });
+  });
+  for (const s of r.snags) out.push({ h: `If this happens: ${s.text}`, a: s.id, b: s.body.slice(0, ITEM_CHARS) });
+  return out;
 }
+
+/** Rendered HTML to searchable text. @param {string} html */
+const plainText = htmlToText;
 
 /** @param {any} site @param {{ title: string, pages: any[] }[]} nav */
 function llmsTxt(site, nav) {
@@ -272,10 +357,11 @@ function headers(pages) {
  * @param {any} o.prev
  * @param {any} o.next
  * @param {string} o.body
- * @param {{ level: number, text: string, id: string }[]} o.headings
- * @param {{ css: string, js: string }} o.assets
+ * @param {{ level: number, text: string, id: string, tab?: string }[]} o.headings
+ * @param {{ css: string, js: string, demoCss: string, demoJs: string }} o.assets
+ * @param {boolean} [o.demos] the page has a `::: demo`, so it loads the demo widgets
  */
-function renderPage({ site, page, nav, prev, next, body, headings, assets }) {
+function renderPage({ site, page, nav, prev, next, body, headings, assets, demos = false }) {
   const e = escapeHtml;
   const title = page ? `${page.title} · ${site.title}` : `Not found · ${site.title}`;
   const desc = page?.summary || site.summary;
@@ -295,7 +381,7 @@ function renderPage({ site, page, nav, prev, next, body, headings, assets }) {
   const tocItems = headings.filter(h => h.level === 2 || h.level === 3);
   const toc = tocItems.length > 1
     ? `<aside class="toc" aria-label="On this page"><p class="lbl">On this page</p><ul>${tocItems.map(h =>
-      `<li class="toc-${h.level}"><a href="#${e(encodeURIComponent(h.id))}">${e(h.text)}</a></li>`).join("")}</ul></aside>`
+      `<li class="toc-${h.level}"><a href="#${e(encodeURIComponent(h.id))}">${e(h.text)}${h.tab ? `<span class="toc-tab">${e(h.tab)}</span>` : ""}</a></li>`).join("")}</ul></aside>`
     : `<aside class="toc" aria-hidden="true"></aside>`;
 
   const hasH1 = /^<h1[ >]/.test(body);
@@ -334,6 +420,7 @@ ${page ? `<link rel="canonical" href="${e(canonical)}">\n<link rel="alternate" t
 <link rel="stylesheet" href="${e(FONTS)}">
 <link rel="stylesheet" href="${assets.css}">
 <script src="${assets.js}" defer></script>
+${demos ? `<link rel="stylesheet" href="${assets.demoCss}">\n<script src="${assets.demoJs}" defer></script>\n` : ""}
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="${e(site.title)}">
 <meta property="og:title" content="${e(page ? page.title : "Not found")}">

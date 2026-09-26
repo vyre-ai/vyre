@@ -103,6 +103,121 @@ Inside fenced code, as above, the line is an example and is left alone.
 
 The path is relative to the page and must stay inside the repository. The included file's front matter is dropped, and links inside it resolve from its own folder. Includes nest a few levels deep. The raw `.md` the site serves has the include already spliced in. The check scans included files for the same characters and hygiene problems as pages, and fails on an include whose file does not exist.
 
+## Page syntax
+
+Beyond plain Markdown, pages have a few blocks of their own. Every one renders to useful static
+HTML with JavaScript off; the script only adds to it. Raw HTML stays forbidden.
+
+### Commands and what they print
+
+Every fenced block gets a Copy button. In an `sh` or `console` block, a leading `$ ` is not
+copied, and in a `console` block that has prompts, lines without one are output and are not
+copied either. A command ending in `\` carries on to the next line.
+
+````md
+```console
+$ vyre status
+vyred is up
+```
+````
+
+Put what the reader should see after a command in an `output` block. It is labelled "You should
+see" and has no Copy button.
+
+````md
+```output
+  Vyre is ready.
+```
+````
+
+### Tabs
+
+For a choice of path or system. Without JavaScript each tab is a section with its label above it;
+with it, a tab bar. Picking a tab picks the same label in every tab group on the site, and the
+choice is remembered.
+
+```md
+::: tabs
+::: tab On a server
+Markdown for this path. Headings (h3, h4) are fine and get anchors.
+::: tab On this Mac
+Markdown for this path.
+:::
+```
+
+Use the same labels on every page (`On a server`, `On this Mac`) so one choice follows the reader.
+
+### Callouts
+
+`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]` and `> [!GAP]` (shown as
+Known gap). Any of them may carry a title after the marker:
+
+```md
+> [!WARNING] The HTTPS switch is off
+> Turn on HTTPS for your tailnet, then press Check again.
+```
+
+`> [!SNAG]` is an "If this happens" box: the title (required) is what the reader sees, the body is
+what to do. It is never collapsed, and its title makes an anchor like a heading does, so
+[troubleshooting](get-started/troubleshooting.md) can link to `#the-page-says-not-found`:
+
+```md
+> [!SNAG] The page says "not found"
+> Wait a minute for the certificate, then reload.
+```
+
+`> [!WHY]` answers a question for the curious, collapsed until clicked:
+
+```md
+> [!WHY] Why does Vyre need a server?
+> Your agents keep working while the Mac sleeps.
+```
+
+### Screenshots
+
+Keep shots next to the page in a `shots/` folder (`docs/get-started/shots/`). An image alone in
+its paragraph becomes a figure, captioned by its alt text, or by its title when it has one. Write
+alt text that says what the screen shows.
+
+```md
+![The Tailscale step, waiting for the server to join](shots/onboarding-tailscale.png "Tailscale")
+```
+
+If `onboarding-tailscale.dark.png` sits beside it, the dark theme shows that file instead. The
+build reads each PNG's width and height from the file, so the page does not jump as shots load.
+
+### Demos
+
+A widget that replaces its fallback when the page's script runs. The fallback is what readers
+without JavaScript (and agents reading the `.md`) get, so make it complete: a screenshot and a
+sentence, or a list of screenshots.
+
+```md
+::: demo capsule
+![The Capsule, with results for north](shots/capsule-north.png)
+Type in the Capsule and it finds agents, projects, threads, notes and logins.
+:::
+```
+
+- `capsule`: a Capsule you can type into, with results from the sample world only.
+- `onboarding`: the fallback's list of screenshots, one per step, as Back and Next slides. Each
+  step's name is its screenshot's title:
+
+```md
+::: demo onboarding
+1. ![Your name and a name for your assistant](shots/onboarding-you.png "You")
+2. ![Sign in with Claude, or paste a key](shots/onboarding-claude.png "Claude Code")
+:::
+```
+
+Only pages with a demo load the demo script. A name the site does not know fails the check.
+
+### Colours
+
+A line holding only `<!-- colors: dark -->` or `<!-- colors: light -->` shows the palette from
+`core/config/theme.js` as a table of live swatches (token, value, use). The `.md` the site serves
+gets a Markdown table in its place. Change colours in `theme.js` (and TOKENS.md), not in a page.
+
 ## Generated reference pages
 
 `docs/reference/{cli,tools,events,config,modules}.md` are written from the code by `scripts/gen-docs-reference`:
@@ -135,6 +250,9 @@ It prints one `path:line: problem` per problem and exits 1 if there are any. It 
 - **nav**: every published page listed, every entry a real file;
 - **links**: relative links, `#anchors` and docs.vyre.run paths resolve, nothing links into an unpublished folder;
 - **redirect**: stubs point at real, published, non-stub pages;
+- **syntax**: every `:::` container is known and closed, a demo names a widget that exists, a
+  `[!SNAG]` or `[!WHY]` has its title, a colors line says dark or light. Headings inside tabs and
+  `[!SNAG]` titles count as anchors;
 - **characters**: no em dash and no section sign, in pages and in files they include;
 - **hygiene**: no real person's or business's name, nothing shaped like a secret, no email address outside the example domains, no IP address outside the documentation and private ranges (`scripts/lib/hygiene.js`);
 - **reference**: the generated pages match what the code makes now.
@@ -151,13 +269,15 @@ node scripts/build-docs --out DIR    # somewhere else
 `scripts/build-docs` empties the output folder, then writes:
 
 - each page as HTML at its pretty URL, and its Markdown source beside it at the same path with `.md`, front matter kept and includes spliced;
-- `search-index.json` for the search box;
+- `search-index.json` for the search box: one item per page intro, heading and `[!SNAG]`, each with
+  its anchor, so a result jumps to the section. Press `/` to search;
 - `llms.txt`, an index of every page by section with its `.md` link and summary, and `llms-full.txt`, every page's Markdown in nav order in one file;
 - `sitemap.xml`, `robots.txt`, `404.html`, `favicon.svg`;
 - `_redirects` (a 301 for every stub) and `_headers` (Markdown and text content types, cache rules) for Cloudflare Pages;
-- one stylesheet and one script under `assets/`, named by content hash.
+- one stylesheet and one script under `assets/`, named by content hash, and the demo widgets'
+  stylesheet and script, linked only from pages with a demo.
 
-The same tree builds the same bytes: nothing reads the clock or the network. The renderer (`scripts/lib/docs/markdown.js`) has no dependencies. It renders CommonMark plus GFM tables, task lists, strikethrough and alerts (`> [!NOTE]`, and `> [!GAP]`, shown as Known gap). It does not render raw HTML: every `<` shows as text, so write `<you>.vyre.run` as it is. Indented code blocks are not supported; use fences.
+The same tree builds the same bytes: nothing reads the clock or the network. The renderer (`scripts/lib/docs/markdown.js`) has no dependencies. It renders CommonMark plus GFM tables, task lists, strikethrough and alerts (`> [!NOTE]`, and `> [!GAP]`, shown as Known gap), and the [page syntax](#page-syntax) above. It does not render raw HTML: every `<` shows as text, so write `<you>.vyre.run` as it is. Indented code blocks are not supported; use fences.
 
 The site deploys to the Cloudflare Pages project `vyre-docs`:
 

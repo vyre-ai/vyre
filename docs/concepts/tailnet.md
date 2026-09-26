@@ -41,9 +41,12 @@ vyred terminates TLS itself on the tailnet interface and runs `tailscale whois` 
 
 Anything else gets `403 not_owner`. A served request reaches tools as the caller `tailnet:<login>`.
 
-No identity header is read. `Tailscale-User-*`, `X-Forwarded-*` and `x-vyre-caller` from the network change nothing, because any process on the box can connect to a local port and write any header. The WireGuard source address is the one thing a local, unprivileged process cannot fake. This is also why Vyre does not use `tailscale serve`.
+No identity header is read. `Tailscale-User-*`, `X-Forwarded-*` and `x-vyre-caller` from the network change nothing.
 
-The browser is not trusted blindly either: every POST must be `application/json`, a browser's `Origin` must be the box's own address, and `Host` must be the box's name or tailnet address (otherwise `421`).
+> [!WHY] Why not trust the headers `tailscale serve` adds?
+> Any process on the box can connect to a local port and write any header it likes, including one that names you. The WireGuard source address of a connection is the one thing a local, unprivileged process cannot fake. So vyred terminates TLS itself and asks `tailscale whois` about that address, and Vyre does not use `tailscale serve`.
+
+The browser is not trusted blindly either. `Host` must be the box's name or tailnet address (otherwise `421 misdirected`). Any request other than GET or HEAD must be `application/json`, and if it carries an `Origin`, that must be the box's own address (otherwise `403 denied`). This stops another site open in your browser from sending a form to your box.
 
 ## The owner
 
@@ -71,12 +74,13 @@ These live under `network` in `~/.vyre/config.json`. See [config](../reference/c
 | `port` | the tailnet listener's port, default 443 |
 | `acme` | `production` or `staging` (development) |
 | `box` | on a Mac: the box's address |
+| `onboardPort` | on a box: the loopback port of the onboarding page, default 7300 |
 
 ## What it will not do
 
 - No passwords, no login screen, no sessions on the tailnet address.
 - A connection from the box's own tailnet address is refused: it is a local process, not one of your devices. On a headless box nobody browses locally; on a Mac box, use the Capsule and the CLI.
-- Kernel Tailscale is required on the box. In userspace networking mode there is no interface to bind, and `vyre up` says so.
+- Kernel Tailscale is required on the box. In userspace networking mode there is no interface to bind: the onboarding page marks the Tailscale step blocked and says why.
 - Root on the box, and anyone who can reach its Docker socket, are out of scope.
 
 ## Next

@@ -8,7 +8,7 @@ status: stable
 
 # The box and the Mac
 
-Vyre runs on two kinds of machine. The **box** is a server you own (or a Mac you choose to use as one): Claude Code sessions, agents, watchers and the Deck live there. The **Mac** is the computer you sit at: it runs the Capsule and your own terminal sessions, and reaches the box over your private [tailnet](tailnet.md). Each machine runs exactly one Vyre process, `vyred`, with a different set of [modules](modules.md) switched on.
+Vyre runs on two kinds of machine. The **box** is a server you own (or a Mac you choose to use as one): Claude Code sessions, agents, watchers and the Deck live there. The **Mac** is the computer you sit at: it runs the Capsule and your own terminal sessions, and reaches the box over your private [tailnet](tailnet.md). Each machine runs one `vyred`, the Vyre daemon, with a different set of [modules](modules.md) switched on.
 
 ## One process per machine
 
@@ -41,9 +41,12 @@ A Linux box runs Vyre in Docker Compose, from `/srv/vyre`. The stack is `box/com
 - `vyre`: vyred and Claude Code, as uid 1000, inside the `tailscale` container's network namespace (`network_mode: service:tailscale`). vyred binds the tailnet addresses on port 443 itself.
 - `docker-api`: a filtered Docker API for the agents' computers, under the `computers` profile.
 
-The only published port is the onboarding page, on the host's `127.0.0.1:7300`. The host needs Docker and nothing else. A small `vyre` wrapper in `/usr/local/bin` runs commands inside the container.
+The only published port is the onboarding page, on the host's `127.0.0.1:7300`. The host needs Docker and nothing else. A small `vyre` wrapper in `/usr/local/bin` runs commands inside the container, so `vyre status` on the host works as it does on a Mac.
 
-The no-Docker alternative is a systemd unit (`sudo vyre up --system`); see [without Docker](../get-started/without-docker.md).
+> [!WHY] Why does vyred share the tailscale container's network?
+> vyred identifies every caller by the WireGuard source address of the connection (`tailscale whois`), never by a header. To see that address it must terminate the connection itself on the real `tailscale0` interface, which lives in the `tailscale` container. Sharing that container's network namespace gives vyred the interface, so there is no `tailscale serve` in front of it and no proxy that could pass on a forged identity. The `vyre` service has no network of its own, so nothing on the host or in another container reaches vyred's tailnet listener except over WireGuard.
+
+The alternative without Docker is a systemd unit, installed with `sudo vyre up --system --user <account>` (the account vyred runs as, never root). See [without Docker](../get-started/without-docker.md).
 
 ## What runs on the Mac
 
@@ -72,6 +75,9 @@ The `link` module turns the two machines into one system:
 - **Pairing.** On the Mac, `vyre link pair <address>` asks the box and shows a code. You approve it in the Deck on the box, which asks for your passkey (see [presence](presence.md)). The Mac keeps a link key in `~/.vyre/link.json` (mode 0600) and pins the box's Tailscale node, so a different node at that address is refused.
 - **Box tools from the Mac.** A module on the Mac calls `ctx.remote(tool, input)`; a surface calls `link.call`. Both reach `POST /v1/tools/<tool>` on the box.
 - **Box events on the Mac.** The Mac proxies the box's event stream at `/v1/link/events`, so the Capsule sees box threads as they happen.
+
+> [!GAP]
+> No Deck screen approves a pairing yet, so pairing a Mac with a box can stall at the approval step. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 ```
 vyre link                 # on the Mac: paired or not, and whether the box answers

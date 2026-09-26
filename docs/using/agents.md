@@ -33,12 +33,17 @@ before anything goes.
 
 From the terminal:
 
-```
+```sh
 vyre agents ask juno "What changed in the Harlow Legal project this week?"
 ```
 
-or run `vyre` with no arguments, pick an agent under **Agents**, and talk a line at a time. An
-empty line goes back to the list.
+```output
+  juno › Two threads ran in Harlow Legal this week: ...
+  thread 3f9c2a71 · $0.0123
+```
+
+`vyre agents ask` waits up to ten minutes for the reply. Or run `vyre` with no arguments, pick an
+agent under **Agents**, and talk a line at a time. An empty line goes back to the list.
 
 In the Deck, open **Ask** (`/ask`) to talk to the assistant or any agent, or **Agents**
 (`/agents`) for every agent and what it is doing. `/agents/<name>` is one agent's board: its
@@ -47,12 +52,12 @@ threads, its watchers and its computer.
 If an agent stops on a permission question, the reply says so and names the question. Answer it
 from any surface; in the terminal:
 
-```
+```sh
 vyre threads answer <ask> allow
 ```
 
-The tool is `agents.ask {agent, text}`. It sends to the agent's current thread and starts one if
-there is none.
+The tool is `agents.ask {agent, text}`. It sends to the agent's current thread, resumes it if it
+stopped, and starts one if there is none.
 
 ## Run an agent on your own quota
 
@@ -72,26 +77,44 @@ With neither item set, an agent uses the Claude Code login already on this machi
 
 To store your own and point an agent at them:
 
-```
-vyre vault put claude-setup-token --kind secret      # prompts for the value, no echo
-vyre vault put anthropic-api-key --kind api-key
-vyre vault grant claude-setup-token agents
-vyre vault grant anthropic-api-key agents
-vyre agents update juno --vault claude-setup-token --fallback anthropic-api-key --budget 20
-```
+1. Store the token and the key. Each prompts for the value without echo:
 
-The grant lets the `agents` module release the item. If it is missing, the agent refuses to start
-and the error names the item.
+   ```sh
+   vyre vault put claude-setup-token --kind secret
+   vyre vault put anthropic-api-key --kind api-key
+   ```
+
+2. Let the `agents` module release them:
+
+   ```sh
+   vyre vault grant claude-setup-token agents
+   vyre vault grant anthropic-api-key agents
+   ```
+
+3. Point the agent at them, with a budget in dollars for the key:
+
+   ```sh
+   vyre agents update juno --vault claude-setup-token --fallback anthropic-api-key --budget 20
+   ```
+
+> [!SNAG] "juno cannot start: ..."
+> The item named by `--vault` is missing, has no value, or is not granted to `agents`. Check it
+> with `vyre vault list`, then grant it. A missing fallback key does not stop the agent: it starts
+> without one, and vyred's log says so.
 
 ## Make an agent
 
-```
+```sh
 vyre agents create kit --projects harlow-legal,northwind-bakery \
   --vault claude-setup-token --fallback anthropic-api-key --budget 20 \
   --instructions "You keep the books for Harlow Legal and Northwind Bakery."
 ```
 
-Flags: `--projects a,b` (or `*`), `--model`, `--vault`, `--fallback`, `--budget` (dollars),
+```output
+  made kit  agent · harlow-legal, northwind-bakery
+```
+
+A name is lowercase letters, digits and dashes, starting with a letter, 2 to 31 characters. Flags: `--projects a,b` (or `*`), `--model`, `--vault`, `--fallback`, `--budget` (dollars),
 `--instructions`, and `--assistant` to make the one assistant. `vyre agents update <name>`
 takes the same flags and changes only what you name; the change applies from the agent's next
 thread.
@@ -101,7 +124,7 @@ pool**. Claude can call `agents.create` and `agents.update`.
 
 ## See what agents are doing and what they cost
 
-```
+```sh
 vyre agents                 # every agent, the assistant first, with what each is doing
 vyre agents threads kit     # its threads, newest first
 vyre agents usage           # turns, time, tokens, dollars against each budget, rate-limit state

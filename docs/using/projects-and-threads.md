@@ -47,19 +47,30 @@ in `transcripts` (default `~/.claude/projects` and `~/.claude/projects-archive`)
 
 ## Make a project
 
-From the terminal, `vyre new` walks you through it: a name, a home folder, and the sessions to
-pick from the catalogue of every session on this machine.
+1. Run `vyre new` with the project's name:
 
-```
-vyre new "Harlow Legal"
+   ```sh
+   vyre new "Harlow Legal"
+   ```
+
+2. Give its home folder, or press Enter for a new folder in `~/Vyre/projects`.
+3. Pick sessions from the catalogue of every session on this machine, or pick none.
+
+```output
+  made Harlow Legal at ~/Vyre/projects/harlow-legal
 ```
 
-Every step has a flag, so a script or an agent can do the same without prompts:
+Every step has a flag, so a script or an agent can do the same without prompts. `--thread`,
+`--workspace` and `--person` can be given more than once:
 
-```
+```sh
 vyre new "Harlow Legal" --home ~/work/harlow --workspace ~/work/harlow-site \
   --person "Dana Reyes <dana@harlowlegal.com>" --org "Harlow Legal" --no-pick
 ```
+
+> [!SNAG] "... is already a project home"
+> That folder already has a `.vyre/project.json`. Open the project with `vyre open`, or pick
+> another folder.
 
 In the Deck, open **Projects** (`/projects`) and choose **New project**. Claude can call
 `projects.create`.
@@ -69,32 +80,42 @@ In the Deck, open **Projects** (`/projects`) and choose **New project**. Claude 
 The **catalogue** lists every session on this machine with its `/rename` name, first message,
 folder, last activity and the projects it is in. It is searchable by what was said.
 
-```
+```sh
 vyre threads harlow invoice        # search sessions by what was said
 vyre threads --project harlow-legal
 vyre pick harlow-legal 3f2a9c1e    # pick one or more threads into a project
 vyre unpick harlow-legal 3f2a9c1e  # remove a pick
 ```
 
-`vyre unpick` removes only picks. A thread that ran in the project's folders stays in the project
-by folder, and the command says so.
+A thread can be named by the first characters of its id or by its name. `vyre unpick` removes
+only picks. A thread that ran in the project's folders stays in the project by folder, and the
+command says so:
+
+```output
+  1 unpicked from harlow-legal
+  1 still in it: they ran in its folders
+```
 
 In the Deck, a session in no project opens at `/threads/<thread>` with **Add to a project**. The
 tools behind these are `projects.catalog`, `projects.add-threads` and `projects.remove-threads`.
 
 ## See a project and its brief
 
-```
+```sh
 vyre projects                 # every project, newest activity first
 vyre open harlow-legal        # what its threads are told, and its threads
 vyre context harlow-legal     # only the brief
 ```
 
 The brief is short on purpose: what the project is, its people, what its other threads have been
-doing, and headlines from the project's memory. A thread asks for more when it needs it. The
-Harness's SessionStart hook prints the brief into every thread that starts in a project folder;
-`vyre resume` and `vyre start` pass it to Claude Code with `--append-system-prompt`. The tool is
-`projects.context`.
+doing, and headlines from the project's memory, in about 2,400 characters. A thread asks for more
+when it needs it. The tool is `projects.context`.
+
+> [!WHY] How does a thread get the brief?
+> The Harness's SessionStart hook prints it into every thread that starts in a project folder.
+> `vyre resume` and `vyre start` load the Harness with `--plugin-dir`, so the hook adds it; only
+> when the Harness is missing do they pass the brief with `--append-system-prompt` instead. Never
+> both, or Claude would read it twice.
 
 In the Deck, `/projects/<slug>` is the project board: threads and the brief on the left, the open
 thread in the centre, and the files it touched on the right, with tabs for the brief, files and
@@ -102,14 +123,23 @@ memory.
 
 ## Resume a thread or start a new one
 
-```
+```sh
 vyre resume 3f2a9c1e          # opens it in Claude Code, in the folder it ran in, with the brief
 vyre start                    # a new thread in this folder's project
-vyre start --project harlow-legal "Draft the engagement letter"
+vyre start --project harlow-legal "engagement letter"   # named "engagement letter"
 ```
 
 `vyre resume` runs `claude --resume` in the folder the thread ran in, because Claude Code finds a
-transcript by that folder. Your terminal belongs to Claude Code until it exits.
+transcript by that folder. `vyre start` opens Claude Code in the project's home; the words after
+it are the thread's name, not a first message. Your terminal belongs to Claude Code until it
+exits.
+
+> [!SNAG] "this folder is in no project"
+> `vyre start` with no `--project` uses the current folder's project. Run it inside a project's
+> folder, or add `--project <slug>`.
+
+> [!SNAG] "Claude Code is not installed: no claude on PATH"
+> `vyre resume` and `vyre start` run `claude`. Install Claude Code on this machine first.
 
 ## The `vyre` home
 
@@ -124,7 +154,7 @@ list when piped, and works the same over SSH. See [agents](agents.md) for the ag
 vyred can also run a thread itself, headless, so it outlives every window. Any surface can watch
 it, and one surface at a time holds its keyboard.
 
-```
+```sh
 vyre threads start --project harlow-legal "Summarise this week's invoices"
 vyre threads send 3f2a9c1e "Now draft a reply to Dana"
 vyre threads watch 3f2a9c1e
@@ -135,7 +165,8 @@ vyre threads stop 3f2a9c1e
 A permission question from a headless thread goes to wherever you are: the terminal, the Deck,
 the Capsule or your phone. Only a person answers it (`threads.answer`); a model never approves a
 permission. The tools are `threads.start`, `threads.send`, `threads.lease`, `threads.release`,
-`threads.asks`, `threads.answer` and `threads.stop`.
+`threads.asks`, `threads.answer` and `threads.stop`. For every flag, see
+[Drive a running session](cli.md#drive-a-running-session).
 
 ## Which surface does what
 
@@ -146,7 +177,9 @@ permission. The tools are `threads.start`, `threads.send`, `threads.lease`, `thr
 | Pick threads | `vyre pick`, `vyre unpick` | Add to a project | | | `projects.add-threads` |
 | Search sessions | `vyre threads <words>` | the search box in the header | `@` a thread | | `projects.catalog`, `recall.search` |
 | Read the brief | `vyre context` | Brief tab | | | `projects.context` |
-| Resume or start | `vyre resume`, `vyre start` | open a thread | `@` a thread, then Enter | `/chat/<project>/<thread>` | `threads.start` |
+| Resume or start in Claude Code | `vyre resume`, `vyre start` | | | | |
+| Type into a thread | `vyre threads send` | open a thread | `@` a thread | `/chat/<project>/<thread>` | `threads.send` |
+| Start a headless thread | `vyre threads start` | New thread | `@` a project | | `threads.start` |
 
 Inside a Claude Code session, `/vyre project` shows the current folder's brief.
 

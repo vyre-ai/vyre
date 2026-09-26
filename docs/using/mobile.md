@@ -24,36 +24,45 @@ The phone reaches your box over Tailscale, like every other device (see
    the browser menu, then Install app or Add to Home screen.
 4. Open Vyre from the home screen icon.
 
+> [!SNAG] The phone QR code opens 127.0.0.1:7300 and nothing loads
+> If you skipped the address step in onboarding, the QR code encodes the address you had open,
+> the SSH tunnel's `127.0.0.1:7300`, which means nothing on the phone. Finish the address step
+> (see [Tailscale](tailscale.md)), then type your box's address on the phone.
+
 ## What you can do from the phone
 
-The tab bar at the bottom has Now, Projects, Ask and Agents.
+The tab bar at the bottom has Now, Projects, Chat, Ask and Agents.
 
 - **Now**: what needs you and what is running.
 - **Approve or edit a held draft**: tap it in Now. It opens full screen; tap a field to edit it,
   then Send or Discard.
 - **Answer a permission question**: tap it in Now, then Allow or Deny.
+- **Chat**: your Claude Code sessions, including the ones you run in a terminal, mirrored a
+  moment after each turn.
 - **Ask**: talk to your assistant or any agent.
 - **Glass**: watch an agent's computer and take over. A tap is a click, a long press a right
   click, two fingers scroll, pinch zooms your view, and a keyboard button opens the soft
   keyboard. See [Glass](glass.md).
 
-Chat, Memory, Vault and Settings open from their paths (`/chat`, `/memory`, `/vault`,
-`/settings`), laid out for a narrow screen.
+Memory, Vault and Settings open from their paths (`/memory`, `/vault`, `/settings`), laid out for
+a narrow screen.
 
 ## Turn on notifications
 
-In the installed app, open Settings, Notifications, and press Turn on notifications. Allow the
-browser's prompt. Then:
-
-- choose which moments notify you: permission questions, held drafts, threads you're watching,
-  lessons;
-- set quiet hours (for example 22:00 to 07:00, in your phone's time zone);
-- press Send a test.
+1. In the installed app, open **Settings**, then **Notifications**.
+2. Press **Turn on notifications**, and allow the browser's prompt.
+3. Choose which moments notify you: **Permission questions**, **Held drafts**, **Threads you're
+   watching**, **Lessons**.
+4. Set **Quiet hours** if you want them (22:00 to 07:00 by default once turned on, in your phone's
+   time zone).
+5. Press **Send a test**.
 
 Other devices you turned on are listed with when a notification last reached them, and Remove.
 
-On an iPhone, notifications work only in the installed app (iOS 16.4 or later), not in a Safari
-tab. Settings says so and shows the steps instead of the button.
+> [!SNAG] On an iPhone there is no Turn on notifications button
+> iOS delivers notifications only to an installed app (iOS 16.4 or later), not to a Safari tab.
+> Settings shows the steps instead of the button: add Vyre to your Home Screen, open it from
+> there, and come back to Settings.
 
 Tapping a notification opens the Deck at the right place: the held item, the thread, or the
 lessons in Settings.

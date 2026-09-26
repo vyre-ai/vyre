@@ -72,20 +72,26 @@ If you know the address:
 vyre up --connect https://vyre.tail1234.ts.net
 ```
 
-Then the Mac pairs with the box. The Mac shows a code, and you approve it from the box's side:
+Then the Mac pairs with the box:
 
-```
-vyre link                 # on the Mac: paired or not, and whether the box answers
-vyre link approve <code>  # on the box: approve the Mac showing that code
-```
+1. The Mac asks the box to pair and shows a code. `vyre link pair <address>` does the same by
+   hand.
+2. You approve that code from the box's side. Approving needs your passkey, and a terminal on the
+   box cannot give one, so `vyre link approve <code>` on the box answers "approve it in the
+   Deck", which names the Mac asking and asks for your passkey.
+3. Check it on the Mac with `vyre link`:
 
-Approving needs a person with a passkey, so on a box that has one, approve in the Deck; the
-command points you there. The first connection pins the box's Tailscale node, so a different
-machine answering at the same name later is refused. `vyre link unpair` forgets the box on the
-Mac, or a Mac on the box.
+   ```output
+     ● linked to https://vyre.tail1234.ts.net
+   ```
 
 > [!GAP]
-> There is no Deck screen that approves a pairing yet. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> There is no Deck screen that approves a pairing yet, so step 2 cannot be finished today and the Mac stays at "waiting for approval". See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+
+The first connection pins the box's Tailscale node, so a different machine answering at the same
+name later is refused. `vyre link unpair` forgets the box on the Mac, or a Mac on the box
+(`vyre link unpair <id>`, with the id `vyre link` lists there). After five wrong codes every
+pairing request is cancelled; start again from the Mac.
 
 Vyre never runs `tailscale up`, `set` or `logout` on your Mac. Your Mac's Tailscale stays yours.
 
@@ -104,7 +110,7 @@ what lets vyred name an owner.
 
 | You see | Why | Fix |
 | --- | --- | --- |
-| The address does not load | the device is not on the tailnet, or the box is down | open Tailscale on the device and check it is connected; `vyre box` on the Mac says whether the box answers |
+| The address does not load | the device is not on the tailnet, or the box is down | open Tailscale on the device and check it is connected; `vyre box` on the Mac says whether the box answers (if you added the box with `vyre box add`) |
 | `403 not_owner` | the device is signed in to Tailscale as another login, or is tagged | sign the device in as the owner |
 | a certificate error | HTTPS certificates are off for the tailnet | turn them on, then `vyre name ts.net` |
 | `vyre up` on the Mac says the box did not answer | the Mac is off the tailnet, or the box is offline | start Tailscale on the Mac, then `vyre up` again |

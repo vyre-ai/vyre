@@ -62,7 +62,7 @@ ctx.events.emit("digest.searched", { hits: 3 }, { thread });
 
 - `type` must be listed under `watches.emits` and read `noun.past-verb`: `digest.searched`, `invoice.filed`, `watcher.fired`. Name what happened, not a command.
 - `payload` is any JSON object. It must never carry a secret: the log refuses anything that looks like one (known API key prefixes, private keys, `"password": "..."` and similar) by throwing, because every module and the Deck can read the log. Leave out what the user typed, too.
-- The third argument, optional, files the event under a `project` or a `thread` (a Claude Code session id).
+- The third argument, optional, files the event under a `project` or a `thread` (a Claude Code session id), which surfaces use to filter the log.
 
 Each stored event looks like this:
 
@@ -77,12 +77,12 @@ Each stored event looks like this:
 
 ```js
 const off = ctx.events.on("file.touched", e => { /* e.payload.path */ });
-// "file.touched" one type · "file.*" every type starting "file." · "*" everything
+// "file.touched" one type · "file.*" every type whose first word is "file" · "*" everything
 ```
 
 - A listener hears events from every module, as they are emitted, inside vyred.
 - A listener that throws is ignored; it never stops the emitter or other listeners.
-- Deliveries can repeat. Write listeners so that the same event twice changes nothing.
+- A listener that also catches up with `since` (below) can see the same event twice. Write listeners so that the same event twice changes nothing.
 - `on` returns a function that stops listening. Call it in your `stop()`.
 
 `on` hears only what happens after it is called. To catch up on what happened while vyred was down, read the log from a cursor you keep:
@@ -165,10 +165,27 @@ Run it:
 
 ```
 vyre down && vyre up
-vyre modules                                      # digest ... running
+vyre modules
+```
+
+Among the other modules:
+
+```output
+  digest               0.1.0    running
+```
+
+Then call it:
+
+```
 vyre call digest.recall '{"q":"Northwind Bakery invoice"}'
 vyre call digest.files '{"session":"<session id>"}'
-vyre call digest.files '{}'                        # bad_input: input.session is required
+vyre call digest.files '{}'
+```
+
+The last call has no `session`, so it is refused before `run` sees it:
+
+```output
+  bad_input: input.session is required
 ```
 
 In a Claude Code session with the Vyre plugin, Claude now sees `digest_files` and `digest_recall` among the `vyre` MCP tools.

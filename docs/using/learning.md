@@ -34,6 +34,9 @@ never keeps whole content.
 vyre learn signals     # what Learning heard, as counts by kind; never the text
 ```
 
+`signals` also lists corrections you said again, memory corrections by the rule that made the
+fact, and jobs waiting for a model.
+
 ## Lessons: accept, edit, retire
 
 A signal becomes a **proposed** lesson: a rule, where it holds (everywhere, one project or one
@@ -42,6 +45,10 @@ or phrase, a tool or command that is forbidden, files that must not be touched, 
 changing Y". What no pattern fits can be distilled by a small model, off the hot path, on your own
 quota: one job at a time, never while one of your threads is working. The result is still only a
 proposal.
+
+> [!SNAG] `vyre learn signals` shows jobs "waiting for a model"
+> Distilling needs the Switchboard, which runs Claude Code for Vyre. Without it the jobs wait.
+> Write the lesson yourself instead: `vyre learn add "<what Claude should always or never do>"`.
 
 Nothing becomes a lesson unseen. When Claude proposes one in a thread, answer with a plain yes to
 keep it ("yes, keep lesson 7") or no to drop it. You can also answer from any surface:
@@ -52,6 +59,18 @@ vyre learn show 7
 vyre learn accept 7
 vyre learn retire 7            # retire an active lesson, or decline a proposed one
 vyre learn add "never use the section-sign character in docs"
+```
+
+Accepting and retiring ask you to prove presence from the terminal you typed them in: Touch ID
+on the Mac, or a code vyred writes to that terminal on another Linux machine. A terminal on the
+box cannot prove it; accept there from the Deck, with your passkey. A proposed lesson looks like this in
+`vyre learn`:
+
+```output
+  proposed
+  ? 7 never push to main [ask]
+      checks tool · applied 0 · caught 0 · broken 0
+      vyre learn accept 7 · vyre learn retire 7
 ```
 
 - **Deck**: **Memory**, then the **Lessons** tab (`/memory?tab=lessons`), in four groups:
@@ -95,7 +114,8 @@ lesson you allowed every time proposes a demotion for you to decide.
 vyre learn stats                       # working, not working, or still measuring
 vyre learn level 7 block               # raising is free
 vyre learn level 7 remind              # lowering needs presence
-vyre learn scope 7 project harlow-legal
+vyre learn scope 7 all                 # widening to everywhere is free
+vyre learn scope 7 project harlow-legal   # narrowing needs presence
 vyre learn relax 7 max ask             # cap it; also: pin, paths, when, scope
 ```
 
@@ -123,8 +143,8 @@ Installing and retiring a skill need presence.
 | List lessons | `vyre learn` | Memory, Lessons tab | | `/vyre lessons`, `learn.lessons` |
 | Add a lesson | `vyre learn add` | | | `/vyre remember`, `learn.add` |
 | Accept or decline | `vyre learn accept`, `retire` | Accept, Retire | the lesson row | a plain yes or no in the thread |
-| Tighten | `vyre learn level`, `scope` | Edit | | `learn.edit` |
-| Loosen | `vyre learn level`, `relax` | Relax | | never |
+| Tighten | `vyre learn level` (up), `scope <id> all` | Edit | | `learn.edit` |
+| Loosen | `vyre learn level` (down), `scope` (narrower), `relax` | Relax | | never |
 | Skills | `vyre learn skills` | Proposed skills | | `learn.skills` (read only) |
 
 ## What it will not do

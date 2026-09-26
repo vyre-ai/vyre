@@ -54,9 +54,14 @@ What it gates on:
 | RSS, mean and max | under 150 MB |
 | Fastest recurring timer (a `setInterval`, or a `setTimeout` seen 3 or more times) | 60 s or slower |
 
-Mean and max CPU are printed but do not gate: one noisy `ps` sample on a busy machine should not
-fail the run, and the sustained check still catches a loop that costs 1 to 2% the whole minute.
-The output also prints the host's load average, so you can tell contention from a regression.
+Mean and max CPU are printed but do not gate. The output also prints the host's load average,
+so you can tell contention from a regression.
+
+> [!WHY] Why p95 and a sustained window, not the maximum?
+> One noisy `ps` sample on a busy machine should not fail the run. An earlier version gated on
+> the maximum and failed on a single sample out of 40 while the mean was under 0.25%. The
+> sustained check still catches a loop that costs 1 to 2% the whole minute, which p95 alone
+> could miss.
 
 The check turns off `recall.vectors` in its temp config. The embedding model downloads weights
 on first use and then works in the background for minutes on a large backlog, which does not fit
@@ -79,8 +84,7 @@ On a host with load average 23.6 to 26.2 (other test suites running):
 | Fastest recurring timer | none under 60 s | 60 s or slower |
 
 An earlier run gated on raw max CPU and failed on a single sample out of 40 (0.7 to 2.7%, and
-8.58% at load average 22 to 26) while the mean was 0.08 to 0.23%. That was host contention,
-which is why the gate moved to p95 plus the sustained check.
+8.58% at load average 22 to 26) while the mean was 0.08 to 0.23%. That was host contention.
 
 ### What the audit changed
 
@@ -95,6 +99,10 @@ which is why the gate moved to p95 plus the sustained check.
 
 The switchboard, gate, vault, learn and system modules and the Harness are driven by events
 and hooks. The event stream's 15-second heartbeat runs only while a client is connected.
+Since the audit, Recall also indexes one session about 1.5 s after a turn ends
+(`turn.completed` or `thread.started`), so Chat can follow a terminal session. That work is
+driven by events and does nothing while no session is running. The numbers above predate
+it.
 
 ### Capsule
 
@@ -109,7 +117,8 @@ and hooks. The event stream's 15-second heartbeat runs only while a client is co
 Before the fixes, hidden RSS was 301 to 324 MB (the network service and GPU now run in the main
 process, with no spare renderer), and hidden CPU with vyred down was 0.791% (a health check every
 3 s and a stream reconnect every 1.5 s, now backed off to 60 s and 30 s while hidden). The
-clipboard watcher (`bin/local`, polling the pasteboard every 750 ms) measured 0.016%.
+clipboard watcher (the Swift helper `local/capsule/bin/local`, polling the pasteboard every
+750 ms) measured 0.016%.
 
 Wake timing leaves out the hotkey's own double-tap window (about 450 ms, by design) and the
 first show after launch (about 721 ms). Set `VYRE_CAPSULE_TRACE_WAKE=1` to have the Capsule
