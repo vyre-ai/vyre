@@ -9,15 +9,13 @@ Mobile additions (ADR 0015): the `device` presence method, `surface: "ios"|"andr
 ## 0. Things that block a native phone today (read first)
 
 1. **Where the phone connects.** Only a **box** has a network listener. The tailnet listener lives in the `names` module, and that module runs with `roles: ["box"]` (`core/names/module.json:4`, `core/names/service.js:181-226`). A Mac vyred listens only on its unix socket. So the phone talks to the box over HTTPS on its ts.net/cert name. Every request from the phone arrives with caller **`tailnet:<login>`** (`service.js:225`). The router ignores `x-vyre-caller` when a listener has set the caller (`core/daemon/index.js:149`).
-2. **`callers` allowlists compare the whole string.** `callerKind("tailnet:alex@example.com")` returns `"tailnet:alex@example.com"`, not `"tailnet"` (`core/modules/index.js:109-112`). The comment at `core/memory/index.js:331` says so too. Any tool with a `callers` list is therefore **refused** to the phone with 403 `denied` "X is not available to tailnet:… callers" (`modules/index.js:294`), and it is left out of `GET /v1/tools` (`:329-333`). That covers:
-   - `gate.get`, `gate.approve`, `gate.reject`, `gate.revise` (`core/gate/index.js:106,113,121,129`)
-   - `threads.answer` (`core/switchboard/index.js:720`)
-   - every `push.*` tool (`core/push/index.js:27,131`)
-   - `vault.reveal`, `vault.copy`, `vault.session.open`, `vault.session.status`, `vault.fill.native` (`core/vault/tools/surfaces.js:23`), and `vault.totp` (`core/vault/index.js:39,196`)
-   - `agents.delete` (`core/agents/index.js:333`), `link.pair/find/unpair` (`core/link/mac.js:120,144,179`)
-   - `memory.correct/uncorrect/merge/split`. These are refused on purpose (`memory/index.js:241-245`).
+2. **`callers` and the tailnet (fixed on work/mobile, ADR 0015).** `callerKind("tailnet:alex@example.com")` still returns the whole string (memory's guard relies on it), but a `callers` entry `"tailnet"` now matches any `tailnet:<login>` caller, in `Registry.call` and in `GET /v1/tools` (`callerAllowed`, `core/modules/index.js`). A bare `tailnet` label from the socket never matches. These tools list it:
+   - `gate.get`, `gate.approve`, `gate.reject`, `gate.revise` (`core/gate/index.js`)
+   - `threads.answer` (`core/switchboard/index.js`)
+   - every `push.*` tool (`core/push/index.js`, `PEOPLE`)
+   - `vault.reveal`, `vault.copy`, `vault.session.open`, `vault.session.status` (`core/vault/tools/surfaces.js`) and `vault.totp` (`core/vault/index.js`)
 
-   ADR 0002:93 says "Approvals need `tailnet:*`", which contradicts the code. **The server must change** (add a `tailnet` kind to `callerKind`, or add `tailnet:*` to these lists) before a phone can approve, answer, reveal or register for push.
+   Still refused to the phone (403 `denied`, and left out of `GET /v1/tools`): `vault.fill.native`, `agents.delete`, `link.pair/find/unpair`, and `memory.correct/uncorrect/merge/split` (on purpose, `memory/index.js`). The human-only ones above still need a proof: a phone without one gets 403 `presence_required`, not `denied` (`test/mobile-tailnet.test.js`).
 3. **Deck parity gaps you should not copy.** `deck/js/needs.js:86-94` and `deck/chat/gate-item.js:55-63` call `gate.approve`, `gate.reject` and `threads.answer` **without** `{presence:true}`, so they always get `presence_required`. `deck/chat/gate-item.js:49` calls `gate.revise`, which `deck` may not call.
 
 ---
@@ -64,13 +62,14 @@ Limits: request body ≤ 5,000,000 chars. A body that is not JSON gives 500 `int
 > `threads.get` returns events as `{id,at,type,payload}` only, without `source`, `project` or `thread` (`switchboard/index.js:555-556`).
 
 ### 1.5 `x-vyre-presence` header (`core/presence/index.js:108-120`)
-Format: `"<method> k=v k=v"`. Tokens are whitespace-separated. Keys match `[a-z][a-z0-9_]*`, values have no whitespace, keys cannot repeat, and the whole header is ≤32 KB. Methods: `touchid|tty|capsule|passkey|code|session` (`:36`).
+Format: `"<method> k=v k=v"`. Tokens are whitespace-separated. Keys match `[a-z][a-z0-9_]*`, values have no whitespace, keys cannot repeat, and the whole header is ≤32 KB. Methods: `touchid|tty|capsule|device|passkey|code|session` (`METHODS`).
 
 | Method | Header | Checked at |
 |---|---|---|
 | passkey | `passkey id=<challenge> cred=<credId b64url> ad=<authenticatorData> cd=<clientDataJSON> sig=<signature>` (all base64url) | `:362-383` |
 | session | `session id=<session> secret=<secret>` | `:385-396` |
 | capsule (Ed25519) | `capsule key=<keyId> ts=<ms> nonce=<[A-Za-z0-9_-]{8,128}> sig=<b64url>`. Signed message: `"vyre-presence-v1\n"+tool+"\n"+inputHash+"\n"+ts+"\n"+nonce`. Clock skew allowed is ±60 s, and each nonce is single-use | `:344-360` |
+| device (ECDSA P-256, the phone) | `device key=<keyId> ts=<ms> nonce=<[A-Za-z0-9_-]{8,128}> sig=<b64url DER ECDSA>`. The same signed message as capsule, hashed with SHA-256 (ES256). Same ±60 s window, and the nonce set is shared with capsule, so a nonce is spent whichever key used it. Allowed on the box | `verify`, the capsule/device branch |
 | code | `code code=<8 chars>`. Accepted only for `presence.enroll`. On the box the caller must be `tailnet:<network.owner>` | `:398-410` |
 | tty / touchid | not for phones | |
 
@@ -99,11 +98,11 @@ Errors:
 - too many open: 403 `denied`
 
 ### 1.7 `presence_required` (`modules/index.js:304-306`, `presence/index.js:302-306`)
-Body: `{"error":{"code":"presence_required","message":"<why>","methods":["touchid"?,"tty"?,"capsule"?,"passkey"?]}}`, HTTP **403**.
+Body: `{"error":{"code":"presence_required","message":"<why>","methods":["touchid"?,"tty"?,"capsule"?,"device"?,"passkey"?]}}`, HTTP **403**.
 - A call with no proof lists the methods available. The Deck uses this to decide what to offer.
 - A failed proof also emits the event `presence.refused {tool,method,caller}`.
-- On the box, `tty` is never offered (`:250-252`). `methods` only includes `capsule` or `passkey` if a key of that kind is enrolled (`:230-232`).
-- The `callers` check runs **before** the presence check. A tailnet caller refused by `callers` sees `denied`, never `presence_required`.
+- On the box, `tty` is never offered (`:250-252`). `methods` only includes `capsule`, `device` or `passkey` if a key of that kind is enrolled (`methods()`). On a box with only a device key enrolled, a phone sees `["device"]`.
+- The `callers` check runs **before** the presence check. A tailnet caller refused by `callers` sees `denied`, never `presence_required` (only for the tools still without `tailnet`, section 0.2).
 
 ---
 
@@ -311,9 +310,9 @@ Over the tailnet the phone reaches the **box's** files module (roles box+local).
 - **`vault.copy {name|id, field?, session?, version?}`** copies to **the Mac's/box's clipboard** and returns `{copied:true, clearsAt, said, warning?}`. It is not useful on a phone (`:191-219`).
 - **`vault.totp {name|id, session?}`** returns `{code, period, remaining}` (`vault/index.js:196-210`).
 - **Two unrelated "sessions":**
-  1. `vault.session.open {surface:"deck"|"capsule"|"extension", ttl_s?}` returns `{session:<token>, expires, surface}` (`surfaces.js:132-143`, `session.js:100-114`). It is HUMAN_ONLY and callers PEOPLE. Its token goes in the tools' `session` **input**. The registry's floor ignores that token: the `skip` in the vault's own `prove.js` runs only after the floor has already demanded a proof, so the vault session **does not** save a passkey per reveal.
+  1. `vault.session.open {surface:"deck"|"capsule"|"extension", ttl_s?}` (the enum has no `ios`/`android`; the phone uses option 2) returns `{session:<token>, expires, surface}` (`surfaces.js:132-143`, `session.js:100-114`). It is HUMAN_ONLY and callers PEOPLE. Its token goes in the tools' `session` **input**. The registry's floor ignores that token: the `skip` in the vault's own `prove.js` runs only after the floor has already demanded a proof, so the vault session **does not** save a passkey per reveal.
   2. `presence.session.open {}` returns `{session, secret, expires:ms(created+30min), idle:300000}` (`presence/module.js:64-72`, `index.js:420-428`).
-     - It needs a strong proof (passkey or capsule) on the opening call.
+     - It needs a strong proof (Touch ID, capsule, device or passkey) on the opening call. **The phone opens it with a device proof.**
      - It is bound to the tailnet node (`peer.stableId`).
      - Use it as `x-vyre-presence: session id=<session> secret=<secret>`. It works only for `vault.reveal/copy/totp` on non-reprompt items (`index.js:385-396`).
      - It has no callers list, so it works over tailnet.
@@ -325,7 +324,7 @@ Over the tailnet the phone reaches the **box's** files module (roles box+local).
 ## 7. Push (`core/push/`)
 
 - Manifest: tools `push.key, push.subscribe, push.unsubscribe, push.devices, push.settings, push.test`. Needs vault item `push-vapid` (`module.json`).
-- All tools have callers `cli, local, deck, capsule` (`index.js:27,131`), so they are refused to tailnet. See section 0.
+- All tools have callers `cli, local, deck, capsule, tailnet` (`index.js:27,131`), so the phone may call them. Native transports (`apns`, `fcm`) are not in yet; section 0.2.
 
 | Tool | Input | Output |
 |---|---|---|
@@ -360,8 +359,9 @@ Over the tailnet the phone reaches the **box's** files module (roles box+local).
 
 ## 8. Presence enrollment
 
-- **`presence.enroll {kind:"capsule"|"passkey", name?, public_key:<b64url SPKI DER>, alg?, rp_id?, credential_id?}`** (`presence/module.js:27-44`, `index.js:454-477`):
+- **`presence.enroll {kind:"capsule"|"passkey"|"device", name?, public_key:<b64url SPKI DER>, alg?, rp_id?, credential_id?}`** (`presence/module.js:27-44`, `index.js:454-477`):
   - capsule: the key must be Ed25519. The id is the first 22 chars of base64url(sha256(DER)), and `alg=-8`.
+  - device: the key must be EC P-256 (`prime256v1`) and `alg` must be exactly `-7`; anything else is refused. The id is the fingerprint, as for capsule. There is no rp_id (one sent is dropped). The phone sends exactly `{kind:"device", name, public_key, alg:-7}`, nothing more, since a passkey proof is bound to that input.
   - passkey: `credential_id` must match `[A-Za-z0-9_-]{8,1024}`; that value becomes the key id. `rp_id` must match `[a-z0-9.-]+`. `alg` is one of `-7` (EC), `-8` (Ed25519) or `-257` (RSA), and must fit the key type.
   - **rp_id check on the box** (`module.js:34-39`): `rp_id.toLowerCase()` must equal `new URL(config.network.address).hostname`. Otherwise the call throws "a passkey here must be for <host>". Capsule keys have no rp_id check.
   - Returns `{id, kind, name, created}`. Emits `presence.enrolled {id,kind,name}`. Duplicates are refused.
@@ -375,7 +375,12 @@ Over the tailnet the phone reaches the **box's** files module (roles box+local).
 - **Native implications:**
   - A native passkey for the box hostname needs Associated Domains / Digital Asset Links. vyred serves no `/.well-known/apple-app-site-association` or `assetlinks.json`; unknown paths return the Deck's index.html (`daemon/index.js:283-291`).
   - The ready path today is a **`capsule` Ed25519 key**: the private key in Keychain/Keystore behind a biometric gate, enrolled once with the code, and signing `vyre-presence-v1\n…` for each call.
-  - Note: the Secure Enclave has no Ed25519 support.
+  - Note: the Secure Enclave has no Ed25519 support. So the phone uses a **`device` P-256 key** instead (ADR 0015 section 3).
+- **Phone enrollment path: `/onboard/device`** (`deck/onboard/device/`):
+  - The app opens `https://<address>/onboard/device#k=<b64url SPKI>&n=<device name>&r=vyre` in `ASWebAuthenticationSession` / Custom Tabs, with callback scheme `vyre`. `r` must be exactly `vyre` or the page stops and returns nowhere. A missing or malformed `k` also stops it. `n` is cleaned (control and bidi characters), cut to 80 characters, and defaults to "This phone". The page strips the hash at once.
+  - With a passkey on the box: `POST /v1/presence/challenge {tool:"presence.enroll", input:{kind:"device", name, public_key, alg:-7}, method:"passkey"}`, `navigator.credentials.get`, then `presence.enroll` with the passkey header.
+  - With no passkey on the box (the challenge answers 400 `bad_input`), or a browser with no WebAuthn: the page asks for the one-time code from `vyre presence code` and sends `code code=<code>`, as the first-passkey page does.
+  - Success: navigates to `vyre://enrolled?id=<key id>`. Cancel (the Cancel button, or a cancelled passkey sheet): `vyre://enrolled?error=cancelled`. Any other failure stays on the page with the message; closing the sheet is a cancel for the app.
 
 ---
 
@@ -403,3 +408,16 @@ Everything runs over the Mac's unix socket with caller `capsule`. It is not reac
   - reads `gate.held`, `threads.asks`, `learn.lessons {status:"proposed"}`, `gate.get`
   - answers with `gate.approve {id, edited?}`, `gate.reject`, `threads.answer {ask, decision, surface:"capsule"}`, `learn.accept`/`learn.retire {id}`
   - **with no presence header**, so these calls return `presence_required` (`bridge.js:687-696` admits this for lessons).
+
+---
+
+## 10. Test world (`apps/test/world.js`)
+
+`node apps/test/world.js [port]` (default 4800, `0` picks one) prints `mobile world: http://127.0.0.1:<port>/  (home <dir>)` and runs until SIGINT/SIGTERM, then removes its temp home. It is a real vyred with role `box` (`network.owner` `alex@example.com`, `network.address` `https://vyre.example.ts.net`), the Deck world's corpus, two projects and two held Gate items. Every proxied request reaches vyred's router as caller `tailnet:alex@example.com` with peer `{node:"alex-phone", stableId:"nTEST", login:"alex@example.com"}`, and the names listener's checks apply (a non-JSON POST, or one with a foreign `Origin`, is 403). Nothing leaves the machine: both Gate senders point at a fake server on 127.0.0.1, with fake credentials, so an approval really sends, to it. A fake `claude` runs threads.
+
+Test-only endpoints, answered by the proxy itself (POST, JSON):
+- `/__test/code` → `{data:{code, expires}}`, a one-time presence code for enrolling a device key with `code code=<code>`.
+- `/__test/hold` (optional body: a `gate.request` input) → `{data:{id, state:"held", ...}}`.
+- `/__test/ask` → `{data:{thread, ask}}`, a thread whose fake claude is waiting on a Write permission.
+- `/__test/outbox` → `{data:[{at, method, path, body}]}`, what the Gate sent to the fake servers.
+

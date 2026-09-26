@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Mobile: the server side of the phone apps (ADR 0015)
+
+- A new presence method, `device`: a phone's ECDSA P-256 key, held in its Secure Enclave or
+  StrongBox, enrolled with `presence.enroll {kind:"device", name, public_key, alg:-7}` and sent
+  as `x-vyre-presence: device key=<id> ts=<ms> nonce=<n> sig=<DER>` over the Capsule's message.
+  Any other curve or alg is refused. Capsule and device share one check and one nonce set. It is
+  offered only once a device key is enrolled, works on the box, and opens a presence session.
+- A `"tailnet"` entry in a tool's `callers` now lets in any `tailnet:<login>` caller, so the
+  owner's devices reach the Gate, `threads.answer`, push and the vault's reveal, copy, TOTP and
+  session tools. Presence still decides the human-only ones. `callerKind` is unchanged.
+- `/onboard/device`: the page the phone app opens to sign in with the Deck's passkey, or a
+  one-time code when the box has none, returning to `vyre://enrolled?id=<key id>`.
+- `apps/test/world.js`: a box world for the apps' tests, every request as alex's phone on the
+  tailnet, with fake Gate senders on 127.0.0.1 and test endpoints for codes, held items and asks.
+
 #### Presence: a person proves they are there (ADR 0004)
 
 - A model could approve its own held email. The caller is only a header on a socket the user
