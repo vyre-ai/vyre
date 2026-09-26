@@ -105,6 +105,8 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   assert.equal(out.match(/^ {2}Claude Code\s+done$/gm)?.length, 1, "each step is said once");
   assert.ok(rig.ssh().some(l => l.includes(`-O cancel -L ${rig.onboardPort}:127.0.0.1:${rig.onboardPort} -- ${TARGET}`)), "the tunnel is closed at the end");
   assert.ok(!rig.docker().some(l => / link approve /.test(l)), "pairing is never approved over SSH");
+  // After the onboarding link, the only other page box add may open is the first passkey's, at the address.
+  for (const u of rig.opened().slice(1)) assert.match(u, new RegExp(`^https://${TS_NAME.replace(/\./g, "\\.")}:\\d+/onboard/passkey#e=`), u);
 
   const c = rig.macConfig();
   assert.equal(c.box?.ssh, TARGET);
@@ -132,12 +134,14 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
 test("journey 2, door A resumed: box add again skips the install and carries on", async t => {
   const rig = shared;
   if (!rig) { t.skip("journey 1 did not set the machines up"); return; }
-  const before = rig.ssh().length, opened = rig.opened().length;
+  // The onboarding links opened so far; the first-passkey link (/onboard/passkey) is not one.
+  const links = () => rig.opened().filter(u => /\/onboard\?t=/.test(u));
+  const before = rig.ssh().length, opened = links().length;
   const address = rig.macConfig().network?.box || null;
   const run = rig.mac(["box", "add", TARGET], { timeout: 40_000 });
   if (!address) {
     // Finished without an address: the address is finished in the browser, so the link comes back.
-    const url = await until(() => rig.opened()[opened], Boolean, 30_000, "box add to open the browser again");
+    const url = await until(() => links()[opened], Boolean, 30_000, "box add to open the browser again");
     assert.ok(rig.ssh().slice(before).some(l => / -O forward -L /.test(l)), "the tunnel is back");
     if (!rig.cert) { run.child.kill("SIGINT"); await run.done; return; }
     const b = await browser(url);
@@ -153,7 +157,7 @@ test("journey 2, door A resumed: box add again skips the install and carries on"
   assert.doesNotMatch(out, /Go ahead\?|nothing changed/, "a resume asks nothing");
   if (address) {
     // Finished with an address: straight to the end.
-    assert.equal(rig.opened().length, opened, "no second browser open");
+    assert.equal(links().length, opened, "no second onboarding page");
     assert.ok(!calls.some(l => / -O forward /.test(l)), "no second tunnel");
     assert.doesNotMatch(out, /Finish in your browser/);
   }
