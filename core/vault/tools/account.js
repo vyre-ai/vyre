@@ -23,7 +23,7 @@ export function register({ vault, tool }) {
     },
     presence("Set a password for your personal vault", () => "Set a password for your personal vault and make its Secret Key"));
 
-  tool("vault.account.unlock", PEOPLE, "Unlock your personal vault (logins, cards, notes, one-time codes) with its password.",
+  tool("vault.account.unlock", [...PEOPLE, "deck", "capsule"], "Unlock your personal vault (logins, cards, notes, one-time codes) with its password.",
     obj({ password }, ["password"]), (input, { caller }) => vault.unlockAccount(input, caller),
     presence("Unlock your personal vault", () => "Unlock your personal vault"));
 

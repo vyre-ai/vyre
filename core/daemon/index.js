@@ -187,7 +187,8 @@ function serveDeck(res, pathname) {
   const dir = path.join(REPO, "deck");
   let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
   if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
-  try { if (fs.statSync(file).isDirectory()) file = path.join(file, "index.html"); } catch { file = path.join(dir, "index.html"); }
+  // A folder is never listed or indexed: /vault is the Vault route even though deck/vault/ holds its modules.
+  try { if (fs.statSync(file).isDirectory()) file = path.join(dir, "index.html"); } catch { file = path.join(dir, "index.html"); }
   let buf;
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } }); }
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",

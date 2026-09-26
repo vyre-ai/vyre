@@ -224,6 +224,20 @@ test("surfaces: the canary comes back from vault.reveal only, never in events, l
   }
 });
 
+test("surfaces: the Deck and the Capsule may not reveal unless the person turned it on", async t => {
+  const { d, as } = await boot(t);
+  t.after(() => d.stop());
+  const pw = canary("pw");
+  await as("cli")("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw }, url: "https://mail.example.com" });
+  for (const who of ["deck", "capsule"]) {
+    const r = await as(who)("vault.reveal", { name: "site-login" });
+    assert.match(r.error.message, /revealing values is off on this surface/);
+    assert.ok(!JSON.stringify(r).includes(pw));
+  }
+  const cleared = await as("mcp")("vault.clipboard.clear");
+  assert.deepEqual(cleared.data, { cleared: true }, "clearing takes nothing from anyone, so even Claude may");
+});
+
 test("surfaces: under tests without fakes, copy refuses rather than touch the real clipboard", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));

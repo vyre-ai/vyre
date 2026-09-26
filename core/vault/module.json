@@ -62,7 +62,12 @@
       "vault.session.status",
       "vault.reveal",
       "vault.copy",
-      "vault.fill.native"
+      "vault.fill.native",
+      "vault.caps",
+      "vault.health",
+      "vault.breach.check",
+      "vault.update",
+      "vault.clipboard.clear"
     ]
   },
   "watches": {

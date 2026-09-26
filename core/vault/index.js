@@ -25,8 +25,12 @@ export { presence };
 import * as shareTools from "./tools/share.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
+import * as deckTools from "./tools/deck.js";
 
 const PEOPLE = ["cli", "local"];
+// The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
+// floor (ADR 0004) is what proves a person is there, whichever surface asks.
+const SURFACES = [...PEOPLE, "deck", "capsule"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -95,7 +99,7 @@ export default {
     // Modules may put too (onboarding stores the Claude credential this way), but only new items
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
-    tool("vault.put", ["cli", "local", "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
+    tool("vault.put", [...SURFACES, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
       obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }) }, ["name"]),
       async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
         if (value !== undefined) input.fields = { ...(input.fields || {}), value };
@@ -119,11 +123,11 @@ export default {
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
       obj({ filter: str, kind: str, host: str }), input => cli.list(vault.list(input), input));
 
-    tool("vault.delete", PEOPLE, "Delete an item and its grants.",
+    tool("vault.delete", SURFACES, "Delete an item and its grants.",
       obj({ name: str }, ["name"]), (input, { caller }) => vault.remove(input, caller),
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
 
-    tool("vault.grant", ["cli", "local", "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
+    tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
       obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.grant(input, caller),
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
       presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
@@ -132,10 +136,10 @@ export default {
     tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers.",
       obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
 
-    tool("vault.pending", ["cli", "local", "mcp"], "Grants and passes an agent asked for, waiting for a person.",
+    tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
       obj({}), () => vault.pending());
 
-    tool("vault.approve", PEOPLE, "Approve a pending grant or pass.",
+    tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
       obj({ id: str }, ["id"]), (input, { caller }) => vault.approve(input, caller),
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
@@ -160,7 +164,7 @@ export default {
         `Put ${(Array.isArray(items) ? items : []).map(i => i && i.env ? `${quoted(i.name)} as ${i.env}` : quoted(i && i.name)).join(", ")} into a program's environment`));
 
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
-    tool("vault.totp", ["cli", "local", "module"], "The current one-time code for a login with a TOTP seed.",
+    tool("vault.totp", [...SURFACES, "module"], "The current one-time code for a login with a TOTP seed.",
       obj({ name: str, session: str }, ["name"]),
       async ({ name }, { caller }) => { const r = await vault.code({ name }, caller); return { code: r.code, period: r.period ?? 30, remaining: r.remaining }; },
       presence("Show a one-time code", ({ name }) => `Show the one-time code for ${quoted(name)}`,
@@ -183,7 +187,7 @@ export default {
     tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));
 
-    tool("vault.match", PEOPLE, "Logins for a page, for autofill: names only.",
+    tool("vault.match", SURFACES, "Logins for a page, for autofill: names only.",
       obj({ url: str }, ["url"]), input => vault.match(input));
 
     tool("vault.unlock", PEOPLE, "Unlock a passphrase vault (the first unlock sets the passphrase).",
@@ -195,7 +199,7 @@ export default {
     tool("vault.identity", null, "This Vyre's public card, to give to someone who will share items with you. It holds no secret.",
       obj({}), () => vault.card());
 
-    tool("vault.pass.create", ["cli", "local", "mcp"], "Share items with another person's Vyre. Relayed by default: the value never leaves this box. From Claude it waits for approval.",
+    tool("vault.pass.create", [...SURFACES, "mcp"], "Share items with another person's Vyre. Relayed by default: the value never leaves this box. From Claude it waits for approval.",
       obj({ holder: str, card: str, items: strs, mode: { type: "string", enum: ["relayed", "sealed"] }, hosts: strs, methods: strs, paths: strs, expires: str, note: str }, ["holder", "items"]),
       (input, { caller }) => vault.createPass(input, caller),
       presence("Share vault items with someone", ({ holder, items, mode, expires }) => {
@@ -209,7 +213,7 @@ export default {
     tool("vault.pass.revoke", null, "End a pass. A relayed pass stops at once; a sealed one lists what to rotate.",
       obj({ id: str }, ["id"]), (input, { caller }) => vault.revokePass(input, caller));
 
-    tool("vault.pass.accept", ["cli", "local", "mcp"], "Take a signed pass ticket someone sent you. From Claude it waits for a person to approve it.",
+    tool("vault.pass.accept", [...SURFACES, "mcp"], "Take a signed pass ticket someone sent you. From Claude it waits for a person to approve it.",
       obj({ ticket: str }, ["ticket"]), (input, { caller }) => vault.accept(input, caller),
       presence("Accept a pass someone sent", ({ ticket }) => {
         const t = decodeTicket(ticket);
@@ -222,13 +226,15 @@ export default {
 
     account.register({ ctx, vault, tool });
 
-    tool("vault.offboard", ["cli", "local", "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
+    tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
       presence("Offboard someone", ({ person }) => `Revoke every pass ${String(person).slice(0, 64)} holds and forget their card`));
 
     const kits = shareTools.register({ ctx, vault, tool });
 
     const surfaces = registerSurfaces({ ctx, vault });
+
+    deckTools.register({ ctx, vault });
 
     return {
       ssh: cli.ssh,

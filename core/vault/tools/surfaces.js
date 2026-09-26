@@ -20,7 +20,7 @@ import { Helper } from "../mac/helper.js";
 import { fillNative, appLabel } from "../native.js";
 import { callerKind } from "../../modules/index.js";
 
-const PEOPLE = ["cli", "local"];
+const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
@@ -160,6 +160,14 @@ export function register({ ctx, vault }) {
     presence: { summary: async ({ name, field }) => `Show the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"`, skip },
     run: async ({ name, field, session }, { caller }) => {
       const surface = surfaceFor(session, caller);
+      // Floor rule 8 keeps values off screens a person did not ask for. The Deck and the Capsule
+      // may reveal only when the person turned it on (vault.deck.reveal), since a page served by
+      // a box is not the person's own device (ADR 0006, decision 3).
+      const k = callerKind(caller);
+      if ((k === "deck" || k === "capsule") && !(config.vault && config.vault.deck && config.vault.deck.reveal === true)) {
+        vault.audit("reveal", name, caller, false, "reveal is off for this surface");
+        throw new Error("revealing values is off on this surface · copy or fill instead, or set vault.deck.reveal");
+      }
       let want = field || "value";
       try {
         const p = pick(name, field);
@@ -189,7 +197,9 @@ export function register({ ctx, vault }) {
         want = p.want;
         const no = clipboard.refusal();
         if (no) throw new Error(no);
-        const out = await clipboard.copy(await valueOf(p.r, want));
+        // "totp" copies the current one-time code, not the seed.
+        const text = want === "totp" ? String((await vault.code({ name }, caller)).code) : await valueOf(p.r, want);
+        const out = await clipboard.copy(text);
         watch.ensure().catch(() => {});
         vault.audit("copy", name, caller, true, `field ${want} on ${surface} via ${out.via}`);
         ctx.events.emit("vault.copied", { name, field: want, surface, clearsAt: out.clearsAt });
@@ -198,6 +208,18 @@ export function register({ ctx, vault }) {
         vault.audit("copy", name, caller, false, /** @type {any} */ (e).code === "locked" ? "locked" : `field ${want}`);
         throw e;
       }
+    },
+  });
+
+  // Clearing takes nothing away from anyone but a value this vault put there, so any caller may.
+  ctx.tool("vault.clipboard.clear", {
+    description: "Clear the clipboard now, if it still holds what the vault copied.",
+    input: obj({}),
+    callers: null,
+    run: async (_input, { caller }) => {
+      await clipboard.clear("asked");
+      vault.audit("clipboard-clear", null, caller, true, null);
+      return { cleared: true };
     },
   });
 
