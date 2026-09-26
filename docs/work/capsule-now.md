@@ -55,13 +55,14 @@ them, one per fix.
    `lib/said.js` `rankSaid`, `yourAnswer`.
 
 ## Done
-- 1ffb28a fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
-- 4e559d3 fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
-- 975436c feat: queued messages for sessions busy in a terminal (switchboard, harness,
+- f5bd7b9 fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
+- cf4531e fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
+- 7524416 feat: queued messages for sessions busy in a terminal (switchboard, harness,
   Capsule, CLI).
-- 7fab054 feat(capsule): open over a full-screen app without a Space switch, behind
+- 41aae79 feat(capsule): open over a full-screen app without a Space switch, behind
   `VYRE_CAPSULE_STAY=1`. `present()` in lib/present.js is shared by main.js and the check script;
   unit tests in present.test.js. Default behaviour is unchanged.
+- 9c9514a fix(capsule): the memory box ranks for the question (lib/said.js), rule 7.
 
 ## Doing
 - Full-screen fix: waiting for the lead's word that the user has stepped away, then run
