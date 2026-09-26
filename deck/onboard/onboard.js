@@ -376,7 +376,17 @@ const SCREENS = {
         put(note, h("p", { class: "notice" }, "From here the loopback link stops working. The rest of the setup continues at your address."));
         s.foot({ label: `Switch to ${r.url.replace(/^https?:\/\//, "")}`, run: async () => {
           await mark_("name", "done");
-          location.href = r.url.replace(/\/$/, "") + "/onboard#history";
+          // onboard.passkey hands back a passkey link only when it is called with the loopback
+          // session still good (box: caller onboard/cli/local, never a tailnet caller) — which
+          // this is, one moment longer, and the https address after this redirect never will be:
+          // the session lives in this origin's sessionStorage, and does not follow a page to a
+          // new origin. It changes nothing else (unlike onboard.finish, which marks onboarding
+          // finished and would end the loopback door before history/devices ever run), so the
+          // passkey detour is asked for here, before leaving; onboard.finish still runs once, at
+          // the real ending.
+          const p = await attempt("onboard.passkey");
+          const next = p.data?.passkeyUrl || r.url.replace(/\/$/, "") + "/onboard#history";
+          location.href = next;
         } });
         return true;
       }
@@ -556,12 +566,17 @@ function showEnding(d) {
     { id: "history", label: "Your history", done: stepState("history") !== "todo" },
   ];
   put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo")));
+  // The passkey detour already happened earlier, at the address step (onboard.finish only hands
+  // back passkeyUrl to the loopback session, which is gone by now); this is a defensive fallback,
+  // not the usual path.
+  const open = d.passkeyUrl || (d.url.replace(/\/$/, "") + "/now");
   put(root, h("div", { class: "ob-end" },
     h("span", { class: "brand", "aria-label": "vyre" }, mark(24), wordmark(26)),
     h("h1", { class: "h1" }, "Vyre is ready."),
     greet,
     h("div", { class: "ob-panel" }, ticks),
-    h("a", { class: "btn btn-primary ob-end-open", href: d.url.replace(/\/$/, "") + "/now" }, "Open Vyre")));
+    h("a", { class: "btn btn-primary ob-end-open", href: open }, d.passkeyUrl ? "Add a passkey" : "Open Vyre"),
+    d.passkeyUrl ? h("p", { class: "small faint", style: { marginTop: "10px" } }, h("a", { class: "link", href: d.url.replace(/\/$/, "") + "/now" }, "Skip for now")) : null));
   if (!d.thread) { put(greet, `${state.assistant || "Your assistant"} is ready when you are.`); return; }
   let text = "";
   const draw = () => put(greet, text || h("span", { class: "busy-inline faint" }, "Saying hello…"));

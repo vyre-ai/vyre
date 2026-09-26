@@ -143,22 +143,92 @@ guessed at.
 - Nothing; waiting on box's onboard core to merge, and answers from box below.
 
 ## Next
-- Re-check onboarding once box's onboard core merges (branch not yet in this worktree).
-- `deck/js/presence.js` (ADR 0004, on work/security): vault and intelligence both asked for it
-  independently; told both to prototype it in their own view first, to centralize once there are
-  two real callers to generalize from rather than guessing the challenge/retry shape now.
-- View-scoped keyboard shortcuts (vault asked): same answer, prototype first, lift out later.
+- `deck/views/projects.js:313` calls `memory.facts {project_cwds}`; intelligence says unscoped or
+  folder-only reads are now refused and it must move to `memory.facts {room}` — waiting on
+  work/memory to reach main (not yet, checked 2026-09-27) before switching, so as not to guess the
+  new shape.
+- View-scoped keyboard shortcuts (vault asked): prototype in deck/vault/ first, lift out later.
 - Settings section 7 (Lessons) should become a link to `/memory?tab=lessons` once intelligence's
   tab exists; a one-line swap, waiting on them to say it's live.
 - `/threads/:id?seq=N` scroll-to-and-highlight (intelligence asked, for provenance links).
 - Proposed lessons in Now's needs, with a count (intelligence asked) — a new need "kind" next to
   draft/ask, bigger scope, not started.
 - Settings: confirm the per-step `vyre` commands it shows once box's core is in.
-- Web Push client side: subscribe UI in Settings, iOS "install first" hint, and the service
-  worker's `push`/`notificationclick` handlers — waiting on switchboard's `core/push` shapes
-  (VAPID, subscribe, delivery on ask.raised/gate.held/thread.watched, no content in the payload).
 - A usage badge on the Agents *list* rows (turns or spend, at a glance) — the detail page's Usage
   section (below) covers "per agent"; the list is a natural follow-up, not started.
+- Re-check Web Push (below) once `core/push` merges into this worktree — built and verified
+  against switchboard's shapes and a mocked response, not yet against the real module.
+
+## Changed invariant: the service worker now caches two reads (2026-09-27)
+
+deck/sw.js's rule was "API calls (/v1/) are never cached, so nothing a tool returned is ever kept
+on the device." gate-chat asked for offline read of recent sessions for Chat; the lead approved a
+narrow exception instead of dropping the rule: **only `threads.get` and `projects.list`** may be
+read back when the network is down, everything else — every write (approve/revise/reject/send/
+lease/answer among them), every `vault.*` or `gate.*` read, anything a model wrote as a secret —
+is still never cached, exactly as before. `threads.get` is only ever called for a thread someone
+actually opened (`deck/views/projects.js`, `deck/chat/session.js`), never a background poll, so
+this is already scoped to "sessions the user opened" without extra bookkeeping. The cache
+(`vyre-deck-offline-1`, separate from the shell's own `vyre-deck-1`) is capped at 20 distinct
+calls and a week old, oldest evicted first, and can be wiped with
+`postMessage({type: "vyre:clear-offline"})` — there is no sign-out in Vyre yet, so nothing calls
+that today, but it's ready for whatever that turns out to be. Verified: a live `projects.list`
+call while online lands in the offline cache under the tool's exact input, with the tool's real
+data shape; did not simulate a true offline network condition (the test harness has no clean way
+to force that against a live local vyred), so the read-back path is code-reviewed, not exercised
+end to end — worth a real device test before this ships.
+
+## Done (Web Push, 2026-09-27)
+- Settings → Notifications: turn this device on/off (push.key + pushManager.subscribe +
+  push.subscribe), other devices with delivery health and Remove (push.unsubscribe), quiet hours
+  and per-kind toggles (push.settings, browser timezone sent along), a test send (push.test).
+  This device's id lives in localStorage (push.devices never returns an endpoint to match
+  against), with a fallback to the live subscription's endpoint if that's ever lost.
+- An iOS install-first hint replaces the button when Web Push cannot work yet (an ordinary Safari
+  tab, not an installed Home Screen app).
+- deck/sw.js's `push` handler shows a notification from exactly {kind,title,path,tag,at} — never
+  a held item's words, by core/push's own design — with a short fixed body per kind written here;
+  `notificationclick` focuses an open tab and posts it the path for a client-side navigation, or
+  opens a new one.
+- settings.js now honours `?section=` (a query, since a notification's path is a plain fetchable
+  link) alongside the existing `#section`.
+- `js/icons.js` gained a `bell` glyph.
+
+## Done (Security, 2026-09-27)
+- `js/api.js` gained presence proof (ADR 0004): `call(name, input, {presence: true})` (and
+  `attempt`'s third arg) runs the WebAuthn dance — POST /v1/presence/challenge, a passkey prompt,
+  the tool call carrying the signed proof as `x-vyre-presence` — before the real call, for a
+  human-only action (a Gate approval, a Glass take-over). Lifted from `deck/glass/presence.js`
+  (glass's ask; it was written to be moved) since Gate approvals will want the same proof; keeps
+  "only api.js calls fetch" intact. `canProve()` is exported for a view to check WebAuthn support
+  first. `callWithCode(name, input, code)` is the enrollment-only sibling: a one-time code from
+  `vyre presence code` stands in for a passkey that doesn't exist yet.
+- Settings → Security: add a passkey. The first one needs that one-time code; `navigator.
+  credentials.create` runs client-side (a random challenge — the code is what actually
+  authenticates the enrollment call, not WebAuthn's own challenge matching, since there is no
+  passkey yet to sign it against), then `presence.enroll {kind:"passkey", name, public_key,
+  alg, rp_id, credential_id}` via `callWithCode`.
+- Verified against a real vyred: the section renders and a submit attempt fails cleanly on
+  WebAuthn's own error (this environment has no real hostname or authenticator) rather than
+  crashing. Not verified end to end (a real ts.net/vyre.run origin and an actual authenticator
+  are needed for that) — worth a real device test before relying on it.
+- The first-passkey page (box, ADR 0004). Went through three shapes before landing: (1) I first
+  wired `passkeyUrl` into the ending screen, per box's first message; (2) box pointed out the
+  loopback onboarding session (caller onboard/cli/local, never a tailnet caller) lives in
+  sessionStorage, which does not survive the redirect from loopback to the https address, so
+  `passkeyUrl` could never come back at the ending — I moved the check to an early
+  `onboard.finish` call in the "name" step, right before that redirect; (3) box then said not to:
+  calling finish early marks onboarding finished and closes the loopback door before history/
+  devices run. The landing: a dedicated `onboard.passkey {}` (box) returns `{address,
+  passkeyUrl}` and changes nothing else; the "name" step calls that instead, goes to `passkeyUrl`
+  instead of `#history` when set, and `onboard.finish` still runs exactly once, at the real
+  ending, as it always did. `deck/onboard/passkey/` is a standalone page (not the wizard, not the
+  Deck's router) at `https://<addr>/onboard/passkey#e=<code>` — the code rides in the hash,
+  stripped at once — and always continues to `/onboard#history` after (enrolled or skipped),
+  since it's a detour mid-wizard, not the ending. Same enrollment shape as Settings →
+  Security, reusing `callWithCode`. Same verification caveat: the missing-code and enroll screens
+  render correctly, the WebAuthn ceremony itself needs
+  a real device to exercise end to end.
 
 ## Done (continued)
 - `agents.history` turned out to already be a real tool by the time I checked (switchboard added

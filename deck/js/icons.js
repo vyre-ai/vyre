@@ -37,6 +37,7 @@ const P = {
   phone: '<rect x="4.5" y="1.5" width="7" height="13" rx="1.4"/><path d="M7 12.2h2"/>',
   laptop: '<rect x="3" y="3" width="10" height="7" rx="1"/><path d="M1.5 12.5h13"/>',
   copy: '<rect x="5" y="5" width="8.5" height="8.5" rx="1.2"/><path d="M3 10.5V3.8C3 3.3 3.3 3 3.8 3h6.7"/>',
+  bell: '<path d="M8 2.3a3.8 3.8 0 00-3.8 3.8v2.1L2.8 10.5h10.4L11.8 8.2V6.1A3.8 3.8 0 008 2.3z"/><path d="M6.5 12.5a1.5 1.5 0 003 0"/>',
 };
 
 const parser = new DOMParser();
