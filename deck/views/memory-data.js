@@ -202,3 +202,39 @@ export function presenceText(tool, id, passkey) {
     : tool === "learn.skill_install" ? "Install" : "Confirm";
   return `${verb} this in a terminal: ${cmd}, or from the Capsule`;
 }
+
+/** The terminal alternative to a presence tool, for when this Deck has no passkey. */
+export function presenceCommand(tool, id) {
+  return /vyre [^,]+/.exec(presenceText(tool, id, false))?.[0] || `vyre call ${tool}`;
+}
+
+const clip = (s, n = 90) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+
+/**
+ * What the presence sheet shows before the person proves it: the verb, the lesson in its own
+ * words, its level and where it applies. "Accept lesson “Never push to main” · block · everywhere"
+ * @param {string} verb Accept, Decline, Retire or Relax
+ * @param {{ rule: string, level: string, scope: any }} l
+ * @param {Map<string, string>} [names] project slug to name
+ * @param {string} [to] Relax's new level
+ */
+export function lessonSummary(verb, l, names = new Map(), to) {
+  const level = to && to !== l.level ? `${l.level} to ${to}` : l.level;
+  const where = scopeWords(l.scope, names);
+  return `${verb} lesson “${clip(l.rule)}” · ${level} · ${where.charAt(0).toLowerCase()}${where.slice(1)}`;
+}
+
+/** The sheet's words for a skill: "Install skill release-notes · 4 steps". */
+export function skillSummary(verb, k) {
+  const steps = Array.isArray(k.steps) && k.steps.length ? ` · ${k.steps.length} step${k.steps.length === 1 ? "" : "s"}` : "";
+  return `${verb} skill ${clip(k.name || "skill " + k.id, 60)}${steps}`;
+}
+
+/**
+ * The sheet's words for a correction: "Correct “Dana Reyes works at Harlow Legal” to Northwind · everywhere".
+ * @param {string} fact @param {string} action replace, ended or wrong @param {string|null} object @param {string} [project]
+ */
+export function correctSummary(fact, action, object, project) {
+  const what = action === "replace" ? `Correct “${clip(fact)}” to ${clip(object, 40)}` : action === "ended" ? `Mark “${clip(fact)}” no longer true` : `Mark “${clip(fact)}” wrong`;
+  return `${what} · ${project ? "only in " + project : "everywhere"}`;
+}

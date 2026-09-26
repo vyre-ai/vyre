@@ -7,11 +7,14 @@
 
 import { h, put } from "../js/dom.js";
 import { call } from "../js/api.js";
-import { splitFact, pct } from "./memory-data.js";
+import { splitFact, pct, correctSummary } from "./memory-data.js";
+import { withPresence } from "./memory-presence.js";
 
 /** What the user sees when a tool is not there yet, or refused. */
 export function errWords(err, what = "Correcting facts") {
   if (err && err.code === "no_such_tool") return `${what} needs a newer memory module than this machine runs. Nothing was changed.`;
+  if (err && err.state === "cancelled") return "Cancelled. Nothing changed.";
+  if (err && err.state === "no_passkey") return "This needs you in person, and this Deck has no passkey. Enroll one in Settings. Nothing was changed.";
   if (err && err.missing) return `The ${err.module} module is not running on this machine, so nothing was changed.`;
   return String(err && err.message || err || "That did not work.");
 }
@@ -38,7 +41,9 @@ export function correctForm(f, o) {
     put(o.status, action === "replace" ? "Saving your correction." : "Saving.");
     try {
       // The project's slug scopes the correction to that project; without it, everywhere.
-      const r = await call("memory.correct", { fact: f.id, action, ...(object ? { object } : {}), ...(o.project ? { project: o.project } : {}) });
+      // A presence prompt appears only if vyred asks for one; otherwise this is a plain call.
+      const r = await withPresence("memory.correct", { fact: f.id, action, ...(object ? { object } : {}), ...(o.project ? { project: o.project } : {}) },
+        { summary: correctSummary(f.text, action, object, o.project) });
       put(o.status);
       o.onDone({ action, object, id: r && (r.id ?? r.correction?.id ?? r.correction) });
     } catch (err) {

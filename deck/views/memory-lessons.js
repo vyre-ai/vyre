@@ -4,9 +4,9 @@
 // away), and Proposed skills when the learning module offers them.
 //
 // Making Vyre stricter is free; making it looser needs a person (decision 11). Accept, Retire,
-// Relax and a skill's Install are presence tools: they are called like any other, and when vyred
-// answers `presence_required` the row says how to confirm (the passkey when the Deck has one,
-// else the terminal or the Capsule) instead of failing quietly. Edit tightens or rewords only; an
+// Relax and a skill's Install and Dismiss go through withPresence (memory-presence.js): when vyred
+// answers `presence_required`, a sheet shows what is about to change and asks for the passkey.
+// With no passkey, the row says the terminal command instead of failing quietly. Edit tightens or rewords only; an
 // edit that would weaken a lesson comes back refused, and the refusal is shown as it is.
 //
 // Follows lesson.* events and repaints only the row they name. Tools: learn.lessons, learn.stats,
@@ -14,11 +14,10 @@
 // learn.skill_retire.
 
 import { h, put, link, empty } from "../js/dom.js";
-import { attempt, call } from "../js/api.js";
+import { attempt } from "../js/api.js";
 import { when, plural } from "../js/fmt.js";
-import { groupLessons, scopeWords, countsLine, checkWords, verdictOf, lowerLevels, presenceText, SOURCE, turnHref } from "./memory-data.js";
-
-const phone = () => window.matchMedia("(max-width: 760px)").matches;
+import { groupLessons, scopeWords, countsLine, checkWords, verdictOf, lowerLevels, presenceText, presenceCommand, lessonSummary, skillSummary, SOURCE, turnHref } from "./memory-data.js";
+import { withPresence } from "./memory-presence.js";
 
 /** This tab's stylesheet, added once, before the first paint. */
 let styled = null;
@@ -36,6 +35,15 @@ function style() {
 function cmdWords(text) {
   const m = /^(.*?: )(vyre [^,]+)(.*)$/.exec(text);
   return m ? [m[1], h("span", { class: "code" }, m[2]), m[3]] : text;
+}
+
+/** What a row says after a presence flow ended without the change, or after any other refusal. */
+function presenceWords(e, tool, id) {
+  if (e.state === "cancelled") return "Cancelled. Nothing changed.";
+  if (e.state === "no_passkey" || e.code === "presence_required") return cmdWords(presenceText(tool, id, false));
+  if (e.state) return String(e.message);
+  if (e.code === "no_such_tool") return `This needs a newer learning module (${tool} is not there yet).`;
+  return e.missing ? `The ${e.module} module is not running on this machine.` : String(e.message);
 }
 
 const listOf = d => (Array.isArray(d) ? d : Array.isArray(d?.lessons) ? d.lessons : Array.isArray(d?.skills) ? d.skills : []);
@@ -138,9 +146,9 @@ export default async function lessons(root, ctx, o) {
       msg);
     const actions = () => {
       if (l.status === "proposed") return [
-        h("button", { type: "button", class: "btn btn-sm", onclick: () => act("learn.accept", { id: l.id }, "Accepted. It applies from the next turn.") }, "Accept"),
+        h("button", { type: "button", class: "btn btn-sm", onclick: () => act("learn.accept", { id: l.id }, "Accepted. It applies from the next turn.", "Accept") }, "Accept"),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: edit }, "Edit"),
-        h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => act("learn.retire", { id: l.id }, "Declined.") }, "Decline")];
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => act("learn.retire", { id: l.id }, "Declined.", "Decline") }, "Decline")];
       if (l.status === "retired") return [h("span", { class: "small faint" }, l.updated ? `Retired ${when(l.updated)}` : "Retired")];
       const lower = lowerLevels(l.level);
       return [
@@ -149,47 +157,28 @@ export default async function lessons(root, ctx, o) {
         h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => confirmRetire() }, "Retire")];
     };
 
-    /** Call a tool; on presence_required, show how to confirm and retry after the passkey. */
-    const act = async (tool, input, done) => {
+    /** Call a presence tool: the sheet asks for the passkey; a cancel leaves the row as it was. */
+    const act = async (tool, input, done, verb) => {
       for (const b of el.querySelectorAll(".ml-act button")) /** @type {HTMLButtonElement} */ (b).disabled = true;
       put(msg);
       try {
-        const r = await call(tool, input);
+        const r = await withPresence(tool, input, { summary: lessonSummary(verb, l, o.names(), input.level), command: presenceCommand(tool, l.id) });
+        if (!alive()) return;
         if (r && r.id !== undefined && r.status) Object.assign(l, r);
         put(status, done);
         await refresh(l.id);
       } catch (err) {
+        if (!alive()) return;
         const e = /** @type {any} */ (err);
         show();
-        if (e.code === "presence_required") presence(tool, input, done);
-        else put(msg, e.code === "no_such_tool" ? `This needs a newer learning module (${tool} is not there yet).` : e.missing ? `The ${e.module} module is not running on this machine.` : String(e.message));
+        put(msg, presenceWords(e, tool, l.id));
       }
-    };
-    const presence = (tool, input, done) => {
-      const pk = /** @type {any} */ (window).vyrePresence;
-      const text = presenceText(tool, l.id, !!pk);
-      const confirm = pk ? h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
-        try {
-          await (typeof pk === "function" ? pk({ tool, input }) : pk.confirm({ tool, input }));
-          closeSheet();
-          await act(tool, input, done);
-        } catch (e) { put(msg, String(/** @type {any} */ (e).message || e)); }
-      } }, text) : null;
-      const body = h("div", { class: "ml-presence", role: "group", "aria-label": "Needs you in person" },
-        h("span", { class: "dot signal", "aria-hidden": "true" }),
-        h("div", null,
-          h("div", { class: "ml-presence-h" }, "This needs you in person."),
-          pk ? h("p", { class: "small muted" }, "Loosening or accepting a lesson is confirmed by a person, not by a click alone.")
-            : h("p", { class: "small muted ml-cmd" }, cmdWords(text))),
-        h("div", { class: "ml-presence-act" }, confirm, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => { closeSheet(); put(msg); } }, pk ? "Cancel" : "Done")));
-      if (phone()) sheet(body, l.rule); else put(msg, body);
-      /** @type {HTMLElement|null} */ ((phone() ? document.querySelector(".ml-sheet") : msg)?.querySelector("button"))?.focus();
     };
     const confirmRetire = () => {
       put(el,
         h("div", { class: "ml-main" }, h("div", { class: "ml-rule" }, l.rule), h("div", { class: "small muted" }, "Retire this lesson? Vyre stops applying it, and it keeps its counts.")),
         h("div", { class: "ml-act" },
-          h("button", { type: "button", class: "btn btn-sm", onclick: () => act("learn.retire", { id: l.id }, "Retired.") }, "Retire"),
+          h("button", { type: "button", class: "btn btn-sm", onclick: () => act("learn.retire", { id: l.id }, "Retired.", "Retire") }, "Retire"),
           h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: show }, "Cancel")),
         msg);
       /** @type {HTMLElement|null} */ (el.querySelector(".ml-act button"))?.focus();
@@ -204,7 +193,7 @@ export default async function lessons(root, ctx, o) {
         h("div", { class: "ml-main" }, h("div", { class: "ml-rule" }, l.rule),
           h("div", { class: "ml-relax" }, h("span", { class: "small muted" }, `Now ${l.level}. Lower it to`), seg)),
         h("div", { class: "ml-act" },
-          h("button", { type: "button", class: "btn btn-sm", onclick: () => act("learn.relax", { id: l.id, level }, `Relaxed to ${level}.`) }, "Relax"),
+          h("button", { type: "button", class: "btn btn-sm", onclick: () => act("learn.relax", { id: l.id, level }, `Relaxed to ${level}.`, "Relax") }, "Relax"),
           h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: show }, "Cancel")),
         msg);
       /** @type {HTMLElement|null} */ (seg.querySelector("button"))?.focus();
@@ -261,16 +250,14 @@ export default async function lessons(root, ctx, o) {
       h("div", { class: "ml-rows", role: "list" }, skills.map(k => {
         const msg = h("p", { class: "small muted ml-row-status", role: "status" });
         const el = h("div", { class: "ml-row", role: "listitem", "data-skill": String(k.id) });
-        const run = async (tool, done) => {
-          try { await call(tool, { id: k.id }); put(status, done); await refresh(); }
-          catch (err) {
-            const e = /** @type {any} */ (err);
-            if (e.code === "presence_required") {
-              const pk = /** @type {any} */ (window).vyrePresence;
-              put(msg, h("div", { class: "ml-presence" }, h("span", { class: "dot signal", "aria-hidden": "true" }),
-                h("div", null, h("div", { class: "ml-presence-h" }, "Installing a skill needs you in person."), h("p", { class: "small muted ml-cmd" }, cmdWords(presenceText(tool, k.id, !!pk))))));
-            } else put(msg, e.missing ? `The ${e.module} module is not running on this machine.` : String(e.message));
-          }
+        const run = async (tool, done, verb) => {
+          put(msg);
+          try {
+            await withPresence(tool, { id: k.id }, { summary: skillSummary(verb, k), command: presenceCommand(tool, k.id) });
+            if (!alive()) return;
+            put(status, done);
+            await refresh();
+          } catch (err) { if (alive()) put(msg, presenceWords(/** @type {any} */ (err), tool, k.id)); }
         };
         const steps = Array.isArray(k.steps) ? k.steps : [];
         put(el,
@@ -279,25 +266,12 @@ export default async function lessons(root, ctx, o) {
             k.description ? h("div", { class: "small muted" }, k.description) : null,
             h("div", { class: "ml-counts" }, h("span", { class: "code" }, [steps.length ? plural(steps.length, "step") : null, k.sessions ? `seen clean in ${plural(k.sessions, "session")}` : null].filter(Boolean).join(" · ")))),
           h("div", { class: "ml-act" },
-            h("button", { type: "button", class: "btn btn-sm", onclick: () => run("learn.skill_install", "Installed.") }, "Install"),
-            h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => run("learn.skill_retire", "Dismissed.") }, "Dismiss")),
+            h("button", { type: "button", class: "btn btn-sm", onclick: () => run("learn.skill_install", "Installed.", "Install") }, "Install"),
+            h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => run("learn.skill_retire", "Dismissed.", "Dismiss") }, "Dismiss")),
           msg);
         return el;
       })));
   }
-
-  // ---- the phone's sheet ---------------------------------------------------------------------
-  let sheetEl = null;
-  function sheet(content, title) {
-    closeSheet();
-    sheetEl = h("div", { class: "ml-sheet-back", onclick: (/** @type {MouseEvent} */ e) => { if (e.target === sheetEl) closeSheet(); } },
-      h("div", { class: "ml-sheet", role: "dialog", "aria-modal": "true", "aria-label": "Needs you in person",
-        onkeydown: (/** @type {KeyboardEvent} */ e) => { if (e.key === "Escape") closeSheet(); } },
-        h("div", { class: "ml-sheet-grip", "aria-hidden": "true" }),
-        h("div", { class: "small muted ml-sheet-rule" }, title), content));
-    document.body.append(sheetEl);
-  }
-  function closeSheet() { sheetEl?.remove(); sheetEl = null; }
 
   // ---- events: repaint only the row they name ------------------------------------------------
   function replace(l) {
@@ -337,7 +311,7 @@ export default async function lessons(root, ctx, o) {
   const onVisible = async () => { if (!document.hidden && st.dirty && !stopped) { st.dirty = false; if (await read()) drawAll(); } };
   document.addEventListener("visibilitychange", onVisible);
 
-  const stop = () => { stopped = true; closeSheet(); document.removeEventListener("visibilitychange", onVisible); };
+  const stop = () => { stopped = true; document.removeEventListener("visibilitychange", onVisible); };
   ctx.cleanup(stop);
   if (await read()) drawAll();
   return { stop };

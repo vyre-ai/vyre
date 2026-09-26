@@ -44,27 +44,9 @@ details.ml-retired[open] > summary h2::before { content: "▾ "; }
 .ml-in { font-size: 15px; line-height: 22px; color: var(--text); background: transparent; resize: none; }
 .ml-edit-act { display: flex; gap: 4px; padding-top: 10px; }
 
-.ml-presence { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--rule-strong); border-radius: var(--r-2);
-  background: var(--panel); color: var(--text); }
-.ml-presence .dot { margin-top: 6px; }
-.ml-presence > div:nth-child(2) { flex-grow: 1; min-width: 0; }
-.ml-presence-h { font-size: 14px; line-height: 20px; }
-.ml-presence p { margin: 2px 0 0; }
-.ml-cmd { overflow-wrap: anywhere; }
-.ml-presence-act { display: flex; gap: 4px; flex-shrink: 0; }
-
-.ml-sheet-back { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.45); display: flex; align-items: flex-end; }
-.ml-sheet { width: 100%; padding: 8px 16px 28px; border-top: 1px solid var(--rule-strong); border-radius: 12px 12px 0 0; background: var(--panel); }
-.ml-sheet-grip { width: 36px; height: 4px; margin: 0 auto 14px; border-radius: 2px; background: var(--rule-strong); }
-.ml-sheet-rule { margin-bottom: 12px; }
-.ml-sheet .ml-presence { display: grid; grid-template-columns: auto minmax(0, 1fr); border: none; padding: 0; background: none; }
-.ml-sheet .ml-presence-act { grid-column: 1 / -1; padding: 8px 0 0 12px; }
-
 @media (max-width: 760px) {
   .ml-row { grid-template-columns: minmax(0, 1fr); }
   .ml-row[data-status="proposed"] { padding-left: 12px; }
   .ml-act { margin-left: -10px; flex-wrap: wrap; }
   .ml-row[data-status="proposed"] .ml-act { margin-left: 0; }
-  .ml-presence { flex-wrap: wrap; }
-  .ml-sheet .ml-presence { flex-wrap: nowrap; }
 }
