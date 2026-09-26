@@ -20,6 +20,7 @@ import { translate, cut } from "./translate.js";
 import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
+import { register as registerClaim } from "./claim.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -435,6 +436,7 @@ export default {
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" } } },
       run: async i => sb.launch(i),
     });
+    registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     return { async stop() { await sb.stopAll(); } };
   },
