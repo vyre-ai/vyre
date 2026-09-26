@@ -116,6 +116,8 @@ async function up(args) {
   const d = link.data;
   if (!d.url) {
     out(d.address ? `  your address: ${signal(d.address)}` : "  set up is done; there is no address yet (vyre name)");
+    // No passkey yet: on a box it is the only way to prove it is you, so offer a fresh link to make one.
+    if (d.passkeyUrl) out(`\n  Make your passkey ${dim("(from a device on your tailnet; the link works once, for 10 minutes)")}:\n    ${signal(d.passkeyUrl)}`);
     return 0;
   }
   out("");

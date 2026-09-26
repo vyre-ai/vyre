@@ -321,7 +321,9 @@ export default {
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).
-        if (net().ownerSeen || (ob().finished && address)) return { url: null, address, port: null, expires: null, user: os.userInfo().username };
+        if (net().ownerSeen || (ob().finished && address)) {
+          return { url: null, address, passkeyUrl: address ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+        }
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
     });

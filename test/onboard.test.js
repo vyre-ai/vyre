@@ -324,4 +324,8 @@ test("onboard: finishing with an address hands over a one-time link to make the 
   const r = await call("onboard.finish", {}, { root });
   assert.ok(r.data, JSON.stringify(r.error));
   assert.equal(r.data.passkeyUrl, "https://alex.vyre.run/onboard/passkey#e=AB12CD34");
+  // The code expired unused: `vyre up` on the box offers a fresh one, for as long as there is no passkey.
+  const again = (await call("onboard.link", {}, { root })).data;
+  assert.equal(again.url, null);
+  assert.equal(again.passkeyUrl, "https://alex.vyre.run/onboard/passkey#e=AB12CD34");
 });
