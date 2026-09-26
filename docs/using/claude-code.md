@@ -31,10 +31,6 @@ claude plugin marketplace add vyre-ai/vyre && claude plugin install vyre@vyre
 New sessions load it. The plugin runs the code of the Vyre installed on your machine, so it
 always matches the vyred it talks to.
 
-> [!SNAG] `/plugin marketplace add` cannot find vyre-ai/vyre
-> Give it the path of a local checkout of the Vyre repository instead, for example
-> `/plugin marketplace add /Users/alex/src/vyre`.
-
 ## What you get
 
 **Hooks**, each a step of the session:
@@ -93,6 +89,9 @@ doing:
 vyre · 2 need you · box ok · juno idle
 ```
 
+The line is empty while vyred is not running, and the box part appears only once this Mac is
+paired with a box.
+
 1. In your own terminal, run:
 
    ```sh
@@ -100,15 +99,16 @@ vyre · 2 need you · box ok · juno idle
    ```
 
 2. It asks before it edits Claude Code's `settings.json` (`~/.claude/settings.json`, or the one
-   under `CLAUDE_CONFIG_DIR`). Answer `y`. It keeps a copy of the old file as
+   under `CLAUDE_CONFIG_DIR`). Answer `y`. If the file already exists, it keeps a copy of it as
    `settings.json.vyre-backup`.
 3. Start a new Claude Code session. The line is under it.
 
 If you already have a status line, `install` changes nothing and says so. Run
 `vyre statusline install --chain` to keep yours and add Vyre's line under it.
 
-`vyre statusline uninstall` takes Vyre's line out and puts yours back. `vyre up` on a Mac offers
-the status line once, and remembers a no.
+`vyre statusline uninstall` takes Vyre's line out and puts yours back. `vyre up` on a Mac, run in a
+terminal, offers the status line and remembers a no. It never asks when its output is piped or
+with `--json`.
 
 > [!WHY] Why can't the plugin set the status line itself?
 > Claude Code does not let a plugin set the status line: only your own `settings.json` can. Vyre
@@ -125,6 +125,12 @@ replaces the installed plugin, so the hooks never run twice.
 
 ```
 /plugin uninstall vyre@vyre
+```
+
+To drop the marketplace too:
+
+```
+/plugin marketplace remove vyre
 ```
 
 Take the status line out separately with `vyre statusline uninstall`.

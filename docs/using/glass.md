@@ -135,14 +135,20 @@ then appear in the panel. Only you or your assistant can change limits, never th
 
 ## If a computer does not start
 
-When the computer's software on the box is broken, Glass says so instead of showing a black
-screen, and the Computer panel shows the computer as stopped:
+If Glass keeps showing "The connection dropped. Trying again in N s." (it retries, backing off to
+30 seconds) and the Computer panel says Stopped, the computer's software failed to start. To see
+why, run this on the box:
+
+```sh
+vyre call computers.checkout '{"agent":"kit"}'
+```
 
 ```output
 kit's computer stopped as soon as it started (exit code 1); its image (vyre/computer:0.1) may be broken: see docker logs vyre-computer-kit on the box
 ```
 
-Run the `docker logs` command it names on the box to see why.
+The same message is in vyred's log on the box. Run the `docker logs` command it names for the
+details.
 
 ## On a phone
 
