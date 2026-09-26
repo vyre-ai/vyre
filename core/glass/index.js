@@ -198,9 +198,10 @@ export default {
       finally { clearTimeout(timer); }
     };
 
-    tool("glass.close", "Close a Glass session.", obj({ session: str }, ["session"]), async i => {
+    tool("glass.close", "Close a Glass session.", obj({ session: str }, ["session"]), async (i, { caller } = {}) => {
       const row = /** @type {any} */ (db.prepare("SELECT * FROM glass_sessions WHERE id = ? AND closed IS NULL").get(i.session));
-      if (!row) return { closed: false };
+      // A guest closes only the sessions it opened, never the owner's.
+      if (!row || (String(caller).startsWith("tailnet-guest:") && row.caller !== String(caller))) return { closed: false };
       const at = now();
       db.prepare("UPDATE glass_sessions SET closed = ? WHERE id = ?").run(at, i.session);
       emit("glass.closed", { session: row.id, target: row.target, surface: row.surface, seconds: Math.round((at - Number(row.opened)) / 1000) });

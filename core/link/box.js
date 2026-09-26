@@ -25,7 +25,12 @@ export const showCode = c => `${c.slice(0, 3)}-${c.slice(3)}`;
 
 /** Callers of the box's own socket: its terminal. Claude's processes are here too, which is why the code matters. */
 const SOCKET = new Set(["cli", "local"]);
-const tailnetLogin = caller => (String(caller).startsWith("tailnet:") ? String(caller).slice("tailnet:".length) : null);
+// Only the owner's devices: "tailnet:<login>". A guest ("tailnet-guest:<login>") never matches, and
+// an agent's own node ("tailnet:agent:<name>") is not a person's device, so it is refused too.
+const tailnetLogin = caller => {
+  const c = String(caller);
+  return c.startsWith("tailnet:") && !c.startsWith("tailnet:agent:") ? c.slice("tailnet:".length) : null;
+};
 
 /**
  * @param {any} ctx the module's context
