@@ -74,6 +74,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         top = f.maxY - (f.height * Theme.topFraction).rounded()
         let h = height()
         panel.setFrame(NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h), display: false)
+        // Set again before every show (capsule-now rule 6): macOS can drop it after a Space change.
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
         panel.orderFrontRegardless()
         panel.makeKey()
         focus.count += 1

@@ -1,7 +1,10 @@
 // @ts-check
 // `vyre capsule`: open the Capsule on this Mac, or build it.
 //
-//   vyre capsule            open it (starting vyred and the app when they are not running)
+//   vyre capsule            open it (starting vyred and the app when they are not running). On
+//                           a Mac this is the native Capsule, built here on first run and again
+//                           when its source changes (capsule-native.js). --electron (or
+//                           VYRE_CAPSULE=electron) runs the Electron one until it is retired.
 //   vyre capsule --dev      run it from source in this terminal, with its log here; ctrl-C quits
 //   vyre capsule build      build the Swift helpers; --app also packages Vyre.app
 //   vyre capsule install    download the packaged app into ~/Applications (capsule-install.js)
@@ -23,8 +26,10 @@ import { dialogsAllowed } from "../../config/dialogs.js";
 import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, signal, beacon } from "../style.js";
+import * as native from "./capsule-native.js";
 
 export const CAPSULE = path.join(REPO, "local", "capsule");
+export const NATIVE = path.join(CAPSULE, "native");
 const DIST = path.join(CAPSULE, "dist");
 const APP = path.join(DIST, "Vyre-darwin-" + process.arch, "Vyre.app");
 /** Where a downloaded Vyre.app is put. It carries its own helpers and has no source to compare. */
@@ -82,6 +87,7 @@ async function open(flags) {
   if (!dialogsAllowed()) { out("  The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it)."); return 1; }
   const up = await ensureUp();
   if (!up.ok) out(dim("  vyred did not start; the Capsule will open and say it is offline."));
+  if (!flags.dev && !flags.electron && process.env.VYRE_CAPSULE !== "electron" && fs.existsSync(path.join(NATIVE, "build.sh"))) return openNative(flags);
   const e = electron();
   if (!helpersBuilt()) out(dim("  The double-Control helper is not built yet: vyre capsule build"));
   const args = [...(flags.hidden ? ["--hidden"] : [])];
@@ -116,6 +122,19 @@ async function open(flags) {
   const child = spawn(bin, argv, { detached: true, stdio: ["ignore", fd, fd], env: env({ own }) });
   child.unref();
   out(`  Capsule ${signal("open")} ${dim("· press Control twice anywhere · log " + log)}`);
+  return 0;
+}
+
+/** The native Capsule: build it if it is missing or stale, then launch it (or show it). */
+function openNative(flags) {
+  const home = config.paths().root;
+  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => out(dim("  " + s)) });
+  if (!b.ok) { out(beacon("  " + b.message)); return 1; }
+  if (b.built) out(dim(`  ${b.message}`));
+  const env = { VYRE_SOCKET: config.paths().socket, VYRE_HOME: home, ...(flags.hidden ? {} : { VYRE_CAPSULE_OPEN: "1" }) };
+  const r = spawnSync("open", native.launchArgs(b.app, env), { encoding: "utf8" });
+  if (r.status !== 0) { out(beacon("  The Capsule did not open: ") + dim(String(r.stderr || "").trim())); return 1; }
+  out(`  Capsule ${signal("open")} ${dim("· ⌥Space, or Control twice once it is allowed · " + b.app)}`);
   return 0;
 }
 
@@ -207,10 +226,10 @@ export function sign(app, run = (/** @type {string[]} */ a) => spawnSync("codesi
 }
 
 export default {
-  name: "capsule", order: 30, usage: "vyre capsule [--dev] | build [--app] | install", summary: "the Mac command bar: Control twice, anywhere",
+  name: "capsule", order: 30, usage: "vyre capsule [--dev|--electron] | build [--app] | install", summary: "the Mac command bar: Control twice, anywhere",
   /** @param {string[]} args */
   async run(args) {
-    const flags = { dev: args.includes("--dev"), hidden: args.includes("--hidden"), app: args.includes("--app") };
+    const flags = { dev: args.includes("--dev"), electron: args.includes("--electron"), hidden: args.includes("--hidden"), app: args.includes("--app") };
     if (args[0] === "build") return build(flags);
     if (args[0] === "install") return (await import("./capsule-install.js")).install(args.slice(1));
     return open(flags);

@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The native Capsule, built on first run
+
+- `vyre capsule` on a Mac now opens the native Swift Capsule (ADR 0015). The first run builds it
+  with swiftc into `<home>/capsule/Vyre.app` (about 35 s), signs it (with a "Vyre Local" identity
+  when the keychain has one, ad hoc otherwise) and launches it; it rebuilds only when its source
+  changes. Without the Command Line Tools it says, in one line, to run `xcode-select --install`.
+  `--electron` (or `VYRE_CAPSULE=electron`) runs the Electron Capsule until it is retired.
+  `core/cli/commands/capsule-native.js`, `capsule.js`.
+- The app: a non-activating panel at Spotlight's size and place (680 wide, 56 px bar, results
+  grow down, top edge 22% down the screen) that opens over a full-screen app on its Space. Apps,
+  files, settings panes, dictionary, calculator, Mac commands, and Ask with the reply streamed
+  under the bar. Hot keys: ⌥Space with no permission, Control twice once Input Monitoring is
+  allowed (asked only from the menu-bar item). `local/capsule/native/Sources/Host`, `Sources/UI`.
+- Fixed a race in the apps scan: a waiting refresh now waits out a scan already running.
+
 #### The Capsule is Spotlight's size
 
 - The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it

@@ -79,12 +79,17 @@ without editing Capsule files:
   and ⌥Space (VYRE_CAPSULE_HOTKEY) with no permission. `open Vyre.app` again toggles it.
 - Build: `<team-dir>/buildlock.sh capsule-pro local/capsule/native/build.sh app`
   writes `local/capsule/native/.build/Vyre.app` (plist, ad hoc signature, id sh.vyre.capsule).
+- Done 2026-09-27: plain `vyre capsule` builds the native app on first run
+  (core/cli/commands/capsule-native.js, 5 tests on the test box; a real build into a scratch home took
+  34 s and the second call was "up to date"). Swift tests 162/163.
 - Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
 
 ## Next
-0. Plain `vyre capsule` builds the native app on first run (swiftc; missing Command Line Tools
-   prints one line: `xcode-select --install`), signs it with the stable local identity, then
-   launches it. No extra command. (From docs, via the lead, 2026-09-27.)
+0. capsule-now rules 1-5 and 7 in native (read from ../vyre-capsule-now/docs/work/capsule-now.md):
+   the memory box (recall.search + memory.relevant, ranked like said.js, quotes as quotes, fact
+   first), memory lines in the quick-answer append, notices as a faint line, question/answer
+   layout, queued messages for a session busy in a terminal. Rule 6 is in (behaviour re-set
+   before every show).
 1. Native shell: NSPanel, hotkey in process, menu-bar item, vyred link, the launcher's local
    results, the Vyre half (bridge, state, watches, DMs, held cards), build and sign.
 2. Parity check against every "Done" line in capsule.md, then retire Electron.

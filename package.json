@@ -44,6 +44,8 @@
     "!**/node_modules/**",
     "!local/capsule/dist/**",
     "!local/capsule/bin/**",
+    "!local/capsule/native/.build/**",
+    "!local/capsule/native/Tests/**",
     "!**/.DS_Store",
     "!**/testing.js",
     "!**/testing/**"
