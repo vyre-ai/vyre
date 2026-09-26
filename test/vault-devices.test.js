@@ -60,13 +60,15 @@ async function until(fn, ms = 8000) {
   }
 }
 
+/** Join through the CLI verbs, with --json, as a person would script it. */
 async function join(existing, fresh, role) {
-  const j = await call(fresh, "vault.device.join", { role });
+  const json = async (h, args) => { const r = await vyre(h, [...args, "--json"]); assert.equal(r.code, 0, r.all); return JSON.parse(r.out).data; };
+  const j = await json(fresh, ["vault", "device", "join", "--role", role]);
   assert.ok(j.code.startsWith("vyre-join:v1:"), JSON.stringify(j));
   assert.match(j.fingerprint, /^([0-9A-Z]{4} ){4}[0-9A-Z]{4}$/);
-  const a = await call(existing, "vault.device.approve", { code: j.code });
+  const a = await json(existing, ["vault", "device", "approve", j.code]);
   assert.equal(a.fingerprint, j.fingerprint, "both screens show the same fingerprint");
-  const done = await call(fresh, "vault.device.join", { approval: a.approval });
+  const done = await json(fresh, ["vault", "device", "join", "--approval", a.approval]);
   assert.equal(done.joined, true, JSON.stringify(done));
   return { j, a };
 }
@@ -114,6 +116,8 @@ test("devices: a storage box and a full laptop join a Mac; writes and deletes tr
 
   const devices = (await call(mac, "vault.device.list")).devices.map(d => `${d.name}:${d.role}`).sort();
   assert.deepEqual(devices, ["box:storage", "laptop:full", "mac:home"]);
+  assert.match((await vyre(mac, ["vault", "device", "list"])).out, /laptop\s+full/);
+  assert.equal((await vyre(box, ["vault", "device", "approve", "vyre-join:v1:e30"])).code, 1, "a bad code exits 1");
 
   // No value and no Secret Key in plain text on the box; no Secret Key in anything vyred says.
   const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : e.isFile() ? [path.join(d, e.name)] : []);
