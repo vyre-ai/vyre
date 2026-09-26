@@ -45,7 +45,7 @@ test("module: the manifest is valid under the loader's rules", () => {
 });
 
 test("module: starts in the Registry, registers both tools, and answers redacted", async t => {
-  const { reg, logged } = await registry(t, home => ({ helper: makeHelper({ bin: FAKE, env: { ...process.env, FAKE_SIGHT: JSON.stringify(scenario(home)) } }) }));
+  const { reg, logged } = await registry(t, home => ({ helper: makeHelper({ bin: FAKE, platform: "darwin", env: { ...process.env, FAKE_SIGHT: JSON.stringify(scenario(home)) } }) }));
   assert.equal(reg.status().find(m => m.name === "screen")?.state, "running");
   assert.deepEqual(reg.listTools("mcp").map(x => x.name).sort(), ["screen.context", "screen.shot"]);
 
@@ -63,7 +63,7 @@ test("module: starts in the Registry, registers both tools, and answers redacted
 });
 
 test("module: refuses tailnet callers and callers outside its list", async t => {
-  const { reg } = await registry(t, home => ({ helper: makeHelper({ bin: FAKE, env: { ...process.env, FAKE_SIGHT: JSON.stringify(scenario(home)) } }) }));
+  const { reg } = await registry(t, home => ({ helper: makeHelper({ bin: FAKE, platform: "darwin", env: { ...process.env, FAKE_SIGHT: JSON.stringify(scenario(home)) } }) }));
   for (const tool of ["screen.context", "screen.shot"]) {
     const r = await reg.call(tool, {}, "mcp", { peer: { node: "juno", user: "alex" } });
     assert.equal(r.error?.code, "local_only", JSON.stringify(r));

@@ -27,7 +27,7 @@ const NOTES = {
 /** A helper running the fake binary with a scenario, stopped when the test ends. */
 function fake(t, scenario = {}, o = {}) {
   const state = tempHome(t);
-  const helper = makeHelper({ bin: FAKE, timeoutMs: 2000, responsible: () => "Terminal", env: { ...process.env, FAKE_SIGHT: JSON.stringify({ ...NOTES, state, ...scenario }) }, ...o });
+  const helper = makeHelper({ bin: FAKE, timeoutMs: 2000, platform: "darwin", responsible: () => "Terminal", env: { ...process.env, FAKE_SIGHT: JSON.stringify({ ...NOTES, state, ...scenario }) }, ...o });
   t.after(() => helper.stop());
   return helper;
 }
@@ -162,7 +162,7 @@ test("runner: a restart invalidates the cache", async t => {
 });
 
 test("runner: not built and not trusted come back as codes with words that say what to do", async t => {
-  await assert.rejects(makeHelper({ bin: path.join(HERE, "no-such-helper") }).request({ cmd: "where" }), e => e.code === "not_built" && /build\.sh/.test(e.message));
+  await assert.rejects(makeHelper({ bin: path.join(HERE, "no-such-helper"), platform: "darwin" }).request({ cmd: "where" }), e => e.code === "not_built" && /build\.sh/.test(e.message));
   const helper = fake(t, { notTrusted: true });
   await assert.rejects(helper.request({ cmd: "where" }), e => e.code === "not_trusted" && e.message === "grant Accessibility to Terminal in System Settings > Privacy & Security > Accessibility");
   await assert.rejects(makeHelper({ bin: FAKE, platform: "linux" }).request({ cmd: "where" }), e => e.code === "unsupported");
