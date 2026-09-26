@@ -16,6 +16,7 @@
     "posttest": "node test/tmp-guard.mjs after",
     "perf-check": "node scripts/perf-check",
     "eval:memory": "node scripts/eval-memory.js",
+    "eval:answer": "node scripts/eval-answer.js",
     "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
   "files": [
