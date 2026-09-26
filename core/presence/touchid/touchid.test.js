@@ -80,7 +80,7 @@ test("not available off macOS or without swiftc", async (t) => {
 
 test("under tests, without VYRE_TEST_DIALOGS, authenticate never runs the helper", async (t) => {
   assert.ok(process.env.NODE_TEST_CONTEXT, "node --test sets NODE_TEST_CONTEXT");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-touchid-gate-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-touchid-gate-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   // A helper that records every run in a file, for any argument.
   const ran = path.join(dir, "ran");

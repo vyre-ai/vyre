@@ -206,7 +206,7 @@ test("helper: front answers the app in front, or null", async t => {
 
 const REAL = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "local");
 
-test("helper: the real binary defines a word and reports Contacts status", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
+test("helper: the real binary defines a word and reports Contacts status", { skip: process.platform !== "darwin" ? "the helper is a Mac binary" : !fs.existsSync(REAL) && "bin/local not built" }, async t => {
   const once = JSON.parse(execFileSync(REAL, ["contacts", "--status"], { encoding: "utf8" }));
   assert.ok(["authorized", "denied", "restricted", "notDetermined", "limited"].includes(once.status));
   const h = new LocalHelper(REAL, { timeoutMs: 2000 });
@@ -219,7 +219,7 @@ test("helper: the real binary defines a word and reports Contacts status", { ski
   assert.deepEqual(await h.status(), once);
 });
 
-test("helper: the real binary names icon files as icons.js does", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
+test("helper: the real binary names icon files as icons.js does", { skip: process.platform !== "darwin" ? "the helper is a Mac binary" : !fs.existsSync(REAL) && "bin/local not built" }, async t => {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-local-icons-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const h = new LocalHelper(REAL);
@@ -231,7 +231,7 @@ test("helper: the real binary names icon files as icons.js does", { skip: !fs.ex
   assert.equal(a.icons.nope, null);
 });
 
-test("helper: the real binary names the app in front without asking for anything", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
+test("helper: the real binary names the app in front without asking for anything", { skip: process.platform !== "darwin" ? "the helper is a Mac binary" : !fs.existsSync(REAL) && "bin/local not built" }, async t => {
   const h = new LocalHelper(REAL, { timeoutMs: 2000 });
   t.after(() => h.close());
   const f = await h.front();
@@ -270,7 +270,7 @@ function raw() {
 
 // A private named pasteboard only. The general pasteboard, the one the user copies to, is never
 // read or written here: the test-only ops refuse it, and every other request names the board.
-test("helper: the real binary watches and writes a private pasteboard", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
+test("helper: the real binary watches and writes a private pasteboard", { skip: process.platform !== "darwin" ? "the helper is a Mac binary" : !fs.existsSync(REAL) && "bin/local not built" }, async t => {
   const board = `vyre-test-${process.pid}`;
   const { ask: other, close } = raw();
   t.after(async () => { await other({ op: "clip.release", board }); close(); });

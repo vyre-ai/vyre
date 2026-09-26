@@ -27,7 +27,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SCRATCH } from "./scratch.mjs";
+import { SCRATCH, HOMES } from "./scratch.mjs";
 
 const mode = process.argv[2];
 if (mode !== "before" && mode !== "after") {
@@ -50,6 +50,7 @@ function bare() {
 
 if (mode === "before") {
   fs.writeFileSync(STATE, JSON.stringify({ scratch: snapshot(), bare: bare(), at: Date.now() }));
+  try { fs.writeFileSync(HOMES, ""); } catch {}
   process.exit(0);
 }
 
@@ -78,7 +79,9 @@ for (let i = 0; (added.length || strays.length) && i < 4; i++) {
 const plural = n => `${n} entr${n === 1 ? "y" : "ies"}`;
 if (added.length) {
   console.error(`tmp-guard: ${plural(added.length)} under ${SCRATCH} appeared during this test run and were never cleaned up:`);
-  for (const n of added) console.error("  " + path.join(SCRATCH, n));
+  const made = new Map();
+  try { for (const l of fs.readFileSync(HOMES, "utf8").split("\n")) { const [n, file, name] = l.split("\t"); if (n) made.set(n, `${file}: ${name}`); } } catch {}
+  for (const n of added) console.error("  " + path.join(SCRATCH, n) + (made.has(n) ? `  (made by ${made.get(n)})` : ""));
 }
 if (strays.length) {
   console.error(`tmp-guard: ${plural(strays.length)} appeared bare in ${os.tmpdir()} during this test run, outside SCRATCH:`);

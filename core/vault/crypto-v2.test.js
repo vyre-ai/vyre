@@ -16,10 +16,10 @@ import {
   sealItemV2, openItemV2, newVaultKey, ARGON2,
 } from "./crypto.js";
 import { readSealed, writeSealed } from "./store.js";
+import { TEST_KDF } from "./testing.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 /** A cheap Argon2id for tests only; the Vault accepts it only because the constructor is told to. */
-const TEST_KDF = { kdf: "argon2id", m: 256, t: 1, p: 1 };
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const PASSWORD = fake("password");
 

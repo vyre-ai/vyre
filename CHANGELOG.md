@@ -22,6 +22,72 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Offline: the service worker keeps the shell and the five phone tabs at install, a cold launch
   reopens the last screen, and one line says when the phone is offline or the box is not answering.
 
+#### The suite passes on the test box (Linux, node 22) as it does on the Mac
+
+- Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
+  code. The vault tests' cheap KDF is Argon2id only where node has it (24.7+), else scrypt at its
+  test floor (`core/vault/testing.js` TEST_KDF). `vyre` drops node 22's "SQLite is an
+  experimental feature" line, which broke output read as JSON (`core/quiet.js`, loaded first by
+  `bin/vyre`; the box image already sets NODE_OPTIONS for it). The installer tests hide a real
+  Docker when a test takes it away, box add's rig answers `id -nG` without the docker group, the
+  presence challenge test pins `role: local` (Linux defaults to the box), the bypass test reads
+  the hook's stdout only, and the real Capsule helper tests skip off macOS.
+
+#### The vault writes nothing after it stops
+
+- 200 ms after start the vault pulls its shared vaults, and with none it still asked for this
+  device's identity, which made a key, the agent vault key and an identity item. When that timer
+  fired after a test had removed its home, it put `vault/` back: the intermittent leaked
+  `vyre-test-*` home holding only `vault/` (three in one full run on the test box, from `link`,
+  `computers` and `switchboard` tests, any in-process vyred). With no shared vaults the pull now
+  does nothing (`core/vault/shared.js`). Both start-up syncs go through `vault.later()`, and
+  `vault.stop()` cancels the waiting ones, awaits the running ones and refuses to open or make a
+  key from then on (`core/vault/vault.js`, `index.js`, `devices.js`). `core/vault/stop.test.js`.
+- `tempHome` records which test made each home in `<SCRATCH>.homes`, beside SCRATCH so it
+  survives the home's removal, and `test/tmp-guard.mjs` names that test next to a leaked folder.
+
+#### Journey 1 no longer races box add for the tunnel
+
+- `vyre box add` takes the onboarding tunnel down as soon as the address step is done, so the
+  journey's last loopback calls (onboard.status, onboard.finish) failed now and then with
+  ECONNREFUSED. Once the address serves, the journey finishes from the box's own terminal
+  (`vyre call` through the host wrapper, `test/journey/rig.js` terminal), since the harness cannot
+  reach the address as the owner. The fake box tailscale now names this account as its operator,
+  so the journey also runs on Linux. Journeys 1 to 6 pass together, three runs in a row, on the test box.
+
+#### The Capsule is Spotlight's size
+
+- The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it
+  replaces. `local/capsule/app/main.js`, `capsule.css`.
+
+#### The login keychain and every dialog belong to ~/.vyre alone
+
+- A dev world (`deck/test/world.js`), a demo and a stress run each started a real vyred on a temp
+  `VYRE_HOME` outside `node --test`, so the vault's test guard did not apply: with no
+  `vault.keystore` a Mac defaulted to the login keychain, and 32 `vyre-vault` items built up in the
+  user's login keychain while prompts kept reaching their screen. All 32 are deleted.
+- The vault now uses the login keychain only for `~/.vyre` (the account's home from the user
+  database, not `$HOME`) or a home whose config says `vault.keychain: true`. Any other home that
+  picks no keystore gets the file keystore; one that asks for `keychain` is refused with a message
+  naming both fixes, before any helper is built or `security` runs. `vault.keychain` as a string is
+  still a keychain file for tests. `vyre up` on a real Mac install writes `vault.keychain: true`.
+- `dialogsAllowed()` (and the Capsule's copy) is false for a `VYRE_HOME` other than `~/.vyre`, and
+  vyred started in-process on such a root sets `VYRE_NO_DIALOGS=1` outside tests.
+  `VYRE_ALLOW_DIALOGS=1` is the override for a person who keeps Vyre in a custom home on purpose:
+  it never applies under `node --test`, and `VYRE_NO_DIALOGS=1` still wins.
+- `deck/test/world.js`, `deck/test/vault-shots.js`, `test/fixtures/vyred-present.js` and
+  `scripts/release-check.sh` pass `VYRE_NO_DIALOGS=1` and the file keystore.
+- `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and
+  `osascript` that record calls, keeps its key in a file, builds no keychain helper and calls
+  neither; a temp home that asks for the keychain is refused; the world scripts set the flags.
+#### e2e: a real install walked from main
+
+- The onboarding page kept Continue off on step 1 whenever the box had no vyre.run zone token,
+  which is every box: "That name is not free: could not check". A name the check cannot run for
+  is fine now, since the address is the ts.net one, chosen in step 4. The name field also gets the
+  same `input` style as the assistant's.
+- `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
+  still starting (6s on a loaded Mac). It waits up to 15s now.
 #### Chat lists your Claude Code sessions and follows them live
 
 - Chat lists every Claude Code session on this machine (`projects.catalog`, from the transcripts)
@@ -76,39 +142,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The `npm test` leak guard (`test/tmp-guard.mjs`) also fails on new `vyre-*`, `vy-*`, `vssh-*`
   and `computerd-*` entries left bare in `$TMPDIR`, counting only ones that did not exist before
   the run and were changed after it began, so a sibling worktree's older leftovers do not count.
-#### The Capsule is Spotlight's size
-
-- The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it
-  replaces. `local/capsule/app/main.js`, `capsule.css`.
-
-#### The login keychain and every dialog belong to ~/.vyre alone
-
-- A dev world (`deck/test/world.js`), a demo and a stress run each started a real vyred on a temp
-  `VYRE_HOME` outside `node --test`, so the vault's test guard did not apply: with no
-  `vault.keystore` a Mac defaulted to the login keychain, and 32 `vyre-vault` items built up in the
-  user's login keychain while prompts kept reaching their screen. All 32 are deleted.
-- The vault now uses the login keychain only for `~/.vyre` (the account's home from the user
-  database, not `$HOME`) or a home whose config says `vault.keychain: true`. Any other home that
-  picks no keystore gets the file keystore; one that asks for `keychain` is refused with a message
-  naming both fixes, before any helper is built or `security` runs. `vault.keychain` as a string is
-  still a keychain file for tests. `vyre up` on a real Mac install writes `vault.keychain: true`.
-- `dialogsAllowed()` (and the Capsule's copy) is false for a `VYRE_HOME` other than `~/.vyre`, and
-  vyred started in-process on such a root sets `VYRE_NO_DIALOGS=1` outside tests.
-  `VYRE_ALLOW_DIALOGS=1` is the override for a person who keeps Vyre in a custom home on purpose:
-  it never applies under `node --test`, and `VYRE_NO_DIALOGS=1` still wins.
-- `deck/test/world.js`, `deck/test/vault-shots.js`, `test/fixtures/vyred-present.js` and
-  `scripts/release-check.sh` pass `VYRE_NO_DIALOGS=1` and the file keystore.
-- `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and
-  `osascript` that record calls, keeps its key in a file, builds no keychain helper and calls
-  neither; a temp home that asks for the keychain is refused; the world scripts set the flags.
-#### e2e: a real install walked from main
-
-- The onboarding page kept Continue off on step 1 whenever the box had no vyre.run zone token,
-  which is every box: "That name is not free: could not check". A name the check cannot run for
-  is fine now, since the address is the ts.net one, chosen in step 4. The name field also gets the
-  same `input` style as the assistant's.
-- `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
-  still starting (6s on a loaded Mac). It waits up to 15s now.
 
 #### No Touch ID prompt, or anything else on screen, under tests
 

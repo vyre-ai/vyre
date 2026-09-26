@@ -22,6 +22,13 @@ import { SCRATCH } from "../../test/scratch.mjs";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+/**
+ * A cheap password KDF for tests: Argon2id where node has it (24.7+), scrypt at its test floor
+ * otherwise (node 22, as on the box image).
+ */
+export const TEST_KDF = typeof (/** @type {any} */ (crypto)).argon2Sync === "function"
+  ? { kdf: "argon2id", m: 256, t: 1, p: 1 } : { kdf: "scrypt", N: 1 << 10, r: 8, p: 1 };
+
 /** Run `security`, retrying a few times when it fails for a reason other than "not found". */
 export async function securityRetry(args, { tries = 5, ok = [0] } = {}) {
   let last = { code: -1, out: "", err: "" };

@@ -201,6 +201,11 @@ export class Vault {
     /** @type {import("node:crypto").KeyObject|null} */ this.pvk = null;
     /** @type {import("node:crypto").KeyObject|null} */ this.mkey = null;
     /** @type {Promise<import("node:crypto").KeyObject>|null} */ this.opening = null;
+    /** Set by stop(): no key is opened or made after it, so nothing writes into the folder. */
+    this.stopping = false;
+    /** Syncs started by a timer (later()), and the timers still waiting, for stop() to settle. */
+    /** @type {Set<Promise<any>>} */ this.inflight = new Set();
+    /** @type {Set<NodeJS.Timeout>} */ this.timers = new Set();
     /** Rows already reported as failing their MAC, so one bad row is one audit entry per run. */
     this.flagged = new Set();
     /** People, signed cards and tickets, relay guards (share.js). */
@@ -228,6 +233,7 @@ export class Vault {
    * re-seals v1 items and signs the rows that were there before MACs existed.
    */
   async key() {
+    if (this.stopping) throw Object.assign(new Error("the vault is stopping"), { code: "stopping" });
     if (this.vk) return this.vk;
     if (!this.opening) this.opening = this.openAgents().finally(() => { this.opening = null; });
     return this.opening;
@@ -290,6 +296,32 @@ export class Vault {
   lock() {
     this.vk = null; this.pvk = null; this.mkey = null;
     return { locked: true, keystore: this.kind, relocks: this.kind !== "passphrase" };
+  }
+
+  /**
+   * Run fn in ms, unless the vault stops first. What it returns is awaited by stop(), so a sync a
+   * timer started cannot write into the folder after the vault (or a test's home) is gone.
+   * @param {() => Promise<any>} fn
+   */
+  later(fn, ms) {
+    if (this.stopping) return;
+    const t = setTimeout(() => {
+      this.timers.delete(t);
+      if (this.stopping) return;
+      const p = Promise.resolve().then(fn).finally(() => { this.inflight.delete(p); });
+      this.inflight.add(p);
+    }, ms);
+    t.unref();
+    this.timers.add(t);
+  }
+
+  /** Stop: cancel waiting syncs, let running ones settle, refuse new keys, then lock. */
+  async stop() {
+    this.stopping = true;
+    for (const t of this.timers) clearTimeout(t);
+    this.timers.clear();
+    await Promise.allSettled([...this.inflight, ...(this.opening ? [this.opening] : [])]);
+    this.lock();
   }
 
   async locked() {
