@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Deck: Chat on the phone tab bar, Glass with no box, Memory loads at once
+
+- The phone tab bar has five tabs: Now, Projects, Chat, Ask and Agents. Ask has its own icon, and
+  the labels lose some tracking below 360 px so all five fit at 320 px.
+- Long thread and project titles on Now truncate with an ellipsis on the phone instead of running
+  off the right edge.
+- Memory starts its first read at once. It used to wait up to 800 ms for the fonts first and could
+  sit on "Reading memory". A draw made before the fonts land is redone once when they do, and an
+  error shows a Try again button.
+- Glass on a machine with no box (the glass module is off or vyred does not answer) says where the
+  agent's computer runs and how to pair one (`vyre box add you@your-server`), and offers no Take
+  over, no Sign in privately and no activity rail.
+- `agents.list` returns each agent's instructions, so an agent's page shows its job instead of "No
+  instructions yet".
+- The box's Chromium starts with `--test-type`, which keeps its `--no-sandbox` warning bar out of
+  the Glass stream. Takes effect when the computer image is rebuilt.
+- `deck/test/world.js` makes its home under `SCRATCH`, uses a key-file vault (never the login
+  keychain), and seeds juno, kit and six fictional vault items. The items go in through a
+  short-lived vyred with the test presence verifier, which stops before the real vyred starts.
+  `test/fixtures/vyred-present.js` compares real paths, so a realpath'd temp home on macOS passes.
+
 #### Tests keep their temp folders under SCRATCH
 
 - Test runs kept leaving folders bare in `$TMPDIR` (`vyre-local-*`, `vyre-frec-*`, `vyre-clip-*`

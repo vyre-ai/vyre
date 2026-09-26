@@ -77,8 +77,10 @@ log "starting chromium"
 # The profile lives on the home volume; a container that was killed leaves Chromium's Singleton
 # locks behind, and the next Chromium then refuses to start with "profile in use".
 rm -f "${HOME}/.chromium/SingletonLock" "${HOME}/.chromium/SingletonSocket" "${HOME}/.chromium/SingletonCookie"
+# --test-type keeps Chromium from drawing its --no-sandbox warning bar into the Glass stream.
 chromium \
   --no-sandbox \
+  --test-type \
   --disable-gpu \
   --disable-dev-shm-usage \
   --force-renderer-accessibility \
