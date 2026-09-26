@@ -24,7 +24,7 @@ export const ACTION_TIMEOUT_MS = 45_000;
 export const MIN_QUERY = 2;
 
 /** @typedef {{ tool: string, title: string, input: Record<string, any> }} Provider */
-/** @typedef {{ key: string, tool: string, title: string, input: Record<string, any> }} Action */
+/** @typedef {{ key: string, tool: string, title: string, input: Record<string, any>, hide?: boolean }} Action */
 /** @typedef {{ module: string, results: Provider[], actions: Action[] }} ModuleShows */
 /** @typedef {{ kind: "module", id: string, label: string, sub: string, module: string, provider: string,
  *   rowId: string, rowKind: string, target: string, score: number }} ModuleResult */
@@ -55,7 +55,8 @@ export function parseShows(module, capsule) {
     if ((m = /^results:([^#\s]+)$/.exec(key))) {
       out.results.push({ tool: m[1], title: given || titleCase(module), input });
     } else if ((m = /^action:([^#\s]+)(?:#.*)?$/.exec(key))) {
-      out.actions.push({ key, tool: m[1], title: given || m[1], input });
+      // `hide`: the action works on the front app, so the Capsule must be out of the way first.
+      out.actions.push({ key, tool: m[1], title: given || m[1], input, ...(v.hide === true ? { hide: true } : {}) });
     }
   }
   return out;
@@ -193,7 +194,7 @@ export class Providers {
    */
   actions(result) {
     const m = result && this.modules.find(x => x.module === result.module);
-    return m ? m.actions.map(a => ({ key: a.key, title: a.title })) : [];
+    return m ? m.actions.map(a => ({ key: a.key, title: a.title, ...(a.hide ? { hide: true } : {}) })) : [];
   }
 
   /**

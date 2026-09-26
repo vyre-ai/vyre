@@ -636,6 +636,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- An action marked `hide: true` in shows.capsule (the vault's fill) runs with the Capsule out of the
+  way: it hides, waits until the app the user was in is frontmost again, calls, and says the
+  result as a notification.
 - With vyred down, the hidden Capsule looks for it every 3 s doubling to a minute (the event
   stream's reconnect doubles to 30 s), not every 3 s forever; opening the Capsule looks at once.
   Perf measured the steady retry at about 0.8% CPU hidden against a 0.2% budget.

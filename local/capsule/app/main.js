@@ -408,7 +408,28 @@ ipcMain.handle("capsule:cancel", () => bridge.cancel());
 ipcMain.handle("capsule:actions", (_e, r) => providers.actions(r));
 // A module's verb on one of its results, with the app that was in front. Whatever it says is
 // shown as it is; a value (a password) never comes back here, only what the module chose to say.
-ipcMain.handle("capsule:act", (_e, r, key) => providers.run(r, String(key || ""), front));
+ipcMain.handle("capsule:act", async (_e, r, key) => {
+  const k = String(key || "");
+  const a = providers.actions(r).find(x => x.key === k);
+  if (!a || !a.hide) return providers.run(r, k, front);
+  // It acts on the front app (the vault's fill): step out of the way, wait until the app the user
+  // was in is frontmost again, then call. What it says comes back as a notification.
+  const was = front;
+  hide();
+  if (was && was.pid) {
+    const until = Date.now() + 800;
+    for (;;) {
+      const f = await helper.front().catch(() => null);
+      if ((f && Number(f.pid) === Number(was.pid)) || Date.now() > until) break;
+      await new Promise(res => setTimeout(res, 40));
+    }
+  }
+  const out = await providers.run(r, k, was);
+  const line = out.error || out.said || "Done.";
+  if (Notification.isSupported() && !DRIVEN) new Notification({ title: out.error ? "Not done" : String(r.provider || r.module || "Vyre"), body: line, silent: true }).show();
+  else say({ acted: { key: k, line } });
+  return { ...out, hidden: true };
+});
 ipcMain.handle("capsule:dm-open", (_e, agent) => bridge.openDm(String(agent || "")));
 ipcMain.handle("capsule:dm-close", () => bridge.closeDm());
 ipcMain.handle("capsule:copy", (_e, text) => { clipboard.writeText(String(text || "")); return { ok: true }; });

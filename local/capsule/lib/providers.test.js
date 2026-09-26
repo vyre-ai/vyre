@@ -97,19 +97,19 @@ test("providers: search asks every provider in parallel and makes launcher rows"
       { name: "notes", state: "running", shows: { capsule: { "results:notes.find": { title: "Notes", input: { scope: "all" } } } } },
     ],
     tools: {
-      "vault.search": async () => { await sleep(40); return { data: { rows: [
+      "vault.search": async () => { await sleep(150); return { data: { rows: [
         { id: "GitHub", name: "GitHub", kind: "login", sub: "login · github.com" },
         { id: "Work mail", name: "Work mail", kind: "login", sub: "login · mail.example.com" },
       ] } }; },
       // A bare array is fine too.
-      "notes.find": async () => { await sleep(40); return { data: [{ id: 3, name: "Git tips", kind: "note" }] }; },
+      "notes.find": async () => { await sleep(150); return { data: [{ id: 3, name: "Git tips", kind: "note" }] }; },
     },
   });
   const p = new Providers({ client });
   await p.refresh();
   const t0 = Date.now();
   const rows = await p.search("git", { limit: 5 });
-  assert.ok(Date.now() - t0 < 75, "the two providers ran at once");
+  assert.ok(Date.now() - t0 < 280, "the two providers ran at once (one after the other would take 300 ms)");
   assert.deepEqual(rows[0], { kind: "module", id: "vault:GitHub", label: "GitHub", sub: "login · github.com", module: "vault",
     provider: "Vault", rowId: "GitHub", rowKind: "login", target: "", score: rows[0].score });
   assert.equal(rows[0].score, 0.9 + 0.1, "a prefix match, plus the vault's site bump");
@@ -207,4 +207,13 @@ test("providers: the site bump is the vault's alone", () => {
   assert.equal(scoreRow("vault", "github", { name: "Work", sub: "login · github.com" }), 0.6);
   assert.equal(scoreRow("notes", "github", { name: "Work", sub: "note · github.com" }), 0.5);
   assert.equal(scoreRow("vault", "github", { name: "Work", sub: "login" }), 0.5);
+});
+
+test("providers: an action marked hide says so, for the Capsule to step aside first", async () => {
+  const client = { get: async route => route === "/v1/tools" ? { error: { code: "none" } } : ({ data: [{ name: "vault", state: "running", shows: { capsule: { "results:vault.search": { title: "Vault" },
+    "action:vault.fill.native": { title: "Fill in the front app", hide: true }, "action:vault.copy": { title: "Copy" } } } }] }),
+    call: async () => ({ data: [] }) };
+  const p = new Providers({ client: /** @type {any} */ (client) });
+  await p.refresh();
+  assert.deepEqual(p.actions({ module: "vault" }), [{ key: "action:vault.fill.native", title: "Fill in the front app", hide: true }, { key: "action:vault.copy", title: "Copy" }]);
 });

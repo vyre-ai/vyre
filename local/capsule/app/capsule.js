@@ -168,6 +168,8 @@ async function act(r, key) {
   S.busy = true; paint();
   const out = await api.act(r, key);
   S.busy = false;
+  // The Capsule stepped aside for it; the result went out as a notification.
+  if (out.hidden) { S.mode = "ask"; S.acts = null; return; }
   if (out.error) { S.note = out.error; S.mode = "ask"; return paint(); }
   if (out.code) { S.code = { label: r.label, code: String(out.code), period: Number(out.period) || 30, until: Date.now() + (Number(out.remaining) || 0) * 1000, said: out.said || "" }; S.mode = "code"; tickCode(); return paint(); }
   S.note = out.said || "Done."; S.mode = "ask";

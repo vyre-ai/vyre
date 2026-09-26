@@ -157,7 +157,7 @@ const boxRows = n => ({ data: { results: Array.from({ length: n }, (_, i) => ({ 
 test("launcher: box files join full(), never quick(), mapped and capped at three", async t => {
   const v = fakeVyred({ "link.status": LINKED, "files.search": boxRows(5) });
   // mdfind takes a few hundred ms; the box, on a LAN, usually less.
-  const l = new Launcher({ apps: appsIn(t, []), files: () => new Promise(res => setTimeout(() => res([]), 40)), vyred: v.fn });
+  const l = new Launcher({ apps: appsIn(t, []), files: () => new Promise(res => setTimeout(() => res([]), 300)), vyred: v.fn });
   await l.quick("budget", null);
   assert.equal(v.calls.length, 0, "the keystroke path never asks the box");
   const r = await l.full("budget", null);
