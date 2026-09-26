@@ -7,5 +7,9 @@
     "online": true,
     "checkedAt": "$ago:1s",
     "cached": false
-  }
+  },
+  "link.macs": [
+    { "mac": "m-alex-mac", "name": "alex-mac", "node": "alex-mac", "online": true, "lastServe": "$ago:0m" },
+    { "mac": "m-alex-air", "name": "alex-air", "node": "alex-air", "online": false, "lastServe": "$ago:2h" }
+  ]
 }

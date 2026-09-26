@@ -30,6 +30,7 @@ import { search, thread, sessions } from "./search.js";
 import { evaluate } from "./eval.js";
 import { load as loadModel, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { Dense } from "./dense.js";
+import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -159,31 +160,62 @@ export default {
     };
 
     const stringArray = { type: "array", items: { type: "string" } };
+    // On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's.
+    const machines = { type: "string", enum: ["all", "local"] };
     ctx.tool("recall.search", {
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" },
+        per_session: { type: "integer" }, machines,
       } },
-      run: async input => {
-        // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
-        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
-        const e = input.hybrid === false || !any ? null : await embedder();
-        return (await search(db, input, e, dense)).hits;
+      run: async (input, { caller } = {}) => {
+        const { machines: _, ...q } = input;
+        const here = async () => {
+          // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
+          const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+          const e = q.hybrid === false || !any ? null : await embedder();
+          return (await search(db, q, e, dense)).hits;
+        };
+        if (!wantsMacs(ctx, input, caller)) return here();
+        // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
+        const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
+        return mergeRows(ctx, own, answers, { compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
       },
     });
     ctx.tool("recall.thread", {
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
-        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" } } },
-      run: async input => thread(db, input),
+        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
+        source: { type: "string", enum: ["box", "mac"] } } },
+      run: async (input, { caller } = {}) => {
+        const { machines: _, source, ...q } = input;
+        if (!wantsMacs(ctx, input, caller)) return thread(db, q);
+        // On the box, for the person: the box's own session first. A session the box does not
+        // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
+        // has it answers. Its turns go back to the caller and are never stored here.
+        if (source !== "mac") {
+          try { return { ...thread(db, q), ...boxLabel(ctx) }; }
+          catch (e) { if (!/^no session /.test(/** @type {Error} */ (e).message)) throw e; }
+        }
+        const answers = await askMacs(ctx, "recall.thread", q);
+        const found = answers.find(a => a.ok && a.data);
+        if (found) return { ...found.data, ...macLabel(found) };
+        const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
+        throw new Error(`no session ${q.session} (${why})`);
+      },
     });
     ctx.tool("recall.sessions", {
-      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, or started by a person.",
+      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
-        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" } } },
-      run: async input => sessions(db, input),
+        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines } },
+      run: async (input, { caller } = {}) => {
+        const { machines: _, ...q } = input;
+        if (!wantsMacs(ctx, input, caller)) return sessions(db, q);
+        // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
+        const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
+        return mergeRows(ctx, own, answers, { compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
+      },
     });
     ctx.tool("recall.index", {
       description: "Index new and changed transcripts now. Returns what the pass did.",
