@@ -81,6 +81,15 @@ export class Bridge extends EventEmitter {
      * the child, before any of its output, so nothing of the reply comes before it.
      */
     this.pending = false;
+    /** @type {st.Dm|null} the open DM, if any: nothing is fetched or folded for a DM that is not open */
+    this.chat = null;
+    /** @type {any[]|null} events heard while the open DM's history loads, folded in after it */
+    this.dmBuffer = null;
+    /** Bumped on every open and close, so a slow history never lands in a DM that has moved on. */
+    this.dmSeq = 0;
+    this.pendingSeq = 0;
+    /** The newest event id heard on the stream. */
+    this.lastEvent = 0;
   }
 
   /** Who is asking, for a waiting row: the agent whose thread it is, else the thread's name. */
@@ -248,7 +257,20 @@ export class Bridge extends EventEmitter {
    * stream from, or an error in words. `take` takes the keyboard from whoever holds it, and is only ever the user's choice.
    * @param {route.Destination} d @param {string} text @param {{ take?: boolean }} [opts]
    */
-  async send(d, text, { take = false } = {}) {
+  async send(d, text, opts = {}) {
+    // Words sent into the open DM show in it at once, pending until thread.sent says they arrived.
+    const key = this.dmPend(d, text);
+    const r = await this.sendTo(d, text, opts);
+    if (key && this.chat) {
+      if (r.error) this.chat = st.dmDrop(this.chat, key);
+      else if (r.thread && !this.chat.thread && !this.dmBuffer) this.chat = { ...this.chat, thread: String(r.thread) };
+      this.emit("change");
+    }
+    return r;
+  }
+
+  /** @param {route.Destination} d @param {string} text @param {{ take?: boolean }} [opts] */
+  async sendTo(d, text, { take = false } = {}) {
     this.reap = false;
     this.cancelWanted = false;
     if (d.kind === "quick") return this.ask(d, text);
@@ -483,14 +505,111 @@ export class Bridge extends EventEmitter {
     return { ok: true };
   }
 
+  /** A pending message in the open DM when these words go to it; its key, or null. */
+  dmPend(d, text) {
+    const c = this.chat;
+    if (!c || !d) return null;
+    const mine = ((d.kind === "assistant" || d.kind === "agent") && d.agent === c.agent) || (d.kind === "thread" && c.thread && d.thread === c.thread);
+    if (!mine) return null;
+    const key = `p${++this.pendingSeq}`;
+    this.chat = st.dmPending(c, key, text, this.now());
+    this.emit("change");
+    return key;
+  }
+
+  /** An agent's name from what the user typed: "assistant" is whichever agent is the assistant. */
+  agentRow(rows, agent) {
+    return rows.find(x => x.name === agent) || (agent === "assistant" ? rows.find(x => x.kind === "assistant") : null) || null;
+  }
+
+  /** An open ask from the table as a waiting row, named like the global list's. */
+  askRow(x, agent, project) {
+    return st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: project || null, payload: { ...x, agent } }, s => this.projectName(s));
+  }
+
+  /** The DM's state from vyred: the agent's current thread (agents.list), then its events (threads.get). */
+  async loadDm(agent, limit) {
+    if (!this.has("agents.list")) return { error: explain({ code: "no_such_tool", message: "no tool agents.list" }) };
+    const list = await this.client.call("agents.list");
+    if (list.error) return { error: explain(list.error) };
+    const rows = Array.isArray(list.data) ? list.data : (list.data && list.data.agents) || [];
+    const a = this.agentRow(rows, agent);
+    if (!a) return { error: agent === "assistant" ? "There is no assistant on this vyred yet." : `There is no agent called ${agent}.` };
+    const d = st.dm(a.name, a.thread || null, limit);
+    if (!a.thread) return { dm: d };
+    const r = await this.client.call("threads.get", { thread: a.thread, limit: 1000 });
+    if (r.error) return { error: explain(r.error) };
+    const project = r.data && r.data.thread ? r.data.thread.project : null;
+    return { dm: st.dmHistory(d, r.data, x => this.askRow(x, a.name, project), s => this.projectName(s)) };
+  }
+
+  /**
+   * A DM with an agent, read once: `{agent, thread, messages, asks, busy, holder}`, or `{error}`.
+   * `agent` is a name, or "assistant". Nothing stays open; openDm is the live one.
+   * @param {string} agent @param {{ limit?: number }} [opts]
+   */
+  async dm(agent, { limit = 30 } = {}) {
+    const r = await this.loadDm(String(agent || ""), limit);
+    return r.error ? { error: r.error } : st.dmView(/** @type {st.Dm} */ (r.dm));
+  }
+
+  /**
+   * Open a DM: its history now, then every event of its thread folded in until closeDm. The
+   * snapshot carries it as `dm`. Opening another DM replaces this one.
+   * @param {string} agent @param {{ limit?: number }} [opts]
+   */
+  async openDm(agent, { limit = 30 } = {}) {
+    const seq = ++this.dmSeq;
+    const name = String(agent || "");
+    const known = this.agentRow(this.catalog.agents || [], name);
+    const after = this.lastEvent;
+    this.chat = { ...st.dm(known ? known.name : name, known ? known.thread : null, limit), loading: true };
+    this.dmBuffer = [];
+    this.emit("change");
+    const r = await this.loadDm(name, limit);
+    if (seq !== this.dmSeq) return { error: "closed" };
+    const heard = this.dmBuffer || [];
+    const pending = (this.chat ? this.chat.messages : []).filter(m => m.pending);
+    this.dmBuffer = null;
+    if (r.error) { this.chat = null; this.emit("change"); return { error: r.error }; }
+    let d = st.dmCarry(/** @type {st.Dm} */ (r.dm), pending, after);
+    for (const e of heard) d = /** @type {st.Dm} */ (st.applyDm(d, e.type === "ask.raised" ? this.named(e) : e, s => this.projectName(s)));
+    this.chat = d;
+    this.emit("change");
+    return st.dmView(d);
+  }
+
+  /** Close the DM: it is forgotten, and nothing more is folded or fetched for it. */
+  closeDm() {
+    this.dmSeq++;
+    const was = this.chat;
+    this.chat = null;
+    this.dmBuffer = null;
+    if (was) this.emit("change");
+    return { ok: true };
+  }
+
   /** An ask.raised event with who is asking filled in. */
   named(e) {
     const p = e.payload || {};
-    return p.agent ? e : { ...e, payload: { ...p, agent: this.who(e.thread || p.thread) } };
+    if (p.agent) return e;
+    const thread = e.thread || p.thread;
+    // A thread started since the catalog was read: the open DM knows whose it is.
+    const agent = this.who(thread) || (this.chat && thread && this.chat.thread === String(thread) ? this.chat.agent : null);
+    return { ...e, payload: { ...p, agent } };
   }
 
   /** One event from the stream. */
   onEvent(e) {
+    if (typeof e.id === "number" && e.id > this.lastEvent) this.lastEvent = e.id;
+    // The open DM: held back while its history loads, folded in after.
+    let dmChanged = false;
+    if (this.chat && this.dmBuffer) this.dmBuffer.push(e);
+    else if (this.chat) {
+      const next = st.applyDm(this.chat, e.type === "ask.raised" ? this.named(e) : e, s => this.projectName(s));
+      dmChanged = next !== this.chat && dmVisible(this.chat, next);
+      this.chat = next;
+    }
     // An agent's reply whose thread was not known when it was sent: the first sign of it on the
     // stream names it. A thread this Capsule typed into, or one started for that agent.
     if (this.pending && this.reply && !this.reply.thread && e.thread && e.type === "thread.sent" && (e.payload || {}).surface === "capsule") {
@@ -504,7 +623,7 @@ export class Bridge extends EventEmitter {
     const r = this.reply && !ours ? st.applyReply(this.reply, e) : this.reply;
     // Closed while it answered: now that the turn is done, nothing of it runs while hidden.
     if (e.type === "thread.finished" && this.reap && this.running.has(String(e.thread))) this.stopThread(String(e.thread)).catch(() => {});
-    const changed = w !== this.waiting || r !== this.reply;
+    const changed = w !== this.waiting || r !== this.reply || dmChanged;
     this.waiting = w;
     this.reply = r;
     if (changed) this.emit("change");
@@ -523,9 +642,13 @@ export class Bridge extends EventEmitter {
       reply: this.reply ? { thread: this.reply.thread, text: st.replyText(this.reply), tools: this.reply.tools, finished: this.reply.finished,
         ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease, model: this.reply.model || null,
         cost: this.reply.cost, ms: this.reply.ms, memory: this.reply.memory || null } : null,
+      dm: this.chat ? st.dmView(this.chat) : null,
     };
   }
 }
+
+/** Whether a fold changed anything the page draws (not only the event cursor). */
+const dmVisible = (a, b) => a.messages !== b.messages || a.asks !== b.asks || a.busy !== b.busy || a.holder !== b.holder || a.thread !== b.thread;
 
 /** The tool a destination needs. */
 function needs(d) {

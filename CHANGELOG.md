@@ -299,6 +299,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Clipboard history, on this Mac only (`lib/clips.js`, `clip.watch` in `bin/local`): the helper
+  reads the pasteboard's change count every 750 ms, the one thing that runs while the Capsule is
+  hidden. Concealed, transient and auto-generated items, password managers, Universal Clipboard,
+  and anything that looks like a secret (token prefixes, JWTs, keys, codes, card numbers,
+  high-entropy strings) are never recorded. At most 200 items for 7 days, in a 0600 file. Picking
+  one writes it to the pasteboard for the user's own ⌘V; nothing is typed for them.
+- Direct messages with agents (`bridge.openDm`, `st.applyDm`): an agent's current thread as
+  history, the user's messages from any surface marked with where they came from, a sent message
+  shown at once and reconciled when it lands, the reply streaming into the same list, and the
+  agent's asks beside it. Nothing is fetched unless a DM is open.
 - Result rows look native: each has its real picture (a 24 px box that never moves when the
   icon lands), its name, where it is, and its kind or the key that takes it, with the selected
   row in Signal. Vyre's own kinds (agents, the assistant, projects, threads, memory in Recall gold,
