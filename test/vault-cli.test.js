@@ -13,7 +13,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
-import { writeModule } from "./helpers.js";
+import { writeModule, upPresent } from "./helpers.js";
 import { totp } from "../core/vault/totp.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
@@ -54,7 +54,7 @@ function home(t, config) {
 test("vault cli: put, grant to a module, run, TOTP, generate and a 1Password import", async t => {
   const owner = home(t, { name: "owner-box", vault: { keystore: "file" } });
   writeModule(path.join(owner, "modules"), "probe", { does: { tools: ["probe.use"] }, needs: { vault: ["api-token"] } }, PROBE);
-  assert.equal((await vyre(owner, ["up"])).code, 0);
+  assert.equal((await upPresent(owner)).code, 0);
   const token = fake("token");
 
   const argv = await vyre(owner, ["vault", "put", "api-token", token]);
@@ -127,8 +127,8 @@ test("vault cli: a relayed pass between two vyreds, revoked at once; offboarding
 
   const owner = home(t, { name: "owner-box", vault: { keystore: "file", relay: { host: "127.0.0.1", port: 0 } } });
   const mate = home(t, { name: "teammate-box", vault: { keystore: "file" } });
-  assert.equal((await vyre(owner, ["up"])).code, 0);
-  assert.equal((await vyre(mate, ["up"])).code, 0);
+  assert.equal((await upPresent(owner)).code, 0);
+  assert.equal((await upPresent(mate)).code, 0);
 
   await vyre(owner, ["vault", "put", "api-token", "--kind", "api-key", "--host", apiOrigin], token);
   const dbPassword = fake("db");
@@ -205,8 +205,8 @@ test("vault cli: a relayed pass between two vyreds, revoked at once; offboarding
 test("vault cli: autofill through a paired extension, and a backup restored into another vyred", async t => {
   const owner = home(t, { name: "owner-box", vault: { keystore: "file", fill: { host: "127.0.0.1", port: 0 } } });
   const spare = home(t, { name: "spare-box", vault: { keystore: "file" } });
-  assert.equal((await vyre(owner, ["up"])).code, 0);
-  assert.equal((await vyre(spare, ["up"])).code, 0);
+  assert.equal((await upPresent(owner)).code, 0);
+  assert.equal((await upPresent(spare)).code, 0);
   const password = fake("pw");
   const token = fake("token");
   await vyre(owner, ["vault", "put", "example-mail", "--kind", "login", "--username", "alex@example.com", "--url", "https://mail.example.com"], password);

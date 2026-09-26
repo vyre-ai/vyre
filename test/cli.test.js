@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome } from "./helpers.js";
+import { tempHome, upPresent } from "./helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
 const run = (args, env) => new Promise(resolve =>
@@ -44,7 +44,7 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
   assert.match((await run(["learn"], env)).out, /not running/);
-  await run(["up"], env);
+  await upPresent(env.VYRE_HOME);
   assert.match((await run(["learn"], env)).out, /no lessons yet/);
   const add = await run(["learn", "add", "never", "use", "em", "dashes"], env);
   assert.equal(add.code, 0);

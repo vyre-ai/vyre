@@ -11,7 +11,7 @@ import path from "node:path";
 import http from "node:http";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 
@@ -39,7 +39,7 @@ test("gate: an agent's email is held, edited and approved by the user, and sent 
     gate: { senders: { mail: { type: "gmail", vault: "work-mail-token", from: "alex@example.com", base: gmail.base } } },
   }));
   const lines = [];
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
   const cli = as("cli"), local = as("local"), juno = as("mcp:agent:juno");

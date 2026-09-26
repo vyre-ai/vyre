@@ -46,3 +46,36 @@ export function writeModule(root, name, manifest, source) {
   fs.writeFileSync(path.join(dir, "index.js"), source);
   return dir;
 }
+
+/**
+ * A presence verifier that finds a person at every call, for tests of what a tool does once the
+ * user has approved. The presence tests themselves (core/presence, test/daemon.test.js,
+ * test/presence-bypass.test.js) use the real one.
+ */
+export const present = {
+  required: () => false,
+  verify: async () => ({ ok: true, method: "test" }),
+  challenge: async () => ({ error: { code: "bad_input", message: "presence is not checked in this test" } }),
+};
+
+/**
+ * Start vyred in a child process for a temp home, as `vyre up` would, but with `present` as its
+ * verifier. `vyre down` stops it as usual.
+ * @param {string} home
+ */
+export async function upPresent(home) {
+  const { spawn } = await import("node:child_process");
+  const { ping } = await import("../core/daemon/index.js");
+  const config = await import("../core/config/index.js");
+  const p = config.ensure(home);
+  const fd = fs.openSync(path.join(p.logs, "vyred.out"), "a");
+  const child = spawn(process.execPath, [path.join(import.meta.dirname, "fixtures", "vyred-present.js")],
+    { detached: true, stdio: ["ignore", fd, fd], env: { ...process.env, VYRE_HOME: home } });
+  child.unref();
+  for (let i = 0; i < 100; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (await ping(p.socket)) return { code: 0, pid: child.pid };
+    if (child.exitCode !== null) break;
+  }
+  return { code: 1 };
+}

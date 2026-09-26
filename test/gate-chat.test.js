@@ -16,7 +16,7 @@ import http from "node:http";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
-import { tempHome, writeModule } from "./helpers.js";
+import { tempHome, writeModule, present } from "./helpers.js";
 import { fakeMattermost } from "../modules/chat/testing/fake-mattermost.js";
 
 const fixture = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -76,7 +76,7 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   }, THREADS);
 
   const lines = [];
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
   const cli = as("cli"), local = as("local"), juno = as("mcp:agent:juno");
