@@ -27,15 +27,6 @@ them, one per fix.
    status rejected, once per status.
 4. **The question is the user's line.** Reply view order: "You" + the question; then a head with
    who answers (e.g. Claude) and the state/cost; then the memory box; then the answer.
-7. **Quotes are chosen for the question.** Before showing `recall.search` hits (ask for 10, one per
-   session): drop the Capsule's own ask threads (name starts "Capsule: ", or cwd under its scratch
-   folder), any turn containing the whole question (3+ words) or sharing 80% of its words with
-   little else; rank the user's first-person statements that share a word with the question above
-   everything, questions and Claude's words below; show at most 2. With no Memory fact, a clear
-   first-person sentence from the top hit becomes one line on top, turned to "you" ("You own a blue
-   Volvo XC40."), sourced from the quote under it; the label stays "From your sessions", and that
-   line is not sent to a model (the quote under it is). No model runs for any of this. Reference:
-   `lib/said.js` `rankSaid`, `yourAnswer`.
 5. **A session busy in a terminal gets queued messages.** `threads.send` from a person's surface
    returns `{sent:false, queued:true, thread, name, note}` for a session another process has open.
    Show `note` ("<name> is busy in your terminal. I'll hand it your message when this turn ends.")
@@ -53,6 +44,15 @@ them, one per fix.
    Spaces. Typing must still reach the panel over a normal app too (the Electron build activates the
    app for that today; a true non-activating panel should not need it, so check both by hand).
    Electron reference: `local/capsule/lib/present.js`, flag `VYRE_CAPSULE_STAY=1`.
+7. **Quotes are chosen for the question.** Before showing `recall.search` hits (ask for 10, one per
+   session): drop the Capsule's own ask threads (name starts "Capsule: ", or cwd under its scratch
+   folder), any turn containing the whole question (3+ words) or sharing 80% of its words with
+   little else; rank the user's first-person statements that share a word with the question above
+   everything, questions and Claude's words below; show at most 2. With no Memory fact, a clear
+   first-person sentence from the top hit becomes one line on top, turned to "you" ("You own a blue
+   Volvo XC40."), sourced from the quote under it; the label stays "From your sessions", and that
+   line is not sent to a model (the quote under it is). No model runs for any of this. Reference:
+   `lib/said.js` `rankSaid`, `yourAnswer`.
 
 ## Done
 - 1ffb28a fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
