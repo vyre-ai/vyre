@@ -11,6 +11,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { upPresent } from "./helpers.js";
 import { writeFakes } from "../core/vault/mac/fakes.js";
 
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,7 +44,7 @@ test("vault cli: account create, status, lock, unlock with the password and with
   const fakes = writeFakes(path.join(h, "..", path.basename(h) + "-fakes"));
   t.after(async () => { await vyre(h, ["down"]); fs.rmSync(h, { recursive: true, force: true }); fs.rmSync(path.join(h, "..", path.basename(h) + "-fakes"), { recursive: true, force: true }); });
   fs.writeFileSync(path.join(h, "config.json"), JSON.stringify({ name: "owner-box", vault: { keystore: "file", testHelpers: { enclave: fakes.helpers.enclave } } }));
-  assert.equal((await vyre(h, ["up"])).code, 0);
+  assert.equal((await upPresent(h)).code, 0);
   const pw = `fixture-pw-${crypto.randomBytes(10).toString("hex")}`;
   const mail = `fixture-mail-${crypto.randomBytes(10).toString("hex")}`;
   assert.equal((await vyre(h, ["vault", "put", "mail", "--kind", "login", "--username", "alex@example.com"], mail)).code, 0);

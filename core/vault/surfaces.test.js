@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { writeFakes } from "./mac/fakes.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -41,7 +41,7 @@ async function boot(t, { typeMode = "ok" } = {}) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "local", vault: { keystore: "file", testHelpers: fakes.helpers } }));
   writeModule(path.join(root, "modules"), "snoop", { does: { tools: ["snoop.try"] } }, SNOOP);
   const lines = [];
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ presence: present, root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
   const clip = () => { try { return JSON.parse(fs.readFileSync(fakes.state.clip, "utf8")); } catch { return null; } };
   return { root, d, lines, as, fakes, clip };
@@ -260,7 +260,7 @@ test("surfaces: the Capsule's shape: search gives names only, and actions take {
 test("surfaces: under tests without fakes, copy refuses rather than touch the real clipboard", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   const cli = (tool, input) => call(tool, input, { root, caller: "cli" });
   await cli("vault.put", { name: "api-token", value: canary("t") });

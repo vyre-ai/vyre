@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { upPresent } from "./helpers.js";
 import { request } from "../core/daemon/client.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
@@ -60,7 +61,7 @@ test("shared vault: invite, both write, a conflict, remove a member, rotation fl
   const alex = home(t, { name: "alex-box", vault: { keystore: "file", relay: { host: "127.0.0.1", port: 0 } } });
   const dana = home(t, { name: "dana-box", vault: { keystore: "file" } });
   const sam = home(t, { name: "sam-box", vault: { keystore: "file" } });
-  for (const h of [alex, dana, sam]) assert.equal((await vyre(h, ["up"])).code, 0);
+  for (const h of [alex, dana, sam]) assert.equal((await upPresent(h)).code, 0);
 
   // Alex pins and verifies both cards (invites need a verified person).
   for (const [h, name] of [[dana, "dana"], [sam, "sam"]]) {

@@ -12,6 +12,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { upPresent } from "./helpers.js";
 import { exitFor } from "../core/cli/commands/vault.js";
 
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -49,7 +50,7 @@ function one(r) {
 
 test("vault op parity: --json and exit codes, get, read, inject, run --env-file, edit, rm", async t => {
   const h = home(t, { name: "owner-box", vault: { keystore: "file" } });
-  assert.equal((await vyre(h, ["up"])).code, 0);
+  assert.equal((await upPresent(h)).code, 0);
   const token = fake("token"), pw = fake("pw");
   assert.equal((await vyre(h, ["vault", "add", "api-token", "--kind", "api-key", "--host", "https://api.example.com"], token)).code, 0);
   const put = await vyre(h, ["call", "vault.put", JSON.stringify({ name: "mail", kind: "login", fields: { username: "alex@example.com", password: pw, totp: "JBSWY3DPEHPK3PXP" }, url: "https://mail.example.com" })]);
@@ -128,7 +129,7 @@ test("vault op parity: --json and exit codes, get, read, inject, run --env-file,
 
 test("vault op parity: exit 4 when locked, and exit 3 for presence", async t => {
   const h = home(t, { name: "locked-box", vault: { keystore: "passphrase" } });
-  assert.equal((await vyre(h, ["up"])).code, 0);
+  assert.equal((await upPresent(h)).code, 0);
   assert.equal((await vyre(h, ["vault", "unlock"], "a long test passphrase\n")).code, 0);
   await vyre(h, ["vault", "add", "api-token"], fake("t"));
   await vyre(h, ["vault", "lock"]);
@@ -143,7 +144,7 @@ test("vault op parity: exit 4 when locked, and exit 3 for presence", async t => 
 
 test("vault op parity: the ssh agent through ssh-add, and git credential fill through the helper", async t => {
   const h = home(t, { name: "dev-box", vault: { keystore: "file", ssh: { socket: "ssh/agent.sock" } } });
-  assert.equal((await vyre(h, ["up"])).code, 0);
+  assert.equal((await upPresent(h)).code, 0);
 
   const gen = one(await vyre(h, ["vault", "ssh", "generate", "deploy", "--json"]));
   assert.match(gen.data.key.public, /^ssh-ed25519 /);

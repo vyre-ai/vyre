@@ -17,7 +17,7 @@ import { serveKit, kitPayload, kitPage } from "./kit.js";
 import { register } from "./tools/share.js";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 
 const fakeSk = () => `V2-Q7M2XK-${crypto.randomBytes(16).toString("hex").toUpperCase().slice(0, 26)}`;
 
@@ -119,7 +119,7 @@ test("vault.kit tool: the Secret Key reaches the page and nowhere else", async t
 test("in a real vyred: who sees the people tools, and the kit is a person's tool", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
   const mcp = as("mcp"), cli = as("cli");
@@ -140,7 +140,7 @@ test("in a real vyred: account.create, then kit; the page holds the Secret Key, 
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
   const lines = [];
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ presence: present, root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
   const made = await cli("vault.account.create", { password: "a long fixture password" });

@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { upPresent } from "./helpers.js";
 import { request } from "../core/daemon/client.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
@@ -75,7 +76,7 @@ async function join(existing, fresh, role) {
 
 test("devices: a storage box and a full laptop join a Mac; writes and deletes travel; nothing leaks", async t => {
   const mac = home(t, "mac"), box = home(t, "box"), laptop = home(t, "laptop");
-  for (const h of [mac, box, laptop]) assert.equal((await vyre(h, ["up"])).code, 0);
+  for (const h of [mac, box, laptop]) assert.equal((await upPresent(h)).code, 0);
 
   const made = await call(mac, "vault.account.create", { password: PASSWORD });
   const sk = made.secretKey;

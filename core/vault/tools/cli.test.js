@@ -13,7 +13,7 @@ import path from "node:path";
 import { execFile, execFileSync } from "node:child_process";
 import { start } from "../../daemon/index.js";
 import { request, call } from "../../daemon/client.js";
-import { tempHome, writeModule } from "../../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../../test/helpers.js";
 import { parsePrivate } from "../ssh/keys.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -31,7 +31,7 @@ async function boot(t, vault = { keystore: "file", ssh: { socket: "ssh/agent.soc
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault }));
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.use"] }, needs: { vault: ["per-item"] } }, PROBE);
   const lines = [];
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ presence: present, root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const handle = /** @type {any} */ (d.registry).modules.get("vault").handle;
   return { root, d, lines, handle, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
