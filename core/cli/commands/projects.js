@@ -269,6 +269,16 @@ async function newProject(args) {
 
 // ------------------------------------------------------------ the commands
 
+/** Why `vyre threads` found nothing, and what to do: silence reads as broken. */
+async function emptyCatalog(q) {
+  if (q) return `nothing said matches ${JSON.stringify(q)} · fewer words, or vyre recall ${q} for turn by turn`;
+  const r = await call("recall.status");
+  const d = r.data;
+  if (d && d.indexing) return "indexing your Claude Code sessions now · try again in a moment";
+  if (d && !d.folders?.length) return "no transcript folders to read · set transcripts in ~/.vyre/config.json";
+  return "no Claude Code sessions on this machine yet · they show up here once you have some; vyre threads list shows headless ones";
+}
+
 export default [
   {
     name: "projects", order: 20, usage: "vyre projects [--json]", summary: "every project",
@@ -304,6 +314,7 @@ export default [
         const ts = await tool("projects.threads", { project: flags.project });
         if (!ts) return 1;
         if (json()) return emit(ts);
+        if (!ts.length) { out(dim(`  no threads in ${flags.project} yet · vyre start begins one there`)); return 0; }
         ts.forEach((t, i) => threadRow(t, i, { extra: dim("  " + t.how.join("+")) }));
         return 0;
       }
@@ -311,6 +322,7 @@ export default [
       if (!c) return 1;
       if (json()) return emit(c);
       if (c.note) out(dim("  " + c.note));
+      if (!c.sessions.length) { out(dim("  " + await emptyCatalog(pos.join(" ")))); return 0; }
       for (const r of c.sessions) {
         out(`  ${dim(r.id.slice(0, 8))}  ${cut(r.label, 44).padEnd(44)} ${dim(((r.said ? r.said + "×" : "").padStart(4)) + " " + ago(r.last).padStart(4) + "  " + tail(tilde(r.cwd), 28))}${r.projects.length ? dim("  [" + r.projects.join(", ") + "]") : ""}`);
       }

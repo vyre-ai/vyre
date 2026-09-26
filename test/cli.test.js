@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempHome, upPresent } from "./helpers.js";
@@ -117,4 +118,19 @@ test("cli: with a person's proof, relax, scope and retire go through, and say wh
   assert.match((await run(["learn", "level", "1", "remind"], env)).out, /\[remind\]/);
   assert.match((await run(["learn", "retire", "1"], env)).out, /retired lesson 1/);
   assert.match((await run(["learn"], env)).out, /no lessons yet/);
+});
+
+test("cli: vyre threads with nothing to show says so and what to do, never a blank screen", async t => {
+  const root = tempHome(t);
+  fs.mkdirSync(path.join(root, "tx"));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "tx")], vault: { keystore: "file" } }));
+  const env = { VYRE_HOME: root };
+  t.after(() => run(["down"], env));
+  const empty = await run(["threads"], env);
+  assert.equal(empty.code, 0);
+  assert.match(empty.out, /no Claude Code sessions on this machine yet|indexing your Claude Code sessions now/);
+  assert.match((await run(["threads", "croissant"], env)).out, /nothing said matches "croissant"/);
+  const help = await run(["threads", "--help"], env);
+  assert.equal(help.code, 0);
+  assert.match(help.out, /vyre threads \[search\]/);
 });

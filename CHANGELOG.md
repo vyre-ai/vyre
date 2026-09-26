@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre threads` never answers with a blank screen
+
+- With no sessions it printed nothing. Now it says why: indexing still running, no transcript
+  folders configured, or no Claude Code sessions yet; a search with no hits names the words and
+  points at `vyre recall`; `--project` with none says how to start one. `core/cli/commands/projects.js`.
+- `vyre threads --help` crashed on main (projects.js parse rejected --help); the kit branch
+  already handles help in core/cli/index.js, and test/cli.test.js now pins it.
+
 #### A release says which commit it is
 
 - `scripts/build-site.sh` (the step that packs vyre.tgz for npm and for the box image) writes
