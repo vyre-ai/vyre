@@ -1,0 +1,11 @@
+{
+  "name": "recall",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["recall.search", "recall.thread", "recall.sessions", "recall.index", "recall.status"] },
+  "watches": { "emits": ["session.indexed"] },
+  "shows": { "cli": ["recall", "index"] },
+  "needs": {},
+  "teaches": {}
+}
