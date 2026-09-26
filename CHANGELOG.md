@@ -14,7 +14,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `scripts/build-site.sh --src <checkout> [--mac-zip <zip>]` puts what the box installer downloads
   under `site/box/`: the compose files, the host wrapper, the Dockerfile, `install-box.sh`,
   `vyre.tgz` (npm pack, until the package is on npm), `Vyre-mac.zip`, `VERSION` and `SHA256SUMS`.
-  It also copies the installer to `site/install.sh`. All generated and gitignored.
+  It also copies the installer to `site/install.sh`. All generated and gitignored. The Capsule
+  zip (about 120 MB) is over Pages' 25 MiB file limit. It goes to the R2 bucket `vyre-downloads`
+  (`dl.vyre.run`) under a key named by its hash, and the generated `site/_redirects` sends
+  `/box/Vyre-mac.zip` there. Before zipping, the whole Vyre.app is ad-hoc signed
+  (`codesign --force --deep -s -`). Packager signs only the Electron binary, which fails
+  `codesign --verify`, and a downloaded app in that state is refused as damaged.
 - `scripts/release-check.sh [--skip-tests] [--claude] [--live]`: the suite, then the pack and what
   the tarball may and may not hold. Then a global install into a temp prefix, and `vyre up`,
   `status`, `modules`, `call` and `down` in a temp HOME. Then the Harness MCP server from the

@@ -84,9 +84,20 @@ npm install -g https://vyre.run/box/vyre.tgz
 vyre up --connect <you>.vyre.run
 ```
 
-`vyre up` on a Mac sets its role to `local`, starts vyred for this Mac, links it to your box,
-and opens the Capsule. The install is about 480 MB, most of it the optional local embedding
-model that lets search find things by meaning. Search still works without it, as full text.
+`vyre up` on a Mac sets its role to `local`, starts vyred for this Mac, and checks that your
+box answers (the Mac must be on your tailnet). Then it pairs this Mac with the box and prints a
+code:
+
+```
+  pair this Mac: on the box, run vyre link approve 123-456
+```
+
+Run that line on the server (`ssh <you>@<server>`, then `vyre link approve 123-456`). The code
+expires after a few minutes; `vyre up` again prints a fresh one. `vyre link` on the Mac says
+when it is paired. Last, `vyre up` opens the Capsule if you have installed it (next step).
+
+The install is about 480 MB, most of it the optional local embedding model that lets search
+find things by meaning. Search still works without it, as full text.
 
 To use Vyre's tools inside Claude Code on the Mac:
 
@@ -100,16 +111,19 @@ Download [vyre.run/box/Vyre-mac.zip](https://vyre.run/box/Vyre-mac.zip), unzip i
 `Vyre.app` to Applications before you open it. Opened from Downloads, macOS runs it from a
 temporary copy, and the permissions you grant it do not stick.
 
-The app is not signed or notarized yet, so macOS stops it the first time:
+The app is not signed with a Developer ID or notarized yet, so macOS stops it the first time:
 
 1. In Finder, right-click (or Control-click) `Vyre.app` and choose **Open**.
 2. macOS says it cannot check the app for malicious software. Choose **Open** again.
    On recent macOS the dialog may offer only **Done**. If so, open System Settings, then
    Privacy & Security, scroll to the note about Vyre, and choose **Open Anyway**.
+   If you prefer the terminal, this does the same (it removes the download mark macOS checks):
+   `xattr -dr com.apple.quarantine /Applications/Vyre.app`
 3. Grant Input Monitoring when it asks: Control twice opens the Capsule from any app, and
    macOS needs that permission to see the key. Contacts is optional, for contact results.
 
-After the first open it starts normally. Press Control twice anywhere to open it.
+After the first open it starts normally. Run `vyre capsule` (or `vyre up` again) so it opens
+wired to this Mac's vyred, then press Control twice anywhere to open it.
 
 ## What is not finished
 
@@ -120,6 +134,12 @@ After the first open it starts normally. Press Control twice anywhere to open it
 - **Signing.** The Mac app is unsigned and not notarized, hence the right-click, Open.
 - **Names.** `<you>.vyre.run` needs your own Cloudflare token for now. The hosted name directory
   that will claim a name without one is designed (ADR 0002) and not built.
+- **Pairing.** Approve a Mac from the box's terminal (`vyre link approve`). Approving from the
+  Deck on another device waits on the box passing the caller's tailnet node through. Pairing is
+  tested between two vyreds with a simulated tailnet, not yet against a real box.
+- **The Capsule zip** is built on the maintainer's Mac with ad-hoc signed helpers. If macOS
+  refuses to run it, build and run the Capsule from the npm install instead: `vyre capsule build`
+  (needs the Xcode command line tools), then `vyre capsule --dev`.
 - **Updates.** Nothing updates itself. On the server, `vyre update`. On the Mac, run the
   `npm install -g` line again, and download the zip again.
 

@@ -138,9 +138,13 @@ cmp -s "$box/install-box.sh" "$repo/site/install.sh" || fail "site/install.sh di
 sh -n "$box/install-box.sh" || fail "install-box.sh does not parse"
 sh -n "$box/vyre" || fail "the box wrapper does not parse"
 ok "$(wc -l <"$box/SHA256SUMS" | tr -d ' ') files match SHA256SUMS; vyre.tgz is $version"
-if [ -f "$box/Vyre-mac.zip" ]; then
-  unzip -l "$box/Vyre-mac.zip" | grep -q 'Vyre.app/Contents/Info.plist' || fail "Vyre-mac.zip has no Vyre.app"
-  ok "Vyre-mac.zip holds Vyre.app"
+grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_redirects does not send /box to install-box.sh"
+if [ -f "$box/Vyre-mac.url" ]; then
+  grep -qE '^https://dl\.vyre\.run/capsule/[0-9a-f]{16}/Vyre-mac\.zip$' "$box/Vyre-mac.url" || fail "Vyre-mac.url is $(cat "$box/Vyre-mac.url")"
+  grep -qx "/box/Vyre-mac.zip $(cat "$box/Vyre-mac.url") 302" "$repo/site/_redirects" || fail "site/_redirects does not point Vyre-mac.zip at $(cat "$box/Vyre-mac.url")"
+  ok "Vyre-mac.zip redirects to $(cat "$box/Vyre-mac.url")"
+else
+  printf '   note  no Capsule zip in this build (scripts/build-site.sh --mac-zip)\n'
 fi
 
 if [ "$LIVE" = 1 ]; then
@@ -160,6 +164,14 @@ if [ "$LIVE" = 1 ]; then
   [ "$code" = 200 ] || fail "$base/start answers $code"
   code=$(curl -s -o "$work/box-alias" -w '%{http_code}' "$base/box")
   { [ "$code" = 200 ] && cmp -s "$work/box-alias" "$box/install-box.sh"; } || fail "$base/box is not install-box.sh ($code)"
+  if [ -f "$box/Vyre-mac.url" ]; then
+    curl -fsSL "$base/box/Vyre-mac.zip" -o "$work/live/Vyre-mac.zip" || fail "cannot fetch $base/box/Vyre-mac.zip"
+    (cd "$work/live" && sum -c --quiet "$box/Vyre-mac.zip.sha256") || fail "$base/box/Vyre-mac.zip does not match Vyre-mac.zip.sha256"
+    unzip -l "$work/live/Vyre-mac.zip" | grep -q 'Vyre.app/Contents/Info.plist' || fail "Vyre-mac.zip has no Vyre.app"
+    (cd "$work/live" && ditto -x -k Vyre-mac.zip app 2>/dev/null && codesign --verify --deep --strict app/Vyre.app 2>/dev/null) \
+      || [ "$(uname -s)" != Darwin ] || fail "Vyre.app in the zip does not pass codesign --verify (macOS would call it damaged)"
+    ok "Vyre-mac.zip is served, matches its checksum, and its signature verifies"
+  fi
   ok "every file is served byte for byte; install.sh, /start and 404 are right"
 fi
 
