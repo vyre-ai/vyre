@@ -9,7 +9,12 @@
 // for threads.get, only its transcript: it is read from recall.thread and followed through
 // session.indexed, which Recall emits when that session's turn completes. Once a send adopts it
 // (threads.send resumes it headless), thread.* events arrive for it and the view follows those
-// instead, so no turn shows twice. Nothing here uses innerHTML: text is untrusted (it is the model's own
+// instead, so no turn shows twice.
+//
+// A session from the paired Mac (on the box, a row with source "mac") is read, never acted on: it
+// opens from recall.thread (the box asks the Mac for it), and in place of the composer, the
+// keyboard and Take it says which machine to continue it on. A session the list did not know is
+// found to be the Mac's from recall.thread's own answer. Nothing here uses innerHTML: text is untrusted (it is the model's own
 // output, or another person's), so it goes through lib/markdown.js, which never parses it as
 // markup, or through document.createTextNode directly.
 
@@ -21,11 +26,13 @@ import { renderMarkdown } from "./lib/markdown.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
 import { mountComposer } from "./composer.js";
+import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, recorded?: boolean, onBack: () => void }} opts
+ * @param {{ thread: string, project: string|null, recorded?: boolean, source?: string|null, machine?: string|null, onBack: () => void }} opts
  * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
+ * source, machine: the list's label for it; "mac" opens it read-only.
  * @returns {() => void} cleanup
  */
 export function mountSession(container, opts) {
@@ -47,19 +54,23 @@ export function mountSession(container, opts) {
   const record = { current: /** @type {any} */ (null) };
   /** A recorded session: the transcript's next turn to read, while no thread.* event has come. */
   const recorded = { on: false, next: 0, session: /** @type {any} */ (null), busy: false, again: false };
+  /** Where it lives when that is the Mac: then nothing here may send to it, lease it or take it. */
+  const where = { source: opts.source || null, machine: opts.machine || null };
 
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
 
-  put(container, head, timeline, leaseBar, composer.el);
+  put(container, head, timeline, leaseBar, isMac(where) ? null : composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   async function boot() {
-    const r = opts.recorded ? { error: null } : await attempt("threads.get", { thread, since: 0, limit: 500 });
-    if (opts.recorded || r.error) {
-      const t = await attempt("recall.thread", { session: thread, limit: 400 });
+    const skip = opts.recorded || isMac(where);
+    const r = skip ? { error: null } : await attempt("threads.get", { thread, since: 0, limit: 500 });
+    if (skip || r.error) {
+      const t = await attempt("recall.thread", { session: thread, limit: 400, ...(isMac(where) ? { source: "mac" } : {}) });
       if (t.error) { timeline.replaceChildren(empty("Could not open this session.", t.error.missing ? t.error : r.error)); drawHead(); return; }
       recorded.on = true;
       recorded.session = t.data.session;
+      if (isMac(t.data)) { where.source = "mac"; where.machine = t.data.machine || where.machine; readOnly(); }
       drawHead();
       timeline.replaceChildren();
       if (!t.data.turns.length) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
@@ -85,8 +96,10 @@ export function mountSession(container, opts) {
         h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Claude Code session"),
       ),
+      machineChip(where),
       rec?.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null,
     );
+    if (isMac(where)) { put(leaseBar, icon("lock", 12), h("span", { class: "lease-note" }, readOnlyNote(where))); return; }
     put(leaseBar,
       icon("lock", 12),
       rec?.holder ? h("span", null, h("span", { class: "who" }, rec.holder), " has the keyboard")
@@ -110,7 +123,7 @@ export function mountSession(container, opts) {
   }
   /** Recall indexed this session again: read what is new. One read at a time; a second ask during one reads again after. */
   async function readMore() {
-    if (!recorded.on) return;
+    if (!recorded.on || isMac(where)) return;
     if (recorded.busy) { recorded.again = true; return; }
     recorded.busy = true;
     try {
@@ -126,7 +139,9 @@ export function mountSession(container, opts) {
       } while (recorded.again);
     } finally { recorded.busy = false; }
   }
-  async function take() { await attempt("threads.lease", { thread }); }
+  async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
+  /** A Mac session: no composer at all, so nothing typed here can reach threads.send or threads.lease. */
+  function readOnly() { composer.el.remove(); }
 
   function dayLabel(at) {
     const d = new Date(at);

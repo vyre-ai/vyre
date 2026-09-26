@@ -92,6 +92,11 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   border-radius: var(--r-1); font-size: 13px; line-height: 18px; color: var(--text); }
 .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--rule-strong);
   border-radius: var(--r-1); font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+/* A row from the paired Mac (js/machine.js), and a Mac that is away: quieter, dashed. */
+.tag.machine { flex-shrink: 0; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag.machine.off { color: var(--label); border-style: dashed; max-width: none; }
+.machine-offline { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.readonly-note { color: var(--label); font-size: 13px; line-height: 18px; }
 .initial { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
   border-radius: var(--r-1); background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text);
   font-family: var(--mono); font-size: 11px; font-weight: 500; }
