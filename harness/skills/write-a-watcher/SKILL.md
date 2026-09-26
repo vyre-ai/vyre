@@ -57,9 +57,11 @@ your reply. A public source needs nothing: leave `needs` out. Otherwise:
    ```
 
    A grant can only come from a person. A grant is for one watcher, never for every watcher; a
-   second watcher that needs the same item needs its own. (If you call `vault_grant` yourself,
-   it only waits as `pending` until they run `vyre vault approve <id>`; the command above is
-   one step for them instead of two.)
+   second watcher that needs the same item needs its own. If you call `vault_grant` yourself,
+   the grant stays `pending` and the watcher still cannot use the item until a person approves
+   it in a terminal: `vyre vault pending` lists what waits, `vyre vault approve <id>` allows
+   one. You cannot approve it; `vault_approve` is not open to Claude. The command above is
+   one step for them instead of two.
 4. Until they have run it, the dry run fails with "<item> is not granted to watchers/<name>".
    That is expected, not a bug in the watcher: remind them of the command, then dry-run again.
 
@@ -114,7 +116,9 @@ Rules for `watch.js`:
   environment variables, read access to its own folder only, and no writes or child processes.
 - `since` is `null` on the first run. After each successful run it becomes whatever `watch`
   returned, or, if it returned nothing, the time that run started (ms since the epoch). Return
-  the source's own cursor (a last id, a page token) when it has one.
+  the source's own cursor (a last id, a page token) when it has one. A ranked list (a front
+  page, a top-100) has no such cursor: an old id can climb onto it later, so skipping ids
+  below the highest one seen loses items. Emit what is on the list and let dedupe work.
 - Every item needs a stable `id` from the source, so a repeat is never filed twice. Emitting
   everything currently visible each run is fine; the runtime files only ids it has not seen.
 - `emit` takes small plain objects (under 4 KB): `id`, `title`, `url`, `at` (a date string or

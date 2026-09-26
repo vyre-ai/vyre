@@ -244,6 +244,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   read, and does not widen a filter to manufacture items. When a watcher needs a vault item, it
   gives the user the exact `vyre vault grant <item> watchers --watcher <name>` before the dry run,
   since a grant can only come from a person.
+  A grant Claude asks for through `vault_grant` stays pending until a person runs
+  `vyre vault approve <id>` (listed by `vyre vault pending`); the skill says so. It also warns that
+  a ranked list such as a front page has no id cursor: skipping ids below the highest seen drops
+  older stories that climb onto it, which Haiku wrote in a real session.
 
 #### Capsule
 

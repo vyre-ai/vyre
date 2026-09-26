@@ -60,6 +60,15 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
   an item in the real vault (file keystore), shows the dry run refused until
   `vault.grant {name, module: "watchers", watcher}`, that a second watcher listing the same item
   is still refused, and that `vault.released` names the watcher.
+- Rerun 2026-09-26 after the vault and gate-chat merges, temp `VYRE_HOME` under `/tmp/vyre-lab`,
+  `claude -p --model haiku --plugin-dir harness`: the skill loaded, the session wrote
+  `hn-demo-sqlite` (HN Firebase API, top 30, parallel fetches), dry-ran it (30 stories read, 0
+  match today) and stopped to ask before `watchers_create`, as the skill says, even though the
+  prompt had said to go ahead. Turned on with `vyre watchers create`; it then fired on schedule
+  under vyred (`schedule` run, 0 filed). Haiku used the highest story id as its cursor, which
+  drops older stories that climb onto the front page; the skill now warns against that. The
+  grant command was checked against a real vault: `vyre vault grant <item> watchers --watcher
+  <name>` prints `granted <item> to watchers/<name>`.
 
 ## Doing
 
