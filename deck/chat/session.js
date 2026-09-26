@@ -17,6 +17,7 @@ import { h, put, add, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
+import { healthDot } from "../js/health.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
@@ -47,6 +48,8 @@ export function mountSession(container, opts) {
   const record = { current: /** @type {any} */ (null) };
   /** A recorded session: the transcript's next turn to read, while no thread.* event has come. */
   const recorded = { on: false, next: 0, session: /** @type {any} */ (null), busy: false, again: false };
+  // How the box reaches this device, as a dot in the header (asked on open, then once a minute while shown).
+  const health = healthDot();
 
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
 
@@ -86,6 +89,7 @@ export function mountSession(container, opts) {
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Claude Code session"),
       ),
       rec?.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null,
+      health.el,
     );
     put(leaseBar,
       icon("lock", 12),
@@ -295,7 +299,7 @@ export function mountSession(container, opts) {
     on("memory.curated", () => fetchMemory()),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) === thread) readMore(); }),
   ];
-  return () => { for (const off of offs) off(); };
+  return () => { health.stop(); for (const off of offs) off(); };
 }
 
 /** The last two folders of a path, which is what tells sessions apart: …/alex/Work. */

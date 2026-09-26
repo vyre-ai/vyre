@@ -216,6 +216,18 @@ async function pickResult(r, { take = false } = {}) {
   S.note = r2.error || r2.note || "";
   paint();
 }
+/** Send a file on this Mac to the box. It can take a while, so the note says so first, then how it went. */
+let sending = false;
+async function sendFile(r) {
+  if (sending) return;
+  sending = true;
+  S.note = `Sending ${r.label} to the box…`;
+  paint();
+  const out = await api.sendFile(r).catch(e => ({ error: String(e && e.message || e) }));
+  sending = false;
+  S.note = out.error || out.note || "";
+  paint();
+}
 let thinkTimer = 0;
 const soon = (ms = 90) => { clearTimeout(thinkTimer); thinkTimer = window.setTimeout(() => think().catch(e => console.error("capsule: " + (e && e.stack || e))), ms); };
 
@@ -354,6 +366,8 @@ window.addEventListener("keydown", e => {
     if (cur && cur.r && cur.r.kind === "module" && (k === "ArrowRight" || (k === "k" && e.metaKey))) { e.preventDefault(); return openActions(cur.r); }
     // Tab always asks, whatever is highlighted: the one key that sends the words on.
     if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
+    // ⌥⏎ on a file on this Mac sends it to the box (Taildrop); ⏎ still opens it.
+    if (k === "Enter" && e.altKey && cur && cur.r && cur.r.kind === "file" && S.snap.has.send) { e.preventDefault(); return sendFile(cur.r); }
     if (k === "Enter" && !e.metaKey && i >= 0) {
       e.preventDefault();
       const it = E[i];
@@ -571,6 +585,7 @@ function paint() {
     const cur = E[selected(E)];
     const primary = opts[0] && opts[0].kind !== "recall" ? opts[0].show.who : null;
     keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "clip" ? "⏎ copy, then ⌘V" : cur.r.kind === "clipclear" ? "⏎ clear" : cur.r.kind === "watch" ? "⏎ watch" : cur.r.kind === "module" ? (cur.r.module === "vault" ? "⏎ fill, ⌘K more" : "⏎ run, ⌘K more") : cur.r.kind === "drive" ? "⏎ send and watch" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
+      cur && cur.r && cur.r.kind === "file" && S.snap.has.send ? "⌥⏎ send to box" : null,
       primary && !(cur && cur.ask === opts[0]) ? `⇥ ask ${primary}` : null, "esc close");
     done(panel, kids);
     loadIcons();
@@ -622,6 +637,12 @@ function paint() {
   if (watching.length) kids.push(h("div", { class: "sect note" }, `Watching ${watching.map(w => w.label).join(", ")}.`));
   if (nWait) hint.append(h("span", { class: "kbd live" }, "↑"));
   if (nWait) kids.push(h("div", { class: "sect note" }, `${nWait} waiting on you. Press ↑ to see ${nWait === 1 ? "it" : "them"}.`));
+  // How this Mac reaches the box: a dot, green direct, amber relayed, grey unknown, with the line as its title.
+  if (snap.link) {
+    const line = [snap.link.path, snap.link.handshake].filter(Boolean).join(", ");
+    kids.push(h("div", { class: "sect note boxlink" }, h("span", { class: "lbl" }, "Box"),
+      h("span", { class: "hdot " + (snap.link.dot || "unknown"), title: line, role: "img", "aria-label": `Connection to the box: ${line}` })));
+  }
   if (!snap.hotkey.ok && snap.hotkey.message && snap.hotkey.message !== "starting") kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Hotkey"), snap.hotkey.message));
   if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
   keys("⏎ ask " + (snap.assistant || "memory"), "@ agent, project or thread", nWait ? "↑ waiting" : null, "esc close");

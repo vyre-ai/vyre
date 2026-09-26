@@ -21,7 +21,12 @@ const KIND = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 export const MAX_TIMEOUT_S = 300;
 export const DEFAULT_TIMEOUT_S = 60;
 
-/** @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number }} Spec */
+/**
+ * A watcher's spec. `on` and `where` are for schedule "event": the event type it runs on, and the
+ * payload fields that must match for it to run (hook.received needs a route).
+ * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number,
+ *   on: string|null, where: Record<string, string|number|boolean>|null }} Spec
+ */
 
 /**
  * Read and check a watcher folder.
@@ -57,17 +62,55 @@ function check(raw, name, problems) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) { problems.push("watcher.json must be an object"); return /** @type {any} */ (null); }
   if (raw.name !== name) problems.push(`watcher.json name "${raw.name}" must match its folder, "${name}"`);
   if (typeof raw.project !== "string" || !raw.project.trim()) problems.push("watcher.json needs project: the slug of the project items file into (vyre projects lists them)");
-  const schedule = typeof raw.schedule === "string" ? raw.schedule.trim() : "";
-  if (!schedule) problems.push('watcher.json needs schedule: cron like "*/15 * * * *", or "webhook"');
-  else if (schedule !== "webhook") { try { parse(schedule); } catch (e) { problems.push(/** @type {Error} */ (e).message); } }
+  // An event trigger: "on" names the event, "where" the payload fields it must carry. The
+  // schedule is then "event", written or not.
+  const on = raw.on === undefined ? null : raw.on;
+  if (on !== null && (typeof on !== "string" || !KIND.test(on))) problems.push(`on "${on}" must be an event type like hook.received`);
+  const where = checkWhere(raw.where, on, problems);
+  const schedule = typeof raw.schedule === "string" ? raw.schedule.trim() : on !== null ? "event" : "";
+  if (!schedule) problems.push('watcher.json needs schedule: cron like "*/15 * * * *", "webhook", or an event to run on with on and where');
+  else if (on !== null && schedule !== "event") problems.push(`a watcher with on runs on that event; its schedule must be "event" or left out, not "${schedule}"`);
+  else if (schedule === "event" && on === null) problems.push('schedule "event" needs on: the event type to run on, like hook.received');
+  else if (schedule !== "webhook" && schedule !== "event") { try { parse(schedule); } catch (e) { problems.push(/** @type {Error} */ (e).message); } }
   const needs = raw.needs === undefined ? [] : raw.needs;
   if (!Array.isArray(needs) || needs.some(n => typeof n !== "string" || !VAULT_NAME.test(n))) problems.push("needs must be a list of vault item names");
   if (raw.emits !== undefined && (typeof raw.emits !== "string" || !KIND.test(raw.emits))) problems.push(`emits "${raw.emits}" must look like noun.past-verb, like invoice.seen`);
   const timeout = raw.timeout === undefined ? DEFAULT_TIMEOUT_S : raw.timeout;
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT_S) problems.push(`timeout is seconds, at most ${MAX_TIMEOUT_S}`);
-  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description"].includes(k));
+  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under needs`);
-  return { name, project: String(raw.project || "").trim(), schedule, needs: Array.isArray(needs) ? [...new Set(needs)] : [], emits: raw.emits || "watcher.item", timeout: Number(timeout) };
+  return { name, project: String(raw.project || "").trim(), schedule, needs: Array.isArray(needs) ? [...new Set(needs)] : [], emits: raw.emits || "watcher.item", timeout: Number(timeout),
+    on: typeof on === "string" ? on : null, where };
+}
+
+/**
+ * `where`: payload fields an event must carry, each a string, number or boolean compared exactly.
+ * A hook.received watcher must name its route, so one route's deliveries never reach a watcher
+ * written for another.
+ * @returns {Record<string, string|number|boolean>|null}
+ */
+function checkWhere(where, on, problems) {
+  if (where === undefined) {
+    if (on === "hook.received") problems.push('a hook.received watcher needs where: { "route": "<the hook route>" }');
+    return null;
+  }
+  if (on === null) { problems.push("where is for a watcher with on"); return null; }
+  if (!where || typeof where !== "object" || Array.isArray(where)) { problems.push("where must be an object of payload fields"); return null; }
+  const out = {};
+  for (const [k, v] of Object.entries(where)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,40}$/.test(k) || !["string", "number", "boolean"].includes(typeof v)) { problems.push(`where.${k} must be a string, number or boolean`); continue; }
+    out[k] = v;
+  }
+  if (Object.keys(out).length > 8) problems.push("where takes at most 8 fields");
+  if (on === "hook.received" && typeof out.route !== "string") problems.push('a hook.received watcher needs where: { "route": "<the hook route>" }');
+  return out;
+}
+
+/** Does an event's payload carry every field `where` names, with the same value? */
+export function matches(where, payload) {
+  if (!where) return true;
+  if (!payload || typeof payload !== "object") return false;
+  return Object.entries(where).every(([k, v]) => payload[k] === v);
 }
 
 /** Every folder under the watchers folder, by name, whether valid or not. */

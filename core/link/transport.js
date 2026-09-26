@@ -49,9 +49,34 @@ export function tailscaleBin() {
 }
 
 /**
- * `tailscale whois --json <ip>`, reduced to what the link needs. Null when Tailscale does not know
- * the address or is not running.
- * @returns {Promise<{ stableId: string, node: string, login: string|null, tagged: boolean } | null>}
+ * The fields Vyre reads from `tailscale whois --json`. A tagged node has no person behind it,
+ * whatever profile it reports. `caps` is the whois CapMap: the application capabilities the
+ * tailnet policy grants that peer toward this node (ADR 0014), as the policy wrote them. Vyre
+ * reads them and never writes them. Pure, for tests.
+ * @returns {{ stableId: string, node: string, login: string|null, tagged: boolean, tags: string[], caps: Record<string, any[]> } | null}
+ */
+export function parseWhois(w) {
+  if (!w || !w.Node) return null;
+  const tags = Array.isArray(w.Node.Tags) ? w.Node.Tags.map(String) : [];
+  /** @type {Record<string, any[]>} */
+  const caps = {};
+  for (const [k, v] of Object.entries(w.CapMap && typeof w.CapMap === "object" ? w.CapMap : {})) caps[k] = Array.isArray(v) ? v : [];
+  return {
+    stableId: String(w.Node.StableID || w.Node.ID || ""),
+    node: String(w.Node.Name || w.Node.ComputedName || "").replace(/\.$/, ""),
+    login: tags.length ? null : (w.UserProfile && w.UserProfile.LoginName) || null,
+    tagged: tags.length > 0,
+    tags,
+    caps,
+  };
+}
+
+/** The values the policy granted a peer for one capability, or [] (the peer has none). */
+export const capValues = (who, name) => (who && who.caps && Array.isArray(who.caps[name]) ? who.caps[name] : []);
+
+/**
+ * `tailscale whois --json <ip>`, reduced to parseWhois. Null when Tailscale does not know the
+ * address or is not running.
  */
 export function whois(ip) {
   const bin = tailscaleBin();
@@ -59,12 +84,7 @@ export function whois(ip) {
   return new Promise(resolve => {
     execFile(bin, ["whois", "--json", normalize(ip)], { timeout: 5000 }, (err, out) => {
       if (err) return resolve(null);
-      try {
-        const j = JSON.parse(out);
-        const tags = (j.Node && j.Node.Tags) || [];
-        resolve({ stableId: String(j.Node.StableID || ""), node: String(j.Node.Name || "").replace(/\.$/, ""),
-          login: tags.length ? null : (j.UserProfile && j.UserProfile.LoginName) || null, tagged: tags.length > 0 });
-      } catch { resolve(null); }
+      try { resolve(parseWhois(JSON.parse(out))); } catch { resolve(null); }
     });
   });
 }

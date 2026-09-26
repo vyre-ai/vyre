@@ -1,0 +1,11 @@
+{
+  "link.health": {
+    "path": "direct",
+    "relay": "fra",
+    "latencyMs": 12,
+    "lastHandshake": "$ago:40s",
+    "online": true,
+    "checkedAt": "$ago:1s",
+    "cached": false
+  }
+}

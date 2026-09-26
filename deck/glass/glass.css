@@ -8,6 +8,7 @@
 .gl-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; min-height: 44px; }
 .gl-title { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .gl-title-row { display: flex; align-items: baseline; gap: 10px; }
+.gl-title-row .dot { align-self: center; }
 .gl-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .gl-head-right:empty { display: none; }
 .gl-watchers { display: flex; align-items: center; gap: 8px; padding-right: 8px; color: var(--label); }
@@ -59,6 +60,7 @@
   text-transform: uppercase; color: var(--text-2); pointer-events: none; }
 .gl-badge-live { color: var(--text); }
 .gl-badge .dot { width: 6px; height: 6px; border-radius: 3px; background: var(--gl-accent); }
+.gl-badge-note { color: var(--label); font-size: 10px; padding-left: 6px; border-left: 1px solid currentColor; }
 
 .gl-caption { display: flex; align-items: baseline; gap: 16px; padding: 0 4px; }
 .gl-cap-lbl { color: var(--gl-accent); width: 36px; flex-shrink: 0; }

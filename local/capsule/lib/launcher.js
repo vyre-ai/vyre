@@ -45,8 +45,10 @@ const CLIPS = /^(clipboard|clips?|paste)\b/i;
 const BOX_TIMEOUT = 1200;
 const LINK_TTL = 30_000;
 const UNREACHABLE = "The box is not reachable right now.";
+/** A send waits for Taildrop to finish, so it gets what `vyre send` gets, not a tool call's usual ten seconds. */
+export const SEND_TIMEOUT = 61 * 60_000;
 
-/** @typedef {(tool: string, input: object) => Promise<{ data?: any, error?: any }>} Vyred */
+/** @typedef {(tool: string, input: object, opts?: { timeout?: number }) => Promise<{ data?: any, error?: any }>} Vyred */
 
 const errText = e => (e && typeof e === "object" ? String(e.message || e.code || "") : String(e || ""));
 const boxDown = e => /unreach|timeout|timed out|not linked|offline|ECONN|EHOST|down|refused/i.test(errText(e) + " " + (e && e.code ? e.code : ""));
@@ -297,10 +299,20 @@ export class Launcher {
     return { error: `the Capsule does not open ${r.kind} results` };
   }
 
-  /** Pull a box file to this Mac (vyred puts it under its fetched folder), then open that copy. */
+  /**
+   * Open a box file. When a Taildrive share holding it is mounted (files.drive.local), open it
+   * there, where edits land on the box. Otherwise pull a copy to this Mac (vyred puts it under
+   * its fetched folder) and open that.
+   */
   async fetch(r) {
     const name = this.boxName || "the box";
     if (!this.vyred) return { error: UNREACHABLE };
+    const m = await this.vyred("files.drive.local", { path: r.target }).catch(() => null);
+    const mounted = m && m.data && typeof m.data.local === "string" && path.isAbsolute(m.data.local) ? m.data.local : "";
+    if (mounted) {
+      const o = await this.openFn(/** @type {any} */ ({ ...r, kind: "file", target: mounted }));
+      if (!("error" in o)) return { ok: true, close: true };
+    }
     const f = await this.vyred("files.fetch", { path: r.target, source: "box" }).catch(e => ({ error: e }));
     const localPath = f && f.data && typeof f.data.local === "string" ? f.data.local : "";
     if (!localPath || !path.isAbsolute(localPath)) {
@@ -309,6 +321,20 @@ export class Launcher {
     }
     const o = await this.openFn(/** @type {any} */ ({ ...r, kind: "file", target: localPath }));
     return "error" in o ? { error: o.error } : { ok: true, close: true, note: `Fetched from ${name}.` };
+  }
+
+  /**
+   * Send a file on this Mac to the box with Taildrop (files.send). vyred's guard decides whether
+   * it may leave; what it says when it refuses is shown as it is.
+   * @param {Result} r a "file" result
+   * @returns {Promise<{ ok?: true, error?: string, note?: string }>}
+   */
+  async send(r) {
+    if (!r || r.kind !== "file" || typeof r.target !== "string" || !path.isAbsolute(r.target)) return { error: "only a file on this Mac can be sent" };
+    if (!this.vyred) return { error: "Vyre is not running, so nothing can be sent." };
+    const s = await this.vyred("files.send", { path: r.target }, { timeout: SEND_TIMEOUT }).catch(e => ({ error: e }));
+    if (s && s.data && s.data.sent) return { ok: true, note: `Sent ${s.data.sent} to ${this.boxName || s.data.to || "the box"}.` };
+    return { error: `Could not send it: ${errText(s && s.error) || "nothing came back"}.` };
   }
 
   close() { this.pending?.abort(); this.helper?.close?.(); this.frecency?.flush?.(); }

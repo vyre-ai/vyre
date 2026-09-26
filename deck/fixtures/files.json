@@ -1,0 +1,45 @@
+{
+  "files.drive.status": {
+    "enabled": true,
+    "access": "ro",
+    "source": "box",
+    "shares": [
+      {
+        "name": "projects",
+        "path": "/work/projects",
+        "shared": true,
+        "mounted": true
+      },
+      {
+        "name": "glass-files",
+        "path": "/work/glass-files",
+        "shared": false,
+        "mounted": false
+      }
+    ],
+    "list": [
+      {
+        "name": "projects",
+        "path": "/work/projects"
+      }
+    ]
+  },
+  "files.drive.audit": {
+    "ok": false,
+    "checked": 4,
+    "findings": [
+      {
+        "node": "alex-phone.tail0000.ts.net",
+        "login": "alex@example.com",
+        "access": [
+          {
+            "shares": [
+              "projects"
+            ],
+            "access": "ro"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("vyre", {
   quick: text => ipcRenderer.invoke("capsule:quick", text),
   full: text => ipcRenderer.invoke("capsule:full", text),
   pick: (result, query) => ipcRenderer.invoke("capsule:pick", result, query),
+  // A file on this Mac to the box, with Taildrop (⌥⏎ on a file row).
+  sendFile: result => ipcRenderer.invoke("capsule:send-file", result),
   timing: t => ipcRenderer.send("capsule:timing", t),
   // Pictures for result rows, as file:// URLs, fetched after the rows are drawn.
   icons: results => ipcRenderer.invoke("capsule:icons", results),

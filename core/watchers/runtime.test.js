@@ -279,3 +279,41 @@ test("watchers: the network is reachable, and a webhook watcher gets the body an
   assert.equal(rt.tick().length, 0, "a webhook watcher has no schedule to run on");
   assert.ok(!JSON.stringify(rt.list()).includes(on.hook.token), "the list shows the webhook token");
 });
+
+test("watchers: an event watcher names its event and where; hook.received must name a route, and only matching events run it", async t => {
+  const { rt, write, db } = setup(t);
+  const code = `export default async function watch({ hook, emit }) { if (hook) emit({ id: hook.id, title: hook.event + " " + hook.route + " " + (hook.delivery ? hook.delivery.body : "none") }); }`;
+  const problems = spec => { write("northwind-orders", code, { schedule: undefined, ...spec }); return rt.list().watchers.find(w => w.name === "northwind-orders").problems; };
+  assert.match(problems({ on: "hook.received" }).join(), /needs where: \{ "route"/);
+  assert.match(problems({ on: "hook.received", where: { event: "x" } }).join(), /needs where: \{ "route"/);
+  assert.match(problems({ where: { route: "northwind-orders" }, schedule: "@hourly" }).join(), /where is for a watcher with on/);
+  assert.match(problems({ on: "hook.received", where: { route: "northwind-orders" }, schedule: "@hourly" }).join(), /must be "event" or left out/);
+  assert.match(problems({ schedule: "event" }).join(), /needs on/);
+  assert.match(problems({ on: "hook.received", where: { route: { $ne: null } } }).join(), /where.route must be a string/);
+  assert.deepEqual(problems({ on: "hook.received", where: { route: "northwind-orders" } }), []);
+
+  // A runtime that listens: the test holds the listeners and emits by hand.
+  const listeners = new Map();
+  rt.d.listen = (type, fn) => { listeners.set(type, fn); return () => listeners.delete(type); };
+  const reads = [];
+  rt.d.call = async (tool, input) => {
+    if (tool === "projects.list") return { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/harlow-legal" }] } };
+    if (tool === "hooks.delivery") { reads.push(input.id); return { data: { id: input.id, route: "northwind-orders", body: '{"order":1041}' } }; }
+    return { error: { code: "no_such_tool", message: "no" } };
+  };
+  assert.equal((await rt.test("northwind-orders")).ok, true);
+  const on = await rt.create("northwind-orders");
+  assert.equal(on.every, "on hook.received where route is northwind-orders");
+  assert.equal(rt.tick().length, 0, "an event watcher has no schedule to run on");
+  const fire = listeners.get("hook.received");
+  assert.ok(fire, "the runtime did not listen for hook.received");
+  await rt.onEvent({ type: "hook.received", payload: { route: "harlow-forms", id: "hd_other", bytes: 3 } });
+  await rt.onEvent({ type: "hook.received", payload: { route: "northwind-orders", id: "hd_1", bytes: 14 } });
+  await rt.settle();
+  assert.deepEqual(reads, ["hd_1"], "another route's delivery was read");
+  const filed = db.prepare("SELECT data FROM watchers_items WHERE watcher = 'northwind-orders'").all().map(r => JSON.parse(String(r.data)).title);
+  assert.deepEqual(filed, ['hook.received northwind-orders {"order":1041}']);
+  assert.equal(rt.logs("northwind-orders")[0].trigger, "event");
+  await rt.stop();
+  assert.equal(listeners.size, 0, "stop left a listener behind");
+});
