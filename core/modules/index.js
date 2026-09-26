@@ -180,7 +180,9 @@ export class Registry {
       vault: {
         fetch: async (name, { field, watcher } = {}) => {
           const declared = (m.needs && m.needs.vault) || [];
-          if (!declared.includes(name) && !declared.includes("per-watcher")) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
+          // "per-agent" is the agents module's: it fetches on behalf of each agent, whose item
+          // names are its own. The grant per item to module agents is still the boundary.
+          if (!declared.includes(name) && !declared.includes("per-watcher") && !declared.includes("per-agent")) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
           const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
