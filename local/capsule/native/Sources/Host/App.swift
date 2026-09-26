@@ -14,9 +14,11 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var panel: PanelController!
     var extensions: ExtensionHost!
     let hotkeys = Hotkeys()
+    var menuBar: MenuBarItem?
+    lazy var health = Health(vyred: vyred)
+    lazy var presence = CapsulePresence(home: home, vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/Wiring.swift).
     let wiring: AgentWiring
-    var status: NSStatusItem?
     /// Repaints the mark when the waiting list changes (Agent/MenuBar.swift).
     var agentSink: AnyCancellable?
 
@@ -37,11 +39,29 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         extensions.panel = panel
         panel.extensions = extensions
         extensions.load(extensionTypes)
+        // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
+        // must not take the user's keys or add a second mark to his menu bar.
+        let headless = ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1"
         hotkeys.fire = { [weak self] front in self?.panel.toggle(front: front) }
-        hotkeys.start()
+        if !headless { hotkeys.start() }
         (model.providers.first as? AppsProvider)?.refreshIfChanged(wait: false)
+        // Human-only calls (ADR 0004): "Confirm it's you" in the panel, then the Capsule's key signs.
+        presence.ask = { [weak self] a in
+            guard let self else { return false }
+            if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
+            return await self.model.askPresence(a)
+        }
+        let presence = self.presence
+        vyred.presenceProof = { tool, input in
+            let box = UncheckedBox(input)
+            return await MainActor.run { presence }.proofFromAnyThread(tool: tool, input: box)
+        }
+        vyred.follower.onState = { [weak self] st in self?.health.set(up: st == .open) }
         vyred.follower.start()
-        makeStatusItem()
+        panel.onShownChange = { [weak self] shown in if shown { self?.health.refresh() } else { self?.menuBar?.close() } }
+        if !headless { makeStatusItem() }
+        // The agent half (Agent/): the waiting list and its Beacon dot, the wired providers,
+        // capsule.requested, and the driven mode.
         followWaiting()
         wiring.attach(model)
         wiring.requested = { [weak self] action in
@@ -65,35 +85,34 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     // MARK: the menu-bar item
 
     func makeStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = Self.menuBarMark()
-        item.button?.toolTip = "Vyre"
-        item.button?.target = self
-        item.button?.action = #selector(statusClicked(_:))
-        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        status = item
+        let bar = MenuBarItem(health: health)
+        bar.content = { [unowned self] in
+            AnyView(MenuBarPopover(health: self.health, hotkeys: self.hotkeyWords, canTurnOnControl: !self.hotkeys.doubleControl,
+                                   open: { [unowned self] in self.menuBar?.close(); self.openCapsule() },
+                                   turnOnControl: { [unowned self] in self.menuBar?.close(); self.turnOnDoubleControl() },
+                                   quit: { NSApp.terminate(nil) }))
+        }
+        bar.menu = { [unowned self] in self.plainMenu() }
+        menuBar = bar
     }
 
-    @objc func statusClicked(_ sender: NSStatusBarButton) {
+    var hotkeyWords: String {
+        [hotkeys.doubleControl ? "⌃⌃" : nil, hotkeys.chord.map(Self.pretty)].compactMap { $0 }.joined(separator: " or ")
+    }
+
+    func plainMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Capsule", action: #selector(openCapsule), keyEquivalent: "").target = self
         addWaitingItem(menu)
-        menu.addItem(.separator())
-        let ways = [hotkeys.doubleControl ? "Control twice" : nil, hotkeys.chord.map(Self.pretty)].compactMap { $0 }
-        let how = NSMenuItem(title: ways.isEmpty ? "No hot key: open it from here" : "Opens with " + ways.joined(separator: " or "), action: nil, keyEquivalent: "")
-        how.isEnabled = false
-        menu.addItem(how)
         if !hotkeys.doubleControl {
             menu.addItem(withTitle: "Turn on Control twice…", action: #selector(turnOnDoubleControl), keyEquivalent: "").target = self
         }
-        let link = NSMenuItem(title: vyred.isUp ? "vyred is running" : "vyred is not running", action: nil, keyEquivalent: "")
+        let link = NSMenuItem(title: health.summary, action: nil, keyEquivalent: "")
         link.isEnabled = false
         menu.addItem(link)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Vyre Capsule", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        status?.menu = menu
-        status?.button?.performClick(nil)
-        status?.menu = nil
+        return menu
     }
 
     static func pretty(_ chord: String) -> String {

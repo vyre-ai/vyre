@@ -79,7 +79,11 @@ public struct VyreCatalog: Sendable, Equatable {
     public func thread(_ id: String?) -> VyreThread? { id.flatMap { i in threads.first { $0.id == i } } }
 }
 
-public enum CandidateKind: String, Sendable, Equatable { case agent, project, thread }
+public enum CandidateKind: String, Sendable, Equatable {
+    case agent, project, thread
+    /// An app or service an extension can send words to ("@Notes", "@Slack"), CapsuleExtension.mentions.
+    case app
+}
 
 /// One thing `@` can name, as a row: the label is what people read, the id is never shown.
 public struct VyreCandidate: Sendable, Equatable {
@@ -163,7 +167,7 @@ public struct RankRow: Sendable, Equatable {
 // MARK: - The rules
 
 public enum Route {
-    fileprivate static let kindOrder: [CandidateKind: Int] = [.agent: 0, .project: 1, .thread: 2]
+    fileprivate static let kindOrder: [CandidateKind: Int] = [.agent: 0, .project: 1, .thread: 2, .app: 3]
 
     /// "4 days", "18 min". What the boards show beside a thread or a held item.
     public static func age(_ ms: Double?, now: Double = vyNowMs()) -> String {
@@ -337,6 +341,9 @@ public enum Route {
                 options.append(VyreDestination(kind: .newThread, project: slug, projectName: p?.name ?? t.projectName, cwd: p?.home))
             }
             return (options, nil)
+        case .app:
+            // An extension's target sends through the extension itself, not through vyred.
+            return ([], nil)
         }
     }
 

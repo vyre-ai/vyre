@@ -1,4 +1,5 @@
 // capsule-suite: capsuleModelSuite
+// capsule-suite: taildropSuite
 // CapsuleModel against FakeVyred: the memory box goes with a quick question and nothing else does,
 // and a message to a session busy in a terminal is queued, said so, and marked handed over.
 
@@ -114,5 +115,34 @@ let capsuleModelSuite = Suite("capsule model") { t in
             return await MainActor.run { [m.target?.label ?? "", m.text] }
         }
         t.eq(r, ["juno", "rebuild the bakery menu"])
+    }
+}
+
+let taildropSuite = Suite("taildrop") { t in
+    t.test("a file row can be sent to the box with ⌘S, and vyred's refusal is shown as it is") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        let file = vyScratch("send") + "/Northwind menu.pdf"
+        FileManager.default.createFile(atPath: file, contents: Data("x".utf8))
+        var answers: [Any] = [["sent": "Northwind menu.pdf", "to": "box"], FakeError(code: "refused", message: "that looks like a secret; it stays on this Mac")]
+        v.tool("files.send") { _ in answers.removeFirst() }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in
+                let row = ResultItem(id: "file:\(file)", kind: "file", title: "Northwind menu.pdf", section: .files, score: 0.5,
+                                     actions: [ResultAction(id: "open", title: "Open") { _, _ in .close(nil) }], fileURL: URL(fileURLWithPath: file))
+                return CapsuleModel(home: vyScratch("send-home"), vyred: VyredClient(socket: v.socket), providers: [FixedRows(id: "f", rows: [row])])
+            }
+            _ = await m.vyred.refreshTools()
+            await MainActor.run { m.text = "north"; m.selected = m.flat.firstIndex { $0.kind == "file" } ?? 0 }
+            let ids = await MainActor.run { m.current?.actions.map(\.id) ?? [] }
+            var lines: [String] = []
+            for _ in 0..<2 {
+                await MainActor.run { m.line = nil; _ = m.run(shortcut: KeyShortcut("s", command: true)) }
+                for _ in 0..<100 where await MainActor.run(body: { m.line == nil }) { try? await Task.sleep(nanoseconds: 10_000_000) }
+                lines.append(await MainActor.run { m.line ?? "" })
+            }
+            return ids + lines + [VJ.s(v.callsOf("files.send").first?["path"])]
+        }
+        t.eq(r, ["open", "send-box", "Sent Northwind menu.pdf to box. It is in the box's inbox.",
+                 "Could not send it: that looks like a secret; it stays on this Mac.", file])
     }
 }

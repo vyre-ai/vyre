@@ -4,6 +4,55 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Send a file to the box from the native Capsule
+
+- A file row has "Send to box" (⌘S, shown in the footer) when vyred has `files.send`: Taildrop
+  to the paired box's inbox. vyred's guard decides what may leave, and its refusal is shown in
+  its own words. ⌘S rather than Option-Return, which is sight's talk chord now.
+
+#### Touch ID in the panel, banners, and the menu-bar popover
+
+- Human-only calls from the native Capsule (ADR 0004, method `capsule`): the panel shows
+  "Confirm it's you" with the exact words and Touch ID drawn inside it (LAAuthenticationView;
+  the Mac's password where there is no Touch ID), then signs the call with the Capsule's
+  Ed25519 key. The key is made once, kept in the login keychain for the Capsule alone, and
+  enrolled with vyred's own Touch ID dialog. Esc cancels; nothing is done. Checked against
+  core/presence in Node: same canonical input, same hash, signature verifies.
+  `Sources/Host/Presence.swift`, `Sources/UI/PresenceView.swift`.
+- An answer that lands while the Capsule is hidden is a banner, top right
+  (UNUserNotificationCenter; macOS asks once, the first time there is one, never in tests).
+- The menu-bar mark carries a health dot (signal: vyred up and the box direct; recall: the box
+  through a relay; ash: vyred not running), and a click opens a popover with the same words
+  and the Capsule's actions; right-click keeps the plain menu. Nothing is polled: vyred's state
+  comes from the follower, the box's from link.health on open, at most once a minute.
+- `VYRE_CAPSULE_HEADLESS=1` runs the app with no hot keys and no menu-bar item, for footprint
+  checks: 16.1 MB physical footprint hidden (RSS 80 MB, most of it shared system libraries).
+- The contact-photo icon test drew its red in a colour space with no components; fixed.
+
+#### Extensions can be named with @
+
+- `CapsuleExtension.mentions(matching:)` and `send(_:to:query:)`: an extension lists targets
+  ("Notes", "Slack #general") for the words after `@`; they follow Vyre's own agents, projects
+  and sessions, become the chip when picked, and Enter sends through the extension, which says
+  what happened. For capsule-apps. `Sources/Kit/Extension.swift`, `Sources/Host/ExtensionHost.swift`.
+
+#### The native Capsule's design pass
+
+- Rows are inset and rounded; the selected one is a raised plate with the signal pill at its left
+  edge, easing in over 90 ms. Symbols sit on small tiles so they line up with app icons (26 pt,
+  32 for the top hit). App rows show only the name; every row says what it is at the right
+  ("Application", "PDF document", "Command"). The top hit is larger, and a calculator answer is
+  a card with the number in large rounded figures; Enter copies it.
+- A footer under the results says what Enter does ("Open ⏎"), the count, and the Capsule's
+  one-line notes and confirm questions. The destination in the bar is a small chip.
+- `@` rows are headed "Send to", and a session live in a terminal carries a signal badge. The
+  chip for a picked destination is a capsule with its icon.
+- The answer reads You and the question, then who answers (a breathing signal dot while it
+  works), the memory box with a recall rule down its side and quotes as quotes with who said
+  them, then the answer with room to breathe; an answer alone scrolls in the whole area.
+- The panel fades in over 110 ms. `Tests/SnapshotTests.swift` draws each state to PNGs off
+  screen (VYRE_CAPSULE_SNAP=<dir>).
+
 #### The session window for sight's side view
 
 - The Capsule-owned session window becomes key when its field is clicked, draws nothing under

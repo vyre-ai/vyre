@@ -43,24 +43,29 @@ without editing Capsule files:
 - **Info.plist keys** (usage strings for a new permission, such as `NSMicrophoneUsageDescription`)
   go in `Sources/Extensions/<name>/Info.plist.part` as `<key>` / `<string>` lines; `build.sh`
   splices them in. System frameworks link by `import` alone.
-- **The protocol** (`Kit/Extension.swift`): `providers` (rows), `commands` (named commands),
-  `keyChords` (chords while the Capsule is open and key, never global), `sidePanel(for:)` (a
-  SwiftUI view beside the list), `capsuleWillShow(front:)` and `capsuleDidHide()`, and
-  `runsHidden` (nil unless something must run while hidden, with the reason; perf-check lists it).
-- **The host** (`CapsuleHost`): `vyred.call(tool, input, presence:)` and `vyred.on(pattern)` as the
-  `capsule` caller; `front` (the app in front at wake); `permission` and
-  `request(_:reason:)` (first use only, no OS dialog unless `dialogsAllowed()`); `showPanel`,
-  `hidePanel`; `setQuery`, `say`, `notify`; `stepAside()` (hide and wait for the front app,
-  for acting on it).
-- **Rows** (`Kit/Kit.swift`): `ResultItem` with a stable `id` that is never shown, `title` for
-  copy, an `IconSpec` (file path, bundle id, SF Symbol with a token tint, contact, swatch,
-  glyph), a `Section`, `actions` (first is Enter, all on ⌘K; `confirm` for anything destructive,
-  `needsFrontApp` for acting on the app behind), `fileURL` for Quick Look and drag,
-  `sendsTo` when picking it sends words off the Mac process, and `panel` to route its side
-  panel to an extension. Outcomes are words: `.close`, `.said`, `.failed` (never reported as
-  success), `.replaceQuery`, `.openPanel`.
-- **Tokens:** tint only with `Tint` (bone, stone, ash, signal, recall, beacon). Views use
-  `Theme` from `Sources/UI/Theme.swift` (colours, type, radii, spacing from TOKENS.md).
+- **The protocol** (`Kit/Extension.swift`), all optional but `id` and `init(host:)`:
+  - `providers` (rows; adopt `ImmediateResults` if you can answer from memory in the keystroke's
+    frame, otherwise your rows arrive later and the previous ones stay up to 300 ms),
+  - `commands` (named commands, matched on title and keywords, listed under Commands),
+  - `mentions(matching:)` and `send(_:to:query:)`: what `@` can name in your extension
+    ("@Notes", "@Slack #general"). Called on every key while `@` is typed, with the words after
+    it (spaces included): answer from memory. Your targets come after Vyre's own agents,
+    projects and sessions. Picked, a target is the chip; the bar shows its `sendsTo`; Enter
+    calls `send` with the rest of the text, and your `ActionOutcome` is what the user sees,
+  - `keyChords` (only chords with Option or Control reach extensions; the Capsule's own keys use
+    Command and Shift, so there is no clash; sight has Option-Return),
+  - `sidePanel(for:)` (260 wide beside the list, for rows whose `panel` is your id, or after
+    `host.showPanel(id)`), `capsuleWillShow(front:)`, `capsuleDidHide()`, and `runsHidden`.
+- **The host** (`CapsuleHost`): `vyred.call(tool, input, presence:)`, `vyred.on(pattern)` and
+  `vyred.stream(path, onMessage:, onClose:)` (a WebSocket to /v1/streams/..., as the capsule
+  caller); `front`; `permission` and `request(_:reason:)` (says your reason first; no OS dialog
+  unless `dialogsAllowed()`); `showPanel`, `hidePanel`; `setQuery`, `say`, `notify`;
+  `stepAside()`; `commandsChanged()` (your commands or providers changed while open);
+  `sessionWindow(owner:)`, the one Capsule-owned window (borderless, non-activating, key on a
+  click in a field, animated with `setFrame(_:duration:curve:)`), opened only from a command the
+  user ran.
+- **Tests** for an extension go in `Tests/<Name>/`; a fake host needs only the members it uses,
+  since `sessionWindow` and `commandsChanged` have defaults.
 - **vyred modules** keep the runtime seam they already have: `shows.capsule` in a manifest
   (`results:<tool>`, `action:<tool>`), read by the Capsule on open. That is for module rows and
   verbs; the Swift seam is for native UI and Mac APIs.
@@ -96,7 +101,14 @@ without editing Capsule files:
 - Done 2026-09-27: the "Vyre Local" identity with consent (capsule-native.js offerIdentity; 14
   CLI tests on the test box with a fake keychain). The real keychain path has not run anywhere yet: it
   needs the user's own `vyre capsule` (or a CI runner's throwaway keychain).
-- Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
+- Done 2026-09-27: design pass (snapshots in Tests/SnapshotTests.swift), and `@` targets for
+  extensions (`mentions(matching:)`, `send(_:to:query:)`, CandidateKind.app) for capsule-apps.
+- Done 2026-09-27: Touch ID in the panel (presence method capsule, cross-checked with
+  core/presence in Node), banners for answers landing while hidden, menu-bar popover and health
+  dot, headless footprint mode (16.1 MB footprint hidden). Swift tests all pass (200).
+- Done 2026-09-27: Taildrop send (⌘S on a file row).
+- Not yet run for real: enrolment (vyred's Touch ID dialog) and the in-panel Touch ID, which need
+  the user at the Mac; the banner permission prompt.
 
 ## Next
 0. (Done 2026-09-27, see Doing.) capsule-now rules 1-5 and 7 in native (read from ../vyre-capsule-now/docs/work/capsule-now.md):

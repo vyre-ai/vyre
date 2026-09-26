@@ -28,6 +28,11 @@ final class ExtensionHost: CapsuleHost {
             if let why = e.runsHidden { log("\(t.id) runs while hidden: \(why)") }
         }
         reread()
+        model.extensionMentions = { [weak self] q in self?.mentions(q) ?? [] }
+        model.sendToExtension = { [weak self] text, c, query in
+            guard let self, let (e, t) = self.targets[c.id] else { return .failed("\(c.label) is not there any more.") }
+            return await e.send(text, to: t, query: query)
+        }
         model.panelFor = { [weak self] item in self?.sidePanel(for: item) }
     }
 
@@ -40,6 +45,22 @@ final class ExtensionHost: CapsuleHost {
     func commandsChanged() {
         reread()
         if isShown && !model.text.isEmpty { model.refresh() }
+    }
+
+    /// Targets named in the last `@` list, by candidate id, for the send that follows.
+    private var targets: [String: (CapsuleExtension, MentionTarget)] = [:]
+
+    func mentions(_ q: String) -> [(VyreCandidate, MentionTarget)] {
+        var out: [(VyreCandidate, MentionTarget)] = []
+        for e in extensions {
+            let id = type(of: e).id
+            for t in e.mentions(matching: q) {
+                let c = VyreCandidate(kind: .app, id: "ext:\(id):\(t.id)", label: t.label, sub: t.sub, last: 0)
+                targets[c.id] = (e, t)
+                out.append((c, t))
+            }
+        }
+        return out
     }
 
     func willShow(front: FrontApp?) { extensions.forEach { $0.capsuleWillShow(front: front) } }

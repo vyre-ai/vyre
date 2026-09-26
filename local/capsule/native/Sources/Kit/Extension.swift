@@ -42,6 +42,14 @@ public protocol CapsuleExtension: AnyObject {
     /// not. Anything non-nil is listed by scripts/perf-check and in Settings.
     var runsHidden: String? { get }
 
+    /// What `@` can name in this extension ("Notes", "Slack", "WhatsApp"), for the words after
+    /// the `@` (may be empty, may hold spaces). Called on every keystroke while `@` is being
+    /// typed: answer from memory. Picked, a target becomes the chip, and Enter calls send.
+    func mentions(matching query: String) -> [MentionTarget]
+    /// The user sent `text` to one of your targets. Say what happened in words; never report a
+    /// send that did not happen as done.
+    func send(_ text: String, to target: MentionTarget, query: Query) async -> ActionOutcome
+
     /// The side panel for a row, or nil to leave it to the Capsule. Called only when the row's
     /// `panel` names this extension, or when the extension asked to show one (host.showPanel).
     func sidePanel(for item: ResultItem?) -> AnyView?
@@ -61,6 +69,8 @@ public extension CapsuleExtension {
     var keyChords: [KeyShortcut] { [] }
     var runsHidden: String? { nil }
     func sidePanel(for item: ResultItem?) -> AnyView? { nil }
+    func mentions(matching query: String) -> [MentionTarget] { [] }
+    func send(_ text: String, to target: MentionTarget, query: Query) async -> ActionOutcome { .failed("\(target.label) cannot take messages yet.") }
     func handle(chord: KeyShortcut, query: Query) -> Bool { false }
     func capsuleWillShow(front: FrontApp?) {}
     func capsuleDidHide() {}
@@ -90,6 +100,22 @@ public extension VyredLink {
     func stream(_ path: String, onMessage: @escaping @Sendable ([String: Any]) -> Void,
                 onClose: @escaping @Sendable () -> Void) async -> Result<VyredStream, VyredStreamFailure> {
         .failure(VyredStreamFailure(code: "refused", message: "This link to vyred has no streams."))
+    }
+}
+
+/// Something `@` can name that an extension sends to: an app, a service, a person in it.
+public struct MentionTarget: Sendable, Equatable {
+    /// Stable within the extension, never shown ("notes", "slack:#general").
+    public var id: String
+    /// What the user reads and matches against ("Notes", "Slack #general").
+    public var label: String
+    /// A few words under it ("new note", "through Slack", "live").
+    public var sub: String
+    public var icon: IconSpec
+    /// Where the words go, shown in the bar before Enter ("Notes on this Mac", "Slack").
+    public var sendsTo: String
+    public init(id: String, label: String, sub: String = "", icon: IconSpec = .symbol("app"), sendsTo: String) {
+        self.id = id; self.label = label; self.sub = sub; self.icon = icon; self.sendsTo = sendsTo
     }
 }
 

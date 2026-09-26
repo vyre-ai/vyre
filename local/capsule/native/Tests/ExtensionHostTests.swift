@@ -1,4 +1,5 @@
 // capsule-suite: extensionHostSuite
+// capsule-suite: extensionMentionSuite
 // The seam from the host's side: a registered extension is made once, its commands are rows, its
 // chords reach it only with Option or Control, its side panel is drawn for its own rows, and hide
 // reaches it.
@@ -48,5 +49,47 @@ let extensionHostSuite = Suite("extension host") { t in
             }
         }
         t.eq(r, ["1", "Look at Northwind", "true", "false", "true", "true", "1", "true"])
+    }
+}
+
+@MainActor
+final class NotesProbe: CapsuleExtension {
+    static let id = "notesprobe"
+    static var sent: [String] = []
+    init(host: CapsuleHost) {}
+    func mentions(matching query: String) -> [MentionTarget] {
+        let t = MentionTarget(id: "notes", label: "Notes", sub: "new note", icon: .symbol("note.text"), sendsTo: "Notes on this Mac")
+        return query.isEmpty || "notes".hasPrefix(query.lowercased()) ? [t] : []
+    }
+    func send(_ text: String, to target: MentionTarget, query: Query) async -> ActionOutcome {
+        Self.sent.append("\(target.id): \(text)")
+        return .said("Added to Notes")
+    }
+}
+
+let extensionMentionSuite = Suite("extension mentions") { t in
+    t.test("@ lists an extension's target after Vyre's own, the chip says where, Enter sends through the extension") {
+        let r: [String]? = t.wait {
+            let (m, h) = await MainActor.run { () -> (CapsuleModel, ExtensionHost) in
+                let m = CapsuleModel(home: vyScratch("ext-at"), vyred: VyredClient(socket: vyScratch("x") + "/none.sock"), providers: [])
+                let h = ExtensionHost(model: m)
+                NotesProbe.sent = []
+                h.load([NotesProbe.self])
+                m.catalog = VyreCatalog(agents: [VyreAgent(name: "juno", kind: "assistant")])
+                m.text = "@not"
+                return (m, h)
+            }
+            let rows = await MainActor.run { m.flat.map(\.title) }
+            await MainActor.run { m.run() }
+            for _ in 0..<100 where await MainActor.run(body: { m.target == nil }) { try? await Task.sleep(nanoseconds: 10_000_000) }
+            await MainActor.run { m.text = "buy flour for Northwind" }
+            let via = await MainActor.run { m.current?.sendsTo ?? "" }
+            await MainActor.run { m.run() }
+            for _ in 0..<100 where await MainActor.run(body: { m.line == nil }) { try? await Task.sleep(nanoseconds: 10_000_000) }
+            let line = await MainActor.run { m.line ?? "" }
+            let sent = await MainActor.run { withExtendedLifetime(h) { NotesProbe.sent } }
+            return rows + [via, line] + sent
+        }
+        t.eq(r, ["Notes", "Notes on this Mac", "Added to Notes", "notes: buy flour for Northwind"])
     }
 }
