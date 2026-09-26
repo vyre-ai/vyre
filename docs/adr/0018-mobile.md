@@ -181,3 +181,37 @@ box to be read before sending. No audio leaves the phone.
   are in `apps/RELEASE.md`; none is done by an agent.
 - Two more clients to keep in step with the contract. `apps/CONTRACT.md` and a contract test
   against a real vyred in a temp home keep them honest.
+
+## Addendum, 27 Sep 2026 · The push relay (proposed, for decision)
+
+Store builds are signed by Vyre AI, so only Vyre AI's APNs key and Firebase project can push to
+them. Today a box sends pushes itself with the owner's own keys (section 4), which works only for
+an owner who builds the app. Three ways out; the choice changes SPEC section "Not a hosted
+service", so it is the lead's and the user's.
+
+1. **A relay beside the name directory (recommended).** `push.vyre.run` holds Vyre AI's APNs key
+   and FCM service account and nothing else. It is the same service as `api.vyre.run`, not a
+   second one: the directory already knows each box by its Ed25519 directory key.
+   - The phone registers with its box as today (`push.subscribe {transport, token, key}`). The box
+     then registers the token with the relay once: `POST /v1/devices {token, transport, bundle,
+     env}` signed with its directory key. The relay stores `(box key, token hash) -> token` and
+     answers a random `device` id; the box keeps only that id.
+   - To push, the box sends `POST /v1/push {device, kind, title, sealed, tag}` signed with its
+     directory key. `sealed` is the AES-256-GCM blob of `{path, tag, at}` under the phone's own
+     key (section 4), so the relay sees a kind, a fixed sentence and ciphertext. `title` must be
+     one of the fixed sentences per kind; the relay refuses anything else, so a box cannot put
+     content in it.
+   - The relay keeps no payloads and no logs of them, rate-limits per box key (60 a minute, 1,000
+     a day), and deletes a token when APNs or FCM says it is gone. A box that stops paying or is
+     banned loses the relay only; everything else it does is unchanged.
+   - Self-built apps keep sending directly with the owner's keys. The app says which in
+     `push.subscribe` (`via: "relay"|"direct"`), from how it was signed.
+2. **UnifiedPush on Android, relay on iOS only.** The owner installs a distributor (ntfy, or one
+   on their box) and no Google key is involved. iOS still has no way round APNs, so this halves
+   option 1 and adds a setup step for Android owners.
+3. **No relay.** Store builds have no push; the app refreshes when opened, and the PWA's Web Push
+   (ADR 0011, which needs no publisher key) covers alerts. Honest, and the cheapest, but a native
+   app without notifications is weaker than the PWA it follows.
+
+Recommendation: option 1, as part of the directory, built only when store builds are scheduled.
+Until then option 3 is what store builds would do, and self-built apps push directly.

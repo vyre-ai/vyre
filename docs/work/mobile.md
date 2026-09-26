@@ -72,14 +72,23 @@ How to run the phone against the test world (Mac, one emulator or simulator at a
   `adb shell am start -n sh.vyre.app/.MainActivity -e sh.vyre.app.TEST_BOX http://10.0.2.2:4801`.
 
 ## Next
+- Reply labels (user rule): the assistant's name (agents.list kind assistant, or system.info),
+  else "Vyre"; agents by name; the user as "you"; never "claude".
 - Screenshots of every screen on both platforms against the test world; perf numbers.
 - apps/RELEASE.md: real-device installs, TestFlight and Play Store steps for the user.
 - Share sheet in and out, Taildrop (tailnet team), widgets and Live Activities (later).
 
 ## Needs from others
-- lead: the push relay decision for store builds (ADR 0018 section 4); until then push works
-  with the owner's own APNs/FCM keys in the Vault.
-- link or tailnet: a way for the box to call the Mac (box-to-Mac `link.remote`), so the phone
+- lead and user: the push relay for store builds. Options and a recommendation are in the ADR
+  0018 addendum (a relay inside the name directory). Until then push works with the owner's own
+  APNs/FCM keys in the Vault.
+- phone-design: docs/design/phone.md. Visual and layout work on both apps is on hold until it
+  lands (lead, 27 Sep). Function work continues.
+- planner (ADR 0025, work/planner): push kind "planner" with actions done/snooze and events
+  planner.fired/acked. If the apps ring alarms locally, dedupe on the firing id and ack with
+  planner.done/snooze {firing}. Nothing needed yet.
+- link or tailnet: a way for the box to call the Mac (tailnet federation covers sessions; files
+  later, left open by the lead) (box-to-Mac `link.remote`), so the phone
   sees the Mac's files and sessions. Without it the phone reaches the box only.
 - link: a `files.put` (or the Glass ticketed upload as a tool), for share-sheet-in.
 - security: review of the `device` presence method.
