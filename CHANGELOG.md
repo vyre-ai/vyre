@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Glass egress: fail closed, keys that survive restarts
+
+- The egress sidecar no longer sends a listed site out from the box when the Mac stops offering
+  its exit node or its route is unapproved (tailscaled then dials directly, and the site saw the
+  datacenter's address). A gate, `core/computers/egressgate.js` in the vyre image, now answers as
+  `egress:1055`: it reads each SOCKS5 CONNECT and relays it to the sidecar only while the
+  sidecar's tailscaled status shows the exit node in use (BackendState Running, one peer with
+  ExitNode, Online and ExitNodeOption, and ExitNodeStatus online when present). Otherwise it
+  answers "connection not allowed by ruleset" and never dials the site. The status is read on
+  demand, kept 2 s, with no timer while idle; each change of reason is logged once. Node
+  built-ins only; `read_only`, `cap_drop: ALL`, uid 1000.
+- `box/compose.egress.yml`: the tailscaled sidecar is now `egress-node` (SOCKS5 on :1056, on a new
+  internal network `vyre-egress` shared only with the gate, off the computers network); its
+  socket is shared read-only with the gate through the `egress-sock` volume. The key is an OAuth
+  client secret (`tskey-client-...?ephemeral=true&preauthorized=true`) or a reusable ephemeral
+  key, always with `--advertise-tags=tag:vyre-egress`; a single-use key failed the first restart.
+- `computers.egress.status` also returns `gate`, the gate's verdict and reason (GET /status on
+  egress:1057).
+
 #### Connectors (ADR 0016)
 
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
