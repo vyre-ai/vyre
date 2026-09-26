@@ -79,7 +79,7 @@ export function takeover(s, hooks) {
 
   /** The "Confirm it's you" step. The Deck cannot make a passkey proof yet, so it says what the box asked for. */
   function confirm(err, retry) {
-    const methods = Array.isArray(err.methods) ? err.methods : Array.isArray(err.data?.methods) ? err.data.methods : [];
+    const methods = [err.methods, err.detail?.methods, err.data?.methods].find(Array.isArray) || [];
     const how = methods.length ? `The box accepts: ${methods.join(", ")}.` : "The box asks for a passkey (Touch ID or Face ID) on this device.";
     return h("div", { class: "gl-notice gl-notice-hold", role: "alert" },
       h("div", { class: "gl-notice-text" },
