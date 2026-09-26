@@ -18,7 +18,8 @@
 # Room for more, as extra compose files rather than edits here, listed in COMPOSE_FILE in
 # /srv/vyre/.env (COMPOSE_PROJECT_NAME=vyre there keeps one project). Other services join the
 # `vyre` network, where vyred answers as `vyred`. The agents' computers are the `docker-api`
-# service below, under the `computers` profile.
+# service below, under the `computers` profile. compose.egress.yml is one such extra: a few sites
+# in the computers go out through the user's Mac.
 
 name: vyre
 
