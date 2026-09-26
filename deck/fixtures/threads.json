@@ -1,0 +1,353 @@
+{
+  "threads.asks": [
+    {
+      "id": "ask-push-main",
+      "at": "$ago:9m",
+      "agent": "kit",
+      "project": "harlow-legal",
+      "projectName": "Harlow Legal",
+      "thread": "t-kit-intake",
+      "threadName": "Intake form rebuild",
+      "tool": "Bash",
+      "command": "git push origin main",
+      "rule": "Ask before pushing to a client's main branch",
+      "why": "Caught by your rule “Ask before pushing to a client's main branch”. kit finished the form change and all 6 tests pass.",
+      "options": [
+        {
+          "label": "Allow once",
+          "decision": "allow"
+        },
+        {
+          "label": "Push to a branch instead",
+          "decision": "allow",
+          "input": {
+            "command": "git push origin HEAD:intake-form"
+          }
+        },
+        {
+          "label": "Deny",
+          "decision": "deny"
+        }
+      ],
+      "intent": "The form change is done and all 6 tests pass. Dana asked to see the new intake form before Monday. Pushing gives her the preview link.",
+      "details": [
+        {
+          "label": "Remote",
+          "value": "origin · rivera-studio/harlow-site"
+        },
+        {
+          "label": "Branch",
+          "value": "main, 3 commits ahead"
+        },
+        {
+          "label": "Files",
+          "value": "6 changed +412 -38"
+        },
+        {
+          "label": "Held by",
+          "value": "Your rule: ask before pushing to a client's main branch"
+        }
+      ]
+    }
+  ],
+  "threads.answer": {
+    "ok": true
+  },
+  "threads.list": [
+    {
+      "id": "t-pax-invoices",
+      "name": "File this week's invoices",
+      "project": "northwind-bakery",
+      "projectName": "Northwind Bakery",
+      "agent": "pax",
+      "state": "running",
+      "started": "$ago:6m",
+      "last": "$ago:0m",
+      "activity": "Read(invoices/2026-09-26.pdf)  ·  9 of 14 invoices"
+    },
+    {
+      "id": "t-kit-hero",
+      "name": "Hero copy pass",
+      "project": "launch-site",
+      "projectName": "Launch site",
+      "agent": "kit",
+      "state": "running",
+      "started": "$ago:22m",
+      "last": "$ago:1m",
+      "activity": "Edit(app/page.tsx)  ·  second headline option"
+    },
+    {
+      "id": "t-juno-intake-summary",
+      "name": "Morning lead summary",
+      "project": "harlow-legal",
+      "projectName": "Harlow Legal",
+      "agent": "juno",
+      "state": "running",
+      "started": "$ago:41m",
+      "last": "$ago:2m",
+      "activity": "Comparing 9 new leads against the intake brief"
+    },
+    {
+      "id": "t-kit-intake",
+      "name": "Intake form rebuild",
+      "project": "harlow-legal",
+      "projectName": "Harlow Legal",
+      "agent": "kit",
+      "state": "waiting",
+      "started": "$ago:70m",
+      "last": "$ago:9m",
+      "activity": "Waiting for you: git push origin main"
+    },
+    {
+      "id": "t-juno-q3",
+      "name": "Q3 report",
+      "project": "harlow-legal",
+      "projectName": "Harlow Legal",
+      "agent": "juno",
+      "state": "waiting",
+      "started": "$ago:95m",
+      "last": "$ago:22m",
+      "activity": "Draft held at the Gate"
+    },
+    {
+      "id": "t-kit-ads",
+      "name": "Ads audit",
+      "project": "harlow-legal",
+      "projectName": "Harlow Legal",
+      "agent": "kit",
+      "state": "finished",
+      "started": "$ago:5h",
+      "last": "$ago:4h"
+    },
+    {
+      "id": "t-pax-sort",
+      "name": "Sort the shared inbox",
+      "project": "northwind-bakery",
+      "projectName": "Northwind Bakery",
+      "agent": "pax",
+      "state": "finished",
+      "started": "$ago:3h",
+      "last": "$ago:2h"
+    },
+    {
+      "id": "t-juno-plan",
+      "name": "Plan the week",
+      "project": null,
+      "projectName": null,
+      "agent": "juno",
+      "state": "finished",
+      "started": "$ago:6h",
+      "last": "$ago:5h"
+    },
+    {
+      "id": "t-kit-deploy",
+      "name": "Deploy the launch site",
+      "project": "launch-site",
+      "projectName": "Launch site",
+      "agent": "kit",
+      "state": "finished",
+      "started": "$ago:7h",
+      "last": "$ago:6h"
+    }
+  ],
+  "threads.get": {
+    "$by": "thread",
+    "cases": {
+      "t-kit-intake": {
+        "thread": {
+          "id": "t-kit-intake",
+          "name": "Intake form rebuild",
+          "project": "harlow-legal",
+          "agent": "kit",
+          "state": "waiting",
+          "cwd": "/home/alex/Work/harlow-site",
+          "started": "$ago:70m",
+          "last": "$ago:9m",
+          "lease": {
+            "surface": "deck"
+          }
+        },
+        "events": [
+          {
+            "id": "e1",
+            "type": "thread.text",
+            "at": "$ago:70m",
+            "role": "user",
+            "text": "Rebuild the intake form so it asks for matter type first, then runs the conflicts check. Keep their styles."
+          },
+          {
+            "id": "e2",
+            "type": "thread.tool",
+            "at": "$ago:70m",
+            "tool": "memory.recall",
+            "input": {
+              "q": "harlow intake form"
+            },
+            "result": "Harlow's intake form lives in their website repo.",
+            "from": "Call notes 12 Sep"
+          },
+          {
+            "id": "e3",
+            "type": "thread.text",
+            "at": "$ago:69m",
+            "role": "assistant",
+            "text": "Found it in harlow-site. The whole form is one component, so I am splitting the first step out."
+          },
+          {
+            "id": "e4",
+            "type": "thread.tool",
+            "at": "$ago:68m",
+            "tool": "Read",
+            "input": {
+              "file_path": "src/components/IntakeForm.tsx"
+            },
+            "result": "Read 212 lines"
+          },
+          {
+            "id": "e5",
+            "type": "thread.tool",
+            "at": "$ago:40m",
+            "tool": "Edit",
+            "input": {
+              "file_path": "src/components/IntakeForm.tsx"
+            },
+            "result": "34 additions, 12 removals"
+          },
+          {
+            "id": "e6",
+            "type": "thread.tool",
+            "at": "$ago:38m",
+            "tool": "Write",
+            "input": {
+              "file_path": "src/components/MatterStep.tsx"
+            },
+            "result": "New file, 48 lines"
+          },
+          {
+            "id": "e7",
+            "type": "thread.tool",
+            "at": "$ago:10m",
+            "tool": "Bash",
+            "input": {
+              "command": "npm test -- IntakeForm"
+            },
+            "result": "6 passed, 0 failed · 4.1s"
+          },
+          {
+            "id": "e8",
+            "type": "thread.text",
+            "at": "$ago:9m",
+            "role": "assistant",
+            "text": "Tests pass. Pushing so Dana's preview updates."
+          },
+          {
+            "id": "e9",
+            "type": "ask.raised",
+            "at": "$ago:9m",
+            "ask": {
+              "id": "ask-push-main",
+              "tool": "Bash",
+              "command": "git push origin main",
+              "rule": "Ask before pushing to a client's main branch",
+              "options": [
+                {
+                  "label": "Allow once",
+                  "decision": "allow"
+                },
+                {
+                  "label": "Push to a branch instead",
+                  "decision": "allow",
+                  "input": {
+                    "command": "git push origin HEAD:intake-form"
+                  }
+                },
+                {
+                  "label": "Deny",
+                  "decision": "deny"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "t-kit-hero": {
+        "thread": {
+          "id": "t-kit-hero",
+          "name": "Hero copy pass",
+          "project": "launch-site",
+          "agent": "kit",
+          "state": "running",
+          "cwd": "/home/alex/Work/launch-site",
+          "started": "$ago:22m",
+          "last": "$ago:1m",
+          "lease": {
+            "surface": "capsule"
+          }
+        },
+        "events": [
+          {
+            "id": "h1",
+            "type": "thread.text",
+            "at": "$ago:22m",
+            "role": "user",
+            "text": "Give me two more headline options for the launch site hero. Shorter than the current one, and no exclamation marks."
+          },
+          {
+            "id": "h2",
+            "type": "thread.tool",
+            "at": "$ago:21m",
+            "tool": "Read",
+            "input": {
+              "file_path": "app/page.tsx"
+            },
+            "result": "Read 96 lines"
+          },
+          {
+            "id": "h3",
+            "type": "thread.text",
+            "at": "$ago:18m",
+            "role": "assistant",
+            "text": "The current headline is eleven words. First option: \"Studio work, shipped on time.\" I am writing the second one into the page now so you can see both."
+          },
+          {
+            "id": "h4",
+            "type": "thread.tool",
+            "at": "$ago:1m",
+            "tool": "Edit",
+            "input": {
+              "file_path": "app/page.tsx"
+            },
+            "result": "3 additions, 1 removal"
+          }
+        ]
+      },
+      "*": {
+        "thread": {
+          "id": "t-new",
+          "name": null,
+          "project": null,
+          "agent": null,
+          "state": "running",
+          "cwd": "/home/alex/Work",
+          "started": "$ago:0m",
+          "last": "$ago:0m",
+          "lease": {
+            "surface": "deck"
+          }
+        },
+        "events": []
+      }
+    }
+  },
+  "threads.send": {
+    "ok": true
+  },
+  "threads.lease": {
+    "holder": "deck"
+  },
+  "threads.start": {
+    "id": "t-new",
+    "name": "New thread",
+    "state": "running"
+  }
+}

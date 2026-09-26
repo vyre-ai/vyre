@@ -173,3 +173,17 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 }
 @media (min-width: 761px) { .phone-head { display: none; } }
 @media (max-width: 1100px) { .address { display: none; } }
+
+/* Held content edited in place (js/editable.js): text until focused, then a subtle underline.
+   No box, no Edit button. The focus ring is the underline itself, in Signal. */
+.ed { display: grid; }
+.ed-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 0;
+  border-bottom: 1px solid var(--rule); }
+.ed-row.ed-body { grid-template-columns: minmax(0, 1fr); border-bottom: 0; padding-top: 14px; }
+.ed-row.ed-body .ed-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ed-in { display: block; width: 100%; min-width: 0; margin: 0; padding: 0 0 2px; border: 0; border-bottom: 1px solid transparent;
+  border-radius: 0; background: transparent; color: var(--text); font: inherit; resize: none; overflow: hidden; }
+.ed-in.ed-mono { font-family: var(--mono); font-size: 13px; line-height: 20px; }
+.ed-in:hover { border-bottom-color: var(--rule); }
+.ed-in:focus, .ed-in:focus-visible { outline: none; border-bottom-color: var(--focus); }
+.ed-dirty .ed-lbl::after { content: " ·"; color: var(--text-2); }

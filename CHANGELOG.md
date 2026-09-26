@@ -186,6 +186,42 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the Deck, so thread text cannot become markup), and one API client. Tools that other streams
   have not merged answer from `deck/fixtures/*.json`, only with `?fixtures=1` and only when the
   live tool is missing; otherwise the view names the module that is not running.
+- The shell and **Now**: header with the address, search over every turn (Recall, with ⌘K and
+  arrow keys), the needs-you pill; the rail with pinned or recent projects and the machine it runs
+  on; a bottom tab bar under 760 px. Now shows drafts held at the Gate and open asks in Beacon with
+  their actions, running threads, and what memory learned today in gold with pin and mute. When
+  nothing runs it lists the latest sessions, so Now is never empty. Views load one at a time from
+  `deck/views/`, each with its own stylesheet.
+- The Deck installs as an app on a phone: a manifest, the app icon, and a service worker that
+  caches only the Deck's own files, network first, and never an API response.
+- **Projects**: every project with pins, a new-project form, and the project board: threads
+  (recorded sessions from Recall merged with live switchboard threads), the brief, and the thread
+  itself, with tool lines, recalled memory in gold, held calls in Beacon with their answers, and a
+  composer that takes the keyboard lease first and goes read-only when another screen holds it.
+  The files pane lists what a thread touched; file contents have no API yet, and it says so.
+- **Memory**: a map of each project's facts drawn as inline SVG, a list, and a fact panel with
+  its source turns quoted from the threads they came from, pin, mute and forget (mute everywhere,
+  with undo). Everything on it came from memory, so it is the one view where gold is the norm.
+- **Agents**: the assistant and every agent, a new-agent form that picks credentials by Vault
+  item name only, and the agent page: its job, what wakes it (watchers with on/off switches), its
+  model and effort, a way to talk to it (`agents.ask`), and its computer with the pool screen and
+  limits. Each part says which module is not running when it is missing.
+- **Vault**: items by name, who holds each, what used it today, passes to and from other
+  people's Vyre, and offboarding. No value is ever shown: values only go in, through password
+  inputs that are read once and cleared before the call is sent, and the view keeps only the named
+  fields it draws from every response.
+- **Settings**: every onboarding step with its state and a way to finish it, the assistant,
+  Claude Code and network status, history and memory with re-index and rebuild, lessons from
+  Learning with edit and retire, the modules vyred runs, dark or paper, and this machine.
+- **Phone views**, checked at 360 and 390 px: one held item full screen (`/needs/:id`), either a
+  question with what it changes and Allow once / Always in this project / Deny, or a draft held
+  at the Gate with its recipient, subject, the words that came from memory numbered against their
+  sources, and Send / Edit / Discard fixed above the tab bar. **Ask** (`/ask`) talks to the
+  assistant or any agent with @-chips, and shows an answer that came from memory as memory, with
+  its sources and the time it took, and an "Ask a model" to go further. Every view fits 360 px
+  without sideways scrolling.
+- `/agents/:name/glass` loads Glass from `deck/glass/`, which the computers workstream builds, and
+  says plainly that it is not here until then.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
