@@ -159,6 +159,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0016)
 
+- A held MCP call names its destination from `channel_id` and `chat_id` too, so a Slack post
+  held at the Gate shows the channel rather than the server's name.
+- CLI: `vyre connect add google <name> --sign-in [--client <vault item>]` signs in with Google
+  from a terminal. The client defaults to `google-oauth-client`; without it, the command says so
+  and prints the `vyre vault put` line for a Desktop app OAuth client. It grants the client to
+  google with presence, runs google.connect and prints the consent address on its own line. It
+  opens a browser only when dialogs are allowed and stdout is a terminal. It then waits for
+  `google.connected` or `google.connect-failed` on the event stream, for a pasted address (sent
+  to google.connect.finish), for Ctrl-C (google.connect.cancel, "cancelled, nothing stored") or
+  for 10 minutes. End of input cancels only at a terminal; piped or empty stdin just stops the
+  paste reader and the loopback can still finish it, and ends with the account's test. `--email`, `--item`
+  and `--dwd` are refused with `--sign-in`.
+- Deck, Settings, Connections: "Add a Google account" signs in with Google by default. Name the
+  account, pick the OAuth client env set (the form shows the `vyre vault put` line for one), and
+  press Sign in with Google: a blank tab opens at once (while the press still counts, so it is
+  not blocked, with its opener cut), the client is granted to google with presence,
+  google.connect runs, and the tab goes to Google's page while the form waits for `google.connected` (or
+  `google.connect-failed`, whose error it shows). A browser on another device pastes the address
+  it landed on into google.connect.finish. Cancel, closing the form and leaving the page each call
+  google.connect.cancel, and a failed grant or connect closes the tab. Only when the browser
+  blocked the tab is Google's address shown as a link. "Service
+  account" and "Refresh token item" stay as they were, and a service account's Test now shows an
+  admin console block with its client ID and scope line, each with Copy.
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
   env-set holding an OAuth client's `client_id` and `client_secret` (granted to google) and
   returns `{ id, url, redirect }`: the consent page, with PKCE S256, a random state, offline
