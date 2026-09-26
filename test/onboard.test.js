@@ -321,6 +321,8 @@ test("onboard: finishing with an address hands over a one-time link to make the 
   const { start: boot } = await import("../core/daemon/index.js");
   const d = await boot({ root, log: () => {} });
   t.after(async () => { await d.stop(); if (saved === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = saved; });
+  const tailnet = await d.registry.call("onboard.finish", {}, "tailnet:alex@example.com");
+  assert.equal(tailnet.data.passkeyUrl, null, "never to a tailnet caller: a model on the Mac is one");
   const r = await call("onboard.finish", {}, { root });
   assert.ok(r.data, JSON.stringify(r.error));
   assert.equal(r.data.passkeyUrl, "https://alex.vyre.run/onboard/passkey#e=AB12CD34");

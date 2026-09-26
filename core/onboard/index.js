@@ -28,6 +28,9 @@ const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
 // The switchboard's agents module starts the headless sessions and hands them this credential.
 const CREDENTIAL_READERS = ["agents"];
+// Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
+// Never a tailnet caller, which a model on the owner's Mac is too.
+const HANDS_CODE = new Set(["onboard", "cli", "local"]);
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
 /** An agent's name from a display name: "Juno Two" becomes "juno-two". */
 export const slug = s => {
@@ -309,7 +312,7 @@ export default {
         ctx.events.emit("onboard.finished", {});
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
-        return { ...s, url: s.address, passkeyUrl: (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
+        return { ...s, url: s.address, passkeyUrl: HANDS_CODE.has(String(caller)) && (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
       },
     });
 
@@ -322,7 +325,7 @@ export default {
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).
         if (net().ownerSeen || (ob().finished && address)) {
-          return { url: null, address, passkeyUrl: address ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+          return { url: null, address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
         }
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
