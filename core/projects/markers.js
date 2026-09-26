@@ -31,6 +31,26 @@ export function slugify(s) {
 export const parentOf = id => { const s = String(id); const i = s.indexOf("/"); return i > 0 ? s.slice(0, i) : s; };
 
 /**
+ * A folder's real path when it exists, so a home typed through a symlink matches the folder a
+ * shell or Claude Code reports, which is always the resolved one. On macOS every temp folder is
+ * reached through /var but reported as /private/var, and a project in one never matched a
+ * session in the other.
+ */
+export function real(p) {
+  const abs = path.resolve(String(p));
+  // A folder that does not exist (yet, or any more) still resolves through its nearest parent
+  // that does, so a deleted session folder under a symlinked home still matches that home.
+  let head = abs, rest = [];
+  for (;;) {
+    try { return path.join(fs.realpathSync(head), ...rest); } catch {}
+    const up = path.dirname(head);
+    if (up === head) return abs;
+    rest.unshift(path.basename(head));
+    head = up;
+  }
+}
+
+/**
  * One project from its home folder, or null when the marker is missing or has no name.
  * @returns {Project|null}
  */
@@ -38,7 +58,7 @@ export function load(home) {
   let raw;
   try { raw = JSON.parse(fs.readFileSync(path.join(home, MARKER), "utf8")); } catch { return null; }
   if (!raw || typeof raw !== "object" || !raw.name) return null;
-  const abs = path.resolve(home);
+  const abs = real(home);
   const list = v => (Array.isArray(v) ? v : []);
   return {
     slug: slugify(raw.slug || raw.name),
@@ -46,7 +66,7 @@ export function load(home) {
     org: raw.org ? String(raw.org) : null,
     home: abs,
     // The home is always a workspace: work done in it is work on the project.
-    workspaces: [...new Set([abs, ...list(raw.workspaces).map(w => path.resolve(abs, String(w)))])],
+    workspaces: [...new Set([abs, ...list(raw.workspaces).map(w => real(path.resolve(abs, String(w))))])],
     threads: [...new Set(list(raw.threads).map(t => parentOf(t)))],
     people: list(raw.people).filter(p => p && (p.name || p.email))
       .map(p => ({ name: String(p.name || p.email).trim(), ...(p.email ? { email: String(p.email).trim() } : {}) })),
@@ -93,7 +113,7 @@ export function discover(roots, { maxDepth = 5 } = {}) {
       if (e.isDirectory() && !e.name.startsWith(".") && !SKIP.has(e.name)) walk(path.join(dir, e.name), depth + 1);
     }
   };
-  for (const r of roots) walk(path.resolve(r), 0);
+  for (const r of roots) walk(real(r), 0);
   return found;
 }
 
@@ -120,7 +140,7 @@ export function flagClashes(list) {
  */
 export function projectOf(cwd, list) {
   if (!cwd) return null;
-  const c = path.resolve(String(cwd));
+  const c = real(cwd);
   let best = null, len = -1;
   for (const p of list) {
     if (p.error) continue;

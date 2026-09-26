@@ -96,7 +96,7 @@ export class Projects {
     const r = String(ref || "").trim();
     if (!r) throw new Error("which project? give its name or slug");
     const list = this.valid();
-    const abs = path.resolve(untilde(r));
+    const abs = M.real(untilde(r));
     const p = list.find(x => x.slug === r) || list.find(x => x.name.toLowerCase() === r.toLowerCase())
       || list.find(x => x.slug === M.slugify(r)) || list.find(x => x.home === abs);
     if (!p) throw new Error(`no project ${r}`);
@@ -115,7 +115,7 @@ export class Projects {
     const slug = M.slugify(clean);
     if (!slug) throw new Error(`"${clean}" has no letters or digits to make a slug from`);
     this.refresh({ walk: true });
-    const where = path.resolve(home ? untilde(home) : path.join(this.config.projectsDir, slug));
+    const where = M.real(home ? untilde(home) : path.join(this.config.projectsDir, slug));
     const clash = this.valid().find(p => p.slug === slug);
     if (clash) throw new Error(`a project called ${clash.name} already exists at ${clash.home}`);
     if (fs.existsSync(path.join(where, M.MARKER))) throw new Error(`${where} is already a project home`);

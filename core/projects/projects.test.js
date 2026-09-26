@@ -185,7 +185,7 @@ test("projects: create refuses a second project with the same name, or a folder 
   assert.throws(() => w.P.create({ name: "Other", home: path.join(w.work, "harlow-site") }), /already a project home/);
   assert.throws(() => w.P.create({ name: "  " }), /needs a name/);
   const d = w.P.create({ name: "Rivera Studio" });
-  assert.equal(d.home, path.join(w.config.projectsDir, "rivera-studio"));
+  assert.equal(d.home, fs.realpathSync(path.join(w.config.projectsDir, "rivera-studio")));
 });
 
 test("projects: two markers claiming one slug are refused, not merged", async t => {
@@ -230,4 +230,14 @@ test("brief: says the user's words win, trims long labels, and never passes its 
   const text = compose({ project: { ...project, people }, threads, facts });
   assert.ok(text.length <= LIMIT, `brief was ${text.length} chars`);
   assert.match(text, /…$/);
+});
+
+test("markers: a home reached through a symlink matches the folder as a shell reports it", t => {
+  const root = tempHome(t);
+  const realHome = path.join(root, "real", "harlow-site");
+  fs.mkdirSync(path.join(realHome, "src"), { recursive: true });
+  fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
+  const p = M.write(path.join(root, "link", "harlow-site"), { name: "Harlow Legal" });
+  assert.equal(M.projectOf(fs.realpathSync(path.join(realHome, "src")), [p])?.slug, "harlow-legal");
+  assert.equal(M.projectOf(path.join(root, "link", "harlow-site", "src"), [p])?.slug, "harlow-legal");
 });
