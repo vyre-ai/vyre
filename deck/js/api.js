@@ -11,6 +11,7 @@
 // A fixture entry is the tool's data, or one of:
 //   { "$by": "<input key>", "cases": { "<value>": data, "*": data } }   chosen by an input field
 //   { "$seq": [data, data, ...] }                                         the next one per call, then the last
+// and any string "$ago:<n><s|m|h|d>" becomes that long before now, in ms, so fixture times stay fresh.
 
 const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const q = new URLSearchParams(location.search);
@@ -20,13 +21,16 @@ export const fixturesOn = (() => { try { return store?.getItem("vyre.fixtures") 
 /** Tools answered from fixtures this page load, so the shell can say so. */
 export const fromFixtures = new Set();
 
+/** Tools are named for what they do; some live in a module of another name. */
+const MODULE = { threads: "switchboard", agents: "switchboard", onboard: "box", gate: "gate", learn: "learning" };
+
 export class ApiError extends Error {
   /** @param {string} code @param {string} message @param {string} tool */
   constructor(code, message, tool) {
     super(message);
     this.code = code;
     this.tool = tool;
-    this.module = tool.split(".")[0];
+    this.module = MODULE[tool.split(".")[0]] || tool.split(".")[0];
     this.missing = code === "no_such_tool" || code === "offline";
   }
 }
@@ -73,7 +77,15 @@ async function fallback(name, input, err) {
   if (!(name in file)) throw err;
   fromFixtures.add(name);
   window.dispatchEvent(new CustomEvent("deck:fixture", { detail: name }));
-  return structuredClone(pick(name, file[name], input));
+  return fresh(structuredClone(pick(name, file[name], input)));
+}
+
+const UNIT = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+function fresh(v) {
+  if (typeof v === "string") { const m = /^\$ago:(\d+)([smhd])$/.exec(v); return m ? Date.now() - Number(m[1]) * UNIT[m[2]] : v; }
+  if (Array.isArray(v)) return v.map(fresh);
+  if (v && typeof v === "object") { for (const k of Object.keys(v)) v[k] = fresh(v[k]); }
+  return v;
 }
 
 function pick(name, entry, input) {

@@ -49,11 +49,14 @@ checked by screenshot against the boards.
   (tools, fixtures fallback, one shared event stream), `deck/js/icons.js`, `deck/js/fmt.js`.
 - Test helpers: `deck/test/world.js` (temp home, real vyred, proxy on 127.0.0.1), `deck/test/shoot.js`.
 
+- Shell (header, search, rail, phone tab bar, router) and Now, live and against fixtures, at
+  1440 and 390. PWA manifest, icons, service worker.
+
 ## Doing
-- The shell (header, rail, phone tab bar, search) and Now.
+- Projects, Memory, Agents, Vault, Settings (one subagent each).
 
 ## Next
-- Projects, Memory, Agents, Vault, Settings, then the phone views at 360 px. PWA manifest.
+- The phone views at 360 px: approvals and drafts (`/needs/:id`), Ask, Glass later.
 
 ## Needs from others
 - box: `onboard.*` as assumed in `deck/fixtures/onboard.json` (sent 2026-09-26): `onboard.status`,

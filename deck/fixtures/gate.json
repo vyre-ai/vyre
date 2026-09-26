@@ -1,0 +1,13 @@
+{
+  "gate.held": [
+    { "id": "held-q3-report", "at": "$ago:22m", "agent": "juno", "project": "harlow-legal", "projectName": "Harlow Legal",
+      "thread": "t-juno-q3", "threadName": "Q3 report",
+      "title": "juno wrote to Dana Reyes. The draft is held at the Gate.",
+      "why": "It is juno's first email to a client this week, so I stopped before sending.",
+      "to": "dana@harlowlegal.com", "subject": "Q3 report, the short version",
+      "body": "Hi Dana, the Q3 report is attached. Consult bookings rose every month this quarter, and the new intake form goes live next week. Theo has the full numbers on page 2. Alex",
+      "recalled": "Kept to three lines: Dana prefers short weekly summaries." }
+  ],
+  "gate.approve": { "ok": true },
+  "gate.reject": { "ok": true }
+}

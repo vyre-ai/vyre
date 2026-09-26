@@ -17,6 +17,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the Deck, so thread text cannot become markup), and one API client. Tools that other streams
   have not merged answer from `deck/fixtures/*.json`, only with `?fixtures=1` and only when the
   live tool is missing; otherwise the view names the module that is not running.
+- The shell and **Now**: header with the address, search over every turn (Recall, with ⌘K and
+  arrow keys), the needs-you pill; the rail with pinned or recent projects and the machine it runs
+  on; a bottom tab bar under 760 px. Now shows drafts held at the Gate and open asks in Beacon with
+  their actions, running threads, and what memory learned today in gold with pin and mute. When
+  nothing runs it lists the latest sessions, so Now is never empty. Views load one at a time from
+  `deck/views/`, each with its own stylesheet.
+- The Deck installs as an app on a phone: a manifest, the app icon, and a service worker that
+  caches only the Deck's own files, network first, and never an API response.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.

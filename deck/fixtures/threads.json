@@ -1,0 +1,35 @@
+{
+  "threads.asks": [
+    { "id": "ask-push-main", "at": "$ago:9m", "agent": "kit", "project": "harlow-legal", "projectName": "Harlow Legal",
+      "thread": "t-kit-intake", "threadName": "Intake form rebuild", "tool": "Bash", "command": "git push origin main",
+      "rule": "Ask before pushing to a client's main branch",
+      "why": "Caught by your rule “Ask before pushing to a client's main branch”. kit finished the form change and all 6 tests pass.",
+      "options": [ { "label": "Allow once", "decision": "allow" },
+                   { "label": "Push to a branch instead", "decision": "allow", "input": { "command": "git push origin HEAD:intake-form" } },
+                   { "label": "Deny", "decision": "deny" } ] }
+  ],
+  "threads.answer": { "ok": true },
+  "threads.list": [
+    { "id": "t-pax-invoices", "name": "File this week's invoices", "project": "northwind-bakery", "projectName": "Northwind Bakery",
+      "agent": "pax", "state": "running", "started": "$ago:6m", "last": "$ago:0m",
+      "activity": "Read(invoices/2026-09-26.pdf)  ·  9 of 14 invoices" },
+    { "id": "t-kit-hero", "name": "Hero copy pass", "project": "launch-site", "projectName": "Launch site",
+      "agent": "kit", "state": "running", "started": "$ago:22m", "last": "$ago:1m",
+      "activity": "Edit(app/page.tsx)  ·  second headline option" },
+    { "id": "t-juno-intake-summary", "name": "Morning lead summary", "project": "harlow-legal", "projectName": "Harlow Legal",
+      "agent": "juno", "state": "running", "started": "$ago:41m", "last": "$ago:2m",
+      "activity": "Comparing 9 new leads against the intake brief" },
+    { "id": "t-kit-intake", "name": "Intake form rebuild", "project": "harlow-legal", "projectName": "Harlow Legal",
+      "agent": "kit", "state": "waiting", "started": "$ago:70m", "last": "$ago:9m", "activity": "Waiting for you: git push origin main" },
+    { "id": "t-juno-q3", "name": "Q3 report", "project": "harlow-legal", "projectName": "Harlow Legal",
+      "agent": "juno", "state": "waiting", "started": "$ago:95m", "last": "$ago:22m", "activity": "Draft held at the Gate" },
+    { "id": "t-kit-ads", "name": "Ads audit", "project": "harlow-legal", "projectName": "Harlow Legal",
+      "agent": "kit", "state": "finished", "started": "$ago:5h", "last": "$ago:4h" },
+    { "id": "t-pax-sort", "name": "Sort the shared inbox", "project": "northwind-bakery", "projectName": "Northwind Bakery",
+      "agent": "pax", "state": "finished", "started": "$ago:3h", "last": "$ago:2h" },
+    { "id": "t-juno-plan", "name": "Plan the week", "project": null, "projectName": null,
+      "agent": "juno", "state": "finished", "started": "$ago:6h", "last": "$ago:5h" },
+    { "id": "t-kit-deploy", "name": "Deploy the launch site", "project": "launch-site", "projectName": "Launch site",
+      "agent": "kit", "state": "finished", "started": "$ago:7h", "last": "$ago:6h" }
+  ]
+}
