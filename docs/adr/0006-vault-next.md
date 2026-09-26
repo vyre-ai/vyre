@@ -282,3 +282,23 @@ Where the build differs from the text above, and why:
 - **Presence skip for mcp.** `vault.grant` and `vault.pass.create` from Claude only create
   pending requests, and approving needs presence, so their declarations carry
   `skip: ({ caller }) => caller is mcp`, matching section 7 ("grant and pass.create (pending)").
+- **Touch ID spike (26 Sep 2026, this Mac, macOS 26.2).** An ad-hoc `swiftc -O` build of
+  `core/vault/mac/enclave.swift` made a `SecureEnclave.P256.KeyAgreement.PrivateKey` with
+  `[.privateKeyUsage, .biometryCurrentSet]` and returned its blob and public key: no
+  entitlement error, no prompt at creation. So the enclave path is used and the LAContext-gated
+  keychain fallback is not needed. `derive` was not run by hand (it prompts); tests use a fake.
+  The AUK is wrapped under HKDF(ECDH(enclave key, ephemeral P-256), salt ephPub || sePub,
+  "vyre touchid v2:<acct>") in `vault/touchid.json`; the ephemeral private key is dropped at once.
+- **Keychain helper (finding 1), 26 Sep 2026.** `core/vault/mac/keychain.swift`, built and
+  hash-checked like the other helpers, writes the device key and the Secret Key with SecItemAdd
+  and a SecAccess whose trusted-application list is only the helper itself (deprecated
+  SecAccessCreate and SecTrustedApplicationCreateFromPath, which still work from an ad-hoc
+  build). `security dump-keychain -a` on a temp keychain shows decrypt trusted to the helper
+  alone and an empty change_acl list, so `security find-generic-password -w` from any other
+  process has to ask the person. An item the old `security -i` path wrote is read once through
+  `security`, rewritten through the helper and deleted (tested). Open risk: a new build of the
+  helper (any edit to keychain.swift) is a different binary the old items do not trust. The
+  store then tries the older builds left in the same private folder and moves the item. That
+  path is written but not proved: its test made macOS show a keychain access dialog (a
+  SecurityAgent prompt, although the helper turns user interaction off), so the test was
+  removed. Until that is understood, keychain.swift should change as rarely as possible.

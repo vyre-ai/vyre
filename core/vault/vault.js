@@ -24,6 +24,9 @@ import {
   ensureDir, writeSealed, readSealed, removeSealed, promoteSealed, stagedIds, STAGED, writeJsonFile, readJsonFile,
 } from "./store.js";
 import * as relay from "./relay.js";
+import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
+import { Helper } from "./mac/helper.js";
+import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, merge as mergeImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
@@ -76,6 +79,10 @@ export const MIGRATIONS = [
   ...SHARE_MIGRATIONS,
   ...SHARED_MIGRATIONS,
   ...DEVICE_MIGRATIONS,
+  history.HISTORY_MIGRATION,
+  // Made here now, with a mac column; tools/cli.js used to make them on the fly.
+  `CREATE TABLE IF NOT EXISTS vault_ssh_keys (name TEXT PRIMARY KEY, type TEXT NOT NULL, fingerprint TEXT NOT NULL, public TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);
+   CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL, mac TEXT);`,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -94,9 +101,30 @@ export const MACED = {
   vault_grants: ["id", "item", "module", "watcher", "status"],
   vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
   vault_devices: ["id", "name", "token_hash", "revoked"],
+  vault_history: ["id", "item", "ver", "name", "vault", "at", "by", "changed", "fh"],
+  // The ssh agent's record of each key's public half (what a signing prompt names), and the
+  // marks that say a login must be rotated. Keyed by item name, made by tools/cli.js.
+  vault_ssh_keys: ["name", "type", "fingerprint", "public"],
+  vault_marks: ["name", "stale"],
 };
+/** The key column of each MACed table, where it is not `id`. */
+const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name" };
+/** Tables MACed after the v2 upgrade: their rows from before are signed once, then checked. */
+const LATE_MACED = ["vault_ssh_keys", "vault_marks"];
+
+/**
+ * Tables tools/cli.js made before they were numbered migrations have no mac column; add it.
+ * @param {import("node:sqlite").DatabaseSync} db
+ */
+export function ensureMacColumns(db) {
+  for (const t of LATE_MACED) {
+    const cols = /** @type {any[]} */ (db.prepare(`PRAGMA table_info(${t})`).all()).map(c => c.name);
+    if (cols.length && !cols.includes("mac")) db.exec(`ALTER TABLE ${t} ADD COLUMN mac TEXT`);
+  }
+}
 
 const ACCOUNT = "account.json";
+const TOUCHID = "touchid.json";
 const AGENT_VK = path.join("vaults", "agents.json");
 const STATE = "state.json";
 const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
@@ -154,8 +182,11 @@ export class Vault {
     this.name = (config && config.name) || "vyre";
     this.kind = opts.keystore || defaultKind();
     this.guarded = this.kind === "keychain" && !opts.keychain && Boolean(process.env.NODE_TEST_CONTEXT);
-    this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain });
-    this.secretKeys = secretKeyStore({ dir, kind: this.kind === "keychain" ? "keychain" : "file", keychain: opts.keychain });
+    // On a Mac the keychain is written by a hash-checked helper that is the only app on each
+    // item's access list (ADR 0006 finding 1); elsewhere there is no keychain keystore.
+    const kcHelper = this.kind === "keychain" && process.platform === "darwin" ? new Helper({ name: "keychain", dir: path.join(dir, "helpers") }) : null;
+    this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain, helper: kcHelper });
+    this.secretKeys = secretKeyStore({ dir, kind: this.kind === "keychain" ? "keychain" : "file", keychain: opts.keychain, helper: kcHelper });
     this.testKdf = testKdf;
     /** The agent vault's key, the personal vault's key while unlocked, and the row MAC key. All KeyObjects. */
     /** @type {import("node:crypto").KeyObject|null} */ this.vk = null;
@@ -207,7 +238,9 @@ export class Vault {
       raw = await this.keys.create();
       this.log(`vault key created in the ${this.kind} keystore`);
     }
-    return this.adopt(raw);
+    const vk = this.adopt(raw);
+    await this.sealRelayRules();
+    return vk;
   }
 
   /** Take a device key (raw bytes, zeroed here), open the agent VK with it, and bring the home up to v2. */
@@ -267,13 +300,43 @@ export class Vault {
     const state = readJsonFile(this.dir, STATE);
     if (state) {
       if (!state.mac || !same(state.mac, this.stateMac())) this.flag("state", "vault", null);
+      this.relaySealed = Boolean(state.relay && same(state.relay, this.relayMac()));
+      // Tables MACed after this home went v2: their older rows are trusted once, like at upgrade.
+      if (!state.late || !same(state.late, this.lateMac())) {
+        for (const t of LATE_MACED) for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${t} WHERE mac IS NULL`).all())) this.sign(t, r.name);
+        writeJsonFile(this.dir, STATE, { ...state, late: this.lateMac() });
+      }
       return;
     }
+    this.relaySealed = true;
     for (const [table] of Object.entries(MACED)) {
-      for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${table} WHERE mac IS NULL`).all())) this.sign(table, r.id);
+      for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${table} WHERE mac IS NULL`).all())) this.sign(table, r[KEY_COL[table] || "id"]);
     }
     this.migrateV1(dk);
-    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac() });
+    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac(), relay: this.relayMac(), late: this.lateMac() });
+  }
+
+  lateMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { late: LATE_MACED }); }
+
+  relayMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { relaySealed: true }); }
+
+  /**
+   * Once per home: items whose relay rules were set before rules were sealed get a new version
+   * with the rules in their meta. Until that is done for every item, open() does it on the way;
+   * after, a row whose rules differ from the sealed copy is refused like any other mismatch.
+   */
+  async sealRelayRules() {
+    if (this.relaySealed !== false) return;
+    let pending = 0;
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE relay IS NOT NULL").all())) {
+      if (!this.rowOk("vault_items", r)) continue;
+      if (r.vault === PERSONAL && !this.pvk) { pending++; continue; }
+      try { await this.open(r); } catch { /* refused or missing: nothing to bring forward */ }
+    }
+    if (pending) return;
+    this.relaySealed = true;
+    const state = readJsonFile(this.dir, STATE) || { v: 2, mac: this.stateMac() };
+    writeJsonFile(this.dir, STATE, { ...state, relay: this.relayMac() });
   }
 
   stateMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { v: 2 }); }
@@ -353,8 +416,9 @@ export class Vault {
   /** Sign one row as it is now. Only code that just wrote it, or verified it, calls this. */
   sign(table, id) {
     if (!this.mkey) return;
-    const r = this.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
-    if (r) this.db.prepare(`UPDATE ${table} SET mac = ? WHERE id = ?`).run(this.macOf(/** @type {any} */ (table), r), id);
+    const col = KEY_COL[table] || "id";
+    const r = this.db.prepare(`SELECT * FROM ${table} WHERE ${col} = ?`).get(id);
+    if (r) this.db.prepare(`UPDATE ${table} SET mac = ? WHERE ${col} = ?`).run(this.macOf(/** @type {any} */ (table), r), id);
   }
 
   /**
@@ -366,7 +430,7 @@ export class Vault {
     if (!r) return false;
     if (!this.mkey) return true;
     if (r.mac && same(r.mac, this.macOf(table, r))) return true;
-    this.flag(table, r.id, r.mac);
+    this.flag(table, r[KEY_COL[table] || "id"], r.mac);
     return false;
   }
 
@@ -417,7 +481,11 @@ export class Vault {
   }
 
   /** Open the personal vault with the password and this device's Secret Key. */
-  async unlockAccount({ password }, who = "cli") {
+  /**
+   * The account unlock key from the password and this device's Secret Key. A wrong password
+   * throws in words and is audited.
+   */
+  async deriveAuk(password, who) {
     const rec = readJsonFile(this.dir, ACCOUNT);
     if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
     await this.key();
@@ -426,20 +494,70 @@ export class Vault {
     if (!text) throw new Error("this device has no Secret Key for the account · use your recovery kit");
     const { acct, bytes } = parseSecretKey(text);
     if (acct !== rec.acct) { bytes.fill(0); throw new Error("the Secret Key on this device belongs to another account"); }
-    let pvk;
     try {
       const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
-      pvk = unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+      unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+      return { auk, rec, acct };
     } catch {
       this.audit("account-unlock", null, who, false, "wrong password");
       throw new Error("that password does not open your personal vault");
     } finally { bytes.fill(0); }
-    this.pvk = pvk;
+  }
+
+  /**
+   * Open the personal vault with the password, or with Touch ID once enrolled on this Mac.
+   * @param {{ password?: string, method?: "password"|"touchid" }} input
+   */
+  async unlockAccount({ password, method = "password" }, who = "cli") {
+    let auk, rec, acct;
+    if (method === "touchid") ({ auk, rec, acct } = await this.touchIdAuk(who));
+    else ({ auk, rec, acct } = await this.deriveAuk(password, who));
+    this.pvk = unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
     this.recoverStaged();
     const moved = await this.migratePersonal();
-    this.audit("account-unlock", null, who, true, moved ? `${moved} items moved into the personal vault` : null);
+    await this.sealRelayRules();
+    this.audit("account-unlock", null, who, true, [method === "touchid" ? "touch id" : null, moved ? `${moved} items moved into the personal vault` : null].filter(Boolean).join(", ") || null);
     this.emit("vault.unlocked", { vault: PERSONAL });
-    return { unlocked: true, acct };
+    return { unlocked: true, acct, method };
+  }
+
+  /**
+   * Turn on Touch ID unlock on this Mac: a Secure Enclave key, and the AUK wrapped to it. Needs
+   * the password, since the AUK is made from it. Enrolling again replaces the old wrap.
+   */
+  async enrollTouchId({ password }, who = "cli") {
+    if (!this.enclave) throw new Error("Touch ID unlock needs a Mac with a Secure Enclave");
+    const { auk, acct } = await this.deriveAuk(password, who);
+    const made = await enclaveCall(this.enclave, { op: "create" });
+    if (!made || !made.ok) throw new Error(`the Secure Enclave did not make a key: ${(made && made.message) || "no answer"}`);
+    const { ephPub, wrapped } = wrapAuk(auk, made.pub, acct);
+    writeJsonFile(this.dir, TOUCHID, { v: 2, acct, blob: made.blob, sePub: made.pub, ephPub, wrapped });
+    this.audit("touchid-enroll", null, who, true, null);
+    return { enrolled: true };
+  }
+
+  /** The AUK through the enclave: one Touch ID dialog, and only this Mac's enclave can answer it. */
+  async touchIdAuk(who) {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    const t = readJsonFile(this.dir, TOUCHID);
+    if (!t || t.acct !== rec.acct) throw new Error("Touch ID unlock is not set up on this Mac · vyre vault account enroll-touchid");
+    if (!this.enclave) throw new Error("Touch ID unlock needs a Mac with a Secure Enclave");
+    await this.key();
+    const r = await enclaveCall(this.enclave, { op: "derive", blob: t.blob, peerPub: t.ephPub, reason: "unlock your personal vault" });
+    if (!r || !r.ok) {
+      this.audit("account-unlock", null, who, false, r && r.code === "refused" ? "touch id refused" : "touch id failed");
+      throw new Error(r && r.code === "refused" ? "Touch ID was not confirmed" : "Touch ID unlock no longer works on this Mac (were fingerprints changed?) · unlock with your password and enroll again");
+    }
+    try { return { auk: unwrapAuk(Buffer.from(String(r.shared), "base64"), t, rec.acct), rec, acct: rec.acct }; }
+    catch { this.audit("account-unlock", null, who, false, "touch id wrap did not open"); throw new Error("the Touch ID wrap does not open · unlock with your password and enroll again"); }
+  }
+
+  /** Whether there is an account, whether it is unlocked, and whether Touch ID is set up here. */
+  accountStatus() {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    const t = readJsonFile(this.dir, TOUCHID);
+    return { account: Boolean(rec), unlocked: Boolean(this.pvk), touchid: Boolean(rec && t && t.acct === rec.acct), ...(rec ? { acct: rec.acct } : {}) };
   }
 
   /** Close the personal vault. The agent vault stays open: agents keep working. */
@@ -472,8 +590,12 @@ export class Vault {
     this.vk = vk;
     this.mkey = macKey(vk);
     await this.writeIdentity(id);
-    for (const table of Object.keys(MACED)) for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT id FROM ${table}`).all())) this.sign(table, r.id);
-    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac() });
+    for (const table of Object.keys(MACED)) {
+      const col = KEY_COL[table] || "id";
+      for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT ${col} AS k FROM ${table}`).all())) this.sign(table, r.k);
+    }
+    this.relaySealed = true;
+    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac(), relay: this.relayMac(), late: this.lateMac() });
   }
 
   /**
@@ -536,11 +658,128 @@ export class Vault {
     const k = cls === PERSONAL ? this.pvk : await this.key();
     if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
     writeSealed(this.dir, r.id + STAGED, sealItemV2(k, this.at(next), { meta, fields }));
+    const hist = await this.historyStep(r, r, next, fields, "vault", now(), fields);
     this.tx(() => {
       this.db.prepare("UPDATE vault_items SET ver=?, vault=? WHERE id=?").run(next.ver, cls, r.id);
       this.sign("vault_items", r.id);
+      hist.commit();
     });
     promoteSealed(this.dir, r.id);
+    hist.prune();
+  }
+
+  /**
+   * Change sealed details of an item (relay rules today) as a new version, so the row and the
+   * sealed meta always agree. @param {string} name @param {{ relay?: string|null }} changes
+   */
+  async setMeta(name, changes, why = "details") {
+    const r = this.mustRow(name);
+    const { fields } = await this.open(r);
+    await this.writeVersion(this.mustRow(name), changes, fields, "vault");
+    this.audit("change", name, "vault", true, why);
+  }
+
+  /** Seal the same fields again as a new version of `r` with `changes` to its sealed columns. */
+  async writeVersion(r, changes, fields, by) {
+    const next = { ...r, ...changes, ver: Number(r.ver || 0) + 1 };
+    const k = next.vault === PERSONAL ? this.pvk : await this.key();
+    if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
+    writeSealed(this.dir, r.id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields }));
+    const hist = await this.historyStep(r, r, next, fields, by, now(), fields);
+    this.tx(() => {
+      this.db.prepare("UPDATE vault_items SET ver=?, relay=? WHERE id=?").run(next.ver, next.relay ?? null, r.id);
+      this.sign("vault_items", r.id);
+      hist.commit();
+    });
+    promoteSealed(this.dir, r.id);
+    hist.prune();
+  }
+
+  // ---- history ----------------------------------------------------------------------------
+
+  /**
+   * Before a new version replaces an item: keep the current sealed file as history, and make
+   * the new version's history row. `commit` runs inside the put's transaction, `prune` after.
+   * @param {any} raw the row now (or null) @param {any} old the same row if it passed its MAC
+   * @param {any} next the new row values @param {Record<string,string>} fields the new fields
+   */
+  async historyStep(raw, old, next, fields, by, at, prevFields = null) {
+    const mkey = /** @type {any} */ (this.mkey);
+    const fh = history.fieldHashes(mkey, next.id, fields);
+    let prev = null;
+    if (old) {
+      const h = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? AND ver = ?").get(old.id, Number(old.ver || 0)));
+      if (h && this.rowOk("vault_history", h)) prev = json(h.fh, null);
+      else if (prevFields) prev = history.fieldHashes(mkey, next.id, prevFields);
+      else { try { prev = history.fieldHashes(mkey, next.id, (await this.open(old)).fields); } catch { prev = null; } }
+      const sealed = readSealed(this.dir, old.id);
+      if (sealed && sealed.v === 2) {
+        history.keepVersion(this.dir, old.id, Number(old.ver || 0), sealed);
+        // A version made before history existed gets its row now, so it can be listed and read.
+        if (!h) {
+          const hid = `${old.id}:${Number(old.ver || 0)}`;
+          this.db.prepare("INSERT OR REPLACE INTO vault_history (id, item, ver, name, vault, at, by, changed, fh) VALUES (?,?,?,?,?,?,?,?,?)")
+            .run(hid, old.id, Number(old.ver || 0), old.name, old.vault || AGENTS, Number(old.updated || at), "", "[]", JSON.stringify(prev || {}));
+          this.sign("vault_history", hid);
+        }
+      }
+    }
+    const changed = raw && !old ? Object.keys(fields).sort() : history.changedFields(prev, fh);
+    const hid = `${next.id}:${next.ver}`;
+    return {
+      commit: () => {
+        this.db.prepare("INSERT OR REPLACE INTO vault_history (id, item, ver, name, vault, at, by, changed, fh) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(hid, next.id, next.ver, next.name, next.vault, at, String(by), JSON.stringify(changed), JSON.stringify(fh));
+        this.sign("vault_history", hid);
+      },
+      prune: () => {
+        const floor = Number(next.ver) - history.KEEP;
+        for (const h of /** @type {any[]} */ (this.db.prepare("SELECT ver FROM vault_history WHERE item = ? AND ver < ?").all(next.id, floor))) history.dropVersion(this.dir, next.id, h.ver);
+        this.db.prepare("DELETE FROM vault_history WHERE item = ? AND ver < ?").run(next.id, floor);
+      },
+    };
+  }
+
+  /** An item's versions, newest first: when, who, which fields changed. Never a value. */
+  history({ name, field }) {
+    const r = this.mustRow(name);
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? ORDER BY ver DESC").all(r.id))
+      .filter(h => this.rowOk("vault_history", h) && h.ver <= r.ver);
+    const entries = rows.map(h => ({ version: h.ver, at: h.at, by: h.by, changed: json(h.changed, []), current: h.ver === r.ver,
+      readable: h.ver === r.ver || Boolean(history.readVersion(this.dir, r.id, h.ver)) }));
+    const shown = field ? entries.filter(e => e.changed.includes(String(field))) : entries;
+    return {
+      name, entries: shown,
+      // The Deck's shape: versions, and the passwords this login has had before the current one.
+      versions: shown.map(e => ({ ver: e.version, at: e.at, by: e.by, fields: e.changed })),
+      passwords: entries.filter(e => e.version > 1 && e.changed.includes("password")).map(e => ({ at: e.at })),
+    };
+  }
+
+  /** One version's fields: the current one, or a kept older one, under the key it was sealed with. */
+  async versionFields(r, ver) {
+    const v = Number(ver);
+    if (!Number.isInteger(v) || v < 1) throw new Error("a version is a whole number from vault.history");
+    if (v === Number(r.ver)) return this.fields(r);
+    const vk = await this.key();
+    if (!this.rowOk("vault_items", r)) throw new Error(`the record for ${r.name} failed its check and is ignored`);
+    const h = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? AND ver = ?").get(r.id, v));
+    if (!h || !this.rowOk("vault_history", h) || v > Number(r.ver)) throw new Error(`${r.name} has no version ${v} kept`);
+    const sealed = history.readVersion(this.dir, r.id, v);
+    if (!sealed) throw new Error(`version ${v} of ${r.name} is no longer kept`);
+    const k = h.vault === PERSONAL ? this.pvk : vk;
+    if (!k) throw locked(`version ${v} of ${r.name} was sealed in your personal vault, which is locked · vyre vault account unlock`);
+    try { return openItemV2(k, { vault: h.vault, kv: KV, id: r.id, ver: v, name: h.name }, sealed).fields; }
+    catch { this.audit("open", r.name, "vault", false, `kept version ${v} did not open`); throw new Error(`version ${v} of ${r.name} does not open`); }
+  }
+
+  /** Put an older version's fields back, as a new version. The item's details stay as they are now. */
+  async revert({ name, version }, who) {
+    const r = this.mustRow(name);
+    const fields = await this.versionFields(r, version);
+    await this.put({ name, kind: r.kind, description: r.description, fields, url: r.url || undefined, hosts: json(r.hosts, []), origin: r.origin || undefined, apps: json(r.apps, []), reprompt: Boolean(r.reprompt) }, who);
+    this.audit("revert", name, who, true, `to version ${version}`);
+    return { name, version: this.row(name).ver, from: Number(version) };
   }
 
   // ---- audit ----------------------------------------------------------------------------
@@ -566,7 +805,10 @@ export class Vault {
 
   /** What the row says about an item: exactly what is sealed as `meta` with it, and checked on open. */
   meta(r) {
-    return { kind: r.kind, url: r.url ?? null, hosts: json(r.hosts, []), apps: json(r.apps, []), reprompt: Boolean(r.reprompt) };
+    const relayRules = json(r.relay, null);
+    return { kind: r.kind, url: r.url ?? null, hosts: json(r.hosts, []), apps: json(r.apps, []), reprompt: Boolean(r.reprompt),
+      // Relay rules decide what a relayed value may be put into, so they are sealed like hosts.
+      ...(relayRules && relayRules.body === true ? { relay: { body: true } } : {}) };
   }
 
   /** Where a row's sealed copy sits in the key hierarchy. */
@@ -598,6 +840,13 @@ export class Vault {
     try { body = openItemV2(k, this.at(r), sealed); }
     catch { this.audit("open", r.name, "vault", false, "the sealed copy is not the version its record names"); throw new Error(`the sealed copy of ${r.name} does not open: it was replaced or is an older version`); }
     if (canonical(body.meta) !== canonical(this.meta(r))) {
+      // Relay rules set before they were sealed lived only in the (MACed) row. A copy whose one
+      // difference is that is brought up to date, as a new version, rather than refused.
+      const { relay: _r, ...rest } = this.meta(r);
+      if (this.relaySealed === false && !("relay" in body.meta) && _r && canonical(body.meta) === canonical(rest)) {
+        await this.writeVersion(r, {}, body.fields, "vault");
+        return { meta: this.meta(r), fields: body.fields };
+      }
       this.audit("open", r.name, "vault", false, "vyre.db details do not match the sealed copy");
       throw new Error(`the details of ${r.name} in vyre.db do not match its sealed copy, so it is refused`);
     }
@@ -608,7 +857,7 @@ export class Vault {
    * Add or replace an item. The fields arrive from the CLI's hidden prompt, an import file or a
    * sealed pass; the tool layer refuses them from Claude.
    */
-  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt }, who) {
+  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt, relay: relayRules }, who) {
     if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
     if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
     if (!fields || typeof fields !== "object" || Array.isArray(fields)) throw new Error("fields must be an object");
@@ -644,21 +893,25 @@ export class Vault {
       id, name, kind, url: u, hosts: JSON.stringify(h), vault: cls, ver: Number(raw ? raw.ver || 0 : 0) + 1,
       apps: JSON.stringify(apps ?? (old ? json(old.apps, []) : [])),
       reprompt: (reprompt ?? (old ? Boolean(old.reprompt) : kind === "card")) ? 1 : 0,
+      relay: relayRules !== undefined ? this.share.checkRelayRules(relayRules) : (old ? old.relay ?? null : null),
     };
     writeSealed(this.dir, id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields: clean }));
     const t = now();
+    const hist = await this.historyStep(raw, old, next, clean, who, t);
     this.tx(() => {
       if (raw) {
         // Putting an item again is how it is rotated, so the rotate mark goes.
-        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=? WHERE id=?")
-          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, id);
+        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=?, relay=? WHERE id=?")
+          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, next.relay, id);
       } else {
-        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt);
+        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt, relay) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt, next.relay);
       }
       this.sign("vault_items", id);
+      hist.commit();
     });
     promoteSealed(this.dir, id);
+    hist.prune();
     this.audit(old ? "change" : "add", name, who);
     this.emit(old ? "vault.item-changed" : "vault.item-added", { name, kind });
     return { name, kind, created: !old };
@@ -688,6 +941,8 @@ export class Vault {
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
+    history.dropHistory(this.dir, r.id);
+    this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_grants WHERE item = ?").run(name);
     this.audit("delete", name, who);

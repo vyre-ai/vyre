@@ -10,7 +10,7 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
-import { Vault, MIGRATIONS, KINDS, parseExpiry } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
@@ -22,6 +22,7 @@ import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
 import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
+import * as historyTools from "./tools/history.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -29,6 +30,7 @@ import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as deckTools from "./tools/deck.js";
+import { gate } from "./prove.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -41,7 +43,13 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
+    ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
+    // Every tool that returns or moves a value asks for presence first (prove.js), until the
+    // registry does it (ADR 0004). All registrations below go through this ctx.
+    const gated = gate({ ctx, vault });
+    const base = ctx;
+    ctx = Object.assign(Object.create(base), { tool: (name, def) => base.tool(name, gated(name, def)) });
 
     const opts = (ctx.config && ctx.config.vault) || {};
     // An existing home opens its agent vault now, so a v1 home is re-sealed as v2 at start
@@ -126,8 +134,7 @@ export default {
           if (old && old.origin !== caller) throw new Error(`${input.name} was not made by ${mod}, so ${mod} cannot replace it`);
           input.origin = caller;
         }
-        const out = await vault.put(input, caller);
-        if (relayRules) vault.share.setRelayRules(input.name, relayRules);
+        const out = await vault.put({ ...input, ...(relayRules ? { relay: relayRules } : {}) }, caller);
         for (const g of grants || []) await vault.grant({ name: input.name, module: g }, caller);
         return { ...out, ...(grants ? { granted: grants } : {}) };
       }, presence("Save an item in the vault", ({ name, kind }) => {
@@ -252,6 +259,7 @@ export default {
       (input, { caller }) => vault.relayOut(input, caller));
 
     account.register({ ctx, vault, tool });
+    historyTools.register({ ctx, vault, tool });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

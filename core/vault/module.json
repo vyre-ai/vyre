@@ -81,7 +81,11 @@
       "vault.device.join",
       "vault.device.approve",
       "vault.device.list",
-      "vault.device.sync"
+      "vault.device.sync",
+      "vault.account.enroll-touchid",
+      "vault.account.status",
+      "vault.history",
+      "vault.revert"
     ]
   },
   "watches": {

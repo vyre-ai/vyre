@@ -11,14 +11,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
-import mod from "./index.js";
+import { recorded } from "./testing.js";
 import { encodeTicket, encodeCard } from "./relay.js";
 import { newIdentity } from "./crypto.js";
 
 export const NEEDS_PRESENCE = [
   "vault.put", "vault.delete", "vault.import", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
-  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock",
+  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert",
   "vault.resolve", "vault.render", "vault.edit", "vault.git", "vault.ssh.add", "vault.ssh.approve",
   "vault.session.open", "vault.reveal", "vault.copy", "vault.fill.native", "vault.breach.check", "vault.update",
   "vault.members.invite", "vault.members.accept", "vault.members.role", "vault.members.remove", "vault.vaults.rotate", "vault.move",
@@ -26,32 +26,11 @@ export const NEEDS_PRESENCE = [
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
-  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock",
+  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock", "vault.account.status", "vault.history",
   "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
   "vault.session.close", "vault.session.status", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search"];
-
-/** Start the vault module against a ctx that records every tool definition. */
-export async function recorded(t, extra = {}) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-presence-"));
-  const db = open(path.join(tmp, "vyre.db"));
-  /** @type {Map<string, any>} */
-  const tools = new Map();
-  const events = [], logs = [];
-  const ctx = {
-    store: { db, migrate: steps => migrate(db, "vault", steps) },
-    paths: { vault: path.join(tmp, "vault") },
-    config: { name: "test-box", vault: { keystore: "file", ...extra } },
-    events: { emit: (type, p) => events.push({ type, p }) },
-    log: m => logs.push(m),
-    tool: (name, def) => tools.set(name, def),
-  };
-  const running = await mod.start(ctx);
-  t.after(async () => { await running.stop(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
-  const run = (name, input, caller = "cli") => tools.get(name).run(input, { caller });
-  return { tmp, db, tools, events, logs, run };
-}
 
 test("presence: every value-out or access-giving tool declares it, with a summary", async t => {
   const { tools } = await recorded(t);

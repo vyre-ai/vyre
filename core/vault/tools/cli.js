@@ -46,8 +46,7 @@ const namesOf = refs => [...new Set(refs.map(r => { try { return parseRef(r).nam
  */
 export async function register({ ctx, vault }) {
   const db = ctx.store.db;
-  db.exec(`CREATE TABLE IF NOT EXISTS vault_ssh_keys (name TEXT PRIMARY KEY, type TEXT NOT NULL, fingerprint TEXT NOT NULL, public TEXT NOT NULL, at INTEGER NOT NULL);
-           CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL);`);
+  // vault_ssh_keys and vault_marks are numbered migrations in vault.js now, with a mac column.
   const emit = (t, p) => ctx.events.emit(t, p);
 
   /** Open an item's fields; a locked vault says which one in words the CLI maps to exit 4. */
@@ -57,11 +56,12 @@ export async function register({ ctx, vault }) {
 
   // ---- metadata: listing extras --------------------------------------------------------
 
-  const sshInfo = name => /** @type {any} */ (db.prepare("SELECT type, fingerprint, public, at FROM vault_ssh_keys WHERE name = ?").get(name));
-  const staleOf = name => { const m = /** @type {any} */ (db.prepare("SELECT stale FROM vault_marks WHERE name = ?").get(name)); return m && m.stale ? String(m.stale) : null; };
-  const setStale = (name, why) => db.prepare("INSERT OR REPLACE INTO vault_marks (name, stale, at) VALUES (?,?,?)").run(name, why, Date.now());
+  // Both tables are MACed (vault.js MACED): a row a module wrote is ignored and audited.
+  const sshInfo = name => { const r = /** @type {any} */ (db.prepare("SELECT * FROM vault_ssh_keys WHERE name = ?").get(name)); return r && vault.rowOk("vault_ssh_keys", r) ? r : undefined; };
+  const staleOf = name => { const m = /** @type {any} */ (db.prepare("SELECT * FROM vault_marks WHERE name = ?").get(name)); return m && m.stale && vault.rowOk("vault_marks", m) ? String(m.stale) : null; };
+  const setStale = (name, why) => { db.prepare("INSERT OR REPLACE INTO vault_marks (name, stale, at) VALUES (?,?,?)").run(name, why, Date.now()); vault.sign("vault_marks", name); };
   const clearStale = name => db.prepare("DELETE FROM vault_marks WHERE name = ?").run(name);
-  const rememberSsh = (name, k) => db.prepare("INSERT OR REPLACE INTO vault_ssh_keys (name, type, fingerprint, public, at) VALUES (?,?,?,?,?)").run(name, k.type, k.fingerprint, k.public, Date.now());
+  const rememberSsh = (name, k) => { db.prepare("INSERT OR REPLACE INTO vault_ssh_keys (name, type, fingerprint, public, at) VALUES (?,?,?,?,?)").run(name, k.type, k.fingerprint, k.public, Date.now()); vault.sign("vault_ssh_keys", name); };
 
   /** Add ssh and stale to listed items, and apply the kind and host filters. */
   const decorate = it => {
@@ -212,9 +212,12 @@ export async function register({ ctx, vault }) {
       await vault.put(input, caller);
       try { vault.remove({ name: i.name }, caller); }
       catch (e) { vault.remove({ name: target }, caller); throw e; }
-      for (const g of it.grants || []) vault.grant({ name: target, module: g.module, watcher: g.watcher || "" }, caller);
+      for (const g of it.grants || []) await vault.grant({ name: target, module: g.module, watcher: g.watcher || "" }, caller);
+      const ssh = sshInfo(i.name), mark = staleOf(i.name);
       db.prepare("UPDATE vault_ssh_keys SET name = ? WHERE name = ?").run(target, i.name);
       db.prepare("UPDATE vault_marks SET name = ? WHERE name = ?").run(target, i.name);
+      if (ssh) vault.sign("vault_ssh_keys", target);
+      if (mark) vault.sign("vault_marks", target);
       return { name: target, kind: r.kind, fields: Object.keys(fields), renamedFrom: i.name };
     },
   });

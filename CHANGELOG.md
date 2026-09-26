@@ -601,6 +601,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `vault.account.create`, `vault.account.unlock`, `vault.account.lock`. A v1 home is re-sealed
   at start, v1 files removed only after every v2 copy verifies; once done, a v1 file is refused.
   Keys are KeyObjects and `lock()` drops them all. Backups keep format v1 and old ones restore.
+- Touch ID unlock of the personal vault: `mac/enclave.swift` (Secure Enclave P-256 key with
+  biometryCurrentSet; verbs create, derive, auth) wraps the account unlock key in
+  `vault/touchid.json`. Tools `vault.account.enroll-touchid`, `vault.account.status`, and
+  `vault.account.unlock {method: "touchid"}`.
+- Interim presence (`prove.js`) until the ADR 0004 registry merges: every tool that returns or
+  moves a value asks `proof.prove` first. Touch ID or the Mac password on a Mac, confirm (and
+  the tailnet owner when known) on the Deck, refused where there is no Touch ID. Reveal is on
+  for the Deck and the Capsule behind it (SPEC 11 rule 8); `vault.deck.reveal` is gone.
+- The keychain keystore writes through `mac/keychain.swift`, so only that helper is on the
+  item's access list (`security find-generic-password -w` no longer returns the key without
+  asking). Items the old path wrote are moved on first read.
+- Item history: the last 10 older sealed versions per item under `vault/history/<id>/`, and
+  `vault_history` rows (MACed) naming the changed fields, computed from per-field HMACs.
+  `vault.history {name, field?}` (names only, Claude may call it), `vault.revert {name,
+  version}` (presence), and `version` on `vault.reveal` and `vault.copy`.
+- Relay rules (`relay.body`) are sealed in the item's meta and checked on open like hosts;
+  changing them makes a new version. Items whose rules predate this are re-sealed once.
+  `vault_ssh_keys` and `vault_marks` are numbered migrations now, with MACed rows.
+- CLI: `vyre vault account create | unlock [--touchid] | lock | enroll-touchid | status`.
+  The password is a hidden prompt (twice on create); the Secret Key is printed once.
 
 - Your other devices: a new Mac or a box joins with a code and a fingerprint you compare, and an
   approval on a device you already have. A box joins as storage: it runs agent items and keeps

@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
-import { Vault, MIGRATIONS, PERSONAL, AGENTS } from "./vault.js";
+import { Vault, MIGRATIONS, PERSONAL, AGENTS, ensureMacColumns } from "./vault.js";
 import {
   newIdentity, sealFor, openFrom, clampKdf, clampScrypt, formatSecretKey, parseSecretKey, wrapKey, unwrapKey,
   sealItemV2, openItemV2, newVaultKey, ARGON2,
@@ -201,7 +201,7 @@ test("account: password rules, wrong password, and the personal vault while lock
 
   await assert.rejects(vault.unlockAccount({ password: fake("wrong") }), /does not open your personal vault/);
   assert.ok(auditRows(db).some(r => r.action === "account-unlock" && r.ok === 0));
-  assert.deepEqual(await vault.unlockAccount({ password: PASSWORD }), { unlocked: true, acct: made.acct });
+  assert.deepEqual(await vault.unlockAccount({ password: PASSWORD }), { unlocked: true, acct: made.acct, method: "password" });
   assert.equal((await vault.fields(vault.row("mail-login"))).totp, seed);
   // A card defaults to re-prompt, sealed in its meta.
   await vault.put({ name: "card-1", kind: "card", fields: { number: "4111111111111111" } }, "cli");
@@ -358,4 +358,68 @@ test("item seal v2 binds vault, key version, id, version and name", () => {
     assert.throws(() => openItemV2(vk, { ...at, ...change }, { ...sealed, ...("vault" in change ? { vault: change.vault } : {}), ...("ver" in change ? { ver: change.ver } : {}), ...("kv" in change ? { kv: change.kv } : {}) }), JSON.stringify(change));
   }
   assert.throws(() => openItemV2(newVaultKey(), at, sealed));
+});
+
+test("relay rules are sealed with the item: a changed row is refused, an older unsealed one is brought up to date", async t => {
+  const { vault, db } = vaultOn(t, home(t));
+  await vault.put({ name: "api-token", kind: "api-key", hosts: ["https://api.acme.test"], fields: { value: fake("t") } }, "cli");
+  const id = vault.row("api-token").id;
+  // Turning the body on behind the vault's back, even with a good MAC, fails on open.
+  db.prepare("UPDATE vault_items SET relay = ? WHERE id = ?").run(JSON.stringify({ body: true }), id);
+  vault.sign("vault_items", id);
+  await assert.rejects(vault.fields(vault.row("api-token")), /do not match its sealed copy/);
+  // The way to change it: a new sealed version.
+  db.prepare("UPDATE vault_items SET relay = NULL WHERE id = ?").run(id);
+  vault.sign("vault_items", id);
+  await vault.share.setRelayRules("api-token", { body: true });
+  assert.deepEqual(vault.meta(vault.row("api-token")).relay, { body: true });
+  assert.equal((await vault.open(vault.row("api-token"))).meta.relay.body, true);
+  // A copy sealed before rules were sealed (the rule only in the MACed row) is re-sealed, once,
+  // while the home has not finished that step.
+  vault.relaySealed = false;
+  const r = vault.row("api-token");
+  const { sealItemV2: seal } = await import("./crypto.js");
+  const fields = await vault.fields(r);
+  const { relay: _drop, ...plain } = vault.meta(r);
+  writeSealed(vault.dir, r.id, seal(await vault.key(), vault.at(r), { meta: plain, fields }));
+  assert.deepEqual(await vault.fields(vault.row("api-token")), fields);
+  assert.equal(vault.row("api-token").ver, r.ver + 1);
+  assert.equal(readSealed(vault.dir, r.id).ver, r.ver + 1);
+  await vault.sealRelayRules();
+  assert.equal(vault.relaySealed, true);
+  assert.ok(JSON.parse(fs.readFileSync(path.join(vault.dir, "state.json"), "utf8")).relay);
+});
+
+test("ssh key records and rotate marks are MACed; rows from before are signed once, forged ones ignored", async t => {
+  const tmp = home(t);
+  // A home whose tables were made by the old tools/cli.js, without a mac column.
+  const db0 = open(path.join(tmp, "vyre.db"));
+  migrate(db0, "vault", MIGRATIONS.slice(0, MIGRATIONS.length - 1));
+  db0.exec("CREATE TABLE IF NOT EXISTS vault_ssh_keys (name TEXT PRIMARY KEY, type TEXT NOT NULL, fingerprint TEXT NOT NULL, public TEXT NOT NULL, at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL);");
+  db0.close();
+  {
+    const { vault, db } = vaultOn(t, tmp);
+    ensureMacColumns(db);
+    await vault.key();
+    // State is now v2; rows the old code wrote are added after.
+    db.prepare("INSERT INTO vault_ssh_keys (name, type, fingerprint, public, at) VALUES ('deploy-key','ssh-ed25519','SHA256:x','ssh-ed25519 AAAA',1)").run();
+    db.prepare("INSERT INTO vault_marks (name, stale, at) VALUES ('mail-login','sealed to dana',1)").run();
+    const state = JSON.parse(fs.readFileSync(path.join(vault.dir, "state.json"), "utf8"));
+    delete state.late;
+    fs.writeFileSync(path.join(vault.dir, "state.json"), JSON.stringify(state));
+    db.close();
+  }
+  const { vault, db } = vaultOn(t, tmp);
+  ensureMacColumns(db);
+  await vault.key();
+  assert.ok(vault.rowOk("vault_ssh_keys", db.prepare("SELECT * FROM vault_ssh_keys WHERE name='deploy-key'").get()), "signed once, at the step that added MACs");
+  assert.ok(vault.rowOk("vault_marks", db.prepare("SELECT * FROM vault_marks WHERE name='mail-login'").get()));
+  // After that, a module changing a row is caught.
+  db.prepare("UPDATE vault_ssh_keys SET public='ssh-ed25519 BBBB' WHERE name='deploy-key'").run();
+  db.prepare("INSERT INTO vault_marks (name, stale, at) VALUES ('other','forged',1)").run();
+  assert.equal(vault.rowOk("vault_ssh_keys", db.prepare("SELECT * FROM vault_ssh_keys WHERE name='deploy-key'").get()), false);
+  assert.equal(vault.rowOk("vault_marks", db.prepare("SELECT * FROM vault_marks WHERE name='other'").get()), false);
+  const why = db.prepare("SELECT why FROM vault_audit WHERE action='tamper'").all().map(r => r.why);
+  assert.ok(why.some(w => /vault_ssh_keys row deploy-key/.test(w)));
+  assert.ok(why.some(w => /vault_marks row other/.test(w)));
 });

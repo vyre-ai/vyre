@@ -1008,6 +1008,86 @@ async function lock() {
   return 0;
 }
 
+// ------------------------------------------------------------ account
+
+/**
+ * The account password, typed twice on a terminal. Piped, the first line is the password, and
+ * a second line, if there is one, must match it.
+ */
+async function newPassword() {
+  if (process.stdin.isTTY) {
+    const a = await hiddenPrompt("new vault password (12 or more characters): ");
+    if ((await hiddenPrompt("again: ")) !== a) throw new Error("the two did not match");
+    return a;
+  }
+  const lines = (await hiddenPrompt("")).split(/\r?\n/);
+  if (lines.length > 1 && lines[1] !== "" && lines[1] !== lines[0]) throw new Error("the two did not match");
+  return lines[0];
+}
+
+/** One password line: prompted on a terminal, the first line when piped. */
+async function onePassword(q) {
+  const v = await hiddenPrompt(q);
+  return process.stdin.isTTY ? v : v.split(/\r?\n/)[0];
+}
+
+async function account(args) {
+  const [verb, ...rest] = args;
+  if (verb === "create") {
+    let password;
+    try { password = await newPassword(); } catch (e) { return oops(e.message); }
+    const r = await tool("vault.account.create", { password });
+    password = "";
+    if (r.error) return fail(r);
+    say(`\n  ${signal("your personal vault has a password")}  ${dim(`account ${r.data.acct}`)}`);
+    if (r.data.moved) say(dim(`  ${plural(r.data.moved, "item")} moved into it (logins, cards, notes, one-time codes)`));
+    // The one time the Secret Key is shown. It is not written to any file here.
+    say(`\n  Secret Key  ${bold(r.data.secretKey)}\n`);
+    say(beacon("  write this down or run vyre vault kit now: ") + dim("it is shown this once, and with your password it is the only way into this vault on a new device\n"));
+    return 0;
+  }
+  if (verb === "unlock") {
+    let f;
+    try { f = flags(rest, { boolean: ["touchid"] }); } catch (e) { return oops(e.message); }
+    let input;
+    if (f.touchid) input = { method: "touchid" };
+    else {
+      try { input = { password: await onePassword("vault password: ") }; } catch { return oops("cancelled"); }
+    }
+    const r = await tool("vault.account.unlock", input);
+    input = null;
+    if (r.error) return fail(r);
+    say(`  ${signal("unlocked")} ${dim(`· personal vault${r.data.method === "touchid" ? ", with Touch ID" : ""}`)}`);
+    return 0;
+  }
+  if (verb === "lock") {
+    const r = await tool("vault.account.lock");
+    if (r.error) return fail(r);
+    say(`  ${signal("locked")} ${dim("· personal vault; agents keep what is granted to them")}`);
+    return 0;
+  }
+  if (verb === "enroll-touchid") {
+    let password;
+    try { password = await onePassword("vault password: "); } catch { return oops("cancelled"); }
+    const r = await tool("vault.account.enroll-touchid", { password });
+    password = "";
+    if (r.error) return fail(r);
+    say(`  ${signal("Touch ID unlock is on")} ${dim("· vyre vault account unlock --touchid")}`);
+    return 0;
+  }
+  if (verb === "status" || verb === undefined) {
+    const r = await tool("vault.account.status");
+    if (r.error) return fail(r);
+    const d = r.data;
+    if (!d.account) { say(dim("  no account password yet · vyre vault account create")); return 0; }
+    say(`  account   ${bold(d.acct || "")}`);
+    say(`  personal  ${d.unlocked ? signal("unlocked") : dim("locked")}`);
+    say(`  Touch ID  ${d.touchid ? signal("on") : dim("off · vyre vault account enroll-touchid")}`);
+    return 0;
+  }
+  return oops("vyre vault account create | unlock [--touchid] | lock | enroll-touchid | status");
+}
+
 // ------------------------------------------------------------ dispatch
 
 const HELP = [
@@ -1046,6 +1126,7 @@ const HELP = [
   ["pass list | pass revoke <id> | pass accept <ticket>", ""],
   ["relay <item> <url> [--header 'Name: {{vault}}'] [--data d]", "use an item relayed to you; the value is added on its owner's box"],
   ["offboard <person>", "revoke everything they hold, list what to rotate"],
+  ["account create | unlock [--touchid] | lock | enroll-touchid | status", "the password (and Touch ID) for your personal vault"],
   ["unlock | lock", "for the passphrase keystore"],
   ["pair [--name n] | devices [revoke|unlock <id>]", "browser extensions that autofill logins"],
   ["unlock-passphrase", "what an extension asks for before it fills"],
@@ -1074,7 +1155,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, help,
 };
 
 export default {

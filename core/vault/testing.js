@@ -17,6 +17,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
+import { open, migrate } from "../store/index.js";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -102,3 +103,26 @@ export async function onSearchList(file) {
   const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
   return (await searchList()).some(p => real(p) === real(file));
 }
+
+/** Start the vault module against a ctx that records every tool definition. */
+export async function recorded(t, extra = {}) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-presence-"));
+  const db = open(path.join(tmp, "vyre.db"));
+  /** @type {Map<string, any>} */
+  const tools = new Map();
+  const events = [], logs = [];
+  const ctx = {
+    store: { db, migrate: steps => migrate(db, "vault", steps) },
+    paths: { vault: path.join(tmp, "vault") },
+    config: { name: "test-box", vault: { keystore: "file", ...extra } },
+    events: { emit: (type, p) => events.push({ type, p }) },
+    log: m => logs.push(m),
+    tool: (name, def) => tools.set(name, def),
+  };
+  const mod = (await import("./index.js")).default;
+  const running = await mod.start(ctx);
+  t.after(async () => { await running.stop(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
+  const run = (name, input, caller = "cli") => tools.get(name).run(input, { caller });
+  return { tmp, db, tools, events, logs, run };
+}
+

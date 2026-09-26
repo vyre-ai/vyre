@@ -94,12 +94,12 @@ test("vault.health, vault.caps and the breach switch through vyred", async t => 
   assert.ok(!JSON.stringify(h).includes(shared));
   assert.ok(mcpTools(await mcp("vault.caps")));
 
-  assert.deepEqual((await deck("vault.caps")).data, { reveal: false, breach: "off", host: "test-box" });
+  assert.deepEqual((await deck("vault.caps")).data, { reveal: true, breach: "off", host: "test-box" }, "reveal is on, behind presence (SPEC 11 rule 8)");
   assert.match((await deck("vault.breach.check")).error.message, /off/, "off by default: no network call is made");
 });
 
 test("vault.caps follows config", async t => {
-  const { as } = await boot(t, { keystore: "file", deck: { reveal: true }, breach: "ask" });
+  const { as } = await boot(t, { keystore: "file", breach: "ask" });
   assert.deepEqual((await as("deck")("vault.caps")).data, { reveal: true, breach: "ask", host: "test-box" });
 });
 

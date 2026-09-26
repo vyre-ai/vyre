@@ -251,3 +251,21 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
     is the home. The newer item version wins; a local edit that loses is kept in
     `vault_group_conflicts` and `vault.sync-conflicted` fires with `vault: "devices"`.
   - Shared vaults are not part of device sync: each device joins those itself.
+- Interim presence (`core/vault/prove.js`): `proof.prove({tool, input, caller, summary, env})`
+  is the one swappable function; the registry can mark a call as already checked with
+  `ctx.presenceEnforced === true` or `presence` in run's second argument. Deck callers pass
+  `confirm: true`. Tests set `vault.testHelpers.prove` ("deny" or `{mode, record}`; allow by
+  default under node --test). Refusals are Errors with code `presence_required`; the registry
+  on this branch reports them as code "failed" with the message.
+- `vault.account.unlock {password? , method?: "password"|"touchid"}`, `vault.account.enroll-touchid
+  {password}` (presence), `vault.account.status` to `{account, unlocked, touchid, acct?}`.
+  `vault.caps` reports `reveal: true`.
+- `vault.history {name, field?}` returns `{name, entries: [{version, at, by, changed, current,
+  readable}], versions: [{ver, at, by, fields}], passwords: [{at}]}` (the Deck's shape too).
+  `vault.revert {name, version}` (cli, local, deck, capsule; presence) returns `{name, version,
+  from}`. `vault.reveal` and `vault.copy` take `version`. `vault.versionFields(row, ver)` is the
+  method behind them.
+- `vault.share.setRelayRules(name, rules)` is async (a new sealed version); `vault.put` takes
+  `relay: {body}` directly. `vault.setMeta(name, changes)` re-seals with new sealed columns.
+  `vault_ssh_keys` and `vault_marks` rows must be signed with `vault.sign(table, name)` after a
+  direct write (tools/cli.js does); `ensureMacColumns(db)` runs after migrate.
