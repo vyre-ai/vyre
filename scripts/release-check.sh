@@ -156,7 +156,7 @@ if [ "$LIVE" = 1 ]; then
   curl -fsSL "$base/install.sh" | cmp -s - "$box/install-box.sh" || fail "$base/install.sh is not install-box.sh"
   code=$(curl -s -o /dev/null -w '%{http_code}' "$base/box/no-such-file")
   [ "$code" = 404 ] || fail "$base answers a missing file with $code, not 404"
-  code=$(curl -s -o /dev/null -w '%{http_code}' "$base/start")
+  code=$(curl -sL -o /dev/null -w '%{http_code}' "$base/start")
   [ "$code" = 200 ] || fail "$base/start answers $code"
   code=$(curl -s -o "$work/box-alias" -w '%{http_code}' "$base/box")
   { [ "$code" = 200 ] && cmp -s "$work/box-alias" "$box/install-box.sh"; } || fail "$base/box is not install-box.sh ($code)"
