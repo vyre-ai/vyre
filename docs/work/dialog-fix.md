@@ -30,3 +30,29 @@ the leftovers from the user's login keychain.
 
 - polish-cli: `scripts/stress-drive` (not on main yet) should write `vault: { keystore: "file" }` and
   set `VYRE_NO_DIALOGS=1`; after this merge it gets the file keystore anyway.
+
+## Doing
+
+- Paused on the lead's order (Mac load 34): no tests or processes, edits and commits only.
+
+## Next
+
+- Merge by the lead: work/dialog-fix. Fix commit 32780d7; related suites were green before the pause.
+- After the merge, every team rebases so its deck/test/world.js carries VYRE_NO_DIALOGS=1 and the
+  file keystore.
+- Keychain: clean at last check (0 vyre-vault items). 33 deleted in all: 32 at the start, then 1
+  (b0058401954f39b7) written by polish-cli's orphaned stress-drive vyred (pid 62783, which I
+  stopped). No delete prompted or needed a password. The account list is in
+  scratchpad/keychain-cleanup.txt.
+- Hung-process check: no Vyre helper is running (vault, touchid, sight, hotkey, capsule).
+  spindump (56994) and "Keychain Circle Notification" (56125, a system app) both started about
+  19 min before this note. That was around the keychain cleanup, so the cleanup may have set off
+  the notification app. Both are system processes, so I left them alone.
+
+## Needs from others (open)
+
+- polish-cli: stress-drive must write vault.keystore "file" and pass VYRE_NO_DIALOGS=1. Told twice,
+  no reply yet.
+- e2e: 4 orphaned journey vyreds (51999, 53170, 56736, 59570). They use the file keystore. Asked e2e
+  to stop them.
+- Lead: a custom VYRE_HOME now gets no dialogs at all. Add an env override for that?
