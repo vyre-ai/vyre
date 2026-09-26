@@ -4,6 +4,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Learning: accept by reply from a person only; presence codes; jobs; skill plugins
+
+- Accept or decline by reply only when a person typed the prompt into an interactive Claude
+  Code (Security's condition). The enrich hook, for a plain yes or no only, runs `ps -o
+  tty=,args=` on its parent once (500 ms timeout): a `claude` with a terminal and none of `-p`,
+  `--print`, `--output-format`, `--input-format`, and not a Switchboard thread (`VYRE_THREAD`
+  is the session) or an agent's (`VYRE_AGENT`). `harness.enrich` and `learn.signal` take
+  `interactive` (absent means no; an agent's thread never is). The proposal must have been told
+  in the turn just before (a number no longer reaches earlier turns), and that turn must have
+  passed a Stop (a yes mid-turn no longer accepts). Otherwise nothing changes and Claude tells
+  the user to accept with `vyre learn accept <id>`, the Deck or the Capsule. ps costs 1.3 ms p50,
+  2.3 ms p95; the hook about 4 ms more on a yes or no, nothing on other prompts.
+- `learn.edit` refusals that only a person can get past (a loosening: `learn.relax`; a proposed
+  lesson: `learn.accept`) throw code `presence_required` with `detail {tool, id}`, for surfaces'
+  presence flows once main's registry passes codes through. The CLI's terminal confirm stays.
+- Distillation jobs: the `thread.stopped {reason: "done"}` that follows a one-shot job's
+  `thread.text {done: true}` at once waits for the answer's handler (it could mark the job
+  failed, then done). Notices and deltas are never the answer.
+- Learned skill plugins as the Switchboard loads them: a private project's is
+  `vyre-learned-<slug>` (was `vyre-learned-project-<slug>`), an agent's
+  `vyre-learned-agent-<name>`, lower-case kebab; `pluginDirs` keeps any folder with a
+  `plugin.json`, as `learnedDirs` does.
+- The preference taught to Memory names the user as `{ kind: "me" }` (Memory's `me:you`), not a
+  person called "the user". Memory's teach() must map it; until then it is logged as not taught.
+
 #### Learning: review fixes (ADR 0007, decision 11)
 
 - The human-only learn tools (accept, retire, relax, skill-install, skill-retire, skill-dismiss)
