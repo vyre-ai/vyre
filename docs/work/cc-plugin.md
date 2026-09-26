@@ -85,7 +85,8 @@ Perf:
 
 ## Doing
 
-- Waiting on memory-iq and planner to confirm the contracts below.
+- Nothing running. c4a30dd, 2d9a274, 61f0156 wait in the integrator's queue. Waiting on memory-iq and
+  planner to confirm contracts (see Needs); the planner test uses a stand-in module until then.
 
 ## Next
 
@@ -99,11 +100,14 @@ Perf:
   about.md has no profile lines and `/vyre remember` offers a lesson instead.
 - planner: confirm `planner.add {text, kind?: todo|reminder, at?, project?, thread?}` -> `{id, text, kind, at|null, project}`
   and `planner.agenda {day?, days?}` -> `{items: [{id, text, kind, at|null, done, project|null}]}`; who delivers
-  a due reminder. Lead's decision (27 Sep), passed to planner to enforce: agents may call planner.add and
-  planner.agenda (todos, reminders, notes), each item labelled with the agent and 20 per hour per agent;
-  only a person edits, completes, deletes or sets a ringing alarm. The MCP server keeps planner tools
-  visible to agents (its DRIVES filter hides only threads.* and agents.*).
-- docs: the new `/vyre` rows and an "Every session knows you" section are sent; docs holds them until c4a30dd merges.
+  a due reminder. Decision (27 Sep, the user, replacing the lead's first one), passed to planner to
+  enforce: agents add notes, reminders and todos with no permission and no visible limit; only a silent
+  runaway cap of about 200 an hour per agent. An item shows the agent's name only when it came from
+  someone other than the user's own assistant or session. The MCP server keeps planner tools visible
+  to agents (its DRIVES filter hides only threads.* and agents.*).
+- docs: parked text in work/docs docs/work/pending-cc-plugin.md, applied after c4a30dd/2d9a274 merge. Its
+  "agents: 20 an hour, only a person edits" line is superseded: agents add freely (silent ~200/hour cap),
+  labelled only when not the user's own assistant or session. Told docs.
 
 - ci: publish `vyre-ai/vyre` with `.claude-plugin/marketplace.json` at the root. Keep
   `harness/.claude-plugin/plugin.json`'s version equal to `package.json` on release (a test checks).
