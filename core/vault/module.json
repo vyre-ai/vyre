@@ -37,7 +37,12 @@
       "vault.devices",
       "vault.device.revoke",
       "vault.device.unlock",
-      "vault.unlock-passphrase"
+      "vault.unlock-passphrase",
+      "vault.people",
+      "vault.person.add",
+      "vault.people.verify",
+      "vault.fingerprint",
+      "vault.kit"
     ]
   },
   "watches": {
@@ -57,7 +62,12 @@
       "vault.device-paired",
       "vault.device-revoked",
       "vault.filled",
-      "vault.restored"
+      "vault.restored",
+      "vault.card-changed",
+      "vault.person-verified",
+      "vault.kit-printed",
+      "person.requested",
+      "pass.accept-requested"
     ]
   },
   "shows": {

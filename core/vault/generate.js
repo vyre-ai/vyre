@@ -13,8 +13,8 @@ const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const DIGITS = "0123456789";
 const SYMBOLS = "!@#$%^&*-_=+?";
-const CONSONANTS = "bdfghjklmnprstvz";
-const VOWELS = "aeiou";
+export const CONSONANTS = "bdfghjklmnprstvz";
+export const VOWELS = "aeiou";
 
 const floor1 = x => Math.floor(x * 10 + 1e-9) / 10;
 const pick = s => s[crypto.randomInt(s.length)];

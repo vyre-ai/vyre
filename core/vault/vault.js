@@ -23,6 +23,7 @@ import { parseFile as parseImport, merge as mergeImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
+import { Share, SHARE_MIGRATIONS } from "./share.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -55,6 +56,7 @@ export const MIGRATIONS = [
   // A pass can be bound to the holder's Tailscale login as well as their device key.
   `ALTER TABLE vault_people ADD COLUMN login TEXT;
    ALTER TABLE vault_passes ADD COLUMN holder_login TEXT;`,
+  ...SHARE_MIGRATIONS,
 ];
 
 export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set"];
@@ -103,8 +105,8 @@ export class Vault {
     this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain });
     /** @type {Buffer|null} */
     this.mk = null;
-    /** Nonces seen on the relay listener, for replay refusal. */
-    this.seen = new Map();
+    /** People, signed cards and tickets, relay guards (share.js). */
+    this.share = new Share(this);
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
@@ -402,11 +404,7 @@ export class Vault {
     return openItem(mk, IDENTITY, IDENTITY, sealed);
   }
 
-  async card() {
-    const id = await this.identity();
-    const card = { name: this.name, sign: id.sign.public, box: id.box.public, relay: this.relayUrl || "", ...(this.login ? { login: this.login } : {}) };
-    return { card: relay.encodeCard(card), name: card.name, relay: card.relay || null };
-  }
+  async card() { return this.share.myCard(); }
 
   // ---- passes: the owner's side ---------------------------------------------------------
 
@@ -418,23 +416,27 @@ export class Vault {
 
   passOut(p) {
     return { id: p.id, holder: p.holder, items: json(p.items, []), mode: p.mode, ...(p.hosts ? { hosts: json(p.hosts, []) } : {}),
+      ...(p.methods ? { methods: json(p.methods, []) } : {}), ...(p.paths ? { paths: json(p.paths, []) } : {}),
       expires: p.expires, note: p.note, status: p.revoked ? "revoked" : p.status, created: p.created, ...(p.revoked ? { revoked: p.revoked } : {}) };
   }
 
-  async createPass({ holder, card, items, mode = "relayed", hosts, expires, note = "" }, caller) {
+  async createPass({ holder, card, items, mode = "relayed", hosts, expires, note = "", methods, paths }, caller) {
     if (!PERSON.test(String(holder || ""))) throw new Error("a holder is a person's name");
     if (!Array.isArray(items) || !items.length) throw new Error("a pass needs at least one item");
     if (!["relayed", "sealed"].includes(mode)) throw new Error("mode is relayed or sealed");
-    let person = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_people WHERE name=?").get(holder));
     if (card) {
-      const c = relay.decodeCard(card);
-      if (person && person.sign !== c.sign && kindOf(caller) === "mcp") throw new Error(`${holder}'s card changed; a person must confirm that with vyre vault pass create`);
-      this.db.prepare("INSERT OR REPLACE INTO vault_people (name, sign, box, relay, login, added) VALUES (?,?,?,?,?,?)").run(holder, c.sign, c.box, c.relay || null, c.login || null, now());
-      person = this.db.prepare("SELECT * FROM vault_people WHERE name=?").get(holder);
+      // An agent's new or changed card waits for a person, and so does the pass that needs it.
+      const added = await this.share.addPerson({ card, name: holder }, caller);
+      if ("pending" in added) throw Object.assign(new Error(`${holder}'s card waits for a person to approve it (vyre vault approve ${added.pending.id}); then ask for the pass again`), { code: "pending" });
     }
-    if (!person) throw new Error(`no card for ${holder} yet: ask them to run vyre vault card and pass it with --card`);
+    const person = this.share.trusted(holder);
     const narrowed = Array.isArray(hosts) && hosts.length ? hosts.map(origin) : null;
     if (narrowed && narrowed.includes(null)) throw new Error("hosts must be origins such as https://api.example.com");
+    const ms = Array.isArray(methods) && methods.length ? methods.map(m => String(m).toUpperCase()) : null;
+    if (ms && !ms.every(m => /^[A-Z]{3,10}$/.test(m))) throw new Error("methods are HTTP methods such as GET or POST");
+    const ps = Array.isArray(paths) && paths.length ? paths.map(String) : null;
+    if (ps && !ps.every(x => x.startsWith("/"))) throw new Error("paths start with /, such as /v1/charges");
+    if (mode === "sealed" && (ms || ps)) throw new Error("methods and paths narrow a relayed pass; a sealed pass hands the value over");
     for (const n of items) {
       const r = this.mustRow(n);
       if (mode === "relayed") {
@@ -444,8 +446,9 @@ export class Vault {
     }
     const id = "p_" + newId();
     const status = kindOf(caller) === "mcp" ? "pending" : "active";
-    this.db.prepare("INSERT INTO vault_passes (id, holder, holder_sign, holder_box, holder_login, items, mode, hosts, expires, note, status, by, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(id, holder, person.sign, person.box, person.login || null, JSON.stringify(items), mode, narrowed ? JSON.stringify(narrowed) : null, parseExpiry(expires), String(note), status, String(caller), now());
+    this.db.prepare("INSERT INTO vault_passes (id, holder, holder_sign, holder_box, holder_login, items, mode, hosts, methods, paths, expires, note, status, by, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, holder, person.sign, person.box, person.login || null, JSON.stringify(items), mode, narrowed ? JSON.stringify(narrowed) : null,
+        ms ? JSON.stringify(ms) : null, ps ? JSON.stringify(ps) : null, parseExpiry(expires), String(note), status, String(caller), now());
     this.audit(status === "active" ? "pass" : "pass-requested", null, caller, true, `${id} to ${holder}: ${items.join(", ")} (${mode})`);
     if (status === "pending") {
       this.emit("pass.requested", { pass: id, holder, items, mode });
@@ -454,12 +457,20 @@ export class Vault {
     return this.issue(id);
   }
 
-  /** Make the ticket for an active pass. For a sealed pass this is when the items leave. */
+  /**
+   * Make the signed ticket for an active pass. For a sealed pass this is when the items leave.
+   * The holder's pinned key is checked again, since a pass approved later may have waited
+   * through a key change.
+   */
   async issue(id) {
     const p = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(id));
+    const person = this.share.trusted(p.holder);
+    if (person.sign !== p.holder_sign || person.box !== p.holder_box) throw new Error(`${p.holder}'s key changed after this pass was asked for · create it again`);
     const me = await this.identity();
     const items = json(p.items, []);
-    const ticket = { pass: p.id, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, holder: p.holder, items, mode: p.mode, expires: p.expires };
+    /** @type {any} */
+    const ticket = { pass: p.id, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, ownerCard: (await this.share.myCard()).card,
+      holder: p.holder, holderSign: p.holder_sign, items, mode: p.mode, expires: p.expires };
     if (p.mode === "sealed") {
       ticket.sealed = {};
       for (const n of items) {
@@ -471,13 +482,14 @@ export class Vault {
     }
     this.db.prepare("UPDATE vault_passes SET issued=? WHERE id=?").run(now(), id);
     this.emit("pass.created", { pass: p.id, holder: p.holder, items, mode: p.mode });
-    return { pass: this.passOut(p), ticket: relay.encodeTicket(ticket) };
+    return { pass: this.passOut(p), ticket: relay.encodeTicket(ticket, me.sign.private) };
   }
 
   pending() {
     return {
       grants: this.db.prepare("SELECT * FROM vault_grants WHERE status='pending' ORDER BY at").all().map(g => ({ ...this.grantOut(g), by: g.by, at: g.at })),
       passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().map(p => ({ ...this.passOut(p), by: p.by })),
+      ...this.share.requests(),
     };
   }
 
@@ -496,6 +508,8 @@ export class Vault {
       const out = await this.issue(id);
       return { approved: out.pass, ticket: out.ticket };
     }
+    const s = await this.share.approve(id, caller);
+    if (s) return s;
     throw new Error(`nothing pending with id ${id}`);
   }
 
@@ -548,15 +562,17 @@ export class Vault {
 
   /**
    * The relay listener's handler: a holder's signed request, checked against its pass, sent on
-   * with the value added, and the value scrubbed from whatever comes back.
+   * with the value added, and the value scrubbed from whatever comes back. Nothing a stranger
+   * sends reaches an error message verbatim, and a pass nobody issued writes at most one audit
+   * row a minute.
    */
   async onRelay(env, meta = {}) {
     const deny = (status, message) => ({ status, body: { error: { code: status === 403 ? "denied" : "bad_request", message } } });
     const p = env && typeof env.pass === "string" ? /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(env.pass)) : null;
-    const who = p ? `pass:${p.id}:${p.holder}` : "pass:unknown";
-    const refuse = why => { this.audit("relay", env && env.item, who, false, why); return deny(403, why); };
-    if (!p) return refuse("no such pass");
-    const why = relay.checkEnvelope(env, { holderKey: p.holder_sign, seen: this.seen });
+    if (!p) { this.share.auditUnknown(env && env.pass, env && env.item, "no such pass"); return deny(403, "no such pass"); }
+    const who = `pass:${p.id}:${p.holder}`;
+    const refuse = why => { this.audit("relay", env && typeof env.item === "string" ? env.item : null, who, false, why); return deny(403, why); };
+    const why = relay.checkEnvelope(env, { holderKey: p.holder_sign, audience: this.relayUrl || "", seen: this.share.nonces });
     if (why) return refuse(why);
     if (this.relayIdentity === "tailscale") {
       if (!meta.login) return refuse("this relay answers only through tailscale serve");
@@ -571,14 +587,17 @@ export class Vault {
     if (!r) return refuse(`${env.item} no longer exists`);
     const narrowed = p.hosts ? json(p.hosts, []) : null;
     const hosts = json(r.hosts, []).filter(h => !narrowed || narrowed.includes(h));
-    if (!relay.allowedOrigin(env.request && env.request.url, hosts)) return refuse(`${env.item} may only be sent to ${hosts.join(", ") || "nowhere"}`);
+    if (!relay.allowedOrigin(env.request.url, hosts)) return refuse(`${env.item} may only be sent to ${hosts.join(", ") || "nowhere"}`);
+    if (!relay.secureTarget(env.request.url)) return refuse("a relayed value goes over https only (plain http is allowed to loopback)");
+    const narrow = relay.requestAllowed(env.request, { methods: json(p.methods, null), paths: json(p.paths, null) });
+    if (narrow) return refuse(narrow);
     const f = await this.fields(r);
     let sub;
-    try { sub = relay.substitute(env.request, f, DEFAULT_FIELD[r.kind]); }
+    try { sub = relay.substitute(env.request, f, DEFAULT_FIELD[r.kind], this.share.relayRules(r)); }
     catch (e) { return refuse(/** @type {Error} */ (e).message); }
     let res;
     try { res = await relay.send(sub.request); }
-    catch (e) { this.audit("relay", env.item, who, false, "upstream failed"); return { status: 502, body: { error: { code: "upstream", message: relay.scrub(/** @type {Error} */ (e).message, sub.values) } } }; }
+    catch { this.audit("relay", env.item, who, false, "upstream failed"); return { status: 502, body: { error: { code: "upstream", message: "the request to the upstream failed" } } }; }
     const headers = {};
     for (const [k, v] of Object.entries(res.headers || {})) headers[k] = relay.scrub(String(v), sub.values);
     this.audit("relay", env.item, who, true, `${origin(env.request.url)} ${res.status}${meta.login ? " as " + meta.login : ""}`);
@@ -588,26 +607,36 @@ export class Vault {
 
   // ---- passes: the holder's side --------------------------------------------------------
 
-  /** Take a ticket someone sent. A sealed ticket's items become ordinary sealed items here. */
+  /**
+   * Take a ticket someone sent. It must be signed by its owner, for this Vyre, from a key that
+   * matches the one pinned for them (or a first contact, pinned now). From an agent it waits for
+   * a person. A sealed ticket's items become ordinary sealed items here.
+   */
   async accept({ ticket }, caller) {
     const t = relay.decodeTicket(ticket);
     const me = await this.identity();
+    if (t.holderSign !== me.sign.public) throw new Error(`this ticket was made for another Vyre (${t.holder}), not this one`);
+    if (kindOf(caller) === "mcp") return this.share.request("accept", t.owner, String(ticket).trim(), caller, { items: t.items, mode: t.mode });
+    const owner = await this.share.pinOwner(relay.decodeCard(t.ownerCard), t.ownerCard, caller);
+    const from = `pass:${owner}:${t.pass}`;
     const added = [];
     if (t.mode === "sealed") {
       for (const n of t.items) {
         let item;
-        try { item = openFrom(me.box.private, t.sealed[n], `vyre:pass:v1:${t.pass}:${n}`); }
+        try { item = openFrom(me.box.private, t.sealed?.[n], `vyre:pass:v1:${t.pass}:${n}`); }
         catch { throw new Error("this ticket was not sealed for this Vyre"); }
-        const name = this.row(n) && this.row(n).origin !== `pass:${t.owner}:${t.pass}` ? `${t.owner}.${n}`.replace(/[^A-Za-z0-9._-]/g, "-") : n;
-        await this.put({ name, kind: item.kind, description: item.description, fields: item.fields, url: item.url, hosts: item.hosts, origin: `pass:${t.owner}:${t.pass}` }, caller);
+        const name = this.row(n) && this.row(n).origin !== from ? `${owner}.${n}`.replace(/[^A-Za-z0-9._-]/g, "-") : n;
+        await this.put({ name, kind: item.kind, description: item.description, fields: item.fields, url: item.url, hosts: item.hosts, origin: from }, caller);
         added.push(name);
       }
     }
-    this.db.prepare("INSERT OR REPLACE INTO vault_held (id, owner, relay, owner_sign, items, mode, expires, accepted) VALUES (?,?,?,?,?,?,?,?)")
-      .run(t.pass, t.owner, t.relay || "", t.ownerSign, JSON.stringify(t.items), t.mode, t.expires, now());
-    this.audit("pass-accept", null, caller, true, `${t.pass} from ${t.owner}`);
-    this.emit("pass.accepted", { pass: t.pass, owner: t.owner, items: t.items, mode: t.mode });
-    return { held: { id: t.pass, owner: t.owner, items: t.items, mode: t.mode, ...(added.length ? { added } : {}) } };
+    // Keyed on (owner key, pass): the same owner may re-issue, nobody else can take the slot.
+    this.db.prepare(`INSERT INTO vault_held (owner_sign, id, owner, relay, items, mode, expires, accepted) VALUES (?,?,?,?,?,?,?,?)
+      ON CONFLICT (owner_sign, id) DO UPDATE SET owner=excluded.owner, relay=excluded.relay, items=excluded.items, mode=excluded.mode, expires=excluded.expires, accepted=excluded.accepted`)
+      .run(t.ownerSign, t.pass, owner, t.relay || "", JSON.stringify(t.items), t.mode, t.expires, now());
+    this.audit("pass-accept", null, caller, true, `${t.pass} from ${owner}`);
+    this.emit("pass.accepted", { pass: t.pass, owner, items: t.items, mode: t.mode });
+    return { held: { id: t.pass, owner, items: t.items, mode: t.mode, ...(added.length ? { added } : {}) } };
   }
 
   /** Use an item someone relayed to us: the request goes to their box, which adds the value. */
@@ -618,7 +647,7 @@ export class Vault {
     if (!held.length) throw new Error(`no relayed pass holds ${item}${owner ? ` from ${owner}` : ""}`);
     const h = held[0];
     const me = await this.identity();
-    const env = relay.envelope({ pass: String(h.id), item, request, privDer: me.sign.private });
+    const env = relay.envelope({ pass: String(h.id), item, request, privDer: me.sign.private, aud: String(h.relay) });
     const r = await relay.callRelay(String(h.relay), env);
     this.audit("relay-out", item, caller, !r.error, r.error ? r.error.message : `via ${h.owner}`);
     if (r.error) throw Object.assign(new Error(`${h.owner}'s Vyre said: ${r.error.message}`), { code: r.error.code });
