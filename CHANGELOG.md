@@ -46,6 +46,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Shortcuts shows its Add button, with steps in words and a by-hand recipe
   (`local/apps/setup.js`). Two action identifiers are unverified and marked so. The dialog gate
   refuses it under tests before any file is written.
+- `vyre apps`: the apps on this Mac; `vyre apps find <words>`, `vyre apps targets <app> [words]`,
+  `vyre apps setup clock`, and `vyre apps <words...>`, which routes the words and runs them
+  ("vyre apps timer 10 min" prints "Timer set for 10 minutes"). A send prints its preview, then
+  asks this terminal for a person's proof through apps.send. `--app`, `--model`, `--json`,
+  `--help` (`core/cli/commands/apps.js`).
 
 #### Connectors (ADR 0016)
 

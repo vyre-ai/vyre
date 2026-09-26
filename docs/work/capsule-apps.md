@@ -82,26 +82,37 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   reminders set time in one step, refuse the past and judge days in env.timeZone, list ids as
   targets, osascript timeouts are setup with the Automation hint, apps.list is capped at 100,
   targets are pruned on write and cleared after an act. 48 tests pass on the testbox.
-
-- Slice 1, T3 (part): `apps.route` (route.js, rules only, model seam at config apps.model) and
-  `apps.setup` (setup.js, Clock's shortcuts written, signed, opened).
+- Slice 1, T3: `apps.route` (route.js, rules only, model seam at config apps.model),
+  `apps.setup` (setup.js, Clock's shortcuts written, signed, opened) and `vyre apps`
+  (core/cli/commands/apps.js). 150 targeted tests pass on the testbox, 5 opt-in skipped.
 
 ## Doing
-- Slice 1, T3: `vyre apps` (core/cli/commands/apps.js).
+- Nothing in flight. Slice 1 is built; it waits on the real-Mac check below.
 
 ## Next
-- Slice 1, T3: `apps.route` (rules first) and `vyre apps` (core/cli/commands/apps.js), including
-  `vyre apps setup clock`, which the Clock setup error already names.
-- The two Clock shortcuts ("Vyre Timer": Start Timer with the input as seconds; "Vyre Alarm":
-  Create Alarm from JSON {time, label}) have to be built and shipped as files to import. Both
-  must start with "Get Text from Input": `shortcuts run --input-path` hands the input over as a
-  file, not as text.
-- On the Mac, with the lead's say-so: `VYRE_MAC_REAL=1 node --test local/apps/mac.test.js`
-  compiles the Notes and Reminders scripts with osacompile (skipped everywhere else).
-- Notes' trash is skipped by its name ("Recently Deleted", or config apps.notes.trash): the
-  dictionary gives that folder nothing else to tell it by, so another language needs the config.
-- First real run on the Mac, with the lead's say-so: the AppleScripts in notes.js and
-  reminders.js have only been checked against fakes.
+- Real-Mac check (the lead with the user, on the Mac, in the user's own terminal):
+  1. `cd <worktree> && VYRE_MAC_REAL=1 nice -n 15 node --test local/apps/mac.test.js`: the five
+     scripts compile.
+  2. Run vyred from this branch (`bin/vyre down`, then `bin/vyre up` from the worktree).
+  3. `bin/vyre apps find note`: Notes shows tier script and bundle id com.apple.Notes.
+  4. `bin/vyre apps note: Vyre check`: allow Notes in the Automation prompt; it prints "Note
+     saved: Vyre check" and the note is in the default account's default folder.
+  5. `bin/vyre apps targets notes vyre`: the note is listed with its id; a note moved to Recently
+     Deleted is not.
+  6. `bin/vyre call apps.act '{"app":"Notes","action":"append","args":{"note":"<id>","text":"line two"}}'`:
+     the line is added. On a note with an image, the answer is not_supported and the image stays.
+  7. `bin/vyre apps remind me in 2 min to check vyre`: allow Reminders; the reminder is in the
+     default list and alerts two minutes later. `bin/vyre apps targets reminders` lists ids.
+  8. `bin/vyre apps weather tomorrow` roughly matches the Weather app;
+     `bin/vyre call apps.act '{"app":"Weather","action":"open"}'` opens Weather.
+  9. `bin/vyre apps timer 1 min` answers setup. (Both shortcuts start with Get Text from Input,
+     since `shortcuts run --input-path` hands the input over as a file.) `bin/vyre apps setup clock` opens two Shortcuts
+     import windows: click Add Shortcut on each. If one shows an unknown action, build it by
+     hand from the printed steps and note the identifiers for ACTIONS in setup.js.
+  10. `bin/vyre apps timer 1 min` starts a Clock timer; `bin/vyre apps alarm 7:05` adds a 07:05
+      alarm with its label. Clock does not come to the front.
+  11. Delete the check note, reminder and alarm.
+- Slice 2: the @App picker in the native Capsule.
 
 ## Needs from others
 - capsule-pro: the native host must be on main before the Swift half runs in the app (slice 2).
