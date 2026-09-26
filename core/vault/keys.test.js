@@ -1,12 +1,12 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { keystore, defaultKind, accountFor, keychainWriteCommand } from "./keys.js";
+import { tempKeychain, onSearchList } from "./testing.js";
 
 /** @param {import("node:test").TestContext} t */
 function tmp(t) {
@@ -78,21 +78,8 @@ test("keys: unknown keystore kind is refused", () => {
 });
 
 test("keys: keychain keystore round-trips in a temporary keychain", { skip: process.platform !== "darwin" && "macOS only" }, async t => {
-  // Not tmp(t): the keychain has to be deleted before its folder is, in one hook.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-vault-"));
-  const keychain = path.join(dir, "t.keychain-db");
-  const pw = crypto.randomBytes(16).toString("hex");
-  const listKeychains = () => execFileSync("security", ["list-keychains", "-d", "user"], { encoding: "utf8" });
-  const parse = s => s.split("\n").map(l => l.trim().replace(/^"|"$/g, "")).filter(Boolean);
-  const before = listKeychains();
-  execFileSync("security", ["create-keychain", "-p", pw, keychain]);
-  t.after(() => {
-    try { execFileSync("security", ["delete-keychain", keychain], { stdio: "pipe" }); } catch {}
-    if (listKeychains() !== before) execFileSync("security", ["list-keychains", "-d", "user", "-s", ...parse(before)]);
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
-  if (listKeychains() !== before) execFileSync("security", ["list-keychains", "-d", "user", "-s", ...parse(before)]);
-  execFileSync("security", ["unlock-keychain", "-p", pw, keychain]);
+  const keychain = await tempKeychain(t);
+  const dir = path.dirname(keychain);
 
   const ks = keystore({ dir: path.join(dir, "vault"), kind: "keychain", keychain });
   assert.equal(await ks.exists(), false);
@@ -108,5 +95,5 @@ test("keys: keychain keystore round-trips in a temporary keychain", { skip: proc
   await ks.destroy();
   assert.equal(await ks.exists(), false);
   await ks.destroy();
-  assert.equal(listKeychains(), before, "the keychain search list changed");
+  assert.equal(await onSearchList(keychain), false, "the test keychain joined the user's search list");
 });

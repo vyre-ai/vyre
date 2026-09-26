@@ -24,6 +24,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   agent and the diff, keyed `gate:<id>`), the first of the Gate's learning signals (section 7.11).
 - `gate.route` (internal) tells harness.rules to deny a sending MCP tool inside an agent's thread and
   point the agent at `gate_request`; the user's own sessions keep the interim ask-first rule.
+- `gate.revise {id, edited}` changes a held item without sending it (event `gate.revised`, no
+  content), and `gate.approve` takes the whole edited content, where an empty field clears it. Send
+  sends exactly the latest revision, never the original; a changed `to` counts as an edit.
 - An item left in "sending" by a vyred that stopped mid-send goes back to held on the next start,
   marked as possibly sent, so the person decides rather than the Gate sending twice.
 - `core/harness`: harness.rules asks `gate.route` about a floor rule 1 send when the call comes from
@@ -41,9 +44,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `ask.raised` and `gate.held` become posts, and answered or released ones are patched in place
   with their buttons gone. The owner's replies go to `threads.send` (taking the keyboard, and
   saying who had it), a root post starts a session in that project, and buttons call
-  `threads.answer`, `gate.approve` and `gate.reject`. Editing a held draft is a Mattermost
-  interactive dialog filled with the draft, since that renders natively in the phone apps and a
-  plugin panel does not. `/vyre held|send|discard|new` covers the rest.
+  `threads.answer`, `gate.approve` and `gate.reject`. `/vyre held|send|discard|body|subject|new`
+  covers the rest.
+- A held post has no Edit button (the user's rule: edit inline, then Send sends exactly what is
+  shown). It always shows the words Send will send: `/vyre body <id> <text>` and `/vyre subject`
+  revise them and the post is patched in place, and "Edit in Deck" links to the Deck when
+  `chat.deck` is set. Chat takes leases as `chat:<owner>`.
+- The Edit button is back, because Mattermost cannot edit inside a post: it opens an interactive
+  dialog filled with the words Send would send now (To, Cc, Subject and Body for an email; URL and
+  Body for a request). Saving calls `gate.revise`, never `gate.approve`, so the item stays held,
+  the post is patched to the new words, and the person presses Send. An emptied field clears it.
+  The dialog's `state` carries the hook secret and only the owner is obeyed, on `/chat/dialog`.
 - Why polling and not the websocket: no dependency, nothing to reconnect after Mattermost
   restarts, and `since` turns a missed interval into a delay rather than a lost message.
 - Only the configured owner is obeyed. Every button carries its id and a per-install hook
@@ -194,6 +205,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Tests prove no value appears in events, logs, `vault.list`, the audit trail, the MCP server's
   tool list, the HTTP API or any file under either home. Under `node --test` the keychain
   keystore refuses the login keychain; its own test uses a temporary keychain.
+- The keychain keystore retries `security` when the keychain daemon is busy (reads, `-U` writes
+  and deletes are safe to repeat). Keychain tests share `core/vault/testing.js`: a keychain with a
+  unique name per test, taken off the user's search list under a machine-wide lock, never a
+  rewrite of the whole list, and cleanup registered first. Ten parallel runs pass together.
+- Autofill (`docs/adr/0001-autofill.md`): a fill listener (`vault.fill: {host, port}` in
+  config) that only paired browser extensions reach. Pairing is a one-time code from `vyre vault
+  pair`; nothing is filled until the person unlocks with their unlock passphrase (or the vault
+  passphrase, or later Touch ID through the Capsule), sessions end after 10 idle minutes, and a
+  login fills only into a page whose origin is one of its hosts. Web pages are refused outright.
+  `vault.fill` is a route there, never a tool, so no agent can call it. A minimal Chrome
+  extension is in `modules/vault-extension/`.
+- `vault.backup` and `vault.restore` (`vyre vault backup <file>`, `restore <file> [--replace]`):
+  the whole vault, including the device identity so passes stay valid, sealed to its own
+  passphrase (scrypt, AES-256-GCM), safe to keep in any cloud drive. Restoring re-seals every
+  item under the new vault's key.
+- Relayed passes can be bound to the holder's Tailscale login as well as their device key:
+  with `vault.relay.identity: "tailscale"` the listener answers only through `tailscale serve`,
+  and only the login on the holder's card.
+- 1Password `.1pux` import, through a small ZIP reader over `node:zlib` with CRC checks and a
+  zip-bomb guard.
 - Shared core, kept small:
   - vyred no longer trusts a `module:` caller claimed over HTTP, which let anything on the socket
     call internal tools such as `vault.release`.

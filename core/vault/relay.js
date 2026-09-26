@@ -43,14 +43,16 @@ function unwrap(str, prefix, what) {
   return obj;
 }
 
-/** @typedef {{ name: string, sign: string, box: string, relay: string }} Card */
+/** @typedef {{ name: string, sign: string, box: string, relay: string, login?: string }} Card */
 
 /** @param {any} c @returns {Card} */
 function checkCard(c) {
   // relay may be empty: a Vyre with no relay listener can still receive sealed passes.
   for (const k of ["name", "sign", "box"]) if (!isStr(c?.[k])) throw new Error(`card is missing "${k}"`);
   if (typeof c.relay !== "string") throw new Error(`card is missing "relay"`);
-  return { name: c.name, sign: c.sign, box: c.box, relay: c.relay };
+  if (c.login !== undefined && typeof c.login !== "string") throw new Error(`card "login" must be text`);
+  // login, optional: the person's Tailscale login, so a pass can be bound to it as well as to the device key.
+  return { name: c.name, sign: c.sign, box: c.box, relay: c.relay, ...(c.login ? { login: c.login } : {}) };
 }
 
 /** A person's public card: `vyre-card:v1:` + base64url(canonical JSON). Carries no secret. @param {Card} obj */
@@ -262,7 +264,10 @@ async function readJson(req) {
 
 /**
  * Start the relay listener. One route, `POST /v1/relay`; everything else is 404.
- * @param {{ host?: string, port?: number, onRelay: (env: any, meta: { remoteAddress?: string }) => Promise<{ status: number, body: any }> }} o
+ * `login` is the Tailscale-User-Login header that `tailscale serve` adds to what it proxies. It
+ * means something only when the listener is reachable through serve alone; the vault module
+ * trusts it only when told to (vault.relay.identity = "tailscale").
+ * @param {{ host?: string, port?: number, onRelay: (env: any, meta: { remoteAddress?: string, login?: string|null }) => Promise<{ status: number, body: any }> }} o
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
 export async function serve({ host = "127.0.0.1", port = 0, onRelay }) {
@@ -271,7 +276,8 @@ export async function serve({ host = "127.0.0.1", port = 0, onRelay }) {
       const path = new URL(req.url || "/", "http://relay").pathname;
       if (req.method !== "POST" || path !== "/v1/relay") return reply(res, 404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       const env = await readJson(req);
-      const out = await onRelay(env, { remoteAddress: req.socket.remoteAddress });
+      const login = req.headers["tailscale-user-login"];
+      const out = await onRelay(env, { remoteAddress: req.socket.remoteAddress, login: typeof login === "string" && login ? login : null });
       reply(res, out?.status || 200, out?.body ?? {});
     } catch (e) {
       if (e instanceof HttpError) return reply(res, e.status, { error: { code: e.code, message: e.message } });
