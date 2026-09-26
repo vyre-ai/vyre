@@ -67,7 +67,9 @@
       "vault.health",
       "vault.breach.check",
       "vault.update",
-      "vault.clipboard.clear"
+      "vault.clipboard.clear",
+      "vault.account.enroll-touchid",
+      "vault.account.status"
     ]
   },
   "watches": {

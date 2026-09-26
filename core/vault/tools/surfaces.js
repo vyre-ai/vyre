@@ -54,6 +54,8 @@ export function register({ ctx, vault }) {
     return new Helper({ name, dir });
   };
   const clipHelper = helper("clip"), watchHelper = helper("watch"), typeHelper = helper("type");
+  // The Secure Enclave helper, for Touch ID unlock of the personal vault (vault.js reads it).
+  if (vault && (t.test || process.platform === "darwin")) vault.enclave = helper("enclave");
   const guardedClipboard = t.test && !t.clip && !t.env;
 
   /** Stop watching once nothing is left to protect. */

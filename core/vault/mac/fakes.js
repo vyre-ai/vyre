@@ -53,20 +53,49 @@ process.stdin.on("end", () => {
 `;
 
 /**
+ * The Secure Enclave helper's stand-in. The "enclave key" is an ordinary P-256 key in the blob,
+ * which is exactly what the real one is not; it exists so the Node side can be tested without a
+ * fingerprint. Mode "refuse" answers derive as a cancelled Touch ID; each reason is appended to
+ * the state file so a test can check what the person would have read.
+ */
+export const FAKE_ENCLAVE = `
+const fs = require("node:fs"), crypto = require("node:crypto");
+const [file, mode = "ok"] = process.argv.slice(2);
+let buf = "";
+const out = o => { process.stdout.write(JSON.stringify(o) + "\\n"); process.exit(0); };
+process.stdin.on("data", d => { buf += d; });
+process.stdin.on("end", () => {
+  const m = JSON.parse(buf.split("\\n")[0]);
+  if (m.op === "available") return out({ ok: true, available: true });
+  if (m.op === "auth") { fs.appendFileSync(file, JSON.stringify({ auth: m.reason }) + "\\n"); return out(mode === "refuse" ? { ok: false, code: "refused", message: "the person did not confirm" } : { ok: true }); }
+  if (m.op === "create") { const e = crypto.createECDH("prime256v1"); const pub = e.generateKeys(); return out({ ok: true, blob: e.getPrivateKey().toString("base64"), pub: pub.toString("base64") }); }
+  if (m.op === "derive") {
+    fs.appendFileSync(file, JSON.stringify({ reason: m.reason }) + "\\n");
+    if (mode === "refuse") return out({ ok: false, code: "refused", message: "Touch ID was not confirmed" });
+    const e = crypto.createECDH("prime256v1"); e.setPrivateKey(Buffer.from(m.blob, "base64"));
+    return out({ ok: true, shared: e.computeSecret(Buffer.from(m.peerPub, "base64")).toString("base64") });
+  }
+  out({ ok: false, code: "bad_request", message: "unknown op" });
+});
+`;
+
+/**
  * Write the fakes into `dir` and return commands for `vault.testHelpers`.
  * @param {string} dir
  */
-export function writeFakes(dir, { typeMode = "ok" } = {}) {
+export function writeFakes(dir, { typeMode = "ok", enclaveMode = "ok" } = {}) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const w = (n, s) => { const p = path.join(dir, n); fs.writeFileSync(p, s); return p; };
   const clip = w("fake-clip.cjs", FAKE_CLIP), watch = w("fake-watch.cjs", FAKE_WATCH), type = w("fake-type.cjs", FAKE_TYPE);
-  const state = { clip: path.join(dir, "clip.json"), trigger: path.join(dir, "signal"), type: path.join(dir, "type.json") };
+  const enclave = w("fake-enclave.cjs", FAKE_ENCLAVE);
+  const state = { clip: path.join(dir, "clip.json"), trigger: path.join(dir, "signal"), type: path.join(dir, "type.json"), enclave: path.join(dir, "enclave.log") };
   return {
     state,
     helpers: {
       clip: [process.execPath, clip, state.clip],
       watch: [process.execPath, watch, state.trigger],
       type: [process.execPath, type, state.type, typeMode],
+      enclave: [process.execPath, enclave, state.enclave, enclaveMode],
     },
   };
 }

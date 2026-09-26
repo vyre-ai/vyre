@@ -196,7 +196,7 @@ test("account: password rules, wrong password, and the personal vault while lock
 
   await assert.rejects(vault.unlockAccount({ password: fake("wrong") }), /does not open your personal vault/);
   assert.ok(auditRows(db).some(r => r.action === "account-unlock" && r.ok === 0));
-  assert.deepEqual(await vault.unlockAccount({ password: PASSWORD }), { unlocked: true, acct: made.acct });
+  assert.deepEqual(await vault.unlockAccount({ password: PASSWORD }), { unlocked: true, acct: made.acct, method: "password" });
   assert.equal((await vault.fields(vault.row("mail-login"))).totp, seed);
   // A card defaults to re-prompt, sealed in its meta.
   await vault.put({ name: "card-1", kind: "card", fields: { number: "4111111111111111" } }, "cli");

@@ -18,13 +18,13 @@ import { newIdentity } from "./crypto.js";
 export const NEEDS_PRESENCE = [
   "vault.put", "vault.delete", "vault.import", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
-  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock",
+  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid",
   "vault.resolve", "vault.render", "vault.edit", "vault.git", "vault.ssh.add", "vault.ssh.approve",
   "vault.session.open", "vault.reveal", "vault.copy", "vault.fill.native", "vault.breach.check", "vault.update",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
-  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock",
+  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock", "vault.account.status",
   "vault.people", "vault.fingerprint",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
   "vault.session.close", "vault.session.status", "vault.caps", "vault.health", "vault.clipboard.clear"];

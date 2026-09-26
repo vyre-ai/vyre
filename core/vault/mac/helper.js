@@ -29,7 +29,7 @@ export function privateDir(dir) {
 }
 
 /**
- * @typedef {{ name: "clip"|"watch"|"type", dir: string, swiftc?: string, platform?: string, command?: string[] }} HelperOptions
+ * @typedef {{ name: "clip"|"watch"|"type"|"enclave"|"keychain", dir: string, swiftc?: string, platform?: string, command?: string[] }} HelperOptions
  * `command` replaces the built binary with a fixed command (tests use a fake written in Node);
  * it skips building and hashing, and nothing outside tests sets it.
  */

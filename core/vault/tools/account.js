@@ -23,9 +23,19 @@ export function register({ vault, tool }) {
     },
     presence("Set a password for your personal vault", () => "Set a password for your personal vault and make its Secret Key"));
 
-  tool("vault.account.unlock", [...PEOPLE, "deck", "capsule"], "Unlock your personal vault (logins, cards, notes, one-time codes) with its password.",
-    obj({ password }, ["password"]), (input, { caller }) => vault.unlockAccount(input, caller),
-    presence("Unlock your personal vault", () => "Unlock your personal vault"));
+  tool("vault.account.unlock", [...PEOPLE, "deck", "capsule"], "Unlock your personal vault (logins, cards, notes, one-time codes) with its password, or with Touch ID once enrolled.",
+    obj({ password, method: { type: "string", enum: ["password", "touchid"] } }), (input, { caller }) => {
+      if (input.method !== "touchid" && typeof input.password !== "string") throw new Error("give the password, or method touchid");
+      return vault.unlockAccount(input, caller);
+    },
+    presence("Unlock your personal vault", ({ method }) => method === "touchid" ? "Unlock your personal vault with Touch ID" : "Unlock your personal vault"));
+
+  tool("vault.account.enroll-touchid", PEOPLE, "Turn on Touch ID unlock of your personal vault on this Mac. Needs your password once.",
+    obj({ password }, ["password"]), (input, { caller }) => vault.enrollTouchId(input, caller),
+    presence("Turn on Touch ID unlock", () => "Turn on Touch ID unlock of your personal vault on this Mac"));
+
+  tool("vault.account.status", null, "Whether this vault has an account password, whether it is unlocked, and whether Touch ID unlock is set up here.",
+    obj({}), () => vault.accountStatus());
 
   tool("vault.account.lock", null, "Lock your personal vault now. Agents keep what is granted to them.",
     obj({}), (_input, { caller }) => vault.lockAccount(caller));

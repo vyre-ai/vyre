@@ -24,6 +24,7 @@ import {
   ensureDir, writeSealed, readSealed, removeSealed, promoteSealed, stagedIds, STAGED, writeJsonFile, readJsonFile,
 } from "./store.js";
 import * as relay from "./relay.js";
+import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, merge as mergeImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
@@ -93,6 +94,7 @@ export const MACED = {
 };
 
 const ACCOUNT = "account.json";
+const TOUCHID = "touchid.json";
 const AGENT_VK = path.join("vaults", "agents.json");
 const STATE = "state.json";
 const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
@@ -403,7 +405,11 @@ export class Vault {
   }
 
   /** Open the personal vault with the password and this device's Secret Key. */
-  async unlockAccount({ password }, who = "cli") {
+  /**
+   * The account unlock key from the password and this device's Secret Key. A wrong password
+   * throws in words and is audited.
+   */
+  async deriveAuk(password, who) {
     const rec = readJsonFile(this.dir, ACCOUNT);
     if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
     await this.key();
@@ -412,20 +418,69 @@ export class Vault {
     if (!text) throw new Error("this device has no Secret Key for the account · use your recovery kit");
     const { acct, bytes } = parseSecretKey(text);
     if (acct !== rec.acct) { bytes.fill(0); throw new Error("the Secret Key on this device belongs to another account"); }
-    let pvk;
     try {
       const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
-      pvk = unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+      unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+      return { auk, rec, acct };
     } catch {
       this.audit("account-unlock", null, who, false, "wrong password");
       throw new Error("that password does not open your personal vault");
     } finally { bytes.fill(0); }
-    this.pvk = pvk;
+  }
+
+  /**
+   * Open the personal vault with the password, or with Touch ID once enrolled on this Mac.
+   * @param {{ password?: string, method?: "password"|"touchid" }} input
+   */
+  async unlockAccount({ password, method = "password" }, who = "cli") {
+    let auk, rec, acct;
+    if (method === "touchid") ({ auk, rec, acct } = await this.touchIdAuk(who));
+    else ({ auk, rec, acct } = await this.deriveAuk(password, who));
+    this.pvk = unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
     this.recoverStaged();
     const moved = await this.migratePersonal();
-    this.audit("account-unlock", null, who, true, moved ? `${moved} items moved into the personal vault` : null);
+    this.audit("account-unlock", null, who, true, [method === "touchid" ? "touch id" : null, moved ? `${moved} items moved into the personal vault` : null].filter(Boolean).join(", ") || null);
     this.emit("vault.unlocked", { vault: PERSONAL });
-    return { unlocked: true, acct };
+    return { unlocked: true, acct, method };
+  }
+
+  /**
+   * Turn on Touch ID unlock on this Mac: a Secure Enclave key, and the AUK wrapped to it. Needs
+   * the password, since the AUK is made from it. Enrolling again replaces the old wrap.
+   */
+  async enrollTouchId({ password }, who = "cli") {
+    if (!this.enclave) throw new Error("Touch ID unlock needs a Mac with a Secure Enclave");
+    const { auk, acct } = await this.deriveAuk(password, who);
+    const made = await enclaveCall(this.enclave, { op: "create" });
+    if (!made || !made.ok) throw new Error(`the Secure Enclave did not make a key: ${(made && made.message) || "no answer"}`);
+    const { ephPub, wrapped } = wrapAuk(auk, made.pub, acct);
+    writeJsonFile(this.dir, TOUCHID, { v: 2, acct, blob: made.blob, sePub: made.pub, ephPub, wrapped });
+    this.audit("touchid-enroll", null, who, true, null);
+    return { enrolled: true };
+  }
+
+  /** The AUK through the enclave: one Touch ID dialog, and only this Mac's enclave can answer it. */
+  async touchIdAuk(who) {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    const t = readJsonFile(this.dir, TOUCHID);
+    if (!t || t.acct !== rec.acct) throw new Error("Touch ID unlock is not set up on this Mac · vyre vault account enroll-touchid");
+    if (!this.enclave) throw new Error("Touch ID unlock needs a Mac with a Secure Enclave");
+    await this.key();
+    const r = await enclaveCall(this.enclave, { op: "derive", blob: t.blob, peerPub: t.ephPub, reason: "unlock your personal vault" });
+    if (!r || !r.ok) {
+      this.audit("account-unlock", null, who, false, r && r.code === "refused" ? "touch id refused" : "touch id failed");
+      throw new Error(r && r.code === "refused" ? "Touch ID was not confirmed" : "Touch ID unlock no longer works on this Mac (were fingerprints changed?) · unlock with your password and enroll again");
+    }
+    try { return { auk: unwrapAuk(Buffer.from(String(r.shared), "base64"), t, rec.acct), rec, acct: rec.acct }; }
+    catch { this.audit("account-unlock", null, who, false, "touch id wrap did not open"); throw new Error("the Touch ID wrap does not open · unlock with your password and enroll again"); }
+  }
+
+  /** Whether there is an account, whether it is unlocked, and whether Touch ID is set up here. */
+  accountStatus() {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    const t = readJsonFile(this.dir, TOUCHID);
+    return { account: Boolean(rec), unlocked: Boolean(this.pvk), touchid: Boolean(rec && t && t.acct === rec.acct), ...(rec ? { acct: rec.acct } : {}) };
   }
 
   /** Close the personal vault. The agent vault stays open: agents keep working. */

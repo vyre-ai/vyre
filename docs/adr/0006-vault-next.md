@@ -282,3 +282,10 @@ Where the build differs from the text above, and why:
 - **Presence skip for mcp.** `vault.grant` and `vault.pass.create` from Claude only create
   pending requests, and approving needs presence, so their declarations carry
   `skip: ({ caller }) => caller is mcp`, matching section 7 ("grant and pass.create (pending)").
+- **Touch ID spike (26 Sep 2026, this Mac, macOS 26.2).** An ad-hoc `swiftc -O` build of
+  `core/vault/mac/enclave.swift` made a `SecureEnclave.P256.KeyAgreement.PrivateKey` with
+  `[.privateKeyUsage, .biometryCurrentSet]` and returned its blob and public key: no
+  entitlement error, no prompt at creation. So the enclave path is used and the LAContext-gated
+  keychain fallback is not needed. `derive` was not run by hand (it prompts); tests use a fake.
+  The AUK is wrapped under HKDF(ECDH(enclave key, ephemeral P-256), salt ephPub || sePub,
+  "vyre touchid v2:<acct>") in `vault/touchid.json`; the ephemeral private key is dropped at once.
