@@ -35,6 +35,36 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   would route everything); an optional sidecar (`box/compose.egress.yml`) does, in userspace, on
   the computers network only. The listed sites have no direct fallback, so when the Mac is away
   they fail instead of showing the box's address. Only the owner can change the list.
+- whois now carries a peer's tags and the app capabilities the tailnet policy grants it, through
+  one parser. Every feature below reads them; none writes them.
+- The box's tailnet listener tells three peers apart: the owner, a guest from another tailnet
+  (`tailnet-guest:<login>`) and an agent's own node (`tailnet:agent:<name>`). Tailscale machine
+  sharing used to leave a shared-in person at 403. A guest now reaches only the view-only tools
+  the owner listed or the policy granted, within a fixed safe set, and every other tool reads as
+  absent. A guest never approves, proves presence or pairs a device. Guests are off until the
+  owner turns them on with presence (`network.guests.*`, a new `network` module).
+- An agent's node still needs its agent key over the tailnet: whois proves which container, the key
+  proves which thread, and neither replaces the other.
+- The Vault can ask the tailnet policy before it relays. With `vault.relay.grants: "require"` a
+  relayed request also needs a `vyre.run/cap/vault` grant for its item. A grant only narrows: a
+  revoked or expired pass stays refused, and no grant shows a value. `vault.grants.status` shows
+  who the policy covers.
+- Each agent's computer can join the tailnet as its own ephemeral `tag:vyre-agent` node, off by
+  default. The key stays in the vault and goes only to a root-only tailnet port, never into the
+  container's env or computerd's port, which the agent's own user could take over. The image does
+  not carry that side yet, so turning it on reports why and sends nothing.
+- Signed webhooks from the internet through Funnel (`core/hooks`, `vyre hooks`), off by default,
+  one route at a time, on loopback only. Every route checks the sender's signature against a
+  vault secret. A verified delivery is stored and announced as `hook.received` without its body,
+  and can do nothing else: it never calls a tool. Watchers can now run on an event filtered by
+  payload, so a watcher on one route gets that route's deliveries. Vyre never runs
+  `tailscale funnel`; `vyre hooks status` prints the commands and flags mismatches.
+- Sharing a folder, adding a guest, opening a webhook route and the tailnet switches are on the
+  floor's human-only list, so no model can do them.
+- The Deck's Network settings show shares (with a check of who the policy lets in), webhooks,
+  guests, agent nodes and egress. Chat and Glass carry a connection dot. Onboarding shows the
+  HTTPS switch a ts.net address needs as plain steps, then offers Tailnet Lock. The Capsule sends
+  a file to the box with option-return.
 
 #### No Touch ID prompt, or anything else on screen, under tests
 
