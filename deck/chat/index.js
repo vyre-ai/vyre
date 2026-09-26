@@ -11,7 +11,7 @@
 // session.indexed (Recall indexes a session when its turn completes) or thread.started, so the
 // list follows the user's terminal sessions live without polling.
 
-import { h, put, empty, link, go } from "../js/dom.js";
+import { h, put, empty, link, back } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, plural } from "../js/fmt.js";
@@ -33,10 +33,15 @@ const saveSnapshot = (projects, rows) => { try { localStorage.setItem(SNAP_KEY, 
     last: t.last, turns: t.turns, asks: t.asks, human: t.human, live: t.live })) })); } catch {} };
 const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch { return null; } };
 
+/** Every session row this page load has seen, by id, so opening one needs no list first. */
+const seen = new Map();
+const remember = (/** @type {any[]} */ rows) => { for (const r of rows) seen.set(r.id, r); };
+
 /** @param {any} ctx */
 export default async function chat(ctx) {
   const project = ctx.params.project || null;
   const thread = ctx.params.thread || null;
+  let mounted = false;
   const state = { projects: /** @type {any[]} */ ([]), rows: /** @type {import("./lib/sessions.js").Row[]} */ ([]), err: null, offline: false, snapAt: null, loaded: false };
 
   /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
@@ -59,10 +64,26 @@ export default async function chat(ctx) {
     state.err = p.error || c.error || null;
     state.offline = offline && !!snap;
     state.snapAt = snap ? snap.at : state.snapAt;
+    remember(state.rows);
     if (p.data && c.data) saveSnapshot(state.projects, state.rows);
   }
 
-  put(ctx.root, h("div", { class: "chat-pad" }, h("div", { class: "empty" }, thread ? "Opening the session…" : "Reading your sessions…")));
+  // A session opens at once: what the list knew about it is enough to start reading it, and the
+  // list itself (for the rail) is read behind it.
+  if (thread) {
+    const row = seen.get(thread) || (loadSnapshot()?.rows || []).find((/** @type {any} */ r) => r.id === thread) || null;
+    if (row) { state.rows = [row]; drawMain(); }
+  }
+  // The list as this phone last saw it, drawn at once; the box's answer replaces it a moment later.
+  const snap = !thread ? loadSnapshot() : null;
+  if (snap) remember(snap.rows || []);
+  if (snap) {
+    state.projects = snap.projects || [];
+    state.rows = snap.rows || [];
+    state.loaded = true;
+    drawNav();
+    drawMain();
+  } else if (!mounted) put(ctx.root, h("div", { class: "chat-pad" }, h("div", { class: "empty" }, thread ? "Opening the session…" : "Reading your sessions…")));
   await load();
   if (!ctx.alive()) return;
   drawNav();
@@ -76,6 +97,8 @@ export default async function chat(ctx) {
     if (!thread) drawMain();               // the session view follows its own events; no full redraw needed
   }, 500); };
   ctx.cleanup(() => clearTimeout(rt));
+  // Coming back to a kept Chat page: it is already on screen; check the box for anything missed.
+  ctx.onShow?.(refresh);
   for (const type of ["thread.started", "thread.finished", "thread.stopped", "lease.changed", "ask.raised", "ask.answered", "project.created", "project.changed", "thread.picked", "thread.unpicked", "session.indexed"])
     ctx.on(type, refresh);
 
@@ -89,11 +112,13 @@ export default async function chat(ctx) {
   function drawMain() {
     if (!ctx.alive()) return;
     if (thread) {
+      if (mounted) return;
+      mounted = true;
       const container = h("div", { class: "chat-session" });
       put(ctx.root, container);
       // A session the list knows the Switchboard never ran opens straight from its transcript.
       const known = state.rows.find(r => r.id === thread);
-      ctx.cleanup(mountSession(container, { thread, project, recorded: !!known && !known.live, onBack: () => go(project ? projectHref(project) : "/chat") }));
+      ctx.cleanup(mountSession(container, { thread, project, recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0, onBack: () => back(project ? projectHref(project) : "/chat") }));
       return;
     }
     const note = state.offline ? h("div", { class: "empty chat-offline" }, `Offline. Showing the list as of ${when(state.snapAt)}.`) : null;
