@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // @ts-check
-// A fake MCP server for tests, so no test ever starts a real one (ADR 0015).
+// A fake MCP server for tests, so no test ever starts a real one (ADR 0016).
 //
 // Two ways to run it:
 // - `node core/mcp/testing/fake-mcp.js --stdio`, a real child process, set up through env:

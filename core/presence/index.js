@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
+import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -27,7 +28,7 @@ export const HUMAN_ONLY = new Set([
   "vault.unlock-passphrase", "vault.reveal", "vault.copy", "vault.resolve", "vault.render",
   "vault.session.open", "vault.export", "vault.kit",
   // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
-  "learn.accept", "learn.retire", "learn.relax", "learn.skill_install",
+  "learn.accept", "learn.retire", "learn.relax", "learn.skill-install",
   // A person's hands on an agent's computer, and a new machine joined to this one.
   "computers.takeover", "computers.giveback", "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
@@ -163,9 +164,9 @@ export class Presence {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events?: any, log?: (m: string) => void, platform?: string,
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
-   *           touchid?: any, webauthn?: any, now?: () => number }} opts
+   *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now }) {
+  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env }) {
     this.db = db;
     this.role = role;
     this.network = network;
@@ -176,6 +177,11 @@ export class Presence {
     this.writeTty = write || writeTty;
     this.statTty = statTty || (f => fs.statSync(f));
     this.touchidImpl = touchid;
+    // The real helper shows a system dialog, so it never runs under tests (core/config/dialogs.js).
+    // An injected stand-in shows nothing, so it always may.
+    this.noDialogs = touchid === undefined && !dialogsAllowed(env);
+    // Nor does the real terminal code: it would land in the user's own terminal window.
+    this.noTtyWrites = write === undefined && !dialogsAllowed(env);
     this.webauthnImpl = webauthn;
     this.now = now || Date.now;
     migrate(db, "presence", MIGRATIONS);
@@ -219,14 +225,14 @@ export class Presence {
   /** The methods this machine can take a proof by right now. */
   async methods() {
     const out = [];
-    if (this.platform === "darwin") {
+    if (this.platform === "darwin" && !this.noDialogs) {
       // The helper is built on first use, which can take a while. A refusal should not wait on
       // that: until it answers, Touch ID is not offered, and the build carries on behind.
       const t = await this.touchid();
       const within = new Promise(r => setTimeout(r, 3000, false).unref());
       try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
     }
-    if (this.ttyAllowed()) out.push("tty");
+    if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
     const kinds = new Set(this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all().map(r => String(r.kind)));
     if (kinds.has("capsule")) out.push("capsule");
     if (kinds.has("passkey")) out.push("passkey");
@@ -272,6 +278,7 @@ export class Presence {
       // script, expect, Python pty and tmux panes are not login sessions, so who does not list them.
       const logins = await this.who();
       if (!logins.includes(tty.slice("/dev/".length))) return { error: { code: "denied", message: `${tty} is not a login terminal; run the command in a terminal window or over SSH` } };
+      if (this.noTtyWrites) return { error: { code: NO_DIALOG, message: "no terminal code is written under tests" } };
       const code = randomCode(6);
       const summary = await this.summary(tool, input, def);
       try { this.writeTty(tty, `\r\n  Vyre · ${summary}\r\n  To allow it, type this code where you ran the command: ${code}\r\n\r\n`); }
@@ -310,6 +317,10 @@ export class Presence {
 
     if (method === "touchid") {
       if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
+      if (this.noDialogs) {
+        this.emit("presence.refused", { tool, method, caller });
+        return { ok: /** @type {false} */ (false), code: NO_DIALOG, message: "Touch ID shows no dialog under tests", methods: await this.methods() };
+      }
       // Checked and taken before any await, so two calls at once cannot both open a dialog.
       if (this.dialogOpen) return refuse("a Touch ID dialog is already open");
       if (this.now() < this.coolUntil) return refuse(`Touch ID was cancelled; try again in ${Math.ceil((this.coolUntil - this.now()) / 1000)}s`);

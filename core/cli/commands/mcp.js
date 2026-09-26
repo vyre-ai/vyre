@@ -1,6 +1,6 @@
 // @ts-check
 // `vyre mcp`: the Vyre MCP server on stdio, for a plain `claude` that is not a Vyre thread
-// (ADR 0015 decision 5). It is the same server the harness plugin loads, so it offers every
+// (ADR 0016 decision 5). It is the same server the harness plugin loads, so it offers every
 // module tool and every hub tool the session may use.
 //
 // The server is imported, not spawned: Claude Code starts `vyre mcp` as its own child, and the

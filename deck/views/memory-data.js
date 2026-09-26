@@ -196,10 +196,10 @@ export const lowerLevels = level => LEVELS.slice(0, Math.max(0, LEVELS.indexOf(l
 export function presenceText(tool, id, passkey) {
   if (passkey) return "Confirm with your passkey";
   const cmd = tool === "learn.accept" ? `vyre learn accept ${id}` : tool === "learn.retire" ? `vyre learn retire ${id}`
-    : tool === "learn.relax" ? `vyre learn relax ${id}` : tool === "learn.skill_install" ? `vyre learn skills install ${id}`
+    : tool === "learn.relax" ? `vyre learn relax ${id}` : tool === "learn.skill-install" ? `vyre learn skills install ${id}`
     : tool === "learn.skill_retire" ? `vyre learn skills retire ${id}` : `vyre call ${tool}`;
   const verb = tool === "learn.accept" ? "Accept" : tool === "learn.retire" ? "Retire" : tool === "learn.relax" ? "Relax"
-    : tool === "learn.skill_install" ? "Install" : "Confirm";
+    : tool === "learn.skill-install" ? "Install" : "Confirm";
   return `${verb} this in a terminal: ${cmd}, or from the Capsule`;
 }
 

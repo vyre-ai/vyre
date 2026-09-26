@@ -43,4 +43,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 |---|---|---|
 | 0013 | box | box sessions |
 | 0014 | tailnet | tailnet |
-| 0015 | connectors | Connectors: the MCP hub and native accounts |
+| 0016 | connectors | Connectors: the MCP hub and native accounts |

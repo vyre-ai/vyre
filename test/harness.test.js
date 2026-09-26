@@ -9,7 +9,9 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
+import { interactiveFrom } from "../core/harness/index.js";
 import { tempHome } from "./helpers.js";
+import { SCRATCH } from "./scratch.mjs";
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "harness");
 
@@ -29,7 +31,9 @@ test("plugin: the manifest, hooks and MCP config are valid and point at files th
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "vyre");
   const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN, "hooks", "hooks.json"), "utf8")).hooks;
-  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
+  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
+  assert.match(hooks.PostToolUse[0].matcher, /\bBash\b/, "PostToolUse hears Bash too");
+  assert.match(hooks.PostToolUseFailure[0].matcher, /\bBash\b/);
   for (const groups of Object.values(hooks)) for (const g of groups) for (const h of g.hooks) {
     const file = h.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/)[1];
     assert.ok(fs.existsSync(path.join(PLUGIN, file)), `${file} is missing`);
@@ -44,8 +48,8 @@ test("plugin: the manifest, hooks and MCP config are valid and point at files th
 
 test("hooks: with vyred down, every hook prints nothing and exits 0, except the floor", async t => {
   const env = { VYRE_HOME: tempHome(t) };
-  for (const piece of ["brief", "enrich", "learn", "stop"]) {
-    const r = await hook(piece, { session_id: "s1", cwd: "/tmp", prompt: "hi", tool_name: "Edit", tool_input: { file_path: "a" } }, env);
+  for (const piece of ["brief", "enrich", "learn", "fail", "stop"]) {
+    const r = await hook(piece, { session_id: "s1", cwd: "/tmp", prompt: "hi", tool_name: "Edit", tool_input: { file_path: "a" }, tool_use_id: "toolu_1", error: "boom" }, env);
     assert.deepEqual(r, { code: 0, out: "" }, piece);
   }
   const ok = await hook("rules", { tool_name: "Read", tool_input: { file_path: "/tmp/a" }, cwd: "/tmp" }, env);
@@ -77,6 +81,27 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   assert.deepEqual(await hook("learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, env), { code: 0, out: "" });
   assert.equal(d.registry.deps.db.prepare("SELECT path FROM harness_files WHERE session='s1'").get().path, "/w/notes.md");
   assert.deepEqual(await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env), { code: 0, out: "" }, "outside a project the brief is empty");
+});
+
+test("hooks: PostToolUseFailure and PostToolUse on Bash reach Learning as failed, then fixed", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const env = { VYRE_HOME: root };
+  const base = { session_id: "s1", cwd: "/w", prompt_id: "p1" };
+  await hook("enrich", { ...base, prompt: "fix the build" }, env);
+  const pre = id => hook("rules", { ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: id }, env);
+  await pre("toolu_1");
+  // Exactly the fields Claude Code 2.1.283 sends to a PostToolUseFailure hook.
+  const fail = await hook("fail", { ...base, hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: { command: "npm test" },
+    tool_use_id: "toolu_1", error: "Exit code 1\n1 failing test", is_interrupt: false, duration_ms: 812 }, env);
+  assert.deepEqual(fail, { code: 0, out: "" });
+  await pre("toolu_2");
+  await hook("learn", { ...base, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "toolu_2", tool_response: { stdout: "ok" } }, env);
+  const db = d.registry.deps.db;
+  assert.deepEqual(db.prepare("SELECT kind FROM learn_signals WHERE kind IN ('failed','fixed') ORDER BY id").all().map(r => r.kind), ["failed", "fixed"]);
+  assert.ok(!db.prepare("SELECT 1 FROM learn_signals WHERE meta LIKE '%failing%' OR text LIKE '%failing%'").get(), "the error itself is never kept");
+  assert.deepEqual(db.prepare("SELECT id, outcome FROM learn_calls ORDER BY id").all().map(r => [r.id, r.outcome]), [["toolu_1", "failed"], ["toolu_2", "ok"]]);
 });
 
 test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top-level shape", async t => {
@@ -129,6 +154,98 @@ test("hooks: with vyred down, the accepted lessons still hold, from the snapshot
   const back = JSON.parse((await hook("stop", { ...turn, hook_event_name: "Stop", stop_hook_active: false, last_assistant_message: "Done." }, env)).out);
   assert.equal(back.decision, "block");
   assert.match(back.reason, /Lesson 2: .*src\/a\.js but not CHANGELOG\.md/);
+});
+
+test("hooks: with vyred down and lessons.json deleted, the lessons still hold, read from vyre.db", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id, 1);
+  await d.stop();
+  fs.rmSync(path.join(root, "lessons.json"));
+  const env = { VYRE_HOME: root };
+  const w = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", tool_name: "Write",
+    tool_input: { file_path: "/w/harlow-site/a.md", content: "Harlow \u2014 Legal" } }, env);
+  assert.equal(JSON.parse(w.out).hookSpecificOutput.permissionDecision, "deny");
+  const g = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", tool_name: "Bash",
+    tool_input: { command: `echo '{}' > ${root}/lessons.json` } }, env);
+  assert.equal(JSON.parse(g.out).hookSpecificOutput.permissionDecision, "deny", "rewriting the snapshot is refused, offline too (the floor, ADR 0004)");
+  const back = await hook("stop", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", hook_event_name: "Stop", stop_hook_active: false,
+    last_assistant_message: "Sure \u2014 here it is" }, env);
+  assert.equal(JSON.parse(back.out).decision, "block");
+});
+
+test("hooks: with vyred down and no lesson, running a hook by hand and changing the loaded hooks are still asked", async t => {
+  const root = tempHome(t);
+  // The loaded plugin lives outside the Vyre home, as it does for a user: inside it, the floor
+  // (ADR 0004) would deny it as Vyre's own state before the hooks' guard could ask.
+  const plugin = fs.mkdtempSync(path.join(SCRATCH, "vyre-plugin-"));
+  t.after(() => fs.rmSync(plugin, { recursive: true, force: true }));
+  const env = { VYRE_HOME: root, CLAUDE_PLUGIN_ROOT: plugin };
+  const rules = async tool_input => {
+    const r = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: plugin, tool_name: tool_input.command ? "Bash" : "Edit", tool_input }, env);
+    return r.out ? JSON.parse(r.out).hookSpecificOutput.permissionDecision : null;
+  };
+  assert.equal(await rules({ command: "echo '{\"prompt\":\"no\"}' | node ./hooks/hook.js enrich" }), "ask");
+  assert.equal(await rules({ file_path: path.join(plugin, "hooks", "hooks.json") }), "ask");
+  assert.equal(await rules({ command: `sqlite3 ${root}/vyre.db 'delete from learn_lessons'` }), "deny", "the floor refuses Vyre's store outright");
+  assert.equal(await rules({ command: "npm test" }), null);
+});
+
+test("interactiveFrom: a claude with a terminal and no -p, --print, --output-format or --input-format", () => {
+  for (const l of ["ttys012  claude", "ttys012  claude --resume abc --dangerously-skip-permissions", "pts/3 /home/a/.local/bin/claude -c", "ttys001 claude -- -p"]) assert.equal(interactiveFrom(l), true, l);
+  for (const l of ["??       claude", "?  claude", "ttys001 claude -p", "ttys001 claude --print hi", "ttys001 claude -cp", "ttys001 claude --output-format stream-json",
+    "ttys001 claude --output-format=json", "ttys001 claude --input-format stream-json", "ttys001 /bin/zsh -c node hook.js enrich", "ttys001 node hook.js", "", "ttys001"]) assert.equal(interactiveFrom(l), false, l);
+});
+
+/**
+ * Run a hook as Claude Code does, as the child of a process that `ps` shows as `claude`: a
+ * symlink to node named claude, in a pseudo-terminal from script(1) when tty is true (so it has a
+ * controlling terminal, as a person's claude does), detached with none when false.
+ */
+async function hookUnder(t, dir, { tty, args = [], env = {} }, piece, payload) {
+  const claude = path.join(dir, "claude");
+  if (!fs.existsSync(claude)) {
+    fs.symlinkSync(process.execPath, claude);
+    fs.writeFileSync(path.join(dir, "parent.mjs"), `import { spawn } from "node:child_process"; import fs from "node:fs";
+const p = spawn(process.execPath, [process.env.HOOK, process.env.PIECE], { env: process.env, stdio: ["pipe", "pipe", "ignore"] });
+let out = ""; p.stdout.on("data", c => { out += c; }); p.on("close", () => fs.writeFileSync(process.env.HOOK_OUT, out)); p.stdin.end(process.env.HOOK_IN);`);
+  }
+  const out = path.join(dir, `out-${Math.random().toString(36).slice(2)}`);
+  const cmd = [claude, path.join(dir, "parent.mjs"), ...args];
+  const e = { ...process.env, ...env, HOOK: path.join(PLUGIN, "hooks", "hook.js"), PIECE: piece, HOOK_IN: JSON.stringify(payload), HOOK_OUT: out };
+  const [bin, argv] = !tty ? [cmd[0], cmd.slice(1)] : process.platform === "darwin" ? ["script", ["-q", "/dev/null", ...cmd]] : ["script", ["-qec", cmd.join(" "), "/dev/null"]];
+  await new Promise(resolve => { const p = spawn(bin, argv, { env: e, stdio: ["ignore", "ignore", "ignore"], detached: !tty }); p.on("close", resolve); p.on("error", resolve); });
+  const text = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : "";
+  return text ? JSON.parse(text).hookSpecificOutput.additionalContext : "";
+}
+
+test("hooks: a plain yes accepts a lesson only when a person typed it into an interactive claude", { skip: !["darwin", "linux"].includes(process.platform) }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const env = { VYRE_HOME: root, VYRE_THREAD: "", VYRE_AGENT: "" };
+  const dir = fs.mkdtempSync(path.join(root, "pty-"));
+  const status = () => d.registry.deps.db.prepare("SELECT status FROM learn_lessons WHERE id = 1").get().status;
+  let n = 0;
+  /** Tell the proposal in one turn (a plain hook run), then answer yes in the next, under `under`. */
+  const tellThenYes = async under => {
+    const told = `p${++n}`, yes = `p${++n}`;
+    await hook("enrich", { session_id: "s1", cwd: "/w", prompt_id: told, prompt: "never use em dashes in anything you write" }, env);
+    await hook("stop", { session_id: "s1", cwd: "/w", prompt_id: told, last_assistant_message: "Keep it?", stop_hook_active: false }, env);
+    const text = await hookUnder(t, dir, { ...under, env: { ...env, ...(under.env || {}) } }, "enrich", { session_id: "s1", cwd: "/w", prompt_id: yes, prompt: "yes" });
+    await hook("stop", { session_id: "s1", cwd: "/w", prompt_id: yes, last_assistant_message: "ok", stop_hook_active: false }, env);
+    return text;
+  };
+  const refused = /did not accept lesson 1.*vyre learn accept 1/;
+  assert.match(await tellThenYes({ tty: true, args: ["-p"] }), refused, "claude -p");
+  assert.match(await tellThenYes({ tty: true, args: ["--print"] }), refused, "claude --print");
+  assert.match(await tellThenYes({ tty: true, args: ["--output-format", "stream-json"] }), refused, "stream-json output");
+  assert.match(await tellThenYes({ tty: true, args: ["--input-format", "stream-json"] }), refused, "stream-json input (the Switchboard's threads)");
+  assert.match(await tellThenYes({ tty: true, env: { VYRE_THREAD: "s1" } }), refused, "our own headless thread");
+  assert.match(await tellThenYes({ tty: false }), refused, "no terminal");
+  assert.equal(status(), "proposed");
+  assert.match(await tellThenYes({ tty: true }), /The user said yes: lesson 1 is in force now/, "a person at an interactive claude");
+  assert.equal(status(), "active");
 });
 
 test("mcp: initialize, list and call over stdio; harness tools are not offered", async t => {

@@ -1,7 +1,7 @@
 // @ts-check
 // accounts: the Google accounts this vyred knows, one row each in google_accounts.
 //
-// A row names a vault item and how to use it, never a value (ADR 0015 decision 2): the service
+// A row names a vault item and how to use it, never a value (ADR 0016 decision 2): the service
 // account's JSON or the OAuth env-set stays in the vault and is fetched at mint time under the
 // google module's own grant. `base` points both APIs at another origin, and only at a loopback
 // one: it exists for the test fakes, and an https base would be a way to hand tokens to any host.

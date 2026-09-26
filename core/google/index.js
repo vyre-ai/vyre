@@ -1,5 +1,5 @@
 // @ts-check
-// google: native Google Calendar and Gmail (ADR 0015 decision 6).
+// google: native Google Calendar and Gmail (ADR 0016 decision 6).
 //
 // The assistant and the Capsule read the person's calendar and mail through these tools, over
 // REST, with an OAuth refresh token or a domain-wide-delegation service account from the vault.

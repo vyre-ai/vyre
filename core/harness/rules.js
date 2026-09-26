@@ -24,14 +24,14 @@ import { flatten, words, dynamic, globReaches } from "./shell.js";
 /** Words in an MCP tool's own name that mean it sends something as the user. */
 const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
 /**
- * The MCP hub's tools inside Vyre's own MCP server (ADR 0015), as `vyre mcp` or as the plugin:
+ * The MCP hub's tools inside Vyre's own MCP server (ADR 0016), as `vyre mcp` or as the plugin:
  * a hub server name, then its tool. The hub holds their outward calls at the Gate itself, and its
  * rule is stricter than the name rule (unknown is outward), so rule 1 steps aside for them.
  */
 const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
 /**
  * Vyre module tools with a send word that hold at the Gate themselves, so rule 1 would only ask
- * about a call that already waits for the person. google.mail.send is always held (ADR 0015
+ * about a call that already waits for the person. google.mail.send is always held (ADR 0016
  * decision 6). A Vyre tool that really sends, such as threads_send, is not listed and still asks.
  */
 const GATED = new Set(["google_mail_send"].flatMap(t => [`mcp__vyre__${t}`, `mcp__plugin_vyre_vyre__${t}`]));

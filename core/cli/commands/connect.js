@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre connect`: MCP servers and Google accounts from the terminal (ADR 0015 decision 7).
+// `vyre connect`: MCP servers and Google accounts from the terminal (ADR 0016 decision 7).
 //
 // One command for both, because to a person they are the same thing: something Vyre can reach on
 // their behalf. A connection names vault items and never takes a value on the command line, where

@@ -40,13 +40,13 @@ export const KINDS = ["send", "spend", "delete"];
 const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
 const READS = /(^|_)(draft|list|get|search|read)(_|$)/i;
 /**
- * The MCP hub's tools inside Vyre's own MCP server (ADR 0015), as `vyre mcp` or as the plugin:
+ * The MCP hub's tools inside Vyre's own MCP server (ADR 0016), as `vyre mcp` or as the plugin:
  * a hub server name, then its tool. The hub holds their outward calls at the Gate itself.
  */
 const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
 /**
  * Vyre module tools with a send word that hold at the Gate themselves, so route would deny an
- * agent the very path the Gate wants it to take. google.mail.send is always held (ADR 0015
+ * agent the very path the Gate wants it to take. google.mail.send is always held (ADR 0016
  * decision 6). A Vyre tool that really sends, such as threads_send, is not listed and is denied.
  * Kept the same as core/harness/rules.js.
  */

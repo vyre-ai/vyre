@@ -1,5 +1,5 @@
 // @ts-check
-// The credential library the connectors share (ADR 0015, decision 2). The MCP hub and the Google
+// The credential library the connectors share (ADR 0016, decision 2). The MCP hub and the Google
 // module both need to turn a vault item into something a request can carry: a bearer header, an
 // OAuth access token minted by refresh, or a Google service-account JWT exchanged for one. This
 // file does that once, for both, and remembers every value it touched so callers can scrub them

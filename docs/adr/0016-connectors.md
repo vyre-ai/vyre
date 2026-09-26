@@ -1,4 +1,4 @@
-# ADR 0015 · Connectors: the MCP hub and native accounts
+# ADR 0016 · Connectors: the MCP hub and native accounts
 
 Status: proposed, 27 Sep 2026 · Workstream: connectors · Code: `core/connectors/`, `core/mcp/`,
 `core/google/`, `core/cli/commands/connect.js`, `deck/views/connections.js`

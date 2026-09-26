@@ -1,7 +1,7 @@
 // @ts-check
 // api: one authenticated call to Google Calendar or Gmail, for one account, with one scope.
 //
-// Every call names the single scope it needs (ADR 0015 decision 6), so a token minted to read the
+// Every call names the single scope it needs (ADR 0016 decision 6), so a token minted to read the
 // calendar can never write it, and a send token is minted only at the moment of sending. The
 // token comes from the shared credential library, which caches it in memory; a 401 means Google
 // stopped taking it, so it is dropped and minted once more, and a second 401 is an answer.

@@ -15,6 +15,7 @@
 // and the dialog appears only when the user picks that row.
 
 import { execFile } from "node:child_process";
+import { guarded } from "./dialogs.js";
 import fs from "node:fs";
 import path from "node:path";
 import * as local from "./local.js";
@@ -80,7 +81,7 @@ export class Launcher {
     this.frecency = frecency;
     this.filesFn = files;
     this.openFn = open;
-    this.run = run;
+    this.run = guarded(run);
     this.copy = copy;
     /** @type {string|null} authorized | denied | notDetermined | ... ; null until asked */
     this.contactsStatus = null;

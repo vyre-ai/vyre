@@ -1,5 +1,5 @@
 // @ts-check
-// The MCP client the hub uses to talk to one server (ADR 0015, "Transports").
+// The MCP client the hub uses to talk to one server (ADR 0016, "Transports").
 //
 // Three transports, no dependencies: stdio (a child process speaking newline-delimited JSON-RPC),
 // streamable HTTP (protocol 2025-06-18: POST each message, the reply is JSON or an SSE stream)

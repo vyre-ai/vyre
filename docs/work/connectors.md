@@ -1,6 +1,6 @@
 # connectors
 
-Branch: work/connectors · Worktree: ../vyre-connectors · ADR: 0015
+Branch: work/connectors · Worktree: ../vyre-connectors · ADR: 0016
 
 ## Scope
 
@@ -33,7 +33,7 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 
 ## Doing
 
-- ADR 0015 and the plan.
+- ADR 0016 and the plan.
 
 ## Next
 

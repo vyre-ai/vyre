@@ -1,5 +1,5 @@
 // @ts-check
-// The MCP hub: many servers behind one entry (ADR 0015, decisions 2, 3 and 4).
+// The MCP hub: many servers behind one entry (ADR 0016, decisions 2, 3 and 4).
 //
 // A person adds servers (stdio, streamable HTTP, legacy SSE). Each row names vault items, never
 // values; the Credentials library turns them into a header per request or an env for one child,
@@ -54,7 +54,7 @@ export const TRANSPORTS = ["stdio", "http", "sse"];
 export const AUTH_TYPES = ["none", "bearer", "env", "oauth", "service-account"];
 const MODES = ["read", "write", "off"];
 
-// ---- classification (ADR 0015, decision 4) ----
+// ---- classification (ADR 0016, decision 4) ----
 
 const READ_VERBS = ["list", "get", "search", "read", "find", "fetch", "query", "describe", "lookup", "view", "show"];
 /** Words that mean a tool sends, writes or deletes. Matching one is outward, whatever else it says. */

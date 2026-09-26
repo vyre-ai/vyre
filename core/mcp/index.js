@@ -1,6 +1,6 @@
 // @ts-check
 // mcp: the module. The MCP hub's tools, who may call each, and the wiring to the vault, the Gate,
-// the agents and the Switchboard (ADR 0015, decisions 2 to 4). The work is in hub.js.
+// the agents and the Switchboard (ADR 0016, decisions 2 to 4). The work is in hub.js.
 //
 // Who may call what, and why:
 // - Adding, changing, removing, testing and restarting servers is for people and modules (cli,

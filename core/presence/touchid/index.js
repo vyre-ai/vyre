@@ -8,14 +8,15 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { dialogsAllowed, NO_DIALOG } from "../../config/dialogs.js";
 
 const SOURCE = path.join(path.dirname(fileURLToPath(import.meta.url)), "touchid.swift");
 const SWIFTC = "/usr/bin/swiftc";
 
 /** @typedef {{ path: string, hash: string }} Helper */
-/** @typedef {{ dir?: string, swiftc?: string, platform?: string, source?: string }} BuildOptions */
+/** @typedef {{ dir?: string, swiftc?: string, platform?: string, source?: string, env?: NodeJS.ProcessEnv }} BuildOptions */
 
-/** @type {Required<Omit<BuildOptions, "dir">> & { dir?: string }} */
+/** @type {{ swiftc: string, platform: string, source?: string, dir?: string, env?: NodeJS.ProcessEnv }} */
 let config = { swiftc: SWIFTC, platform: process.platform };
 /** @type {Promise<Helper> | null} */
 let helper = null;
@@ -73,8 +74,8 @@ async function compile(c) {
  * @param {BuildOptions} [opts]
  * @returns {Promise<Helper>}
  */
-export function build({ dir, swiftc = SWIFTC, platform = process.platform } = {}) {
-  config = { dir, swiftc, platform };
+export function build({ dir, swiftc = SWIFTC, platform = process.platform, env } = {}) {
+  config = { dir, swiftc, platform, env };
   helper = compile(config);
   helper.catch(() => { helper = null; });
   return helper;
@@ -120,13 +121,16 @@ export async function available() {
 }
 
 /**
- * Show the macOS authentication dialog with `reason`, and wait for the person.
+ * Show the macOS authentication dialog with `reason`, and wait for the person. Under tests (or
+ * VYRE_NO_DIALOGS=1) the helper never runs: the answer is { ok: false, reason: "no_dialog" }.
+ * A test that drives a stub helper passes its own `env` to build().
  * @param {string} reason
  * @param {{ timeout?: number }} [opts] seconds
  * @returns {Promise<{ ok: boolean, reason?: string }>}
  */
 export async function authenticate(reason, { timeout = 60 } = {}) {
   try {
+    if (!dialogsAllowed(config.env || process.env)) return { ok: false, reason: NO_DIALOG };
     if (config.platform !== "darwin") return { ok: false, reason: "unavailable" };
     const text = String(reason || "");
     const r = await runHelper([text === "--check" ? " --check" : text, String(timeout)], (timeout + 2) * 1000);
@@ -144,11 +148,12 @@ export async function authenticate(reason, { timeout = 60 } = {}) {
 /**
  * Another Swift helper under the same rules: built privately on first use, hash-checked before
  * every run, rebuilt if the binary changed. For modules that need their own (the vault's unlock).
+ * Only `--check` runs while dialogs are off (core/config/dialogs.js); anything else is refused.
  * @param {string} source absolute path of the .swift file
  * @param {Omit<BuildOptions, "source">} [opts]
  * @returns {{ run(args: string[], ms: number): Promise<{ changed: boolean, code: number | null, killed: boolean, stdout: string }> }}
  */
-export function swiftHelper(source, { dir, swiftc = SWIFTC, platform = process.platform } = {}) {
+export function swiftHelper(source, { dir, swiftc = SWIFTC, platform = process.platform, env } = {}) {
   const c = { dir, swiftc, platform, source };
   /** @type {Promise<Helper> | null} */
   let built = null;
@@ -158,6 +163,7 @@ export function swiftHelper(source, { dir, swiftc = SWIFTC, platform = process.p
   };
   return {
     async run(args, ms) {
+      if (args[0] !== "--check" && !dialogsAllowed(env || process.env)) throw Object.assign(new Error("dialogs are off under tests"), { code: NO_DIALOG });
       const h = await ready();
       let now = "";
       try { now = sha256(fs.readFileSync(h.path)); } catch {}
