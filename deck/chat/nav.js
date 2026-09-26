@@ -52,7 +52,7 @@ function groups(projects, threads, route, q) {
 
 function projectGroup(p, rows, route) {
   const isOpen = open.has("p:" + p.slug) || route.project === p.slug;
-  const label = link(projectHref(p.slug), { class: "ellipsis", style: { flexGrow: "1" }, onclick: e => e.stopPropagation() }, p.name);
+  const label = link(projectHref(p.slug), { class: "ellipsis link quiet", style: { flexGrow: "1", color: "inherit" }, onclick: e => e.stopPropagation() }, p.name);
   return disclose("p:" + p.slug, label, rows.length, () =>
     h("div", { class: "rail-sub" }, rows.length ? rows.map(t => threadLink(t, route)) : h("div", { class: "empty", style: { padding: "4px 10px" } }, "No sessions")),
     false, isOpen);
