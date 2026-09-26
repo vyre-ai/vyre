@@ -147,3 +147,19 @@ test("modules: ctx.memory.teach checks the declared kinds and is a no-op without
   assert.deepEqual(await reg.call("notes.add", { kind: "note.item" }), { data: { taught: false } });
   assert.match((await reg.call("notes.add", { kind: "secret.item" })).error.message, /does not declare under teaches.memory/);
 });
+
+test("modules: a per-<thing> declaration lets a module fetch items named at run time", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("relay.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["relay", { version: "0.1.0", does: { tools: ["relay.check"] }, needs: { vault: ["per-sender"] } }, user],
+  ]);
+  assert.deepEqual(await reg.call("relay.check", { item: "work-mail" }, "cli"), { data: { got: "value-of-work-mail-for-module:relay" } });
+});
