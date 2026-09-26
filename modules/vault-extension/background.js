@@ -27,7 +27,8 @@ function allowedUrl(u) {
   try { x = new URL(String(u)); } catch { return null; }
   if (x.username || x.password || x.search || x.hash) return null;
   const local = x.protocol === "http:" && (x.hostname === "127.0.0.1" || x.hostname === "localhost");
-  const tailnet = x.protocol === "https:" && /\.ts\.net$/.test(x.hostname);
+  // A Vyre's own address (<you>.vyre.run) or its raw tailnet name; both resolve only inside the tailnet.
+  const tailnet = x.protocol === "https:" && /\.(vyre\.run|ts\.net)$/.test(x.hostname);
   return local || tailnet ? x.origin : null;
 }
 
@@ -130,7 +131,7 @@ async function route(msg) {
     case "state": return state();
     case "save-url": {
       const o = allowedUrl(msg.url);
-      if (!o) return { error: { code: "bad_url", message: "use http://127.0.0.1:<port>, http://localhost:<port> or an https://*.ts.net address" } };
+      if (!o) return { error: { code: "bad_url", message: "use http://127.0.0.1:<port>, http://localhost:<port> or your https://<you>.vyre.run address" } };
       const old = await settings();
       await chrome.storage.local.set({ url: o });
       if (old.url !== o) { await setSession(null); await chrome.storage.local.remove(["device", "token", "deviceName"]); }
