@@ -96,6 +96,27 @@ compositing beyond what rAF reports. Cold-start (first show after launch) is muc
 - **release**: `scripts/perf-check` exists, `npm run perf-check`, ~65s runtime, exit 0/1 — ready
   to wire into `scripts/release-check.sh`.
 
+## Capsule hidden CPU with the clipboard watcher (work/capsule 654db49, merged with main)
+
+Measured a real (non-driven) Capsule launch — temp `VYRE_HOME` + temp `--user-data-dir`,
+`--hidden`, no vyred running — for 3 minutes, `ps -o time=,rss=` sampled every 15s, host load
+average 11-15. First/last-sample CPU-time deltas over the full window:
+
+| Process | CPU (3-min avg) | Verdict |
+|---|---|---|
+| `bin/local` (the clip poller, 750ms `NSPasteboard.changeCount`) | 0.016% | negligible |
+| hotkey helper | 0.000% | negligible |
+| renderer | 0.165% | within a per-process share of the 0.2% hidden budget |
+| Electron main (`Vyre Capsule`) | **0.791%** | over budget on its own |
+
+The clipboard watcher is not the cost — `bin/local`'s own CPU is a rounding error, consistent
+across every 15s interval sampled (0.00-0.01s of CPU time per interval). The real cost is the
+Electron main process itself, steady at roughly 0.5-1.2% per 15s interval throughout the
+3-minute window (not a start-up tail — same rate in the first and last third of the run), well
+over the 0.2%-hidden-combined budget by itself before the renderer's share is even added. This
+wasn't isolated further (no A/B without `clips.start()`) — reported to `capsule` as the next
+place to look, since it's their process, not the Swift poller they asked about.
+
 ## Deck audit
 
 `grep -rn "setInterval\|setTimeout" deck` — one real violation, everything else is either a
