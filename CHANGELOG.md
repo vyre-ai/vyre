@@ -4,6 +4,64 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Switchboard
+
+- `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
+  outlive every surface. A thread's id is its Claude Code session id, fixed with `--session-id`.
+  Tools: `threads.start`, `send`, `list`, `get`, `lease`, `release`, `asks`, `answer`, `stop`.
+  Events: `thread.started`, `thread.sent`, `thread.text` (partial text throttled to 20 a second),
+  `thread.tool`, `thread.finished`, `thread.stopped`, `ask.raised`, `ask.answered`, `lease.changed`.
+  Events stay small: no tool outputs, no thinking, and no hook output, because the user's own
+  hooks print whatever they like.
+- Permissions: Claude Code 2.1.283 sends `can_use_tool` requests only when given
+  `--permission-prompt-tool stdio` as well as `--permission-prompts host`. The second flag alone
+  denied every question on the spot. Open asks are rows as well as events, so a surface that
+  reconnects can see what is open now. Ask ids are 72 random bits, because an ask id works as
+  a capability. A model can never answer one: `threads.answer` refuses MCP callers.
+- The lease (floor rule 4) ports the prototype's lessons: a 90-second expiry, a take-over that
+  records who went quiet and for how long, and re-taking your own lease is not a conflict.
+- `core/agents`: the assistant and agents. The tools are `agents.list`, `create`, `update`, `ask`,
+  `threads` and `stop`. Credentials come from the Vault through `vault.release` and are set
+  only in that agent's child process. The rule is a setup token first, then the API key when
+  the subscription's limit is reached, within `budget_usd`, and the thread says so. Only the
+  assistant can drive other sessions from inside its own thread.
+- An agent's scope reaches the Harness: `harness.brief` and `harness.enrich` take `projects`, and
+  the MCP server tags calls `mcp:agent:<name>`. It hides `threads.*`/`agents.*` from non-assistant
+  agents and holds `recall.search` inside the agent's project folders.
+- Agents fetch credentials from the real vault through `ctx.vault.fetch(name)`, declared as
+  `needs.vault: ["per-agent"]`, which the loader now accepts the way it accepts `per-watcher`.
+  Each item needs a grant to module `agents` (`vyre vault grant <item> agents`). Without one,
+  `agents.ask` fails with `<agent> cannot start: <item> is not granted to agents · vyre vault
+  grant <item> agents`. The switchboard tests put and grant items in the real vault.
+- `threads.answer` declares `callers: ["cli", "local", "module", "deck", "capsule"]`, so the loader
+  refuses `mcp` and `mcp:agent:<name>` with `denied` and leaves it out of their `/v1/tools`.
+- Agent identity is checked. Each agent thread gets `VYRE_AGENT_KEY`, 24 random bytes new per
+  process, held only in the Switchboard's memory. Inside the thread the MCP server calls as
+  `mcp:agent:<name>` and the hooks as `harness:agent:<name>`, and the client sends the key as
+  `x-vyre-agent-key`. vyred refuses (403 `denied`) any caller that names an agent unless the
+  internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
+  Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
+  `agent:<name>` after a space or a colon.
+- `callerKind` (and the vault's rules) drop the agent part: `mcp:agent:kit` is an `mcp` caller to
+  every allowlist, so an agent's `vault.grant` waits as pending like any model's.
+- Tests: the vault's per-agent stub is module `roster`, not `agents`; Memory's graph test and the
+  gate + chat test use the real `agents` and `threads` modules (the latter over the fake
+  `claude`), and call as an agent in-process, since no test holds a thread's key.
+- A turn's partial text (`thread.text` with `delta`) is deleted from the event log 60 seconds after
+  its `thread.finished` (`VYRE_TEXT_PRUNE_MS`); the `done` text stays. Modules get
+  `ctx.events.prune(type, { before, thread, has })` for their own event types only.
+- CLI: `vyre threads start|send|watch|lease|release|asks|answer|stop` (other `vyre threads`
+  arguments still search the catalogue) and `vyre agents [create|update|ask|threads|stop]`.
+- Verified with real Claude Code on haiku: a thread started from the CLI streamed to two curl SSE
+  clients, a Write permission was answered from one of them, the lease moved between them, and
+  `agents.ask` got a reply from a test agent.
+- A terminal `claude --resume <id>` on a thread vyred is running headless is now visible (floor
+  rule 4). The Harness SessionStart hook passes `headless` (true only inside vyred's own child),
+  and `harness.brief` asks the internal `threads.claimed {session}` ->
+  `{headless, holder, status}`. When the thread is live, the brief opens with a warning naming the
+  holder and `vyre threads stop <id8>`, and the internal `threads.contend` emits
+  `thread.contended {thread, session, holder}`. The session still starts: the hook never blocks.
+
 #### Gate
 
 - `core/gate`: the only way out for an agent (sections 7.7 and 11, floor rules 1 and 2). An agent

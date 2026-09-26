@@ -17,11 +17,13 @@ import { call } from "../../../core/daemon/client.js";
 import { client, stream } from "./vyred.js";
 import { Bridge, explain } from "./bridge.js";
 
-async function vyred(t) {
+/** `bare` turns the core switchboard (`threads`) and `agents` off, for the tests about their absence. */
+async function vyred(t, { bare = false } = {}) {
   const root = tempHome(t);
   const tx = path.join(root, "transcripts");
   fs.mkdirSync(tx);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [tx], projectsDir: path.join(root, "projects"), roots: [] }));
+  const modules = bare ? { modules: { enable: [], disable: ["threads", "agents"] } } : {};
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [tx], projectsDir: path.join(root, "projects"), roots: [], ...modules }));
   const db = open(paths(root).db);
   seedRecall(db, undefined, { transcripts: tx });
   db.close();
@@ -53,7 +55,7 @@ function withFakes(c, fakes) {
 }
 
 test("bridge: @ completes projects and threads from a running vyred", async t => {
-  const { c } = await vyred(t);
+  const { c } = await vyred(t, { bare: true });
   const b = new Bridge(c);
   assert.deepEqual(await b.refresh(), { up: true });
   assert.equal(b.catalog.agents, null, "no switchboard: no agents, and nothing pretends otherwise");
@@ -78,7 +80,7 @@ test("bridge: memory answers with its sources, and no model", async t => {
 });
 
 test("bridge: without the switchboard it says so before Enter, and sending explains why not", async t => {
-  const { c } = await vyred(t);
+  const { c } = await vyred(t, { bare: true });
   const b = new Bridge(c);
   await b.refresh();
   const none = await b.destinations(null, "what is left this week");
@@ -186,7 +188,7 @@ test("bridge: a send the sender refused stays held and says why", async t => {
 });
 
 test("bridge: without threads.asks, open asks come from the event log", async t => {
-  const { d, c } = await vyred(t);
+  const { d, c } = await vyred(t, { bare: true });
   // Stand in for the switchboard's events; the bus is the same one it will emit on.
   d.events.emit("switchboard", "ask.raised", { ask: "a7", summary: "delete 214 files" }, { thread: "t1" });
   d.events.emit("switchboard", "ask.raised", { ask: "a8", summary: "push to main" }, { thread: "t1" });
@@ -249,7 +251,8 @@ test("bridge: the real Gate holds a draft, the Capsule opens it, and Send sends 
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
   assert.ok((await cli("vault.put", { name: "test-mail-token", kind: "api-key", fields: { value: "fixture-token" } })).data);
   assert.equal((await cli("vault.grant", { name: "test-mail-token", module: "gate" })).data.grant.status, "active");
-  const req = await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Re: Q3 report", body: "Hi Dana" }, why: "Dana asked" }, { root, caller: "mcp:agent:juno" });
+  // An agent's caller name needs its thread's key over HTTP, which no test holds; juno asks in-process.
+  const req = await d.registry.call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Re: Q3 report", body: "Hi Dana" }, why: "Dana asked" }, "mcp:agent:juno");
   assert.equal(req.data.state, "held", JSON.stringify(req));
 
   const b = new Bridge(client(d.paths.socket));

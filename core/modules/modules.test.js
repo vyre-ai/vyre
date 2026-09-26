@@ -76,6 +76,21 @@ test("modules: a module cannot register a tool or emit an event it did not decla
   assert.match(reg.status()[0].error, /does not declare/);
 });
 
+test("modules: ctx.events.prune takes only the module's own declared types", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async ({ type }) => ctx.events.prune(type, { before: 1e9 }) });
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["notes", good, src]]);
+  const ev = reg.deps.events;
+  ev.emit("notes", "note.added", { text: "mine" });
+  ev.emit("other", "note.added", { text: "not mine" });
+  ev.emit("other", "thing.happened", {});
+  assert.match((await reg.call("notes.add", { type: "thing.happened" })).error.message, /pruned thing.happened, which its manifest does not declare/);
+  assert.deepEqual(await reg.call("notes.add", { type: "note.added" }), { data: 1 });
+  assert.deepEqual(ev.since(0).map(e => e.source + ":" + e.type), ["other:note.added", "other:thing.happened"], "a module prunes only rows it emitted");
+});
+
 test("modules: every call passes through the rules, whoever makes it", async t => {
   const seen = [];
   const reg = await registry(t, [["notes", good, echo]], {
@@ -136,6 +151,23 @@ test("modules: ctx.vault.fetch releases only declared items, through an internal
   assert.match((await reg.call("mailer.check", { item: "bank" }, "cli")).error.message, /does not declare/);
   assert.equal((await reg.call("vault.release", { name: "inbox" }, "mcp")).error.code, "no_such_tool", "Claude reached the vault directly");
   assert.ok(!reg.listTools().some(x => x.name === "vault.release"), "an internal tool was listed");
+});
+
+test("modules: \"per-agent\" lets a module fetch any item name, still through vault.release as itself", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("agents.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["agents", { version: "0.1.0", does: { tools: ["agents.check"] }, needs: { vault: ["per-agent"] } }, user],
+  ]);
+  assert.deepEqual(await reg.call("agents.check", { item: "scout-token" }, "cli"), { data: { got: "value-of-scout-token-for-module:agents" } });
+  assert.deepEqual(await reg.call("agents.check", { item: "juno-key" }, "cli"), { data: { got: "value-of-juno-key-for-module:agents" } });
 });
 
 test("modules: ctx.memory.teach checks the declared kinds and is a no-op without Memory", async t => {
