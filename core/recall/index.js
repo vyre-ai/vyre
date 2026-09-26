@@ -134,6 +134,8 @@ export default {
             if (r.turns) dense.invalidate();
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
+          // Build the dense index now, in the background, so the first search does not pay for it.
+          if (!stopped && !dense.stats() && db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get()) await dense.build();
         } catch (e) { vec.why = `embedding failed: ${/** @type {Error} */ (e).message}`; ctx.log(vec.why); }
         finally { vec.busy = false; }
       })();

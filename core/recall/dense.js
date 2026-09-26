@@ -18,6 +18,8 @@
 
 import { DIM } from "./embed.js";
 
+const breathe = () => new Promise(r => setImmediate(r));
+
 /**
  * @typedef {{ rid: number, session: string, seq: number, score: number, off: number }} DenseHit
  */
@@ -26,6 +28,8 @@ export class Dense {
   /** @param {import("node:sqlite").DatabaseSync} db */
   constructor(db) {
     this.db = db;
+    /** @type {Promise<any> | null} */
+    this.building = null;
     /** @type {null | { n: number, vecs: Float32Array, rid: Int32Array, off: Int32Array, sess: Int32Array, seq: Int32Array, role: Uint8Array,
      *   sessions: string[], cwds: (string|null)[], ms: number, bytes: number, gen: string }} */
     this.index = null;
@@ -39,19 +43,35 @@ export class Dense {
     return r ? String(r.v) : "0";
   }
 
-  /** Read every vector once. Chunks of one turn come out next to each other (primary key order). */
+  /**
+   * Read every vector once, in pages, yielding between them: 37,000 chunks took 3.2s to read, and
+   * vyred must keep answering meanwhile. Two searches that arrive during a build share it.
+   */
   build() {
+    if (!this.building) this.building = this.read().finally(() => { this.building = null; });
+    return this.building;
+  }
+
+  async read() {
     const t0 = Date.now();
     const db = this.db;
     const gen = this.generation();
+    const PAGE = 4096;
     /** @type {Map<string, number>} session\0seq -> rowid */
     const rowids = new Map();
     /** @type {Map<string, number>} */
     const roles = new Map();
-    for (const r of /** @type {any[]} */ (db.prepare("SELECT rowid AS rid, session, seq, role FROM recall_turns").all())) {
-      const k = r.session + "\0" + r.seq;
-      rowids.set(k, Number(r.rid));
-      roles.set(k, r.role === "user" ? 1 : 2);
+    const turns = db.prepare("SELECT rowid AS rid, session, seq, role FROM recall_turns WHERE rowid > ? ORDER BY rowid LIMIT ?");
+    for (let after = 0; ;) {
+      const page = /** @type {any[]} */ (turns.all(after, PAGE));
+      for (const r of page) {
+        const k = r.session + "\0" + r.seq;
+        rowids.set(k, Number(r.rid));
+        roles.set(k, r.role === "user" ? 1 : 2);
+      }
+      if (page.length < PAGE) break;
+      after = Number(page[page.length - 1].rid);
+      await breathe();
     }
     /** @type {string[]} */ const sessions = [];
     /** @type {(string|null)[]} */ const cwds = [];
@@ -63,20 +83,31 @@ export class Dense {
     const vecs = new Float32Array(total * DIM);
     const rid = new Int32Array(total), off = new Int32Array(total), sess = new Int32Array(total), seq = new Int32Array(total);
     const role = new Uint8Array(total);
-    const stmt = db.prepare("SELECT session, seq, off, v FROM recall_vectors WHERE length(v) = ?");
-    // iterate() keeps one blob in hand at a time; all() is the fallback on older Node.
-    const rows = typeof stmt.iterate === "function" ? stmt.iterate(DIM * 4) : stmt.all(DIM * 4);
+    // Keyset pages over the primary key, so chunks of one turn stay together and a write that
+    // lands between pages cannot shift what the next page returns.
+    const first = db.prepare("SELECT session, seq, chunk, off, v FROM recall_vectors ORDER BY session, seq, chunk LIMIT ?");
+    const next = db.prepare(`SELECT session, seq, chunk, off, v FROM recall_vectors
+      WHERE (session, seq, chunk) > (?, ?, ?) ORDER BY session, seq, chunk LIMIT ?`);
     let n = 0;
-    for (const r of /** @type {Iterable<any>} */ (rows)) {
-      if (n >= total) break;
-      const k = r.session + "\0" + r.seq;
-      const id = rowids.get(k), si = sid.get(r.session);
-      if (id === undefined || si === undefined) continue;   // a vector whose turn is gone
-      const b = /** @type {Uint8Array} */ (r.v);
-      // Stored little-endian, which is every machine Vyre runs on; copied so alignment is ours.
-      vecs.set(new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + DIM * 4)), n * DIM);
-      rid[n] = id; off[n] = Number(r.off); sess[n] = si; seq[n] = Number(r.seq); role[n] = roles.get(k) || 0;
-      n++;
+    /** @type {any[]} */
+    let page = first.all(PAGE);
+    while (page.length && n < total) {
+      for (const r of page) {
+        if (n >= total) break;
+        const b = /** @type {Uint8Array} */ (r.v);
+        if (!b || b.length !== DIM * 4) continue;               // a turn with nothing to embed
+        const k = r.session + "\0" + r.seq;
+        const id = rowids.get(k), si = sid.get(r.session);
+        if (id === undefined || si === undefined) continue;     // a vector whose turn is gone
+        // Stored little-endian, which is every machine Vyre runs on; copied so alignment is ours.
+        vecs.set(new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + DIM * 4)), n * DIM);
+        rid[n] = id; off[n] = Number(r.off); sess[n] = si; seq[n] = Number(r.seq); role[n] = roles.get(k) || 0;
+        n++;
+      }
+      if (page.length < PAGE) break;
+      const last = page[page.length - 1];
+      await breathe();
+      page = next.all(last.session, last.seq, last.chunk, PAGE);
     }
     const bytes = n * (DIM * 4 + 4 * 4 + 1);
     this.index = { n, vecs, rid, off, sess, seq, role, sessions, cwds, ms: Date.now() - t0, bytes, gen };
@@ -92,10 +123,10 @@ export class Dense {
    * The turns closest to a query vector, best chunk per turn, best first.
    * @param {Float32Array} qv  unit length
    * @param {{ k?: number, floor?: number, role?: string, keep?: (cwd: string|null) => boolean }} [opts]
-   * @returns {DenseHit[]}
+   * @returns {Promise<DenseHit[]>}
    */
-  search(qv, { k = 200, floor = 0, role, keep } = {}) {
-    const x = this.index && this.index.gen === this.generation() ? this.index : this.build();
+  async search(qv, { k = 200, floor = 0, role, keep } = {}) {
+    const x = this.index && this.index.gen === this.generation() ? this.index : await this.build();
     const want = role === "user" ? 1 : role === "assistant" ? 2 : 0;
     /** @type {Map<number, boolean>} */
     const allowed = new Map();

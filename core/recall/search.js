@@ -124,7 +124,7 @@ export async function search(db, query, embedder = null, dense = null) {
       const qv = await embedder.embed(q);
       const cwds = opts.cwds.map(c => String(c).replace(/\/+$/, "")).filter(Boolean);
       const keep = cwds.length ? (/** @type {string|null} */ cwd) => !!cwd && cwds.some(c => cwd === c || cwd.startsWith(c + "/")) : undefined;
-      const near = dense.search(qv, { k: DENSE_K, floor: FLOOR, role: opts.role, keep });
+      const near = await dense.search(qv, { k: DENSE_K, floor: FLOOR, role: opts.role, keep });
       used = (dense.stats()?.chunks || 0) > 0;
       const fetch = db.prepare(`SELECT t.rowid AS rid, t.session, t.seq, t.role, t.ts, t.text, s.name, s.title, s.cwd
         FROM recall_turns t JOIN recall_sessions s ON s.id = t.session WHERE t.rowid = ?`);
