@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre doctor`
+
+- One read-only command that checks what a first night trips on and says what to do: vyred
+  (version and commit), Tailscale here (signed in), MagicDNS and HTTPS on the tailnet, Tailscale
+  on the box (online, the same account), the phone online on the tailnet, the box's address
+  (resolves, answers, its version), a passkey enrolled for that address (the rpId), this Mac
+  paired (or the code waiting for approval), Claude signed in on the box, the Capsule (installed,
+  and whether Control twice works), and the install size. Each line is ✓, ✗ with the one-line
+  fix, or ? with why it could not be checked. Every check runs at once with its own 1.5 s
+  timeout and the run is cut off at 2 s (0.2 s on the test box). `--json` gives
+  `{ ok, role, ms, checks: [{ id, label, ok, detail, fix }] }`; exit 1 when anything failed.
+  `core/cli/commands/doctor.js`.
+- For it: `presence.keys` includes each key's `rp_id`; `core/cli/tailnet.js` status takes a
+  timeout and reports `magicDNS` and `certDomains`; new tool `capsule.report {ok, message}`
+  emits `capsule.hotkey`, for the Capsule app to say whether Control twice works (TCC holds
+  Vyre.app responsible, so only the app can know).
+
 #### The `vyre` screen, polished from a captured frame
 
 - The status line reads link.health's real shape ("link direct 23 ms", "link relayed", "link

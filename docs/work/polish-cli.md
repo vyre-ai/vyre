@@ -45,6 +45,9 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Next
 
+- `vyre doctor` done (tests core/cli/commands/doctor.test.js). Stress run in progress on the
+  test box (report ~/vyre-ci/stress-polish.json there); fix what it finds.
+
 - Wait for the lead's review of the screen; polish from feedback. Keep main merged in.
 
 ## Needs from others
@@ -53,6 +56,12 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- presence (owner: presence): `presence.keys` rows gain `rp_id`.
+- tailnet: `core/cli/tailnet.js` `status(env, {timeout})`, parse adds `magicDNS`, `certDomains`.
+- capsule (owners: capsule-now/capsule-pro): new tool `capsule.report {ok, message}` emitting
+  `capsule.hotkey`. Asked capsule-now to call it from local/capsule/app/main.js on every hotkey
+  state change; until then doctor shows "?" for Capsule permissions.
 
 - onboard (owner: onboarding team): `onboard.link` takes `{mint:false}` and then returns
   `{url:null, pending, expires, port}`; loopback keeps hashes in <VYRE_HOME>/onboard-link.json.

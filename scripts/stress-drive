@@ -62,9 +62,11 @@ const REPORT = opt("--report") || path.join(SCRATCH, `stress-drive-${Date.now()}
 for (const d of ["transcripts", "projects", "work", "files"]) fs.mkdirSync(path.join(HOME, d), { recursive: true });
 fs.writeFileSync(path.join(HOME, "config.json"), JSON.stringify({
   transcripts: [path.join(HOME, "transcripts")], projectsDir: path.join(HOME, "projects"), roots: [], recall: { vectors: false },
+  // Never the login keychain, and never a dialog on the person's screen (team rules).
+  vault: { keystore: "file" },
 }));
 const ENV = { ...process.env, VYRE_HOME: HOME, VYRE_CLAUDE_BIN: FAKE, VYRE_TAILSCALE_BIN: path.join(HOME, "no-tailscale"),
-  FAKE_CLAUDE_LOG: path.join(HOME, "fake-claude.log"), NO_COLOR: "1" };
+  FAKE_CLAUDE_LOG: path.join(HOME, "fake-claude.log"), NO_COLOR: "1", VYRE_NO_DIALOGS: "1" };
 delete ENV.VYRE_AGENT_KEY; delete ENV.VYRE_AGENT; delete ENV.VYRE_THREAD;
 const config = await import(path.join(REPO, "core", "config", "index.js"));
 const SOCKET = config.paths(HOME).socket;
