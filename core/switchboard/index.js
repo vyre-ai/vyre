@@ -23,6 +23,7 @@ import { Asks } from "./asks.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
+import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -757,8 +758,15 @@ export default {
       async (i, { caller }) => { guard(caller, "type into sessions"); return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: !/^(mcp|harness)/.test(String(caller || "")) }); });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
-      { type: "object", properties: { agent: str, all: { type: "boolean" } } },
-      async (i, { caller }) => { guard(caller, "list sessions"); return sb.list(i); });
+      { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },
+      async (i, { caller }) => {
+        guard(caller, "list sessions");
+        const { machines: _, ...q } = i;
+        if (!wantsMacs(ctx, i, caller)) return sb.list(q);
+        // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
+        const answers = await askMacs(ctx, "threads.list", q);
+        return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
+      });
 
     tool("threads.get", "One thread: its record, its open permission questions, and its recent events (since: an event id).",
       { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer" }, limit: { type: "integer" } } },

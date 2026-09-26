@@ -285,6 +285,8 @@ write_env() {
       say "$DIR/.env exists; adding DOCKER_GID=$gid and leaving the rest as it is"
       TMP=${TMP:-$(mktemp -d)}
       # A read, so it runs even in a dry run; sudo only when the .env is not ours to read.
+      # sudo reads the root-only file; the copy is written as this user on purpose.
+      # shellcheck disable=SC2024
       if [ -r "$DIR/.env" ] || [ -z "$SUDO" ]; then cat "$DIR/.env" >"$TMP/env"; else sudo cat "$DIR/.env" >"$TMP/env"; fi
       [ -z "$(tail -c 1 "$TMP/env")" ] || printf '\n' >>"$TMP/env"
       printf 'DOCKER_GID=%s\n' "$gid" >>"$TMP/env"
@@ -348,6 +350,8 @@ start() {
 
 uninstall() {
   if [ -f "$DIR/compose.yml" ]; then
+    # $1 expands in the inner shell, which is the point.
+    # shellcheck disable=SC2016
     dk sh -c 'cd "$1" && docker compose down --remove-orphans' sh "$DIR"
   else
     dk docker compose -p vyre down --remove-orphans

@@ -1,0 +1,22 @@
+# The egress service from box/compose.egress.yml (work/tailnet), unchanged but for the headscale
+# login server and the network: the e2e tailnet instead of vyre-computers. Project vyre-e2e-egress.
+name: vyre-e2e-egress
+services:
+  egress:
+    image: tailscale/tailscale:stable
+    hostname: vyre-egress
+    labels: { run.vyre.e2e: "1" }
+    environment:
+      - TS_AUTHKEY=${VYRE_EGRESS_AUTHKEY:?}
+      - TS_HOSTNAME=vyre-egress
+      - TS_USERSPACE=true
+      - TS_SOCKS5_SERVER=:1055
+      - TS_ACCEPT_DNS=true
+      - TS_EXTRA_ARGS=--login-server=http://headscale:8080 --exit-node=${VYRE_EGRESS_EXIT_NODE:?} --exit-node-allow-lan-access=false
+    read_only: true
+    tmpfs: [/tmp, /var/lib/tailscale, /var/run/tailscale]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [e2e]
+networks:
+  e2e: { external: true, name: vyre-e2e }

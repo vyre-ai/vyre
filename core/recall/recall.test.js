@@ -329,6 +329,12 @@ test("recall: sessions lists newest first, by folder, time and who started them"
   assert.equal(sessions(e.db, { human: false }).length, 2);
   assert.equal(sessions(e.db, { human: true, limit: 2 }).length, 2);
   assert.equal(sessions(e.db, { since: Date.parse("2026-09-01T11:30:00Z") }).length, 2);
+  // ids: exact ids only, never a prefix, and an empty list is no sessions rather than all of them.
+  const one = "11111111-aaaa-4000-8000-000000000003", four = "11111111-aaaa-4000-8000-000000000004";
+  assert.deepEqual(sessions(e.db, { ids: [one, four, "nope"] }).map(s => s.id).sort(), [one, four]);
+  assert.deepEqual(sessions(e.db, { ids: ["11111111"] }), []);
+  assert.deepEqual(sessions(e.db, { ids: [] }), []);
+  assert.deepEqual(sessions(e.db, { ids: [one, four], cwd: "/home/alex/Work/northwind" }).map(s => s.id), [one]);
 });
 
 // ------------------------------------------------------------------ dense retrieval

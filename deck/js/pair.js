@@ -59,6 +59,7 @@ export function pairCard(p, opts = {}) {
   const approve = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-primary", disabled: true, onclick: () => decide("approve") }, "Approve"));
   const deny = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-ghost", onclick: () => decide("deny") }, "Deny"));
   const note = h("div", { class: "pair-note small", role: "status" });
+  const hint = h("div", { class: "small faint" }, "Approve with your passkey. A passkey you made on the Mac also works on your iPhone if iCloud Keychain is on.");
   const left = h("span", { class: "code faint" });
   const form = h("div", { class: "pair-form" }, h("label", { class: "lbl", for: "pc-" + p.id }, "Code on that Mac"), codeIn, h("div", { class: "pair-actions" }, approve, deny));
   codeIn.id = "pc-" + p.id;
@@ -66,7 +67,7 @@ export function pairCard(p, opts = {}) {
     h("div", { class: "pair-top" }, h("span", { class: "lbl beacon" }, h("span", { class: "dot beacon" }), " Pairing"), left),
     h("div", { class: "pair-title" }, icon("laptop", 16), h("span", null, "A Mac wants to pair: ", h("b", null, p.name))),
     h("div", { class: "small muted" }, [p.node, p.login].filter(Boolean).join(" · ")),
-    form, note);
+    form, hint, note);
   let busy = false;
 
   async function decide(/** @type {"approve" | "deny"} */ what) {
@@ -82,6 +83,7 @@ export function pairCard(p, opts = {}) {
     }
     stop();
     form.remove();
+    hint.remove();
     left.remove();
     if (what === "approve") {
       el.classList.add("paired");

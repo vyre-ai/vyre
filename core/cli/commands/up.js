@@ -175,7 +175,7 @@ async function run(args, deps) {
     say("");
     say("  Vyre runs Claude Code on a machine you own, and gives it memory, a vault and a private");
     say("  address. Setting it up takes about ten minutes, one step at a time.");
-    say(dim(`\n  vyred is running in the background · your data lives in ${config.home().replace(os.homedir(), "~")}`));
+    say(dim(`\n  vyred running in the background · your data lives in ${config.home().replace(os.homedir(), "~")}`));
   } else say(b.note ? `  vyred ${signal("running")} ${dim(`· ${VERSION} · ${role} · ${b.note}`)}` : `  vyred is already running ${dim(`· ${VERSION} · ${role}`)}`);
 
   if (systemdManaged()) {

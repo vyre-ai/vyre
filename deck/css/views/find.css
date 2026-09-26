@@ -96,3 +96,8 @@
 @media (min-width: 761px) {
   .fd-bar { padding-top: 32px; }
 }
+
+/* What Enter will do, under the box (js/commands.js), and the session a command goes to. */
+.fd-plan:empty { display: none; }
+.fd-plan { padding: 8px 2px 0; color: var(--text-2); }
+.fd-chosen .fd-ic { color: var(--focus); }

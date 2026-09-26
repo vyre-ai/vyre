@@ -43,14 +43,16 @@ async function box(t, extra = {}) {
 }
 
 /** Exchange the one-time link for the session, the way the page does: from the redirect's fragment. */
+// Every request closes its connection: a test that restarts vyred on the same port would
+// otherwise send its next request down a kept-alive socket the old vyred already closed.
 async function redeem(url) {
-  const r = await fetch(url, { redirect: "manual" });
+  const r = await fetch(url, { redirect: "manual", headers: { connection: "close" } });
   const location = r.headers.get("location") || "";
   return { status: r.status, location, session: (location.match(/#s=([A-Za-z0-9_-]+)$/) || [])[1] || "", cookie: r.headers.get("set-cookie") };
 }
 
 const tool = (base, session, name, input = {}, headers = {}) => fetch(`${base}/v1/tools/${name}`, {
-  method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, ...headers }, body: JSON.stringify(input) });
+  method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, connection: "close", ...headers }, body: JSON.stringify(input) });
 
 test("onboard: the link works once, becomes a session, and the session reaches only the onboarding", async t => {
   const { root } = await box(t);
@@ -175,10 +177,7 @@ test("onboard: vyre update's report mints nothing, and the unused link and an op
   await d.stop();
   const d2 = await start({ root, log: () => {} });
   t.after(() => d2.stop());
-  // fetch may hand back a keep-alive socket to the stopped vyred's listener first; a browser
-  // retries that the same way, so the first request after the restart does too.
-  const again = async f => { for (let i = 0; ; i++) { try { return await f(); } catch (e) { if (i === 2) throw e; await new Promise(r => setTimeout(r, 50)); } } };
-  assert.equal((await again(() => tool(`http://127.0.0.1:${port}`, session, "onboard.status"))).status, 200, "the open page keeps working");
+  assert.equal((await tool(`http://127.0.0.1:${port}`, session, "onboard.status")).status, 200, "the open page keeps working");
   assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, true);
   assert.equal((await redeem(unused.url)).status, 302, "the link the user was sent still works");
   assert.equal((await redeem(a.url)).status, 403, "a voided one stays void");
@@ -297,15 +296,24 @@ const ptyMissing = (() => { try { execFileSync(ptyCommand("true")[0] === "script
 test("onboard: the subscription sign-in runs `claude setup-token` under a pty; the code goes in, the token goes to the vault", { skip: ptyMissing }, async t => {
   const { root } = await box(t, { vault: { keystore: "file" } });
   const token = "sk-ant-oat01-" + "Zx9_".repeat(12);
-  // A fake claude that behaves like setup-token: an OSC 8 link, a prompt, a code in, a token out.
+  // A fake claude that reads its prompt the way Claude Code's (Ink) does: the terminal in raw mode,
+  // a chunk of several characters is pasted text, Enter included, and only an Enter on its own
+  // submits. A refused code does not exit: it says "OAuth error" and waits for Enter to retry.
   const bins = fs.mkdtempSync(path.join(root, "claude-"));
   const fake = path.join(bins, "claude");
-  fs.writeFileSync(fake, `#!/bin/sh
-if [ "$1" = "--version" ]; then echo "2.1.283 (Claude Code)"; exit 0; fi
-printf '\\033]8;id=a1;https://claude.com/cai/oauth/authorize?code=true&client_id=c1&state=s1\\033\\\\Sign in\\033]8;;\\033\\\\\\n'
-printf 'Paste code here if prompted > '
-read code
-if [ "$code" = "good-code" ]; then printf '\\nYour token: ${token}\\n'; else printf '\\nInvalid code\\n'; exit 1; fi
+  fs.writeFileSync(fake, `#!/usr/bin/env node
+if (process.argv[2] === "--version") { console.log("2.1.283 (Claude Code)"); process.exit(0); }
+process.stdout.write("\\x1b]8;id=a1;https://claude.com/cai/oauth/authorize?code=true&client_id=c1&state=s1\\x1b\\\\Sign in\\x1b]8;;\\x1b\\\\\\n");
+process.stdout.write("Paste code here if prompted > ");
+if (process.stdin.isTTY) process.stdin.setRawMode(true);
+let typed = "";
+process.stdin.on("data", d => {
+  const s = String(d);
+  if (s !== "\\r") { typed += s; return; }
+  if (typed === "good-code#s1") { process.stdout.write("\\nYour token: ${token}\\n"); process.exit(0); }
+  process.stdout.write("\\r\\nOAuth error: Request failed with status code 400\\r\\n Press Enter to retry.");
+  typed = "";
+});
 `, { mode: 0o755 });
   process.env.VYRE_CLAUDE_BIN = fake;
   const { url, port } = (await call("onboard.link", {}, { root })).data;
@@ -316,12 +324,15 @@ if [ "$code" = "good-code" ]; then printf '\\nYour token: ${token}\\n'; else pri
   assert.equal(started.data.url, "https://claude.com/cai/oauth/authorize?code=true&client_id=c1&state=s1", JSON.stringify(started.error));
   assert.equal(started.data.needsCode, true);
   assert.equal(started.data.signedIn, false);
-  const wrong = await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "bad-code" })).json();
-  assert.match(wrong.error.message, /did not accept that code/);
-  assert.match((await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "good-code" })).json()).error.message, /start it again/, "a used sign-in is gone");
+  const asked = Date.now();
+  const wrong = await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "bad-code#s1" })).json();
+  assert.match(wrong.error.message, /did not accept that code \(OAuth error: Request failed with status code 400\)/);
+  assert.ok(Date.now() - asked < 10_000, "a refused code is said at once, not after the minute's wait");
+  assert.match((await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "good-code#s1" })).json()).error.message, /start it again/, "a used sign-in is gone");
 
   await tool(base, session, "onboard.claude", { mode: "setup-token" });
-  const done = await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "good-code" })).json();
+  // The code as Claude's callback page shows it, <code>#<state>, pasted whole.
+  const done = await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "good-code#s1" })).json();
   assert.equal(done.data.signedIn, true, JSON.stringify(done.error));
   assert.equal(done.data.via, "setup-token");
   assert.equal(done.data.needsCode, false);

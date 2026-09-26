@@ -375,6 +375,6 @@ test("up on a Mac, the very first time: the welcome, the three choices, and choi
   assert.match(text, /1  On a server I can SSH to[\s\S]*2  On this Mac[\s\S]*3  I already set up a box/);
   assert.match(text, /Asking https:\/\/vyre\.example-tail\.ts\.net to pair with this Mac/);
   assert.match(text, /Approve this Mac on your phone at https:\/\/vyre\.example-tail\.ts\.net[\s\S]*Code: 123-456/);
-  assert.doesNotMatch(text, /vyred running/, "a first run gets the welcome, not a status line");
+  assert.doesNotMatch(text, /vyred running ·/, "a first run gets the welcome, not a status line");
   assert.deepEqual(f.opened, [], "nothing is opened in a browser");
 });

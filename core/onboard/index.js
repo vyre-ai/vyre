@@ -14,7 +14,7 @@ import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
-import { lockStatus } from "../names/tailscale.js";
+import { run as tailscale, lockStatus } from "../names/tailscale.js";
 
 export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -61,6 +61,30 @@ function claudeVersion() {
   return known.version;
 }
 
+/**
+ * The owner's other devices on the tailnet, from `tailscale status --json`: name, os and whether
+ * Tailscale says it is online. Tagged nodes (servers) and other people's shared nodes are left out.
+ * Remembered for 15 seconds: onboard.status is asked often while a step waits.
+ */
+let seen = { at: 0, peers: /** @type {Promise<any[]>|null} */ (null) };
+function tailnetPeers() {
+  if (seen.peers && Date.now() - seen.at < 15_000) return seen.peers;
+  seen = { at: Date.now(), peers: tailscale(["status", "--json"], { timeout: 5000 }).then(r => {
+    if (r.code !== 0) return [];
+    try { return parsePeers(JSON.parse(r.out)); } catch { return []; }
+  }) };
+  return seen.peers;
+}
+/** Pure, for tests. */
+export function parsePeers(s) {
+  const self = s && s.Self;
+  const mine = self && !(self.Tags || []).length ? String(self.UserID) : null;
+  return Object.values((s && s.Peer) || {})
+    .filter(p => !(p.Tags || []).length && (!mine || String(p.UserID) === mine))
+    .map(p => ({ name: String(p.HostName || "") || String(p.DNSName || "").split(".")[0], dns: String(p.DNSName || "").replace(/\.$/, ""),
+      os: String(p.OS || ""), online: Boolean(p.Online), lastSeen: p.LastSeen && !String(p.LastSeen).startsWith("0001") ? String(p.LastSeen) : null }));
+}
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -83,6 +107,9 @@ export default {
     const signin = setupToken();
     /** @type {Record<string, string>} */
     let lastStates = {};
+    /** The box's last federated catalogue answer, held for 30 s: see the history step. */
+    let catalogHeld = /** @type {{ at: number, seen: string, cat: any } | null} */ (null);
+    const offLink = ["link.paired", "link.unpaired"].map(type => ctx.events.on(type, () => { catalogHeld = null; }));
 
     const call = async (tool, input = {}) => {
       const r = await ctx.call(tool, input);
@@ -138,18 +165,46 @@ export default {
       const history = { state: "todo", why: null, sessions: 0, indexed: r ? r.sessions : 0, running: Boolean(r && r.indexing) || Boolean(indexing) };
       if (!r) Object.assign(history, { state: "blocked", why: recall.__error });
       else {
-        const cat = await tryCall("projects.catalog", { limit: 100000 });
-        history.sessions = Math.max(cat.__error ? 0 : Number(cat.total) || 0, history.indexed);
+        // total does not depend on the limit, so one row is enough. On the box the catalogue
+        // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
+        // sources says which machines answered.
+        const box = ctx.config.role === "box";
+        // The page asks every couple of seconds, and each federated answer is a question to the
+        // Mac, so the box keeps it for 30 s, or until a Mac pairs, unpairs, comes or goes
+        // (link.macs is the box's own record, so reading it costs the Mac nothing). The box's own
+        // count still moves with the index through history.indexed below.
+        const linked = box ? await tryCall("link.macs") : [];
+        const seen = Array.isArray(linked) ? linked.map(m => `${m.mac}:${m.online}`).join(",") : "";
+        let cat;
+        if (box && catalogHeld && catalogHeld.seen === seen && Date.now() - catalogHeld.at <= 30_000) cat = catalogHeld.cat;
+        else {
+          cat = await tryCall("projects.catalog", { limit: 1, ...(box ? { machines: "all" } : {}) });
+          catalogHeld = box && !cat.__error ? { at: Date.now(), seen, cat } : null;
+        }
+        const sources = !cat.__error && Array.isArray(cat.sources) ? cat.sources : null;
+        const count = x => Number(x && x.total) || 0;
+        // The box's own sessions are what its index has to catch up with; a Mac indexes its own.
+        const own = Math.max(sources ? count(sources[0]) : count(cat.__error ? null : cat), history.indexed);
+        const macs = sources ? sources.filter(x => x.source === "mac") : [];
+        history.sessions = own + macs.reduce((n, m) => n + count(m), 0);
+        if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
-        else if (history.sessions === 0) Object.assign(history, { state: "done",
-          why: ctx.config.role === "box" ? "Your Mac's sessions appear here when you connect your Mac" : "no Claude Code sessions on this machine yet" });
-        else if (ob().history && history.indexed >= history.sessions) history.state = "done";
+        else if (history.sessions === 0) {
+          const off = Array.isArray(linked) ? linked.find(m => !m.online) : null;
+          Object.assign(history, { state: "done",
+            why: !box ? "no Claude Code sessions on this machine yet"
+              : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
+              : "Your Mac's sessions appear here when you connect your Mac" });
+        }
+        else if (ob().history && history.indexed >= own) history.state = "done";
       }
 
       // The Mac counts once link has paired one; the first paired is the one shown.
       const peers = await tryCall("link.peers");
       const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac };
+      // peers: the owner's other tailnet devices and whether each is online, for the phone's line.
+      const tailnet = t && t.running ? await tailnetPeers() : [];
+      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: tailnet };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.
@@ -381,6 +436,6 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
+    return { async stop() { if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

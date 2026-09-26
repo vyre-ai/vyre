@@ -368,6 +368,7 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
 
   const list = (await tool("agents.list", {})).data;
   assert.deepEqual(list.map(a => [a.name, a.kind, a.doing]), [["juno", "assistant", "not started"], ["scout", "agent", "not started"]]);
+  assert.ok(list.every(a => "instructions" in a), "the Deck's agent page reads the job from the list");
 
   const who = (await tool("agents.ask", { agent: "scout", text: "whoami", surface: "capsule" })).data;
   assert.equal(who.text, "auth=subscription");
@@ -771,4 +772,17 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
   assert.deepEqual((await tool("agents.list", {})).data.map(a => a.name), ["juno"]);
   assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
   assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
+});
+
+test("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "kit", projects: [] });
+  const r = await tool("agents.update", { agent: "kit", computer: true }, "deck");
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.equal(r.data.computer, true);
+  assert.equal(r.data.name, "kit", "agent is not stored as a field");
+  assert.equal((await tool("agents.update", { name: "kit", computer: false })).data.computer, false, "name still works");
+  assert.match((await tool("agents.update", { name: "kit", agent: "juno", computer: true })).error.message, /different agents/);
+  assert.match((await tool("agents.update", { computer: true })).error.message, /say which agent/);
+  assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
 });
