@@ -11,9 +11,12 @@ import { Graph, say } from "./graph.js";
 import { floorPlan } from "./floor.js";
 import path from "node:path";
 import { within } from "./teach.js";
+import { Personal } from "./personal/store.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
+/** Turns the personal pass reads before it yields to the event loop. */
+const PERSONAL_BATCH = 2000;
 
 const cwds = { type: "array", items: { type: "string" } };
 
@@ -24,6 +27,21 @@ export default {
     // evaluation (docs/adr/0007-intelligence.md, decision 2). Both are off by default.
     const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log, relations: ctx.config.memory?.relations });
     const graph = new Graph(ctx.store.db, curator);
+    // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
+    const personal = new Personal(ctx.store.db, { log: ctx.log });
+    /** Read every unread turn for personal facts, then derive if anything changed. */
+    const personalPass = async ({ full = false } = {}) => {
+      let turns = 0, claims = 0;
+      while (!stopping) {
+        const r = await personal.pass({ limit: PERSONAL_BATCH, stopped: () => stopping, full });
+        full = false;
+        turns += r.turns; claims += r.claims;
+        if (!r.more) break;
+        await new Promise(r => setImmediate(r));
+      }
+      const d = stopping ? { changed: false } : personal.derive();
+      return { turns, claims, changed: d.changed };
+    };
     let running = null, again = false, stopping = false, timer = null;
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
     // the first pass and whenever a project or a pick changes.
@@ -38,6 +56,8 @@ export default {
           again = false;
           if (roomsStale) { roomsStale = false; await syncRooms().catch(e => ctx.log("could not read projects: " + e.message)); }
           result = await curator.curate({ ...opts, stopped: () => stopping });
+          try { result.personal = await personalPass({ full: Boolean(opts.full) }); }
+          catch (e) { ctx.log("personal facts failed: " + /** @type {Error} */ (e).message); }
           opts = {};
           if (result.changed) ctx.events.emit("memory.curated", { nodes: result.nodes, edges: result.edges, ms: result.ms, updated: curator.updated() });
         } while (again && !stopping);
@@ -56,7 +76,7 @@ export default {
     // before it is read again. A grown one only needs its new turns, which the cursor finds.
     const off = ctx.events.on("session.indexed", e => {
       const p = e.payload || {};
-      if (p.rewritten && p.session) curator.reset(String(p.session));
+      if (p.rewritten && p.session) { curator.reset(String(p.session)); personal.reset(String(p.session)); }
       soon();
     });
     // A project made, changed or a thread picked changes the rooms.
@@ -245,8 +265,8 @@ export default {
       return run(input, extra);
     });
     /** Reading corrections: the owner's surfaces, or the user on a tailnet device. Never an agent. */
-    const readerOnly = run => ownerOnly(async (input, extra = {}) => {
-      if (!reader(extra.caller)) throw denied(`memory.corrections is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
+    const readerOnly = (run, name = "memory.corrections") => ownerOnly(async (input, extra = {}) => {
+      if (!reader(extra.caller)) throw denied(`${name} is for the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
       return run(input, extra);
     });
     /** The scope a correction applies in: a room's slug, or '*' for everywhere. */
@@ -336,6 +356,20 @@ export default {
       input: { type: "object", properties: { all: { type: "boolean" }, ...roomField } },
       run: readerOnly(async input => curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
     });
+    // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
+    // devices read them; agents never do.
+    ctx.tool("memory.me", {
+      description: "What memory knows about the user and the people and things in their life: facts like \"your wife is Jordan\", each with confidence, how many conversations said it and whether it still holds. about names one of them (\"my wife\", \"Jordan\", \"car\"); without it, the strongest facts.",
+      input: { type: "object", properties: { about: { type: "string" }, limit: { type: "integer" } } },
+      run: readerOnly(async ({ about, limit }) => {
+        const n = Math.min(200, Math.max(1, limit ?? 50));
+        if (about) {
+          const a = personal.about(String(about));
+          return { about: a ? { ...a.entity, aliases: a.aliases } : null, facts: a ? [...a.links, ...a.facts].slice(0, n) : [] };
+        }
+        return { about: null, facts: personal.facts({ limit: n }) };
+      }, "memory.me"),
+    });
     ctx.tool("memory.uncorrect", {
       callers: OWNERS,
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
@@ -395,7 +429,7 @@ export default {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
       // Counts over everything are the main graph's.
-      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), graph.stats()),
+      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: personal.stats() }),
     });
 
     return {
