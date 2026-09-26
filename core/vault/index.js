@@ -18,6 +18,7 @@ import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
+import { register as registerCli } from "./tools/cli.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -48,6 +49,9 @@ export default {
     }
 
     const tool = (name, callers, description, input, run) => ctx.tool(name, { description, input, callers, run });
+
+    // item, resolve, render, edit, the git helper and the ssh agent (tools/cli.js).
+    const cli = await registerCli({ ctx, vault });
 
     // The pairing code comes with the address the extension must use, so a person has both.
     for (const t of FILL_TOOLS) tool(t.name, t.callers, t.description, t.input, async (input, { caller }) => {
@@ -93,7 +97,7 @@ export default {
       });
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str }), input => vault.list(input));
+      obj({ filter: str, kind: str, host: str }), input => cli.list(vault.list(input), input));
 
     tool("vault.delete", PEOPLE, "Delete an item and its grants.",
       obj({ name: str }, ["name"]), (input, { caller }) => vault.remove(input, caller));
@@ -168,7 +172,9 @@ export default {
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller));
 
     return {
+      ssh: cli.ssh,
       async stop() {
+        await cli.stop();
         vault.lock();
         if (listener) await listener.close();
         if (fillListener) await fillListener.close();

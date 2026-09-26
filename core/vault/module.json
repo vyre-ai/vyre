@@ -37,7 +37,18 @@
       "vault.devices",
       "vault.device.revoke",
       "vault.device.unlock",
-      "vault.unlock-passphrase"
+      "vault.unlock-passphrase",
+      "vault.item",
+      "vault.resolve",
+      "vault.render",
+      "vault.edit",
+      "vault.git",
+      "vault.ssh.keys",
+      "vault.ssh.generate",
+      "vault.ssh.add",
+      "vault.ssh.approvals",
+      "vault.ssh.approve",
+      "vault.ssh.forget"
     ]
   },
   "watches": {
@@ -57,7 +68,8 @@
       "vault.device-paired",
       "vault.device-revoked",
       "vault.filled",
-      "vault.restored"
+      "vault.restored",
+      "vault.ssh-approved"
     ]
   },
   "shows": {
