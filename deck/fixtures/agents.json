@@ -1,16 +1,102 @@
 {
   "agents.list": [
-    { "name": "juno", "kind": "assistant", "role": "Assistant", "projects": "*", "state": "working", "thread": "t-juno-intake-summary",
+    {
+      "name": "juno",
+      "kind": "assistant",
+      "role": "Assistant",
+      "projects": "*",
+      "state": "working",
+      "thread": "t-juno-intake-summary",
       "instructions": "Run Alex's week: keep every project moving, draft client updates, and ask before anything goes out.",
-      "skills": ["work-in-a-project", "use-the-vault"], "computer": false,
-      "auth": { "vault": "claude-setup-token", "fallback": "anthropic-api-key", "budget_usd": 20 }, "model": "claude-opus-5-5" },
-    { "name": "kit", "kind": "agent", "role": "Marketing", "projects": ["harlow-legal", "northwind-bakery", "launch-site"], "state": "working", "thread": "t-kit-hero",
+      "skills": [
+        "work-in-a-project",
+        "use-the-vault"
+      ],
+      "computer": false,
+      "auth": {
+        "vault": "claude-setup-token",
+        "fallback": "anthropic-api-key",
+        "budget_usd": 20
+      },
+      "model": "claude-opus-5-5",
+      "effort": "high"
+    },
+    {
+      "name": "kit",
+      "kind": "agent",
+      "role": "Marketing",
+      "projects": [
+        "harlow-legal",
+        "northwind-bakery",
+        "launch-site"
+      ],
+      "state": "working",
+      "thread": "t-kit-hero",
       "instructions": "Run marketing for Alex's clients and the Launch site. Write ad copy, audit campaigns, and draft the marketing section of each monthly report. Ask before spending money or publishing anything.",
-      "skills": ["write-a-watcher"], "computer": true,
-      "auth": { "vault": "claude-setup-token", "fallback": "anthropic-api-key", "budget_usd": 15 }, "model": "claude-sonnet-5" },
-    { "name": "pax", "kind": "agent", "role": "Bookkeeping", "projects": ["northwind-bakery"], "state": "working", "thread": "t-pax-invoices",
+      "skills": [
+        "write-a-watcher"
+      ],
+      "computer": true,
+      "auth": {
+        "vault": "claude-setup-token",
+        "fallback": "anthropic-api-key",
+        "budget_usd": 15
+      },
+      "model": "claude-sonnet-5",
+      "effort": "medium"
+    },
+    {
+      "name": "pax",
+      "kind": "agent",
+      "role": "Bookkeeping",
+      "projects": [
+        "northwind-bakery"
+      ],
+      "state": "working",
+      "thread": "t-pax-invoices",
       "instructions": "File every invoice that reaches billing into the right project, and post the week's total on Fridays.",
-      "skills": ["write-a-watcher"], "computer": false,
-      "auth": { "vault": "claude-setup-token", "budget_usd": 5 }, "model": "claude-haiku-4-5-20251001" }
-  ]
+      "skills": [
+        "write-a-watcher"
+      ],
+      "computer": false,
+      "auth": {
+        "vault": "claude-setup-token",
+        "budget_usd": 5
+      },
+      "model": "claude-haiku-4-5-20251001",
+      "effort": "low"
+    }
+  ],
+  "agents.create": {
+    "name": "new-agent",
+    "kind": "agent",
+    "state": "idle"
+  },
+  "agents.update": {
+    "ok": true
+  },
+  "agents.stop": {
+    "ok": true,
+    "stopped": 1
+  },
+  "agents.ask": {
+    "$by": "agent",
+    "cases": {
+      "juno": {
+        "thread": "t-juno-intake-summary",
+        "project": "harlow-legal"
+      },
+      "kit": {
+        "thread": "t-kit-hero",
+        "project": "launch-site"
+      },
+      "pax": {
+        "thread": "t-pax-invoices",
+        "project": "northwind-bakery"
+      },
+      "*": {
+        "thread": "t-new"
+      }
+    }
+  }
 }

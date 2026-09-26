@@ -33,6 +33,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - **Memory**: a map of each project's facts drawn as inline SVG, a list, and a fact panel with
   its source turns quoted from the threads they came from, pin, mute and forget (mute everywhere,
   with undo). Everything on it came from memory, so it is the one view where gold is the norm.
+- **Agents**: the assistant and every agent, a new-agent form that picks credentials by Vault
+  item name only, and the agent page: its job, what wakes it (watchers with on/off switches), its
+  model and effort, a way to talk to it (`agents.ask`), and its computer with the pool screen and
+  limits. Each part says which module is not running when it is missing.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
