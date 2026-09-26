@@ -8,12 +8,21 @@
 // three failures in a row pauses it and says so. An edit to the folder pauses it too, until it is
 // dry-run and created again.
 //
+// Three kinds of schedule: cron, "webhook" (vyred's /v1/watchers/<name>/hook, token-checked), and
+// "event": the watcher runs when an event of its `on` type is emitted whose payload matches its
+// `where`. For hook.received (core/hooks, an internet webhook through Funnel) the runtime reads the
+// delivery with hooks.delivery and hands it to the watcher, which stays in its sandbox and never
+// calls a tool itself.
+//
 // Time comes from `now()` and runs are started by `tick()`, so tests drive the clock by hand.
 
 import crypto from "node:crypto";
 import * as cron from "./cron.js";
 import * as folder from "./folder.js";
 import { runOnce, normalize } from "./run.js";
+
+/** Schedules that are not cron: nothing is due on a clock. */
+const PUSHED = new Set(["webhook", "event"]);
 
 /** Waits before the first and second retry. The third failure in a row pauses the watcher. */
 export const BACKOFF_MS = [30_000, 120_000];
@@ -73,7 +82,8 @@ export const MIGRATIONS = [`
  *   call: (tool: string, input: object) => Promise<{ data?: any, error?: any }>,
  *   fetch: (name: string, watcher: string, field?: string) => Promise<string>,
  *   teach: (kind: string, fact: object) => Promise<boolean>,
- *   log: (msg: string) => void, now?: () => number }} Deps
+ *   log: (msg: string) => void, now?: () => number,
+ *   listen?: (type: string, fn: (event: any) => void) => (() => void) }} Deps
  */
 
 export class Runtime {
@@ -84,8 +94,10 @@ export class Runtime {
     this.db = deps.db;
     /** @type {Map<string, Promise<any>>} runs in flight, one per watcher */
     this.running = new Map();
-    /** @type {Map<string, any[]>} webhook bodies that arrived during a run */
+    /** @type {Map<string, { trigger: string, hook: any }[]>} webhook bodies and events that arrived during a run */
     this.queued = new Map();
+    /** @type {Map<string, () => void>} event types listened for, for schedule "event" */
+    this.subs = new Map();
     this.stopping = false;
     this.abort = new AbortController();
   }
@@ -122,7 +134,8 @@ export class Runtime {
       const state = !f.hash && on ? "missing" : f.problems.length ? "invalid" : !on ? "draft"
         : f.hash !== r.hash ? "changed" : r.paused ? "paused" : "on";
       const schedule = f.spec?.schedule || r?.schedule || null;
-      out.push({ name, state, project: f.spec?.project || r?.project || null, schedule, every: schedule ? cron.describe(schedule) : null,
+      const every = schedule === "event" && f.spec ? describeOn(f.spec) : schedule ? cron.describe(schedule) : null;
+      out.push({ name, state, project: f.spec?.project || r?.project || null, schedule, every,
         next: on && !r.paused && r.next_at ? new Date(r.next_at).toISOString() : null,
         lastRun: r?.last_run ? new Date(r.last_run).toISOString() : null, lastError: r?.last_error || null, failures: r?.failures || 0,
         pausedWhy: r?.paused ? r.paused_why : null, items: Number(count.get(name)?.n || 0), problems: f.problems });
@@ -134,11 +147,16 @@ export class Runtime {
    * The dry run: once, from `since` (null by default), filing nothing. A success records the
    * folder's hash, which is what watchers.create will agree to turn on.
    */
-  async test(name, { since = null } = {}) {
+  async test(name, { since = null, event = null } = {}) {
     const f = folder.read(this.d.dir, name);
     if (f.problems.length) return { ok: false, name, problems: f.problems, dir: f.dir };
     const spec = /** @type {folder.Spec} */ (f.spec);
-    const res = await this.exec(f.dir, spec, since, null);
+    // An event watcher can be dry-run on a real event's payload (a hook.received from
+    // hooks.list), which must match its where, so a dry run cannot read another route's delivery.
+    if (event && (spec.schedule !== "event" || !folder.matches(spec.where, event))) {
+      return { ok: false, name, problems: [spec.schedule !== "event" ? "event is for a watcher that runs on an event" : `the event does not match where ${JSON.stringify(spec.where)}`], dir: f.dir };
+    }
+    const res = await this.exec(f.dir, spec, since, event ? await this.eventInput(/** @type {string} */ (spec.on), event) : null);
     this.record(name, "test", res, res.items.length, 0);
     if (res.error) return { ok: false, name, error: res.error, logs: res.logs, ms: res.ms };
     const now = this.now();
@@ -149,7 +167,7 @@ export class Runtime {
     return {
       ok: true, name, project: project ? project.slug : null,
       ...(project ? {} : { warning: `no project "${spec.project}"; watchers.create will refuse until it exists (vyre projects lists them)` }),
-      schedule: spec.schedule, every: cron.describe(spec.schedule), needs: spec.needs, count: res.items.length,
+      schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), needs: spec.needs, count: res.items.length,
       alreadyFiled: res.items.filter(i => filed.get(name, i.id)).length,
       items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed,
       ...(res.items.length ? {} : { note: "no items. That can be right (nothing new matches), or the filter or the parsing is wrong; the logs show what it saw" }),
@@ -164,15 +182,16 @@ export class Runtime {
     const project = await this.project(spec.project);
     if (!project) throw new Error(`no project "${spec.project}"; vyre projects lists them, and the watcher's project must be one of their slugs`);
     const now = this.now();
-    const hook = spec.schedule === "webhook";
+    const hook = spec.schedule === "webhook", pushed = PUSHED.has(spec.schedule);
     const token = hook ? r.token || crypto.randomBytes(24).toString("base64url") : null;
     // Turning on again after an edit keeps the cursor, so it carries on from where it was.
     this.db.prepare(`UPDATE watchers_watchers SET project = ?, schedule = ?, hash = ?, enabled = 1, paused = 0, paused_why = NULL,
       failures = 0, last_error = NULL, token = ?, next_at = ?, created_at = COALESCE(created_at, ?) WHERE name = ?`)
-      .run(project.slug, spec.schedule, hash, token, hook ? null : now, now, name);
+      .run(project.slug, spec.schedule, hash, token, pushed ? null : now, now, name);
     this.d.emit("watcher.created", { name, project: project.slug, schedule: spec.schedule }, { project: project.slug });
-    if (!hook) this.kick(name, "create");
-    return { name, project: project.slug, schedule: spec.schedule, every: cron.describe(spec.schedule), state: "on",
+    if (!pushed) this.kick(name, "create");
+    if (spec.schedule === "event") this.subscribe();
+    return { name, project: project.slug, schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), state: "on",
       ...(hook ? { hook: { method: "POST", path: `/v1/watchers/${name}/hook`, header: "x-vyre-token", token } } : {}) };
   }
 
@@ -190,7 +209,7 @@ export class Runtime {
     if (!r || !r.enabled) throw new Error(`${name} is not turned on; dry-run it with watchers.test, then watchers.create`);
     const { hash } = this.spec(name);
     if (hash !== r.hash) throw new Error(`${name} changed since it was turned on; run watchers.test and watchers.create again`);
-    const next = r.schedule === "webhook" ? null : cron.next(cron.parse(r.schedule), this.now());
+    const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());
     this.db.prepare("UPDATE watchers_watchers SET paused = 0, paused_why = NULL, failures = 0, next_at = ? WHERE name = ?").run(next, name);
     this.d.emit("watcher.resumed", { name }, { project: r.project });
     return { name, state: "on", next: next ? new Date(next).toISOString() : null };
@@ -235,23 +254,67 @@ export class Runtime {
 
   /**
    * Run a watcher now unless it is already running. A schedule that comes round mid-run is
-   * skipped; a webhook call mid-run is queued, because its body is the item and must not be lost.
+   * skipped; a webhook call or an event mid-run is queued, because it carries the item and must
+   * not be lost.
    */
   kick(name, trigger, hook = null) {
     if (this.stopping) return null;
     if (this.running.has(name)) {
-      if (trigger === "hook") { const q = this.queued.get(name) || []; q.push(hook); this.queued.set(name, q); }
+      if (trigger === "hook" || trigger === "event") { const q = this.queued.get(name) || []; q.push({ trigger, hook }); this.queued.set(name, q); }
       return this.running.get(name) || null;
     }
     const p = (async () => {
       await this.fire(name, trigger, hook).catch(e => this.d.log(`${name}: ${e.message}`));
       for (let q = this.queued.get(name); q && q.length && !this.stopping; q = this.queued.get(name)) {
-        await this.fire(name, "hook", q.shift()).catch(e => this.d.log(`${name}: ${e.message}`));
+        const next = /** @type {{ trigger: string, hook: any }} */ (q.shift());
+        await this.fire(name, next.trigger, next.hook).catch(e => this.d.log(`${name}: ${e.message}`));
       }
       this.queued.delete(name);
     })().finally(() => this.running.delete(name));
     this.running.set(name, p);
     return p;
+  }
+
+  // ------------------------------------------------------------------ events
+
+  /**
+   * Listen for every event type an event watcher that is turned on runs on. Once listened for, a
+   * type stays so until stop: an unused listener costs one query per such event, and nothing runs
+   * while no event comes.
+   */
+  subscribe() {
+    if (!this.d.listen || this.stopping) return;
+    const rows = this.db.prepare("SELECT name FROM watchers_watchers WHERE enabled = 1 AND schedule = 'event'").all();
+    for (const r of rows) {
+      const on = folder.read(this.d.dir, String(r.name)).spec?.on;
+      if (on && !this.subs.has(on)) this.subs.set(on, this.d.listen(on, e => { this.onEvent(e).catch(err => this.d.log(`event ${on}: ${err.message}`)); }));
+    }
+  }
+
+  /** An event came: run each watcher turned on for its type whose where matches its payload. */
+  async onEvent(event) {
+    if (this.stopping) return;
+    const rows = this.db.prepare("SELECT name FROM watchers_watchers WHERE enabled = 1 AND paused = 0 AND schedule = 'event'").all();
+    for (const r of rows) {
+      const name = String(r.name);
+      const spec = folder.read(this.d.dir, name).spec;
+      // A folder edited since it was turned on is caught by fire(), which pauses it; one whose
+      // type or where no longer fits this event is not run for it.
+      if (!spec || spec.on !== event.type || !folder.matches(spec.where, event.payload)) continue;
+      this.kick(name, "event", await this.eventInput(event.type, event.payload));
+    }
+  }
+
+  /**
+   * What an event watcher gets as `hook`: the event's type and payload, and for hook.received the
+   * delivery itself (headers and body), read here because the watcher cannot call tools.
+   */
+  async eventInput(type, payload) {
+    const input = { event: type, ...(payload && typeof payload === "object" ? payload : {}) };
+    if (type !== "hook.received") return input;
+    const r = await this.d.call("hooks.delivery", { id: String(payload && payload.id) });
+    if (r.error) { this.d.log(`hook.received ${payload && payload.id}: ${r.error.message}`); return { ...input, delivery: null }; }
+    return { ...input, delivery: r.data };
   }
 
   /** Wait for every run in flight. */
@@ -301,7 +364,7 @@ export class Runtime {
     } else if (fresh.length) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
 
     const cursor = res.cursor ?? started;
-    const next = r.schedule === "webhook" ? null : cron.next(cron.parse(r.schedule), this.now());
+    const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());
     this.db.prepare(`UPDATE watchers_watchers SET since = ?, failures = 0, last_run = ?, last_ok = ?, last_error = NULL, next_at = ? WHERE name = ?`)
       .run(JSON.stringify(cursor), started, started, next, name);
     this.record(name, trigger, res, res.items.length, fresh.length);
@@ -333,5 +396,17 @@ export class Runtime {
     this.db.prepare("DELETE FROM watchers_runs WHERE watcher = ? AND id <= (SELECT id FROM watchers_runs WHERE watcher = ? ORDER BY id DESC LIMIT 1 OFFSET 200)").run(name, name);
   }
 
-  async stop() { this.stopping = true; this.abort.abort(); await this.settle(); }
+  async stop() {
+    this.stopping = true;
+    for (const off of this.subs.values()) off();
+    this.subs.clear();
+    this.abort.abort();
+    await this.settle();
+  }
+}
+
+/** "on hook.received where route is northwind-orders". */
+function describeOn(spec) {
+  const w = spec.where ? Object.entries(spec.where).map(([k, v]) => `${k} is ${v}`).join(" and ") : "";
+  return `on ${spec.on}${w ? ` where ${w}` : ""}`;
 }

@@ -36,6 +36,69 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (`vyre call` through the host wrapper, `test/journey/rig.js` terminal), since the harness cannot
   reach the address as the owner. The fake box tailscale now names this account as its operator,
   so the journey also runs on Linux. Journeys 1 to 6 pass together, three runs in a row, on the test box.
+#### Tailnet: more of Tailscale, and still never a change to the tailnet (ADR 0014)
+
+- Vyre now knows how the box and a device reach each other. `link.health` says whether the
+  connection is direct or relayed, its latency and the last handshake. Each node is checked at
+  most once a minute and only when something asks, so it costs nothing while nobody looks. The
+  Deck's Network settings and the Capsule show "direct 12 ms" or "relayed via fra 80 ms", so a
+  slow screen has a visible reason.
+- Glass uses that answer. A viewer on a relayed or slow link gets at most five frame updates a
+  second at lower quality, and taps and keys still go through at once, so a phone on a relay sees
+  a steady picture instead of a stalled one.
+- Files go from the Mac to the box with Taildrop: `vyre send <file>` and `files.send`. Only what
+  the files guard passes is sent, so a key or an `.env` never leaves the Mac, and when Taildrop
+  cannot reach the box (a tagged box is the usual case) it says why. The box keeps one
+  `tailscale file get --loop` blocked in tailscaled, so idle costs nothing, and announces each
+  arrival in `files.inbox` as `files.received`. Nothing opens or runs a received file.
+- The box can share chosen folders with the paired Mac through Taildrive, so Finder and the
+  Capsule open box files where they live instead of pulling a copy. Only named shares that pass
+  the guard can be shared, and only by the owner. Vyre cannot edit the policy that decides who
+  reaches a share, so `files.drive.audit` checks it and reports any node that is not a paired Mac.
+  tailscaled now sees `/work`, read-only unless the owner opts in.
+- `vyre box add` and `vyre box move` reach a server on the tailnet over Tailscale SSH first, so no
+  key or password is needed, and fall back to the address as typed. A check-mode sign-in link is
+  shown on the terminal rather than hidden.
+- Onboarding and Settings explain Tailnet Lock and show the exact commands to turn it on from the
+  Mac, with the box's key filled in. Vyre only reads the lock's state and never turns it on or
+  signs anything, because those commands change the whole tailnet.
+- An agent's Chrome can send a chosen list of sites through the owner's Mac, off by default, for
+  sites that refuse a datacenter address. The box's own tailscaled never uses an exit node (that
+  would route everything); an optional sidecar (`box/compose.egress.yml`) does, in userspace, on
+  the computers network only. The listed sites have no direct fallback, so when the Mac is away
+  they fail instead of showing the box's address. Only the owner can change the list.
+- whois now carries a peer's tags and the app capabilities the tailnet policy grants it, through
+  one parser. Every feature below reads them; none writes them.
+- The box's tailnet listener tells three peers apart: the owner, a guest from another tailnet
+  (`tailnet-guest:<login>`) and an agent's own node (`tailnet:agent:<name>`). Tailscale machine
+  sharing used to leave a shared-in person at 403. A guest now reaches only the view-only tools
+  the owner listed or the policy granted, within a fixed safe set, and every other tool reads as
+  absent. A guest never approves, proves presence or pairs a device. Guests are off until the
+  owner turns them on with presence (`network.guests.*`, a new `network` module).
+- An agent's node still needs its agent key over the tailnet: whois proves which container, the key
+  proves which thread, and neither replaces the other.
+- The Vault can ask the tailnet policy before it relays. With `vault.relay.grants: "require"` a
+  relayed request also needs a `vyre.run/cap/vault` grant for its item. A grant only narrows: a
+  revoked or expired pass stays refused, and no grant shows a value. `vault.grants.status` shows
+  who the policy covers.
+- Each agent's computer can join the tailnet as its own ephemeral `tag:vyre-agent` node, off by
+  default. The key stays in the vault and goes only to a root-only tailnet port, never into the
+  container's env or computerd's port, which the agent's own user could take over. The image does
+  not carry that side yet, so turning it on reports why and sends nothing.
+- Signed webhooks from the internet through Funnel (`core/hooks`, `vyre hooks`), off by default,
+  one route at a time, on loopback only. Every route checks the sender's signature against a
+  vault secret. A verified delivery is stored and announced as `hook.received` without its body,
+  and can do nothing else: it never calls a tool. Watchers can now run on an event filtered by
+  payload, so a watcher on one route gets that route's deliveries. Vyre never runs
+  `tailscale funnel`; `vyre hooks status` prints the commands and flags mismatches.
+- Sharing a folder, adding a guest, opening a webhook route and the tailnet switches are on the
+  floor's human-only list, so no model can do them.
+- The Deck's Network settings show shares (with a check of who the policy lets in), webhooks,
+  guests, agent nodes and egress. Chat and Glass carry a connection dot. Onboarding shows the
+  HTTPS switch a ts.net address needs as plain steps, then offers Tailnet Lock. The Capsule sends
+  a file to the box with option-return.
+- `scripts/perf-check` waits for Memory's startup pass to finish before it measures idle, so a
+  slow start on a loaded host is no longer counted as idle CPU.
 
 #### The Capsule is Spotlight's size
 

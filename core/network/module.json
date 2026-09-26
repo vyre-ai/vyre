@@ -1,0 +1,12 @@
+{
+  "name": "network",
+  "version": "0.1.0",
+  "description": "Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools.",
+  "roles": ["box"],
+  "requires": [],
+  "does": { "tools": ["network.guests.list", "network.guests.add", "network.guests.remove", "network.guests.enable", "network.guests.check"] },
+  "watches": { "emits": ["guest.added", "guest.removed"] },
+  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "needs": {},
+  "teaches": {}
+}
