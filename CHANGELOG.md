@@ -61,6 +61,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
     and certificates, and restores them with traversal checks.
   - No Linux box was used: the Linux paths are proven by unit tests and a dry run against stub
     binaries.
+- `vyre up` moved to `core/cli/commands/up.js` and grew. It starts vyred, or restarts it when
+  it runs an older version or the wrong role; under systemd it lets `Restart=always` bring the
+  new code up. Then it prints:
+  - on a box: the onboarding link, plus the `ssh -N -L` line over SSH, or the address once
+    set up;
+  - on a Mac: the box it connects to.
+
+  `--box` makes a Mac the box, and `--connect <addr>` points a Mac at one. Also new:
+  `vyre up --system` / `vyre uninstall --system` (with `--dry-run`), `vyre name`, `vyre owner`,
+  `vyre backup`, `vyre restore` and `vyre daemon`.
 
 ### Shared core for the parallel workstreams (2026-09-26)
 
