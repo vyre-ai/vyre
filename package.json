@@ -10,7 +10,7 @@
     "node": ">=22.5"
   },
   "scripts": {
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\""
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\""
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^4.3.0"
