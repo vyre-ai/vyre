@@ -242,7 +242,13 @@ export class Registry {
    * Run a tool. Every call goes through the rules before it runs, whoever made it: Claude through
    * MCP, a surface through HTTP, or the CLI. That is the point of having one path.
    */
-  async call(tool, input = {}, caller = "unknown") {
+  /**
+   * @param {string} tool @param {any} [input] @param {string} [caller]
+   * @param {{ thread?: string, agent?: string }} [via] what vyred verified about the caller: the
+   *   live thread (session id) it is calling from, and the agent it is. A tool gets these beside
+   *   the caller; a claim in the input is not verified and must not be treated as if it were.
+   */
+  async call(tool, input = {}, caller = "unknown", via = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -255,7 +261,7 @@ export class Registry {
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await def.run(input, { caller }) }; }
+    try { return { data: await def.run(input, { ...via, caller }) }; }
     catch (e) { return { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
   }
 

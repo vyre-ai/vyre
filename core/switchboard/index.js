@@ -21,6 +21,7 @@ import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
 import { register as registerClaim } from "./claim.js";
+import { Sessions, SESSIONS_MIGRATION } from "./sessions.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +40,7 @@ export const MIGRATIONS = [
    );
    CREATE INDEX threads_asks_open ON threads_asks (state, at);
    CREATE TABLE threads_leases (thread TEXT PRIMARY KEY, surface TEXT NOT NULL, since INTEGER NOT NULL, beat INTEGER NOT NULL);`,
+  SESSIONS_MIGRATION,
 ];
 
 /** Partial text is sent at most this often per thread: 20 a second, not one event per token. */
@@ -95,6 +97,9 @@ export class Switchboard {
     this.bin = deps.bin || process.env.VYRE_CLAUDE_BIN || "claude";
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
+    /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
+    this.sessions = new Sessions(deps.db, { children: () => [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean),
+      ...(deps.isClaude ? { isClaude: deps.isClaude } : {}) });
   }
 
   /** Delete a thread's partial text up to a finished turn, after the grace. */
@@ -492,12 +497,17 @@ export default {
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" } } },
       run: async i => sb.launch(i),
     });
-    // For vyred only: is this caller the agent it names? See the route in core/daemon.
+    // For vyred only: is this caller the agent it names ({agent, key}), or in the session it names
+    // ({session, key})? See the route in core/daemon.
     ctx.tool("threads.vouch", {
-      description: "The live thread of this agent that holds this key, or null.", internal: true,
-      input: { type: "object", required: ["agent", "key"], properties: { agent: str, key: str } },
-      run: async i => ({ thread: sb.vouch(i.agent, i.key) }),
+      description: "The live thread of this agent, or this bound session, that holds this key; or null.", internal: true,
+      input: { type: "object", required: ["key"], properties: { agent: str, session: str, key: str } },
+      run: async i => ({ thread: i.agent ? sb.vouch(i.agent, i.key) : i.session ? sb.sessions.vouch(i.session, i.key) : null }),
     });
+    // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
+    tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",
+      { type: "object", required: ["session", "pid"], properties: { session: str, pid: { type: "integer" } } },
+      async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     return { async stop() { await sb.stopAll(); } };

@@ -84,6 +84,13 @@ with real Claude Code, not only a fake.
 - `threads.answer` declares `presence: { summary }`, agreed with `security`: identity says which agent,
   presence says a person is there. Both touch `route()` in core/daemon; theirs is a few lines.
 
+- The verified thread reaches tools (`run(input, {caller, thread, agent})`), for agent threads by
+  their key and for every other session through `threads.bind` from the SessionStart hook
+  (core/switchboard/sessions.js). gate.request files held items under it. A probe run on Claude Code
+  2.1.283 (haiku, /tmp/vyre-lab) showed the hook and the MCP server are both direct children of the
+  claude process. The hook gets `CLAUDE_PID` and the MCP server does not. Both get an undocumented
+  `CLAUDE_CODE_SESSION_ID`, which is fixed at spawn, so it is not used.
+
 ## Answers
 - gate-chat asked whether a tool called inside a thread can see its session id. Inside a thread the
   Switchboard started, yes: the child's env has `VYRE_THREAD=<session id>`, and the MCP server and
@@ -91,8 +98,7 @@ with real Claude Code, not only a fake.
   through MCP sees only its caller (`mcp:agent:<name>`), not the session. What does see it is the
   PreToolUse hook: `harness.rules` gets `session` for every tool call, MCP tools included, which is
   how `gate.route` gets it now. In an interactive terminal session nothing gives the MCP server the
-  session id. If a tool needs it, the cheap way is for vyred to pass the thread `threads.vouch`
-  already found to the tool as part of the verified caller; say so and it gets done.
+  session id. Now done: vyred passes the verified thread to every tool (see Done).
 
 ## Doing
 - Nothing. Waiting on review.
@@ -121,7 +127,10 @@ with real Claude Code, not only a fake.
 - MCP server caller: `mcp:agent:<name>` inside an agent's thread, otherwise `mcp`; hook caller
   `harness:agent:<name>` inside one, otherwise `harness`. Either is refused by vyred without the thread's
   key in `x-vyre-agent-key`. `callerKind` maps both to `mcp` / `harness`.
-- Internal `threads.vouch {agent, key}` -> `{thread}` or `{thread: null}`, for vyred's route.
+- Internal `threads.vouch {agent, key}` or `{session, key}` -> `{thread}` or `{thread: null}`, for vyred's route.
+- `threads.bind {session, pid}` (harness callers only) -> `{session, key}`. Headers `x-vyre-session` and
+  `x-vyre-session-key` on any request; a claim that does not check out is a 403.
+- Tools get `run(input, {caller, thread?, agent?})`; `registry.call` takes a fourth `via` argument.
 - Internal `threads.claimed {session}` -> `{headless, holder, status}`: true when the id is a live headless thread in
   this vyred; holder is the lease surface, else `agent:<name>`, else null. Internal `threads.contend {session}` emits
   `thread.contended {thread, session, holder}` only if the thread is still live (`core/switchboard/claim.js`).

@@ -45,7 +45,8 @@ test("gate: an agent's email is held, edited and approved by the user, and sent 
   const cli = as("cli"), local = as("local");
   // An agent's MCP server calls as "mcp:agent:juno" with its thread's key, which only the
   // Switchboard hands out; vyred refuses the name without it. So juno's calls go in-process.
-  const juno = (tool, input = {}) => d.registry.call(tool, input, "mcp:agent:juno");
+  // With it, vyred tells the tool which thread the call came from; that is what juno gets here.
+  const juno = (tool, input = {}) => d.registry.call(tool, input, "mcp:agent:juno", { thread: "t-1", agent: "juno" });
   assert.equal((await as("mcp:agent:juno")("gate.senders")).error.code, "denied", "no key, no agent");
   assert.equal(d.registry.status().find(m => m.name === "gate")?.state, "running");
 

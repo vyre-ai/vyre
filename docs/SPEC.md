@@ -214,7 +214,8 @@ export default {
     // ctx.memory     teach(kind, fact) — goes to the curator's queue
     // ctx.projects   read projects and threads
     // ctx.log        structured logging
-    // ctx.tool(name, { input, run })   register a tool declared in `does`
+    // ctx.tool(name, { input, run })   register a tool declared in `does`; run(input, { caller,
+    //                thread?, agent? }): thread and agent only when vyred verified them
     return { async stop() {} };
   },
 };
@@ -230,6 +231,11 @@ it as:
 - a **CLI command** `vyre <module> <tool>` when the manifest lists it under `shows.cli`.
 
 Every call passes through the Rules (section 11) before `run` executes.
+
+A tool learns where a call came from only from what vyred checked. `caller` is a claim. `agent`
+and `thread` are set when the caller proved them: an agent's thread by the key the Switchboard
+gave it, any other session by the key its SessionStart hook was given for its `claude` process.
+A thread named in the input is a claim like any other.
 
 ---
 

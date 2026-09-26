@@ -30,6 +30,7 @@ export function paths(root = home()) {
     modules: path.join(root, "modules"),
     watchers: path.join(root, "watchers"),
     logs: path.join(root, "logs"),
+    sessions: path.join(root, "sessions"),                  // a bound session's key, per claude pid (core/switchboard/sessions.js)
     socket: socketPath(root),
     pid: path.join(root, "vyred.pid"),
   };
