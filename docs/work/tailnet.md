@@ -40,24 +40,93 @@ skipped). The merged round-2 run is in "Doing".
 
 ## Doing
 
-- The targeted run on the merged branch. It was blocked by another session's loop that kills
-  every `node --test` process; rerun when it ends.
-- The surfaces agent is matching the Settings rows to the real `hooks.*`, `network.guests.list`
-  and `computers.tailnet.status` shapes.
+PAUSED on the user's order (27 Sep 2026): the Mac was overloaded. Nothing may run on the Mac
+(no tests, no node). When the lead sends the go, tests run on the test box, not the Mac.
+
+- All ten parts are merged into work/tailnet. **The merged branch has NOT been tested yet.** Each
+  sub-branch was green on its own (counts under Done), but the combined run was killed twice by
+  the lead's `node --test` enforcer and then paused. First thing on resume: the targeted run
+  below, `nice -n 15`, on the test box.
+- The surfaces sub-worktree (../vyre-tailnet-surfaces, branch work/tailnet-surfaces) has
+  uncommitted edits from its agent: matching the Settings Network rows to the real tool shapes
+  (see "Real shapes" below). Its agent was told to WIP-commit and stop. Merge it into work/tailnet
+  once it is committed. The other sub-worktrees are merged and removed.
+
+Targeted run for the merged branch (one command, from the worktree root):
+`nice -n 15 node --test core/presence/*.test.js core/harness/*.test.js core/files/*.test.js core/hooks/*.test.js core/watchers/*.test.js core/computers/*.test.js core/computers/driver/*.test.js core/computers/image/computerd/*.test.js core/dockerproxy/*.test.js core/vault/grants.test.js core/vault/presence.test.js core/vault/share.test.js core/vault/relay.test.js core/vault/module.test.js core/vault/surfaces.test.js core/names/*.test.js core/link/*.test.js core/glass/*.test.js core/config/*.test.js core/modules/*.test.js core/cli/*.test.js core/cli/commands/box.test.js core/memory/access.test.js core/gate/*.test.js test/link.test.js test/guests.test.js test/daemon.test.js test/presence-bypass.test.js test/onboard.test.js test/hygiene.test.js deck/js/health.test.js deck/glass/*.test.js local/capsule/lib/*.test.js`.
+Likely breakage: `files.drive.share` is now on the floor's human-only list (8cb5c6d), and its
+round-1 tests may call it without the `present` verifier from test/helpers.js.
+
+Real shapes the Deck must read (surfaces agent's fix):
+- `hooks.list` returns `{ enabled, host, port, listening, error?, routes: [{ name, path, verify: { scheme, header, secret }, opened, deliveries, recent, funnel: { open, close } }] }`.
+- `hooks.status` returns `{ routes, node, funnel: { read, why?, serving }, urls, mismatches: [{ kind, route?, harmless, message, fix }], commands, docker }`.
+- Switches are the tools `hooks.enable {on}` and `network.guests.enable {on}` (both need presence), not config edits. The CLI is `vyre hooks on|off|open|close|status`.
+- `network.guests.list` returns `{ enabled, safe, people: [{ login, tools, allowed }] }`.
+- `computers.tailnet.status` returns `{ enabled, tag, applies, problem?, vault: { item, exists, granted, why? }, computers: [{ agent, running, node, stableId }] }`.
 
 ## Next
 
-1. Real-data checks (SPEC section 14) on a signed-in box, none run yet (the test box the test box is
-   signed out, and only read-only checks are allowed there):
-   - Taildrive serving as the `vyre` user; `mount_webdav` against 100.100.100.100; the shape of
-     `tailscale.com/cap/drive` in whois.
-   - Taildrop `file get --verbose` line format; `TaildropTarget` for a tagged box.
-   - The peer-relay `ping` line.
-   - Egress: containerboot read-only with no capabilities, Chrome with a `data:` PAC over SOCKS5.
-   - Grants: a `vyre.run/cap/*` grant appearing in whois `CapMap`, including for a shared-in node.
-   - Funnel: the flags `--bg --https=8443 --set-path`, `funnel status --json` fields, path stripping.
-2. Part 9's image change, once decided.
-3. Capsule repackage (it runs a packaged app.asar).
+The lead's decisions of 27 Sep 2026, to build on resume, in this order:
+
+1. **link.health on the box: modules and the owner only.** In `core/link/box.js`, refuse
+   `tailnet-guest:*` and `tailnet:agent:*`, and any tailnet login that is not the owner. Today any
+   caller may ask about itself or a paired Mac. Add a test.
+2. **Taildrive:**
+   - Read-only by default, with a per-share read-write switch that needs presence: a tool
+     `files.drive.access { name, mode: "ro"|"rw" }`, added to HUMAN_ONLY.
+     `files.drive.shares` entries become `{ path, access }`.
+   - The compose mount stays read-only unless some share is rw. Write the exact `.env` step for
+     the user: `VYRE_DRIVE_ACCESS=rw` plus `docker compose up -d`.
+   - A share refuses any folder the files guard flags anywhere inside it (`.env`, keys, the
+     vault): scan it with the guard at share time, and again in `files.drive.audit`.
+   - Move the box's `projectsDir` to `/work/projects`, with a migration that moves existing
+     projects out of `vyre-home` and rewrites the paths the projects module stores. Coordinate
+     with the projects workstream (docs/work/projects.md).
+3. **Taildrop:** the box stays a tagged server. The user step is the file-sharing grant to the
+   box's tag (already under "Steps for the user"). Drop the "sign in as the owner" alternative.
+4. **Egress:**
+   - Renew with a Tailscale OAuth client (tag-scoped, no expiry): `VYRE_EGRESS_AUTHKEY` holds
+     `tskey-client-...?ephemeral=true&preauthorized=true`, with `--advertise-tags=tag:vyre-egress`.
+   - Only the computer that has egress turned on may use the proxy. Per-computer credentials,
+     handed out like the other bootstrap secrets (not in container Env), plus a network policy
+     if compose allows.
+   - Known limit to report: tailscaled's SOCKS5 server has no authentication, and Chrome sends no
+     SOCKS5 credentials. So the plan is a small authenticating front (an HTTP CONNECT proxy with
+     per-computer Basic credentials) in front of the sidecar's SOCKS5, answered through
+     hands-chrome's CDP (`Fetch.authRequired`), plus a source-address allowlist of
+     egress-enabled computers kept by the pool.
+   - Inside one computer, any process of the agent's user can still use that computer's
+     credential, because it owns Chrome's process. The lock is per computer, not per program.
+     Tell the lead before building if that limit is not acceptable.
+5. **Part 9's image change** (tini as root, a root-only tailnet side on 7001 with its own token,
+   `setpriv` down to uid 1000): waiting on the user; see Decisions needed.
+
+### Verify on first real run
+
+The lead runs these once the user signs the box into Tailscale during onboarding. Until then,
+only read-only checks on the test box.
+
+- **Taildrive:**
+  - tailscaled serves a share as the `vyre` user.
+  - `mount_webdav` works against 100.100.100.100:8080.
+  - The shape of `tailscale.com/cap/drive` in whois `CapMap`.
+  - The WebDAV path's tailnet segment.
+- **Taildrop:** the `file get --verbose` line format on 1.102, `TaildropTarget` for the tagged
+  box, and the file-sharing grant's exact form.
+- **Health:** the peer-relay `ping` line.
+- **Egress:** containerboot with `read_only` and `cap_drop: ALL`, in-memory state, an OAuth
+  client secret as the key, Chrome with a `data:` PAC over SOCKS5, and `docker compose config`
+  on both files.
+- **Grants:** a `vyre.run/cap/vault` or `vyre.run/cap/guest` grant appears in whois `CapMap`,
+  including for a shared-in node from another tailnet.
+- **Funnel:**
+  - The flags `--bg --https=8443 --set-path=...` and `off`.
+  - The `funnel status --json` fields.
+  - The proxy strips the mount path.
+  - Node attributes show in `Self.CapMap`.
+- **Agent nodes** (after the image change): a computer joins as `tag:vyre-agent`, and whois maps
+  it to its agent.
+- **Tailscale SSH:** `vyre box add` to a host with Tailscale SSH on, including check mode.
 
 ## Needs from others
 
@@ -72,18 +141,18 @@ skipped). The merged round-2 run is in "Doing".
 
 ## Decisions needed from the user
 
-1. Taildrive read-only (default) or read-write; refuse shares holding `.env` or keys; move the
-   box's `projectsDir` to `/work/projects`.
-2. Taildrop to a tagged box: sign the box in as the owner, or grant file sharing to its tag.
-3. Egress: the sidecar design, key renewal (keys expire; an OAuth client instead), and that any
-   process in any computer can reach the proxy.
+1. Decided (lead, 27 Sep): Taildrive read-only by default with a per-share rw switch behind
+   presence; shares refuse flagged folders; projectsDir moves to /work/projects. See Next 2.
+2. Decided: grant file sharing to the box's tag. See Next 3.
+3. Decided: sidecar kept, OAuth client for renewal, per-computer credentials. See Next 4 and its
+   limit.
 4. Agent nodes: the image change (tini as root, a root-only tailnet side on 7001 with its own
    token, `setpriv` down to uid 1000, which needs SETUID and SETGID at start), and whether that
    side proves itself before vyred sends the key.
 5. Guests: allow `threads.get`; narrow `threads.list` for guests; keep the tools in the new
    `network` module or rename them.
 6. Webhooks: keep dropping repeated bodies; per-route secret grants.
-7. `link.health` on the box: may any tailnet caller name any node, or only modules as now.
+7. Decided: `link.health` on the box answers modules and the owner only. See Next 1.
 8. Company tailnets: grants and guests trust whoever edits the policy; add an onboarding check
    that the owner alone edits it?
 
@@ -117,9 +186,8 @@ Then on the box: `vyre call --tty files.drive.share '{"name":"projects"}'`, and
 
 ### Taildrop (files to the box)
 
-Admin console, Settings: Send Files on. If the box is tagged, either sign it in as the owner
-(`tailscale up --force-reauth` with its existing flags) or grant file sharing to the tag; check
-the grant's exact form against Tailscale's Taildrop docs first:
+Admin console, Settings: Send Files on. The box stays a tagged server, so grant file sharing to
+its tag. The grant's exact form is checked on the first real run:
 
 ```json
 { "grants": [ { "src": ["autogroup:member"], "dst": ["tag:vyre-box"],
@@ -149,8 +217,9 @@ Save both disablement secrets in the Vault.
 ### Glass egress through the Mac
 
 1. On the Mac: Tailscale menu, Exit Node, Run as Exit Node.
-2. Admin console: Machines, alex-mac, Edit route settings, Use as exit node. Settings, Keys:
-   a reusable, ephemeral, pre-approved auth key tagged `tag:vyre-egress`.
+2. Admin console: Machines, alex-mac, Edit route settings, Use as exit node. Settings, OAuth
+   clients: Generate, scope Auth Keys (write), tag `tag:vyre-egress`. The client secret does not
+   expire, so nothing needs renewing.
 3. Policy:
    ```json
    {
@@ -158,7 +227,7 @@ Save both disablement secrets in the Vault.
      "grants": [ { "src": ["tag:vyre-egress"], "dst": ["autogroup:internet"], "ip": ["*"] } ]
    }
    ```
-4. On the box, in `/srv/vyre/.env` (not `vyre.env`): `VYRE_EGRESS_AUTHKEY=tskey-auth-...`,
+4. On the box, in `/srv/vyre/.env` (not `vyre.env`): `VYRE_EGRESS_AUTHKEY=tskey-client-...?ephemeral=true&preauthorized=true`,
    `VYRE_EGRESS_EXIT_NODE=alex-mac`, and `COMPOSE_FILE=box/compose.yml:box/compose.egress.yml`.
    Then `docker compose up -d` and
    `vyre call --tty computers.egress.set '{"enabled":true,"sites":["portal.northwind.example"]}'`.
