@@ -13,11 +13,29 @@ export function tempHome(t) {
   if (path.resolve(dir) === path.resolve(real)) throw new Error("a test tried to use the real ~/.vyre");
   const prev = process.env.VYRE_HOME;
   process.env.VYRE_HOME = dir;
-  t.after(() => {
+  t.after(async () => {
     if (prev === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = prev;
+    // A test that ran `vyre up` in a child process may still have that vyred running: after-hooks
+    // run in the order they were added, so this cleanup runs before the test's own `vyre down`.
+    // Deleting the home under a live vyred orphaned it (fourteen of them, found running). So stop
+    // any daemon this home started, unless it is this process (an in-process start()).
+    await stopDaemon(dir);
     fs.rmSync(dir, { recursive: true, force: true });
   });
   return dir;
+}
+
+/** Stop a vyred child process started in this home, and wait for it to exit. */
+async function stopDaemon(dir) {
+  let pid = 0;
+  try { pid = Number(fs.readFileSync(path.join(dir, "vyred.pid"), "utf8")); } catch { return; }
+  if (!pid || pid === process.pid) return;
+  try { process.kill(pid, "SIGTERM"); } catch { return; }
+  for (let i = 0; i < 50; i++) {
+    try { process.kill(pid, 0); } catch { return; }
+    await new Promise(r => setTimeout(r, 50));
+  }
+  try { process.kill(pid, "SIGKILL"); } catch {}
 }
 
 /** Write a module folder under root with the given manifest and entry source. */
