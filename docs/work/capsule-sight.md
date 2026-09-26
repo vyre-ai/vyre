@@ -67,6 +67,9 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
     ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
+- chat team: `recall.watch {session, from?}` + `session.turn` events (+ optional `session.state`) for
+  live terminal tabs in the session panel. Asked 2026-09-27; wire it up when it lands.
+- capsule-pro: answer on the SendAttaching Kit hook (screen chip in the main box).
 - capsule-pro: the native Capsule host (Sources/Host, UI) so the extension can run in the app.
   Until then the extension compiles and tests but does not run. Also asked of capsule-pro:
   `VyredLink.stream(path:)` for WebSocket streams (sight reuses the internal VySock today),
