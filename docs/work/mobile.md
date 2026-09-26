@@ -51,38 +51,48 @@ Small changes outside the scope, each through the owner's contract and listed be
 - apps/RELEASE.md: the owner's steps for real phones, TestFlight and Play.
 
 ## Doing
-- The phone redesign, Direction B (docs/design/phone.md on work/phone-design, f72456f), on both
-  apps in the spec's section 14 order: shell (pages, header, floating Capsule), Now's Needs you
-  with swipe, the detail sheet with Open session, the chat timeline, Find, Agents. One commit
-  per step, CI green each time; simulator and emulator screenshots after each.
-- iOS: runs in the simulator against the test world (6dc0d1a); next, move it to the PWA's
-  structure as Android did (e76224b).
-- Priority (lead, 27 Sep): the PWA (team pwa) ships first; native follows on the same API and
-  design. Tabs change to Now / Projects / Chat / Find / Agents with pull-down to Find, matching
-  the PWA; tokens from docs/design/TOKENS.md. Asked pwa where Files, Memory, Vault, Settings live.
-- CI (team ci): heavy builds move to GitHub Actions once live. iOS: apps/ios/scripts/build.sh
-  [test]; Android: ./apps/android/gradlew -p apps/android assembleDebug testDebugUnitTest.
-  CI is live (27 Sep): push work/mobile or `gh workflow run ios.yml|android.yml --ref work/mobile`;
-  the Mac is for simulator screenshots only. In repo text the server is "testbox".
+- The phone redesign (docs/design/phone.md on work/phone-design: B's shell, A's screens; latest
+  09115fa violet attention, no red; 59bcbcf the Changes row), on both apps in section 14 order.
+  - Android: step 1 shell 978abea, step 2 Now 0b7be19, both CI green. Next: the New agent sheet
+    (data/NewAgent.kt, NewAgentTest.kt in progress), then step 3.
+  - iOS: step 1 shell 704ba31 green, step 2 Now a54765b (CI was running at save). Next: the New
+    agent sheet (Screens/NewAgentSheet.swift, VyreTests/PresenceRetryTests.swift in progress).
+  - Screenshots of step 2 on both not taken yet: take them (one simulator, then one emulator,
+    against apps/test/world.js), send to lead and phone-design.
+- Subagents were stopped at save with WIP commits by path; read `git log --oneline -15`.
 
-How to run the phone against the test world (Mac, one emulator or simulator at a time):
-- `VYRE_NO_DIALOGS=1 node apps/test/world.js 4801`
-- iOS: simulator `vyre-mobile` (iPhone 17, iOS 26.5); install the build.sh app and launch with
-  `-VyreTestBox http://127.0.0.1:4800`.
-- Android: AVD `vyre-mobile` (android-34 google_apis arm64), headless
-  (`emulator -avd vyre-mobile -no-window -no-audio -no-snapshot`). The device key needs a
-  screen lock and a fingerprint: `adb shell locksettings set-pin 1111`, then the fingerprint
-  enroll screen with `adb emu finger touch 1` repeated. Install the debug APK and start with
-  `adb shell am start -n sh.vyre.app/.MainActivity -e sh.vyre.app.TEST_BOX http://10.0.2.2:4801`.
+How to run the phone against the test world (Mac, one emulator or simulator at a time, shut it
+down after):
+- `VYRE_NO_DIALOGS=1 node apps/test/world.js 4800` (4801 for Android).
+- iOS: download the CI artifact (`gh run download <ios run>`), simulator `vyre-mobile` (iPhone 17,
+  iOS 26.5), install Vyre.app, launch with `-VyreTestBox http://127.0.0.1:4800`, `-VyreTab`.
+- Android: AVD `vyre-mobile` headless (`emulator -avd vyre-mobile -no-window -no-audio
+  -no-snapshot`), it has PIN 1111 and fingerprint 1 enrolled (`adb emu finger touch 1`); install
+  the CI APK, start with `-e sh.vyre.app.TEST_BOX http://10.0.2.2:4801`.
+- Builds: CI only (push work/mobile, or `gh workflow run ios.yml|android.yml --ref work/mobile`).
 
 ## Next
-- Reply labels (user rule): the assistant's name (agents.list kind assistant, or system.info),
-  else "Vyre"; agents by name; the user as "you"; never "claude".
-- Screenshots of every screen on both platforms against the test world; perf numbers.
-- apps/RELEASE.md: real-device installs, TestFlight and Play Store steps for the user.
-- Share sheet in and out, Taildrop (tailnet team), widgets and Live Activities (later).
+1. Step 2 screenshots; the New agent sheet on both (agents.create in apps/CONTRACT.md).
+2. Step 3 the approval sheet, 4 Chat, 5 Find, 6 Agents, per phone.md.
+3. Use chat's contracts (work/chat 10604b9, once merged): ask anchors (anchor.event, or thread +
+   at; tool_use_id null for MCP) for Open session; questions (threads.asks kind question,
+   answers map); "Always in <project>" only when ask.always_project, threads.answer
+   {decision:"always", scope:"project"}; labels from system.info.assistant.name, null means Vyre.
+4. Colours: attention is violet (one asset swap, the user may pick honey or teal), no red or
+   system destructive styles; errors are text with a crossed circle and "failed"; destructive =
+   outline with a 0.6 s hold. Measure text contrast on real screens in both themes.
+5. Working needs a step total from the box for a determinate bar (gap, ask chat).
+- Later: share sheet, Taildrop, widgets, Live Activities.
 
 ## Needs from others
+- STANDING RULE (user, 27 Sep): Vyre must not nag. Face ID (device proof) only for pairing a new
+  device, vault secrets, and sending, posting or paying outside; one Face ID covers about 30
+  minutes. Creating or editing an agent needs NO Face ID: a person caller is enough. Keep the
+  presence_required retry as a harmless fallback.
+- daemon/onboard owner (via lead): `res.write(": open\n\n")` after flushHeaders in
+  core/daemon/index.js stream(), so iOS sees the SSE stream open at once. Tried on work/mobile:
+  it breaks test/onboard.test.js "unused link and an open page survive vyred restarting" (fetch
+  failed), so it was reverted; the owner must look.
 - lead and user: the push relay for store builds. Options and a recommendation are in the ADR
   0018 addendum (a relay inside the name directory). Until then push works with the owner's own
   APNs/FCM keys in the Vault.
