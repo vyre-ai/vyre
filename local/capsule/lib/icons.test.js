@@ -243,7 +243,7 @@ function pngHeader(file) {
   return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), colorType: b[25] };
 }
 
-test("icons: the real helper renders an app, an image and a settings pane at 64x64", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
+test("icons: the real helper renders an app, an image and a settings pane at 64x64", { skip: process.platform !== "darwin" ? "the helper is a Mac binary" : !fs.existsSync(REAL) && "bin/local not built" }, async t => {
   const base = tmp(t);
   const img = path.join(base, "red.png");
   fs.writeFileSync(img, makePng(40, 20));
