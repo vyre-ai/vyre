@@ -1,7 +1,7 @@
 # federation
 
 Branch: work/federation · Worktree: ../vyre-federation · Owner session: tailnet teammate ·
-Decisions: ADR number requested from the lead (0015 is capsule-sight)
+Decisions: [ADR 0021](../adr/0021-box-reads-the-mac.md)
 
 ## Scope
 
@@ -159,7 +159,7 @@ box.
 
 ## Needs from others
 
-- lead: an ADR number.
+- lead: ADR 0021 assigned (done).
 - deck: review the machine and offline chips, the read-only rule and the choices above (Task C).
 - projects, recall, switchboard owners: review the `machines` input and the row labels.
 
