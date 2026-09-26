@@ -27,6 +27,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `core/modules`: `ctx.vault.fetch` accepts any `per-<thing>` declaration, not only `per-watcher`,
   so the Gate (`per-sender`) and agents (`per-agent`) can fetch items named at run time.
 
+#### Chat
+
+- `modules/chat`: Mattermost as a surface over the same real sessions (section 9). A channel per
+  project and a thread per session; `thread.started`, finished text, what other surfaces typed,
+  `ask.raised` and `gate.held` become posts, and answered or released ones are patched in place
+  with their buttons gone. The owner's replies go to `threads.send` (taking the keyboard, and
+  saying who had it), a root post starts a session in that project, and buttons call
+  `threads.answer`, `gate.approve` and `gate.reject`. Editing a held draft is a Mattermost
+  interactive dialog filled with the draft, since that renders natively in the phone apps and a
+  plugin panel does not. `/vyre held|send|discard|new` covers the rest.
+- Why polling and not the websocket: no dependency, nothing to reconnect after Mattermost
+  restarts, and `since` turns a missed interval into a delay rather than a lost message.
+- Only the configured owner is obeyed. Every button carries its id and a per-install hook
+  secret, so a request that did not come from a post Chat made is refused even with a real id;
+  the slash token is compared in constant time. The bot token is a vault item fetched per
+  request through a thunk (the prototype's lesson), so it never sits in an object that gets
+  logged; a test checks it is absent from events, logs, status, tables and posts.
+- Unconfigured, Chat starts idle and `chat.status` names what is missing; Mattermost down is a
+  `failed` state that retries, never a failed vyred.
+- `package.json`: the test glob now includes `modules/**/*.test.js`.
+
 #### Learning
 
 - `core/learn`: lessons Vyre learns from corrections and enforces with hooks, so a lesson is code
