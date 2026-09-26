@@ -180,9 +180,13 @@
       }
     ]
   },
+  "onboard.passkey": {
+    "address": "https://alex.tail-example.ts.net",
+    "passkeyUrl": "https://alex.tail-example.ts.net/onboard/passkey#e=abc123"
+  },
   "onboard.finish": {
     "url": "https://alex.tail-example.ts.net",
     "thread": null,
-    "passkeyUrl": "https://alex.tail-example.ts.net/onboard/passkey#e=abc123"
+    "passkeyUrl": null
   }
 }

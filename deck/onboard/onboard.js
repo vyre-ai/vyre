@@ -376,13 +376,16 @@ const SCREENS = {
         put(note, h("p", { class: "notice" }, "From here the loopback link stops working. The rest of the setup continues at your address."));
         s.foot({ label: `Switch to ${r.url.replace(/^https?:\/\//, "")}`, run: async () => {
           await mark_("name", "done");
-          // onboard.finish hands back a passkey link only when it is called with the loopback
+          // onboard.passkey hands back a passkey link only when it is called with the loopback
           // session still good (box: caller onboard/cli/local, never a tailnet caller) — which
           // this is, one moment longer, and the https address after this redirect never will be:
           // the session lives in this origin's sessionStorage, and does not follow a page to a
-          // new origin. So the passkey detour is asked for here, before leaving, not at the end.
-          const f = await attempt("onboard.finish");
-          const next = f.data?.passkeyUrl || r.url.replace(/\/$/, "") + "/onboard#history";
+          // new origin. It changes nothing else (unlike onboard.finish, which marks onboarding
+          // finished and would end the loopback door before history/devices ever run), so the
+          // passkey detour is asked for here, before leaving; onboard.finish still runs once, at
+          // the real ending.
+          const p = await attempt("onboard.passkey");
+          const next = p.data?.passkeyUrl || r.url.replace(/\/$/, "") + "/onboard#history";
           location.href = next;
         } });
         return true;
