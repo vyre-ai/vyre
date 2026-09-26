@@ -198,6 +198,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- `memory.graph {project_cwds?, around?, depth?, limit?, since?, agent?}`: the graph as a floor
+  plan for the Deck. One room per project (from `projects.list`), a Shared room for the people
+  and organisations several projects have, and a No project room; entity, thread and fact nodes;
+  capped (entities, then taught facts, then two recent threads each); `around`/`depth` for one
+  node's neighbourhood. `updated` is a durable cursor (`memory_meta.graph_version`) that moves
+  when a derive writes something or a pin or mute changes; `since` returns `{unchanged: true}`.
+  `memory.curated` now carries `updated`.
+- Project graphs are strict (SPEC 7.4): with `project_cwds`, facts, relevant, why and the floor
+  plan use only that project's sessions and the lessons taught for it (or for everywhere). A
+  fact another client's sessions established is not shown, not cited as a source, not counted,
+  and not even found by name; a closing date only another project's sessions give is left off.
+  Folder matching is exact (it used SQL `LIKE`, which ignores case).
+- The main graph is for the user and the assistant. A named agent (in the caller as
+  `agent:<name>`, or `input.agent`) is checked against `agents.list`: an agent granted every
+  project sees it, any other sees only its projects' graphs, and when agents cannot be checked
+  it is refused. `memory.graph` without a scope is drawn only for the Deck, the CLI, modules and
+  verified all-projects agents. `memory.stats`, `curate`, `pin` and `mute` are guarded too.
+- Measured on a copy of a 108k-turn index with 12 projects: main graph 70ms, one project 150ms,
+  `around` 50ms, an unchanged poll under 1ms.
+
 - A taught fact can carry `project_cwds`, the project's folders. `memory.facts {project_cwds}`
   includes facts taught for that project (a folder equal to or under one asked for, the rule
   sessions follow) even when no session of the project names their subject, and leaves out
