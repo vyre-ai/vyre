@@ -311,7 +311,7 @@ export class Fill {
     try { f = await this.vault.fields(r); }
     catch (e) {
       const locked = /** @type {any} */ (e).code === "locked";
-      return refuse(locked ? 423 : 500, locked ? "vault_locked" : "internal", locked ? "the vault is locked · vyre vault unlock" : `could not open ${name}`);
+      return refuse(locked ? 423 : 500, locked ? "vault_locked" : "internal", locked ? String(/** @type {any} */ (e).message) : `could not open ${name}`);
     }
     const out = { username: f.username || "", password: f.password || "" };
     if (f.totp) {

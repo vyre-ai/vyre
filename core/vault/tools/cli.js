@@ -50,14 +50,8 @@ export async function register({ ctx, vault }) {
            CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL);`);
   const emit = (t, p) => ctx.events.emit(t, p);
 
-  /** Open an item's fields; a locked vault says so in words the CLI maps to exit 4. */
-  const open = async r => {
-    try { return await vault.fields(r); }
-    catch (e) {
-      if (/** @type {any} */ (e).code === "locked") throw Object.assign(new Error("the vault is locked · vyre vault unlock"), { code: "locked" });
-      throw e;
-    }
-  };
+  /** Open an item's fields; a locked vault says which one in words the CLI maps to exit 4. */
+  const open = r => vault.fields(r);
   const mustRow = name => { const r = vault.row(name); if (!r) throw new Error(`no item named ${name}`); return r; };
   const listed = name => vault.list({}).items.find(i => i.name === name);
 

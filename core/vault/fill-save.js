@@ -38,10 +38,10 @@ function gate(fill, h, action, name) {
   return { d, who, s, refuse };
 }
 
-/** The error a locked or unreadable item gives, without its message. */
+/** The error a locked or unreadable item gives. A locked message is the vault's own words; any other is dropped. */
 function openFailed(e, name) {
   const locked = /** @type {any} */ (e).code === "locked";
-  return locked ? [423, "vault_locked", "the vault is locked · vyre vault unlock"] : [500, "internal", `could not open ${name}`];
+  return locked ? [423, "vault_locked", String(/** @type {any} */ (e).message)] : [500, "internal", `could not open ${name}`];
 }
 
 /**
