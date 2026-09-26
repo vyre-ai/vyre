@@ -38,7 +38,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var keys: Any?
     private var clickAway: Any?
     private var observe: AnyCancellable?
-    private var top: CGFloat = 0
+    /// The panel's top edge, which stays put while it grows downward.
+    var top: CGFloat = 0
     private var hiddenAt = Date.distantPast
     var onShownChange: ((Bool) -> Void)?
     var extensions: ExtensionHost?
@@ -173,7 +174,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         return KeyShortcut(key, command: f.contains(.command), option: f.contains(.option), shift: f.contains(.shift), control: f.contains(.control))
     }
 
-    private func key(_ e: NSEvent) -> Bool {
+    /// One key while shown. Internal so the driven mode (Agent/Drive.swift) can press keys in this
+    /// window alone, never system-wide.
+    func key(_ e: NSEvent) -> Bool {
         // The waiting list and its cards take their keys first (Agent/PanelKeys.swift).
         if agentKey(e) { return true }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)

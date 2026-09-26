@@ -44,6 +44,15 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         makeStatusItem()
         followWaiting()
         wiring.attach(model)
+        wiring.requested = { [weak self] action in
+            guard let self else { return }
+            switch action {
+            case "hide": self.panel.hide()
+            case "toggle": self.panel.toggle()
+            default: if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
+            }
+        }
+        Drive.start(self)
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }
 

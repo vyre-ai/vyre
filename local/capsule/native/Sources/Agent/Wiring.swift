@@ -29,6 +29,9 @@ final class AgentWiring {
     let watches: Watches
     weak var model: CapsuleModel?
     private var subs: [VyredSubscription] = []
+    /// capsule.requested {action: show|hide|toggle}: vyred's capsule.show, from the CLI, the
+    /// assistant or a phone. The app opens or closes the panel.
+    var requested: ((String) -> Void)?
 
     init(home: String, vyred: VyredClient) {
         self.home = home
@@ -55,6 +58,7 @@ final class AgentWiring {
         model = m
         if dialogsAllowed() { clipWatcher.start() }
         subs = ["thread.*", "ask.raised"].map { p in vyred.on(p) { [weak self] e in self?.heard(e) } }
+        subs.append(vyred.on("capsule.requested") { [weak self] e in self?.requested?(VJ.nonEmpty(e.payload["action"]) ?? "show") })
     }
 
     func heard(_ e: VyredEvent) {

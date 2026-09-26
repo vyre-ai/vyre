@@ -81,3 +81,13 @@ test("capsule: a signature that does not verify fails the build", t => {
   assert.equal(bad.ok, false);
   assert.match(bad.message, /no resources/);
 });
+
+test("nativeAvailable: a Mac with the native source runs it, unless VYRE_CAPSULE=electron; vyre up counts it as installed", async () => {
+  const { nativeAvailable, NATIVE } = await import("./capsule.js");
+  const fsm = await import("node:fs");
+  const has = fsm.existsSync(path.join(NATIVE, "build.sh"));
+  assert.equal(nativeAvailable({ platform: "darwin", env: {} }), has);
+  assert.equal(nativeAvailable({ platform: "darwin", env: { VYRE_CAPSULE: "electron" } }), false);
+  assert.equal(nativeAvailable({ platform: "linux", env: {} }), false);
+  assert.equal(nativeAvailable({ platform: "darwin", env: {}, dir: "/nonexistent" }), false);
+});

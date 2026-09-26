@@ -80,6 +80,11 @@ function env({ own = false } = {}) {
   return e;
 }
 
+/** Whether `vyre capsule` runs the native Capsule here: a Mac, its source, and no Electron override. */
+export function nativeAvailable({ platform = process.platform, env = process.env, dir = NATIVE } = {}) {
+  return platform === "darwin" && env.VYRE_CAPSULE !== "electron" && fs.existsSync(path.join(dir, "build.sh"));
+}
+
 function helpersBuilt() { return fs.existsSync(path.join(CAPSULE, "bin", "hotkey")); }
 
 async function open(flags) {

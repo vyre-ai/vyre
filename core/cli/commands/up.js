@@ -233,7 +233,8 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     done = () => 0,
     openCapsule = async () => {
       const c = await import("./capsule.js");
-      if (!c.installed() && !c.packaged().bin && !c.electron()) return false;
+      // The native Capsule builds itself on first run, so its source is enough.
+      if (!c.nativeAvailable() && !c.installed() && !c.packaged().bin && !c.electron()) return false;
       return (await c.default.run([])) === 0;
     },
   } = /** @type {any} */ (deps);
