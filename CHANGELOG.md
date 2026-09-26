@@ -4,6 +4,74 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Learning: more signals, behaviour proposals, jobs, scope, metrics and skills (ADR 0007, decisions 6 to 10 and 12)
+
+- Check kinds `tool` (a tool or shell command ruled out, optionally `instead`), `path` (files
+  kept out of, held at PreToolUse on writes and on shell commands that write) and `after` (a
+  command that must run after changing matching files, checked at Stop in order). `paths` on any
+  check narrows it to files: a text check with paths applies to what is written there, not to
+  the reply. All work offline, where the order comes from the per-session counter.
+- `distill()` learns: an unquoted banned phrase ("never say circle back", "don't use the word
+  synergy"), "don't use sed -i", "never push to main", "use pnpm not npm" (and "don't use npm,
+  use pnpm"), "don't touch migrations/", "in docs never use X", "always run lint after editing
+  ts", "run X before Y", and the scope words "in this repo" and "everywhere". "run the tests
+  before we merge", "use the blue button not the red one" and other ordinary prompts do not
+  distill (negative tests).
+- Signals carry `key`, `project`, `agent` and `meta` (a migration on `learn_signals`): `repeated`
+  (the same key from 2+ sessions in 30 days), `rejected` (`gate.rejected`, kinds and ids only),
+  `reverted` and `rewritten` (sha256 of a file up to 256 KB before and after Claude writes it;
+  at the next prompt or Stop at most 20 recent writes are statted, then hashed only when mtime or
+  size moved; Claude's own git checkout or a command naming the file is not the user), `failed`
+  and `fixed` (a new internal `learn.observe`), `test-fix` and `untested` runs, `declined`
+  (PreToolUse saw it, Vyre did not hold it, no Post or PostFailure by Stop), `denied` and
+  `allowed` (`ask.answered`), and `corrected` (`memory.corrected`, counted per `prior_rule`, no
+  lesson for Claude). No signal keeps content: keys are hashes, meta holds shapes and kinds.
+- Behaviour becomes a proposal, never above ask: one file reverted in 2 sessions proposes a
+  `path` check at ask; one command shape declined or denied 3 times in 14 days with no allow
+  proposes a `tool` check at ask; tests failing, code changed and no test after it proposes an
+  `after` check at remind. Each is told once in the thread it came from, and a plain yes accepts
+  it there.
+- Jobs (`learn_jobs`): plain-words corrections (and a soft one said in two sessions) queue for
+  a model. `pump()` runs on events only: one at a time, 10 minutes apart, at most
+  `learn.distill.daily` (default 6) a day, never while a Switchboard thread is working, through
+  `threads.launch {model: "haiku", plugin: false, tools: "none", settings: false, once: true,
+  budget_usd: 0.05}`. The answer must be one JSON object; it is validated like a person's input
+  and only ever proposed (`source {kind: "model", job}`), replacing the plain-words proposal
+  while that still waits. Without the Switchboard jobs wait, capped at 200, and `vyre learn
+  signals` shows them to write by hand. New event `distill.finished {job, kind, ok, lesson,
+  skill}`.
+- Scope is inferred: a scope word, then the agent, then a project for path, after, before,
+  touched and tool checks, else everywhere; a key already said in another project widens to
+  everywhere and says so. Narrowing (a project, an agent, `paths`) is `learn.relax`; widening
+  back is `learn.edit`.
+- "use pnpm not npm", accepted, teaches Memory a `preference` (`subject: "the user"`, `rel:
+  prefers`, `key: lesson:<id>`) through `ctx.memory.teach`; retiring the lesson forgets it.
+- Metrics: `learn_days` (turns per day, project and agent) and `learn_lesson_days` (applied,
+  caught, broken, repeats). `learn.stats {id?}` returns `{before, after, escapes, attempts,
+  turns, verdict}`. A lesson quiet for 60 days and 200 turns in scope goes dormant (out of the
+  brief and reminders, still checked, `lesson.dormant`) and wakes on a catch; an ask lesson
+  allowed 5 times out of 5 emits `lesson.allowed` for the user to decide on a demotion.
+- Skills wired: steps recorded at Stop, the turn marked clean at the next prompt, a procedure
+  clean in 3 sessions proposed (a drafting job when the Switchboard answers, else the template).
+  New tools `learn.skills {status?}` (with drift), `learn.skill-install`, `learn.skill-retire`
+  (owner callers, presence) and `learn.skill-dismiss`. A retired skill's procedure is never
+  proposed again. The account plugin moved to `<home>/learned/account`, where the Switchboard's
+  `learnedDirs` already loads it. Skill events carry ids, counts and kinds only.
+- `learn.signals {kind?, since?, limit?}` (owner callers): signals without text, counts, repeats
+  by key, Memory corrections per rule, and jobs.
+- Retention: `learn_commands`, `learn_calls`, `learn_writes` and `learn_turns` keep 7 days,
+  pruned at start and at most hourly from Stop; daily from Stop, dormancy, old procedures (90
+  days), finished jobs (30 days) and metrics older than a year. No timers.
+- Harness: `harness.rules` passes `tool_use_id`; `harness.learn` also takes Bash and failures
+  (`ok: false`, `error_head`, `interrupted`) and calls `learn.observe`. `hooks.json` widens
+  PostToolUse to Bash and adds a PostToolUseFailure piece (`hook.js fail`), whose fields
+  (`tool_name, tool_input, tool_use_id, error, is_interrupt, duration_ms`) were read from Claude
+  Code 2.1.283 itself; the hook reads them tolerantly.
+- CLI: `vyre learn` gains an effect column; new `show`, `scope`, `relax`, `stats`, `signals`,
+  `skills [show|install|retire|dismiss]`.
+- Hook cost with 50 active lessons, in process: `harness.rules` p50 2.2 ms, p95 3.3 ms;
+  `harness.stop` p50 2.3 ms, p95 4.0 ms; `harness.enrich` p50 0.3 ms.
+
 #### Learning: enforcement that cannot be dodged (ADR 0007, decisions 8, 9, 11 and 12)
 
 - Project lessons now apply. `inScope` read `projects.of().project`, which does not exist, so a

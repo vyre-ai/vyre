@@ -79,13 +79,30 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   calls Learning, so requiring `harness` or `projects` would stop Learning with them. Each call
   already degrades to less when the module is absent.
 
+- ADR 0007 decisions 6 to 10 and 12 (commits 848d679, 3cd836f, 7e13da5): check kinds `tool`,
+  `path`, `after` and `paths` on any check, online and offline; nine new `distill()` shapes and
+  scope words, with negative tests; signals with key, project, agent and meta (repeated,
+  rejected, reverted, rewritten, failed, fixed, test-fix, untested, declined, denied, allowed,
+  corrected); behaviour proposals (path at ask, tool at ask, after at remind); `learn_jobs`
+  through `threads.launch` on events only; scope inference and widening; the `preference`
+  taught to Memory; `learn_days`, `learn_lesson_days`, `learn.stats`, dormancy and
+  `lesson.allowed`; skills wired end to end; `learn.signals`; retention; the CLI. 39 new tests
+  (`npm test`: 959, 0 failing).
+- Hook cost with 50 active lessons (in process, 360 rules calls and 30 Stops over 3 sessions with
+  real file writes): `harness.rules` p50 2.2 ms, p95 3.3 ms, max 9 ms; `harness.stop` p50 2.3 ms,
+  p95 4.0 ms; `harness.enrich` p50 0.3 ms.
+- PostToolUseFailure checked against the Claude Code 2.1.283 binary: it sends `tool_name,
+  tool_input, tool_use_id, error, is_interrupt, duration_ms`. The hook reads each field only if
+  present. Not yet seen end to end in a live session.
+
 ## Doing
 - Nothing; waiting for review.
 
 ## Next
-1. Turning free text into a check with a model, off the hot path, through the switchboard.
-2. Signals not read yet: reverted changes (`harness_files` plus git), and denials the user makes
-   in Claude Code's own prompt (hooks do not see those).
+1. A live headless check of PostToolUseFailure, declined calls and a revert, as was done for
+   the first lessons.
+2. A test-fix run is a signal, not yet a skill candidate "on its own shape" (ADR 10): it still
+   needs 3 clean sessions like any procedure.
 3. Seq is Learning's own turn count per session, not the transcript seq; line them up once
    Recall exposes it.
 4. Online, `learn.check` still orders commands against `harness.touched` by millisecond
@@ -93,8 +110,28 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
 5. Offline, nested projects: the snapshot carries only the folders of projects that have lessons,
    so in an inner project with none, the outer project's lessons apply offline (online they do
    not). Carry every project's folders if this matters.
+6. Declined is read only for Bash and file writes, the tools whose PostToolUse the Harness hears.
+   The "no allow" test for a declined shape uses allowed signals (14 days) and runs of that shape
+   in `learn_calls` (7 days, its retention).
+7. A revert is noticed when mtime or size moved; a same-size revert within one mtime tick is
+   missed. A command from another session's Claude (a git checkout there) still reads as the user.
 
 ## Needs from others
+- switchboard: agent threads should also load `<home>/learned/agents/<name>` (`learnedDirs`
+  loads the account's and the project's only). `threads.launch` is called with `once: true`
+  (the ADR says one-shot; there is no `oneshot` option) plus `plugin: false, tools: "none",
+  settings: false, model: "haiku", budget_usd: 0.05`. Learning reads a job's answer from
+  `thread.text {done: true}` and its end from `thread.stopped`, and treats `starting`, `working`
+  and `waiting` in `threads.list` as a user thread working; keep those stable.
+- harness install (`vyre harness install`): register `<home>/learned/account` as a plugin, per
+  ADR 10; skills.js now writes the account plugin there, matching the Switchboard.
+- memory: `ctx.memory.teach("preference", {subject: "the user", rel: "prefers", object: {name},
+  text, key: "lesson:<id>", project_cwds?, forget?})`; the curator must accept `prefers` from a
+  module (ADR 2 keeps extracted `prefers` off; this one is taught). Keep `memory.corrected`
+  `{id, action, rel, scope, prior_source, prior_rule, prior_confidence}` stable.
+- gate: Learning reads `gate.rejected {id, kind, via}` (never `reason`); keep those fields.
+- security: add `learn.skill-install` and `learn.skill-retire` to the presence floor list. The
+  ADR's `learn.skill_install` could not be used: the loader allows no underscore in a tool name.
 - security: accept by reply is a deliberate path around the `learn.accept` tool (ADR 0007); add
   `learn.relax` to the presence floor list; make the Registry honour the `presence` declaration.
   The guards here are asks; the floor's denies for `vyre learn accept|retire`, raw socket
@@ -106,6 +143,27 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   of agents' sessions, so lessons can be scoped to an agent.
 
 ## Changed contracts
+- New tools: internal `learn.observe {session, tool_use_id?, tool_name, ok, error_head?,
+  interrupted?, path?}`; `learn.signals {kind?, since?, limit?}` (owner callers) ->
+  `{signals, counts, repeats, corrected, jobs}`; `learn.stats {id?}` -> `{before, after,
+  escapes, attempts, turns, verdict, dormant}` (a list with no id); `learn.skills {status?}` ->
+  `{skills, drift}`; `learn.skill-install {id, scope?, private?, agent?}` and
+  `learn.skill-retire {id}` (owner callers, presence); `learn.skill-dismiss {id}` (owner).
+- New events: `lesson.dormant {lesson, level}`, `lesson.allowed {lesson, allowed, asked, level,
+  propose}`, `distill.finished {job, kind, ok, lesson, skill}`, `skill.proposed {skill, sessions,
+  scope: "all"|"project"}`, `skill.installed {skill, scope}`, `skill.retired {skill}` (skill
+  events no longer carry the name). `lesson.retired` may carry `replaced`.
+- Checks: kinds `tool {tool?, command?, instead?, label}`, `path {pattern, label}`, `after
+  {command, when?, label}`, and `paths` on any check. `atStop` takes `changes` and `commands`.
+- A lesson gains `key`, `accepted`, `dormant`. `learn_signals` gains `key, project, agent,
+  meta`. New tables `learn_writes`, `learn_calls`, `learn_jobs`, `learn_days`,
+  `learn_lesson_days`, and the skills tables. `learn_turns` gains `project`, `agent`.
+- `harness.rules` and `harness.learn` take `tool_use_id`; `harness.learn` takes `ok`,
+  `error_head`, `interrupted` and runs for Bash too. Hook piece `fail` (PostToolUseFailure).
+- Config: `learn.distill.daily` (default 6).
+- module.json: `does`, `watches`, `shows {deck: ["panel:memory/lessons"], capsule:
+  ["waiting:lesson.proposed"], cli: ["learn"]}` and `teaches {memory: ["preference"]}` per ADR
+  12. `requires` stays empty for the reason above.
 - New tools: `learn.lessons {status?}`, `learn.add {text | rule, when?, level?, scope?, check?}`,
   `learn.accept {id}`, `learn.edit {id, rule?, when?, level?, scope?, check?}`,
   `learn.retire {id}`, `learn.check {stage: "tool"|"stop"|"brief", ...}`, internal `learn.signal`.
