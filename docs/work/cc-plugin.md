@@ -48,6 +48,12 @@ Verified:
 - `statusline.sh` drains Claude Code's stdin when it is not chaining: exiting with it unread made
   the writer fail with EPIPE (seen once in the install test on the test box). Still 3.96 ms mean,
   4.44 ms p95 with a 600-byte stdin. The statusline cli test then passed 5 runs in a row.
+- Merged to main at c4bf9ea. Plain form from public main (205387e), temp config:
+  `claude plugin marketplace add vyre-ai/vyre`, `claude plugin install vyre@vyre`, the no-Vyre
+  line, `plugin:vyre:vyre` connected, `claude plugin uninstall vyre@vyre`: all pass.
+- docs/using/claude-code.md (work/docs 7421fb5) reviewed for accuracy; corrections sent to docs
+  (drop the local-path snag, backup only when settings.json exists, empty line while vyred is
+  down, the up offer only on a terminal).
 - A `vyre` on PATH that is not the Vyre package (the old prototype's bin/ on this Mac) is skipped,
   and the search goes on down PATH.
 - `claude plugin validate . --strict` and `claude plugin validate harness --strict` pass (2.1.283).
@@ -69,12 +75,10 @@ Perf:
 
 ## Doing
 
-- Nothing in progress. Queued to merge after work/connectors.
+- Nothing in progress. Merged; waiting on the docs team's corrected page.
 
 ## Next
 
-- After this branch merges to main: repeat the install with the plain `vyre-ai/vyre` form.
-- docs: a "Vyre in Claude Code" page; content sent to the docs team, waiting for their draft to review.
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 
 ## Needs from others
