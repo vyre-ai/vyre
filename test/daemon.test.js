@@ -123,7 +123,8 @@ test("daemon: stop is not held open by a connected event stream", async t => {
   await new Promise(r => setTimeout(r, 50));
   const t0 = Date.now();
   await d.stop();
-  assert.ok(Date.now() - t0 < 1000, "stop waited on the stream");
+  // Without the fix, stop() never returns; the bound is generous so a busy machine does not fail it.
+  assert.ok(Date.now() - t0 < 5000, "stop waited on the stream");
 });
 
 test("daemon: non-API paths serve the Deck and never anything outside deck/", async t => {
