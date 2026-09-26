@@ -67,8 +67,12 @@ certificate, and from off the tailnet it does not resolve to anything reachable.
 - `bb579ac` `vyre up` (link, ssh line, restart on upgrade, `--box`, `--connect`, `--system`),
   `vyre uninstall --system`, `name`, `owner`, `backup`, `restore`, `daemon`.
 
+- `f861c35` review fixes: tailnet POSTs must be same-origin JSON and Host is checked; socket
+  `x-vyre-caller` can no longer claim `module:*` or `tailnet:*`; the loopback session moved from
+  a cookie to the `x-vyre-onboard` header; self is checked by stable ID too.
+
 ## Doing
-- Security review of the listeners (subagent).
+- Waiting for a Linux box (Next 1).
 
 ## Next
 1. On a real Linux box: run the installer, then the socket unit and fd 3, `tailscale up` as
@@ -96,3 +100,7 @@ certificate, and from off the tailnet it does not resolve to anything reachable.
   `onboard.finished`, `name.claimed`, `name.released`, `certificate.issued`, `certificate.failed`,
   `owner.seen`, `owner.changed`.
 - Caller strings: `tailnet:<login>` for people on devices, `onboard` for the loopback page.
+  Socket `x-vyre-caller` is limited to `local`, `cli`, `harness`, `hook`, `mcp` and `capsule`.
+  Anything else is `local`, so a socket client cannot pose as a module.
+- Onboarding session: the redirect goes to `/onboard#s=<session>`, the page sends
+  `x-vyre-onboard`, and the event stream takes `?s=` (sent to deck).
