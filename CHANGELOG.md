@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat lists your Claude Code sessions and follows them live
+
+- Chat lists every Claude Code session on this machine (`projects.catalog`, from the transcripts)
+  merged with the Switchboard's headless threads (`threads.list`), one row per session. Before,
+  it listed only headless threads, so a project with three sessions read "No sessions".
+- A session the Switchboard never ran opens from its transcript (`recall.thread`) and follows it
+  live: Recall emits `session.indexed` for it after each turn, and the view reads only the new
+  turns. After a send adopts it, the view follows `thread.*` events instead, so no turn shows twice.
+- Recall indexes one session about 1.5 s after the harness reports `turn.completed` or
+  `thread.started` for it (`Indexer.session`), so no timer and no full pass is needed.
+- On a phone, /chat lists the projects and recent sessions, a project page has a Back link and its
+  name, and the session header's back arrow points left. The composer keeps one error note and
+  gives back the words a refused send held.
+
 #### Deck: Chat on the phone tab bar, Glass with no box, Memory loads at once
 
 - The phone tab bar has five tabs: Now, Projects, Chat, Ask and Agents. Ask has its own icon, and
