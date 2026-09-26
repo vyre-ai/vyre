@@ -8,6 +8,9 @@
 //
 //   testwin [--title T] [--x N --y N --w N --h N]
 //
+// stdin: JSON lines {"title":"x"} and {"label":"x"} change the window title and the label, and
+// {"focus":"password"} or {"focus":"name"} moves this window's first responder.
+//
 // Controls: a text field "Name", a secure field "Password", a button "Press me" that counts its
 // presses into the label "Pressed 0", a button "Send", and a text view with a known paragraph.
 
@@ -71,9 +74,21 @@ setvbuf(stdout, nil, _IOLBF, 0)
 let out: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier, "title": title, "windowNumber": win.windowNumber]
 if let d = try? JSONSerialization.data(withJSONObject: out), let s = String(data: d, encoding: .utf8) { print(s) }
 
-// Exit when the test goes away.
+// A test changes the window from its own side with JSON lines on stdin, {"title":"x"} or
+// {"label":"x"}, so the screen module's notification path can be exercised without touching the
+// person's focus or keyboard. The window exits when stdin closes, so a test that dies takes its
+// window with it.
 DispatchQueue.global().async {
-    _ = FileHandle.standardInput.readDataToEndOfFile()
+    while let line = readLine(strippingNewline: true) {
+        guard let d = line.data(using: .utf8), let o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
+        DispatchQueue.main.async {
+            if let t = o["title"] as? String { win.title = t }
+            if let l = o["label"] as? String { c.label.stringValue = l }
+            // First responder inside this window only; the app is never activated, so the
+            // person's keyboard focus stays where it was.
+            if let f = o["focus"] as? String { win.makeFirstResponder(f == "password" ? secret : name) }
+        }
+    }
     DispatchQueue.main.async { exit(0) }
 }
 app.run()
