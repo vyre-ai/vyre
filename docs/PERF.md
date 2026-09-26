@@ -27,6 +27,13 @@ other agent sessions concurrently — 39/40 samples read 0.00%. Needs a re-run o
 dedicated CI runner before trusting it as a hard gate; the script currently reports the raw
 max rather than a smoothed statistic. Flagged to `release`, budget itself was not relaxed.
 
+Confirmed with the host load: `perf-check` now prints `os.loadavg()` next to every result, and
+runs the daemon under `os.setPriority(child.pid, 10)` (best-effort, non-fatal if unsupported)
+so it doesn't compete with whatever else is on the box. Re-run at load average ~22-26 (several
+other teammates' test suites running concurrently): CPU mean 0.23% (pass), CPU max 8.58%
+(fail) — same shape as before, worse in magnitude at higher load, mean unaffected. This is
+host contention, not a regression; re-check on a quiet machine before trusting the max budget.
+
 `recall.vectors` is disabled in the perf-check's own daemon config — the embedder downloads
 weights over the network and costs real background CPU that doesn't fit a 60-90s check.
 Embedding-pipeline CPU/battery behavior needs a separate check later.
