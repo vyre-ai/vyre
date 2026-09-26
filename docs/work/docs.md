@@ -50,25 +50,31 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 - dcb7276 `VYRE_ALLOW_DIALOGS` described; config reference regenerated after main's dialog work.
 - On the test box: docs-check, docs-build, hygiene tests 34/34 pass. `build-docs`: 57 pages, 6 redirects,
   125 files, 3.5 MB, 305 ms.
+- ea49a4e `docs/known-gaps.md` and `> [!GAP]` callouts (renderer label "Known gap"); security
+  contact security@vyre.run (lead's decision). 23fc865 asset test no longer depends on hash order.
+- Cloudflare: the vault token (`CLOUDFLARE_API_TOKEN`, account token) reads and writes Pages.
+  Created project `vyre-docs` (production branch main, nothing deployed to production, no custom
+  domain). Preview deployed: https://preview.vyre-docs.pages.dev (branch `preview`).
 
 ## Doing
 
-- Waiting for the lead's review and sign-off, then the user's, before any public deploy.
+- Waiting for the user's yes on the preview (the lead shows it). Then: deploy `--branch main`,
+  attach docs.vyre.run. Not before.
 
 ## Next
 
 - `capsule.autostart` is read by the Capsule but missing from reference/config.md: teach
   gen-docs-reference to find config keys read outside core/config.
 - Deploy: Cloudflare Pages project `vyre-docs`, `npx wrangler pages deploy docs-site
-  --project-name vyre-docs --branch main`, custom domain docs.vyre.run. Needs a Cloudflare token
-  with Pages edit from the lead. Not before sign-off.
+  --project-name vyre-docs --branch main`, custom domain docs.vyre.run. Token is the vault's
+  CLOUDFLARE_API_TOKEN (source .env.vyre, never print it). Only after the user's yes.
 - Each team refines its seeded pages (owner field says whose).
 
 ## Needs from others
 
 - Every team: its pages, on the template, with each feature.
-- lead: sign-off on the site; a Cloudflare token for Pages; the public security contact
-  address (security/index.md shows security@example.com as a placeholder).
+- user (via lead): yes on the preview before production and the domain.
+- Gap owners (routed by the lead): each closes its section in known-gaps.md with the fix.
 - polish-surfaces / polish-cli: Deck Settings shows `vyre up --step ...`, which the CLI lacks.
   `watchers.pause` is called with `off: true` by the Deck, not in the tool's schema.
 - integrator: spec Section 5.3 says every tool call passes the Rules; vyred never passes a
