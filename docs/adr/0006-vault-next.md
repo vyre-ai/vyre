@@ -142,8 +142,8 @@ means the Touch ID wrap of section 2. This is weaker and the changelog says so.
 people see values after unlocking on their own device. The Deck board says nobody can read a
 value back. Reveal is the job of a password manager, so rule 8 becomes: *No value from the Vault
 appears on any screen, log or event, except to a person who has just proved presence on their
-own device, for that value.* The lead and the user decide this. Until they do, the Deck copies
-and fills but does not reveal.
+own device, for that value.* Decided: SPEC 11 rule 8 now reads this way, and the Deck and the
+Capsule reveal behind a presence proof, or a session one opened (`vault.caps` reports `reveal: true`).
 
 ### 4. The clipboard
 

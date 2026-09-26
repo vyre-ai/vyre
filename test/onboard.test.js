@@ -43,14 +43,16 @@ async function box(t, extra = {}) {
 }
 
 /** Exchange the one-time link for the session, the way the page does: from the redirect's fragment. */
+// Every request closes its connection: a test that restarts vyred on the same port would
+// otherwise send its next request down a kept-alive socket the old vyred already closed.
 async function redeem(url) {
-  const r = await fetch(url, { redirect: "manual" });
+  const r = await fetch(url, { redirect: "manual", headers: { connection: "close" } });
   const location = r.headers.get("location") || "";
   return { status: r.status, location, session: (location.match(/#s=([A-Za-z0-9_-]+)$/) || [])[1] || "", cookie: r.headers.get("set-cookie") };
 }
 
 const tool = (base, session, name, input = {}, headers = {}) => fetch(`${base}/v1/tools/${name}`, {
-  method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, ...headers }, body: JSON.stringify(input) });
+  method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, connection: "close", ...headers }, body: JSON.stringify(input) });
 
 test("onboard: the link works once, becomes a session, and the session reaches only the onboarding", async t => {
   const { root } = await box(t);
