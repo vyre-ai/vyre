@@ -15,7 +15,8 @@
 // user; a reply is sent back), block (a tool call is denied; a reply is sent back). A lesson
 // broken again moves up one level.
 
-import { distill, invalid, atStop, atTool, weakens } from "./checks.js";
+import { distill, fromEdit, invalid, atStop, atTool, weakens, sentBack, held, MAX_BLOCKS } from "./checks.js";
+import { writeSnapshot, drain } from "./offline.js";
 
 const MIGRATIONS = [
   `CREATE TABLE learn_lessons (
@@ -28,10 +29,11 @@ const MIGRATIONS = [
    CREATE TABLE learn_turns (session TEXT PRIMARY KEY, prompt TEXT, seq INTEGER NOT NULL, started INTEGER NOT NULL, blocks INTEGER NOT NULL, owed TEXT NOT NULL);
    CREATE TABLE learn_commands (session TEXT NOT NULL, command TEXT NOT NULL, at INTEGER NOT NULL);
    CREATE INDEX learn_commands_session ON learn_commands (session, at);`,
+  // told: whether the thread has been told about the lesson this signal proposed.
+  `ALTER TABLE learn_signals ADD COLUMN told INTEGER NOT NULL DEFAULT 0;`,
 ];
 
-/** How many times one turn is sent back before it is allowed to end with the lesson broken. */
-export const MAX_BLOCKS = 2;
+export { MAX_BLOCKS };
 const LEVELS = ["remind", "ask", "block"];
 
 const scopeSchema = { anyOf: [{ type: "string" }, { type: "object" }] };
@@ -96,7 +98,7 @@ export default {
       const to = l.broken + 1 >= 2 && from !== "block" ? LEVELS[LEVELS.indexOf(from) + 1] : from;
       bump.run(0, 0, 1, to, now(), l.id);
       ctx.events.emit("lesson.broken", { lesson: l.id, session: session || null, level: from }, { thread: session || undefined });
-      if (to !== from) ctx.events.emit("lesson.escalated", { lesson: l.id, from, to });
+      if (to !== from) { ctx.events.emit("lesson.escalated", { lesson: l.id, from, to }); snap(); }
       owe.push(l.id);
     };
 
@@ -114,6 +116,54 @@ export default {
     const touchedSince = async (session, since) => {
       const r = await ctx.call("harness.touched", { session, limit: 500 });
       return r && Array.isArray(r.data) ? r.data.filter(f => f.at >= since) : [];
+    };
+
+    // The hooks' copy of the accepted lessons, for when vyred is down (offline.js). Rewritten on
+    // every change; a home that cannot be written costs the offline checks, never a tool call.
+    const root = ctx.paths && ctx.paths.root;
+    const snap = () => {
+      if (!root) return;
+      try { writeSnapshot(root, active()); } catch (e) { ctx.log("lessons snapshot not written: " + /** @type {Error} */ (e).message); }
+    };
+    // What the hooks caught or saw broken while vyred was down, counted now, escalation included.
+    if (root) for (const e of drain(root)) {
+      const l = get(e.lesson);
+      if (!l || l.status !== "active") continue;
+      if (e.kind === "caught") {
+        bump.run(0, 1, 0, l.level, now(), l.id);
+        ctx.events.emit("lesson.caught", { lesson: l.id, session: e.session || null, stage: "offline" }, { thread: e.session || undefined });
+      } else if (e.kind === "broken") broke(l, e.session, []);
+    }
+    snap();
+
+    // Drafts the user edited before approving (the Gate). The event carries no content; gate.get
+    // gives the draft and what was sent. Only a summary is kept here, never the message itself.
+    const text = v => (typeof v === "string" ? v : v && typeof v === "object" ? String(v.body ?? v.text ?? "") : "");
+    const offEdit = ctx.events.on("gate.released", e => { edited(e).catch(err => ctx.log("edited draft not read: " + err.message)); });
+    const edited = async e => {
+      const p = e.payload || {};
+      if (!p.edited || p.id == null) return;
+      const r = await ctx.call("gate.get", { id: p.id });
+      const d = r && r.data;
+      if (!d) return;
+      const session = p.thread || e.thread || null;
+      const diff = d.diff || {};
+      const summary = `edited draft ${p.id}: ${(diff.removed || []).length} removed, ${(diff.added || []).length} added`;
+      const found = fromEdit(text(d.draft), text(d.final));
+      if (!found.length) {
+        db.prepare("INSERT INTO learn_signals (at, kind, session, seq, text, lesson) VALUES (?,?,?,?,?,NULL)").run(now(), "edited", session, null, summary);
+        return;
+      }
+      for (const f of found) {
+        const same = db.prepare("SELECT id FROM learn_lessons WHERE status IN ('active','proposed') AND check_json = ?").get(JSON.stringify(f.check));
+        let id = same ? same.id : null;
+        if (!same) {
+          const l = create({ ...f, scope: p.agent ? { agent: String(p.agent) } : "all", source: { kind: "edited", session, draft: p.id } }, "proposed");
+          id = l.id;
+          ctx.events.emit("lesson.proposed", { lesson: l.id, rule: l.rule, checked: true }, { thread: session || undefined });
+        }
+        db.prepare("INSERT INTO learn_signals (at, kind, session, seq, text, lesson, told) VALUES (?,?,?,?,?,?,?)").run(now(), "edited", session, null, summary, id, same ? 1 : 0);
+      }
     };
 
     const off = ctx.events.on("tool.held", e => {
@@ -141,6 +191,7 @@ export default {
         const l = create({ rule: rule || (d ? d.rule : String(text)), when: when || (d && d.when) || "always", level: level || (d ? d.level : undefined),
           scope, check: check !== undefined ? check : d ? d.check : null, source: { kind: "remember", session: session || null, text: text || rule } }, "active");
         ctx.events.emit("lesson.learned", { lesson: l.id, rule: l.rule, level: l.level, checked: Boolean(l.check) });
+        snap();
         return l;
       },
     });
@@ -154,6 +205,7 @@ export default {
         if (l.status !== "proposed") throw new Error(`lesson ${id} is ${l.status}`);
         db.prepare("UPDATE learn_lessons SET status = 'active', updated = ? WHERE id = ?").run(now(), id);
         ctx.events.emit("lesson.learned", { lesson: id, rule: l.rule, level: l.level, checked: Boolean(l.check) });
+        snap();
         return get(id);
       },
     });
@@ -171,6 +223,7 @@ export default {
           vals.push(k === "scope" ? JSON.stringify(change[k]) : k === "check" ? (change[k] ? JSON.stringify(change[k]) : null) : change[k]);
         }
         if (sets.length) db.prepare(`UPDATE learn_lessons SET ${sets.join(", ")}, updated = ? WHERE id = ?`).run(...vals, now(), id);
+        snap();
         return get(id);
       },
     });
@@ -182,6 +235,7 @@ export default {
         must(id);
         db.prepare("UPDATE learn_lessons SET status = 'retired', updated = ? WHERE id = ?").run(now(), id);
         ctx.events.emit("lesson.retired", { lesson: id });
+        snap();
         return get(id);
       },
     });
@@ -198,6 +252,13 @@ export default {
         const lines = [];
 
         const lessons = await inScope(active(), { cwd, agent });
+        // Lessons proposed from this thread's edited drafts, told once.
+        for (const sig of db.prepare("SELECT id, lesson FROM learn_signals WHERE kind = 'edited' AND session = ? AND told = 0 AND lesson IS NOT NULL").all(session)) {
+          const l = get(sig.lesson);
+          db.prepare("UPDATE learn_signals SET told = 1 WHERE id = ?").run(sig.id);
+          if (l && l.status === "proposed") lines.push(`The user edited a draft to take out what lesson ${l.id} forbids. Vyre drafted it, not yet in force: "${l.rule}" ${enforced(l)}`,
+            `Tell the user this in one line and ask whether to keep it. Only if they say yes, call the Vyre tool learn_accept with {"id": ${l.id}}.`);
+        }
         const late = owed.map(get).filter(l => l && l.status === "active");
         if (late.length) lines.push(`Last turn broke ${late.length === 1 ? "this lesson" : "these lessons"}. Keep ${late.length === 1 ? "it" : "them"} this turn.`, ...late.map(l => `- ${l.rule}`));
 
@@ -251,7 +312,7 @@ export default {
       if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.`, lesson: null };
       const t = turn(session, prompt_id);
       const last = (await touchedSince(session, 0))[0];
-      const ran = db.prepare("SELECT command FROM learn_commands WHERE session = ? AND at >= ?").all(session, last ? last.at : 0).map(r => r.command);
+      const ran = db.prepare("SELECT command FROM learn_commands WHERE session = ? AND at > ?").all(session, last ? last.at : -1).map(r => r.command);
       if (tool_name === "Bash" && typeof tool_input.command === "string") db.prepare("INSERT INTO learn_commands (session, command, at) VALUES (?,?,?)").run(session, tool_input.command.slice(0, 2000), now());
 
       const owe = JSON.parse(t.owed || "[]");
@@ -264,7 +325,7 @@ export default {
         bump.run(1, 1, 0, l.level, now(), l.id);
         ctx.events.emit("lesson.caught", { lesson: l.id, session: session || null, stage: "tool", tool: tool_name }, { thread: session || undefined });
         if (!verdict.decision || (verdict.decision === "ask" && l.level === "block")) {
-          verdict = { decision: l.level === "block" ? "deny" : "ask", reason: `Vyre lesson ${l.id}, which the user taught: ${l.rule} ${r.problem}`, lesson: l.id };
+          verdict = { decision: l.level === "block" ? "deny" : "ask", reason: held(l, r.problem), lesson: l.id };
         }
       }
       saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]) });
@@ -294,17 +355,14 @@ export default {
           ctx.events.emit("lesson.caught", { lesson: l.id, session: session || null, stage: "stop", attempt: t.blocks }, { thread: session || undefined });
         }
         saveTurn(t);
-        const reason = [`Vyre sent this turn back (${t.blocks} of ${MAX_BLOCKS}). ${back.length === 1 ? "A lesson" : "Lessons"} the user taught ${back.length === 1 ? "is" : "are"} broken:`,
-          ...back.map(({ l, problem }) => `- Lesson ${l.id}: ${l.rule} ${problem}`),
-          "Fix this now, then finish. Do not mention Vyre or this check unless the user asks."].join("\n");
-        return { decision: "block", reason, lessons: back.map(f => f.l.id) };
+        return { decision: "block", reason: sentBack(t.blocks, back), lessons: back.map(f => f.l.id) };
       }
       for (const { l } of failed) broke(l, session, owe);
       saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]) });
       return { decision: null, broken: failed.map(f => f.l.id) };
     };
 
-    return { async stop() { off(); } };
+    return { async stop() { off(); offEdit(); } };
   },
 };
 

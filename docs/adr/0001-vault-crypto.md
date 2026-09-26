@@ -133,14 +133,18 @@ Callers are `cli`, `local` (another client on the socket, such as the Deck), `mc
 
 | Tool | cli / local | mcp | module |
 |---|---|---|---|
-| `vault.put`, `vault.unlock`, `vault.approve`, `vault.inject` | yes | refused | refused |
+| `vault.put` | yes | refused | new items, or items it put itself; may grant only those |
+| `vault.unlock`, `vault.approve`, `vault.inject` | yes | refused | refused |
 | `vault.grant`, `vault.pass.create` | yes | pending until approved | refused |
 | `vault.list`, `vault.audit`, `vault.pass.list`, `vault.revoke`, `vault.pass.revoke`, `vault.offboard`, `vault.import`, `vault.identity`, `vault.pass.accept`, `vault.relay` | yes | yes | yes |
 | `vault.totp` | yes | refused | with a grant |
 | `vault.generate` | yes | only with `name` (stored, never returned) | refused |
 | `vault.release` | no (internal) | no | with a grant |
 
-Taking access away is always allowed; giving it needs a person. A tool a caller may not use is
+Taking access away is always allowed; giving it needs a person. The one exception is a module
+granting an item it put itself (onboarding storing the Claude credential for the switchboard):
+that reveals nothing the module did not already hold, and it cannot replace or grant anyone
+else's item. A tool a caller may not use is
 also left out of that caller's listing, so Claude is not offered `vault.put`.
 
 ### 7. Passes

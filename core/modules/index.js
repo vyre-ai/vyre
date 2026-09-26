@@ -122,11 +122,19 @@ export class Registry {
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       if (f.problems.length) { this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error: f.problems.join("; ") }); continue; }
+      // Two modules with one name: the first found wins (Vyre's own folders come before the
+      // user's), and the other is reported, never silently dropped. A user's module named like a
+      // core one once vanished without a word, and so did every tool it offered.
+      if (this.modules.has(name)) {
+        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid",
+          error: `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored` });
+        continue;
+      }
       const roles = f.manifest.roles || ["box", "local"];
       const on = !disable.includes(name) && (roles.includes(role) || enable.includes(name));
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
-    const candidates = found.filter(f => this.modules.get(f.manifest && f.manifest.name)?.state === "pending");
+    const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
     const { ordered, problems } = order(candidates);
     for (const [n, why] of problems) Object.assign(this.modules.get(n), { state: "failed", error: why });
     for (const f of ordered) await this.startOne(f);
@@ -208,8 +216,10 @@ export class Registry {
         // left out of every listing. vault.release is the reason this exists.
         // callers: the kinds of caller that may use it ("cli", "local", "mcp", "module"); a
         // tool is refused to, and left out of the listing for, any other. Omitted means all.
+        // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
+        // "hook"), and left out of every listing. The tool checks its own secret.
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal),
-          callers: Array.isArray(def.callers) ? def.callers : null });
+          callers: Array.isArray(def.callers) ? def.callers : null, hook: Boolean(def.hook) });
       },
     };
   }
@@ -222,6 +232,7 @@ export class Registry {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.callers && !def.callers.includes(callerKind(caller))) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
@@ -238,9 +249,9 @@ export class Registry {
     return [...this.modules.entries()].map(([name, r]) => ({ name, version: r.manifest && r.manifest.version, state: r.state, error: r.error }));
   }
 
-  /** Tools the given caller may use. Without a caller, every tool that is not internal. */
+  /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller) {
-    return [...this.tools.entries()].filter(([, d]) => !d.internal && (!caller || !d.callers || d.callers.includes(callerKind(caller)))).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
+    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || !d.callers || d.callers.includes(callerKind(caller)))).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
   }
 
   async stop() {

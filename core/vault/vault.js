@@ -254,7 +254,9 @@ export class Vault {
   // ---- grants and release ---------------------------------------------------------------
 
   grant({ name, module, watcher = "" }, caller) {
-    this.mustRow(name);
+    const item = this.mustRow(name);
+    // A module grants only items it put itself (index.js lets it do so only through vault.put).
+    if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
     const status = kindOf(caller) === "mcp" ? "pending" : "active";
     const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=?").get(name, module, watcher));

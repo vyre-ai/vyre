@@ -5,9 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { request, call } from "../core/daemon/client.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, writeModule } from "./helpers.js";
 
 test("daemon: answers health, lists the system module and runs its tools", async t => {
   const root = tempHome(t);
@@ -22,6 +23,9 @@ test("daemon: answers health, lists the system module and runs its tools", async
   assert.match((await call("system.info", {}, { root })).data.version, /^\d+\.\d+\.\d+/);
   const ev = (await request("GET", "/v1/events", undefined, { root })).data;
   assert.ok(ev.some(e => e.type === "system.started"));
+  // A surface follows the stream from here rather than replaying the whole log.
+  const last = (await request("GET", "/v1/health", undefined, { root })).data.last_event;
+  assert.equal(last, Math.max(...ev.map(e => e.id)));
 });
 
 test("daemon: bad tool input is a 400 with a readable message", async t => {
@@ -103,6 +107,17 @@ test("daemon: the event stream replays the backlog, then goes live, filtered by 
   assert.deepEqual(got.map(e => e.payload.n), [1, 3]);
 });
 
+test("daemon: since=latest skips the backlog and delivers only new events", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  d.events.emit("test", "thread.started", { n: 1 });
+  const pending = sse(d.paths.socket, "/v1/events/stream?since=latest&type=thread.*", 1);
+  await new Promise(r => setTimeout(r, 50));
+  d.events.emit("test", "thread.stopped", { n: 2 });
+  assert.deepEqual((await pending).map(e => e.payload.n), [2]);
+});
+
 test("daemon: stop is not held open by a connected event stream", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
@@ -112,7 +127,8 @@ test("daemon: stop is not held open by a connected event stream", async t => {
   await new Promise(r => setTimeout(r, 50));
   const t0 = Date.now();
   await d.stop();
-  assert.ok(Date.now() - t0 < 1000, "stop waited on the stream");
+  // Without the fix, stop() never returns; the bound is generous so a busy machine does not fail it.
+  assert.ok(Date.now() - t0 < 5000, "stop waited on the stream");
 });
 
 test("daemon: non-API paths serve the Deck and never anything outside deck/", async t => {
@@ -144,4 +160,14 @@ test("daemon: no client on the socket can claim to be a module", async t => {
   d.registry.tools.set("system.whoami", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, run: async (_, { caller }) => { seen = caller; return {}; } });
   await call("system.whoami", {}, { root, caller: "module:vault" });
   assert.equal(seen, "local");
+});
+
+test("daemon: a request cannot claim the hook caller to reach a webhook-only tool", async t => {
+  const root = tempHome(t);
+  writeModule(path.join(root, "modules"), "hooky", { does: { tools: ["hooky.in"] } },
+    `export default { async start(ctx) { ctx.tool("hooky.in", { hook: true, run: async () => ({ reached: true }) }); return {}; } };`);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const r = await request("POST", "/v1/tools/hooky.in", {}, { root, caller: "hook" });
+  assert.equal(r.error && r.error.code, "no_such_tool");
 });
