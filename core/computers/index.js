@@ -201,13 +201,14 @@ export default {
       async (i, { caller }) => keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller), caller),
       { presence: { summary: i => `Hand ${i && i.agent ? i.agent : "an agent"}'s computer back` } });
 
-    tool("computers.watch", "A one-use ticket (30 s) to open an agent's screen in Glass.", obj({ agent: str, surface: str }, ["surface"]),
+    tool("computers.watch", "A one-use ticket (30 s) to open an agent's screen in Glass. slow: the viewer's link is relayed or slow, so send fewer frames.",
+      obj({ agent: str, surface: str, slow: { type: "boolean" } }, ["surface"]),
       async (i, { caller }) => {
         const agent = await resolve(i, caller);
         const surface = await ownSurface(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
         await pool.allowed(agent);
-        const ticket = pool.ticket(agent, surface);
+        const ticket = pool.ticket(agent, surface, { slow: i.slow === true });
         const { w, h } = pool.size(agent);
         return { ticket, path: `/v1/streams/computers/glass?ticket=${encodeURIComponent(ticket)}`, width: w, height: h };
       });
