@@ -636,6 +636,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- With vyred down, the hidden Capsule looks for it every 3 s doubling to a minute (the event
+  stream's reconnect doubles to 30 s), not every 3 s forever; opening the Capsule looks at once.
+  Perf measured the steady retry at about 0.8% CPU hidden against a 0.2% budget.
 - Modules can offer the Capsule results and actions (`shows.capsule`, SPEC 5.1): `lib/providers.js`
   reads them from GET /v1/modules, which now carries each module's `shows`. Their results (names
   only, never a value) rank with the rest on the slow path; Enter runs the first action, → or ⌘K

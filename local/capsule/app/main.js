@@ -180,6 +180,7 @@ async function show(via, at = Date.now(), from = undefined) {
   const w = create();
   const refresh = bridge.refresh();
   launcher.warm().catch(() => {});
+  if (!stream && followTimer) follow();
   // Which modules offer results and actions changes rarely: read it on open, at most twice a minute.
   if (Date.now() - providersAt > 30_000) { providersAt = Date.now(); providers.refresh().catch(() => {}); }
   w.setBounds(place());
@@ -323,9 +324,21 @@ function startHotkey() {
 
 // ------------------------------------------------------------------ vyred
 
+// While vyred is down, look for it again soon at first, then less often: every 3 s doubling to a
+// minute while the Capsule is hidden (perf measured the steady 3 s retry at about 0.8% CPU hidden,
+// four times the budget). Opening the Capsule looks again at once.
+let followWait = 3000, followTimer = null;
 async function follow() {
+  clearTimeout(followTimer);
   const h = await vyred.get("/v1/health");
-  if (h.error) { await bridge.refresh(); setTimeout(follow, 3000); return; }
+  if (h.error) {
+    await bridge.refresh();
+    const shown = Boolean(win && !win.isDestroyed() && win.isVisible());
+    followTimer = setTimeout(follow, shown ? 3000 : followWait);
+    followWait = Math.min(followWait * 2, 60_000);
+    return;
+  }
+  followWait = 3000;
   // From now. The waiting list is read whole by refresh(); the stream only adds to it.
   stream = vyred.stream({
     since: h.data.last_event || 0,

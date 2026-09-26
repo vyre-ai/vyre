@@ -65,13 +65,17 @@ export function client(socket = socketPath()) {
 export function stream(socket, { since = 0, type = "*", onEvent, onState = () => {}, retryMs = 1500 }) {
   let cursor = since, stopped = false, req = null, timer = null, state = "";
   const say = s => { if (s !== state) { state = s; onState(s); } };
-  const retry = () => { if (stopped) return; say("down"); clearTimeout(timer); timer = setTimeout(connect, retryMs); };
+  // Reconnect soon, then less often while vyred stays away: doubling to 30 s, back to the start
+  // once a connection opens. A steady fast retry costs CPU all day on a Mac where vyred is off.
+  let wait = retryMs;
+  const retry = () => { if (stopped) return; say("down"); clearTimeout(timer); timer = setTimeout(connect, wait); wait = Math.min(wait * 2, 30_000); };
   function connect() {
     if (stopped) return;
     req = http.get({ socketPath: socket, path: `/v1/events/stream?type=${encodeURIComponent(type)}&since=${cursor}`,
       headers: { accept: "text/event-stream", "x-vyre-caller": "capsule" } }, res => {
       if (res.statusCode !== 200) { res.resume(); return retry(); }
       say("open");
+      wait = retryMs;
       res.setEncoding("utf8");
       let buf = "";
       res.on("data", chunk => {
