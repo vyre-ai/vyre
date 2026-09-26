@@ -221,7 +221,8 @@ export function names(deps) {
       ctx.events.emit("owner.seen", {});
     }
     if (!handle) handle = ctx.handler({});
-    return handle(req, res, `tailnet:${who.login}`);
+    // The peer rides beside the caller, for tools that bind to a device (link.pair); never in input or events.
+    return handle(req, res, `tailnet:${who.login}`, { node: who.node, stableId: who.stableId || null, login: who.login });
   }
 
   async function serve() {

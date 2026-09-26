@@ -29,7 +29,7 @@ test("identity: only tailnet addresses are looked up", () => {
 
 test("identity: the owner on another device is served; everyone else is refused", async () => {
   const { id, lookups } = make();
-  assert.deepEqual(await id("::ffff:100.101.1.2"), { ok: true, login: "alex@example.com", node: "phone.example.ts.net", why: "owner" });
+  assert.deepEqual(await id("::ffff:100.101.1.2"), { ok: true, login: "alex@example.com", node: "phone.example.ts.net", stableId: null, why: "owner" });
   assert.equal((await id("100.101.1.3")).why, "not the owner");
   assert.equal((await id("100.101.1.4")).why, "a tagged node, not a person");
   assert.equal((await id("100.101.1.9")).why, "tailscale does not know this address");

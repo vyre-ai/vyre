@@ -32,7 +32,7 @@ export function isTailnet(ip) {
  * Build the identify function a listener calls once per connection.
  * @param {{ whois: (ip: string) => Promise<{ login: string|null, tagged: boolean, node: string } | null>,
  *   selfIps: () => string[], selfId?: () => string|null, owner: () => string|null, ttl?: number, now?: () => number }} deps
- * @returns {(ip: string) => Promise<{ ok: boolean, login: string|null, node: string|null, why: string }>}
+ * @returns {(ip: string) => Promise<{ ok: boolean, login: string|null, node: string|null, stableId?: string|null, why: string }>}
  */
 export function identifier({ whois, selfIps, selfId = () => null, owner, ttl = 60_000, now = Date.now }) {
   /** @type {Map<string, { at: number, who: any }>} */
@@ -54,7 +54,7 @@ export function identifier({ whois, selfIps, selfId = () => null, owner, ttl = 6
     if (me && who.stableId === me) return { ok: false, login: null, node: who.node, why: "from this box itself" };
     if (who.tagged || !who.login) return { ok: false, login: null, node: who.node, why: "a tagged node, not a person" };
     const o = owner();
-    if (o && who.login.toLowerCase() === o.toLowerCase()) return { ok: true, login: who.login, node: who.node, why: "owner" };
+    if (o && who.login.toLowerCase() === o.toLowerCase()) return { ok: true, login: who.login, node: who.node, stableId: who.stableId || null, why: "owner" };
     return { ok: false, login: who.login, node: who.node, why: o ? "not the owner" : "no owner yet" };
   };
 }
