@@ -111,7 +111,15 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func height() -> CGFloat {
         var h = Theme.barHeight
-        if model.asked != nil { h += 1 + (model.replyText.isEmpty ? 64 : min(300, 64 + CGFloat(model.replyText.count / 80 + 1) * 19)) }
+        if model.asked != nil {
+            h += 1 + 12 + 30 + 22 + 12
+            if let m = model.askedMemory { h += MemoryBox.height(m) + 4 }
+            if model.reply?.queued != nil { h += 22 }
+            if !model.replyText.isEmpty { h += min(240, CGFloat(model.replyText.split(separator: "\n", omittingEmptySubsequences: false).reduce(0) { $0 + $1.count / 78 + 1 }) * 19) }
+            if model.reply?.finished == true, model.reply?.error != nil { h += 18 }
+            if let n = model.reply?.notice, !n.isEmpty { h += 22 }
+        }
+        if model.showsMemory, let m = model.memory { h += 1 + MemoryBox.height(m) }
         if !model.groups.isEmpty { h += 1 + CapsuleLayout.resultsHeight(model.groups) }
         if let l = model.line, !l.isEmpty { h += 31 }
         return h

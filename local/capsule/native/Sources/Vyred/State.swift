@@ -220,6 +220,10 @@ public enum VyState {
         if r.cancelled || e.thread != r.thread { return r }
         let p = e.payload
         var x = r
+        // A notice is vyred talking (a usage limit), not the model: status, never the answer.
+        if e.type == "thread.text" && VJ.truthy(p["notice"]) { x.notice = s(p["text"]); return x }
+        // Words queued for a session busy in a terminal reached it (the Harness handed them over).
+        if e.type == "thread.sent" && p["queued"] != nil && !(p["queued"] is NSNull), x.queued != nil { x.queued?.delivered = true; return x }
         switch e.type {
         case "thread.text":
             let id = VJ.nonEmpty(p["message"]) ?? "m"
@@ -501,7 +505,18 @@ public struct Reply: Sendable, Equatable {
     public var cancelled = false
     public var model: String?
     public var memory: ReplyMemory?
+    /// The newest notice from vyred itself, drawn as one faint line under the answer.
+    public var notice: String?
+    /// Words queued for a session busy in a terminal, until the Harness hands them over.
+    public var queued: QueuedSend?
     public init(thread: String) { self.thread = thread }
+}
+
+public struct QueuedSend: Sendable, Equatable {
+    public var name: String
+    public var note: String?
+    public var delivered = false
+    public init(name: String, note: String? = nil) { self.name = name; self.note = note }
 }
 
 public enum DmRole: String, Sendable, Equatable { case user, agent }

@@ -27,6 +27,10 @@ public final class CapsuleModel: ObservableObject {
     @Published public private(set) var reply: Reply?
     @Published public private(set) var asked: String?
     @Published public private(set) var pending = false
+    /// What memory says about the words in the box (recall.search and memory.relevant), or nil.
+    @Published public private(set) var memory: MemoryAnswer?
+    /// What memory showed for the question that was asked, kept beside its reply.
+    @Published public private(set) var askedMemory: MemoryAnswer?
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
 
@@ -39,6 +43,7 @@ public final class CapsuleModel: ObservableObject {
     private var token = 0
     private var partial: [String: [ResultItem]] = [:]
     private var replySub: VyredSubscription?
+    private var recallTask: Task<Void, Never>?
     /// Asked to close the panel (an action finished with .close).
     public var onClose: ((String?) -> Void)?
     /// Asked to step aside for the front app.
@@ -76,7 +81,7 @@ public final class CapsuleModel: ObservableObject {
     /// A fresh open starts with an empty box, unless a reply is still streaming.
     public func reset() {
         if let r = reply, !r.finished { return }
-        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil
+        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil
         replySub?.cancel(); replySub = nil
     }
 
@@ -89,6 +94,7 @@ public final class CapsuleModel: ObservableObject {
         confirming = nil
         partial = [:]
         let q = Query(text, front: front)
+        recall(q.text, token: t)
         if q.normalized.isEmpty { groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [c] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
@@ -195,6 +201,37 @@ public final class CapsuleModel: ObservableObject {
         return true
     }
 
+    // MARK: memory
+
+    /// Whether the memory box sits above the results: it has something, and the words read as a
+    /// question or nothing on this Mac matches them well.
+    public var showsMemory: Bool {
+        guard asked == nil, let m = memory, !m.isEmpty, m.text == text.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return Route.asksQuestion(m.text) || !(flat.contains { $0.score >= 0.6 && $0.kind != "ask" })
+    }
+
+    /// Memory first: what the user already said, on this Mac, with no model. Asked a moment after
+    /// typing stops, and only while vyred is up; an answer for older words is dropped.
+    func recall(_ raw: String, token t: Int) {
+        recallTask?.cancel()
+        let words = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if memory?.text != words { memory = nil }
+        guard words.count >= 3, vyred.isUp, vyred.has("recall.search") || vyred.has("memory.relevant") else { return }
+        let scratch = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask").path
+        recallTask = Task { @MainActor [vyred] in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            if Task.isCancelled || t != self.token { return }
+            let t0 = vyNowMs()
+            async let facts = vyred.call("memory.relevant", ["text": words, "limit": 3], presence: false)
+            async let hits = vyred.call("recall.search", ["q": words, "limit": 10, "per_session": 1], presence: false)
+            let (f, h) = await (facts, hits)
+            if Task.isCancelled || t != self.token { return }
+            var m = Memo.fold(text: words, facts: (f.data as? [[String: Any]]) ?? [], hits: (h.data as? [[String: Any]]) ?? [], scratch: scratch)
+            m.ms = max(1, vyNowMs() - t0)
+            self.memory = m
+        }
+    }
+
     // MARK: asking
 
     func ask(_ words: String) async -> ActionOutcome {
@@ -204,6 +241,9 @@ public final class CapsuleModel: ObservableObject {
             return .failed("Could not make the Capsule's folder: \(error.localizedDescription)")
         }
         asked = words
+        // What memory showed for these same words goes with the question, and only that.
+        askedMemory = memory?.text == words && !(memory?.isEmpty ?? true) ? memory : nil
+        let append = Memo.append(askedMemory)
         pending = true
         reply = nil
         replySub?.cancel()
@@ -216,7 +256,7 @@ public final class CapsuleModel: ObservableObject {
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
         let name = "Capsule: " + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
-        let r = await vyred.call("threads.start", ["prompt": words, "append": Bridge.quickAppend, "lean": true, "model": "haiku",
+        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": "haiku",
                                                    "cwd": dir.path, "surface": "capsule", "name": name], presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
