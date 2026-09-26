@@ -20,7 +20,10 @@ Object.assign(globalThis, {
 });
 /** Where go() sent the page. */
 const went = [];
-Object.defineProperty(globalThis, "history", { value: { pushState: (_s, _t, url) => went.push(url) }, configurable: true, writable: true });
+/** Where the folder browser moved the address to without navigating. */
+const replaced = [];
+Object.defineProperty(globalThis, "history", { value: { state: null, pushState: (_s, _t, url) => went.push(url), replaceState: (_s, _t, url) => replaced.push(url) },
+  configurable: true, writable: true });
 
 /** A fake vyred: answers by tool name, records every call. */
 function vyred(answers) {
@@ -173,7 +176,7 @@ test("folders: recent first, then the roots' folders with badges; keys open, sta
   press("Enter");
   await tick(); await tick();
   assert.deepEqual(api.of("files.dirs").at(-1)?.input, { path: "/work/harlow-legal" });
-  assert.deepEqual(went.at(-1), "/chat?folders&at=%2Fwork%2Fharlow-legal");
+  assert.deepEqual(replaced.at(-1), "/chat?folders&at=%2Fwork%2Fharlow-legal");
   assert.deepEqual($$(box, ".fb-row .fb-name").map(text), ["briefs"]);
   assert.deepEqual($$(box, ".fb-crumb").map(text), ["Folders", "work", "harlow-legal"]);
   stop();
@@ -217,5 +220,39 @@ test("folders: a refusal from the box reads plainly", async () => {
   const stop = mountFolders(box, { at: "/etc", onNewSession: () => {}, onTerminal: () => {} });
   await tick(); await tick();
   assert.match(text(box), /The folders could not be read\.\s*not available/);
+  stop();
+});
+
+test("a hidden kept page ignores keys: the sheet's Esc and the browser's letters act only while shown", async () => {
+  vyred(WORLD);
+  let on = false, done = 0;
+  const sheet = /** @type {any} */ (document.createElement("div"));
+  const stopSheet = mountNewSession(sheet, { onDone: () => done++, shown: () => on });
+  const box = /** @type {any} */ (document.createElement("div"));
+  const started = [];
+  const stopBox = mountFolders(box, { shown: () => on, onNewSession: p => started.push(p), onTerminal: () => {} });
+  await tick(); await tick();
+  press("Escape"); press("ArrowDown"); press("s");
+  assert.equal(done, 0);
+  assert.deepEqual(started, []);
+  on = true;
+  press("ArrowDown"); press("s");
+  assert.deepEqual(started, ["/work/northwind/site"]);
+  press("Escape");
+  assert.equal(done, 1);
+  stopSheet(); stopBox();
+});
+
+test("new session: a success clears the message, so a revisit of the kept sheet starts fresh", async () => {
+  vyred(WORLD);
+  went.length = 0;
+  const box = /** @type {any} */ (document.createElement("div"));
+  const stop = mountNewSession(box, { onDone: () => {} });
+  await tick(); await tick();
+  $(box, "textarea").value = "Plan the Harlow Legal launch";
+  $$(box, "button").find(b => text(b) === "Start session").click();
+  await tick(); await tick();
+  assert.deepEqual(went, ["/chat/thread/t-new"]);
+  assert.equal($(box, "textarea").value, "");
   stop();
 });

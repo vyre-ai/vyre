@@ -53,8 +53,10 @@ export function openHref(data, project) {
 
 /**
  * @param {HTMLElement} container
- * @param {{ cwd?: string|null, project?: string|null, onDone: () => void, onBrowse?: () => void }} opts
+ * @param {{ cwd?: string|null, project?: string|null, onDone: () => void, onBrowse?: () => void, shown?: () => boolean }} opts
  *   onDone: close the sheet (Esc, Cancel). onBrowse: open the folder browser to pick a folder.
+ *   shown: whether the sheet is on screen; the shell keeps pages mounted while hidden, and a
+ *   hidden sheet must not close on an Esc meant for another page.
  * @returns {() => void} cleanup
  */
 export function mountNewSession(container, opts) {
@@ -89,7 +91,8 @@ export function mountNewSession(container, opts) {
       h("span", { class: "ns-hint faint" }, h("span", { class: "kbd" }, "Cmd/Ctrl+Enter"), " to start, ", h("span", { class: "kbd" }, "Esc"), " to close"))));
   text.setAttribute("id", "ns-text");
 
-  const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); opts.onDone(); } };
+  const shown = opts.shown || (() => true);
+  const onKey = (/** @type {KeyboardEvent} */ e) => { if (e.key === "Escape" && !e.defaultPrevented && shown()) { e.preventDefault(); opts.onDone(); } };
   document.addEventListener("keydown", onKey);
 
   draw();
@@ -157,6 +160,9 @@ export function mountNewSession(container, opts) {
     if (r.data && r.data.ok === false) { state.error = r.data.note || "The agent did not take the message."; draw(); return; }
     const href = openHref(r.data, state.where.kind === "project" && !state.agent ? state.where.slug : null);
     if (!href) { state.error = "The session started, but the box did not say which thread it is."; draw(); return; }
+    // The shell keeps this page; coming back to it later starts a fresh message, not this one again.
+    /** @type {any} */ (text).value = "";
+    draw();
     go(href);
   }
 

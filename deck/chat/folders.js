@@ -11,8 +11,10 @@
 // Keyboard: up and down move, Enter opens the folder, "s" starts a session there (in pick mode,
 // chooses it), "t" opens a terminal there. Letters are ignored while typing in the search box.
 //
-// Drilling in stays on this page (no refetch of the rest of Chat); the address follows with
-// pushState, so a reload lands in the same folder and Back walks back up (app.js routes popstate).
+// Drilling in stays on this page (no refetch of the rest of Chat). The address follows with
+// replaceState, so a reload lands in the same folder; a pushState would leave the shell's kept
+// page (keyed by the address it was opened at) out of step with Back. The breadcrumb walks up.
+// The shell keeps pages mounted while hidden, so keys act only while opts.shown() says so.
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
@@ -53,7 +55,7 @@ const typing = t => !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" ||
 /**
  * @param {HTMLElement} container
  * @param {{ at?: string|null, pick?: ((cwd: string) => void) | null, onNewSession: (cwd: string) => void,
- *   onTerminal: (cwd: string) => (Promise<string|void>|string|void), onCancel?: () => void }} opts
+ *   onTerminal: (cwd: string) => (Promise<string|void>|string|void), onCancel?: () => void, shown?: () => boolean }} opts
  *   pick: when given, the browser chooses a folder for the New session sheet instead.
  *   onTerminal may resolve to a sentence saying why no terminal opened, which is shown.
  * @returns {() => void} cleanup
@@ -92,7 +94,7 @@ export function mountFolders(container, opts) {
       h("span", { class: "kbd" }, "s"), pick ? " choose" : " new session", pick ? null : [", ", h("span", { class: "kbd" }, "t"), " terminal"])));
 
   const onKey = (/** @type {KeyboardEvent} */ e) => {
-    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || (opts.shown && !opts.shown())) return;
     const list = rows();
     if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); select(moveSel(state.sel, list.length, e.key === "ArrowDown" ? 1 : -1)); return; }
     const row = list[state.sel];
@@ -132,7 +134,7 @@ export function mountFolders(container, opts) {
 
   function go_(at) {
     state.at = at; state.q = ""; /** @type {any} */ (search).value = "";
-    try { history.pushState(null, "", foldersHref(at, !!pick)); } catch {}
+    try { history.replaceState(history.state, "", foldersHref(at, !!pick)); } catch {}
     load();
   }
   const open = p => go_(p);
