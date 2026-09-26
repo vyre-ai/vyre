@@ -29,7 +29,7 @@ test("identity: only tailnet addresses are looked up", () => {
 
 test("identity: the owner on another device is served; everyone else is refused", async () => {
   const { id, lookups } = make();
-  assert.deepEqual(await id("::ffff:100.101.1.2"), { ok: true, login: "alex@example.com", node: "phone.example.ts.net", stableId: null, why: "owner" });
+  assert.deepEqual(await id("::ffff:100.101.1.2"), { ok: true, kind: "owner", login: "alex@example.com", node: "phone.example.ts.net", stableId: null, tags: [], caps: {}, why: "owner" });
   assert.equal((await id("100.101.1.3")).why, "not the owner");
   assert.equal((await id("100.101.1.4")).why, "a tagged node, not a person");
   assert.equal((await id("100.101.1.9")).why, "tailscale does not know this address");
@@ -53,6 +53,88 @@ test("identity: owner matching ignores case; with no owner nobody is served", as
   assert.equal(r.ok, false);
   assert.equal(r.why, "no owner yet");
   assert.equal(r.login, "alex@example.com", "the claim flow needs to know who it is");
+});
+
+// ---- guests and agent nodes (ADR 0014 parts 8 and 9) ----
+
+const WORLD = {
+  "100.101.1.2": { login: "alex@example.com", tagged: false, node: "phone", stableId: "nPHONE", tags: [], caps: {} },
+  "100.101.2.7": { login: "sam@harlow.example", tagged: false, node: "sams-laptop", stableId: "nSAM", tags: [], caps: {} },
+  "100.101.2.8": { login: "pat@northwind.example", tagged: false, node: "pats-mac", stableId: "nPAT", tags: [],
+    caps: { "vyre.run/cap/guest": [{ tools: ["threads.list"] }] } },
+  "100.101.3.1": { login: null, tagged: true, node: "kit", stableId: "nKIT", tags: ["tag:vyre-agent"], caps: {} },
+  "100.101.3.2": { login: null, tagged: true, node: "ci", stableId: "nCI", tags: ["tag:ci"], caps: {} },
+};
+
+function kinds({ guests = { enabled: true, people: { "sam@harlow.example": { tools: ["glass.open"] } } }, computers = { enabled: true, tag: "tag:vyre-agent" },
+  agentOf = undefined } = {}) {
+  return identifier({ whois: async ip => WORLD[ip] || null, selfIps: () => ["100.101.1.1"], owner: () => "alex@example.com",
+    network: () => ({ guests }), agentNodes: () => computers, ...(agentOf ? { agentOf } : {}) });
+}
+
+test("identity: the owner is still the owner, with its tags and caps beside it", async () => {
+  const r = await kinds()("100.101.1.2");
+  assert.equal(r.kind, "owner");
+  assert.deepEqual(r.tags, []);
+});
+
+test("identity: a listed person from another tailnet is a guest while guests are on", async () => {
+  const r = await kinds()("100.101.2.7");
+  assert.deepEqual([r.ok, r.kind, r.login, r.why], [true, "guest", "sam@harlow.example", "guest"]);
+  const upper = await kinds({ guests: { enabled: true, people: { "SAM@harlow.example": { tools: [] } } } })("100.101.2.7");
+  assert.equal(upper.kind, "guest", "logins match without case");
+});
+
+test("identity: a person the policy grants vyre.run/cap/guest is a guest without being listed", async () => {
+  const r = await kinds()("100.101.2.8");
+  assert.equal(r.kind, "guest");
+  assert.deepEqual(r.caps, WORLD["100.101.2.8"].caps);
+});
+
+test("identity: with guests off, a listed or granted person is refused as before", async () => {
+  const id = kinds({ guests: { enabled: false, people: { "sam@harlow.example": { tools: ["glass.open"] } } } });
+  for (const ip of ["100.101.2.7", "100.101.2.8"]) {
+    const r = await id(ip);
+    assert.deepEqual([r.ok, r.kind, r.why], [false, null, "not the owner"]);
+  }
+  const unlisted = await kinds({ guests: { enabled: true, people: {} } })("100.101.2.7");
+  assert.equal(unlisted.why, "not the owner", "on, but neither listed nor granted");
+});
+
+test("identity: a node with the agent tag is that agent only when the resolver names one", async () => {
+  // No resolver (the computers module has no computers.node.agent yet): refused as any tagged node.
+  assert.equal((await kinds()("100.101.3.1")).why, "a tagged node, not a person");
+  let asked = null;
+  const r = await kinds({ agentOf: async id => { asked = id; return id === "nKIT" ? "kit" : null; } })("100.101.3.1");
+  assert.deepEqual([r.ok, r.kind, r.agent, r.login], [true, "agent", "kit", null]);
+  assert.equal(asked, "nKIT", "the resolver is asked by stable id");
+  assert.equal((await kinds({ agentOf: async () => "not a name!" })("100.101.3.1")).ok, false, "a resolver's odd answer is no agent");
+  assert.equal((await kinds({ agentOf: async () => { throw new Error("down"); } })("100.101.3.1")).why, "a tagged node, not a person");
+  // Off, the tag means nothing and the resolver is never asked.
+  let called = false;
+  const off = await kinds({ computers: { enabled: false }, agentOf: async () => { called = true; return "kit"; } })("100.101.3.1");
+  assert.deepEqual([off.ok, called], [false, false]);
+});
+
+test("identity: a tagged node without the agent tag is refused, whatever the resolver says", async () => {
+  const r = await kinds({ agentOf: async () => "kit" })("100.101.3.2");
+  assert.deepEqual([r.ok, r.why], [false, "a tagged node, not a person"]);
+  const other = await kinds({ computers: { enabled: true, tag: "tag:ci" }, agentOf: async () => "kit" })("100.101.3.1");
+  assert.equal(other.ok, false, "the configured tag is the one that counts");
+});
+
+test("identity: the whois cache still holds 60 s while the guest list is read every time", async () => {
+  let lookups = 0, now = 0;
+  const g = { enabled: true, people: { "sam@harlow.example": { tools: [] } } };
+  const id = identifier({ whois: async ip => { lookups++; return WORLD[ip] || null; }, selfIps: () => [], owner: () => "alex@example.com",
+    network: () => ({ guests: g }), now: () => now });
+  assert.equal((await id("100.101.2.7")).kind, "guest");
+  g.enabled = false;
+  assert.equal((await id("100.101.2.7")).ok, false, "turning guests off counts at once");
+  assert.equal(lookups, 1);
+  now = 60_001;
+  await id("100.101.2.7");
+  assert.equal(lookups, 2);
 });
 
 test("tailscale: status and whois parse the fields vyre uses", () => {

@@ -34,6 +34,7 @@ const sha = s => crypto.createHash("sha256").update(s).digest("hex");
  *   dns: (zone: string) => Promise<{ available(f: string, ip: string): Promise<any>, upsertA(f: string, ip: string): Promise<any>, find(f: string, t?: string): Promise<any[]>, remove(id: string): Promise<void>, set(f: string, v: string): Promise<any>, clear(h: any): Promise<void> }>,
  *   issue: (o: { names: string[], dns: any }) => Promise<{ cert: string, key: string, expires: number }>,
  *   certs: { load(dir: string, name: string): any, save(dir: string, name: string, c: any): void },
+ *   agentOf?: (stableId: string) => Promise<string|null>,
  *   listen?: (server: import("node:https").Server, where: { fd?: number, host?: string, port?: number }) => Promise<void>,
  *   now?: () => number }} deps
  */
@@ -55,7 +56,15 @@ export function names(deps) {
   const codes = new Map();
 
   let selfId = null;
-  const identify = identifier({ whois: ip => ts.whois(ip), selfIps: () => selfIps, selfId: () => selfId, owner: () => net().owner || null });
+  // Which agent a tagged node is: the computers module knows (computers.node.agent). Until that
+  // tool exists, or when it says nobody, the node is refused as any tagged node is.
+  const agentOf = deps.agentOf || (async stableId => {
+    const r = await ctx.call("computers.node.agent", { stableId });
+    return r && !r.error && r.data && typeof r.data.agent === "string" ? r.data.agent : null;
+  });
+  const agentNodes = () => (ctx.config.computers && ctx.config.computers.tailnet) || null;
+  const identify = identifier({ whois: ip => ts.whois(ip), selfIps: () => selfIps, selfId: () => selfId, owner: () => net().owner || null,
+    network: net, agentNodes, agentOf });
 
   async function tailscale() {
     const s = await ts.status();
@@ -216,13 +225,18 @@ export function names(deps) {
         return res.end(JSON.stringify({ error: { code: "denied", message: "cross-site request" } }));
       }
     }
-    if (!net().ownerSeen) {
+    if (who.kind === "owner" && !net().ownerSeen) {
       deps.save({ network: { ownerSeen: new Date(now()).toISOString() } });
       ctx.events.emit("owner.seen", {});
     }
     if (!handle) handle = ctx.handler({});
     // The peer rides beside the caller, for tools that bind to a device (link.pair); never in input or events.
-    return handle(req, res, `tailnet:${who.login}`, { node: who.node, stableId: who.stableId || null, login: who.login });
+    // A guest and an agent's node each get a caller class of their own, never the owner's; the
+    // router limits a guest to its tools and wants an agent's key beside `tailnet:agent:<name>`.
+    const peer = { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {},
+      kind: who.kind, ...(who.kind === "agent" ? { agent: who.agent } : {}) };
+    const caller = who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}` : `tailnet:${who.login}`;
+    return handle(req, res, caller, peer);
   }
 
   async function serve() {
