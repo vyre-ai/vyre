@@ -338,3 +338,23 @@ test("up --json: a throw anywhere is still exactly one error object and exit 1",
   f.deps.bring = async () => { throw new Error("bring broke"); };
   await assert.rejects(up([], f.deps), /bring broke/);
 });
+
+test("up --keep-link on a box (vyre update): reports the open link, mints none, opens nothing", async t => {
+  world(t, running([]));
+  config.save({ role: "box" });
+  const open = { data: { url: null, pending: true, expires: Date.now() + 42 * 60_000, port: 7300, user: "alex", address: null, passkeyUrl: null } };
+  const f = fakes(t, { tools: { "onboard.link": () => open } });
+  f.deps.platform = "linux";
+  assert.equal(await up(["--keep-link"], f.deps), 0);
+  assert.deepEqual(f.calls.find(c => c[0] === "onboard.link")[1], { mint: false });
+  assert.match(f.text(), /set up is not finished; the link you have still works \(42 min left\)/);
+  assert.match(f.text(), /vyre up prints a new link and voids that one/);
+  assert.deepEqual(f.opened, []);
+  t.mock.restoreAll();
+
+  const none = { data: { ...open.data, pending: false, expires: null, port: null } };
+  const j = fakes(t, { tools: { "onboard.link": () => none } });
+  assert.equal(await up(["--keep-link", "--json"], j.deps), 0);
+  const o = JSON.parse(j.lines[0]);
+  assert.deepEqual([o.url, o.pending, o.expires], [null, false, null]);
+});

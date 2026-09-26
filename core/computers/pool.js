@@ -16,6 +16,7 @@
 // waiting a minute; only index.js runs a real interval.
 
 import crypto from "node:crypto";
+import net from "node:net";
 import { PORTS, SIZE } from "./driver/index.js";
 import { chromeEnv } from "./egress.js";
 import { join as joinTailnet, leave as leaveTailnet } from "./tailnet.js";
@@ -33,7 +34,13 @@ export const MIGRATIONS = [
   // what computers.node.agent maps a whois back to. Cleared when the computer stops or vanishes.
   `ALTER TABLE computers_computers ADD COLUMN stable_id TEXT;
    ALTER TABLE computers_computers ADD COLUMN node TEXT;`,
+  // Per-agent limits, set from the Deck. Null means the box's computers.cpus / computers.memoryMb.
+  `ALTER TABLE computers_computers ADD COLUMN cpus REAL;
+   ALTER TABLE computers_computers ADD COLUMN memory_mb INTEGER;`,
 ];
+
+/** What a person may set a computer's limits to. */
+export const LIMITS = Object.freeze({ cpus: { min: 1, max: 16 }, memoryGb: { min: 1, max: 64 } });
 
 /** How long a Glass ticket lives: long enough to open a WebSocket, too short to be worth stealing. */
 export const TICKET_MS = 30_000;
@@ -57,7 +64,7 @@ export class Pool {
    *   call: (tool: string, input: any) => Promise<any>, emit: (type: string, payload: any, where?: any) => any,
    *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any,
    *   tailnet?: { setting: () => { enabled: boolean, tag: string }, key: () => Promise<string> },
-   *   wait?: (ms: number) => Promise<void> }} deps
+   *   wait?: (ms: number) => Promise<void>, probe?: ((host: string, port: number) => Promise<boolean>) | null }} deps
    *   egress reads config glass.egress when a computer is made, so a change needs no restart.
    *   tailnet reads config computers.tailnet each time a computer starts, and fetches the auth key
    *   from the vault only then, only when that switch is on.
@@ -73,12 +80,16 @@ export class Pool {
     this.egress = deps.egress || (() => undefined);
     this.tailnet = deps.tailnet || null;
     this.wait = deps.wait;
+    // Is the computer's screen answering yet? Only the Docker driver has a real address to dial;
+    // the fake's hosts are names nothing resolves, so its computers are ready once started.
+    this.probe = deps.probe !== undefined ? deps.probe : deps.driver && deps.driver.name === "docker" ? tcpProbe : null;
     this.opts = {
       screens: Math.max(1, Number(c.screens || 2)),
       idleMs: Number(c.idleMs ?? 60_000),
       freezeMs: Number(c.freezeMs ?? 15_000),
       waitMs: Number(c.waitMs ?? 30_000),
       verifyMs: Number(c.verifyMs ?? 30_000),
+      bootMs: Number(c.bootMs ?? 30_000),
       image: String(c.image || "vyre/computer:0.1"),
       network: c.network ? String(c.network) : undefined,
       prefix: String(c.labelPrefix || "vyre"),
@@ -345,7 +356,7 @@ export class Pool {
       r = this.row(agent);
       const { w, h } = this.opts.size;
       const { id } = await d.create({
-        agent, image: this.opts.image, network: this.opts.network, cpus: this.opts.cpus, memoryMb: this.opts.memoryMb, size: this.opts.size,
+        agent, image: this.opts.image, network: this.opts.network, ...this.limitsOf(r), size: this.opts.size,
         env: { VNC_PASSWORD: r.vnc_password, COMPUTERD_TOKEN: r.helper_token, SCREEN: `${w}x${h}`, ...egress },
         labels: { [`${this.opts.prefix}.computer`]: agent, [`${this.opts.prefix}.managed`]: "true" },
         volume: `${this.opts.prefix}-home-${agent}`,
@@ -363,12 +374,93 @@ export class Pool {
     } else if (st.state === "exited") {
       await d.start(id);
     }
-    const now = await d.inspect(id);
-    if (now.host) this.hosts.set(agent, { host: now.host, ports: now.ports || { ...PORTS } });
+    await this.boot(agent, id);
     this.set(agent, { state: "running" });
     // A computer that just started or thawed joins the tailnet (when the switch is on), and so
     // does a running one that has no node yet. It never holds up the checkout.
     if (before !== "running" || !this.row(agent).stable_id) this.joinTailnet(agent);
+  }
+
+  /**
+   * Wait for a started computer to answer on its screen port. Until now a container that died on
+   * boot was marked running anyway: Glass then had nothing to connect to, and the freeze a minute
+   * later failed with "container is not running" (the box's first real run, a missing vncpasswd).
+   * A computer that stops, or never answers within bootMs, fails the checkout with the reason.
+   * @param {string} agent @param {string} id
+   */
+  async boot(agent, id) {
+    const d = /** @type {import("./driver/index.js").Driver} */ (this.driver);
+    const deadline = Date.now() + this.opts.bootMs;
+    for (;;) {
+      const st = await d.inspect(id);
+      if (st.state !== "running") {
+        this.set(agent, { state: st.state === "missing" ? "none" : "stopped", ...(st.state === "missing" ? { container: null } : {}) });
+        this.hosts.delete(agent);
+        const code = st.exitCode != null ? ` (exit code ${st.exitCode})` : "";
+        throw new Error(`${agent}'s computer stopped as soon as it started${code}; its image (${this.opts.image}) may be broken: see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
+      }
+      if (st.host) this.hosts.set(agent, { host: st.host, ports: st.ports || { ...PORTS } });
+      const h = this.hosts.get(agent);
+      if (!this.probe || (h && await this.probe(h.host, h.ports.vnc))) return;
+      if (Date.now() >= deadline) {
+        throw new Error(`${agent}'s computer started but its screen did not answer within ${Math.round(this.opts.bootMs / 1000)} s; see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+
+  /** The limits a new container gets: the agent's own, else the box's. */
+  limitsOf(r) {
+    return { cpus: r && r.cpus != null ? Number(r.cpus) : this.opts.cpus, memoryMb: r && r.memory_mb != null ? Number(r.memory_mb) : this.opts.memoryMb };
+  }
+
+  /**
+   * Set an agent's processor and memory limits. A container's limits are fixed when it is made,
+   * so they apply at the next restart (which makes a new container on the same home).
+   * @param {string} agent @param {{ cpus?: number, memory_gb?: number }} l
+   */
+  limits(agent, l) {
+    const set = {};
+    if (l.cpus !== undefined) {
+      const n = Number(l.cpus);
+      if (!Number.isInteger(n) || n < LIMITS.cpus.min || n > LIMITS.cpus.max) throw new Error(`cpus is a whole number of cores from ${LIMITS.cpus.min} to ${LIMITS.cpus.max}`);
+      set.cpus = n;
+    }
+    if (l.memory_gb !== undefined) {
+      const n = Number(l.memory_gb);
+      if (!Number.isInteger(n) || n < LIMITS.memoryGb.min || n > LIMITS.memoryGb.max) throw new Error(`memory_gb is a whole number of GB from ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}`);
+      set.memory_mb = n * 1024;
+    }
+    if (!Object.keys(set).length) throw new Error("say cpus or memory_gb");
+    this.rowFor(agent);
+    this.set(agent, set);
+    return this.view(agent);
+  }
+
+  /**
+   * Restart an agent's computer: a new container on the same home volume, with fresh passwords
+   * and the agent's current limits. Chrome's profile and every file under /home/agent stay. A
+   * checkout or take-over survives it; open Glass viewers reconnect.
+   * @param {string} agent
+   */
+  async restart(agent) {
+    if (!this.driver) throw new Error(NO_DRIVER);
+    const d = this.driver;
+    await this.allowed(agent);
+    return this.serial(agent, async () => {
+      const r = this.rowFor(agent);
+      if (r.container) {
+        try { await d.remove(String(r.container)); }
+        catch (e) { throw new Error(`could not remove ${agent}'s old computer: ${/** @type {Error} */ (e).message}`); }
+      }
+      this.leftTailnet(agent);
+      this.set(agent, { state: "none", container: null });
+      this.hosts.delete(agent);
+      await this.ensure(agent);
+      if (!this.checkouts.has(agent)) this.idle.set(agent, this.now());
+      this.log(`${agent}'s computer restarted`);
+      return this.view(agent);
+    });
   }
 
   // ---- the computer's own tailnet node (tailnet.js) --------------------------------------
@@ -440,6 +532,8 @@ export class Pool {
       catch (e) {
         const st = await this.driver.inspect(r.container).catch(() => null);
         if (st && st.state === "missing") { this.leftTailnet(agent); this.set(agent, { state: "none", container: null }); this.hosts.delete(agent); }
+        // It died while nobody held it: say stopped, not running, until the next checkout starts it.
+        else if (st && st.state === "exited") { this.leftTailnet(agent); this.set(agent, { state: "stopped" }); this.hosts.delete(agent); this.emit("computer.stopped", { agent }); }
         this.log(`could not freeze ${agent}'s computer: ${/** @type {Error} */ (e).message}`);
         return false;
       }
@@ -587,7 +681,19 @@ export class Pool {
     return {
       agent, state: r ? String(r.state) : "none", screen: co ? co.screen : null, thread: co ? co.thread : null,
       viewers: co ? co.viewers : 0, takeover: this.heldBy(agent), paused: Boolean(r && r.paused), size: this.size(agent),
-      since: co ? co.since : r ? Number(r.updated) : null,
+      since: co ? co.since : r ? Number(r.updated) : null, screens: this.opts.screens,
+      cpus: this.limitsOf(r).cpus, memory_gb: Math.round(this.limitsOf(r).memoryMb / 1024 * 10) / 10,
     };
   }
+}
+
+/** Does something accept a TCP connection at host:port? Closed at once; never sends a byte. */
+function tcpProbe(host, port) {
+  return new Promise(resolve => {
+    const s = net.connect({ host, port });
+    const done = ok => { s.destroy(); resolve(ok); };
+    s.setTimeout(2_000, () => done(false));
+    s.once("connect", () => done(true));
+    s.once("error", () => done(false));
+  });
 }

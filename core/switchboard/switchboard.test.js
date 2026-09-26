@@ -17,6 +17,7 @@ import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
+import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
 import { MIGRATIONS, answerSummary } from "./index.js";
 import { Sessions } from "./sessions.js";
@@ -80,6 +81,38 @@ test("lease: one holder, take-over says who had it, quiet holders expire", t => 
   assert.equal(r.took.from, "cli", "taking a lapsed lease is recorded as a take-over");
   assert.deepEqual(L.release("t", "cli"), { released: false, holder: "deck" });
   assert.deepEqual(L.release("t", "deck"), { released: true, holder: null });
+  db.close();
+});
+
+test("adopt: only a claude given the session with --resume or --session-id has it open", () => {
+  // A `vyre threads watch <id>` under a folder named claude-* was taken for a second writer, and
+  // every resume after a stop was refused while it ran. Found by scripts/stress-drive.
+  const id = "61801033-b22a-48c3-ba36-a9da797ca777";
+  assert.equal(opensSession(`claude --resume ${id}`, id), true);
+  assert.equal(opensSession(`node /opt/homebrew/bin/claude -p --resume ${id} --verbose`, id), true);
+  assert.equal(opensSession(`claude --session-id=${id}`, id), true);
+  assert.equal(opensSession(`claude -r ${id}`, id), true);
+  assert.equal(opensSession(`node /tmp/claude-501/vyre/bin/vyre threads watch ${id}`, id), false, "a watch only reads");
+  assert.equal(opensSession(`tail -f /Users/alex/.claude/projects/x/${id}.jsonl`, id), false, "nor does a reader of the transcript");
+  assert.equal(opensSession(`claude --resume ${id}0`, id), false, "another id that starts with this one");
+});
+
+test("lease: a terminal whose process exited holds nothing, so the next terminal can type", t => {
+  // `vyre threads start` took the lease as cli:<pid> and exited; every later `vyre threads send`
+  // (a new pid) was refused for the whole TTL. Found by scripts/stress-drive.
+  const root = tempHome(t);
+  const db = open(path.join(root, "l.db"));
+  migrate(db, "threads", MIGRATIONS);
+  const gone = new Set([4242]);
+  const L = new Leases(db, () => 1_000_000, pid => !gone.has(pid));
+  L.take("t", "cli:4242");
+  assert.equal(L.holder("t"), null, "a dead cli pid is not a holder");
+  const r = L.typing("t", "cli:5151");
+  assert.equal(r.ok, true);
+  assert.equal(r.ok && r.took && r.took.took && r.took.took.from, "cli:4242", "recorded as a take-over from the exited terminal");
+  assert.deepEqual(L.typing("t", "cli:6161"), { ok: false, holder: "cli:5151" }, "a live terminal still holds it");
+  L.take("t", "deck");
+  assert.equal(L.holder("t")?.surface, "deck", "surfaces that are not cli:<pid> are untouched");
   db.close();
 });
 
@@ -335,6 +368,7 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
 
   const list = (await tool("agents.list", {})).data;
   assert.deepEqual(list.map(a => [a.name, a.kind, a.doing]), [["juno", "assistant", "not started"], ["scout", "agent", "not started"]]);
+  assert.ok(list.every(a => "instructions" in a), "the Deck's agent page reads the job from the list");
 
   const who = (await tool("agents.ask", { agent: "scout", text: "whoami", surface: "capsule" })).data;
   assert.equal(who.text, "auth=subscription");
@@ -738,4 +772,17 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
   assert.deepEqual((await tool("agents.list", {})).data.map(a => a.name), ["juno"]);
   assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
   assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
+});
+
+test("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "kit", projects: [] });
+  const r = await tool("agents.update", { agent: "kit", computer: true }, "deck");
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.equal(r.data.computer, true);
+  assert.equal(r.data.name, "kit", "agent is not stored as a field");
+  assert.equal((await tool("agents.update", { name: "kit", computer: false })).data.computer, false, "name still works");
+  assert.match((await tool("agents.update", { name: "kit", agent: "juno", computer: true })).error.message, /different agents/);
+  assert.match((await tool("agents.update", { computer: true })).error.message, /say which agent/);
+  assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
 });

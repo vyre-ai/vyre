@@ -2,7 +2,7 @@
 // recall — search over every turn of every Claude Code session on this machine.
 //
 // Full-text search (FTS5) over every user and assistant turn, re-ranked by local embeddings
-// when the optional model is installed. The index is built from the transcript files by
+// once the search model is installed (on first use, or `vyre recall --setup`; see embed.js). The index is built from the transcript files by
 // core/transcripts, the only code that reads them, and lives in Recall's tables
 // (core/recall/schema.js), which Memory and Projects read directly.
 //
@@ -14,8 +14,11 @@
 // Settings, all optional, under "recall" in config.json:
 //   every      minutes between passes (default 5; 0 turns the timer off)
 //   vectors    false to never load the model
-//   download   false to never fetch the model weights (then they must already be in `models`)
+//   download   false to never fetch the library or the weights (then they must already be in
+//              `embedder` and `models`)
 //   models     where the weights live (default <VYRE_HOME>/models)
+//   embedder   where the library that runs them is installed (default <VYRE_HOME>/embedder)
+//   npm        the npm that installs it (default the one next to node, else npm on PATH)
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
@@ -25,8 +28,9 @@ import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
 import { evaluate } from "./eval.js";
-import { load as loadModel, cached } from "./embed.js";
+import { load as loadModel, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { Dense } from "./dense.js";
+import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -117,11 +121,14 @@ export default {
           return Promise.resolve(null);
         }
         const models = opts.models || path.join(ctx.paths.root, "models");
-        // The one network call Recall ever makes, once. Said out loud, so a first `vyre status`
+        const runtime = opts.embedder || path.join(ctx.paths.root, "embedder");
+        // The only network calls Recall ever makes, once. Said out loud, so a first `vyre status`
         // explains the wait instead of looking stuck.
-        vec.why = injected || cached(models) ? "loading the model" : "downloading the search model (23 MB, once)";
+        const mb = (installed(runtime) ? 0 : DOWNLOAD_MB.runtime) + (cached(models) ? 0 : DOWNLOAD_MB.model);
+        vec.why = injected || !mb ? "loading the model" : `downloading the search model (about ${mb} MB, once); search is by keyword until then`;
+        if (!injected && mb) ctx.log(vec.why);
         vec.loading = (injected ? Promise.resolve({ embedder: injected })
-          : loadModel({ cacheDir: models, download: opts.download !== false }))
+          : loadModel({ cacheDir: models, runtime, download: opts.download !== false, npm: opts.npm }))
           .then(r => {
             if (r.embedder) { vec.embedder = r.embedder; vec.why = `on (${r.embedder.model})`; return r.embedder; }
             vec.on = false; vec.why = r.why || "unavailable";
@@ -153,31 +160,62 @@ export default {
     };
 
     const stringArray = { type: "array", items: { type: "string" } };
+    // On the box, "all" takes in the paired Macs' rows too (the default for the person), "local" only the box's.
+    const machines = { type: "string", enum: ["all", "local"] };
     ctx.tool("recall.search", {
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" },
+        per_session: { type: "integer" }, machines,
       } },
-      run: async input => {
-        // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
-        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
-        const e = input.hybrid === false || !any ? null : await embedder();
-        return (await search(db, input, e, dense)).hits;
+      run: async (input, { caller } = {}) => {
+        const { machines: _, ...q } = input;
+        const here = async () => {
+          // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
+          const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+          const e = q.hybrid === false || !any ? null : await embedder();
+          return (await search(db, q, e, dense)).hits;
+        };
+        if (!wantsMacs(ctx, input, caller)) return here();
+        // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
+        const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
+        return mergeRows(ctx, own, answers, { compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
       },
     });
     ctx.tool("recall.thread", {
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
-        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" } } },
-      run: async input => thread(db, input),
+        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
+        source: { type: "string", enum: ["box", "mac"] } } },
+      run: async (input, { caller } = {}) => {
+        const { machines: _, source, ...q } = input;
+        if (!wantsMacs(ctx, input, caller)) return thread(db, q);
+        // On the box, for the person: the box's own session first. A session the box does not
+        // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
+        // has it answers. Its turns go back to the caller and are never stored here.
+        if (source !== "mac") {
+          try { return { ...thread(db, q), ...boxLabel(ctx) }; }
+          catch (e) { if (!/^no session /.test(/** @type {Error} */ (e).message)) throw e; }
+        }
+        const answers = await askMacs(ctx, "recall.thread", q);
+        const found = answers.find(a => a.ok && a.data);
+        if (found) return { ...found.data, ...macLabel(found) };
+        const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
+        throw new Error(`no session ${q.session} (${why})`);
+      },
     });
     ctx.tool("recall.sessions", {
-      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, or started by a person.",
+      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
-        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" } } },
-      run: async input => sessions(db, input),
+        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines } },
+      run: async (input, { caller } = {}) => {
+        const { machines: _, ...q } = input;
+        if (!wantsMacs(ctx, input, caller)) return sessions(db, q);
+        // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
+        const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
+        return mergeRows(ctx, own, answers, { compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
+      },
     });
     ctx.tool("recall.index", {
       description: "Index new and changed transcripts now. Returns what the pass did.",
@@ -195,8 +233,21 @@ export default {
         return {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
-          vectors: { on: vec.on, why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
+          vectors: { on: vec.on, ready: Boolean(vec.embedder), why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
+      },
+    });
+
+    ctx.tool("recall.setup", {
+      description: "Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.",
+      input: { type: "object", properties: {} },
+      run: async () => {
+        if (opts.vectors === false) return { ready: false, why: vec.why };
+        // A failed install or load is not final: setup is the way to try again.
+        if (!vec.embedder && !vec.on) { vec.on = true; vec.loading = null; }
+        const e = await embedder();
+        if (e) vectorLoop();
+        return { ready: Boolean(e), why: vec.why, model: e ? e.model : null };
       },
     });
 

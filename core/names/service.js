@@ -188,6 +188,8 @@ export function names(deps) {
   // ---- the tailnet listener ----
 
   let handle = null;
+  /** Who a peer is to vyred's router. A guest and an agent's node never get the owner's caller. */
+  const callerOf = who => who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}` : `tailnet:${who.login}`;
   async function onRequest(req, res) {
     res.setHeader("strict-transport-security", HSTS);
     const url = new URL(req.url || "/", "https://vyred");
@@ -235,8 +237,28 @@ export function names(deps) {
     // router limits a guest to its tools and wants an agent's key beside `tailnet:agent:<name>`.
     const peer = { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {},
       kind: who.kind, ...(who.kind === "agent" ? { agent: who.agent } : {}) };
-    const caller = who.kind === "guest" ? `tailnet-guest:${who.login}` : who.kind === "agent" ? `tailnet:agent:${who.agent}` : `tailnet:${who.login}`;
-    return handle(req, res, caller, peer);
+    return handle(req, res, callerOf(who), peer);
+  }
+
+  // WebSockets (Glass's screen, /v1/streams/...): the same owner, host and origin rules as a
+  // request, then vyred's stream router with the caller this listener established. Without an
+  // upgrade listener Node passed each one to the request router, which answered 404, so Glass's
+  // screen never connected over the tailnet.
+  let upgrade = null;
+  async function onUpgrade(req, socket, head) {
+    const refuse = (status, text) => { try { socket.end(`HTTP/1.1 ${status} ${text}\r\nconnection: close\r\n\r\n`); } catch {} };
+    socket.on("error", () => {});
+    const who = await identify(String(req.socket.remoteAddress || ""));
+    if (!who.ok) { ctx.log(`names: refused a stream from ${who.node || "an address"}: ${who.why}`); return refuse(403, "Forbidden"); }
+    const host = String(req.headers.host || "").toLowerCase();
+    const mine = [certName(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
+    if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) return refuse(421, "Misdirected Request");
+    // A browser sends Origin on every WebSocket, and a page on another site could open one with
+    // the owner's address: only this box's own page may.
+    const origin = req.headers.origin;
+    if (origin && String(origin).toLowerCase() !== `https://${host}`) return refuse(403, "Forbidden");
+    if (!upgrade) upgrade = ctx.upgrader({});
+    upgrade(req, socket, head, callerOf(who));
   }
 
   async function serve() {
@@ -251,6 +273,7 @@ export function names(deps) {
       const s = https.createServer({ cert: c.cert, key: c.key, minVersion: "TLSv1.2" }, (req, res) => {
         onRequest(req, res).catch(e => { if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: { code: "internal", message: e.message } })); } });
       });
+      s.on("upgrade", (req, socket, head) => { onUpgrade(req, socket, head).catch(() => socket.destroy()); });
       s.keepAliveTimeout = 30_000;
       return s;
     };
@@ -293,7 +316,7 @@ export function names(deps) {
   }
 
   return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew,
-    connect: () => ts.up(), wait: () => working, onRequest };
+    connect: () => ts.up(), wait: () => working, onRequest, onUpgrade };
 }
 
 function issuerOf(pem) {

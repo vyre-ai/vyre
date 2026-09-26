@@ -23,6 +23,7 @@ import { dialogsAllowed } from "../../config/dialogs.js";
 import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, signal, beacon } from "../style.js";
+import { usage } from "../kit.js";
 
 export const CAPSULE = path.join(REPO, "local", "capsule");
 const DIST = path.join(CAPSULE, "dist");
@@ -213,6 +214,8 @@ export default {
     const flags = { dev: args.includes("--dev"), hidden: args.includes("--hidden"), app: args.includes("--app") };
     if (args[0] === "build") return build(flags);
     if (args[0] === "install") return (await import("./capsule-install.js")).install(args.slice(1));
+    // A mistyped word ("biuld") used to open the Capsule; now it says so.
+    if (args[0] && !args[0].startsWith("--")) return usage(`vyre capsule ${args[0]}: not a subcommand`, "vyre capsule, vyre capsule build [--app] or vyre capsule install");
     return open(flags);
   },
 };
