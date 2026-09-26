@@ -5,7 +5,7 @@
 //
 // Every section loads on its own and shows its own empty state, so one missing module never
 // blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box), agents.list and
-// agents.update (switchboard), recall.status, recall.index, memory.stats, memory.curate,
+// agents.update (switchboard), link.health (link), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 
 import { h, put, link, head, empty } from "../js/dom.js";
@@ -85,7 +85,7 @@ export default async function settings(ctx) {
 
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
-    drawNetwork(body.network), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -217,16 +217,64 @@ async function drawClaude(el) {
 
 // ---- 5. Network ----------------------------------------------------------------------------
 
-async function drawNetwork(el) {
+async function drawNetwork(el, ctx) {
   const r = await attempt("onboard.tailscale", { action: "detect" });
   if (r.error) { put(el, empty("Tailscale is checked by the box module.", r.error), foot(toOnboard("tailscale", "Connect"))); return; }
   const t = r.data || {};
   const on = t.state === "connected" && t.node;
+  const conn = h("div");
   put(el, h("div", { class: "rows" },
       row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
       on ? row("Node", mono(t.node.dns || t.node.name || "")) : null,
-      on ? row("Tailnet IP", mono(t.node.ip || "")) : null),
+      on ? row("Tailnet IP", mono(t.node.ip || "")) : null,
+      conn),
     on ? null : foot(toOnboard("tailscale", "Connect")));
+  if (on) drawLink(conn, ctx);
+}
+
+/** "direct 12 ms", "relayed via fra 80 ms", "peer relay 30 ms". */
+function linkLine(x) {
+  const ms = typeof x?.latencyMs === "number" ? ` ${x.latencyMs} ms` : "";
+  if (x?.path === "direct") return `direct${ms}`;
+  if (x?.path === "relay") return `relayed${x.relay ? ` via ${x.relay}` : ""}${ms}`;
+  if (x?.path === "peer-relay") return `peer relay${ms}`;
+  return x?.why === "the node is offline" ? "offline" : "unknown";
+}
+
+const HEALTH_EVERY = 60_000;
+
+/**
+ * How the box reaches this device (link.health, the calling node): asked when the page opens and
+ * at most once a minute while it is visible. A hidden tab keeps no timer and asks nothing; shown
+ * again, it asks only if the last answer is a minute old.
+ */
+function drawLink(el, ctx) {
+  let at = 0, timer = 0;
+  const visible = () => document.visibilityState === "visible";
+  const again = () => {
+    clearTimeout(timer); timer = 0;
+    if (ctx.alive() && visible()) timer = setTimeout(load, Math.max(0, HEALTH_EVERY - (Date.now() - at)));
+  };
+  async function load() {
+    timer = 0;
+    if (!ctx.alive() || !visible()) return;
+    at = Date.now();
+    const r = await attempt("link.health");
+    if (!ctx.alive()) return;
+    // No link module on this vyred: the row is left out rather than shown empty.
+    if (r.error) put(el);
+    else {
+      const x = r.data || {};
+      const shook = x.lastHandshake ? `last handshake ${Date.now() - x.lastHandshake < 60_000 ? "under a minute" : since(x.lastHandshake)} ago` : x.path === "unknown" ? x.why || "" : "no handshake yet";
+      put(el, row("This device", h("span", x.path === "unknown" ? { class: "muted" } : null, linkLine(x)),
+        shook ? h("div", { class: "small faint" }, shook) : null));
+    }
+    again();
+  }
+  const onVisible = () => { if (visible()) again(); else { clearTimeout(timer); timer = 0; } };
+  document.addEventListener("visibilitychange", onVisible);
+  ctx.cleanup(() => { clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); });
+  load();
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------

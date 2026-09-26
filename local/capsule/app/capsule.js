@@ -622,6 +622,7 @@ function paint() {
   if (watching.length) kids.push(h("div", { class: "sect note" }, `Watching ${watching.map(w => w.label).join(", ")}.`));
   if (nWait) hint.append(h("span", { class: "kbd live" }, "↑"));
   if (nWait) kids.push(h("div", { class: "sect note" }, `${nWait} waiting on you. Press ↑ to see ${nWait === 1 ? "it" : "them"}.`));
+  if (snap.link) kids.push(h("div", { class: "sect note" }, h("span", { class: "lbl" }, "Box"), [snap.link.path, snap.link.handshake].filter(Boolean).join(" · ")));
   if (!snap.hotkey.ok && snap.hotkey.message && snap.hotkey.message !== "starting") kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Hotkey"), snap.hotkey.message));
   if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
   keys("⏎ ask " + (snap.assistant || "memory"), "@ agent, project or thread", nWait ? "↑ waiting" : null, "esc close");

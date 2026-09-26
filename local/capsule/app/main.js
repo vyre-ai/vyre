@@ -205,6 +205,8 @@ async function show(via, at = Date.now(), from = undefined) {
   if (w.webContents.isLoading()) w.webContents.once("did-finish-load", opened); else opened();
   await refresh;
   push();
+  // How the box is reached, for the empty Capsule: only on open, at most once a minute.
+  bridge.linkHealth().catch(() => {});
   say({ shown: w.getBounds(), via, focused: w.isFocused() });
 }
 
