@@ -7,7 +7,7 @@
   --primary-bg: #C6F36B; --primary-hover: #D4F88A; --primary-ink: #0E0D0C;
   --focus: #C6F36B; --signal-ink-text: #C6F36B; --signal-wash: rgba(198,243,107,0.12);
   --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10);
-  --beacon-ink: #FF7A59; --beacon-dot: #FF7A59; --beacon-wash: rgba(255,122,89,0.12); --beacon-rule: rgba(255,122,89,0.32);
+  --beacon-ink: #B8A4FF; --beacon-dot: #B8A4FF; --beacon-wash: rgba(184,164,255,0.12); --beacon-rule: rgba(184,164,255,0.32);
   --del-wash: #1E1C1A; --match: rgba(198,243,107,0.20); --scrim: rgba(0,0,0,0.62); --code-bg: rgba(14,13,12,0.55);
   --mark-wire: #F1EEE6; --mark-dot: #C6F36B;
   --light-top: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
@@ -20,7 +20,7 @@
   --primary-bg: #141311; --primary-hover: #4A463F; --primary-ink: #F4F1EA;
   --focus: #46700C; --signal-ink-text: #46700C; --signal-wash: rgba(70,112,12,0.10);
   --recall: #7E5B0C; --recall-wash: rgba(126,91,12,0.08);
-  --beacon-ink: #C2411F; --beacon-dot: #E5532F; --beacon-wash: rgba(194,65,31,0.08); --beacon-rule: rgba(229,83,47,0.32);
+  --beacon-ink: #5B3FC4; --beacon-dot: #5B3FC4; --beacon-wash: rgba(91,63,196,0.08); --beacon-rule: rgba(91,63,196,0.32);
   --del-wash: #FBFAF6; --match: rgba(70,112,12,0.16); --scrim: rgba(20,19,17,0.34); --code-bg: rgba(20,19,17,0.04);
   --mark-wire: #141311; --mark-dot: #141311;
   --light-top: inset 0 1px 0 rgba(255,255,255,0.7), 0 24px 48px -24px rgba(20,19,17,0.22);
@@ -28,13 +28,22 @@
   color-scheme: light;
 }
 
+/* Attention ("needs you") options for the pick. Default above is violet, the recommendation. */
+.t-dark .att-honey, .t-dark.att-honey { --beacon-ink: #F2B84B; --beacon-dot: #F2B84B; --beacon-wash: rgba(242,184,75,0.12); --beacon-rule: rgba(242,184,75,0.32); }
+.t-light .att-honey, .t-light.att-honey { --beacon-ink: #8A5A00; --beacon-dot: #8A5A00; --beacon-wash: rgba(138,90,0,0.08); --beacon-rule: rgba(138,90,0,0.32); }
+.t-dark .att-teal, .t-dark.att-teal { --beacon-ink: #5FD4C4; --beacon-dot: #5FD4C4; --beacon-wash: rgba(95,212,196,0.12); --beacon-rule: rgba(95,212,196,0.32); }
+.t-light .att-teal, .t-light.att-teal { --beacon-ink: #0B6E66; --beacon-dot: #0B6E66; --beacon-wash: rgba(11,110,102,0.08); --beacon-rule: rgba(11,110,102,0.32); }
+.t-dark .att-violet, .t-dark.att-violet { --beacon-ink: #B8A4FF; --beacon-dot: #B8A4FF; --beacon-wash: rgba(184,164,255,0.12); --beacon-rule: rgba(184,164,255,0.32); }
+.t-light .att-violet, .t-light.att-violet { --beacon-ink: #5B3FC4; --beacon-dot: #5B3FC4; --beacon-wash: rgba(91,63,196,0.08); --beacon-rule: rgba(91,63,196,0.32); }
+
 .vy { position: relative; overflow: hidden; display: flex; background: var(--bg); color: var(--text);
   font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 20px;
   -webkit-font-smoothing: antialiased; box-sizing: border-box; }
 .vy *, .vy *::before, .vy *::after { box-sizing: border-box; }
 .vy h1, .vy h2, .vy h3, .vy p { margin: 0; }
-.vy button, .vy input, .vy textarea { font: inherit; color: inherit; }
-.vy a { color: inherit; text-decoration: none; }
+/* Zero-specificity resets, so .btn-p and friends always win (the old .vy button rule painted bone text on lime). */
+:where(.vy) :where(button, input, textarea) { font: inherit; color: inherit; }
+:where(.vy) :where(a) { color: inherit; text-decoration: none; }
 .vy :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* Type */

@@ -25,6 +25,16 @@ and docs share. The user found the Deck rudimentary: the new-agent form reads as
 ## Doing
 
 - Waiting for the user to pick A or B (or a mix).
+- Coral ban (lead, 27 Sep): attention options (violet recommended, honey, teal) on the canvas board
+  "Attention colour: pick one". Waiting for the pick. Ready: core/config/palette.js (roles, AA pair
+  list, contrast()), core/config/palette.test.js (AA for every pair, deck.css in sync), and the
+  hygiene test banning every coral variant repo-wide. Both fail until the propagation lands.
+- Propagation after the pick (one commit): ATTENTION in palette.js, deck.css (:root and paper),
+  TOKENS.md (table, menu-bar dot, voice), site/styles.css, site/start/start.css, site/index.html,
+  core/cli/style.js, core/vault/kit.js, local/capsule/app (main.js, capsule.js, capsule.css), the
+  old boards and deck-directions. Send values to capsule-pro (Theme.swift), mobile, phone-design.
+- Mockup bug found: `.vy button { color: inherit }` beat `.btn-p`, so primary labels were bone on
+  lime (1.1:1). Fixed with :where() resets.
 
 ## Next
 
