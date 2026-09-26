@@ -253,3 +253,16 @@ test("module: apps.setup sets up Clock under the Vyre home and refuses an app th
   assert.equal((await reg.call("apps.setup", { app: "Notes" }, "cli")).error.code, "not_supported");
   assert.equal((await reg.call("apps.setup", { app: "Photoshop" }, "cli")).error.code, "not_supported");
 });
+
+test("module: apps.setup answers only the surfaces a person drives", async t => {
+  const home = tempHome(t);
+  const f = fakeExec((file, args) => (args[0] === "sign" ? (fs.writeFileSync(args[args.indexOf("--output") + 1], "x"), {}) : {}));
+  const { reg } = await start(t, { apps: { exec: f.exec, setupDir: path.join(home, "shortcuts") } });
+  for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:kit", "module:chat", "anonymous", "local"]) {
+    const r = await reg.call("apps.setup", { app: "clock" }, caller);
+    assert.equal(r.error && r.error.code, "denied", `${caller} ran apps.setup`);
+  }
+  assert.equal(f.calls.length, 0);
+  assert.equal(reg.listTools("mcp").some(x => x.name === "apps.setup"), false);
+  for (const caller of ["cli", "capsule", "deck"]) assert.ok((await reg.call("apps.setup", { app: "clock" }, caller)).data, caller);
+});

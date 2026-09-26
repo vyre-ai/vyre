@@ -39,6 +39,7 @@ test("apps cli: arguments split into a subcommand, words and flags", () => {
   assert.deepEqual(parseArgs(["--app=WhatsApp", "juno:", "hi", "--model"]).flags, { json: false, help: false, model: true, app: "WhatsApp" });
   assert.deepEqual(parseArgs(["--", "--json", "is", "text"]).words, ["--json", "is", "text"]);
   assert.equal(parseArgs(["Setup", "clock"]).sub, "setup");
+  assert.deepEqual(parseArgs(["--", "list", "of", "groceries"]), { sub: null, words: ["list", "of", "groceries"], flags: { json: false, help: false, model: false, app: null } });
 });
 
 test("apps cli: --help prints the usage without reaching vyred", async () => {

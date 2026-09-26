@@ -137,6 +137,10 @@ export default {
     ctx.tool("apps.setup", {
       description: "An app's one-time setup, run when a person first asks for something that needs it. For Clock: writes Vyre's Timer and Alarm shortcuts, signs them and opens each in Shortcuts, where one click adds it. Returns steps (plain words to show) and files. ready: true when there is nothing to do.",
       input: { type: "object", required: ["app"], properties: { app: str } },
+      // Only the surfaces a person drives: it signs files and opens import windows, which a
+      // model or another module has no business doing on its own. The Deck (and the phone's
+      // installed Deck) calls as "deck".
+      callers: ["cli", "capsule", "deck"],
       async run({ app }) {
         const a = registry.find(app);
         const fn = a ? setupFor(a.id) : null;

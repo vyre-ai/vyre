@@ -20,6 +20,8 @@ export const USAGE = `
   vyre apps setup clock              Clock's one-time setup (two shortcuts, one click each)
   vyre apps <words...>               do it: timer 10 min, note: buy milk, weather tomorrow,
                                      remind me to call juno at 6, whatsapp juno: running late
+  vyre apps -- <words...>            the same, for words that start with find, targets, setup
+                                     or list, or with a dash
 
   --app <App>    read the words as that app's (like @Notes in the Capsule)
   --model        let a small model try words the rules cannot place
@@ -37,9 +39,11 @@ export function parseArgs(args) {
   const flags = { json: false, help: false, model: false, app: null };
   /** @type {string[]} */
   const words = [];
+  let raw = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === "--") { words.push(...args.slice(i + 1)); break; }
+    // Everything after -- is words to route, never a subcommand or a flag.
+    if (a === "--") { raw = true; words.push(...args.slice(i + 1)); break; }
     if (a === "--json") flags.json = true;
     else if (a === "--help" || a === "-h") flags.help = true;
     else if (a === "--model") flags.model = true;
@@ -47,7 +51,7 @@ export function parseArgs(args) {
     else if (a.startsWith("--app=")) flags.app = a.slice(6);
     else words.push(a);
   }
-  const sub = words.length && SUBCOMMANDS.has(words[0].toLowerCase()) ? words.shift()?.toLowerCase() || null : null;
+  const sub = !raw && words.length && SUBCOMMANDS.has(words[0].toLowerCase()) ? words.shift()?.toLowerCase() || null : null;
   return { sub, words, flags };
 }
 
