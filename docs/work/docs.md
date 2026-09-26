@@ -67,6 +67,17 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   Then retake shots (180 stale after main's Deck changes), regen, tests, preview redeploy.
 - Capsule "build locally" waits for capsule-pro 4c957a4 to reach main.
 
+## Pending page changes (apply when the code reaches main)
+
+- glass-live: using/glass.md "If a computer does not start" becomes: Glass shows "kit's computer
+  did not start", the reason (e.g. "kit's computer stopped as soon as it started (exit code 3)"),
+  then ". Press Restart computer on kit's page, then Retry. If it fails again, the box's log says
+  why." with a "Retry" button and an "Open kit's page" link; the panel says "Stopped". Retry starts
+  the same computer again; Restart computer makes a new one from the current image, so Restart first
+  when the box's software was fixed. Replaces the "connection dropped" text now on the page.
+- capsule-pro 4c957a4: `vyre capsule` builds the native app locally; the download is retired.
+- main f3b5e36 (spec: no ctx.projects): close that gap in known-gaps.md and module-contract.md.
+
 ## Next
 
 - `capsule.autostart` is read by the Capsule but missing from reference/config.md: teach
