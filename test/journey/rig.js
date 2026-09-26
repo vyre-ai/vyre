@@ -87,6 +87,9 @@ function makeCert(dir) {
  * @param {{ mac?: "running"|"signed-out" }} [o]
  */
 export async function makeRig(o = {}) {
+  // Bare in $TMPDIR, not under SCRATCH: the ten bytes SCRATCH adds push the Mac's vyred socket
+  // past the ~100-byte limit onto the hashed /tmp fallback, and the journey stops connecting.
+  // close() removes it, and the tmp-guard still catches a vyre-journey-* left behind.
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-journey-")));
   const d = (...p) => path.join(root, ...p);
   for (const dir of ["mac/.vyre", "srv/host", "srv/bin", "srv/home/.vyre", "fakes", "state/forwards", "mirror"]) fs.mkdirSync(d(dir), { recursive: true });

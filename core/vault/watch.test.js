@@ -5,11 +5,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { LockWatch, TICK_MS } from "./watch.js";
 import { Helper } from "./mac/helper.js";
 import { writeFakes } from "./mac/fakes.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 3000) {
@@ -19,7 +19,7 @@ async function until(fn, ms = 3000) {
 }
 
 function rig(t, opts = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-watch-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-watch-"));
   const f = writeFakes(dir);
   const clock = { t: 0 };
   const ticks = new Set();

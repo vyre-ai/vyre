@@ -8,13 +8,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFile, execFileSync } from "node:child_process";
 import { start } from "../../daemon/index.js";
 import { request, call } from "../../daemon/client.js";
 import { tempHome, writeModule, present } from "../../../test/helpers.js";
 import { parsePrivate } from "../ssh/keys.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const sha = v => crypto.createHash("sha256").update(v).digest("hex");
@@ -79,7 +79,7 @@ test("vault tools: item, resolve and render; values reach only the caller or the
   assert.match((await cli("vault.resolve", { refs: ["op://x/y"] })).error.message, /not a vault reference/);
 
   // render: vyred writes the file, 0600, and the reply carries no value.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-render-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-render-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const out = path.join(dir, "app.env");
   const template = "TOKEN={{ vault://api-token }}\nUSER={{vault://site-login/username}}\nLITERAL=\\{{ vault://api-token }}\n";
@@ -200,7 +200,7 @@ test("vault tools: the ssh agent signs for vault keys after approval; private ke
   assert.equal((await mcp("vault.ssh.add", { name: "x", file: "/dev/null" })).error.code, "denied");
 
   // Add an existing key from a file vyred reads itself.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vssh-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vssh-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const keyFile = path.join(dir, "id_test");
   execFileSync("ssh-keygen", ["-t", "ecdsa", "-b", "256", "-N", "", "-C", "ci", "-f", keyFile, "-q"]);

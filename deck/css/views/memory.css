@@ -36,6 +36,7 @@
 
 .mem-body { flex-grow: 1; min-height: 0; overflow: auto; position: relative; }
 .mem-pad { padding: 24px 32px 32px; }
+.mem-retry { margin-top: 12px; }
 .mem-empty p { color: var(--text-2); }
 .mem-show-all { margin-top: 10px; margin-left: -10px; }
 

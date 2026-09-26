@@ -9,12 +9,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { keystore, secretKeyStore, accountFor, keychainWriteCommand, SERVICE } from "./keys.js";
 import { Helper } from "./mac/helper.js";
 import { tempKeychain, securityRetry } from "./testing.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const mac = process.platform === "darwin" && fs.existsSync("/usr/bin/swiftc");
 
@@ -31,7 +31,7 @@ async function decryptApps(keychain) {
 
 async function setup(t) {
   const keychain = await tempKeychain(t);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-kch-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-kch-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const helper = new Helper({ name: "keychain", dir: path.join(dir, "helpers") });
   return { keychain, dir, helper, vaultDir: path.join(dir, "vault") };

@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { open, migrate } from "../store/index.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -52,7 +53,7 @@ async function searchList() {
  * @returns {Promise<string>} the keychain file's path
  */
 export async function tempKeychain(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-kc-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-kc-"));
   const file = path.join(dir, `vyre-test-${process.pid}-${crypto.randomBytes(6).toString("hex")}.keychain-db`);
   const pw = crypto.randomBytes(16).toString("hex");
   t.after(async () => {
@@ -113,7 +114,7 @@ export async function onSearchList(file) {
 
 /** Start the vault module against a ctx that records every tool definition. */
 export async function recorded(t, extra = {}) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-presence-"));
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-presence-"));
   const db = open(path.join(tmp, "vyre.db"));
   /** @type {Map<string, any>} */
   const tools = new Map();

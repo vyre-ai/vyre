@@ -202,7 +202,11 @@ export default async function memory(ctx) {
     const list = st.mode === "list" || phone();
     body.classList.toggle("is-list", list);
     drawCrumbs();
-    if (data.error) { put(body, h("div", { class: "mem-pad" }, empty("Memory is not available.", data.error))); put(foot); return; }
+    if (data.error) {
+      put(body, h("div", { class: "mem-pad" }, empty("Memory is not available.", data.error),
+        h("button", { type: "button", class: "btn btn-ghost btn-sm mem-retry", onclick: () => { put(body, h("div", { class: "mem-pad small faint" }, "Reading memory…")); refetch(true); } }, "Try again")));
+      put(foot); return;
+    }
     if (!data.graph) return;
     if (list) { drawList(); put(foot); return; }
     drawMap();
@@ -672,10 +676,19 @@ export default async function memory(ctx) {
   if (st.tab === "lessons") { st.tab = "facts"; await switchTab("lessons"); return; }
   controls.hidden = false;
   put(body, h("div", { class: "mem-pad small faint" }, "Reading memory…"));
-  try { await Promise.race([document.fonts?.ready, new Promise(r => setTimeout(r, 800))]); } catch {}
-  // With no projects.list, the main graph names the projects; a scoped first view needs them.
-  if (st.project && !data.projects.length) { const p = st.project; st.project = ""; await cursor.request(true); st.project = data.projects.some(x => x.slug === p) ? p : ""; drawSelect(); }
-  await cursor.request(true);
+  // The map measures its labels, so a draw before the fonts land is redone once when they do.
+  // The fetch never waits on them: a slow font load used to hold the page on "Reading memory".
+  const fontsLate = !!document.fonts && document.fonts.status !== "loaded";
+  try {
+    // With no projects.list, the main graph names the projects; a scoped first view needs them.
+    if (st.project && !data.projects.length) { const p = st.project; st.project = ""; await cursor.request(true); st.project = data.projects.some(x => x.slug === p) ? p : ""; drawSelect(); }
+    await cursor.request(true);
+  } catch (e) {
+    if (!ctx.alive()) return;
+    data.error = e; data.graph = null; drawBody();
+  }
+  if (!ctx.alive()) return;
+  if (fontsLate) document.fonts.ready.then(() => { if (ctx.alive() && data.graph && st.tab === "facts") drawBody(); }).catch(() => {});
   lastW = body.clientWidth;
   if (st.about) reopen();
 }

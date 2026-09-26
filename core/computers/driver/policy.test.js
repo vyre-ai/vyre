@@ -6,15 +6,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
 import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels } from "./policy.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** A one-request fake Engine: capture the create body it was actually sent, nothing else. */
 async function capture(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-policy-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-policy-"));
   const socket = path.join(dir, "d.sock");
   /** @type {any} */
   let body = null;

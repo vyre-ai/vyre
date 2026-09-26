@@ -3,10 +3,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { csr } from "./csr.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 
@@ -21,7 +21,7 @@ test("csr: DER starts as a SEQUENCE and carries every name", () => {
 });
 
 test("csr: openssl parses it, verifies the signature and sees the SANs", { skip: !hasOpenssl && "openssl is not on PATH" }, t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-csr-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-csr-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "req.der");
   fs.writeFileSync(file, csr(["box1.example.test", "alt.example.test"], key()));
@@ -33,7 +33,7 @@ test("csr: openssl parses it, verifies the signature and sees the SANs", { skip:
 
 test("csr: a long first name leaves the subject empty but keeps the SAN", { skip: !hasOpenssl && "openssl is not on PATH" }, t => {
   const long = "a".repeat(60) + ".example.test";
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-csr-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-csr-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "req.der");
   fs.writeFileSync(file, csr([long], key()));
