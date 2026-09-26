@@ -82,6 +82,24 @@ export function distill(said) {
   return firm ? { rule: sentence(text), when: "always", level: "remind", check: null } : null;
 }
 
+/**
+ * Lessons a draft's edit suggests: a banned-by-name character the user took out of every place
+ * it appeared. Only characters, which an edit shows unambiguously; a changed word is a matter of
+ * that one message, not a rule. Inferred rather than said, so each starts at remind.
+ * @param {string} draft what Claude wrote
+ * @param {string} final what the user sent
+ */
+export function fromEdit(draft, final) {
+  const out = [];
+  for (const c of CHARS) {
+    const re = new RegExp(c.pattern, "g" + (c.flags || ""));
+    if ((String(draft).match(re) || []).length && !(String(final).match(re) || []).length) {
+      out.push({ rule: c.rule, when: "always", level: "remind", check: { kind: "text", pattern: c.pattern, ...(c.flags ? { flags: c.flags } : {}), label: c.label } });
+    }
+  }
+  return out;
+}
+
 /** Is a check well formed? Returns a problem, or null. */
 export function invalid(check) {
   if (check == null) return null;

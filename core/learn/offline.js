@@ -80,7 +80,7 @@ export function offlineTool({ root, session, prompt_id, agent, tool, input }) {
   const guard = weakens(tool, input || {});
   if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.` };
   const s = load(root, session, prompt_id);
-  const ran = s.ran.filter(r => r.at >= (s.changed || 0)).map(r => r.command);
+  const ran = s.ran.filter(r => r.at > (s.changed || -1)).map(r => r.command);
   if (tool === "Bash" && typeof input?.command === "string") s.ran.push({ command: input.command.slice(0, 2000), at: Date.now() });
 
   /** @type {{ decision: "deny"|"ask"|null, reason?: string, lesson?: number }} */

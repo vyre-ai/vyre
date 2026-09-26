@@ -6,6 +6,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Learning
 
+- Drafts the user edited before approving are signals. Learning subscribes to the Gate's
+  `gate.released` where `edited` is true and reads the draft and what was sent with `gate.get`;
+  Gate does not know Learning exists. A banned-by-name character the user took out everywhere
+  (an em dash, an en dash, emoji, semicolons) becomes a proposed lesson at remind, which the
+  thread is told about once at its next prompt. Only a summary of the edit is kept, never the
+  message.
+- Fix: a command run in the same millisecond as a file change counted as after it, so a test
+  run could clear a commit it did not follow. Commands now count only when strictly later.
 - Lessons are checked with vyred down, as the floor is. Learning keeps the accepted lessons in
   `<home>/lessons.json` (mode 0600), rewritten on every change. When vyred does not answer,
   `hook.js` runs the tool and Stop checks in-process from it (`core/learn/offline.js`), keeping

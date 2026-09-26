@@ -15,7 +15,7 @@
 // user; a reply is sent back), block (a tool call is denied; a reply is sent back). A lesson
 // broken again moves up one level.
 
-import { distill, invalid, atStop, atTool, weakens, sentBack, held, MAX_BLOCKS } from "./checks.js";
+import { distill, fromEdit, invalid, atStop, atTool, weakens, sentBack, held, MAX_BLOCKS } from "./checks.js";
 import { writeSnapshot, drain } from "./offline.js";
 
 const MIGRATIONS = [
@@ -29,6 +29,8 @@ const MIGRATIONS = [
    CREATE TABLE learn_turns (session TEXT PRIMARY KEY, prompt TEXT, seq INTEGER NOT NULL, started INTEGER NOT NULL, blocks INTEGER NOT NULL, owed TEXT NOT NULL);
    CREATE TABLE learn_commands (session TEXT NOT NULL, command TEXT NOT NULL, at INTEGER NOT NULL);
    CREATE INDEX learn_commands_session ON learn_commands (session, at);`,
+  // told: whether the thread has been told about the lesson this signal proposed.
+  `ALTER TABLE learn_signals ADD COLUMN told INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export { MAX_BLOCKS };
@@ -134,6 +136,36 @@ export default {
     }
     snap();
 
+    // Drafts the user edited before approving (the Gate). The event carries no content; gate.get
+    // gives the draft and what was sent. Only a summary is kept here, never the message itself.
+    const text = v => (typeof v === "string" ? v : v && typeof v === "object" ? String(v.body ?? v.text ?? "") : "");
+    const offEdit = ctx.events.on("gate.released", e => { edited(e).catch(err => ctx.log("edited draft not read: " + err.message)); });
+    const edited = async e => {
+      const p = e.payload || {};
+      if (!p.edited || p.id == null) return;
+      const r = await ctx.call("gate.get", { id: p.id });
+      const d = r && r.data;
+      if (!d) return;
+      const session = p.thread || e.thread || null;
+      const diff = d.diff || {};
+      const summary = `edited draft ${p.id}: ${(diff.removed || []).length} removed, ${(diff.added || []).length} added`;
+      const found = fromEdit(text(d.draft), text(d.final));
+      if (!found.length) {
+        db.prepare("INSERT INTO learn_signals (at, kind, session, seq, text, lesson) VALUES (?,?,?,?,?,NULL)").run(now(), "edited", session, null, summary);
+        return;
+      }
+      for (const f of found) {
+        const same = db.prepare("SELECT id FROM learn_lessons WHERE status IN ('active','proposed') AND check_json = ?").get(JSON.stringify(f.check));
+        let id = same ? same.id : null;
+        if (!same) {
+          const l = create({ ...f, scope: p.agent ? { agent: String(p.agent) } : "all", source: { kind: "edited", session, draft: p.id } }, "proposed");
+          id = l.id;
+          ctx.events.emit("lesson.proposed", { lesson: l.id, rule: l.rule, checked: true }, { thread: session || undefined });
+        }
+        db.prepare("INSERT INTO learn_signals (at, kind, session, seq, text, lesson, told) VALUES (?,?,?,?,?,?,?)").run(now(), "edited", session, null, summary, id, same ? 1 : 0);
+      }
+    };
+
     const off = ctx.events.on("tool.held", e => {
       const p = e.payload || {};
       if (p.lesson) return;                  // held by a lesson: already counted as caught
@@ -220,6 +252,13 @@ export default {
         const lines = [];
 
         const lessons = await inScope(active(), { cwd, agent });
+        // Lessons proposed from this thread's edited drafts, told once.
+        for (const sig of db.prepare("SELECT id, lesson FROM learn_signals WHERE kind = 'edited' AND session = ? AND told = 0 AND lesson IS NOT NULL").all(session)) {
+          const l = get(sig.lesson);
+          db.prepare("UPDATE learn_signals SET told = 1 WHERE id = ?").run(sig.id);
+          if (l && l.status === "proposed") lines.push(`The user edited a draft to take out what lesson ${l.id} forbids. Vyre drafted it, not yet in force: "${l.rule}" ${enforced(l)}`,
+            `Tell the user this in one line and ask whether to keep it. Only if they say yes, call the Vyre tool learn_accept with {"id": ${l.id}}.`);
+        }
         const late = owed.map(get).filter(l => l && l.status === "active");
         if (late.length) lines.push(`Last turn broke ${late.length === 1 ? "this lesson" : "these lessons"}. Keep ${late.length === 1 ? "it" : "them"} this turn.`, ...late.map(l => `- ${l.rule}`));
 
@@ -273,7 +312,7 @@ export default {
       if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.`, lesson: null };
       const t = turn(session, prompt_id);
       const last = (await touchedSince(session, 0))[0];
-      const ran = db.prepare("SELECT command FROM learn_commands WHERE session = ? AND at >= ?").all(session, last ? last.at : 0).map(r => r.command);
+      const ran = db.prepare("SELECT command FROM learn_commands WHERE session = ? AND at > ?").all(session, last ? last.at : -1).map(r => r.command);
       if (tool_name === "Bash" && typeof tool_input.command === "string") db.prepare("INSERT INTO learn_commands (session, command, at) VALUES (?,?,?)").run(session, tool_input.command.slice(0, 2000), now());
 
       const owe = JSON.parse(t.owed || "[]");
@@ -323,7 +362,7 @@ export default {
       return { decision: null, broken: failed.map(f => f.l.id) };
     };
 
-    return { async stop() { off(); } };
+    return { async stop() { off(); offEdit(); } };
   },
 };
 

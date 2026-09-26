@@ -61,20 +61,24 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   counts the offline log at start. Verified for real in `/tmp/vyre-lab` with vyred unable to
   start: em dash reply 1 dash then 0; `src/add.js` turn sent back, then the changelog edited;
   2 offline catches counted on restart.
+- Draft edits as signals: subscribes to gate-chat's `gate.released {edited: true}` and reads
+  `gate.get {id}` for draft and final; a character taken out everywhere is proposed at remind.
+  No change on gate's side.
 
 ## Doing
-- Waiting for gate-chat's edited-approval event shape (asked), to read draft edits as signals.
+- Nothing; waiting for review.
 
 ## Next
-1. Draft edits from the Gate as signals, once gate-chat sends the event shape.
-2. Turning free text into a check with a model, off the hot path, through the switchboard.
-3. Signals not read yet: reverted changes (`harness_files` plus git), and denials the user makes
+1. Turning free text into a check with a model, off the hot path, through the switchboard.
+2. Signals not read yet: reverted changes (`harness_files` plus git), and denials the user makes
    in Claude Code's own prompt (hooks do not see those).
-4. Seq is Learning's own turn count per session, not the transcript seq; line them up once
+3. Seq is Learning's own turn count per session, not the transcript seq; line them up once
    Recall exposes it.
-5. Offline, project-scoped lessons do not apply; the snapshot could carry each project's folders.
+4. Offline, project-scoped lessons do not apply; the snapshot could carry each project's folders.
 
 ## Needs from others
+- gate-chat: keep `gate.released {id, edited, thread, agent}` and `gate.get {id} -> {draft, final, diff}`
+  stable (agreed); message Learning before a field changes.
 - deck: a lessons panel over `learn.lessons`, `learn.accept`, `learn.edit`, `learn.retire`.
 - switchboard: a headless `claude -p` to distill free-text corrections; `VYRE_AGENT` in the env
   of agents' sessions, so lessons can be scoped to an agent.
