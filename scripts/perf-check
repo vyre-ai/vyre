@@ -123,6 +123,11 @@ function spawnDaemon(home, timersFile) {
     if (code !== 0 && code !== null) log(`vyred exited early (code ${code}, signal ${signal}):\n${out.slice(-2000)}`);
   });
   child.__output = () => out;
+  // Run at low priority so this check doesn't compete with — or get crowded out by — whatever
+  // else is on the box; also keeps the sampled numbers closer to what an idle daemon actually
+  // costs rather than what it costs under contention. Best-effort: os.setPriority can fail
+  // (e.g. no permission, or platforms that don't support it), which shouldn't fail the check.
+  try { os.setPriority(child.pid, 10); } catch { /* best effort */ }
   return child;
 }
 
@@ -276,8 +281,12 @@ function report(samples, timers, idleStart) {
   ];
 
   const w = Math.max(...rows.map(r => r.name.length));
+  const load = os.loadavg().map(n => n.toFixed(1)).join(", ");
   process.stdout.write("\nvyred idle budget check (docs/SPEC.md section 2, principle 8)\n");
-  process.stdout.write(`  samples: ${samples.length} over ~${IDLE_SECONDS}s\n\n`);
+  process.stdout.write(`  samples: ${samples.length} over ~${IDLE_SECONDS}s\n`);
+  // A loaded host inflates every number here, especially CPU max — report it next to the
+  // results so a failure caused by machine contention isn't read as a regression.
+  process.stdout.write(`  host load average (1m, 5m, 15m): ${load}\n\n`);
   for (const r of rows) {
     process.stdout.write(`  ${r.pass ? "PASS" : "FAIL"}  ${r.name.padEnd(w)}  ${String(r.value).padEnd(14)} budget ${r.budget}\n`);
   }
