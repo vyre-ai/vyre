@@ -62,6 +62,16 @@ export class Gate {
     }
   }
 
+  /**
+   * Items left in "sending" by a vyred that stopped mid-send. Whether they went out is unknown, so
+   * they go back to held with that said: the person decides, rather than the Gate sending twice.
+   */
+  recover() {
+    const r = this.db.prepare("UPDATE gate_items SET state = 'held', error = ? WHERE state = 'sending'")
+      .run("vyred stopped while this was being sent; it may already have gone out. Check before approving again.");
+    return Number(r.changes);
+  }
+
   /** The `via` values that exist, and what each takes. Never a credential or an item name. */
   senders() {
     return Object.entries(this.senderConfig).map(([name, s]) => {

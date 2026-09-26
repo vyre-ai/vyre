@@ -126,6 +126,17 @@ test("gate: a double approve sends once and the second is refused", async () => 
   await assert.rejects(gate.approve({ id }), /already sent/);
 });
 
+test("gate: an item left mid-send by a stopped vyred goes back to held, marked as possibly sent", () => {
+  const { gate, sent } = setup();
+  const { id } = ask(gate);
+  gate.db.prepare("UPDATE gate_items SET state = 'sending' WHERE id = ?").run(id);
+  assert.equal(gate.recover(), 1);
+  const [h] = gate.held();
+  assert.equal(h.id, id);
+  assert.match(h.error, /may already have gone out/);
+  assert.equal(sent.length, 0);
+});
+
 test("gate: reject discards, and a discarded item cannot be approved", async () => {
   const { gate, events, sent } = setup();
   const { id } = ask(gate);
