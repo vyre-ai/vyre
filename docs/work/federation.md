@@ -99,19 +99,62 @@ box.
   hygiene 18/18 three times at load 14.8; federation-reads + link-federation + link 21/21 three
   times.
 
+- Task C, picked Mac sessions and the Deck (design 5, second half). 129e747 (core), 002533b
+  (Deck), and the docs commit after them. Tests on the test box, one file at a time:
+  test/federation-reads.test.js 7/7, core/recall/recall.test.js 29/29, core/recall/module.test.js
+  5/5, core/recall/eval.test.js 5/5, core/projects/projects.test.js 17/17,
+  core/modules/federate.test.js 3/3, test/link.test.js 8/8, test/link-federation.test.js 7/7 (10
+  of 11 runs; one run had 1 failure that did not repeat in the next 10 (load 8 to 10) and was not captured; the
+  file is untouched here), test/projects-cli.test.js 4/4, core/cli/commands/home.test.js 7/7,
+  test/onboard.test.js 11/11, test/fixtures.test.js 1/1, test/hygiene.test.js 1/1,
+  deck/test/machine.test.js 5/5 (new), deck/chat/lib/sessions.test.js 4/4 (one new),
+  deck/test/memory.test.js 15/15, deck/test/memory-presence.test.js 16/16, deck/chat/lib diff 8/8,
+  highlight 11/11, markdown 14/14. `node --check` clean on every Deck file touched. No
+  screenshots: the test box has no Chrome.
+  Core:
+  - `recall.sessions { ids }`: exact ids (at most 1000; an empty list is no sessions), combined
+    with the other filters.
+  - The box's `projects.threads`: when `wantsMacs` holds and the project has picks the box has no
+    session for, it asks the Macs once (`askMacs`, `recall.sessions { ids, limit }`). Found rows
+    take name, title, cwd, started, last (the Mac's `ended`), turns and human from the Mac, a
+    fresh `label`, `missing: false`, `source: "mac"`, `machine`. The box's rows are labelled
+    `source: "box"` (a federated answer); a pick no machine has stays `missing: true` with no
+    label. Order: newest first, missing last. `projects.context` still reads `threadsOf` directly
+    and drops missing picks, so the brief never carries a Mac session.
+  Deck (every action made read-only for a Mac row is listed under "Changed contracts"):
+  - `deck/js/machine.js`: `isMac`, `machineChip` (a `.tag.machine` with the machine's name),
+    `readOnlyNote` ("On alex-mac. Open it there to continue."), `offlineNames`, `offlineChip`
+    ("alex-mac offline", dashed), `readMacs(attempt, prev)` (link.macs; keeps `prev` while the
+    page is hidden; no link means no Macs). CSS in deck.css next to `.tag`.
+  - Chips on: Chat's recent rows, project rows and header, the rail's thread links and project
+    groups; Now's working rows and recent sessions; search results; a project board's threads; the
+    loose thread page header. Offline chip: Chat's header (list and project) and Now's Working
+    head, read in the same load as the view's other reads.
+  - Choices beyond the brief: a Mac project in /projects is listed with the chip and the note but
+    no board and no pin, and the rail's pins and Now's recent projects leave Mac projects out
+    (each opens a board on the box). The board reads `threads.list` with `machines: "local"` (a Mac
+    thread names the Mac's projects). Now's "learned today" reads the catalogue with
+    `machines: "local"` (it maps Memory's sessions, and asked the Mac for 500 rows on every
+    `memory.curated`). A Mac row in Now links to `/threads/:id`, not the Mac's project slug.
+    "Add to a project" on a Mac thread offers the box's projects only.
+
 ## Doing
 
-- (nothing; Task C is next)
+- (nothing; Task C is done)
 
 ## Next
 
-- Task C: Deck chips and picking (design 5, second half), with the deck owner. See "Notes for
-  Task C".
+- A browser pass on the fixture Deck (`?fixtures=1` on a machine without the link, or a box with
+  a paired Mac): chips in Chat, Now, search and a project board; a Mac thread in Chat and at
+  /threads/:id shows no composer and the note; the offline chip in Chat and Now. Screenshots
+  from a test world only.
+- Chat's rail groups by project slug, and a Mac project whose slug is also a box project's shares
+  that group (both chips show). Worth a decision with the deck owner if it confuses.
 
 ## Needs from others
 
 - lead: an ADR number.
-- deck: review the machine and offline chips (Task C).
+- deck: review the machine and offline chips, the read-only rule and the choices above (Task C).
 - projects, recall, switchboard owners: review the `machines` input and the row labels.
 
 ## Changed contracts
@@ -142,6 +185,33 @@ box.
 - New shared file `core/modules/federate.js` (`wantsMacs`, `askMacs`, `mergeRows`, `sourcesOf`,
   `boxLabel`, `macLabel`, `label`). `pair()` takes `boxTranscripts` (sessions in the corpus's
   shape for the box to index).
+- `recall.sessions` takes `ids: string[]` (exact ids; `sessions(db, { ids })` in
+  core/recall/search.js). `projects.threads` takes `machines` and, on the box for the person,
+  resolves missing picks through the Macs: those rows gain `source: "mac"`, `machine` and
+  `missing: false`; the other rows gain `source: "box"`, `machine`.
+- Deck: new `deck/js/machine.js` (the chip helper and the read-only rule), `.tag.machine`,
+  `.machine-offline`, `.readonly-note` in deck/css/deck.css, `.now-count` in now.css. Chat's `Row`
+  (deck/chat/lib/sessions.js) gains `source` and `machine`, and so does its offline snapshot.
+  `mountSession` takes `source` and `machine`. Projects' `drawComposer` takes `machine`.
+- Deck actions a Mac row no longer offers (hidden, with the note in their place):
+  - Chat session view (deck/chat/session.js): the composer (threads.send, and threads.lease on
+    typing) is never mounted; the lease bar's "Take" (threads.lease) and "Sending resumes this
+    session here" give way to the note; threads.get is skipped and recall.thread is asked with
+    `source: "mac"`; readMore on session.indexed is off.
+  - Projects thread pane (deck/views/projects.js `threadPane`, `drawComposer`): the reply box
+    (threads.send), "Take the keyboard" (threads.lease) and the lease follow are replaced by the
+    note; a Mac switchboard thread is not opened with threads.get.
+  - /projects list: a Mac project has no board link and no pin button.
+  - Now (deck/views/now.js `workRow`): no Watch link (it pointed at the Mac's agent or project);
+    the row opens /threads/:id read-only.
+  - Rail pins (deck/js/app.js `drawRail`) and Now's recent projects: Mac projects are left out.
+  - Not touched, and why: Chat's `threadRow`/rail links only open a session (read); needs cards,
+    asks and the Gate are the box's own (a Mac's asks never reach the box); the agents view lists
+    the box's agents and uses threads.list only to name their threads.
+- Fixtures: `deck/fixtures/threads.json` `threads.list` gains one Mac thread (source "mac",
+  machine "alex-mac"); new `deck/fixtures/link.json` answers `link.macs` with alex-mac online and
+  alex-air offline. There are no projects, recall or catalogue fixtures (those modules are live
+  wherever the Deck runs), so none were added.
 
 ## Notes for Task B
 

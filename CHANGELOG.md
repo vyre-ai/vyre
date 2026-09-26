@@ -35,6 +35,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Onboarding's history step on the box counts the paired Mac's sessions, lists them per machine
   (`history.machines`), and says "Your Mac (<name>) is offline, so its sessions do not show here
   yet" when the Mac is paired but away and nothing is here.
+- `recall.sessions` takes `ids` (exact session ids). On the box, `projects.threads` resolves a pick
+  the box has no session for by asking the paired Macs once for those ids, for the person (or a
+  module passing `machines: "all"`): a Mac session picked into a box project comes back with its
+  name, folder and times and `source: "mac"`, `machine`, and is never stored. With the Mac away,
+  or for an agent, it stays `missing: true`. The project's brief stays the box's own.
+- The Deck shows a machine chip (`deck/js/machine.js`) on the paired Mac's rows in Chat's list and
+  rail, Now's working threads and recent sessions, search results, and a project's threads, and
+  reads those threads only: no composer, keyboard, Take or Watch, and "On alex-mac. Open it there
+  to continue." in their place. A Mac project is listed without a board or a pin, and picking goes
+  into the box's projects only. A paired Mac that is away shows as one quiet "alex-mac offline"
+  chip in Chat's header and Now's Working, from `link.macs`, read with each refresh and never while
+  the page is hidden. Fixtures: a Mac thread in `threads.list`, and `deck/fixtures/link.json`.
 
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
