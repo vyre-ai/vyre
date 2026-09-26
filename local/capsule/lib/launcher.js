@@ -35,6 +35,8 @@ export function defineWord(text) {
 /** Could this be someone's name: letters, at most three words, no digits. */
 const personish = t => /^[\p{L}][\p{L}'.-]*(\s[\p{L}][\p{L}'.-]*){0,2}$/u.test(t) && t.length >= 3;
 
+const CLIPS = /^(clipboard|clips?|paste)\b/i;
+
 const GRANT = /** @type {Result} */ ({ kind: "grant", id: "grant:contacts", label: "Show contacts here",
   sub: "macOS asks once. They stay on this Mac.", target: "", score: 0.2 });
 
@@ -43,7 +45,9 @@ export class Launcher {
    * @param {{ apps?: local.Apps, helper?: any, frecency?: local.Frecency|null, files?: typeof local.files,
    *   open?: typeof local.open, run?: typeof execFile, copy?: (text: string) => void }} [deps]
    */
-  constructor({ apps = new local.Apps(), helper = null, frecency = null, files = local.files, open = local.open, run = execFile, copy = () => {} } = {}) {
+  constructor({ apps = new local.Apps(), helper = null, frecency = null, files = local.files, open = local.open, run = execFile, copy = () => {}, clips = null } = {}) {
+    /** @type {any} clipboard history (lib/clips.js), or null */
+    this.clips = clips;
     this.apps = apps;
     this.helper = helper;
     this.frecency = frecency;
@@ -83,6 +87,12 @@ export class Launcher {
     const word = defineWord(q);
     const [people, def] = await Promise.all([this.people(q), word && this.helper ? this.helper.define(word) : null]);
     extra.push(...people);
+    if (this.clips) {
+      const found = this.clips.search(q, 6);
+      extra.push(...found);
+      // Listing the history ("clip", "clipboard", "paste"): the way to forget it all is right there.
+      if (CLIPS.test(q)) extra.push({ kind: "clipclear", id: "clipclear", label: "Clear clipboard history", sub: found.length ? `${this.clips.list().length} items, on this Mac only` : "nothing kept", target: "", score: 0.01 });
+    }
     const d = def && !def.error ? toDefineResult(def) : null;
     if (d) extra.push({ ...d, last: 0, score: 1.5 });
     const local_ = [...this.apps.search(q, 6, this.boost), ...local.settings(q, 4, this.boost)];
@@ -134,6 +144,12 @@ export class Launcher {
       if (a && a.error === "asking") return { ok: true, note: "macOS is asking. Answer its dialog, then type again." };
       return { error: "Contacts are off for Vyre. Turn them on in System Settings, Privacy & Security, Contacts." };
     }
+    if (r.kind === "clip") {
+      if (!this.clips) return { error: "no clipboard history here" };
+      const c = await this.clips.pick(r.id);
+      return "error" in c ? { error: c.error } : { ok: true, note: c.note, close: true };
+    }
+    if (r.kind === "clipclear") { this.clips?.clear(); return { ok: true, note: "Clipboard history cleared." }; }
     this.frecency?.pick(r.id, query);
     if (r.kind === "calc") { this.copy(String(r.copy ?? r.label)); return { ok: true, note: `Copied ${r.copy ?? r.label}`, close: true }; }
     if (r.kind === "app" || r.kind === "file" || r.kind === "folder" || r.kind === "setting") {

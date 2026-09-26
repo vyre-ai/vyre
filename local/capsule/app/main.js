@@ -30,6 +30,7 @@ import { Launcher } from "../lib/launcher.js";
 import { Apps, Frecency } from "../lib/local.js";
 import { LocalHelper } from "../lib/helper.js";
 import { Icons } from "../lib/icons.js";
+import { Clips } from "../lib/clips.js";
 import os from "node:os";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -53,7 +54,14 @@ const bridge = new Bridge(vyred);
 // vyred's home (ids and six-letter prefixes, never whole queries), not in vyred.
 const HOME = process.env.VYRE_HOME || path.join(os.homedir(), ".vyre");
 const helper = new LocalHelper(path.join(BIN, "local"));
-const launcher = new Launcher({ apps: new Apps(), helper,
+// Clipboard history: on this Mac only, in the Capsule's own app-data folder. Its watcher is the one
+// thing that runs while the Capsule is hidden (one integer read every 750 ms, in the helper).
+// A test run never reads the user's clipboard: it watches a private "vyre-" pasteboard and keeps
+// its history beside the test's vyred home.
+const clips = DRIVEN
+  ? new Clips({ file: path.join(HOME, "capsule-test-clips.json"), helper, board: "vyre-drive-" + process.pid })
+  : new Clips({ file: path.join(app.getPath("userData"), "clips.json"), helper });
+const launcher = new Launcher({ apps: new Apps(), helper, clips,
   frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t) });
 /** Icons, bounded, in the Capsule's own app-data folder ("-2": the helper once drew them a quarter size). Asked for only while the page is showing results. */
 let icons = /** @type {Icons|null} */ (null);
@@ -146,6 +154,8 @@ function hide() {
   }
   pinned = false;
   bridge.releaseLease().catch(() => {});
+  // Nothing is followed for a DM nobody is looking at (principle 8).
+  bridge.closeDm();
   paintTray();
 }
 
@@ -284,6 +294,8 @@ ipcMain.handle("capsule:quick", async (_e, text) => withIcons(await launcher.qui
 ipcMain.handle("capsule:full", async (_e, text) => withIcons(await launcher.full(String(text || ""), bridge.up ? bridge.catalog : null)));
 ipcMain.handle("capsule:icons", (_e, results) => (Array.isArray(results) ? iconsNow().get(results.slice(0, 40)) : {}));
 ipcMain.handle("capsule:cancel", () => bridge.cancel());
+ipcMain.handle("capsule:dm-open", (_e, agent) => bridge.openDm(String(agent || "")));
+ipcMain.handle("capsule:dm-close", () => bridge.closeDm());
 ipcMain.handle("capsule:copy", (_e, text) => { clipboard.writeText(String(text || "")); return { ok: true }; });
 ipcMain.handle("capsule:pick", async (_e, r, query) => {
   const out = await launcher.pick(r, String(query || ""));
@@ -347,7 +359,7 @@ app.on("second-instance", (_e, argv) => {
   if (argv.includes("--toggle")) toggle("cli"); else show("cli");
 });
 app.on("window-all-closed", () => {});   // the Capsule lives in the menu bar; closing the window is not quitting
-app.on("will-quit", () => { try { launcher.close(); } catch {} try { hotkey.child && hotkey.child.kill(); } catch {} try { stream && stream.stop(); } catch {} });
+app.on("will-quit", () => { try { clips.stop(); } catch {} try { launcher.close(); } catch {} try { hotkey.child && hotkey.child.kill(); } catch {} try { stream && stream.stop(); } catch {} });
 
 app.whenReady().then(async () => {
   if (app.dock) app.dock.hide();
@@ -359,6 +371,7 @@ app.whenReady().then(async () => {
   paintTray();
   create();
   startHotkey();
+  clips.start();
   await bridge.refresh();
   follow();
   if (DEV && process.env.VYRE_CAPSULE_DRIVE) drive();

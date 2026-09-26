@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld("vyre", {
   cancel: () => ipcRenderer.invoke("capsule:cancel"),
   // Only the user's own click puts text on the clipboard.
   copy: text => ipcRenderer.invoke("capsule:copy", text),
+  // A direct message with an agent: its thread as history, live while open.
+  dmOpen: agent => ipcRenderer.invoke("capsule:dm-open", agent),
+  dmClose: () => ipcRenderer.invoke("capsule:dm-close"),
   // The page says how tall it is; the window follows. Width never changes.
   size: h => ipcRenderer.send("capsule:size", h),
   // Escape: the window goes away, which is the only reliable way to hand the keyboard back.

@@ -299,6 +299,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- In the Capsule: clipboard items rank beside apps and files, "clipboard" lists them newest first
+  with a row that clears the history, and Enter puts one back on the pasteboard and closes, for the
+  user's own ⌘V. `@` an agent opens a DM: its history, your messages from any surface, the reply
+  streaming into the list, and its asks in Beacon to click and answer. A test run watches a
+  private pasteboard, never the user's.
 - Clipboard history, on this Mac only (`lib/clips.js`, `clip.watch` in `bin/local`): the helper
   reads the pasteboard's change count every 750 ms, the one thing that runs while the Capsule is
   hidden. Concealed, transient and auto-generated items, password managers, Universal Clipboard,

@@ -170,6 +170,8 @@ function choose(item) {
   const start = S.comp ? S.comp.start : caret;
   const rest = (box.value.slice(0, Math.max(0, start)) + box.value.slice(caret)).replace(/^\s+/, "");
   S.chip = item; S.comp = null; S.destIndex = 0;
+  // @ an agent is a conversation: its history shows, and replies stream into it.
+  if (item.kind === "agent") api.dmOpen(item.id); else api.dmClose();
   box.value = rest;
   box.setSelectionRange(rest.length, rest.length);
   soon(0);
@@ -190,6 +192,7 @@ async function send(d, { take = false } = {}) {
     return paint();
   }
   S.sent = { dest: d, text, thread: r.thread || null };
+  if (inDm()) { box.value = ""; S.text = ""; box.placeholder = `Message ${S.chip.label}`; return paint(); }
   S.mode = "reply";
   box.value = ""; S.text = "";
   box.placeholder = "Follow up";
@@ -224,6 +227,7 @@ function reset() {
   box.value = "";
   box.placeholder = "Ask, or @agent";
   api.pin(false);
+  api.dmClose();
 }
 
 // ------------------------------------------------------------------ keys
@@ -270,7 +274,7 @@ window.addEventListener("keydown", e => {
     if (k === "Enter") { e.preventDefault(); S.mode = "ask"; S.source = null; paint(); box.focus(); }
     return;
   }
-  if (k === "Backspace" && S.chip && box.selectionStart === 0 && box.selectionEnd === 0) { e.preventDefault(); S.chip = null; return soon(0); }
+  if (k === "Backspace" && S.chip && box.selectionStart === 0 && box.selectionEnd === 0) { e.preventDefault(); if (S.chip.kind === "agent") api.dmClose(); S.chip = null; return soon(0); }
   if (k === "ArrowUp" && !box.value && !S.chip && S.snap.waiting.length && S.mode === "ask") { e.preventDefault(); S.mode = "waiting"; S.waitIndex = 0; return paint(); }
   if (S.mode === "reply" && k === "Enter") { e.preventDefault(); return S.sent && send(followUp(S.sent)); }
   const opts = S.dest ? S.dest.options : [];
@@ -470,10 +474,23 @@ function paint() {
     if (S.note) kids.push(h("div", { class: "sect note" }, S.note));
     const cur = E[selected(E)];
     const primary = opts[0] && opts[0].kind !== "recall" ? opts[0].show.who : null;
-    keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
+    keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "clip" ? "⏎ copy, then ⌘V" : cur.r.kind === "clipclear" ? "⏎ clear" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
       primary && !(cur && cur.ask === opts[0]) ? `⇥ ask ${primary}` : null, "esc close");
     done(panel, kids);
     loadIcons();
+    return null;
+  }
+
+  if (inDm()) {
+    kids.push(...dmView(snap.dm));
+    const opts = S.dest && S.destFor === box.value.trim() ? S.dest.options : [];
+    if (box.value.trim() && opts.length) kids.push(h("div", { class: "sect pad" }, opts.map((d, i) => destRow(d, i === S.destIndex, i === S.destIndex ? "Sends to" : "Or"))));
+    if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
+    keys(box.value.trim() ? "⏎ send" : null, snap.dm.asks.length ? "click an ask to answer" : null, "⌫ leave", "esc close");
+    const list = /** @type {HTMLElement|null} */ (document.querySelector(".dm"));
+    done(panel, kids);
+    const el = /** @type {HTMLElement|null} */ (document.querySelector(".dm"));
+    if (el && (!list || list.scrollTop + list.clientHeight >= list.scrollHeight - 8)) el.scrollTop = el.scrollHeight;
     return null;
   }
 
@@ -522,7 +539,7 @@ function entryRows(E) {
     const r = e.r;
     return h("div", { class: "row res" + (r.kind === "calc" ? " calc" : "") + (sel ? " on" : ""), onmousedown: pick },
       picture(r), h("span", { class: "t" }, r.label), r.sub ? h("span", { class: "s" }, r.sub) : null,
-      h("span", { class: "acc" }, sel ? (r.kind === "calc" ? "copy ⏎" : "⏎") : KIND_LABEL[r.kind] || r.kind));
+      h("span", { class: "acc" }, sel ? (r.kind === "calc" ? "copy ⏎" : "⏎") : KIND_LABEL[r.kind] ?? r.kind));
   });
   const out = [];
   if (rc) out.push(h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, "From memory · no model used"), h("div", { class: "answer" }, rc.answer),
@@ -531,7 +548,7 @@ function entryRows(E) {
   return out;
 }
 const KIND_LABEL = { calc: "", app: "App", setting: "Settings", file: "File", folder: "Folder", contact: "Contact", define: "Dictionary", grant: "Contacts",
-  agent: "Agent", project: "Project", thread: "Thread", memory: "Memory", vault: "Vault", boxfile: "Box" };
+  agent: "Agent", project: "Project", thread: "Thread", memory: "Memory", vault: "Vault", boxfile: "Box", clip: "Clipboard", clipclear: "" };
 
 // ------------------------------------------------------------------ pictures
 
@@ -587,6 +604,8 @@ const GLYPHS = {
   grant: `<circle cx="6" cy="6" r="2.2"/><path d="M2.5 13c.4-2 1.8-3.2 3.5-3.2S9.1 11 9.5 13"/><path d="M12 6v4M10 8h4"/>`,
   calc: `<path d="M4 6h8M4 10h8"/>`,
   file: `<path d="M4 1.5h5l3 3v10H4z"/>`,
+  clip: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 2.5V1.5h4v1M6 7h4M6 10h3"/>`,
+  clipclear: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 7l4 4M10 7l-4 4"/>`,
 };
 const TONE = { memory: "#EBC76B", held: "#FF7A59", quick: "#C6F36B", calc: "#C6F36B" };
 
@@ -595,6 +614,31 @@ function glyph(kind) {
   const stroke = TONE[kind] || "#F1EEE6";
   return h("span", { class: "ic vy" + (kind === "memory" ? " gold" : kind === "held" ? " hot" : "") },
     svg(`<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`));
+}
+
+// ------------------------------------------------------------------ direct messages
+
+/** A DM is open for the agent in the chip. */
+function inDm() {
+  const d = S.snap.dm;
+  return Boolean(S.chip && S.chip.kind === "agent" && d && S.mode === "ask" && String(d.agent).toLowerCase() === String(S.chip.id).toLowerCase());
+}
+
+/** The conversation: history, the reply streaming into it, and the agent's asks in Beacon. */
+function dmView(d) {
+  const out = [];
+  const state = d.loading ? "loading" : d.holder && d.holder !== "capsule" ? `${d.holder} has the keyboard` : d.busy ? "working" : "";
+  out.push(h("div", { class: "sect replyhead" }, h("span", { class: "lbl on" }, "Direct"), h("span", { class: "who" }, d.agent), h("span", { class: "state" }, state)));
+  const msgs = d.messages.slice(-20);
+  const list = h("div", { class: "dm" }, msgs.length ? msgs.map(m => h("div", { class: "msg " + m.role + (m.pending ? " pending" : "") },
+    h("span", { class: "lbl" }, m.role === "user" ? (m.surface && m.surface !== "capsule" ? `You · ${m.surface}` : "You") : d.agent),
+    m.tools && m.tools.length ? h("div", { class: "tools" }, m.tools.map(t => h("span", { class: "tl" + (t.error ? " fail" : "") }, `${t.done ? (t.error ? "failed" : "done") : "running"} · ${t.summary}`))) : null,
+    h("div", { class: "x md" }, m.role === "agent" ? md(m.text || "") : m.text, m.role === "agent" && !m.done && !m.error ? h("span", { class: "caret" }) : null)))
+    : h("div", { class: "x empty" }, d.loading ? "" : `Nothing with ${d.agent} yet. What you send starts it.`));
+  out.push(list);
+  if (d.asks.length) out.push(h("div", { class: "sect pad" }, d.asks.map(w => h("div", { class: "wait", onclick: () => openReview(w) },
+    h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null), h("span", { class: "a" }, w.age || "")))));
+  return out;
 }
 
 // ------------------------------------------------------------------ answers
