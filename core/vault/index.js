@@ -24,6 +24,7 @@ import * as account from "./tools/account.js";
 export { presence };
 import * as shareTools from "./tools/share.js";
 import { register as registerCli } from "./tools/cli.js";
+import { register as registerSurfaces } from "./tools/surfaces.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -158,9 +159,10 @@ export default {
       presence("Put vault items into a program's environment", ({ items }) =>
         `Put ${(Array.isArray(items) ? items : []).map(i => i && i.env ? `${quoted(i.name)} as ${i.env}` : quoted(i && i.name)).join(", ")} into a program's environment`));
 
+    // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
     tool("vault.totp", ["cli", "local", "module"], "The current one-time code for a login with a TOTP seed.",
-      obj({ name: str }, ["name"]), (input, { caller }) => vault.code(input, caller),
-      // Modules are exempt in the registry; a surface with an open session may skip the proof.
+      obj({ name: str, session: str }, ["name"]),
+      async ({ name }, { caller }) => { const r = await vault.code({ name }, caller); return { code: r.code, period: r.period ?? 30, remaining: r.remaining }; },
       presence("Show a one-time code", ({ name }) => `Show the one-time code for ${quoted(name)}`,
         { skip: ({ input }) => Boolean(input && /** @type {any} */ (vault).sessions?.ok(input.session, input.name)) }));
 
@@ -226,12 +228,15 @@ export default {
 
     const kits = shareTools.register({ ctx, vault, tool });
 
+    const surfaces = registerSurfaces({ ctx, vault });
+
     return {
       ssh: cli.ssh,
       async stop() {
         await kits.stop();
         await cli.stop();
         vault.lock();
+        await surfaces.stop();
         if (listener) await listener.close();
         if (fillListener) await fillListener.close();
       },

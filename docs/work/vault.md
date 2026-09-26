@@ -42,6 +42,12 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `rm`, `inject -i/-o`, `run --env-file`, `share`, `--json` everywhere; the ssh agent
   (`ssh/`) and `git-credential-vyre` (`git.js`), tools in `tools/cli.js`, references in `refs.js`.
 
+- Surfaces (ADR 0006 decisions 2 to 4, section 6): surface sessions (`session.js`), reveal and
+  copy with the clipboard helper (`clipboard.js`, `mac/clip.swift`), lock on sleep and screen
+  lock (`watch.js`, `mac/watch.swift`), native fill for the Capsule (`native.js`,
+  `mac/type.swift`), tools in `tools/surfaces.js`; the extension's inline chooser, keyboard fill,
+  one-time codes and save on submit (`fill-save.js`, `modules/vault-extension/inline.js`).
+
 ## Doing
 
 - The relayed pass between two machines on the tailnet, end to end through the box
@@ -161,3 +167,25 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `git-get`, `git-store`, `git-erase`, `ssh-sign`, `ssh-generate`, `ssh-add`, `ssh-approve`,
   `ssh-forget`. Tables `vault_ssh_keys` and `vault_marks` are created IF NOT EXISTS, outside
   the numbered migrations.
+- Surfaces: `vault.session.open {surface: deck|capsule|extension, ttl_s?}` returns
+  `{session, expires, surface}`; `vault.session.close {session}` (any caller);
+  `vault.session.status {session}` returns `{unlocked, expires, surface}`. `vault.reveal {name,
+  field?, session?}` returns `{value, concealAfter: 30}`; `vault.copy` returns `{copied,
+  clearsAt, warning?}` and never the value; `vault.fill.native {name, app: {bundle, pid},
+  session?}` returns `{filled, via, app}`; `vault.totp` takes `session?` and returns `{code,
+  period, remaining}`. All cli/local only except totp (also modules) and session.close. Each
+  declares `presence`; reveal, copy and totp `skip` while `vault.sessions.ok(session, name)`.
+  `vault.sessions` is on the Vault instance; the last session closing calls
+  `vault.account.lock()` if it exists; `vault.lock` also ends sessions and clears the clipboard.
+  Reprompt is read from `row.meta.reprompt` (cards default to true until meta lands); native
+  fill outside a browser reads `row.meta.apps`.
+- Events: `vault.unlocked {surface, sessions}`, `vault.locked {surface, why, ended, sessions}`,
+  `vault.revealed {name, field, surface}`, `vault.copied {name, field, surface, clearsAt}`;
+  `vault.filled` may carry `app` or `what: "otp"`. Config `vault.lock: {idle, max, onSleep,
+  onScreenLock}`; `vault.testHelpers` is honoured only under `node --test`.
+- Fill listener: `POST /v1/fill/otp {name, url}` returns `{code, remaining, period}`;
+  `POST /v1/fill/save {url, username?, password, name?}` returns `{name, created, updated}`.
+  Both need a device and a session. New items get `hosts = [origin]`; updates keep the old
+  password in the sealed `history` field (JSON, last 5).
+- `module.json` `shows.capsule`: results:vault.list, action:vault.fill.native, action:vault.copy,
+  action:vault.totp, action:vault.lock.

@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { canonical, same } from "./crypto.js";
 import { totp } from "./totp.js";
+import { otpRoute, saveRoute } from "./fill-save.js";
 
 export const FILL_MIGRATION = `CREATE TABLE vault_devices (
      id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
@@ -198,6 +199,8 @@ export class Fill {
       case "POST match": return this.matchRoute(b, h);
       case "POST fill": return this.fill(b, h);
       case "GET status": return this.status(h);
+      case "POST otp": return otpRoute(this, b, h);
+      case "POST save": return saveRoute(this, b, h);
       default: return fail(404, "not_found", `no route ${route}`);
     }
   }
@@ -425,7 +428,7 @@ export class Fill {
 
 // ---- the listener -----------------------------------------------------------------------
 
-const ROUTES = { pair: "POST", unlock: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET" };
+const ROUTES = { pair: "POST", unlock: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST" };
 
 class HttpError extends Error {
   /** @param {number} status @param {string} code @param {string} message */

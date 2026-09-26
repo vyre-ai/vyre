@@ -54,4 +54,14 @@
     if (otp && c.totp) { put(otp, c.totp); filled.push("totp"); }
     return { filled, why: filled.length ? null : "no login fields on this page" };
   };
+
+  /** A one-time code into the focused code box, else the first one on the page. @param {{ origin: string, code: string }} c */
+  g.vyreFillOtp = c => {
+    if (!c || location.origin !== c.origin) return { filled: [], why: "the page changed" };
+    const a = document.activeElement;
+    const el = a instanceof HTMLInputElement && usable(a) ? a : inputs('input[autocomplete="one-time-code"]')[0];
+    if (!el || !c.code) return { filled: [], why: "no code box on this page" };
+    put(el, c.code);
+    return { filled: ["totp"], why: null };
+  };
 })();

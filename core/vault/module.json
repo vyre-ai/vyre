@@ -56,7 +56,13 @@
       "vault.ssh.add",
       "vault.ssh.approvals",
       "vault.ssh.approve",
-      "vault.ssh.forget"
+      "vault.ssh.forget",
+      "vault.session.open",
+      "vault.session.close",
+      "vault.session.status",
+      "vault.reveal",
+      "vault.copy",
+      "vault.fill.native"
     ]
   },
   "watches": {
@@ -84,7 +90,9 @@
       "vault.kit-printed",
       "person.requested",
       "pass.accept-requested",
-      "vault.ssh-approved"
+      "vault.ssh-approved",
+      "vault.revealed",
+      "vault.copied"
     ]
   },
   "shows": {
@@ -93,6 +101,13 @@
     ],
     "cli": [
       "vault"
+    ],
+    "capsule": [
+      "results:vault.list",
+      "action:vault.fill.native",
+      "action:vault.copy",
+      "action:vault.totp",
+      "action:vault.lock"
     ]
   },
   "needs": {},

@@ -70,11 +70,14 @@ test("vault op parity: --json and exit codes, get, read, inject, run --env-file,
   assert.equal(usage.code, 1);
   assert.equal(one(usage).error.code, "bad_input");
 
-  // reveal and copy belong to another piece of work; without them the message says so.
-  const rev = await vyre(h, ["vault", "get", "mail", "--reveal"]);
-  assert.equal(rev.code, 1);
-  assert.match(rev.out, /cannot reveal yet/);
-  assert.equal(one(await vyre(h, ["vault", "get", "mail", "--copy", "--json"])).error.code, "no_such_tool");
+  // reveal prints the one field asked for (presence is not enforced on this registry yet); copy
+  // under node --test refuses rather than touch the real clipboard, and never prints the value.
+  const rev = await vyre(h, ["vault", "get", "mail", "--reveal", "--field", "password"]);
+  assert.equal(rev.code, 0, rev.all);
+  assert.ok(rev.out.includes(pw));
+  const copy = await vyre(h, ["vault", "get", "mail", "--copy", "--json"]);
+  assert.ok(one(copy).error, copy.all);
+  assert.ok(!copy.all.includes(pw));
   assert.match((await vyre(h, ["vault", "get", "mail", "--otp"])).out, /\d{6}/);
 
   // read: the value alone, for $(...).

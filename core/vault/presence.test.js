@@ -20,12 +20,14 @@ export const NEEDS_PRESENCE = [
   "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
   "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock",
   "vault.resolve", "vault.render", "vault.edit", "vault.git", "vault.ssh.add", "vault.ssh.approve",
+  "vault.session.open", "vault.reveal", "vault.copy", "vault.fill.native",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
   "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock",
   "vault.people", "vault.fingerprint",
-  "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget"];
+  "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
+  "vault.session.close", "vault.session.status"];
 
 /** Start the vault module against a ctx that records every tool definition. */
 export async function recorded(t, extra = {}) {
