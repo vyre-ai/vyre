@@ -11,11 +11,14 @@ import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
+import { checkName } from "../names/service.js";
 
 export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
 const PHASES = ["idle", "dns", "certificate", "serving"];
 const ROWS = ["reserve", "dns", "cert"];
+const TS_ADMIN = "https://login.tailscale.com/admin/dns";
+const HTTPS_OFF = /https (certificates?|is|are)\b|certificates? (are|is) (not enabled|off|disabled)|tls cert/i;
 const MAC_DOWNLOAD = "https://vyre.run/download/mac";
 const CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code";
 // Prefixes only; a real value never appears in code, logs or events.
@@ -65,7 +68,7 @@ export default {
       const n = names.__error ? null : names;
       const t = n && n.tailscale;
 
-      const you = { state: ctx.config.name ? "done" : "todo", why: null, name: ctx.config.name || null, assistant: ob().assistant || null };
+      const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: ctx.config.name || null, assistant: ob().assistant || null };
 
       const auth = ob().claude || null;
       const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth,
@@ -92,11 +95,13 @@ export default {
         tailscale.claimUrl = claimUrl;
       }
 
-      const address = { state: "todo", why: null, name: ctx.config.name || null, address: n ? n.address : null, via: n ? n.via : null,
+      const address = { state: "todo", why: null, code: null, adminUrl: null, name: ctx.config.name || null, address: n ? n.address : null, via: via(n),
         phase: n ? n.phase : "idle", certificate: n ? n.certificate : null };
       if (!n) Object.assign(address, { state: "blocked", why: names.__error });
       else if (n.phase === "serving") address.state = "done";
       else if (n.phase === "dns" || n.phase === "certificate") address.state = "working";
+      else if (n.phase === "failed" && address.via === "ts.net" && HTTPS_OFF.test(n.why || "")) Object.assign(address, { state: "blocked",
+        why: "HTTPS certificates are turned off in your tailnet, so this machine cannot get one for its ts.net name.", code: "https_off", adminUrl: TS_ADMIN });
       else if (n.phase === "failed") Object.assign(address, { state: "blocked", why: n.why });
       else if (tailscale.state !== "done") Object.assign(address, { state: "blocked", why: "connect Tailscale first" });
 
@@ -107,7 +112,8 @@ export default {
         const cat = await tryCall("projects.catalog", { limit: 100000 });
         history.sessions = Math.max(cat.__error ? 0 : Number(cat.total) || 0, history.indexed);
         if (history.running) history.state = "working";
-        else if (history.sessions === 0) Object.assign(history, { state: "done", why: "no Claude Code sessions on this machine yet" });
+        else if (history.sessions === 0) Object.assign(history, { state: "done",
+          why: ctx.config.role === "box" ? "Your Mac's sessions appear here when you connect your Mac" : "no Claude Code sessions on this machine yet" });
         else if (ob().history && history.indexed >= history.sessions) history.state = "done";
       }
 
@@ -125,8 +131,15 @@ export default {
       const current = STEPS.find(k => steps[k] === "todo") || null;
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       return { mode, role: ctx.config.role, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
-        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, assistant: ob().assistant || null,
+        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
         current, finished: Boolean(ob().finished), steps, detail };
+    }
+
+    /** How the name step serves: what it already uses, else a vyre.run claim when a zone token or own domain is here, else ts.net. */
+    function via(n) {
+      const d = Boolean(net().domain);
+      if (n && n.via) return n.via === "vyre.run" && d ? "domain" : n.via;
+      return d ? "domain" : n && n.zone ? "vyre.run" : "ts.net";
     }
 
     const stepOf = async (k, caller) => (await status(caller)).detail[k];
@@ -147,20 +160,20 @@ export default {
     });
 
     ctx.tool("onboard.you", {
-      description: "Step 1: your name, checked like onboard.name and saved, and your assistant's name.",
+      description: "Step 1: your name as you like it shown, and your assistant's name. A name that is also a valid vyre.run name becomes the default candidate.",
       input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
       run: async ({ name, assistant }, { caller }) => {
-        const a = String(assistant ?? "").trim();
+        const p = String(name ?? "").trim(), a = String(assistant ?? "").trim();
+        if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
-        const c = await call("names.check", { name });
-        if (!c.valid || !c.available) throw new Error(`${c.name}.vyre.run cannot be yours: ${c.why || "someone else has that name"}`);
-        save({ name: c.name, ...(a ? { onboard: { assistant: a } } : {}) });
+        const c = checkName(p);
+        save({ ...(c.valid && !ctx.config.name ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
         return stepOf("you", caller);
       },
     });
 
     ctx.tool("onboard.name", {
-      description: "Step 1 checks <name>.vyre.run and saves it; step 4 reserves it (DNS and certificate, as progress rows) or falls back to the ts.net name.",
+      description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
       input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] } }),
       run: async ({ name, action = "check" }, { caller }) => {
         if (action === "check") {
@@ -170,6 +183,7 @@ export default {
           await status(caller);
           return c;
         }
+        if (action === "reserve" && via(await call("names.status")) === "ts.net") action = "ts.net";
         if (action !== "status") await call(action === "ts.net" ? "names.fallback" : "names.claim", action !== "ts.net" && name ? { name } : {});
         return progress(await stepOf("name", caller));
       },
