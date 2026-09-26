@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["recall.search", "recall.thread", "recall.sessions", "recall.index", "recall.status", "recall.eval"] },
+  "does": { "tools": ["recall.search", "recall.thread", "recall.sessions", "recall.index", "recall.status", "recall.setup", "recall.eval"] },
   "watches": { "emits": ["session.indexed"] },
   "shows": { "cli": ["recall", "index"] },
   "needs": {},

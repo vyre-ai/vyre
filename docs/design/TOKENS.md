@@ -13,14 +13,20 @@ Take values from the palette, never retype them. Do not add colours. Artboards: 
 
 ## Colour: dark (default)
 
-The palette lives in `core/config/theme.js`, and this table is drawn from it. A `theme.colors`
-config key that lets you override it is planned, not built yet.
+The palette lives in `core/config/theme.js`, and these tables are drawn from it. The Deck paints
+the same values (a test holds `deck/css/deck.css` to them). To change a colour on your box, set
+it under `theme.colors` in `~/.vyre/config.json`, for example
+`"theme": { "colors": { "dark": { "signal": "#B8E65A" } } }`, and reload the Deck: the box
+serves your overrides as `/theme.css`. A value that is not a plain CSS colour is ignored.
 
 <!-- colors: dark -->
 
 Errors are not coral. A failed run is Bone text with an Ash `failed` label; if it needs the user's action, it becomes Beacon.
 
 ## Colour: light (paper)
+
+Paper swaps the roles the views use, so its names are roles (`bg`, `text`, `focus`), and these are
+the keys for `theme.colors.light`.
 
 <!-- colors: light -->
 

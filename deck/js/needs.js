@@ -83,15 +83,16 @@ export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn)
  */
 export async function answer(n, opt, edited) {
   if (n.kind === "draft") {
-    if (opt.decision === "reject") await call("gate.reject", { id: n.id });
+    // Every answer here is human-only (core/presence HUMAN_ONLY): the passkey proves a person.
+    if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: true });
     else {
-      const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id });
+      const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
       // Approved, but the sender failed: the item stays held and can be sent again. gate.js keeps
       // the edit as `final` even on failure, so the next gate.get must be re-read, not reused.
       if (r && r.state === "failed") { got.delete(n.id); throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true }); }
     }
   } else {
-    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" });
+    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" }, { presence: true });
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);

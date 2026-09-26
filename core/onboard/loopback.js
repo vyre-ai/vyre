@@ -10,6 +10,10 @@
 // headers. The page's own files, and the Deck's shared css, js and vendor files it loads, carry
 // nothing secret and are served to anyone on loopback. The listener closes for good once the
 // owner has been seen on the tailnet.
+//
+// The token's hash and the live sessions' hashes survive a restart of vyred (`keep`), because
+// `vyre update` restarts it: the link the user was sent, or the page they have open, must still
+// work afterwards. Only hashes are kept, as in memory.
 
 import crypto from "node:crypto";
 import http from "node:http";
@@ -40,9 +44,9 @@ export function bindAddress(env = process.env) {
 }
 
 /**
- * @param {{ handler: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, port?: number, now?: () => number, log?: (m: string) => void, host?: string }} deps
+ * @param {{ handler: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, port?: number, now?: () => number, log?: (m: string) => void, host?: string, keep?: { load: () => any, save: (s: any) => void } }} deps
  */
-export function loopback({ handler, port: wanted = 7300, now = Date.now, log = () => {}, host = bindAddress() }) {
+export function loopback({ handler, port: wanted = 7300, now = Date.now, log = () => {}, host = bindAddress(), keep = { load: () => null, save: () => {} } }) {
   /** @type {http.Server | null} */
   let server = null;
   let port = 0;
@@ -50,6 +54,17 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
   let token = null;
   /** @type {Map<string, number>} session hash -> expiry */
   const sessions = new Map();
+  // What the last vyred left: an unredeemed token and open sessions, if they have not expired.
+  let keptPort = 0;
+  try {
+    const k = keep.load();
+    if (k && k.token && k.token.expires > now()) { token = { hash: String(k.token.hash), expires: Number(k.token.expires) }; keptPort = Number(k.port) || 0; }
+    for (const [h, exp] of (k && Array.isArray(k.sessions) ? k.sessions : [])) if (exp > now()) sessions.set(String(h), Number(exp));
+  } catch { /* nothing kept is the ordinary case */ }
+  const persist = () => {
+    try { keep.save(token || sessions.size ? { token, port, sessions: [...sessions] } : null); }
+    catch (e) { log(`onboard: could not keep the link across a restart: ${/** @type {Error} */ (e).message}`); }
+  };
   const handle = handler({
     tool: n => TOOLS.has(n),
     path: (m, p) => (m === "GET" && (onboardPath(p) || assetPath(p))) || (m === "POST" && p.startsWith("/v1/tools/")) || (m === "GET" && p === "/v1/events/stream"),
@@ -83,6 +98,7 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
       token = null;
       const sid = crypto.randomBytes(32).toString("base64url");
       sessions.set(sha(sid), now() + SESSION);
+      persist();
       res.writeHead(302, { location: `/onboard#s=${sid}`, "cache-control": "no-store" });
       return res.end();
     }
@@ -115,26 +131,33 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
   return {
     /** Open the listener (if needed) and mint a fresh token, voiding any unredeemed one. */
     async link() {
-      if (!server) {
-        // In a container the published port is fixed, so there is no next free one to try.
-        const tries = host === "127.0.0.1" ? 20 : 1;
-        for (let p = wanted; p < wanted + tries && !server; p++) {
-          if (p === 0) { server = /** @type {http.Server} */ (await listen(0)); break; }
-          try { server = /** @type {http.Server} */ (await listen(p)); }
-          catch (e) { if (/** @type {any} */ (e).code !== "EADDRINUSE") throw e; }
-        }
-        if (!server && tries === 1) throw new Error(`port ${wanted} is taken inside the container`);
-        if (!server) server = /** @type {http.Server} */ (await listen(0));
-        port = /** @type {any} */ (server.address()).port;
-        log(`onboard: listening on ${host}:${port}`);
-      }
+      await ensure();
       const t = crypto.randomBytes(32).toString("base64url");
       token = { hash: sha(t), expires: now() + HOUR };
+      persist();
       return { url: `http://127.0.0.1:${port}/onboard?t=${t}`, port, expires: token.expires };
     },
-    async close() {
-      token = null;
-      sessions.clear();
+    /**
+     * After a restart: reopen the listener when the last vyred left a link or a session that is
+     * still good. A link names its port, so one kept for another port is dropped. True when open.
+     */
+    async resume() {
+      if (!token && !sessions.size) return false;
+      await ensure();
+      if (token && keptPort && keptPort !== port) { token = null; persist(); }
+      log(`onboard: kept ${token ? "the unused link" : "no link"} and ${sessions.size} session${sessions.size === 1 ? "" : "s"} across the restart`);
+      return true;
+    },
+    /** When the unredeemed link expires, or null when there is none. Mints nothing. */
+    pending() {
+      return server && token && token.expires > now() ? { port, expires: token.expires } : null;
+    },
+    /**
+     * Close the listener. `forget` (the default) also voids the link and the sessions, for good;
+     * vyred stopping passes false, so the next vyred can take them up again.
+     */
+    async close({ forget = true } = {}) {
+      if (forget) { token = null; sessions.clear(); persist(); }
       if (!server) return;
       const s = server; server = null;
       s.closeAllConnections();
@@ -144,4 +167,20 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
     open: () => Boolean(server),
     port: () => port,
   };
+
+  async function ensure() {
+    if (!server) {
+      // In a container the published port is fixed, so there is no next free one to try.
+      const tries = host === "127.0.0.1" ? 20 : 1;
+      for (let p = wanted; p < wanted + tries && !server; p++) {
+        if (p === 0) { server = /** @type {http.Server} */ (await listen(0)); break; }
+        try { server = /** @type {http.Server} */ (await listen(p)); }
+        catch (e) { if (/** @type {any} */ (e).code !== "EADDRINUSE") throw e; }
+      }
+      if (!server && tries === 1) throw new Error(`port ${wanted} is taken inside the container`);
+      if (!server) server = /** @type {http.Server} */ (await listen(0));
+      port = /** @type {any} */ (server.address()).port;
+      log(`onboard: listening on ${host}:${port}`);
+    }
+  }
 }

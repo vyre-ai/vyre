@@ -5,6 +5,7 @@
 // Rules this file keeps:
 //  - view-only unless this surface holds the take-over; scaleViewport on, resizeSession off;
 //  - quality and compression by device: laptop 6/2, phone 5/4, slow link 2/6;
+//  - a relayed link (glass.open's link.path is relay or peer-relay) counts as a slow link, and the badge says "relayed";
 //  - a hidden tab disconnects and keeps the last frame, dimmed; visible again, a fresh glass.open;
 //  - after an unclean close, reconnect with a fresh ticket at 1, 2, 4 ... 30 s, only while
 //    visible, never after 4003 (bad ticket);
@@ -17,13 +18,26 @@ import { takeover } from "./takeover.js";
 import { attach } from "./input.js";
 import { pinchZoom, softKeyboard } from "./phone.js";
 
-const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.shielded", "computer.unshielded",
-  "glass.opened", "glass.closed", "glass.taken", "glass.released"];
+/**
+ * A computer's own comings and goings. Opening Glass thaws a frozen computer only once the stream
+ * connects, after glass.opened, so the state is read again on each of these too.
+ */
+export const LIFECYCLE = ["computer.created", "computer.checked-out", "computer.thawed", "computer.frozen", "computer.stopped"];
 
-/** [quality, compression] for this device and link (ADR 0005 decision 1). */
-export function levels(phone) {
-  const c = /** @type {any} */ (navigator).connection;
+const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.shielded", "computer.unshielded",
+  "glass.opened", "glass.closed", "glass.taken", "glass.released", ...LIFECYCLE];
+
+/** Is the box reaching this device through a relay? `link` is glass.open's { path, latencyMs }. */
+export const relayed = link => Boolean(link && (link.path === "relay" || link.path === "peer-relay"));
+
+/**
+ * [quality, compression] for this device and link (ADR 0005 decision 1).
+ * @param {boolean} phone @param {{ path?: string, latencyMs?: number|null } | null} [link]
+ */
+export function levels(phone, link = null) {
+  const c = typeof navigator === "undefined" ? null : /** @type {any} */ (navigator).connection;
   if (c && (c.saveData || /^(slow-2g|2g|3g)$/.test(c.effectiveType || ""))) return [2, 6];
+  if (relayed(link)) return [2, 6];
   return phone ? [5, 4] : [6, 2];
 }
 
@@ -40,6 +54,8 @@ export function mountScreen(o) {
   let detachInput = () => {};
   let zoom = /** @type {ReturnType<typeof pinchZoom> | null} */ (null);
   let conn = "connecting";   // connecting | live | hidden | waiting | refused | ended | error | noscreen
+  /** @type {{ path: string, latencyMs: number|null } | null} how the box reaches this device, from glass.open */
+  let link = null;
   let why = "";
   const s = {
     name, target, surface, phone,
@@ -105,7 +121,8 @@ export function mountScreen(o) {
     put(bar, tk.bar() || tk.banner());
     stage.classList.toggle("gl-held", tk.mine());
     stage.classList.toggle("gl-private", !!(tk.mine() && s.holder?.private));
-    put(badge, conn === "live" ? [h("span", { class: "dot signal" }), tk.mine() ? "You have control" : "Live"]
+    put(badge, conn === "live" ? [h("span", { class: "dot signal" }), tk.mine() ? "You have control" : "Live",
+      relayed(link) ? h("span", { class: "gl-badge-note", title: "The box reaches this device through a relay, so the screen sends fewer frames" }, "relayed") : null]
       : conn === "hidden" ? "Paused" : conn === "refused" || conn === "error" || conn === "ended" ? "Offline" : "Connecting");
     badge.classList.toggle("gl-badge-live", conn === "live");
     put(panelSize, conn === "live" ? `${s.width} × ${s.height}` : "");
@@ -205,6 +222,7 @@ export function mountScreen(o) {
       conn = "error"; draw(); return;
     }
     session = r.data.session || null;
+    link = r.data.link || null;
     const sc = r.data.screen;
     if (!sc || !sc.path) { conn = "noscreen"; why = ""; draw(); return; }
     if (sc.width && sc.height) { s.width = sc.width; s.height = sc.height; stage.style.setProperty("--ratio", `${sc.width} / ${sc.height}`); }
@@ -224,7 +242,7 @@ export function mountScreen(o) {
     r2.clipViewport = false;
     r2.focusOnClick = !phone;
     r2.background = "transparent";
-    const [q, c] = levels(phone);
+    const [q, c] = levels(phone, link);
     r2.qualityLevel = q;
     r2.compressionLevel = c;
     let code = 0;
@@ -338,6 +356,7 @@ export function mountScreen(o) {
       case "computer.unshielded": addLog(`${name} can see the page again${p.origin ? ` (${p.origin})` : ""}.`); break;
       case "glass.opened": if (p.surface !== surface) addLog(`Someone started watching from ${surfaceKind(p.surface)}.`); refresh(); return;
       case "glass.closed": refresh(); return;
+      default: if (LIFECYCLE.includes(e.type)) { refresh(); return; }
     }
     applyHolding(); draw();
   });

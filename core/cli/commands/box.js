@@ -21,6 +21,7 @@ import { call } from "../../daemon/client.js";
 import { VERSION } from "../../daemon/index.js";
 import { printEnding } from "../ending.js";
 import { out, dim, signal, beacon } from "../style.js";
+import { json, emit, usage as usageError } from "../kit.js";
 
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
 const VOLUMES = ["vyre-home", "vyre-work", "tailscale-state"];
@@ -227,6 +228,55 @@ async function reach(r) {
   return o.ok;
 }
 
+/**
+ * The target to try first when the host half of user@host is a peer on this Mac's tailnet that
+ * runs Tailscale SSH: user@<its MagicDNS name>, which lets the tailnet's own identity sign in
+ * instead of a key or password. The host may be written as the peer's MagicDNS name, that name's
+ * first label, its HostName, or one of its tailnet IPs. Null for a host not on the tailnet, a peer
+ * without Tailscale SSH or offline, and a name two peers share (which of them was meant?).
+ * @param {string} target user@host
+ * @param {{ peers?: import("../tailnet.js").Peer[] } | null} t
+ */
+export function viaTailnet(target, t) {
+  const at = target.lastIndexOf("@");
+  const user = target.slice(0, at), host = target.slice(at + 1).toLowerCase().replace(/\.$/, "");
+  const peers = (t && t.peers) || [];
+  const dns = p => p.dnsName.toLowerCase();
+  const exact = peers.filter(p => dns(p) === host || p.ips.includes(host));
+  const label = peers.filter(p => dns(p).split(".")[0] === host);
+  const named = peers.filter(p => p.hostName.toLowerCase() === host);
+  const pick = exact.length ? exact : label.length ? label : named;
+  if (pick.length !== 1) return null;
+  const p = pick[0];
+  return p.ssh && p.online && p.dnsName ? `${user}@${p.dnsName}` : null;
+}
+
+/**
+ * Reach user@host, over Tailscale SSH first when viaTailnet names a way, and as typed when that
+ * fails or there is none. hold(r) is told each remote as it is made, so a Ctrl-C closes it.
+ * Resolves with the open remote, whose target is the one that worked, or null after saying why.
+ * @param {string} target
+ * @param {any} t this Mac's tailnet
+ * @param {NodeJS.ProcessEnv} env
+ * @param {(r: import("../ssh.js").Remote) => void} hold
+ */
+async function connect(target, t, env, hold) {
+  const via = viaTailnet(target, t);
+  if (via) {
+    const r = remote(via, { env });
+    hold(r);
+    out(dim(`  reaching ${via} over Tailscale SSH`));
+    const o = await r.open();
+    if (o.ok) return r;
+    await r.close();
+    if (via === target) { out(beacon(`  could not reach ${target}: `) + o.why); return null; }
+    out(dim(`  Tailscale SSH did not let this Mac in (${o.why}); trying ${target} as typed`));
+  }
+  const r = remote(target, { env });
+  hold(r);
+  return (await reach(r)) ? r : null;
+}
+
 /** Step 3: one call that reads what is there. */
 async function look(r, env) {
   const res = await r.run(script(PREFLIGHT, env));
@@ -324,10 +374,12 @@ export async function add(target, opts = {}) {
   if (!validTarget(target)) { out("  vyre box add <user@host>"); return 1; }
   const t = await macFirst(env);
   if (!t) return 1;
-  const r = remote(target, { env });
-  const off = onInterrupt(async () => { await r.close(); out(`\n  Stopped. Your box is as you left it; ${resume(target)}`); });
+  /** @type {import("../ssh.js").Remote|null} */
+  let r = null;
+  const off = onInterrupt(async () => { await r?.close(); out(`\n  Stopped. Your box is as you left it; ${resume(target)}`); });
   try {
-    if (!(await reach(r))) return 1;
+    r = await connect(target, t, env, x => { r = x; });
+    if (!r) return 1;
     const p = await look(r, env);
     const why = unfit(p);
     if (why) { out(beacon(`  ${why}. Nothing changed.`)); return 1; }
@@ -339,11 +391,12 @@ export async function add(target, opts = {}) {
       const code = await install(r, ["--yes"], env, needsGroup(p));
       if (code !== 0) { out(beacon(`  the installer stopped (exit ${code}). Fix what it said, then run this again.`)); return 1; }
     }
-    return await onboard(r, target, t, env, opts.call || call);
+    // The target that worked is the one saved, so update, backup and move reuse it.
+    return await onboard(r, r.target, t, env, opts.call || call);
   } catch (e) {
     out(beacon("  stopped: ") + /** @type {Error} */ (e).message);
     return 1;
-  } finally { off(); await r.close(); }
+  } finally { off(); await r?.close(); }
 }
 
 /** Steps 5 to 7: link, tunnel, browser, wait, finish. */
@@ -388,6 +441,14 @@ async function withBox(target, fn, stopped = () => out("\n  Stopped.")) {
 }
 
 async function status() {
+  if (json()) {
+    const c = /** @type {any} */ (config.load());
+    const target = (c.box && c.box.ssh) || null;
+    const address = target ? c.network.box || null : null;
+    const h = address ? await tailnet.probe(address) : null;
+    emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null });
+    return target && !h ? 1 : 0;
+  }
   const target = saved();
   if (!target) return 0;
   const address = config.load().network.box;
@@ -505,7 +566,12 @@ export async function move(newTarget, flags = {}, deps = {}) {
   if (!oldTarget) return 1;
   if (!validTarget(newTarget)) { out("  vyre box move <user@newhost>"); return 1; }
   const env = { ...process.env, VYRE_NO_UP: "1" };
-  const from = remote(oldTarget), to = remote(newTarget, { env });
+  // The new server gets the same Tailscale SSH preference as vyre box add; the old one is reached
+  // as saved, which is already the target that worked.
+  const t = await tailnet.status(env);
+  const from = remote(oldTarget);
+  /** @type {import("../ssh.js").Remote|null} */
+  let to = null;
   let oldStopped = false;
 
   /** Start the old stack again and say truthfully whether it came back. */
@@ -518,11 +584,13 @@ export async function move(newTarget, flags = {}, deps = {}) {
     out("\n  Stopped.");
     if (oldStopped) await restore();
     else out(`  ${oldTarget} was not touched.`);
-    await from.close(); await to.close();
+    await from.close(); await to?.close();
   });
 
   try {
-    if (!(await reach(from)) || !(await reach(to))) return 1;
+    if (!(await reach(from))) return 1;
+    to = await connect(newTarget, t, env, x => { to = x; });
+    if (!to) return 1;
     const p = await look(to, env);
     const why = unfit(p);
     if (why) { out(beacon(`  ${why}. Nothing changed.`)); return 1; }
@@ -560,8 +628,8 @@ export async function move(newTarget, flags = {}, deps = {}) {
       return 1;
     }
 
-    config.save({ box: { ssh: newTarget } });
-    out(`  your box now runs on ${signal(newTarget)}`);
+    config.save({ box: { ssh: to.target } });
+    out(`  your box now runs on ${signal(to.target)}`);
     const u = await install(from, ["--yes", "--uninstall"], process.env);
     if (u === 0) out(`  Vyre is off ${oldTarget}; its volumes stay there until you delete them`);
     else out(beacon(`  taking Vyre off ${oldTarget} stopped (exit ${u}).`) + ` Its stack is stopped and its volumes kept; to finish, run install-box.sh --uninstall on ${oldTarget}.`);
@@ -570,7 +638,7 @@ export async function move(newTarget, flags = {}, deps = {}) {
     out(beacon("  stopped: ") + /** @type {Error} */ (e).message);
     if (oldStopped) await restore();
     return 1;
-  } finally { off(); await from.close(); await to.close(); }
+  } finally { off(); await from.close(); await to?.close(); }
 }
 
 async function remove(flags) {
@@ -601,11 +669,11 @@ async function run(args) {
     case "backup": return backup(arg, flags);
     case "move": return move(arg, flags);
     case "remove": return remove(flags);
-    default: out(`  ${USAGE}`); return 1;
+    default: return usageError(`vyre box ${sub}: not a subcommand`, USAGE);
   }
 }
 
-const usage = "vyre box [add|update|backup|move|remove]";
+const usage = "vyre box [status|add|update|backup|move|remove] [--json]";
 const USAGE = "vyre box add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
 
 export default [{ name: "box", order: 12, usage, summary: "put Vyre on a server from this Mac, and look after it", run }];

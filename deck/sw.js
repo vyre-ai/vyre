@@ -13,13 +13,31 @@
 // with postMessage({type: "vyre:clear-offline"}) — there is no sign-out in Vyre yet, but this is
 // ready for whatever that turns out to be.
 
-const CACHE = "vyre-deck-1";
+const CACHE = "vyre-deck-2";
 const OFFLINE_CACHE = "vyre-deck-offline-1";
 const OFFLINE_TOOLS = new Set(["threads.get", "projects.list"]);
 const OFFLINE_MAX = 20;                    // distinct calls kept, oldest evicted first
 const OFFLINE_MAX_AGE_MS = 7 * 86_400_000; // a week
 
-self.addEventListener("install", () => self.skipWaiting());
+// The installed phone app's shell, kept at install so a cold launch with the box out of reach
+// still opens: the page, the shell's modules, and the five phone tabs. Everything else is kept
+// the first time it is fetched (the fetch handler below), so the last views the user opened are
+// there too. deck/test/sw.test.js checks every path here exists.
+const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
+  "/css/deck.css", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
+  "/js/pwa.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js",
+  "/views/now.js", "/css/views/now.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
+  "/views/find.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
+  "/chat/index.js", "/chat/session.js", "/chat/composer.js", "/chat/nav.js", "/chat/ask-item.js", "/chat/gate-item.js",
+  "/chat/presence.js", "/chat/chat.css", "/chat/lib/routes.js", "/chat/lib/sessions.js", "/chat/lib/markdown.js",
+  "/chat/lib/highlight.js", "/chat/lib/diff.js"];
+
+self.addEventListener("install", e => e.waitUntil((async () => {
+  const cache = await caches.open(CACHE);
+  // One missing file must not stop the install; the rest are still worth having.
+  await Promise.all(SHELL.map(p => fetch(p, { cache: "no-cache" }).then(r => r.ok ? cache.put(p, r) : null).catch(() => null)));
+  await self.skipWaiting();
+})()));
 self.addEventListener("activate", e => e.waitUntil((async () => {
   for (const k of await caches.keys()) if (k !== CACHE && k !== OFFLINE_CACHE) await caches.delete(k);
   await self.clients.claim();

@@ -77,6 +77,21 @@ log "starting chromium"
 # The profile lives on the home volume; a container that was killed leaves Chromium's Singleton
 # locks behind, and the next Chromium then refuses to start with "profile in use".
 rm -f "${HOME}/.chromium/SingletonLock" "${HOME}/.chromium/SingletonSocket" "${HOME}/.chromium/SingletonCookie"
+# The few sites that go out through the user's Mac (config glass.egress, core/computers/egress.js):
+# vyred passes the proxy script as a data: URL only when the setting is on and lists a site.
+# Checked against that exact shape, so nothing else ever reaches Chrome's command line through it.
+# WebRTC is kept off UDP that bypasses the proxy, or a listed site could still learn this box's
+# own address from a STUN reply.
+proxy_flags=()
+if [ -n "${VYRE_PROXY_PAC:-}" ]; then
+  if [[ "${VYRE_PROXY_PAC}" =~ ^data:application/x-ns-proxy-autoconfig\;base64,[A-Za-z0-9+/]+=*$ ]]; then
+    proxy_flags=(--proxy-pac-url="${VYRE_PROXY_PAC}" --force-webrtc-ip-handling-policy=disable_non_proxied_udp)
+    log "chromium: listed sites go through the egress proxy"
+  else
+    log "VYRE_PROXY_PAC is not a PAC data: URL; refusing to start Chrome without the sites it lists"
+    exit 1
+  fi
+fi
 # --test-type keeps Chromium from drawing its --no-sandbox warning bar into the Glass stream.
 chromium \
   --no-sandbox \
@@ -89,6 +104,7 @@ chromium \
   --user-data-dir="${HOME}/.chromium" \
   --window-size="${SCREEN%x*},${SCREEN#*x}" \
   --start-maximized \
+  ${proxy_flags[@]+"${proxy_flags[@]}"} \
   about:blank \
   >/home/agent/.chromium.log 2>&1 &
 

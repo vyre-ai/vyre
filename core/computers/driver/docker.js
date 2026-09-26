@@ -194,7 +194,8 @@ export class DockerDriver {
     const nets = (c.NetworkSettings && c.NetworkSettings.Networks) || {};
     const net = (this.network && nets[this.network]) || Object.values(nets)[0];
     const host = (net && net.IPAddress) || (c.Name ? String(c.Name).replace(/^\//, "") : null);
-    return { state: stateOf(c.State && c.State.Status), host };
+    const state = stateOf(c.State && c.State.Status);
+    return { state, host, ...(state === "exited" && c.State && typeof c.State.ExitCode === "number" ? { exitCode: c.State.ExitCode } : {}) };
   }
 
   async list() {

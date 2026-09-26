@@ -1,0 +1,88 @@
+# The iOS app: xcodegen, then build and unit tests on a simulator. Skips (on a cheap Linux runner)
+# while apps/ios is absent, so no macOS minutes are spent.
+name: ios
+on:
+  push:
+    paths: ["apps/ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["apps/ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps
+      - id: check
+        run: |
+          if [ -f apps/ios/project.yml ]; then echo present=true >> "$GITHUB_OUTPUT"; else echo "apps/ios is absent: skipping"; echo present=false >> "$GITHUB_OUTPUT"; fi
+  build-test:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('apps/ios/project.yml', 'apps/ios/**/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Newest Xcode (the project is Swift 6, iOS 17+)
+        run: |
+          x=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] && sudo xcode-select -s "$x"
+          xcodebuild -version
+      - name: XcodeGen
+        run: brew install xcodegen
+      - name: Pick a simulator
+        id: sim
+        run: |
+          name=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = json.load(sys.stdin)["devices"]
+          for runtime in sorted((r for r in devs if "iOS" in r), reverse=True):
+              for d in devs[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["name"]); sys.exit()
+          ')
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "simulator: $name"
+      - name: Build and test (apps/ios/scripts/build.sh test)
+        env:
+          SIM: ${{ steps.sim.outputs.name }}
+        run: |
+          set +e
+          scripts/build.sh test > build.log 2>&1
+          status=$?
+          grep -E '^(Test Suite|Test Case .* failed|\*\* )|error:' build.log | tail -200
+          exit $status
+      - name: Package the simulator build
+        if: always()
+        run: |
+          mkdir -p dist
+          app=build/dd/Build/Products/Debug-iphonesimulator/Vyre.app
+          [ -d "$app" ] && ditto -c -k --keepParent "$app" dist/Vyre-ios-simulator.app.zip
+          cp build.log dist/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-${{ github.sha }}
+          path: apps/ios/dist/
+          retention-days: 14
+      - name: Shut down simulators
+        if: always()
+        run: xcrun simctl shutdown all || true

@@ -49,9 +49,34 @@ export function tailscaleBin() {
 }
 
 /**
- * `tailscale whois --json <ip>`, reduced to what the link needs. Null when Tailscale does not know
- * the address or is not running.
- * @returns {Promise<{ stableId: string, node: string, login: string|null, tagged: boolean } | null>}
+ * The fields Vyre reads from `tailscale whois --json`. A tagged node has no person behind it,
+ * whatever profile it reports. `caps` is the whois CapMap: the application capabilities the
+ * tailnet policy grants that peer toward this node (ADR 0014), as the policy wrote them. Vyre
+ * reads them and never writes them. Pure, for tests.
+ * @returns {{ stableId: string, node: string, login: string|null, tagged: boolean, tags: string[], caps: Record<string, any[]> } | null}
+ */
+export function parseWhois(w) {
+  if (!w || !w.Node) return null;
+  const tags = Array.isArray(w.Node.Tags) ? w.Node.Tags.map(String) : [];
+  /** @type {Record<string, any[]>} */
+  const caps = {};
+  for (const [k, v] of Object.entries(w.CapMap && typeof w.CapMap === "object" ? w.CapMap : {})) caps[k] = Array.isArray(v) ? v : [];
+  return {
+    stableId: String(w.Node.StableID || w.Node.ID || ""),
+    node: String(w.Node.Name || w.Node.ComputedName || "").replace(/\.$/, ""),
+    login: tags.length ? null : (w.UserProfile && w.UserProfile.LoginName) || null,
+    tagged: tags.length > 0,
+    tags,
+    caps,
+  };
+}
+
+/** The values the policy granted a peer for one capability, or [] (the peer has none). */
+export const capValues = (who, name) => (who && who.caps && Array.isArray(who.caps[name]) ? who.caps[name] : []);
+
+/**
+ * `tailscale whois --json <ip>`, reduced to parseWhois. Null when Tailscale does not know the
+ * address or is not running.
  */
 export function whois(ip) {
   const bin = tailscaleBin();
@@ -59,12 +84,7 @@ export function whois(ip) {
   return new Promise(resolve => {
     execFile(bin, ["whois", "--json", normalize(ip)], { timeout: 5000 }, (err, out) => {
       if (err) return resolve(null);
-      try {
-        const j = JSON.parse(out);
-        const tags = (j.Node && j.Node.Tags) || [];
-        resolve({ stableId: String(j.Node.StableID || ""), node: String(j.Node.Name || "").replace(/\.$/, ""),
-          login: tags.length ? null : (j.UserProfile && j.UserProfile.LoginName) || null, tagged: tags.length > 0 });
-      } catch { resolve(null); }
+      try { resolve(parseWhois(JSON.parse(out))); } catch { resolve(null); }
     });
   });
 }
@@ -107,9 +127,13 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
   /**
    * Open a request once the peer is checked. `onResponse` gets the response; the returned promise
    * resolves with the peer node and the request, or rejects when the box cannot be reached.
+   * `signal` ends the request early, as when the Mac stops while it holds a link.serve open.
+   * @param {string} method @param {string} path
+   * @param {{ body?: any, headers?: Record<string, any>, timeout?: number, signal?: AbortSignal, onResponse: (res: any) => void }} opts
    */
-  function open(method, path, { body, headers = {}, timeout = 10_000, onResponse }) {
+  function open(method, path, { body, headers = {}, timeout = 10_000, signal, onResponse }) {
     return new Promise((resolve, reject) => {
+      if (signal && signal.aborted) return reject(Object.assign(new Error("the request was cancelled"), { code: "aborted" }));
       const data = body === undefined ? undefined : JSON.stringify(body);
       const req = lib.request({ protocol: base.protocol, hostname: base.hostname, port: base.port || undefined, path, method, timeout, agent: false,
         headers: { accept: "application/json", ...(data ? { "content-type": "application/json", "content-length": Buffer.byteLength(data) } : {}), ...headers } });
@@ -125,6 +149,11 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
       req.on("response", res => { onResponse(res); resolve({ who, req }); });
       req.on("timeout", () => req.destroy(Object.assign(new Error("the box did not answer in time"), { code: "timeout" })));
       req.on("error", reject);
+      if (signal) {
+        const abort = () => req.destroy(Object.assign(new Error("the request was cancelled"), { code: "aborted" }));
+        signal.addEventListener("abort", abort, { once: true });
+        req.on("close", () => signal.removeEventListener("abort", abort));
+      }
     });
   }
 

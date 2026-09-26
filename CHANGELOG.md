@@ -73,6 +73,371 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   home and a context that only records: no child processes, no listeners, no fetch, no keychain.
 - The hygiene rules (forbidden names, the secret pattern) moved to `scripts/lib/hygiene.js`,
   shared by `test/hygiene.test.js` (unchanged behaviour) and docs-check.
+#### Colours from config, Find's commands, and the owner's phone reads memory by meaning
+
+- `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
+  only) is served as GET /theme.css, read on every request, and every Deck page links it after
+  deck.css. Anything but a colour is dropped, so config cannot add CSS.
+- Find understands the Capsule's commands: `@kit ...`, `tell <session> to ...` (types, then
+  watches), `watch <session>`, and `tell me when <session> is done|asks`. A line under the box says
+  what Enter will do, and a tap picks another matching session.
+- memory.relevant answers the owner's tailnet devices without a room, so Find on the phone searches
+  memory by meaning. system.info names the owner (owner.name), and the Deck's avatar uses it.
+- Now asks for a first passkey while the box has none, and names the commands that print its link.
+
+#### Pairing a Mac is approved in the Deck, and onboarding's last steps read right on a box
+
+- Now shows each Mac asking to pair: its name and node, a field for the code on the Mac's screen,
+  Approve with a passkey (link.pair.approve) and Deny. It follows link.pair-requested and
+  link.paired, and when the box refuses it says why (the asking Mac cannot approve itself).
+- Onboarding step 6 is two equal cards that stack on narrow screens: Pair this Mac (the npm
+  command, `vyre up`, then the approve card in place, then "Mac paired") and the phone (Tailscale,
+  the address, Add to Home Screen). An iPhone or Android phone offline in Tailscale is named in
+  plain words, here and in Settings > Devices. The button says Open Vyre, as JOURNEY.md does.
+- `onboard.status` adds `detail.devices.peers` (the owner's own tailnet devices: name, OS, online,
+  last seen), from `tailscale status --json`.
+- Step 5 on a box with no sessions says the Mac's sessions come once it is paired, and hides the
+  ranking line at 0 sessions.
+- With no assistant yet, Now and Agents offer Create your assistant (agents.create, as onboarding's
+  finish does).
+- Phone Chat queues a message for a session busy in the terminal (capsule-now's contract) and says
+  so until it is handed over. The watcher switch calls watchers.resume and watchers.pause, and
+  Settings no longer names `vyre up --step`, which does not exist.
+- `deck/test/world.js` runs with a fake tailscale (`deck/test/fake-tailscale.js`), so a world never
+  reads the real Tailscale of the machine it runs on.
+
+#### Every call from an agent passes the floor's rules, not only Claude Code's
+
+- SPEC 5.3 says every tool call passes the Rules, but vyred gave the Registry no `rules` hook, so
+  only Claude Code's PreToolUse hook ran them: an agent through the switchboard, the Capsule or
+  MCP, a module, or a tailnet peer skipped them. vyred now passes `registryRules`
+  (`core/harness/rules.js`) to the Registry. A person at their own surface (cli, local, deck,
+  capsule, naming no agent) is not held there, since presence and the Gate speak for them; every
+  other caller gets the rules' answer, and an "ask" is a refusal, since nobody is there to say
+  yes. `test/daemon.test.js`.
+- `vault.caps`' description said reveal is off by default; it is on, and every reveal needs a
+  presence proof or a session a proof opened (SPEC 11 rule 8, ADR 0006, now updated). A new test
+  runs the real Presence and shows the Deck and the Capsule get no value without a proof, and no
+  agent reaches `vault.reveal` at all. `core/vault/surfaces.test.js`.
+- `test/onboard.test.js` closes each connection, so a request after a vyred restart on the same
+  port never rides a socket the old vyred closed (an intermittent "other side closed").
+#### Glass and agents' computers, live (work/glass-live)
+
+- Giving an agent a computer from the Deck works. `agents.update` names its agent by `name` or
+  `agent` (every other agents tool uses `agent`); the Deck sent `agent` and got "input.name is
+  required". The Deck now sends `name`.
+- Glass's screen connects over the tailnet. The tailnet HTTPS listener had no upgrade handler,
+  so Node passed every WebSocket to the request router, which answered 404. Modules that open a
+  listener get vyred's stream router as `ctx.upgrader(policy)`, and the names listener applies
+  its owner, host and Origin rules to upgrades, with the same caller classes as requests (owner,
+  guest, agent node).
+- A computer that dies on boot fails the checkout with its exit code and the `docker logs` line
+  to read, instead of being marked running; a checkout waits (up to `computers.bootMs`, 30 s)
+  for the screen port to answer. A computer that died while idle freezes to `stopped` rather
+  than staying `running` with "could not freeze ... container is not running".
+- New `computers.restart {agent}` (a new container on the same home volume, so files and
+  Chrome sign-ins stay; fresh passwords; the checkout survives) and `computers.limits {agent,
+  cpus, memory_gb}` (whole cores 1 to 16, whole GB 1 to 64; a person's or the assistant's to set,
+  never an agent's own; applied at the next restart). `computers.get` also returns `screens`,
+  `cpus` and `memory_gb`. The Deck already called both tools, which did not exist.
+- The Deck's computer panel reads what `computers.get` returns (it was drawn from fixture fields
+  no tool had: name, host, disk, network, rules). Glass's title state follows the computer as
+  watching thaws it.
+- `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
+  required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+
+#### Connectors (ADR 0016)
+
+- "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
+  env-set holding an OAuth client's `client_id` and `client_secret` (granted to google) and
+  returns `{ id, url, redirect }`: the consent page, with PKCE S256, a random state, offline
+  access and the module's five scopes plus `openid email`. Google sends the browser back to a
+  loopback listener on 127.0.0.1 port 0 that exists only while a sign-in is open (10 minutes
+  each, one timer per sign-in). The refresh token goes into a new env-set `google-<name>` the
+  module makes and grants to itself, the account is added as google.add would, and
+  `google.connected {id, name, email}` is emitted (`google.connect-failed {id, error}` when it
+  does not work). `google.connect.finish {id, url}` takes the pasted address for a browser on
+  another device; `google.connect.cancel {id}` ends one. People only; a model never can. Every
+  error is scrubbed of the secret, the code, the verifier and every token.
+- `google.test` on a service account also returns `client_id` (the key's public number) and
+  `admin_scopes`, the exact comma-separated line for the Workspace admin console's domain-wide
+  delegation page. Nothing else from the key leaves.
+- The fake Google has an authorization_code grant that checks PKCE and the redirect, and
+  `consent(url)` to play the person on the consent page.
+- The MCP hub is never a route around the floor. A hub tool with a send word (`send`, `post`,
+  `reply`, `forward`, `publish`, `share`, `invite`, `tweet`, `dm`, `comment`) is always held at
+  the Gate, even when a person set its mode to `read` or the server marks it read-only, and
+  `mcp.add` and `mcp.update` now refuse `read` for such a tool (it can be `write` or `off`).
+  They also refuse Vyre's own MCP server as a hub server (`vyre mcp`, or anything running
+  `harness/mcp/server.js`) and any `vars` or `env` name that starts with `VYRE_`. Every stdio hub
+  child now gets `VYRE_HUB_CHILD=1`, and Vyre's MCP server started under it answers every request
+  with an error, offers no tools and never contacts vyred.
+- Settings has a Connections section (`deck/views/connections.js`): the hub's MCP servers and the
+  Google accounts, each with its state, tool count or scopes, and Test, Restart and Remove.
+  Adding one picks vault items by name and asks for the `mcp` or `google` grant with presence;
+  without presence it shows the exact `vyre vault grant` line instead. The page only ever holds
+  item names, copies only the fields it draws, runs no timer, and redraws on `mcp.*` and
+  `google.*` events. Remove asks first. `google.test` calls Google, so it runs only on Test.
+  A tool that sends shows Read disabled, since the hub always holds it; `mcp.test` marks such
+  tools with `sends`.
+- The harness rules no longer ask, and `gate.route` no longer denies an agent, about
+  `google_mail_send` in Vyre's own MCP server (`mcp__vyre__` and `mcp__plugin_vyre_vyre__`): the
+  google module always holds a send at the Gate, so asking first only added a second prompt for
+  the same email. The list is explicit and short; `threads_send` and every other server's send
+  still ask.
+- The connectors credential tests make their token and private-key fixtures at run time, so the
+  hygiene scan finds no secret-shaped literal in shipped code and stays as strict as it was.
+- `vyre mcp` runs the Vyre MCP server on stdio, so a plain `claude` outside a Vyre thread gets
+  the same tools with one line. `vyre mcp install` prints that line
+  (`claude mcp add -s user vyre -- vyre mcp`) and runs it only with `--yes`: Vyre never edits a
+  Claude config itself. The server is imported rather than spawned, so it still finds its session
+  by its parent's pid, and nothing but JSON-RPC reaches stdout.
+- `vyre connect list|add|remove|test` manages MCP servers and Google accounts in one place. A
+  connection names vault items (`--item`, `--env VAR=item`) and never takes a value on the
+  command line. After an add it asks the vault to grant each item to the module, as the person at
+  the terminal, then tests and prints the server's tool count or the Google scopes Workspace
+  refused. `--var` passes a plain setting to a stdio server; the hub still refuses one that looks
+  like a credential.
+- The Vyre MCP server (`harness/mcp/server.js`) now offers every hub tool beside the module
+  tools, as `<server>__<tool>`, so a session sees its connected servers through the one `vyre`
+  entry and no server needs its own line in a Claude config. Listing reads the hub's cache and
+  never starts a server. Both the listing and each call carry the session key, so the hub scopes
+  them by the session's project. A tool the hub will hold says "(held for approval)" first, and a
+  held call answers with the Gate item and a plain sentence rather than an error. With no `mcp`
+  module running, nothing extra is offered and module tools behave as before.
+- The MCP hub (`core/mcp/`, module `mcp`) puts any number of MCP servers behind one tool list,
+  so a person can plug in a tracker, a CRM and a docs tool without a token in any config file. A
+  server row names vault items, never values: `mcp.add` refuses a header, env value, argument or
+  url that looks like a credential, and plain http is allowed only to this machine, the tailnet
+  (100.64.0.0/10) or an origin listed under `mcp.httpHosts`. Tokens are fetched under the `mcp`
+  grant at call time, and every result and error is scrubbed of them. Nothing starts at boot;
+  a server starts on its first call, its tools are cached so `mcp.tools` never spawns anything,
+  it stops after `idle` (10 minutes by default) on one timer, and a server that crashes stops
+  restarting after three tries in five minutes until `mcp.restart`. Scope follows what vyred
+  verified (the agent, its projects, the thread's project) and `mcp.call` checks it again. A
+  tool that is not plainly a read is held at the Gate as `mcp:<server>` and reaches the server
+  only with the arguments the person approved. Managing servers is for people and modules,
+  never a model.
+- `gate.request` now takes `agent` from a module caller (never from a model), so a request the
+  hub files for an agent still shows which agent asked: the hub's `ctx.call` runs as
+  `module:mcp`, which would otherwise lose it.
+- `core/google/` is native Google Calendar and Gmail, so the assistant and the Capsule can read
+  the person's day and mail without an MCP server holding a token in its env. Accounts
+  (`google.add`, people only, never a model) name a vault item, an OAuth env-set or a
+  domain-wide-delegation service account, and never hold a value. Every call mints the narrowest
+  scope it needs (`calendar.readonly` and `gmail.readonly` for reads, `calendar.events`,
+  `gmail.compose`, and `gmail.send` only at the moment of a send), retries once on a 401, and
+  returns results scrubbed of every value it touched. A send is always held at the Gate, and so is
+  an event with attendees, because Calendar mails them an invite; each account is its own Gate
+  sender, `google:<account>`, so the person sees which address it leaves from. A draft and an event
+  without attendees are written directly, since neither reaches anyone. `google.test` names each
+  scope a Workspace admin console refuses. `google.find` and `google.open` put "what's next",
+  "today" and "email from dana" in the Capsule. Nothing polls.
+- The fake Google records the scopes of the token behind each API call, so a test can prove a
+  read never used a write scope and a send used `gmail.send` alone.
+- `core/mcp/client.js` talks to one MCP server over stdio, streamable HTTP or legacy SSE, with no
+  dependencies, so the hub can reach any server a person adds. A stdio server gets only PATH,
+  HOME, LANG, TMPDIR and the env it was given, so a token vyred holds for one server is never
+  visible to another. HTTP headers are asked for on every request because credentials are minted
+  at call time, and redirects, an SSE endpoint on another origin and replies over 4 MB are
+  refused, so a credential never follows a request somewhere else. Errors carry a stable `code`
+  (`unauthorized` on a 401, so the caller can mint again and retry once) and never a header value.
+- `core/mcp/testing/fake-mcp.js` is a fake MCP server, as a child process or in-process over HTTP
+  and SSE, so no test starts a real one.
+- A module can now be a way out through the Gate. `gate.offer { name, tool, kinds?, content? }`
+  (internal, modules only) registers a sender named in the module's own namespace whose `tool` is
+  one of its own; after the user approves, the Gate calls that tool as `module:gate` with exactly
+  the approved content. The MCP hub and native Google need this to hold their sends. Offers live in
+  memory, so an item held under a module that has not started yet stays held, and Approve says
+  which module to start.
+- The floor's rule 1 and `gate.route` no longer ask about or deny a tool named
+  `mcp__vyre__<server>__<tool>` (or `mcp__plugin_vyre_vyre__<server>__<tool>` under the plugin),
+  where `<server>` is a hub server name. Those are the MCP hub's tools, which hold every outward
+  call at the Gate themselves with a stricter rule than the name check, so asking first would make
+  the user answer twice. Vyre's own tools (`mcp__vyre__threads_send`) and every other server are
+  unchanged.
+- `core/connectors/auth.js` turns a vault item into what a request carries, once for both the hub
+  and Google: a bearer header, an OAuth access token minted by refresh, or a Google
+  service-account JWT exchanged for one. Access tokens stay in memory, cached until a minute
+  before expiry. The library remembers every value it touched (raw token, refresh token, private
+  key and its lines, assertion, access token), so callers can scrub all of them from what leaves
+  the module. Token requests refuse redirects and time out after 30 s. Refusals read as sentences
+  and never quote a value; a domain-wide-delegation refusal names the user and the scopes, and
+  says where to allow them.
+- `core/connectors/testing/fake-google.js` is a Google for tests on 127.0.0.1. It verifies JWT
+  signatures against keys it generated, checks subject and scopes, plays the admin console's
+  delegation list, and requires its own tokens with the right scope on Calendar and Gmail calls.
+  A fake that accepted anything would hide the bugs that matter here, such as a read token used
+  to send.
+#### Vyre installs as a Claude Code plugin, and shows its line in every session
+
+- `.claude-plugin/marketplace.json`: the marketplace `vyre`, one plugin `vyre` from `./harness`.
+  Install with `/plugin marketplace add vyre-ai/vyre`, then `/plugin install vyre@vyre` (ADR 0020).
+- `harness/hooks/run.js`, `harness/mcp/run.js`, `harness/lib/vyre.js`: `/plugin install` copies only
+  `harness/`, so hooks and the MCP server start from launchers that find a Vyre package
+  (`VYRE_PACKAGE`, the package they sit in, or `vyre` on PATH) and run its own `hook.js` or
+  `server.js`. With no Vyre, a fresh session gets one line pointing at https://vyre.run/start, every other hook
+  exits 0 silently in about 20 ms, and the MCP server connects with no tools.
+- `/vyre` gains `ask <agent> <text>`, `send <session> <text>` and `statusline`.
+- `core/statusline`: a module that keeps `<home>/statusline` (pid and line, such as
+  `vyre · 2 need you · box ok · juno idle`), recomputed on events and once a minute.
+  `harness/statusline/statusline.sh` prints it in about 4 ms, never touching vyred or the network.
+  It reads and drops Claude Code's stdin JSON unless it chains, so the writer never hits EPIPE.
+- `vyre statusline [install [--chain] [--yes] | uninstall]`: sets Claude Code's `statusLine` with
+  consent, never replacing one the user has (`--chain` keeps theirs above Vyre's line). `vyre up`
+  on a Mac offers it once on a terminal.
+- Learning treats running `hooks/run.js` by hand as running a hook by hand.
+
+#### CI on GitHub's free runners
+
+- Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the
+  apps on their own Mac. `node.yml`: the suite and the perf gate on Node 22 and 24 (ubuntu).
+  `capsule-mac.yml`: the Swift helpers, the native Capsule's tests and app once they land, and the
+  Mac-only Node tests (macos). `ios.yml`: xcodegen, then build and unit tests on a simulator.
+  `android.yml`: gradle build and unit tests on JDK 17. The app workflows skip while their folder
+  is absent. Each uploads what it built (Capsule zips, the iOS simulator app, the debug APK), and
+  every workflow can also be run by hand (workflow_dispatch). Replaces `test.yml`, which ran the
+  whole suite on two macOS runners without installing dependencies. `.github/workflows/`, README
+  badges.
+- `capsule-mac` also proves the "Vyre Local" signing path on a throwaway keychain: createIdentity,
+  then codesign and a strict verify of the native app (once `capsule-native.js` is on the branch).
+- `scripts/install-box.sh` is shellcheck-clean on the runners' shellcheck 0.9.0: two intended
+  patterns (a root-only read into this user's file, a positional argument in single quotes) carry a
+  directive with the reason.
+- Docs and comments call the test server "the test box", the prototype's folder "the
+  prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
+  comments only).
+#### The Deck installs on a phone as an app
+
+- Add to Home Screen gives a full-screen app: a manifest with maskable icons, an Apple touch
+  icon, launch screens for twelve iPhone sizes, and a status bar in the theme's colour. The shell
+  keeps clear of the notch and the home indicator, never rubber-bands, and fills 100dvh.
+- Find is the phone's Capsule, a tab in place of Ask and a pull down from the top of any screen:
+  one box for asking juno, sessions (titles and what was said), box files, agents, memory and
+  projects. Vault items are never offered there.
+- Chat on the phone: a session fills the screen above the tab bar, a reply keeps the view at the
+  bottom or shows Jump to latest, and a session another keyboard has says so and keeps the draft.
+  Asks and held drafts answer inline with a passkey, and say Allowed, Denied or Sent after.
+- Now, the Deck's approvals (Send, Discard, Allow, Deny) prove a person with the passkey, as the
+  floor already required; before, they were refused with presence_required.
+- Set up this phone, on Now: install, notifications (asks and held drafts, iOS 16.4 and later from
+  the Home Screen app) and a passkey. Settings uses the same code for push and passkeys.
+- Offline: the service worker keeps the shell and the five phone tabs at install, a cold launch
+  reopens the last screen, and one line says when the phone is offline or the box is not answering.
+
+#### The `vyre` screen, polished from a captured frame
+
+- The status line reads link.health's real shape ("link direct 23 ms", "link relayed", "link
+  down"; nothing on a box or an unpaired Mac, where it said "link ?"), and shows the commit
+  ("vyred 0.0.1 · 1a2b3c4").
+- A wrapped transcript line keeps its indent, so a quoted prompt reads as one block.
+- Something seconds old is "now", not "1m". `core/cli/screen/`.
+
+#### One vyred per home, whatever path reached it
+
+- Two vyreds could run on one store when the home was reached through a symlink: the socket
+  path was worked out from the home's spelling (a long spelling moves it to /tmp under a hash),
+  and the "already running" check came after every module had started. Now vyred takes
+  `vyred.lock` in the home's real folder before it opens the store; the socket path is worked out
+  from the real folder too. A lock whose process is gone, is not a vyre process, or is from before
+  this boot (a reboot or a container restart reusing its pid) is taken over.
+  `core/daemon/lock.js`, `core/daemon/index.js`, `core/config/index.js`.
+
+#### `vyre threads` never answers with a blank screen
+
+- With no sessions it printed nothing. Now it says why: indexing still running, no transcript
+  folders configured, or no Claude Code sessions yet; a search with no hits names the words and
+  points at `vyre recall`; `--project` with none says how to start one. `core/cli/commands/projects.js`.
+- `vyre threads --help` crashed on main (projects.js parse rejected --help); the kit branch
+  already handles help in core/cli/index.js, and test/cli.test.js now pins it.
+
+#### A release says which commit it is
+
+- `scripts/build-site.sh` (the step that packs vyre.tgz for npm and for the box image) writes
+  `build.json` `{version, commit, dirty}` into the package; gitignored in the checkout.
+  `core/daemon/build.js` reads it, or in a checkout asks git once, lazily (never on a plain CLI
+  start). `/v1/health` and `system.info` report `commit` and `dirty` next to `version`, and
+  `vyre status` prints `0.0.1 · 1a2b3c4` (`+dirty` when it was).
+
+#### `vyre update` no longer voids the set-up link the user was sent
+
+- `vyre update` on a box ended with `vyre up`, which minted a new onboarding link and voided the
+  unused one; recreating the container also restarted vyred, which forgot the link and every open
+  onboarding page. Now update runs `vyre up --keep-link`, which calls `onboard.link {mint:false}`
+  and only reports: "set up is not finished; the link you have still works (42 min left)". A
+  plain `vyre up` still mints a fresh link, and says it voids the old one.
+- The unused link's hash, its port and the open onboarding sessions' hashes are kept in
+  `<VYRE_HOME>/onboard-link.json` (0600, hashes only) when vyred stops, and the next vyred reopens
+  the listener for them. The owner arriving on the tailnet deletes the file for good.
+  `core/onboard/loopback.js` (`keep`, `resume()`, `pending()`, `close({forget})`),
+  `core/onboard/index.js`, `core/cli/commands/up.js`, `box/vyre`.
+
+#### `npm i -g vyre` is 6 MB, not 750
+
+- The search model's library (`@huggingface/transformers` with ONNX Runtime) is no longer an npm
+  dependency of any kind. It made a global install 750 MB on Linux (onnxruntime-node 548 MB,
+  onnxruntime-web 141 MB), because npm ignores `--omit=optional` for a global package's own
+  optional deps. Measured on the test box from `npm pack`: the tarball is 1.50 MB before and after, and
+  the install into an empty prefix went from 750 MB to 5.9 MB on disk (4.5 MB of files; all of it
+  Vyre's own code, deck and docs). `package-lock.json` lost 1,048 lines.
+- Recall installs the library on first use into `<VYRE_HOME>/embedder` (on a box, the home's
+  volume) with the npm next to node, pinned to 4.3.0, and searches by keyword until then. It says
+  so in one line: `vyre recall` prints "downloading the search model (about 128 MB, once); search
+  is by keyword until then · vyre recall --setup", and vyred logs the same. `core/recall/embed.js`.
+- The install is pruned to what the CPU path opens: this platform's ONNX Runtime only, no GPU
+  providers (CUDA and TensorRT were 260 MB), and only onnxruntime-web's `ort.node` entry (its
+  WebAssembly builds were 115 MB). 500 MB becomes 105 MB, and the model loads and embeds the same
+  (checked on the test box: "croissant menu" vs "pastry list" 0.566, vs "kubernetes ingress" 0.065).
+- `vyre recall --setup` (new tool `recall.setup`) installs and loads it now and waits: 16 s on
+  the test box. A failed install leaves no half-written tree, says why, and `--setup` tries again. New
+  config keys `recall.embedder` (where it goes) and `recall.npm`.
+- `scripts/release-check.sh` now fails on any optional dependency and on an install over 10 MB.
+#### The box reads the paired Mac through the link
+
+- The link runs box to Mac as well, with no port open on the Mac. While paired, the Mac holds one
+  request to the box's new `link.serve` open (60 s, then it asks again), runs the question it gets
+  and answers with `link.reply`. When a call to the box fails the loop stops, and the next call
+  that reaches the box (the minute's heartbeat at the latest) starts it again, so nothing polls
+  faster than a minute. Both tools check the pairing key and the Mac's pinned node.
+- `link.macs.call { tool, input, timeout? }` (box, modules only) asks every paired Mac and answers
+  `[{ mac, name, ok, data?, error? }]`: `mac_offline` at once for a Mac that is not polling,
+  `timeout` after up to 15 s (5 s by default), or the Mac's own error. `link.macs` lists the paired
+  Macs with `online` and `lastServe`, for surfaces. The Mac's `link.status` says `serving`.
+- Only `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread` and
+  `threads.list` cross (`core/link/allow.js`), refused at the box before queueing and again at the
+  Mac before running. The Mac runs them as `module:link`. Nothing a Mac answers is stored on the box.
+- The link's test harness (`pair`, the simulated tailnet) moved to `test/link-harness.js`;
+  `test/link-federation.test.js` covers the reverse channel.
+- On the box, `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`,
+  `recall.thread` and `threads.list` take in the paired Macs' rows for the person (the Deck, the
+  terminal, the Capsule, the owner over the tailnet), and for a module only when it passes
+  `machines: "all"`. `machines: "local"` asks for the box's rows alone; agents, MCP and guests get
+  them always. Every row of a federated answer carries `source` ("box" or "mac") and `machine`.
+  The catalogue merges by its own order and applies the limit to the merged list, with
+  `sources: [{ source, machine, ok, error?, total? }]` (box first); search merges by score,
+  sessions and threads by recency, capped at each tool's limit. `recall.thread` asks the Macs only
+  for a session the box does not have, or when given `source: "mac"`. A Mac that is away shows as
+  `ok: false, error: "mac_offline"` and the box answers with its own rows at once. On a Mac
+  nothing changes, so the Mac never asks the box back. The shared piece is
+  `core/modules/federate.js`; `test/federation-reads.test.js` covers it end to end.
+- Onboarding's history step on the box counts the paired Mac's sessions, lists them per machine
+  (`history.machines`), and says "Your Mac (<name>) is offline, so its sessions do not show here
+  yet" when the Mac is paired but away and nothing is here.
+- `recall.sessions` takes `ids` (exact session ids). On the box, `projects.threads` resolves a pick
+  the box has no session for by asking the paired Macs once for those ids, for the person (or a
+  module passing `machines: "all"`): a Mac session picked into a box project comes back with its
+  name, folder and times and `source: "mac"`, `machine`, and is never stored. With the Mac away,
+  or for an agent, it stays `missing: true`. The project's brief stays the box's own.
+- The Deck shows a machine chip (`deck/js/machine.js`) on the paired Mac's rows in Chat's list and
+  rail, Now's working threads and recent sessions, search results, and a project's threads, and
+  reads those threads only: no composer, keyboard, Take or Watch, and "On alex-mac. Open it there
+  to continue." in their place. A Mac project is listed without a board or a pin, and picking goes
+  into the box's projects only. A paired Mac that is away shows as one quiet "alex-mac offline"
+  chip in Chat's header and Now's Working, from `link.macs`, read with each refresh and never while
+  the page is hidden. Fixtures: a Mac thread in `threads.list`, and `deck/fixtures/link.json`.
+- A Mac that unpaired while its heartbeat was out could leave a link.json with no box in it, and
+  `vyre link status` then failed until the file was removed. The heartbeat's answer is now dropped
+  when the pairing it asked about is gone.
 
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
@@ -106,6 +471,122 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (`vyre call` through the host wrapper, `test/journey/rig.js` terminal), since the harness cannot
   reach the address as the owner. The fake box tailscale now names this account as its operator,
   so the journey also runs on Linux. Journeys 1 to 6 pass together, three runs in a row, on the test box.
+#### Tailnet: more of Tailscale, and still never a change to the tailnet (ADR 0014)
+
+- Vyre now knows how the box and a device reach each other. `link.health` says whether the
+  connection is direct or relayed, its latency and the last handshake. Each node is checked at
+  most once a minute and only when something asks, so it costs nothing while nobody looks. The
+  Deck's Network settings and the Capsule show "direct 12 ms" or "relayed via fra 80 ms", so a
+  slow screen has a visible reason.
+- Glass uses that answer. A viewer on a relayed or slow link gets at most five frame updates a
+  second at lower quality, and taps and keys still go through at once, so a phone on a relay sees
+  a steady picture instead of a stalled one.
+- Files go from the Mac to the box with Taildrop: `vyre send <file>` and `files.send`. Only what
+  the files guard passes is sent, so a key or an `.env` never leaves the Mac, and when Taildrop
+  cannot reach the box (a tagged box is the usual case) it says why. The box keeps one
+  `tailscale file get --loop` blocked in tailscaled, so idle costs nothing, and announces each
+  arrival in `files.inbox` as `files.received`. Nothing opens or runs a received file.
+- The box can share chosen folders with the paired Mac through Taildrive, so Finder and the
+  Capsule open box files where they live instead of pulling a copy. Only named shares that pass
+  the guard can be shared, and only by the owner. Vyre cannot edit the policy that decides who
+  reaches a share, so `files.drive.audit` checks it and reports any node that is not a paired Mac.
+  tailscaled now sees `/work`, read-only unless the owner opts in.
+- `vyre box add` and `vyre box move` reach a server on the tailnet over Tailscale SSH first, so no
+  key or password is needed, and fall back to the address as typed. A check-mode sign-in link is
+  shown on the terminal rather than hidden.
+- Onboarding and Settings explain Tailnet Lock and show the exact commands to turn it on from the
+  Mac, with the box's key filled in. Vyre only reads the lock's state and never turns it on or
+  signs anything, because those commands change the whole tailnet.
+- An agent's Chrome can send a chosen list of sites through the owner's Mac, off by default, for
+  sites that refuse a datacenter address. The box's own tailscaled never uses an exit node (that
+  would route everything); an optional sidecar (`box/compose.egress.yml`) does, in userspace, on
+  the computers network only. The listed sites have no direct fallback, so when the Mac is away
+  they fail instead of showing the box's address. Only the owner can change the list.
+- whois now carries a peer's tags and the app capabilities the tailnet policy grants it, through
+  one parser. Every feature below reads them; none writes them.
+- The box's tailnet listener tells three peers apart: the owner, a guest from another tailnet
+  (`tailnet-guest:<login>`) and an agent's own node (`tailnet:agent:<name>`). Tailscale machine
+  sharing used to leave a shared-in person at 403. A guest now reaches only the view-only tools
+  the owner listed or the policy granted, within a fixed safe set, and every other tool reads as
+  absent. A guest never approves, proves presence or pairs a device. Guests are off until the
+  owner turns them on with presence (`network.guests.*`, a new `network` module).
+- An agent's node still needs its agent key over the tailnet: whois proves which container, the key
+  proves which thread, and neither replaces the other.
+- The Vault can ask the tailnet policy before it relays. With `vault.relay.grants: "require"` a
+  relayed request also needs a `vyre.run/cap/vault` grant for its item. A grant only narrows: a
+  revoked or expired pass stays refused, and no grant shows a value. `vault.grants.status` shows
+  who the policy covers.
+- Each agent's computer can join the tailnet as its own ephemeral `tag:vyre-agent` node, off by
+  default. The key stays in the vault and goes only to a root-only tailnet port, never into the
+  container's env or computerd's port, which the agent's own user could take over. The image does
+  not carry that side yet, so turning it on reports why and sends nothing.
+- Signed webhooks from the internet through Funnel (`core/hooks`, `vyre hooks`), off by default,
+  one route at a time, on loopback only. Every route checks the sender's signature against a
+  vault secret. A verified delivery is stored and announced as `hook.received` without its body,
+  and can do nothing else: it never calls a tool. Watchers can now run on an event filtered by
+  payload, so a watcher on one route gets that route's deliveries. Vyre never runs
+  `tailscale funnel`; `vyre hooks status` prints the commands and flags mismatches.
+- Sharing a folder, adding a guest, opening a webhook route and the tailnet switches are on the
+  floor's human-only list, so no model can do them.
+- The Deck's Network settings show shares (with a check of who the policy lets in), webhooks,
+  guests, agent nodes and egress. Chat and Glass carry a connection dot. Onboarding shows the
+  HTTPS switch a ts.net address needs as plain steps, then offers Tailnet Lock. The Capsule sends
+  a file to the box with option-return.
+- `scripts/perf-check` waits for Memory's startup pass to finish before it measures idle, so a
+  slow start on a loaded host is no longer counted as idle CPU.
+#### The Capsule answers from memory, and messages a session busy in a terminal
+
+- Quick answers read the memory on screen. When the "From memory" box shows facts or session quotes
+  for the same words, the quick question's system prompt carries exactly those lines, with their
+  ages, under "What the user's own notes say:". Nothing else from memory is sent.
+  `local/capsule/lib/bridge.js` (`memoItems`, `memoLines`, `quickAppend`).
+- A transcript hit reads as a quote ("You said, 2 weeks ago: ..."), never as a fact; the distilled
+  fact from memory.relevant sits above it. A box with only quotes is labelled "From your sessions".
+- The quotes are chosen for the question, not its words (`local/capsule/lib/said.js`): the question
+  echoed back, the Capsule's own ask threads ("Capsule: ..." or its scratch folder) and turns that
+  quote the whole question are dropped; questions and Claude's words rank under the user's own
+  first-person statements; at most two show. When the best is a clear statement ("I own a blue
+  Volvo XC40"), one line on top says it to the user ("You own a blue Volvo XC40.") with the quote
+  under it as its source. Still no model: the box shows before anything is sent.
+- Vyre's notices (a usage limit, the switch to the API key) are a faint status line under the
+  answer or the DM, never part of the answer's text. `local/capsule/lib/state.js` keeps them as
+  `notice`.
+- The switchboard says a usage limit in the thread only at 80% used or more, or when refused.
+  Claude Code warns from far lower (27% was seen). `thread.limit` still carries every report.
+- The reply shows the user's question as their own line ("You"), then who answers, then the answer.
+- `@<session>` for a session open in a terminal no longer refuses. A person's words are queued
+  (`threads_inbox`, event `thread.queued`), and the Harness hands them over when that session's
+  turn ends: the Stop hook returns `decision: block` with "Message from the user via the Capsule:
+  <text>", or the next prompt carries them when the session is idle. The Stop that ends the
+  answering turn emits its last message as the thread's `thread.text` and `thread.finished`, so the
+  Capsule shows the reply like any other. A model's send (caller `mcp*`) is still refused.
+  `vyre threads send` prints "queued". `core/switchboard`, `core/harness`, `core/cli/commands/threads.js`.
+- Opening over a full-screen app, behind `VYRE_CAPSULE_STAY=1` until checked: the panel joins every
+  Space again before each show, stays above full-screen windows, and becomes key without the app
+  activating, so macOS does not switch to the desktop Space. Off by default, where the app still
+  activates so typing reaches the panel over a normal app. `local/capsule/lib/present.js`;
+  `scripts/capsule-spaces/run.js` checks it against a throwaway full-screen window and runs only
+  with `VYRE_FULLSCREEN_OK=1`.
+#### The Claude sign-in code is submitted
+
+- Onboarding step 2 typed the pasted code and Enter into `claude setup-token` in one write.
+  Claude Code's prompt reads a multi-character chunk as pasted text, Enter included, so the code
+  sat in the box unsubmitted, and the page waited a silent minute. The code now goes first and
+  Enter on its own 300 ms later; a refused code ("OAuth error: ...") is reported at once, with a
+  hint to open the sign-in again for a fresh code. The page says it is checking while it waits.
+  `core/onboard/setup-token.js`, `deck/onboard/onboard.js`; the test's fake claude now reads its
+  prompt the way Ink does.
+
+#### The box's Deck can approve, seal and delete again
+
+- On a box the Deck is only served at the tailnet address, where calls are `tailnet:<owner>`.
+  Every tool whose callers list named `deck` refused that with 403: approving or discarding a held
+  item, push settings, deleting an agent, sealing a Vault item. `callerAllowed` in core/modules
+  lets the owner's tailnet caller use what the Deck may; agent nodes and guests still may not.
+- Settings shows the address the box is served at (a ts.net name) instead of `<name>.vyre.run`.
+- `agents.list` carries each agent's instructions, so the agent page shows and edits its job.
+- scripts/e2e-headscale: a private-tailnet harness that walks onboarding, the passkey, the Deck
+  and Mac pairing without a Tailscale account.
 
 #### The Capsule is Spotlight's size
 

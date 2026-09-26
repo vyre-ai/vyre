@@ -33,11 +33,14 @@ import { Icons } from "../lib/icons.js";
 import { Clips } from "../lib/clips.js";
 import { Providers } from "../lib/providers.js";
 import { Watches, notice } from "../lib/watch.js";
+import { present, LEVEL } from "../lib/present.js";
 import os from "node:os";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV = !app.isPackaged;
 const DRIVEN = DEV && Boolean(process.env.VYRE_CAPSULE_DRIVE);
+/** Open over a full-screen app without switching Spaces (lib/present.js). Off until verified. */
+const STAY = process.env.VYRE_CAPSULE_STAY === "1";
 const BIN = process.env.VYRE_CAPSULE_BIN || (DEV ? path.join(HERE, "..", "bin") : path.join(process.resourcesPath, "bin"));
 const WIDTH = 680;   // Spotlight's width: the Capsule takes its place
 /** Room around the Capsule for the shadow the page draws; the window itself is transparent. */
@@ -89,8 +92,8 @@ const OWN_BUNDLE = "run.vyre.capsule";
 let providersAt = 0;
 const launcher = new Launcher({ apps: new Apps(), helper, clips, providers,
   frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t),
-  // Files on the box come through this Mac's vyred (files.search, files.fetch), only while shown.
-  vyred: (tool, input) => vyred.call(tool, input), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
+  // Files on the box come through this Mac's vyred (files.search, files.fetch, and files.drive.local for a mounted share), only while shown.
+  vyred: (tool, input, opts) => vyred.call(tool, input, opts), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
 /** Icons, bounded, in the Capsule's own app-data folder ("-2": the helper once drew them a quarter size). Asked for only while the page is showing results. */
 let icons = /** @type {Icons|null} */ (null);
 const iconsNow = () => (icons ||= new Icons({ dir: path.join(app.getPath("userData"), "icons-2"), helper }));
@@ -142,7 +145,7 @@ function create() {
     acceptFirstMouse: true,
     webPreferences: { preload: path.join(HERE, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
   });
-  win.setAlwaysOnTop(true, "screen-saver");
+  win.setAlwaysOnTop(true, LEVEL);
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   win.loadFile(path.join(HERE, "capsule.html"));
   win.webContents.on("will-navigate", e => e.preventDefault());
@@ -187,16 +190,9 @@ async function show(via, at = Date.now(), from = undefined) {
   // Driven by a test, the Capsule must not take the keyboard: whoever is at the Mac keeps typing
   // into their own app, and those keys once landed in a test window instead. Test keys go to this
   // window's webContents directly and need no focus.
-  if (DRIVEN) { w.showInactive(); w.setAlwaysOnTop(true, "screen-saver"); }
-  else {
-    w.show();
-    w.setAlwaysOnTop(true, "screen-saver");
-    // With another app active, focusing a panel alone does not make it key, and the keys the user
-    // types next go nowhere (measured: typed over TextEdit, they reached neither). The user asked
-    // for the Capsule, so this app takes the keyboard; hide() gives it back.
-    app.focus({ steal: true });
-    w.focus();
-  }
+  // Otherwise it takes the keyboard on the Space the user is on (lib/present.js says how, and why
+  // VYRE_CAPSULE_STAY is still a flag).
+  present(w, app, { stay: STAY, driven: DRIVEN });
   // On first launch the page may still be loading, and a message sent now would be lost with
   // the caret nowhere; wait for it.
   // `at` is when the user asked (for double-Control, the second release), so the page can say how
@@ -205,6 +201,8 @@ async function show(via, at = Date.now(), from = undefined) {
   if (w.webContents.isLoading()) w.webContents.once("did-finish-load", opened); else opened();
   await refresh;
   push();
+  // How the box is reached, for the empty Capsule: only on open, at most once a minute.
+  bridge.linkHealth().catch(() => {});
   say({ shown: w.getBounds(), via, focused: w.isFocused() });
 }
 
@@ -433,6 +431,8 @@ ipcMain.handle("capsule:act", async (_e, r, key) => {
 ipcMain.handle("capsule:dm-open", (_e, agent) => bridge.openDm(String(agent || "")));
 ipcMain.handle("capsule:dm-close", () => bridge.closeDm());
 ipcMain.handle("capsule:copy", (_e, text) => { clipboard.writeText(String(text || "")); return { ok: true }; });
+// Send a file on this Mac to the box with Taildrop. The window stays, so the note says how it went.
+ipcMain.handle("capsule:send-file", (_e, r) => launcher.send(r));
 ipcMain.handle("capsule:pick", async (_e, r, query) => {
   const out = await launcher.pick(r, String(query || ""));
   if (out.close) hide();

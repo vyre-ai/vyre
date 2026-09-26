@@ -17,17 +17,43 @@
 
 export const TTL = 90_000;
 
+/**
+ * Is a process on this machine still there? ESRCH is the only "gone": EPERM means it runs as
+ * someone else, which is still alive.
+ * @param {number} pid
+ */
+export function pidAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code !== "ESRCH"; }
+}
+
+/**
+ * The pid in a terminal's surface name ("cli:<pid>"), or 0. The CLI only reaches vyred over its
+ * local socket, so the pid is a process on vyred's own machine and vyred can ask if it is alive.
+ * @param {string} surface
+ */
+const cliPid = surface => { const m = /^cli:(\d+)$/.exec(String(surface)); return m ? Number(m[1]) : 0; };
+
 export class Leases {
-  /** @param {import("node:sqlite").DatabaseSync} db */
-  constructor(db, now = () => Date.now()) {
+  /**
+   * @param {import("node:sqlite").DatabaseSync} db
+   * @param {() => number} [now] @param {(pid: number) => boolean} [alive]
+   */
+  constructor(db, now = () => Date.now(), alive = pidAlive) {
     this.db = db;
     this.now = now;
+    this.alive = alive;
   }
 
-  /** The live holder of a thread, or null. */
+  /**
+   * The live holder of a thread, or null. A terminal whose process has exited holds nothing:
+   * `vyre threads start` takes the keyboard and returns, and waiting out the TTL for a process
+   * that is gone locked every later `vyre threads send` out for 90 seconds.
+   */
   holder(thread) {
     const l = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_leases WHERE thread = ?").get(thread));
     if (!l || this.now() - Number(l.beat) >= TTL) return null;
+    const pid = cliPid(l.surface);
+    if (pid && !this.alive(pid)) return null;
     return { surface: String(l.surface), since: Number(l.since), beat: Number(l.beat) };
   }
 

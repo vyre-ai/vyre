@@ -1,9 +1,6 @@
 // @ts-check
-// The link, end to end: two vyreds in two temp homes stand in for the Mac and the box. The
-// tailnet is simulated at both ends. On the box, a small listener plays the part of the names
-// module's tailnet listener: it identifies each connection with an injectable function (whois,
-// in real life) and hands the request to the box's registry as `tailnet:<login>` with the peer
-// node. On the Mac, the link's `verify` seam plays the Mac's own whois of the box's address.
+// The link, end to end: two vyreds in two temp homes stand in for the Mac and the box, through
+// the harness in test/link-harness.js (the simulated tailnet at both ends).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,101 +9,8 @@ import http from "node:http";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { request } from "../core/daemon/client.js";
-import { seams as linkSeams } from "../core/link/index.js";
-import { seams as fileSeams } from "../core/files/index.js";
 import { tempHome, writeModule, present } from "./helpers.js";
-
-const OWNER = "owner@example.com";
-const MAC = { login: OWNER, node: "test-mac", stableId: "nMAC" };
-const PHONE = { login: OWNER, node: "test-phone", stableId: "nPHONE" };
-const BOX = { stableId: "nBOX", node: "test-box" };
-const wait = ms => new Promise(r => setTimeout(r, ms));
-
-// Generous: under a loaded full-suite run a state change can take seconds, and a test that waits
-// on state rather than a fixed sleep costs nothing extra when things are fast.
-async function until(fn, ms = 20_000) {
-  const end = Date.now() + ms;
-  for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out waiting"); await wait(20); }
-}
-
-/** The box's tailnet listener, simulated: identity comes from `net.who`, never from a header. */
-function tailnet(box, net, port = 0) {
-  const server = http.createServer(async (req, res) => {
-    const who = net.who;
-    const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
-    if (!who || who.login !== OWNER) return json(403, { error: { code: "not_owner", message: "not served" } });
-    const url = new URL(req.url || "/", "http://box");
-    if (req.method === "GET" && url.pathname === "/v1/health") return json(200, { data: { role: box.config.role, version: "0.0.0" } });
-    if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
-      let raw = "";
-      for await (const c of req) raw += c;
-      const r = await box.registry.call(decodeURIComponent(url.pathname.slice(10)), raw ? JSON.parse(raw) : {}, `tailnet:${who.login}`, { peer: who });
-      return json(r.error ? 400 : 200, r);
-    }
-    if (req.method === "GET" && url.pathname === "/v1/events/stream") {
-      res.writeHead(200, { "content-type": "text/event-stream" });
-      const since = url.searchParams.get("since");
-      let cursor = since === "latest" ? box.events.latestId() : Number(since || 0);
-      const write = e => { if (e.id > cursor) { cursor = e.id; res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`); } };
-      for (const e of box.events.since(cursor, { limit: 500 })) write(e);
-      const off = box.events.on("*", write);
-      req.on("close", off);
-      return;
-    }
-    json(404, { error: { code: "not_found", message: url.pathname } });
-  });
-  return new Promise(resolve => server.listen(port, "127.0.0.1", () => resolve(server)));
-}
-
-/** A box and a Mac, both running, with a work folder on each. */
-async function pair(t, { approve = true } = {}) {
-  const boxRoot = tempHome(t), macRoot = tempHome(t);
-  const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
-  const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
-  t.after(() => { fs.rmSync(boxWork, { recursive: true, force: true }); fs.rmSync(macWork, { recursive: true, force: true }); });
-  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "testbox", transcripts: [], files: { roots: [boxWork] } }));
-  fs.writeFileSync(path.join(macRoot, "config.json"), JSON.stringify({ role: "local", transcripts: [], files: { roots: [macWork] } }));
-  const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX), address: "" };
-  // Two peers on the simulated tailnet: the box, and the phone, whose node the box's address does not match.
-  linkSeams.set(macRoot, { peers: async () => [{ ip: "127.0.0.1", dns: "test-box", stableId: "nBOX" }, { ip: "127.0.0.1", dns: "test-phone", stableId: "nPHONE" }],
-    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat: 100, hostname: "test-mac", timeout: 1500, ttl: 0 });
-  // Spotlight, simulated: every file under the Mac's work folder whose name holds the query.
-  fileSeams.set(macRoot, { platform: "darwin", remoteTimeout: 1500,
-    mdfind: async args => fs.readdirSync(args[1]).filter(n => n.toLowerCase().includes(String(args[2]).toLowerCase())).map(n => path.join(args[1], n)) });
-  t.after(() => { linkSeams.delete(macRoot); fileSeams.delete(macRoot); });
-
-  // Stop the Mac first, so its heartbeat never reaches a box whose store is closed.
-  /** @type {any} */ let mac = null, box = null, server = null;
-  t.after(async () => {
-    if (mac) await mac.stop();
-    if (server) await new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); });
-    if (box) await box.stop();
-  });
-  box = await start({ presence: present, root: boxRoot, log: () => {} });
-  server = await tailnet(box, net);
-  mac = await start({ presence: present, root: macRoot, log: () => {} });
-  const address = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
-  net.address = address;
-  for (const [n, d] of [["box", box], ["mac", mac]]) {
-    const failed = d.registry.status().filter(m => ["link", "files"].includes(m.name) && m.state !== "running");
-    assert.deepEqual(failed, [], `${n}: link and files are running`);
-  }
-  const macCall = (tool, input = {}, caller = "cli") => mac.registry.call(tool, input, caller);
-  const boxCall = (tool, input = {}, caller = "cli", meta = {}) => box.registry.call(tool, input, caller, meta);
-  let code = null;
-  const find = (await macCall("link.find")).data;
-  assert.deepEqual(find.boxes.map(b => b.node), ["test-box"], "only the node that is the box is offered");
-  if (approve) {
-    const p = await macCall("link.pair", { box: address });
-    assert.ok(!p.error, JSON.stringify(p.error));
-    code = p.data.code;
-    assert.ok(!(await boxCall("link.pair.approve", { code })).error);
-    await until(async () => (await macCall("link.status")).data.linked);
-  }
-  return { box, mac, net, macCall, boxCall, boxWork, macWork, macRoot, address, code,
-    stopTailnet: () => new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); }),
-    startTailnet: async () => { server = await tailnet(box, net, Number(new URL(address).port)); } };
-}
+import { OWNER, MAC, PHONE, wait, until, pair } from "./link-harness.js";
 
 test("link: pairing, box tools from the Mac, a federated search and a fetch", async t => {
   const s = await pair(t);
@@ -344,4 +248,89 @@ test("link: approving a pairing needs the owner's presence, whoever calls, and t
   const summary = await box.registry.tools.get("link.pair.approve").presence.summary({ code: p.code });
   assert.match(summary, /work laptop/);
   assert.ok(!summary.includes(p.code) && !summary.includes(p.code.replace("-", "")), "the code is never in the prompt");
+});
+
+/**
+ * A fake tailscale binary for link.health: `status --json` and `ping` answered from world.json
+ * beside it, every call logged to calls.log. Both vyreds in this process share it, as the Mac's
+ * and the box's own CLIs would each know both nodes.
+ */
+function fakeTailscale(t, dir, world) {
+  const bin = path.join(dir, "tailscale");
+  fs.writeFileSync(path.join(dir, "world.json"), JSON.stringify(world));
+  fs.writeFileSync(bin, `#!/usr/bin/env node
+const fs = require("node:fs"), path = require("node:path");
+const here = ${JSON.stringify(dir)};
+const args = process.argv.slice(2);
+fs.appendFileSync(path.join(here, "calls.log"), args.join(" ") + "\\n");
+const w = JSON.parse(fs.readFileSync(path.join(here, "world.json"), "utf8"));
+if (args[0] === "status") { process.stdout.write(JSON.stringify(w.status)); process.exit(0); }
+if (args[0] === "ping") { const ip = args[args.length - 1]; const line = w.ping[ip]; if (!line) { process.stderr.write("timeout waiting for ping reply\\n"); process.exit(1); } process.stdout.write(line + "\\n"); process.exit(0); }
+process.stderr.write("the fake does not do " + args[0] + "\\n"); process.exit(1);
+`, { mode: 0o755 });
+  const prev = process.env.VYRE_TAILSCALE_BIN;
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  t.after(() => { if (prev === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prev; });
+  return { calls: () => { try { return fs.readFileSync(path.join(dir, "calls.log"), "utf8").trim().split("\n").filter(Boolean); } catch { return []; } } };
+}
+
+test("link: link.health on the Mac is the box's node, and on the box the calling device or a paired Mac", async t => {
+  const s = await pair(t);
+  const node = (id, ip, extra = {}) => ({ ID: id, HostName: id, DNSName: `${id}.tail0000.ts.net.`, TailscaleIPs: [ip], Online: true,
+    CurAddr: "", Relay: "fra", PeerRelay: "", LastHandshake: "2026-09-27T10:00:00Z", RxBytes: 10, TxBytes: 20, ...extra });
+  const dir = fs.mkdtempSync(path.join(s.macRoot, "..", "vyre-ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ts = fakeTailscale(t, dir, {
+    status: { BackendState: "Running", Self: { ID: "nSELF" }, Peer: {
+      a: node("nBOX", "100.64.0.5", { CurAddr: "203.0.113.7:41641" }),
+      b: node("nMAC", "100.64.0.2"),
+      c: node("nPHONE", "100.64.0.3", { LastHandshake: "0001-01-01T00:00:00Z" }) } },
+    ping: { "100.64.0.5": "pong from box (100.64.0.5) via 203.0.113.7:41641 in 12ms",
+      "100.64.0.2": "pong from alex-mac (100.64.0.2) via DERP(fra) in 80ms",
+      "100.64.0.3": "pong from phone (100.64.0.3) via DERP(fra) in 95ms" },
+  });
+
+  // The Mac: its paired box, direct.
+  const mac = await s.macCall("link.health");
+  assert.ok(!mac.error, JSON.stringify(mac.error));
+  assert.deepEqual({ path: mac.data.path, relay: mac.data.relay, latencyMs: mac.data.latencyMs, online: mac.data.online, cached: mac.data.cached },
+    { path: "direct", relay: null, latencyMs: 12, online: true, cached: false });
+  assert.equal(mac.data.lastHandshake, Date.parse("2026-09-27T10:00:00Z"));
+  assert.equal((await s.macCall("link.health")).data.cached, true, "a second ask inside the minute is the cached answer");
+  assert.equal(ts.calls().filter(c => c.startsWith("ping")).length, 1);
+  assert.ok(ts.calls().includes("ping --c 1 --until-direct=false --timeout 3s 100.64.0.5"));
+
+  // The box: the calling device by default (the Mac over the tailnet), relayed.
+  const self = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: MAC });
+  assert.equal(self.data.path, "relay");
+  assert.equal(self.data.relay, "fra");
+  assert.equal(self.data.latencyMs, 80);
+  // A paired Mac by node id, from the box's terminal; its id is in link.peers.
+  const peers = (await s.boxCall("link.peers")).data;
+  assert.equal(peers[0].stable_id, "nMAC");
+  assert.equal((await s.boxCall("link.health", { node: "nMAC" })).data.cached, true);
+  // Another node is not a paired Mac, unless it is the caller itself or a module asks.
+  assert.match((await s.boxCall("link.health", { node: "nPHONE" })).error.message, /not a paired Mac/);
+  const phone = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: PHONE });
+  assert.equal(phone.data.latencyMs, 95);
+  assert.equal(phone.data.lastHandshake, null, "never shook hands: null, not year one");
+  assert.equal((await s.boxCall("link.health", { node: "nPHONE" }, "module:glass")).data.cached, true);
+  // Nothing named and no calling node: unknown, with the reason.
+  const bare = await s.boxCall("link.health");
+  assert.equal(bare.data.path, "unknown");
+  assert.match(bare.data.why, /say which node/);
+});
+
+test("link: link.health on an unpaired Mac is unknown with a reason, and the seam can stand in", async t => {
+  const s = await pair(t, { approve: false });
+  const r = await s.macCall("link.health");
+  assert.equal(r.data.path, "unknown");
+  assert.match(r.data.why, /not paired/);
+  assert.equal(r.data.cached, false);
+
+  const asked = [];
+  const stub = { check: async which => { asked.push(which); return { path: "peer-relay", relay: null, latencyMs: 40, lastHandshake: null, online: true, checkedAt: 1, cached: false }; } };
+  const p = await pair(t, { health: stub });
+  assert.equal((await p.macCall("link.health")).data.path, "peer-relay");
+  assert.deepEqual(asked, [{ stableId: "nBOX" }]);
 });

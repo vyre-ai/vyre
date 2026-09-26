@@ -20,5 +20,6 @@
       "*": []
     }
   },
-  "watchers.pause": { "ok": true }
+  "watchers.pause": { "ok": true },
+  "watchers.resume": { "ok": true }
 }

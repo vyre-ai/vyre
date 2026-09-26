@@ -257,7 +257,7 @@ test("theme: core/config/theme.js is the palette TOKENS.md draws, each colour va
     assert.ok(Object.keys(pal.colors[mode]).length > 5, mode);
     for (const [k, v] of Object.entries(pal.colors[mode])) {
       assert.match(String(v), /^(#[0-9A-Fa-f]{3}|#[0-9A-Fa-f]{6}|rgba\(\d+,\d+,\d+,(0|1|0?\.\d+)\))$/, `${mode}.${k}`);
-      assert.ok(pal.use[k], `a use for ${k}`);
+      assert.ok(pal.use[mode][k], `a use for ${mode}.${k}`);
     }
   }
 });

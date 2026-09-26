@@ -220,6 +220,14 @@ export class Vault {
     // "tailscale": the login comes from `tailscale serve`'s header. "whois": the listener binds the
     // tailnet itself (the box, ADR 0002) and the login comes from `tailscale whois` of the peer.
     this.relayIdentity = opts.relay && ["tailscale", "whois"].includes(opts.relay.identity) ? opts.relay.identity : null;
+    // "require": a relayed request also needs the tailnet policy to grant the calling peer
+    // vyre.run/cap/vault for the item (ADR 0014, part 7). Only whois carries caps, so under any
+    // other identity every relayed request is refused. The grant narrows; it never stands in for a pass.
+    this.relayGrants = opts.relay && opts.relay.grants === "require" ? "require" : "off";
+    /** What each login's node carried at its last relay contact since start: { caps, node, at }. Never decides access. */
+    /** @type {Map<string, { caps: Record<string, any[]>, node: string, at: number }>} */ this.seenCaps = new Map();
+    /** Set by index.js in whois mode: whois of the online node signed in as a login, or null. */
+    /** @type {((login: string) => Promise<any>) | null} */ this.lookupPeer = null;
     /** This person's Tailscale login, put on the card so passes to them can be bound to it. */
     this.login = opts.login ? String(opts.login) : null;
     ensureDir(dir);
@@ -1210,11 +1218,61 @@ export class Vault {
         ms ? JSON.stringify(ms) : null, ps ? JSON.stringify(ps) : null, parseExpiry(expires), String(note), status, String(caller), now());
     this.sign("vault_passes", id);
     this.audit(status === "active" ? "pass" : "pass-requested", null, caller, true, `${id} to ${holder}: ${items.join(", ")} (${mode})`);
+    // The pass is made either way; a gap in the tailnet policy is something to say, not a refusal.
+    const gap = await this.grantGap(holder, person.login || null, items, mode);
+    const warned = out => (gap ? { ...out, warning: gap } : out);
     if (status === "pending") {
       this.emit("pass.requested", { pass: id, holder, items, mode });
-      return { pass: this.passOut(this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(id)) };
+      return warned({ pass: this.passOut(this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(id)) });
     }
-    return this.issue(id);
+    return warned(await this.issue(id));
+  }
+
+  /**
+   * A login's caps toward this node: whois of their node if it is online on this tailnet now,
+   * else what it carried at its last relay contact, else nothing known. Read on demand only.
+   * @returns {Promise<{ who: any, source: "whois"|"relay"|null, at: number|null }>}
+   */
+  async peerCaps(login) {
+    const live = this.lookupPeer && login ? await this.lookupPeer(login).catch(() => null) : null;
+    if (live && live.login === login) return { who: live, source: "whois", at: now() };
+    const seen = login ? this.seenCaps.get(login) : null;
+    return seen ? { who: seen, source: "relay", at: seen.at } : { who: null, source: null, at: null };
+  }
+
+  /** With grants required, the warning a new relayed pass carries when the policy does not yet cover it, or null. */
+  async grantGap(holder, login, items, mode) {
+    if (this.relayGrants !== "require" || mode !== "relayed") return null;
+    if (!login) return `${holder}'s card names no Tailscale login, so the tailnet policy cannot grant them ${relay.VAULT_CAP}; relayed requests will be refused until their card carries one and the policy grants it`;
+    const { who } = await this.peerCaps(login);
+    const missing = items.filter(n => !relay.grantCovers(who, n, mode));
+    return missing.length ? `the tailnet policy does not grant ${login} ${relay.VAULT_CAP} for ${missing.join(", ")} yet; relayed requests will be refused until it does` : null;
+  }
+
+  /**
+   * For vault.grants.status: the mode, and per person with live passes, whether their caps (by
+   * whois now or as last seen) cover each pass. Names and logins only, never a value.
+   */
+  async grantsStatus() {
+    const t = now();
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_passes WHERE status='active' AND revoked IS NULL ORDER BY created").all())
+      .filter(p => this.rowOk("vault_passes", p) && (!p.expires || p.expires > t));
+    /** @type {Map<string, any[]>} */
+    const byHolder = new Map();
+    for (const p of rows) byHolder.set(p.holder, [...(byHolder.get(p.holder) || []), p]);
+    const people = [];
+    for (const [holder, passes] of byHolder) {
+      const login = passes.find(p => p.holder_login)?.holder_login || this.share.row(holder)?.login || null;
+      const { who, source, at } = await this.peerCaps(login);
+      const out = passes.map(p => {
+        const items = json(p.items, []);
+        // A sealed pass never comes through the relay, so a grant has nothing to narrow there.
+        const missing = p.mode === "relayed" ? items.filter(n => !relay.grantCovers(who, n, p.mode)) : [];
+        return { id: p.id, items, mode: p.mode, covered: p.mode !== "relayed" || (who ? !missing.length : null), ...(missing.length ? { missing } : {}) };
+      });
+      people.push({ holder, login, seen: source, at, grants: who && who.caps && Array.isArray(who.caps[relay.VAULT_CAP]) ? who.caps[relay.VAULT_CAP] : [], covered: out.every(p => p.covered === true), passes: out });
+    }
+    return { mode: this.relayGrants, identity: this.relayIdentity, people };
   }
 
   /**
@@ -1354,6 +1412,8 @@ export class Vault {
     const refuse = why => { this.audit("relay", env && typeof env.item === "string" ? env.item : null, who, false, why); return deny(403, why); };
     const why = relay.checkEnvelope(env, { holderKey: p.holder_sign, audience: this.relayUrl || "", seen: this.share.nonces });
     if (why) return refuse(why);
+    // Remembered for the warning on a new pass and for vault.grants.status; nothing reads it to allow.
+    if (meta.peer && meta.login) this.seenCaps.set(meta.login, { caps: meta.peer.caps || {}, node: String(meta.peer.node || ""), at: now() });
     if (this.relayIdentity) {
       if (!meta.login) return refuse(this.relayIdentity === "whois" ? "this relay answers only people on the tailnet" : "this relay answers only through tailscale serve");
       if (p.holder_login && meta.login !== p.holder_login) return refuse("this pass belongs to another Tailscale user");
@@ -1363,6 +1423,9 @@ export class Vault {
     if (p.expires && p.expires < now()) return refuse("this pass has expired");
     if (p.mode !== "relayed") return refuse("this pass is sealed, not relayed");
     if (!json(p.items, []).includes(env.item)) return refuse(`${env.item} is not in this pass`);
+    // Last of the pass checks, so it can only add a refusal: revoked, expired and unapproved passes are already out.
+    if (this.relayGrants === "require" && !relay.grantCovers(meta.peer, env.item, p.mode))
+      return refuse(`the tailnet policy does not grant ${meta.login || "this caller"} ${relay.VAULT_CAP} for ${env.item} (${p.mode})`);
     const r = this.row(env.item);
     if (!r) return refuse(`${env.item} no longer exists`);
     const narrowed = p.hosts ? json(p.hosts, []) : null;

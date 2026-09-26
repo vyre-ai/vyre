@@ -19,13 +19,12 @@
     "docs:check": "node scripts/docs-check",
     "docs:build": "node scripts/build-docs",
     "docs:ref": "node scripts/gen-docs-reference",
-    "docs:shots": "node scripts/docs-shots"
-  },
-  "optionalDependencies": {
-    "@huggingface/transformers": "^4.3.0"
+    "docs:shots": "node scripts/docs-shots",
+    "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
   "files": [
     "bin",
+    "build.json",
     "core",
     "harness",
     "local",

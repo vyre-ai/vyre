@@ -23,14 +23,29 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   tmp-guard names it. Plus the test box test fixes. Full suite on the test box: 1449 tests, 1406 pass,
   0 fail, 42 skipped, `npm test` exit 0, tmp-guard clean.
 
+- 1b3a457 merge polish-surfaces: world.js theirs; scratch/tmp-guard/vault tests/helper test kept
+  both sides; the dialog-fix touchid gate test moved under SCRATCH (os import was gone). Full
+  suite on the test box: 1453 tests, 1409 pass, 0 fail.
+- a8b6520 merge tailnet (tailnet-surfaces included): policy.test imports, entrypoint egress PAC
+  plus --test-type, Chat session head plus health dot, all kept both sides. Full suite on the test box:
+  1578 tests, 1535 pass, 0 fail, 42 skipped, 1 todo, exit 0, tmp-guard clean.
+
+## Done after the rewrite (2026-09-27)
+
+- 80f2b44 pwa, 5524dd8 capsule-now, d0e35c3 connectors (at 53a994a; 2483c77 awaits approval),
+  c4bf9ea cc-plugin, 7a97230 polish-cli, 439f35a security (registry rules for every non-person
+  caller; vault.caps reveal described as it is, with a real-presence test) plus two flake fixes.
+
 ## Doing
 
-- Merging, in order: work/polish-surfaces (deck/test/world.js: take polish-surfaces'), work/polish-cli,
-  work/tailnet (with its merged sub-branches), work/connectors when its lead says ready.
+- Waiting on docs to name a head for work/docs (asked; head was a wip with uncommitted edits).
 
 ## Next
 
-- After each merge: targeted tests on the test box, report sha and numbers to the lead.
+- Merge work/docs, then amend the spec (it moves to docs/architecture/spec.md in that branch):
+  SPEC 5.2 ctx.projects does not exist (modules read projects through ctx.call("projects.list")),
+  and ADR 0008's `vyre box update` row (the code prints the Mac's update command; check
+  core/cli/commands/box.js before choosing amend or implement).
 
 ## Needs from others
 

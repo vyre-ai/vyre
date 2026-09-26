@@ -483,6 +483,8 @@ function eventsPage(root, mods) {
 // What each setting is for. The code has types and defaults but not the why, so the why lives
 // here; a key the code gains without a line here shows as "not described yet".
 const MEANING = {
+  theme: "Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`.",
+  "theme.colors": "`{ dark: { token: colour }, light: { role: colour } }`, keys as on the design tokens page. A value that is not a plain CSS colour is ignored. Reload the Deck to see a change.",
   name: "This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`.",
   role: "`box` for the always-on server, `local` for a Mac. Decides which modules start.",
   projectsDir: "The folder new projects are made in.",

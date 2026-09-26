@@ -1,8 +1,9 @@
 // @ts-check
 // link — the Mac and the box as one system (docs/SPEC.md, sections 3 and 9; ADR 0002).
 //
-// On the box, this module pairs Macs and answers their check-ins. On the Mac, it pairs with the
-// box, carries ctx.remote(tool, input) to the box's tools, and proxies the box's event stream at
+// On the box, this module pairs Macs, answers their check-ins, and asks them for their sessions
+// (link.macs.call). On the Mac, it pairs with the box, carries ctx.remote(tool, input) to the
+// box's tools, answers the box's questions, and proxies the box's event stream at
 // /v1/link/events so the Capsule sees box threads as they happen. The box identifies the Mac by
 // its WireGuard address (the box's tailnet listener does that); the Mac identifies the box the
 // same way, pinned to the node it paired with. No header is trusted in either direction.
@@ -12,7 +13,8 @@ import { macSide } from "./mac.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a vyred runs with. Tests run a Mac and a box in one process
- * and simulate the tailnet with these: { verify(ip), insecure, heartbeat, pollMs, hostname, timeout, now }.
+ * and simulate the tailnet with these: { verify(ip), insecure, heartbeat, pollMs, hostname, timeout, now,
+ * hold, allow } (hold: how long link.serve waits; allow: the box's list of tools it may ask a Mac for).
  * Production never sets them.
  * @type {Map<string, any>}
  */

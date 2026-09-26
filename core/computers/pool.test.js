@@ -18,7 +18,7 @@ const AGENTS = [
 ];
 
 /** A pool with everything it talks to faked, and the events it emitted. */
-function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver() } = {}) {
+function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver(), egress = undefined } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "t.db"));
   t.after(() => db.close());
@@ -30,7 +30,8 @@ function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver() } = 
     if (tool === "agents.list" && agents) return { data: agents };
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
   };
-  const pool = new Pool({ db, driver, call, emit: (type, payload) => { events.push({ type, payload }); }, config: { waitMs: 200, ...config }, now: () => clock.t });
+  const pool = new Pool({ db, driver, call, emit: (type, payload) => { events.push({ type, payload }); }, config: { waitMs: 200, ...config }, now: () => clock.t,
+    egress: () => egress && egress.cfg });
   return { pool, driver, events, clock, db, types: () => events.map(e => e.type) };
 }
 
@@ -215,7 +216,7 @@ test("pool: a Glass ticket works once and expires after 30 s", async t => {
   const { pool, clock } = setup(t);
   const a = pool.ticket("kit", "glass:laptop");
   assert.ok(a.length >= 32);
-  assert.deepEqual(pool.redeem(a), { agent: "kit", surface: "glass:laptop" });
+  assert.deepEqual(pool.redeem(a), { agent: "kit", surface: "glass:laptop", slow: false });
   assert.equal(pool.redeem(a), null, "a ticket worked twice");
   const b = pool.ticket("kit", "glass:laptop");
   clock.t += TICKET_MS;
@@ -276,3 +277,110 @@ test("pool: pause and resume are recorded and emitted once each", async t => {
   assert.deepEqual(types(), ["computer.paused", "computer.resumed"]);
 });
 
+
+test("pool: a computer that exits on boot fails the checkout with the reason, and is not left running", async t => {
+  const { pool, driver } = setup(t);
+  driver.crashing.add("kit");
+  await assert.rejects(pool.checkout("kit"), /kit's computer stopped as soon as it started \(exit code 127\).*docker logs vyre-computer-kit/);
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.equal(pool.view("kit").screen, null, "the screen went back to the pool");
+  assert.equal(pool.vnc("kit"), null);
+  driver.crashing.delete("kit");
+  assert.equal((await pool.checkout("kit")).screen, 1, "a fixed image starts the same container");
+  assert.equal(pool.view("kit").state, "running");
+});
+
+test("pool: a checkout waits for the screen to answer, and gives up after bootMs", async t => {
+  let answers = 0;
+  const { pool } = setup(t, { config: { bootMs: 5_000 } });
+  pool.probe = async () => ++answers >= 3;
+  await pool.checkout("kit");
+  assert.equal(answers, 3, "probed until the screen answered");
+  pool.probe = async () => false;
+  pool.opts.bootMs = 100;
+  await assert.rejects(pool.checkout("pax"), /pax's computer started but its screen did not answer within 0 s/);
+});
+
+test("pool: a computer that died while idle freezes to stopped, not a stuck running", async t => {
+  const { pool, driver, clock, types } = setup(t, { config: { idleMs: 10, freezeMs: 10 } });
+  await pool.checkout("kit");
+  pool.release("kit");
+  const c = [...driver.containers.values()][0];
+  c.state = "exited";
+  clock.t += 20;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.ok(types().includes("computer.stopped"));
+  assert.equal((await pool.checkout("kit")).screen, 1, "the next checkout starts it");
+  assert.equal(pool.view("kit").state, "running");
+});
+
+test("pool: limits apply at restart, which keeps the home and the checkout and changes the passwords", async t => {
+  const { pool, driver } = setup(t);
+  await pool.checkout("kit");
+  const before = pool.vnc("kit");
+  const first = [...driver.containers.values()][0];
+  assert.deepEqual([first.spec.cpus, first.spec.memoryMb], [2, 3072]);
+  assert.deepEqual([pool.view("kit").cpus, pool.view("kit").memory_gb], [2, 3]);
+  assert.throws(() => pool.limits("kit", { cpus: 0 }), /cpus is a whole number of cores from 1 to 16/);
+  assert.throws(() => pool.limits("kit", { memory_gb: 1.5 }), /memory_gb is a whole number/);
+  assert.throws(() => pool.limits("kit", {}), /say cpus or memory_gb/);
+  const v = pool.limits("kit", { cpus: 4, memory_gb: 8 });
+  assert.deepEqual([v.cpus, v.memory_gb], [4, 8]);
+  assert.equal(first.spec.cpus, 2, "the running container keeps its limits until a restart");
+  const r = await pool.restart("kit");
+  assert.equal(r.state, "running");
+  assert.equal(r.screen, 1, "the checkout survives");
+  assert.equal(driver.containers.has(first.id), false, "the old container is gone");
+  const next = [...driver.containers.values()][0];
+  assert.deepEqual([next.spec.cpus, next.spec.memoryMb, next.spec.volume], [4, 8192, first.spec.volume]);
+  assert.notEqual(pool.vnc("kit").password, before.password);
+  await assert.rejects(pool.restart("rio"), /rio has no computer/);
+});
+
+test("pool: restarting a computer nobody holds leaves it to freeze on schedule", async t => {
+  const { pool, clock } = setup(t, { config: { freezeMs: 10 } });
+  await pool.restart("kit");
+  assert.equal(pool.view("kit").state, "running");
+  assert.equal(pool.view("kit").screen, null);
+  clock.t += 20;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "frozen");
+});
+
+test("pool: the egress PAC reaches a new computer's env only when on with sites, and a change remakes a stopped one", async t => {
+  const egress = { cfg: /** @type {any} */ (undefined) };
+  const { pool, driver } = setup(t, { egress });
+  await pool.checkout("kit", { thread: "th-1" });
+  const first = [...driver.containers.values()][0];
+  assert.equal(first.spec.env.VYRE_PROXY_PAC, undefined, "off by default");
+  // A running computer keeps what it was made with.
+  egress.cfg = { enabled: true, sites: ["bank.example.com"] };
+  pool.release("kit", "released");
+  await pool.checkout("kit", { thread: "th-1" });
+  assert.equal(driver.containers.size, 1);
+  assert.equal([...driver.containers.values()][0].id, first.id);
+  // Stopped, it is made again with the new setting; its home volume is the same one.
+  await pool.stop("kit");
+  await pool.checkout("kit", { thread: "th-1" });
+  const second = [...driver.containers.values()];
+  assert.equal(second.length, 1);
+  assert.notEqual(second[0].id, first.id);
+  assert.match(second[0].spec.env.VYRE_PROXY_PAC, /^data:application\/x-ns-proxy-autoconfig;base64,/);
+  assert.equal(second[0].spec.volume, first.spec.volume);
+  // Stopped again with the setting unchanged: started, not remade.
+  await pool.stop("kit");
+  await pool.checkout("kit", { thread: "th-1" });
+  assert.equal([...driver.containers.values()][0].id, second[0].id);
+  // Turned off: the next start drops it again.
+  egress.cfg = { enabled: false, sites: ["bank.example.com"] };
+  await pool.stop("kit");
+  await pool.checkout("kit", { thread: "th-1" });
+  assert.equal([...driver.containers.values()][0].spec.env.VYRE_PROXY_PAC, undefined);
+});
+
+test("pool: a bad egress site list stops a new computer instead of making one that goes DIRECT", async t => {
+  const { pool, driver } = setup(t, { egress: { cfg: { enabled: true, sites: ["bank example.com"] } } });
+  await assert.rejects(pool.checkout("kit", { thread: "th-1" }), /is not a hostname/);
+  assert.equal(driver.containers.size, 0);
+});

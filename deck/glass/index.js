@@ -9,8 +9,9 @@
 import { h, put, link } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { surfaceId, isPhone, errText, gicon } from "./util.js";
-import { mountScreen } from "./watch.js";
+import { mountScreen, LIFECYCLE } from "./watch.js";
 import { mountFiles } from "./files.js";
+import { healthDot } from "../js/health.js";
 
 let styled = /** @type {Promise<void> | null} */ (null);
 /** The Glass stylesheet, added once, before the first render. */
@@ -56,10 +57,21 @@ export default async function glass(ctx) {
   const state = info ? (STATE[info.state] || info.state) : null;
   const sub = box ? "Files in the folders you chose for Glass. The box has no screen."
     : t.error ? errText(t.error) : !info ? `Glass does not know a computer for ${name}.` : null;
+  const stateEl = state ? h("span", { class: "small faint" }, state) : null;
+  // The state in the title follows the computer: watching thaws it, and it rests when nobody does.
+  if (stateEl && !box) for (const type of LIFECYCLE) ctx.on(type, (/** @type {any} */ e) => {
+    if (e.payload?.agent !== name) return;
+    const now = type === "computer.frozen" ? "frozen" : type === "computer.stopped" ? "stopped" : "running";
+    put(stateEl, STATE[now]);
+  });
   const slot = h("div", { class: "gl-head-right" });
   const status = h("div", { class: "gl-phone-status" });
   const body = h("div", { class: "gl-body" });
   const seg = h("div", { class: "seg gl-tabs", role: "tablist", "aria-label": "Glass" });
+
+  // How the box reaches this device, as a dot beside the title (asked on open, then once a minute while shown).
+  const health = healthDot();
+  ctx.cleanup(health.stop);
 
   const back = phone
     ? link(box ? "/now" : `/agents/${encodeURIComponent(name)}`, { class: "gl-back", "aria-label": box ? "Back to Now" : `Back to ${name}` },
@@ -68,10 +80,10 @@ export default async function glass(ctx) {
 
   put(ctx.root, h("div", { class: "gl" + (phone ? " gl-is-phone" : "") },
     phone
-      ? h("header", { class: "gl-phead" }, back, h("div", { class: "gl-pname" }, h("span", { class: "mono" }, box ? "box" : name), h("span", { class: "gl-vr" }), status))
+      ? h("header", { class: "gl-phead" }, back, h("div", { class: "gl-pname" }, h("span", { class: "mono" }, box ? "box" : name), health.el, h("span", { class: "gl-vr" }), status))
       : h("header", { class: "gl-head" },
         h("div", { class: "gl-title" },
-          h("div", { class: "gl-title-row" }, h("h1", { class: "h3" }, title), state ? h("span", { class: "small faint" }, state) : null),
+          h("div", { class: "gl-title-row" }, h("h1", { class: "h3" }, title), stateEl, health.el),
           sub ? h("div", { class: "small muted" }, sub) : h("div", { class: "small muted" }, "Only your tailnet can open this page. ",
             link(`/agents/${encodeURIComponent(name)}`, { class: "link quiet" }, `Back to ${name}`))),
         slot),

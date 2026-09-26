@@ -32,7 +32,9 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
 
 /**
  * @typedef {"running"|"paused"|"exited"|"missing"} ContainerState
- * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, helper: number } }} Inspection
+ * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, helper: number, tailnet?: number }, exitCode?: number }} Inspection
+ * ports.tailnet: where the computer's tailnet side answers, apart from computerd; no driver names
+ * one until the image runs that side as another user (core/computers/tailnet.js).
  */
 
 /**

@@ -10,6 +10,7 @@
 //   "whoami"        says which credential it was given (never the value)
 //   "spend <usd>"   a turn that cost that much
 //   "nearlimit"     a rate-limit warning (85% of the five-hour limit), then a normal turn
+//   "lowlimit"      a rate-limit warning at 27% of the seven-day limit, then a normal turn
 //   "forge <caller> <tool>"  calls a vyred tool as <caller>, carrying this thread's agent key
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
@@ -94,6 +95,10 @@ async function turn(prompt) {
   }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
+  if (/^lowlimit$/i.test(p)) {
+    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 1790000000, utilization: 0.27 } });
+    await say("plenty left"); return result(true, "plenty left", 0);
+  }
   if (/^nearlimit$/i.test(p)) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: 1790000000, utilization: 0.85 } });
     await say("still here"); return result(true, "still here", 0);

@@ -68,3 +68,25 @@ test("config: save merges one level deep, removes nulls and writes 0600", t => {
   assert.equal(fs.statSync(config.paths(root).config).mode & 0o777, 0o600);
   assert.ok(!("role" in JSON.parse(fs.readFileSync(config.paths(root).config, "utf8"))), "defaults were written to the file");
 });
+
+test("config: glass.egress is off with no sites by default, and survives a user's other glass keys", t => {
+  const root = tempHome(t);
+  assert.deepEqual(config.load(root).glass.egress, { enabled: false, sites: [] });
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ glass: { roots: ["/work"] } }));
+  const c = config.load(root);
+  assert.deepEqual(c.glass.roots, ["/work"]);
+  assert.deepEqual(c.glass.egress, { enabled: false, sites: [] }, "a user's glass.roots dropped the egress default");
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ glass: { egress: { enabled: true } } }));
+  assert.deepEqual(config.load(root).glass.egress, { enabled: true, sites: [] });
+});
+
+test("config: computers.tailnet is off by default, and survives a user's other computers keys", t => {
+  const root = tempHome(t);
+  assert.deepEqual(config.load(root).computers.tailnet, { enabled: false, tag: "tag:vyre-agent" });
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ computers: { docker: "http://docker-api:2375" } }));
+  const c = config.load(root);
+  assert.equal(c.computers.docker, "http://docker-api:2375");
+  assert.deepEqual(c.computers.tailnet, { enabled: false, tag: "tag:vyre-agent" }, "a user's computers.docker dropped the tailnet default");
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ computers: { tailnet: { enabled: true } } }));
+  assert.deepEqual(config.load(root).computers.tailnet, { enabled: true, tag: "tag:vyre-agent" });
+});

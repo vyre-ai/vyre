@@ -217,7 +217,7 @@ From the Mac, each command runs over the saved `box.ssh`, so the person still ne
 
 | Command | Does |
 |---|---|
-| `vyre box update` | `vyre update` on the host (pull, recreate, wait), then updates the Mac's own vyred if the box is newer |
+| `vyre box update` | `vyre update` on the host (pull, recreate, wait), then compares versions: if the box is newer it prints the Mac's own update (`npm i -g vyre@latest && vyre up`) rather than replacing a global package unasked |
 | `vyre box backup [file]` | stops the stack, tars `vyre-home`, `vyre-work` and `tailscale-state` on the host, starts it, and copies one file to the Mac, 0600 |
 | `vyre box move user@newhost` | `box add` on the new host up to step 4, stops the old stack, streams the three volumes old → new through the Mac, starts the new one, runs `--uninstall` (not `--purge`) on the old. `tailscale-state` moves too, so the node keeps its name, address and certificate |
 | `vyre box remove [--purge]` | `install-box.sh --uninstall [--purge]` on the host; forgets `network.box` |

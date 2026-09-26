@@ -673,10 +673,17 @@ function swatches(mode, ctx) {
   const rows = Object.entries(colors).map(([token, value]) => {
     const v = String(value);
     const chip = safeColor(v) ? `<span class="swatch" style="background:${escapeHtml(v.trim())}" aria-hidden="true"></span>` : "";
-    const use = (pal.use && pal.use[token]) || "";
+    const use = useOf(pal, mode, token);
     return `<tr><td>${chip}</td><td><code>--${escapeHtml(token)}</code></td><td><code>${escapeHtml(v)}</code></td><td>${escapeHtml(use)}</td></tr>`;
   });
   return `<div class="table-wrap"><table class="swatches" data-colors="${escapeHtml(mode)}">\n<thead><tr><th><span class="sr-only">Swatch</span></th><th>Token</th><th>Value</th><th>Use</th></tr></thead>\n<tbody>\n${rows.join("\n")}\n</tbody>\n</table></div>`;
+}
+
+/** What a token is for: THEME_USE per theme ({ dark: {...}, light: {...} }), or one flat map. */
+function useOf(/** @type {any} */ pal, /** @type {string} */ mode, /** @type {string} */ token) {
+  const u = (pal && pal.use) || {};
+  const per = u[mode] && typeof u[mode] === "object" ? u[mode][token] : undefined;
+  return String(per ?? (typeof u[token] === "string" ? u[token] : ""));
 }
 
 /**
@@ -687,7 +694,7 @@ export function colorsMarkdown(mode, pal) {
   const colors = pal && pal.colors && pal.colors[mode];
   if (!colors) return "";
   const cell = (/** @type {string} */ s) => String(s).replace(/\|/g, "\\|");
-  const rows = Object.entries(colors).map(([t, v]) => `| \`--${t}\` | \`${cell(v)}\` | ${cell((pal.use && pal.use[t]) || "")} |`);
+  const rows = Object.entries(colors).map(([t, v]) => `| \`--${t}\` | \`${cell(v)}\` | ${cell(useOf(pal, mode, t))} |`);
   return ["| Token | Value | Use |", "| --- | --- | --- |", ...rows].join("\n");
 }
 
