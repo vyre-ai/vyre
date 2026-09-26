@@ -6,6 +6,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0015)
 
+- `core/mcp/client.js` talks to one MCP server over stdio, streamable HTTP or legacy SSE, with no
+  dependencies, so the hub can reach any server a person adds. A stdio server gets only PATH,
+  HOME, LANG, TMPDIR and the env it was given, so a token vyred holds for one server is never
+  visible to another. HTTP headers are asked for on every request because credentials are minted
+  at call time, and redirects, an SSE endpoint on another origin and replies over 4 MB are
+  refused, so a credential never follows a request somewhere else. Errors carry a stable `code`
+  (`unauthorized` on a 401, so the caller can mint again and retry once) and never a header value.
+- `core/mcp/testing/fake-mcp.js` is a fake MCP server, as a child process or in-process over HTTP
+  and SSE, so no test starts a real one.
 - A module can now be a way out through the Gate. `gate.offer { name, tool, kinds?, content? }`
   (internal, modules only) registers a sender named in the module's own namespace whose `tool` is
   one of its own; after the user approves, the Gate calls that tool as `module:gate` with exactly
