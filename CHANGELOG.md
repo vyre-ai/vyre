@@ -20,6 +20,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   GitHub's node 24 runner.
 - A switchboard test compared a thread's status across two reads while it could still be
   starting; it now waits until the thread has started.
+#### `vyre vault` and `vyre memory` ask for the person, as `vyre learn` does
+
+- `vyre vault put/grant/get --copy/...` and `vyre memory correct/merge/split/uncorrect/pin/mute`
+  called vyred without a presence proof, so against a real vyred every human-only one failed with
+  presence_required (exit 3). The tests missed it because test/fixtures/vyred-present.js finds a
+  person at every call. They now go through callAsPerson: a tool that needs the person asks for
+  the code vyred writes to their terminal (or Touch ID), and one that does not answers the first
+  call as before. Without a terminal (an agent's Bash) they are refused asking for a person at a
+  terminal, exit 3. `test/presence-cli.test.js` runs both against the real verifier.
+  `callAsPerson` takes a `timeout`.
 
 #### A first index that the Mac does not feel
 
