@@ -8,6 +8,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Box
 
+- Onboarding per ADR 0008: `onboard.name {action:"reserve"}` claims the vyre.run name only with
+  a zone token (`CLOUDFLARE_VYRE_TOKEN` or vault `cloudflare-vyre-token`) or `network.domain`,
+  else serves the ts.net name; the result says `via` ("vyre.run", "ts.net" or "domain"). HTTPS
+  off in the tailnet blocks the step with `code: "https_off"` and `adminUrl`; reserve again
+  retries. `onboard.you` saves `onboard.person` (one line, up to 60) without `names.check`, and a
+  name that passes `checkName` becomes the default `name`. Status adds `person`. On a box with
+  no sessions, history says they arrive with the Mac. `names.status` adds `zone`.
+
 - Shared core, kept small: `ctx.handler(policy)` gives a module that opens its own listener
   vyred's router, with the caller the module established and limits on which tools, paths and
   event types it can reach. The router never takes a caller from a listener's headers.

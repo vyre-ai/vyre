@@ -72,6 +72,8 @@ test("onboard: the link works once, becomes a session, and the session reaches o
   assert.equal(s.data.mode, "loopback");
   assert.equal(s.data.current, "you");
   assert.deepEqual(s.data.steps, { you: "todo", claude: "todo", tailscale: "todo", name: "todo", history: "done", devices: "todo" }, "no sessions here, so history has nothing to do");
+  assert.equal(s.data.detail.history.why, "Your Mac's sessions appear here when you connect your Mac");
+  assert.equal(s.data.detail.name.via, "ts.net", "no zone token and no domain: the ts.net name");
   assert.ok(s.data.host);
   assert.equal(s.data.detail.claude.installed, true);
   assert.equal(s.data.detail.claude.version, "2.1.0 (Claude Code)");
@@ -171,35 +173,61 @@ async function freeZone(t) {
   });
 }
 
-test("onboard: step 1 saves your name only when it is free, and the assistant's name with it", async t => {
+test("onboard: step 1 saves your name and the assistant's; a name that fits becomes the vyre.run candidate", async t => {
   const { root } = await box(t);
   const { url, port } = (await call("onboard.link", {}, { root })).data;
   const base = `http://127.0.0.1:${port}`;
   const { session } = await redeem(url);
   const saved = () => JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
 
-  const unchecked = await (await tool(base, session, "onboard.you", { name: "alex", assistant: "juno" })).json();
-  assert.match(unchecked.error.message, /CLOUDFLARE_VYRE_TOKEN/, "no zone token: the name cannot be checked, so it is not saved");
-  assert.equal(saved().name, undefined);
-  assert.equal(saved().onboard?.assistant, undefined, "nothing is saved when the name fails");
-
-  await freeZone(t);
-  const bad = await (await tool(base, session, "onboard.you", { name: "Not A Name!", assistant: "juno" })).json();
-  assert.ok(bad.error, "an invalid name is refused the same way onboard.name refuses it");
   assert.match((await (await tool(base, session, "onboard.you", { name: "alex", assistant: "a\nb" })).json()).error.message, /one line/);
+  assert.match((await (await tool(base, session, "onboard.you", { name: "x".repeat(61) })).json()).error.message, /60 characters/);
+  assert.equal(saved().onboard?.person, undefined);
 
-  const you = await (await tool(base, session, "onboard.you", { name: "alex", assistant: " juno " })).json();
-  assert.equal(you.data.state, "done", JSON.stringify(you.error));
-  assert.equal(you.data.name, "alex");
+  const long = await (await tool(base, session, "onboard.you", { name: "Alex Smith", assistant: "juno" })).json();
+  assert.equal(long.data.state, "done", JSON.stringify(long.error));
+  assert.equal(long.data.person, "Alex Smith");
+  assert.equal(long.data.name, null, "no Cloudflare token needed, and a name with a space is no candidate");
+  assert.equal(saved().name, undefined);
+
+  const you = await (await tool(base, session, "onboard.you", { name: "Alex", assistant: " juno " })).json();
+  assert.equal(you.data.person, "Alex");
+  assert.equal(you.data.name, "alex", "the typed name, lowercased, is the default candidate");
   assert.equal(you.data.assistant, "juno");
-  assert.equal(saved().name, "alex");
-  assert.equal(saved().onboard.assistant, "juno");
+  assert.equal(saved().onboard.person, "Alex");
+  await tool(base, session, "onboard.you", { name: "Sam" });
+  assert.equal(saved().name, "alex", "a candidate already there stays");
   const s = (await (await tool(base, session, "onboard.status")).json()).data;
   assert.equal(s.steps.you, "done");
   assert.equal(s.name, "alex");
+  assert.equal(s.person, "Sam");
   assert.equal(s.assistant, "juno");
-  assert.equal(s.detail.you.assistant, "juno");
   assert.equal(s.current, "claude");
+});
+
+test("onboard: reserve goes to ts.net without a zone token and says so when the tailnet has HTTPS off; with a token it is vyre.run", async t => {
+  const { root } = await box(t);
+  process.env.VYRE_TAILSCALE_BIN = fakeBin(fs.mkdtempSync(path.join(root, "ts-")), "tailscale", JSON.stringify({ BackendState: "Running", TUN: true,
+    Self: { HostName: "box", DNSName: "box.tail1.ts.net.", TailscaleIPs: ["100.64.0.9"], ID: "n1", UserID: 1 }, User: {}, CertDomains: [], OperatorUser: os.userInfo().username }));
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+
+  let r = (await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).data;
+  assert.equal(r.via, "ts.net");
+  for (let i = 0; i < 50 && r.state !== "blocked"; i++) {
+    await new Promise(res => setTimeout(res, 20));
+    r = (await (await tool(base, session, "onboard.name", { action: "status" })).json()).data;
+  }
+  assert.equal(r.state, "blocked");
+  assert.equal(r.code, "https_off");
+  assert.equal(r.adminUrl, "https://login.tailscale.com/admin/dns");
+  assert.match(r.why, /^HTTPS certificates are turned off.*\.$/);
+  const again = (await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).data;
+  assert.equal(again.via, "ts.net", "check again is reserve again");
+
+  await freeZone(t);
+  assert.equal((await (await tool(base, session, "onboard.status")).json()).data.detail.name.via, "vyre.run");
 });
 
 /** Can this machine run claude under a pty the way onboard.claude does? */
