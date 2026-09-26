@@ -26,6 +26,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The Deck's computer panel reads what `computers.get` returns (it was drawn from fixture fields
   no tool had: name, host, disk, network, rules). Glass's title state follows the computer as
   watching thaws it.
+- Glass says why a computer did not start. The relay closes the stream with 4001 and a short
+  reason ("kit's computer stopped as soon as it started (exit code 3)"), and Glass shows "kit's
+  computer did not start" with that reason, what to try (Restart computer on kit's page, then
+  Retry), a Retry button and a link to kit's page. It no longer retries a broken computer on its
+  own. Other checkout failures close with 1011 and Glass tries again as before.
 - `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
   required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
 
