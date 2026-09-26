@@ -74,6 +74,27 @@ the tailnet and asked it to pair.
 | 10 | Passkey, Deck, Chat, Agents, Vault and Mac pairing cannot be checked without a real tailnet login (by design, ADR 0002). Checking them needs a tagged, ephemeral auth key for a throwaway node | lead (a decision) |
 | 11 | local/capsule changed since the live Capsule zip (2e795b8 vs 16613ae), so the next release.sh rebuilds and uploads Vyre-mac.zip | lead, at release |
 
+## Doing (27 Sep, headscale run)
+
+A private tailnet on the test box: /srv/vyre-e2e (compose project vyre-e2e, label run.vyre.e2e) runs
+headscale 0.26.1, the box (image vyre-e2e:local built from this branch), a stand-in Mac node
+(alex-mac: tailscale + headless Chrome + a role-local vyred) and a phone node (alex-phone). A
+throwaway CA; its cert is trusted only in the e2e Chrome profile's NSS db and in the Mac vyred
+(NODE_EXTRA_CA_CERTS). A test-only shim (VYRE_TAILSCALE_BIN) answers `tailscale cert` from that CA
+and adds CertDomains, since headscale has neither. Scripts there: run1.sh (up to the link),
+run2.sh <link> (onboarding to the Deck), drive.mjs (CDP driver on 127.0.0.1:19300).
+
+Works end to end: loopback onboarding, Tailscale sign-in (the page shows headscale's link from
+AuthURL), ts.net address, first passkey at the address (virtual authenticator), Deck pages, a
+Vault item sealed with passkey presence, `vyre up` on the Mac finding the box (link.find).
+
+Fixed here: 1a7dd2c, the box's Deck (caller tailnet:<owner>) was refused by every tool whose
+callers list names deck: gate.get/approve/reject, push.*, agents.delete, vault.update.
+
+Next: pair the Mac (approve from the phone node with a synced passkey), tailnet first-run checks,
+tear down (`docker compose --profile mac --profile phone down -v`, rm -rf /srv/vyre-e2e, docker
+rmi vyre-e2e:local).
+
 ## Needs from others
 
 - The lead: whether to use a throwaway tailnet node for the checks after Tailscale (snag 10).
