@@ -26,10 +26,12 @@ log() { echo "[entrypoint] $*" >&2; }
 
 # ---- Xvnc: the X server and the VNC server in one process --------------------------------
 # TigerVNC wants the password obfuscated into its own file format, not passed raw on the command
-# line (which would also put it in `ps`). `-SecurityTypes VncAuth` matches what Glass's rfb.js
-# expects to negotiate (RFB security type 2) on the way in.
-printf '%s' "${VNC_PASSWORD}" | vncpasswd -f > "${HOME}/.vnc/passwd"
-chmod 600 "${HOME}/.vnc/passwd"
+# line (which would also put it in `ps`). Debian bookworm's tigervnc packages ship Xvnc itself
+# but no standalone `vncpasswd` binary to write that file (found on the box's first real boot),
+# so computerd/vncpasswd.mjs writes it directly - it reads VNC_PASSWORD from the environment,
+# never an argument, so it never appears in `ps` either. `-SecurityTypes VncAuth` matches what
+# Glass's rfb.js expects to negotiate (RFB security type 2) on the way in.
+node /opt/computerd/vncpasswd.mjs "${HOME}/.vnc/passwd"
 
 log "starting Xvnc ${DISPLAY} at ${GEOMETRY}"
 Xvnc "${DISPLAY}" \
