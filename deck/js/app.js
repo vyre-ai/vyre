@@ -244,7 +244,7 @@ window.addEventListener("deck:navigate", route);
   drawFoot();
   route();
   needs.load();
-  for (const t of ["ask.raised", "ask.answered", "gate.held", "gate.approved", "gate.rejected"]) on(t, () => needs.load());
+  for (const t of ["ask.raised", "ask.answered", "gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());
   on("project.*", drawRail);
 })();
 

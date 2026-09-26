@@ -107,18 +107,19 @@ export async function modules() {
 }
 
 // One EventSource for the whole Deck, shared by every view. Views load their state through tools
-// and then follow events, so the stream starts at the newest event (prime) rather than
+// and then follow events, so the stream starts at the newest event (since=latest) rather than
 // replaying the log. After that, EventSource resumes by Last-Event-ID on its own.
 /** @type {EventSource | null} */
 let source = null;
 let lastSeen = 0;
-let primed = null;
 const subs = new Set();
 // The SSE "event:" line carries the type, and named events never reach onmessage, so every type
 // a view may want is listened for by name.
-const known = new Set(["thread.started", "thread.text", "thread.tool", "thread.finished", "ask.raised", "ask.answered",
-  "lease.changed", "session.indexed", "memory.curated", "project.created", "project.changed", "thread.picked", "thread.unpicked",
-  "tool.held", "turn.completed", "file.touched", "gate.held", "gate.approved", "gate.rejected", "lesson.learned",
+const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
+  "ask.raised", "ask.answered", "lease.changed", "session.indexed", "memory.curated", "project.created", "project.changed",
+  "thread.picked", "thread.unpicked", "tool.held", "turn.completed", "file.touched",
+  "gate.held", "gate.released", "gate.failed", "gate.rejected",
+  "lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired",
   "onboard.progress", "vault.item-added", "vault.granted", "vault.revoked", "pass.created", "pass.revoked"]);
 
 /**
@@ -132,12 +133,8 @@ export function on(type, fn) {
   subs.add(sub);
   if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, deliver); }
   if (!source && typeof EventSource !== "undefined") {
-    primed ||= prime();
-    primed.then(() => {
-      if (source) return;
-      source = new EventSource("/v1/events/stream?since=" + lastSeen);
-      for (const t of known) source.addEventListener(t, deliver);
-    });
+    source = new EventSource("/v1/events/stream?since=latest");
+    for (const t of known) source.addEventListener(t, deliver);
   }
   return () => { subs.delete(sub); };
 }
@@ -154,16 +151,4 @@ function deliver(m) {
       try { s.fn(e); } catch (err) { console.error(err); }
     }
   }
-}
-
-/** Find the newest event id by paging /v1/events (it has no "latest" query yet). */
-async function prime() {
-  try {
-    for (let i = 0; i < 50; i++) {
-      const r = await fetch("/v1/events?limit=1000&since=" + lastSeen);
-      const list = (await r.json()).data || [];
-      if (list.length) lastSeen = list[list.length - 1].id;
-      if (list.length < 1000) break;
-    }
-  } catch {}
 }

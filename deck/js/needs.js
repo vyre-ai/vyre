@@ -1,42 +1,64 @@
 // @ts-check
-// What needs the user: drafts held at the Gate (gate.held) and open permission questions from
-// sessions (threads.asks). Both lists become one shape, newest last, so Now, the header pill,
-// the rail count and the phone views agree on the same number. Beacon marks only these.
+// What needs the user: items held at the Gate (gate.held, then gate.get for the content) and open
+// permission questions from sessions (threads.asks). Both lists become one shape, oldest first,
+// so Now, the header pill, the rail count and the phone views agree on the same number. Beacon
+// marks only these.
+//
+// A held item is edited in place (js/editable.js) and answered with Send or Discard. Send is
+// gate.approve {id, edited?}, where edited holds only the fields the user changed; Discard is
+// gate.reject. An ask is answered allow or deny: threads.answer takes no edited input.
 
 import { attempt, call } from "./api.js";
 
 /**
- * @typedef {{ label: string, decision: string, primary?: boolean, input?: any }} Option
+ * @typedef {{ label: string, decision: string, primary?: boolean }} Option
+ * @typedef {{ kind: "send"|"spend"|"delete", via: string, to: string[], summary: string, draft: Record<string, any> | null,
+ *   error: any, sources: { text: string, from?: string }[], recalled?: string, toName?: string }} Held
  * @typedef {{ id: string, kind: "draft"|"ask", at: number, agent: string|null, project: string|null, projectName: string|null,
  *   thread: string|null, threadName: string|null, title: string, why: string, command?: string,
- *   draft?: { to: string, toName?: string, subject?: string, body: string, recalled?: string,
- *     segments?: { text: string, source?: number }[] | null, sources: { text: string, from?: string }[] },
- *   rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[] }} Need
+ *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[] }} Need
  */
 
 /** @type {Need[]} */
 let cache = [];
 const listeners = new Set();
+/** gate.get answers, by id: the content of a held item does not change while it is held. */
+const got = new Map();
 
 /** Load both lists. Missing tools count as nothing held; errors are kept for the views. */
 export async function load() {
-  const [held, asks] = await Promise.all([attempt("gate.held"), attempt("threads.asks")]);
+  const [held, asks, threads, projects] = await Promise.all([attempt("gate.held"), attempt("threads.asks"), attempt("threads.list"), attempt("projects.list")]);
+  const thread = new Map((threads.data || []).map(t => [t.id, t]));
+  const project = new Map((projects.data || []).map(p => [p.slug, p]));
+  const names = (/** @type {any} */ x) => {
+    const t = x.thread ? thread.get(x.thread) : null;
+    const slug = x.project || t?.project || null;
+    return { project: slug, projectName: x.projectName || (slug && project.get(slug)?.name) || null,
+      threadName: x.threadName || t?.name || null, agent: x.agent || t?.agent || null };
+  };
+  await Promise.all((held.data || []).filter(d => !got.has(d.id)).map(async d => { got.set(d.id, await attempt("gate.get", { id: d.id })); }));
   /** @type {Need[]} */
   const out = [];
   for (const d of held.data || []) {
-    out.push({ id: d.id, kind: "draft", at: d.at, agent: d.agent || null, project: d.project || null, projectName: d.projectName || null,
-      thread: d.thread || null, threadName: d.threadName || null,
-      title: d.title || `${d.agent || "An agent"} wrote to ${d.to}. The draft is held at the Gate.`,
-      why: d.why || "", draft: { to: d.to, toName: d.toName, subject: d.subject, body: d.body || "", recalled: d.recalled,
-        segments: d.segments || null, sources: d.sources || [] },
-      options: [{ label: "Send as drafted", decision: "approve", primary: true }, { label: "Edit draft", decision: "edit" }, { label: "Discard", decision: "reject" }] });
+    const full = got.get(d.id) || {};
+    const n = names(d);
+    const to = [d.to].flat().filter(Boolean).map(String);
+    const who = full.data?.toName || to.join(", ");
+    const verb = d.kind === "send" ? `wrote to ${who}` : d.kind === "spend" ? `wants to spend through ${d.via}` : `wants to delete through ${d.via}`;
+    out.push({ id: d.id, kind: "draft", at: d.at, ...n, thread: d.thread || null,
+      title: `${n.agent || "An agent"} ${verb}. It is held at the Gate.`, why: d.why || "",
+      gate: { kind: d.kind || "send", via: d.via || "", to, summary: d.summary || "", draft: full.data?.draft || null, error: full.error || null,
+        sources: full.data?.sources || [], recalled: full.data?.recalled, toName: full.data?.toName },
+      options: [{ label: d.kind === "send" ? "Send" : "Approve", decision: "approve", primary: true }, { label: "Discard", decision: "reject" }] });
   }
+  for (const id of got.keys()) if (!(held.data || []).some(d => d.id === id)) got.delete(id);
   for (const a of asks.data || []) {
-    out.push({ id: a.id, kind: "ask", at: a.at, agent: a.agent || null, project: a.project || null, projectName: a.projectName || null,
-      thread: a.thread || null, threadName: a.threadName || null,
-      title: a.title || `May ${a.agent || "this session"} run ${a.tool}?`, command: a.command || a.summary || a.tool,
-      why: a.why || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "", details: a.details || [],
-      options: a.options?.length ? a.options : [{ label: "Allow once", decision: "allow" }, { label: "Deny", decision: "deny" }] });
+    const n = names(a);
+    out.push({ id: a.id, kind: "ask", at: a.at, ...n, thread: a.thread || null,
+      title: a.title || `May ${n.agent || "this session"} run ${a.tool}?`, command: a.command || a.summary || a.tool,
+      why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "",
+      details: a.details || (a.destination ? [{ label: "Where", value: a.destination }] : []),
+      options: [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }] });
   }
   out.sort((x, y) => x.at - y.at);
   cache = out;
@@ -50,16 +72,22 @@ export const current = () => cache;
 export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
 /**
- * Answer one: approve, reject or edit a draft (text is the edited body), or answer an ask.
- * @param {Need} n @param {Option} opt @param {string} [text]
+ * Answer one. For a held item, approve sends what is shown: `edited` carries the changed fields
+ * (from editable.js), or is left out when nothing changed. For an ask, allow or deny.
+ * @param {Need} n @param {Option} opt @param {Record<string, any> | null} [edited]
  */
-export async function answer(n, opt, text) {
+export async function answer(n, opt, edited) {
   if (n.kind === "draft") {
     if (opt.decision === "reject") await call("gate.reject", { id: n.id });
-    else await call("gate.approve", text !== undefined ? { id: n.id, body: text } : { id: n.id });
+    else {
+      const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id });
+      // Approved, but the sender failed: the item stays held and can be sent again.
+      if (r && r.state === "failed") throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true });
+    }
   } else {
-    await call("threads.answer", { ask: n.id, decision: opt.decision, ...(opt.input ? { input: opt.input } : {}) });
+    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" });
   }
   cache = cache.filter(x => x.id !== n.id);
+  got.delete(n.id);
   for (const fn of listeners) fn(cache);
 }

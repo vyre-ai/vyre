@@ -10,6 +10,7 @@ import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
+import { form, gateFields } from "../js/editable.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 
 /** @param {any} ctx */
@@ -72,7 +73,7 @@ export default async function now(ctx) {
       c.data?.sessions?.length ? h("div", { class: "rows" }, c.data.sessions.map(recentRow)) : null);
   };
   drawWorking();
-  for (const t of ["thread.started", "thread.finished", "thread.tool"]) ctx.on(t, () => { clearTimeout(wt); wt = window.setTimeout(drawWorking, 300); });
+  for (const t of ["thread.started", "thread.finished", "thread.stopped", "thread.tool"]) ctx.on(t, () => { clearTimeout(wt); wt = window.setTimeout(drawWorking, 300); });
   let wt = 0;
 
   // Learned today
@@ -104,37 +105,25 @@ function needCard(n) {
   const threadHref = n.thread ? (n.project ? `/projects/${encodeURIComponent(n.project)}/${encodeURIComponent(n.thread)}` : `/threads/${encodeURIComponent(n.thread)}`) : null;
   const status = h("div", { class: "small muted", role: "status" });
   const buttons = h("div", { class: "need-actions" });
-  const body = h("div", { class: "need-body" });
-  const act = async (opt, text) => {
+  // A held draft or approval is edited in place: every field is an input that reads as text.
+  const f = n.kind === "draft" && n.gate?.draft ? form(gateFields({ to: n.gate.to, draft: n.gate.draft })) : null;
+  const act = async (opt) => {
+    const bad = opt.decision === "approve" && f ? f.error() : null;
+    if (bad) { put(status, bad); return; }
     for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = true;
-    try { await needs.answer(n, opt, text); }
+    put(status);
+    try { await needs.answer(n, opt, f && f.changed() ? f.edited() : null); }
     catch (e) {
-      put(status, String(/** @type {any} */ (e).missing ? `The ${/** @type {any} */ (e).module} module is not running, so this cannot be answered here yet.` : /** @type {any} */ (e).message));
+      put(status, problem(e));
       for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
-  const drawButtons = () => put(buttons,
+  put(buttons,
     n.options.map((o, i) => h("button", { type: "button",
       class: "btn" + (o.primary ? " btn-primary" : "") + (i === n.options.length - 1 && !o.primary ? " btn-ghost" : ""),
-      onclick: () => (o.decision === "edit" ? edit() : act(o)) }, o.label)),
+      onclick: () => act(o) }, o.label)),
     h("div", { style: { flexGrow: "1" } }),
     threadHref && n.kind === "ask" ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);
-  const edit = () => {
-    const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", { class: "input", rows: "4", "aria-label": "Edit the draft" }));
-    ta.value = n.draft?.body || "";
-    put(body, draftMeta(n), ta);
-    put(buttons,
-      h("button", { type: "button", class: "btn btn-primary", onclick: () => act({ label: "Send", decision: "approve" }, ta.value) }, "Send this version"),
-      h("button", { type: "button", class: "btn btn-ghost", onclick: () => { drawBody(); drawButtons(); } }, "Cancel"));
-    ta.focus();
-  };
-  const drawBody = () => {
-    if (n.kind !== "draft") { put(body); return; }
-    put(body, draftMeta(n), h("p", { class: "need-text" }, n.draft?.body || ""),
-      n.draft?.recalled ? h("div", { class: "need-recalled" }, h("span", { class: "dot recall", "aria-hidden": "true" }), n.draft.recalled) : null);
-  };
-  drawBody();
-  drawButtons();
 
   const heading = n.kind === "ask"
     ? h("h3", null, `May ${n.agent || "this session"} run `, h("code", { class: "need-cmd" }, n.command || ""), "?")
@@ -144,28 +133,45 @@ function needCard(n) {
     h("article", { class: "held need" + (n.kind === "draft" ? " is-draft" : "") },
       h("div", { class: "need-top" }, heading, h("span", { class: "small muted nowrap" }, where)),
       n.why ? h("p", { class: "need-why" }, n.why) : null,
-      body, buttons, status),
+      n.kind === "draft" ? heldBody(n, f) : null,
+      buttons, status),
     // Phone: a compact card that opens the full item (PhoneNow, PhoneApprove, PhoneDraft).
     link(`/needs/${encodeURIComponent(n.id)}`, { class: "held need-compact" },
       h("div", { class: "need-compact-top" },
         h("span", { class: "lbl beacon" }, h("span", { class: "dot beacon" }), n.kind === "draft" ? "Held at the Gate" : "Permission"),
-        h("span", { class: "code" }, `${n.agent || ""} · ${since(n.at)}`)),
+        h("span", { class: "code" }, [n.agent, since(n.at)].filter(Boolean).join(" · "))),
       h("div", { class: "need-compact-title" },
-        n.kind === "draft" ? h("span", null, `Email to ${recipient(n)}`) : h("span", null, "May I run ", h("code", null, n.command || "")),
+        n.kind === "draft" ? h("span", null, compactTitle(n)) : h("span", null, "May I run ", h("code", null, n.command || "")),
         icon("right")),
-      h("div", { class: "small muted" }, where)));
+      where ? h("div", { class: "small muted" }, where) : null));
 }
 
-function recipient(n) {
-  const to = n.draft?.to || "";
-  const m = /^(.*) wrote to ([^.]+)\./.exec(n.title);
-  return m ? m[2] : to;
+/** The content of a held item: the editable fields, or the summary when the content could not be read. */
+function heldBody(n, f) {
+  const g = n.gate;
+  const recalled = g?.recalled || g?.sources?.[0]?.text || "";
+  if (!f) {
+    return h("div", { class: "need-body" },
+      g?.summary ? h("p", { class: "need-text" }, g.summary) : null,
+      h("p", { class: "small muted" }, g?.error ? `The full draft cannot be shown here: ${problem(g.error)}` : "The full draft cannot be shown here."));
+  }
+  return h("div", { class: "need-body" }, f.el,
+    recalled ? h("div", { class: "need-recalled" }, h("span", { class: "dot recall", "aria-hidden": "true" }),
+      h("span", null, g.recalled ? g.recalled : `From memory: ${recalled}`)) : null);
 }
 
-function draftMeta(n) {
-  return h("div", { class: "need-meta code" },
-    h("span", null, h("span", { class: "faint" }, "To "), n.draft?.to || ""),
-    n.draft?.subject ? h("span", null, h("span", { class: "faint" }, "Subject "), n.draft.subject) : null);
+/** An error from the Gate, in plain words. */
+function problem(e) {
+  const x = /** @type {any} */ (e);
+  if (x?.missing) return `The ${x.module} module is not running, so this cannot be answered here yet.`;
+  if (x?.code === "denied" || /denied/i.test(String(x?.message || x))) return "The Gate does not let the Deck read or answer this yet. Answer it from the terminal or chat.";
+  return String(x?.message || x);
+}
+
+function compactTitle(n) {
+  const g = n.gate;
+  if (!g || g.kind === "send") return `Email to ${g?.toName || g?.to?.join(", ") || "someone"}`;
+  return g.kind === "spend" ? `Spend through ${g.via}` : `Delete through ${g.via}`;
 }
 
 function workRow(t) {
