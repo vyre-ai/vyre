@@ -18,6 +18,7 @@ import path from "node:path";
 import * as route from "./route.js";
 import * as st from "./state.js";
 import * as glass from "./glass.js";
+import { rankSaid, yourAnswer } from "./said.js";
 
 /** @typedef {{ call: (tool: string, input?: any, opts?: any) => Promise<any>, get: (route: string, opts?: any) => Promise<any> }} Client */
 
@@ -203,7 +204,8 @@ export class Bridge extends EventEmitter {
     const scope = project_cwds && project_cwds.length ? { project_cwds } : {};
     const [facts, hits] = await Promise.all([
       this.client.call("memory.relevant", { text, limit: 3, ...scope }),
-      this.client.call("recall.search", { q: text, limit: 3, per_session: 1, ...scope }),
+      // More than are shown: said.js drops the question echoed back and the Capsule's own threads.
+      this.client.call("recall.search", { q: text, limit: 10, per_session: 1, ...scope }),
     ]);
     // Memory ranks by the thing named ("Dana"). The rest of the question says which fact about
     // it is wanted ("email"), so a fact that shares those words comes first.
@@ -211,15 +213,20 @@ export class Bridge extends EventEmitter {
     const f = (facts.data || []).filter(x => (x.score ?? x.confidence ?? 0) >= 0.5)
       .map(x => ({ x, s: (x.score ?? x.confidence ?? 0) + 0.5 * route.words(x.text).filter(w => asked.includes(w) && !route.words(x.matched).includes(w)).length }))
       .sort((a, b) => b.s - a.s).map(({ x }) => x);
-    const h = hits.data || [];
+    const h = rankSaid(hits.data || [], text, { scratch: path.join(this.home, "capsule", "ask") });
+    // No fact from memory: the user's own statement ("I own a blue Volvo XC40") is the answer,
+    // in one line, with the quote under it as its source.
+    const said = f[0] ? null : yourAnswer(h[0], text);
     // memory.relevant gives each fact a confidence (0..1) and an age ("3 weeks"); the page shows
     // both beside a memory answer. A transcript hit is only a quote: it has no confidence, and it
     // shows as what was said ("You said, 2 weeks ago: ..."), never as if it were a fact.
     const out = {
       ms: Math.max(1, this.now() - t0),
-      answer: f[0] ? f[0].text : null,
+      answer: f[0] ? f[0].text : said,
+      // "memory" for a fact Memory distilled, "said" for a line made from the user's own words.
+      answerKind: f[0] ? "memory" : said ? "said" : null,
       confidence: f[0] ? confidenceOf(f[0]) : null,
-      answerAge: f[0] ? s(f[0].age) || null : null,
+      answerAge: f[0] ? s(f[0].age) || null : said ? route.age(h[0].ts, this.now()) || null : null,
       more: f.slice(1).map(x => x.text),
       sources: [
         ...f.filter(x => x.ref).map(x => ({ kind: "fact", session: x.ref.session, seq: x.ref.seq, name: x.ref.name || x.source, quote: x.text, age: x.age || "", confidence: confidenceOf(x) })),
@@ -232,14 +239,14 @@ export class Bridge extends EventEmitter {
     // Kept for the reply to the same words, which the page shows beside what memory said. A quick
     // question sends the model exactly this, the lines on screen and nothing more (quickAppend):
     // the answer and its three sources. The rest of memory never leaves this Mac from here.
-    this.lastRecall = { text: String(text).trim(), answer: out.answer, sources: out.sources, confidence: out.confidence, answerAge: out.answerAge };
+    this.lastRecall = { text: String(text).trim(), answer: out.answer, answerKind: out.answerKind, sources: out.sources, confidence: out.confidence, answerAge: out.answerAge };
     return out;
   }
 
   /** A new reply, carrying the model it runs on and what memory said about the same words. */
   fresh(thread, text, model = null) {
     const m = this.lastRecall && this.lastRecall.text === String(text).trim() && (this.lastRecall.answer || this.lastRecall.sources.length)
-      ? { answer: this.lastRecall.answer, sources: this.lastRecall.sources, confidence: this.lastRecall.confidence, answerAge: this.lastRecall.answerAge } : null;
+      ? { answer: this.lastRecall.answer, answerKind: this.lastRecall.answerKind, sources: this.lastRecall.sources, confidence: this.lastRecall.confidence, answerAge: this.lastRecall.answerAge } : null;
     return { ...st.reply(thread), model, memory: m };
   }
 
@@ -729,15 +736,16 @@ export const ago = age => (!age ? "" : age === "now" ? "just now" : `${age} ago`
  * then each source on screen, a fact as itself and a transcript quote as who said it and when.
  * The page draws these items and quickAppend sends these same items, so what the model is told
  * is exactly what the user can see, and no more.
- * @param {{ answer: string|null, answerAge?: string|null, confidence?: number|null, sources: any[] }|null|undefined} m
- * @returns {{ kind: "fact"|"quote", text: string, age: string, who?: "You"|"Claude", confidence?: number|null, source: any }[]}
+ * @param {{ answer: string|null, answerKind?: string|null, answerAge?: string|null, confidence?: number|null, sources: any[] }|null|undefined} m
+ * @returns {{ kind: "fact"|"quote", text: string, age: string, who?: "You"|"Claude", confidence?: number|null, said?: boolean, source: any }[]}
  */
 export function memoItems(m) {
   if (!m) return [];
   const out = [];
   const srcs = (m.sources || []).slice(0, 3);
-  if (m.answer) out.push({ kind: /** @type {const} */ ("fact"), text: m.answer, age: s(m.answerAge), confidence: m.confidence ?? null,
-    source: srcs.find(x => x.kind !== "quote" && x.quote === m.answer) || null });
+  // A line made from the user's own words ("said") points at the quote it came from.
+  if (m.answer) out.push({ kind: /** @type {const} */ ("fact"), text: m.answer, age: s(m.answerAge), confidence: m.confidence ?? null, said: m.answerKind === "said",
+    source: m.answerKind === "said" ? srcs.find(x => x.kind === "quote") || null : srcs.find(x => x.kind !== "quote" && x.quote === m.answer) || null });
   for (const x of srcs) {
     if (x.kind === "quote") out.push({ kind: /** @type {const} */ ("quote"), who: x.role === "assistant" ? "Claude" : "You", text: s(x.quote), age: s(x.age), source: x });
     else if (x.quote && x.quote !== m.answer) out.push({ kind: /** @type {const} */ ("fact"), text: s(x.quote), age: s(x.age), confidence: x.confidence ?? null, source: x });
@@ -747,7 +755,8 @@ export function memoItems(m) {
 
 /** The memory items as the model reads them, one line each. @param {Parameters<typeof memoItems>[0]} m */
 export function memoLines(m) {
-  return memoItems(m).map(x => x.kind === "quote"
+  // A "said" line is the quote under it turned to "you": the quote alone says it to a model.
+  return memoItems(m).filter(x => !(/** @type {any} */ (x).said)).map(x => x.kind === "quote"
     ? `${x.who === "Claude" ? "Claude said" : "The user said"}${x.age ? `, ${ago(x.age)}` : ""}: "${x.text}"`
     : `${x.text}${x.age ? ` (noted ${ago(x.age)})` : ""}`);
 }
@@ -761,7 +770,7 @@ export function quickAppend(m) {
   const lines = memoLines(m);
   if (!lines.length) return QUICK_APPEND;
   return `${QUICK_APPEND}\n\nWhat the user's own notes say:\n${lines.map(l => `- ${l}`).join("\n")}\n\n` +
-    `If these answer the question, answer from them and say when the user said it, like "a Honda Civic (you said so 2 weeks ago)". They may be old or partial; say so if it matters.`;
+    `If these answer the question, answer from them and say when the user said it, like "a blue Volvo XC40 (you said so 2 weeks ago)". They may be old or partial; say so if it matters.`;
 }
 
 /** vyred's home from its socket, when the socket sits in it (config/socketPath: <home>/vyred.sock). */

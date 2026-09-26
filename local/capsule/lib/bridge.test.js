@@ -188,13 +188,14 @@ test("bridge: a quick question carries the memory on screen, with ages, and noth
   // The fake model: threads.start records what it was given and answers from it.
   const fc = withFakes(c, {
     "memory.relevant": () => [
-      { text: "Alex owns a Honda Civic Reborn.", matched: "car", confidence: 0.9, age: "2 weeks", score: 0.9, ref: { session: "s1", seq: 3, name: "Weekend errands" } },
+      { text: "Alex owns a blue Volvo XC40.", matched: "car", confidence: 0.9, age: "2 weeks", score: 0.9, ref: { session: "s1", seq: 3, name: "Weekend errands" } },
       { text: "Alex's bike is a Brompton.", matched: "own", confidence: 0.4, age: "5 weeks", score: 0.4 },
     ],
     "recall.search": () => [
-      { session: "s2", seq: 7, role: "user", name: "Insurance renewal", snippet: "my «car» is the Honda Civic Reborn, 2019", ts: Date.now() - twoWeeks },
+      { session: "s2", seq: 7, role: "user", name: "Insurance renewal", snippet: "my «car» is the blue Volvo XC40, 2019", ts: Date.now() - twoWeeks },
       { session: "s3", seq: 2, role: "assistant", name: "Parking", snippet: "The «car» park closes at 10.", ts: Date.now() - 3 * 86_400_000 },
-      { session: "s4", seq: 9, role: "user", name: "Old notes", snippet: "a fourth «car» line nobody sees", ts: Date.now() - 86_400_000 },
+      // A question ranks under both, past the two quotes shown (said.js), so it is not on screen.
+      { session: "s4", seq: 9, role: "user", name: "Old notes", snippet: "is the «car» due a service, fourth line?", ts: Date.now() - 86_400_000 },
     ],
     "threads.start": i => ({ id: "q3", ...i }),
   });
@@ -209,11 +210,11 @@ test("bridge: a quick question carries the memory on screen, with ages, and noth
   assert.equal(start.prompt, "which car do I own");
   const notes = start.append.split("What the user's own notes say:\n")[1];
   assert.ok(notes, start.append);
-  assert.match(notes, /^- Alex owns a Honda Civic Reborn\. \(noted 2 weeks ago\)$/m);
-  assert.match(notes, /^- The user said, 2 weeks ago: "my car is the Honda Civic Reborn, 2019"$/m);
+  assert.match(notes, /^- Alex owns a blue Volvo XC40\. \(noted 2 weeks ago\)$/m);
+  assert.match(notes, /^- The user said, 2 weeks ago: "my car is the blue Volvo XC40, 2019"$/m);
   assert.match(notes, /^- Claude said, 3 days ago: "The car park closes at 10\."$/m);
   assert.doesNotMatch(start.append, /Brompton/, "a fact under the bar is not on screen, so it is not sent");
-  assert.doesNotMatch(start.append, /fourth/, "only the three sources on screen");
+  assert.doesNotMatch(start.append, /fourth/, "only the sources on screen");
   assert.match(start.append, /you said so 2 weeks ago/);
 
   // Words memory said nothing about: the plain instructions, and no empty notes heading.
@@ -224,6 +225,47 @@ test("bridge: a quick question carries the memory on screen, with ages, and noth
   const d2 = (await b2.destinations(null, "what is 2+2")).options.find(o => o.kind === "quick");
   await b2.send(/** @type {any} */ (d2), "what is 2+2");
   assert.equal(bare.calls.find(x => x[0] === "threads.start")?.[1].append, QUICK_APPEND);
+});
+
+test("bridge: \"which car do I own\" over a real recall index: the answer on top, the echoes gone, two quotes at most", async t => {
+  const root = tempHome(t);
+  const tx = path.join(root, "transcripts");
+  fs.mkdirSync(tx);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [tx], projectsDir: path.join(root, "projects"), roots: [],
+    modules: { enable: [], disable: ["threads", "agents", "memory", "learn"] } }));
+  const MIN = 60_000, now = Date.now();
+  // Exactly what the user saw: their question asked in the Capsule 20 minutes ago (its own thread)
+  // and in a session, a dev session talking about the test, an unrelated quote, and the answer.
+  const car = [
+    { id: "cccccccc-0000-4000-8000-000000000001", cwd: path.join(root, "capsule", "ask"), name: "Capsule: which car do I own", start: now - 21 * MIN,
+      turns: [{ role: "user", text: "which car do I own" }, { role: "assistant", text: "I can't see your files or accounts from here, so I can't tell which car you own." }] },
+    { id: "cccccccc-0000-4000-8000-000000000002", cwd: "/home/alex/Work", name: "Errands", start: now - 20 * MIN,
+      turns: [{ role: "user", text: "which car do I own" }, { role: "assistant", text: "Nothing here says." }] },
+    { id: "cccccccc-0000-4000-8000-000000000003", cwd: "/home/alex/Work/vyre", name: "Capsule memory test", start: now - 18 * MIN,
+      turns: [{ role: "user", text: "check the memory box" }, { role: "assistant", text: "Typing which car do I own should answer blue Volvo XC40, from the insurance note." }] },
+    { id: "cccccccc-0000-4000-8000-000000000004", cwd: "/home/alex/Work", name: "Office", start: now - 14 * 1440 * MIN,
+      turns: [{ role: "user", text: "The car park at the office closes at 10 on Fridays." }] },
+    { id: "cccccccc-0000-4000-8000-000000000005", cwd: "/home/alex/Work", name: "Insurance renewal", start: now - 15 * 1440 * MIN,
+      turns: [{ role: "user", text: "I own a blue Volvo XC40, bought in 2022. Renew the car insurance before March." }, { role: "assistant", text: "Noted." }] },
+  ];
+  const db = open(paths(root).db);
+  seedRecall(db, car, { transcripts: tx });
+  db.close();
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const b = new Bridge(client(d.paths.socket));
+  await b.refresh();
+  const r = await b.recall("which car do I own");
+  assert.equal(r.answer, "You own a blue Volvo XC40, bought in 2022.");
+  assert.equal(r.answerKind, "said");
+  assert.equal(r.answerAge, "2 weeks");
+  const quotes = r.sources.filter(x => x.kind === "quote");
+  assert.ok(quotes.length >= 1 && quotes.length <= 2, JSON.stringify(quotes));
+  assert.equal(quotes[0].name, "Insurance renewal", "the statement first");
+  assert.ok(!r.sources.some(x => /^cccccccc-0000-4000-8000-00000000000[123]$/.test(x.session)), "no echo, no Capsule thread, no talk about the test");
+  // On screen: the line on top, sourced from the quote under it, under "From your sessions".
+  assert.deepEqual(r.memo.slice(0, 2).map(x => [x.kind, x.text, x.source && x.source.name]),
+    [["fact", "You own a blue Volvo XC40, bought in 2022.", "Insurance renewal"], ["quote", quotes[0].quote, "Insurance renewal"]]);
 });
 
 test("bridge: another surface holding the keyboard stops the send and says who, and only the user takes it", async t => {

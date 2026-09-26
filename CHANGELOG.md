@@ -12,6 +12,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `local/capsule/lib/bridge.js` (`memoItems`, `memoLines`, `quickAppend`).
 - A transcript hit reads as a quote ("You said, 2 weeks ago: ..."), never as a fact; the distilled
   fact from memory.relevant sits above it. A box with only quotes is labelled "From your sessions".
+- The quotes are chosen for the question, not its words (`local/capsule/lib/said.js`): the question
+  echoed back, the Capsule's own ask threads ("Capsule: ..." or its scratch folder) and turns that
+  quote the whole question are dropped; questions and Claude's words rank under the user's own
+  first-person statements; at most two show. When the best is a clear statement ("I own a blue
+  Volvo XC40"), one line on top says it to the user ("You own a blue Volvo XC40.") with the quote
+  under it as its source. Still no model: the box shows before anything is sent.
 - Vyre's notices (a usage limit, the switch to the API key) are a faint status line under the
   answer or the DM, never part of the answer's text. `local/capsule/lib/state.js` keeps them as
   `notice`.

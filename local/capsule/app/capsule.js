@@ -786,7 +786,8 @@ function dmView(d) {
  */
 function memoBox(m, tail = "", on = -1) {
   const items = m.memo || [];
-  const label = (m.answer ? "From memory" : "From your sessions") + tail;
+  // A line made from the user's own words is still from their sessions, not Memory's.
+  const label = (m.answer && m.answerKind !== "said" ? "From memory" : "From your sessions") + tail;
   const srcs = (m.sources || []).slice(0, 3);
   return h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, label), items.map(it => {
     // Items and sources cross IPC as separate copies: match by the turn, not the object.
