@@ -8,7 +8,13 @@
 // (which wants a person here, so it goes through the presence helper), then tests the connection
 // and says what came back: the server's tool count, or the Google scopes that were refused.
 
+import http from "node:http";
+import readline from "node:readline";
+import { spawn } from "node:child_process";
 import { call } from "../../daemon/client.js";
+import * as config from "../../config/index.js";
+import { dialogsAllowed } from "../../config/dialogs.js";
+import { parseSSE } from "./threads.js";
 import { callAsPerson } from "../presence.js";
 import { flags } from "../../vault/cli-io.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -19,6 +25,7 @@ const HELP = [
   ["add mcp <name> [--project p]... [--agent a]... [--auth bearer|env|oauth|service-account] [--item <vault item>] [--env VAR=item]... [--var VAR=value]... [--header Name:Value]... -- <command> [args...]", "a stdio server; --var is a plain setting, never a secret"],
   ["add mcp <name> --url <url> [--sse] [--auth ...] [--item ...] [--header ...]", "an http or sse server"],
   ["add google <name> --email <address> --item <vault item> [--dwd]", "a Google account; --dwd for a service account acting as the address"],
+  ["add google <name> --sign-in [--client <vault item>]", "Sign in with Google in a browser; the client defaults to google-oauth-client"],
   ["remove [mcp|google] <name>", "disconnect it; its vault items stay"],
   ["test [mcp|google] <name>", "try it now"],
 ];
@@ -53,7 +60,7 @@ async function list() {
   if (m.error && m.error.code !== "no_such_tool") return fail(m);
   if (g.error && g.error.code !== "no_such_tool") return fail(g);
   const servers = m.error ? [] : m.data, accounts = g.error ? [] : g.data;
-  if (!servers.length && !accounts.length) { out(`  nothing connected yet ${dim("· vyre connect add mcp <name> -- <command>, or vyre connect add google <name> --email <address> --item <vault item>")}`); return 0; }
+  if (!servers.length && !accounts.length) { out(`  nothing connected yet ${dim("· vyre connect add mcp <name> -- <command>, or vyre connect add google <name> --sign-in")}`); return 0; }
   out("");
   for (const s of servers) {
     const paint = STATE[/** @type {keyof typeof STATE} */ (s.state)] || dim;
@@ -166,8 +173,14 @@ async function addMcp(name, args) {
 
 async function addGoogle(name, args) {
   let f;
-  try { f = flags(args, { string: ["email", "item", "base"], boolean: ["dwd"] }); } catch (e) { return oops(/** @type {Error} */ (e).message); }
+  try { f = flags(args, { string: ["email", "item", "base", "client"], boolean: ["dwd", "sign-in"] }); } catch (e) { return oops(/** @type {Error} */ (e).message); }
   if (f._.length) return oops(`unexpected ${f._.join(" ")}`);
+  if (f["sign-in"]) {
+    const clash = ["email", "item", "dwd"].filter(k => f[k]);
+    if (clash.length) return oops(`--sign-in finds the address itself; leave out ${clash.map(k => "--" + k).join(" and ")}`);
+    return signIn(name, f.client || CLIENT_ITEM, f.base);
+  }
+  if (f.client) return oops("--client goes with --sign-in");
   if (!f.email || !f.item) return oops("vyre connect add google <name> --email <address> --item <vault item> [--dwd]");
   // A DWD service account acts as the address given; OAuth acts as whoever consented.
   const auth = f.dwd ? { type: "service-account", item: f.item, subject: f.email } : { type: "oauth", item: f.item };
@@ -176,6 +189,136 @@ async function addGoogle(name, args) {
   if (r.error) return fail(r);
   out(`  ${signal("added")} ${bold(r.data.name)} ${dim(`· google ${r.data.email} · ${auth.type}`)}`);
   if (!(await grant([f.item], "google"))) { out(dim(`  vyre connect test ${name} once it is granted`)); return 1; }
+  const t = await call("google.test", { name }, { timeout: 60_000 });
+  if (t.error) return fail(t);
+  return googleTested(t.data);
+}
+
+// ------------------------------------------------------------ sign in with Google
+
+export const CLIENT_ITEM = "google-oauth-client";
+export const CLIENT_PUT = "vyre vault put google-oauth-client --kind env-set --field client_id --field client_secret";
+export const SIGN_IN_WAIT_MS = 10 * 60_000;
+const PASTE_HINT = "Open this address in a browser. Signing in on another device? Paste the address it lands on here.";
+
+/** Open the consent page in this machine's browser, if a person is here to see it. Failure is fine. */
+function openBrowser(url) {
+  if (!dialogsAllowed() || !process.stdout.isTTY) return;
+  const cmd = process.platform === "darwin" ? "open" : process.platform === "linux" ? "xdg-open" : null;
+  if (!cmd) return;
+  try {
+    const p = spawn(cmd, [url], { stdio: "ignore", detached: true });
+    p.on("error", () => {});
+    p.unref();
+  } catch {}
+}
+
+/**
+ * vyred's event stream, opened before the sign-in starts so its end cannot be missed. Resolves
+ * once vyred answers, with a close function; `onEvent` gets every event after that.
+ * @param {(e: any) => void} onEvent @param {(why: string) => void} onLost
+ * @returns {Promise<{ close: () => void } | { error: string }>}
+ */
+function follow(onEvent, onLost) {
+  return new Promise(resolve => {
+    let open = false, closed = false;
+    const req = http.request({ socketPath: config.paths().socket, path: "/v1/events/stream?type=google.*&since=latest", method: "GET",
+      headers: { accept: "text/event-stream", "x-vyre-caller": "cli" } }, res => {
+      if (res.statusCode !== 200) { res.resume(); resolve({ error: `the event stream answered ${res.statusCode}` }); return; }
+      open = true;
+      resolve({ close: () => { closed = true; req.destroy(); } });
+      res.setEncoding("utf8");
+      let buf = "";
+      res.on("data", chunk => {
+        const r = parseSSE(buf + chunk);
+        buf = r.rest;
+        for (const fr of r.frames) { try { onEvent(JSON.parse(fr.data)); } catch {} }
+      });
+      res.on("end", () => { if (!closed) onLost("vyred closed the event stream"); });
+    });
+    req.on("error", err => { if (closed) return; if (open) onLost(`lost vyred: ${err.message}`); else resolve({ error: "unreachable" }); });
+    req.end();
+  });
+}
+
+/**
+ * `vyre connect add google <name> --sign-in`: grant the OAuth client to google, start the sign-in,
+ * show the consent address, and wait for the browser to come back to the loopback, for a pasted
+ * address, for Ctrl-C (or stdin closing), or for 10 minutes.
+ * @param {string} name @param {string} client @param {string} [base]
+ */
+async function signIn(name, client, base) {
+  const l = await call("vault.list", { filter: client });
+  if (l.error) return fail(l);
+  if (!(l.data?.items || []).some(x => x.name === client)) {
+    out(beacon(`  the vault has no ${client}`));
+    out(dim("  It holds a Desktop app OAuth client from the Google Cloud console (APIs and Services, Credentials). Put it in with:"));
+    out(`  ${CLIENT_PUT.replace(CLIENT_ITEM, client)}`);
+    return 1;
+  }
+  if (!(await grant([client], "google"))) { out(dim(`  run this again once ${client} is granted`)); return 1; }
+
+  /** @type {(v: { ok: true, email: string } | { ok: false, error: string, cancelled?: boolean }) => void} */
+  let settle = () => {};
+  const ended = new Promise(r => { settle = r; });
+  let id = "";
+  /** Events that arrive before google.connect has answered with the id, looked at once it has. */
+  const early = [];
+  const seen = e => {
+    const p = e.payload ?? e.data ?? {};
+    if (!id) { early.push(e); return; }
+    if (p.id !== id) return;
+    if (e.type === "google.connected") settle({ ok: true, email: String(p.email || "") });
+    else if (e.type === "google.connect-failed") settle({ ok: false, error: String(p.error || "the sign-in failed") });
+  };
+  const stream = await follow(seen, why => settle({ ok: false, error: why }));
+  if ("error" in stream) return stream.error === "unreachable" ? fail({ error: { code: "unreachable", message: "" } }) : oops(stream.error);
+
+  const r = await call("google.connect", { name, client, ...(base ? { base } : {}) });
+  if (r.error) { stream.close(); return fail(r); }
+  id = r.data.id;
+  for (const e of early.splice(0)) seen(e);
+
+  out("");
+  out(r.data.url);
+  out("");
+  openBrowser(r.data.url);
+  out(dim(`  ${PASTE_HINT}`));
+
+  const rl = readline.createInterface({ input: process.stdin, terminal: false });
+  let finishing = false, said = "";
+  rl.on("line", async line => {
+    const text = line.trim();
+    if (!text) return;
+    if (!/^https?:\/\/\S+$/.test(text)) { out(dim("  that is not an address; paste the whole address from the browser, starting with http")); return; }
+    if (finishing) return;
+    finishing = true;
+    const f = await call("google.connect.finish", { id, url: text }, { timeout: 60_000 });
+    finishing = false;
+    // A refused paste that ended the sign-in also arrives as google.connect-failed; say it once.
+    if (f.error && f.error.code !== "not_found") { said = f.error.message; out(beacon(`  ${said}`)); }
+    else if (!f.error) settle({ ok: true, email: String(f.data.email || "") });
+  });
+  const stop = () => settle({ ok: false, error: "cancelled, nothing stored", cancelled: true });
+  rl.on("close", stop);
+  process.on("SIGINT", stop);
+  const timer = setTimeout(() => settle({ ok: false, error: "the sign-in expired after 10 minutes; nothing stored", cancelled: true }), SIGN_IN_WAIT_MS);
+
+  const result = await ended;
+  clearTimeout(timer);
+  process.off("SIGINT", stop);
+  rl.removeAllListeners("line");
+  rl.removeListener("close", stop);
+  rl.close();
+  process.stdin.destroy();
+  stream.close();
+
+  if (!result.ok) {
+    if (result.cancelled) await call("google.connect.cancel", { id });
+    if (result.error !== said) out(beacon(`  ${result.error}`));
+    return 1;
+  }
+  out(`  ${signal("added")} ${bold(name)} ${result.email}`);
   const t = await call("google.test", { name }, { timeout: 60_000 });
   if (t.error) return fail(t);
   return googleTested(t.data);

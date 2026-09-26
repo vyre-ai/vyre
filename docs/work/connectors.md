@@ -47,6 +47,12 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
   sometimes fail "sustained" at about 13% from a single ~64% FIRST sample (the tail of startup
   indexing caught by the idle window); main did it on 1 of 3 runs, the branch on 3 of 4. It is
   a perf-check boundary flake, not a standing cost; reported to the lead.
+- `vyre connect add google <name> --sign-in [--client <vault item>]` in
+  `core/cli/commands/connect.js`: follows `/v1/events/stream?type=google.*&since=latest` (opened
+  before google.connect, so no event is missed), takes a pasted address on stdin for
+  google.connect.finish, cancels on Ctrl-C or stdin closing, one 10 minute timer and no polling.
+  The browser opens only with dialogsAllowed() and a TTY. Tests: `core/cli/commands/connect.test.js`
+  (8, five new: loopback, paste, missing client, refused flags, cancel on stdin close).
 
 ## Doing
 

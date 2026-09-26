@@ -189,6 +189,10 @@ draft). Deck: Settings, Connections (`deck/views/connections.js`).
 `vyre connect add mcp <name> --url <url> [--sse]`, `--auth bearer|env|oauth|service-account
 --item <vault item>`, and `vyre connect add google <name> --email <user> --item <item>
 [--dwd]`. After adding, it asks for the vault grant (presence) and runs the test.
+`vyre connect add google <name> --sign-in [--client <vault item>]` runs decision 6 from a
+terminal: it grants the client (default `google-oauth-client`) to google, prints the consent
+address, and waits on the event stream for the loopback, or for the landed address pasted on
+stdin. Ctrl-C or stdin closing cancels it; it gives up after 10 minutes.
 
 ## Consequences
 
