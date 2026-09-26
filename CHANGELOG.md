@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Apps: timers, notes, reminders and the weather from the Capsule (ADR 0022, slice 1)
+
+- A new vyred module `apps` (`local/apps/`, roles local) drives the Mac's apps. `apps.list` reads
+  the Applications folders (no mdfind; bundle ids from Info.plist, `plutil` only for a binary one
+  and only for the rows returned) and says how Vyre reaches each app: connector, intents, script,
+  or ax. `apps.targets` lists what is inside an app (notes, reminder lists). `apps.act` runs an
+  action that sends nothing as the person and emits `apps.acted {app, action}`, never the text.
+  `apps.send` runs one that does, declares presence with the action's preview as its summary
+  ("WhatsApp → juno: running late"), and so needs a person's proof per call from every caller
+  but a module. `apps.act` refuses a sending action with code `sends`.
+- Four adapters. Clock timers and alarms through two shortcuts the person imports once ("Vyre
+  Timer", "Vyre Alarm"; a missing one is code `setup` naming `vyre apps setup clock`). Notes
+  (new note, add to a note) and Reminders (new reminder with an alerting due time, set from
+  numbers so no locale reads it) through constant AppleScripts that take user text only as argv.
+  Weather from Open-Meteo, which needs no key, with the place from config or the time zone.
+- Every contact with the Mac goes through `local/apps/env.js`. Under tests or a throwaway home the
+  real osascript, shortcuts and `open` refuse with `no_dialog` before spawning anything; off a Mac
+  they refuse with `not_mac`. Starting the module runs nothing, and its caches expire on read.
+  Tests use a fake exec, a fake fetch and fake bundles only.
+
 #### Connectors (ADR 0016)
 
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault

@@ -61,12 +61,21 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 
 ## Done
 - ADR 0022 claimed in docs/work/README.md.
+- Slice 1, T1 and T2: the `apps` module (local/apps): env.js (injectable exec, osa with argv
+  only, shortcuts over temp files, the no_dialog and not_mac gate), installed.js (apps.list scan,
+  5 min cache), adapters clock, notes, reminders, weather, and the four tools. 39 tests, all
+  with fakes, pass on the testbox (`node --test local/apps/*.test.js`).
 
 ## Doing
-- Slice 1, T1.
+- Nothing in flight.
 
 ## Next
-- See Plan.
+- Slice 1, T3: `apps.route` (rules first) and `vyre apps` (core/cli/commands/apps.js), including
+  `vyre apps setup clock`, which the Clock setup error already names.
+- The two Clock shortcuts ("Vyre Timer": Start Timer with the input as seconds; "Vyre Alarm":
+  Create Alarm from JSON {time, label}) have to be built and shipped as files to import.
+- First real run on the Mac, with the lead's say-so: the AppleScripts in notes.js and
+  reminders.js have only been checked against fakes.
 
 ## Needs from others
 - capsule-pro: the native host must be on main before the Swift half runs in the app (slice 2).
