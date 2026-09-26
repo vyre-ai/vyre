@@ -55,6 +55,11 @@ test("rules: the MCP hub's own tools are left to the Gate; every other send stil
   assert.equal(decide("mcp__vyrex__mail__send_email"), "ask");
   assert.equal(decide("mcp__vyre__Mail__send_email"), "ask", "hub server names are lowercase");
   assert.equal(decide("mcp__vyre__" + "a".repeat(33) + "__send_email"), "ask", "hub server names are at most 32 characters");
+  // Vyre tools that hold at the Gate themselves step aside too; exactly those, by full name.
+  assert.equal(decide("mcp__vyre__google_mail_send"), null);
+  assert.equal(decide("mcp__plugin_vyre_vyre__google_mail_send"), null);
+  assert.equal(decide("mcp__other__google_mail_send"), "ask");
+  assert.equal(decide("mcp__vyre__google_mail_send_now"), "ask");
   // Rule 8 still holds for the hub's tools.
   assert.equal(rules({ tool: "mcp__vyre__files__read_file", input: { path: path.join(HOME, "vault", "x") }, home: HOME }).decision, "deny");
 });

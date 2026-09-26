@@ -6,6 +6,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0015)
 
+- The harness rules no longer ask, and `gate.route` no longer denies an agent, about
+  `google_mail_send` in Vyre's own MCP server (`mcp__vyre__` and `mcp__plugin_vyre_vyre__`): the
+  google module always holds a send at the Gate, so asking first only added a second prompt for
+  the same email. The list is explicit and short; `threads_send` and every other server's send
+  still ask.
 - The connectors credential tests make their token and private-key fixtures at run time, so the
   hygiene scan finds no secret-shaped literal in shipped code and stays as strict as it was.
 - `vyre mcp` runs the Vyre MCP server on stdio, so a plain `claude` outside a Vyre thread gets

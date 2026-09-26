@@ -191,6 +191,10 @@ test("gate: route leaves the MCP hub's own tools to the hub, and denies the rest
   assert.equal(route("mcp__plugin_vyre_vyre__threads_send"), "deny");
   assert.equal(route("mcp__other__x__send_email"), "deny");
   assert.equal(route("mcp__vyre__Mail__send_email"), "deny");
+  // google.mail.send holds at the Gate itself, so an agent is not turned away from it.
+  assert.equal(route("mcp__vyre__google_mail_send"), null);
+  assert.equal(route("mcp__plugin_vyre_vyre__google_mail_send"), null);
+  assert.equal(route("mcp__other__google_mail_send"), "deny");
 });
 
 test("gate: diff is word level and capped", () => {
