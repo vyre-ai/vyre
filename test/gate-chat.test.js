@@ -1,7 +1,7 @@
 // @ts-check
 // The gate + chat Done-when, end to end, in one real vyred: an agent drafts an email; it is held;
-// the user revises it from Mattermost (`/vyre body`), sees the post change to the new words, and
-// presses Send; exactly those words are sent with a credential the agent never saw; and a Mattermost thread mirrors a Vyre thread both ways.
+// the user revises it from Mattermost (`/vyre body`, then the Edit dialog), sees the post change to
+// the new words, and presses Send; exactly those words are sent with a credential the agent never saw; and a Mattermost thread mirrors a Vyre thread both ways.
 //
 // Real: the daemon, the loader, the vault, the Gate, the Harness and Chat. Fake: Mattermost (the
 // in-memory server in modules/chat/testing), Gmail (a local HTTP server) and the switchboard (a
@@ -108,7 +108,7 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   assert.match(direct.reason, /mail/);
 
   // 4. It asks the Gate instead: held, and posted in the session's thread with Send and Discard.
-  const draft = { subject: "Re: Intake form rebuild", body: "Hi Dana, the new intake form is on staging. Could we do a call on Thursday? Alex" };
+  const draft = { subject: "Re: Intake form rebuild", cc: ["ops@example.com"], body: "Hi Dana, the new intake form is on staging. Could we do a call on Thursday? Alex" };
   const held = await juno("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: draft, why: "Dana asked for an update", thread: "sess-1", project: "harlow-legal" });
   assert.equal(held.data.state, "held", JSON.stringify(held));
   const id = held.data.id;
@@ -118,7 +118,7 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   assert.match(heldPost.message, /dana@harlowlegal\.com/, "it says where it is going");
   assert.match(heldPost.message, /on staging/, "it shows the words");
   const buttons = () => (mm.posts.get(heldPost.id).props.attachments || []).flatMap(a => a.actions || []).map(a => a.id);
-  assert.deepEqual(buttons(), ["send", "discard"], "no Edit button: the post is what Send sends");
+  assert.deepEqual(buttons(), ["send", "discard", "edit"], "the post is what Send sends, and Edit changes it");
   assert.equal(gmail.got.length, 0, "nothing sent before approval");
 
   // A stranger's press does nothing; a model cannot approve.
@@ -140,7 +140,25 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   await sync();
   assert.match(mm.posts.get(heldPost.id).message, /15-minute call on Friday/);
   assert.ok(!/call on Thursday/.test(mm.posts.get(heldPost.id).message), "the old words are gone from the post");
-  assert.deepEqual(buttons(), ["send", "discard"]);
+  assert.deepEqual(buttons(), ["send", "discard", "edit"]);
+
+  // 6b. Edit opens a dialog with those words; saving a new subject and an emptied Cc revises the
+  // item again and patches the post, and still sends nothing.
+  assert.equal((await mm.press(heldPost.id, "edit", "alex")).status, 200);
+  const dlg = mm.dialogs.at(-1);
+  const defaults = Object.fromEntries(dlg.dialog.elements.map(e => [e.name, e.default]));
+  assert.deepEqual(defaults, { to: "dana@harlowlegal.com", cc: "ops@example.com", subject: "Re: Intake form rebuild", body }, "the dialog starts from the revision");
+  const subject = "Re: Intake form rebuild, Friday call";
+  const saved = await mm.submit(dlg, { subject, cc: "" }, "alex");
+  assert.deepEqual(saved.body, {}, JSON.stringify(saved.body));
+  assert.equal(gmail.got.length, 0, "saving the dialog sends nothing");
+  const current = (await local("gate.get", { id })).data;
+  assert.equal(current.state, "held");
+  assert.deepEqual(current.final, { subject, body }, "the empty Cc cleared it");
+  await sync();
+  assert.match(mm.posts.get(heldPost.id).message, /Subject: Re: Intake form rebuild, Friday call/);
+  assert.ok(!/ops@example\.com/.test(mm.posts.get(heldPost.id).message), "the cleared Cc is gone from the post");
+  assert.deepEqual(buttons(), ["send", "discard", "edit"]);
   const submitted = await mm.press(heldPost.id, "send", "alex");
   assert.equal(submitted.status, 200);
   assert.deepEqual(submitted.body, {}, JSON.stringify(submitted.body));
@@ -151,6 +169,8 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   assert.equal(gmail.got[0].auth, `Bearer ${mailToken}`);
   const mail = Buffer.from(JSON.parse(gmail.got[0].body).raw, "base64url").toString("utf8");
   assert.match(mail, /\r\nTo: dana@harlowlegal.com\r\n/);
+  assert.match(mail, /\r\nSubject: Re: Intake form rebuild, Friday call\r\n/);
+  assert.ok(!/\r\nCc:/.test(mail), "the Cc the dialog cleared was not sent");
   assert.equal(Buffer.from(mail.split("\r\n\r\n")[1].replace(/\r\n/g, ""), "base64").toString("utf8"), body);
 
   // 8. The held post now says it was sent with edits, and has no buttons left.
@@ -160,7 +180,7 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   assert.deepEqual(buttons(), []);
   const item = (await local("gate.get", { id })).data;
   assert.equal(item.state, "sent");
-  assert.deepEqual(item.diff, { removed: ["Thursday?"], added: ["15-minute", "Friday?"] });
+  assert.deepEqual(item.diff, { removed: ["rebuild", '["ops@example.com"]', "Thursday?"], added: ["rebuild, Friday call", "15-minute", "Friday?"] });
 
   // 9. Both ways: the session's reply lands in the thread, and the owner's reply reaches the session.
   await cli("threads.fake", { what: "text", thread: "sess-1", project: "harlow-legal", text: "Sent. Dana has the Friday proposal." });
@@ -176,7 +196,7 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   // 10. The fixtures appear nowhere they could be read.
   const everything = JSON.stringify([
     d.events.since(0, { limit: 5000 }), lines, mm.calls.map(c => [c.path, c.body]), [...mm.posts.values()],
-    item, (await local("gate.held")).data, (await cli("chat.status")).data, held, submitted, revised, stranger,
+    item, (await local("gate.held")).data, (await cli("chat.status")).data, held, submitted, revised, stranger, mm.dialogs, saved,
   ]);
   for (const [label, v] of [["bot token", botToken], ["slash token", slashToken], ["mail token", mailToken]]) assert.ok(!everything.includes(v), `the ${label} leaked`);
   assert.ok(!JSON.stringify(d.events.since(0, { limit: 5000 }).filter(e => e.type.startsWith("gate."))).includes("staging"), "a gate event carried the content");

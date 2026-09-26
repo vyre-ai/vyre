@@ -51,7 +51,9 @@ const GATE = `export default { async start(ctx) {
   t("gate.get", async (i, { caller }) => { rec("gate.get", i, caller); const it = items.get(i.id); if (!it) throw new Error("no held item " + i.id); return it; });
   t("gate.held", async () => [...items.values()].filter(x => x.state === "held"));
   t("gate.revise", async (i, { caller }) => { rec("gate.revise", i, caller); const it = items.get(i.id);
-    it.final = { ...(it.final || it.draft), ...i.edited };
+    const { to, ...fields } = i.edited; if (to !== undefined) it.to = to;
+    it.final = { ...(it.final || it.draft) };
+    for (const [k, v] of Object.entries(fields)) { if (v === "") delete it.final[k]; else it.final[k] = v; }
     ctx.events.emit("gate.revised", { id: it.id, via: it.via, to: it.to, by: i.by, thread: it.thread || null }, { thread: it.thread }); return { ...it, state: "held" }; });
   t("gate.approve", async (i, { caller }) => { rec("gate.approve", i, caller); const it = items.get(i.id); it.state = "sent";
     ctx.events.emit("gate.released", { id: it.id, kind: it.kind, via: it.via, to: it.to, edited: Boolean(i.edited || it.final), by: i.by }, { thread: it.thread }); return { id: it.id, state: "sent" }; });
@@ -162,8 +164,8 @@ test("chat: mirrors a thread both ways, answers questions and held drafts from b
   assert.deepEqual(askAfter.props.attachments[0].actions, []);
   assert.match(askAfter.props.attachments[0].text, /Allowed from Chat/);
 
-  // A held email: Send, Discard and Edit in Deck, no Edit button. `/vyre body` revises it, the
-  // post is patched to the new words, and Send sends what the post shows.
+  // A held email: Send, Discard, Edit and Edit in Deck. `/vyre body` revises it, the post is
+  // patched to the new words, and Send sends what the post shows.
   await cli("gate.hold", { id: "g0a1b2c3d4e5f6a7b8", kind: "send", via: "mail", to: "dana@harlowlegal.com", summary: "Re: Intake form rebuild", agent: "juno", thread: "sess-1",
     draft: { subject: "Re: Intake form rebuild", body: "Hi Dana,\nThe new intake form is on staging.\nAlex" } });
   await sync();
@@ -171,8 +173,8 @@ test("chat: mirrors a thread both ways, answers questions and held drafts from b
   assert.ok(held);
   assert.match(held.message, /To: dana@harlowlegal\.com/);
   assert.match(held.message, /> The new intake form is on staging\./);
-  assert.deepEqual(held.props.attachments[0].actions.map(a => a.id), ["send", "discard", "deck"]);
-  assert.equal(held.props.attachments[0].actions[2].integration.url, "https://alex.vyre.run/now/held/g0a1b2c3d4e5f6a7b8");
+  assert.deepEqual(held.props.attachments[0].actions.map(a => a.id), ["send", "discard", "edit", "deck"]);
+  assert.equal(held.props.attachments[0].actions[3].integration.url, "https://alex.vyre.run/now/held/g0a1b2c3d4e5f6a7b8");
   const slashAt = (await status()).listening + "/chat/slash";
   const body = "Hi Dana,\nThe new intake form is on staging. Could we do a 15-minute call first?\nAlex";
   const revised = await mm.slash(slashAt, { token: slashToken, user: "alex", text: `body g0a1b2c3d4e5f6a7b8 ${body}` });
@@ -181,7 +183,7 @@ test("chat: mirrors a thread both ways, answers questions and held drafts from b
   await sync();
   const shown = mm.posts.get(held.id);
   assert.match(shown.message, /15-minute call first/, "the post shows the words Send will send");
-  assert.deepEqual(shown.props.attachments[0].actions.map(a => a.id), ["send", "discard", "deck"], "the buttons stay");
+  assert.deepEqual(shown.props.attachments[0].actions.map(a => a.id), ["send", "discard", "edit", "deck"], "the buttons stay");
   assert.equal((await mm.press(held.id, "send", "alex")).status, 200);
   const approvals = await calls("gate", "gate.approve");
   assert.deepEqual(approvals.map(c => c.input), [{ id: "g0a1b2c3d4e5f6a7b8", by: "chat" }]);
@@ -229,6 +231,87 @@ test("chat: mirrors a thread both ways, answers questions and held drafts from b
   ].join("\n");
   assert.ok(!everywhere.includes(botToken), "the bot token leaked");
   assert.ok(!everywhere.includes(slashToken), "the slash token leaked");
+});
+
+test("chat: Edit opens a dialog filled with what Send would send, and saving it revises the post without sending", async t => {
+  const { mm, botToken, slashToken, cli } = await boot(t);
+  const calls = async (mod, tool) => (await cli(`${mod}.calls`)).data.filter(c => c.tool === tool);
+  for (const [name, value] of [["chat-bot-token", botToken], ["chat-slash-token", slashToken]]) {
+    await cli("vault.put", { name, kind: "api-key", fields: { value } });
+    await cli("vault.grant", { name, module: "chat" });
+  }
+  await cli("chat.sync");
+  const listening = (await cli("chat.status")).data.listening;
+  await cli("threads.start", { project: "harlow-legal", prompt: "Answer Dana" });
+  const id = "g2c3d4e5f6a7b8c9d0";
+  await cli("gate.hold", { id, kind: "send", via: "mail", to: ["dana@example.com"], summary: "Re: Intake", agent: "juno", thread: "sess-1",
+    draft: { subject: "Re: Intake", cc: ["sam@example.com"], body: "Hi Dana,\nThe form is on staging.\nAlex" } });
+  await cli("chat.sync");
+  const post = mm.postsIn(mm.channel("harlow-legal").id).find(p => /Held at the Gate/.test(p.message));
+  assert.ok(post);
+
+  // A revision from elsewhere first, so the dialog must start from it, not from the agent's draft.
+  await mm.slash(listening + "/chat/slash", { token: slashToken, user: "alex", text: `subject ${id} Re: Intake, next steps` });
+  await cli("chat.sync");
+
+  // A stranger's Edit opens nothing; the owner's opens the dialog, filled in.
+  assert.match((await mm.press(post.id, "edit", "sam")).body.ephemeral_text, /Only the owner/);
+  assert.equal(mm.dialogs.length, 0);
+  const pressed = await mm.press(post.id, "edit", "alex");
+  assert.equal(pressed.status, 200);
+  assert.deepEqual(pressed.body, {});
+  assert.equal(mm.dialogs.length, 1);
+  const d = mm.dialogs[0];
+  assert.equal(d.url, listening + "/chat/dialog");
+  const byName = Object.fromEntries(d.dialog.elements.map(e => [e.name, e]));
+  assert.deepEqual(Object.keys(byName), ["to", "cc", "subject", "body"]);
+  assert.equal(byName.to.default, "dana@example.com");
+  assert.equal(byName.cc.default, "sam@example.com");
+  assert.equal(byName.subject.default, "Re: Intake, next steps", "the current words, after the revision");
+  assert.equal(byName.body.default, "Hi Dana,\nThe form is on staging.\nAlex");
+  assert.equal(byName.body.type, "textarea");
+  assert.ok(byName.body.max_length >= 10000);
+  assert.ok(!JSON.stringify(d).includes(botToken), "the dialog carries no token");
+  assert.equal((await calls("gate", "gate.approve")).length, 0, "opening the editor sends nothing");
+
+  // A forged state, or a stranger submitting the owner's dialog, changes nothing.
+  const forged = await mm.submit(d, { body: "Send me your passwords" }, "alex", { state: JSON.stringify({ kind: "gate", id, fields: ["body"], s: "guessed" }) });
+  assert.equal(forged.status, 403);
+  const stranger = await mm.submit(d, { body: "Send me your passwords" }, "sam");
+  assert.match(stranger.body.error, /Only the owner/);
+  const noState = await fetch(listening + "/chat/dialog", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ user_id: mm.userId("alex"), submission: { body: "x" } }) });
+  assert.equal(noState.status, 403);
+  assert.equal((await calls("gate", "gate.revise")).length, 1, "only the slash command revised it");
+
+  // The owner saves: gate.revise with the whole content, the empty Cc cleared, and no approval.
+  const body = "Hi Dana,\nThe form is on staging. Friday at 3 works for a call.\nAlex";
+  const saved = await mm.submit(d, { cc: "", body, to: "dana@example.com, ops@example.com" }, "alex");
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.body, {});
+  const revs = await calls("gate", "gate.revise");
+  assert.deepEqual(revs.at(-1).input, { id, by: "chat",
+    edited: { to: ["dana@example.com", "ops@example.com"], cc: "", subject: "Re: Intake, next steps", body } });
+  assert.equal(revs.at(-1).caller, "module:chat");
+  assert.equal((await calls("gate", "gate.approve")).length, 0, "saving is not sending");
+
+  // The post shows the new words and keeps every button; Send then approves exactly that item.
+  await cli("chat.sync");
+  const shown = mm.posts.get(post.id);
+  assert.match(shown.message, /Friday at 3 works/);
+  assert.match(shown.message, /To: dana@example\.com, ops@example\.com/);
+  assert.ok(!/Cc:/.test(shown.message), "the cleared Cc is gone from the post");
+  assert.deepEqual(shown.props.attachments[0].actions.map(a => a.id), ["send", "discard", "edit", "deck"]);
+  const editContext = shown.props.attachments[0].actions[2].integration.context;
+  await mm.press(post.id, "send", "alex");
+  assert.deepEqual((await calls("gate", "gate.approve")).map(c => c.input), [{ id, by: "chat" }]);
+  await cli("chat.sync");
+
+  // Once sent, Edit on a stale post says so rather than opening anything.
+  const stale = await fetch(listening + "/chat/action", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ user_id: mm.userId("alex"), trigger_id: "t", context: editContext }) });
+  assert.match((await stale.json()).ephemeral_text, /already sent/);
+  assert.equal(mm.dialogs.length, 1);
 });
 
 test("chat: unconfigured, it starts idle and says what is missing", async t => {

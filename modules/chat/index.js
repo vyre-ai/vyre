@@ -50,6 +50,7 @@ export default {
         host: l.host || "127.0.0.1", port: Number(l.port ?? 8766), log: ctx.log,
         handlers: {
           action: b => (bridge ? bridge.action(b) : Promise.resolve({ status: 503, body: {} })),
+          dialog: b => (bridge ? bridge.dialog(b) : Promise.resolve({ status: 503, body: {} })),
           slash: f => (bridge ? bridge.slash(f) : Promise.resolve({ status: 503, body: {} })),
         },
       });

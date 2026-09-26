@@ -1,5 +1,6 @@
 // @ts-check
-// listener — the two routes Mattermost calls back on: button presses and the /vyre slash command. Nothing else is served.
+// listener: the routes Mattermost calls back on, for button presses, the Edit dialog's submission and
+// the /vyre slash command. Nothing else is served.
 //
 // It binds where config says (on the box, the address the Mattermost container reaches vyred
 // on) and holds no logic: every check (the hook secret, the owner, the slash token) is the
@@ -10,7 +11,7 @@ import http from "node:http";
 const MAX = 256 * 1024;
 
 /**
- * @param {{ host?: string, port?: number, handlers: { action: (b: any) => Promise<any>, slash: (f: Record<string, string>) => Promise<any> },
+ * @param {{ host?: string, port?: number, handlers: { action: (b: any) => Promise<any>, dialog: (b: any) => Promise<any>, slash: (f: Record<string, string>) => Promise<any> },
  *   log?: (m: string) => void }} o
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
@@ -19,7 +20,7 @@ export async function listen({ host = "127.0.0.1", port = 0, handlers, log = () 
     const reply = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     try {
       const path = new URL(req.url || "/", "http://chat").pathname;
-      const route = { "/chat/action": "action", "/chat/slash": "slash" }[path];
+      const route = { "/chat/action": "action", "/chat/dialog": "dialog", "/chat/slash": "slash" }[path];
       if (req.method !== "POST" || !route) return reply(404, { error: "not found" });
       const raw = await read(req);
       if (raw === null) return reply(413, { error: "too large" });

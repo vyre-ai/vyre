@@ -5,7 +5,8 @@
 // (a session's root, its replies, questions with buttons, held drafts with Send, Edit, Discard),
 // and resolved ones are patched in place with their buttons gone. In: the owner's posts, found
 // by polling each mapped channel with `since`, become threads.send or threads.start, and their
-// button presses become threads.answer, gate.approve and gate.reject.
+// button presses become threads.answer, gate.approve and gate.reject. Edit opens a dialog filled
+// with the words Send would send, and its submission becomes gate.revise, never an approval.
 //
 // Why polling and not the websocket: it needs no dependency, it survives Mattermost restarting
 // with nothing to reconnect, and `since` makes a missed interval cost a delay, never a message.
@@ -19,7 +20,7 @@
 // otherwise ignored; a stranger's reply in a thread never reaches a session.
 
 import crypto from "node:crypto";
-import { askPost, heldPost, heldPatch, resolvedPatch, textPost, cut } from "./posts.js";
+import { askPost, heldPost, heldPatch, editDialog, dialogEdit, resolvedPatch, textPost, cut } from "./posts.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE chat_channels (project TEXT PRIMARY KEY, channel_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL, since INTEGER NOT NULL);
@@ -65,7 +66,7 @@ function surfaceLabel(s) {
 /**
  * @typedef {{ post: (p: any) => Promise<any>, patch: (id: string, p: any) => Promise<any>, postsSince: (c: string, since: number) => Promise<any[]>,
  *   channelByName: (t: string, n: string) => Promise<any>, createChannel: (c: any) => Promise<any>, addMember: (c: string, u: string) => Promise<any>,
- *   me: () => Promise<any>, team: (n: string) => Promise<any>, user: (n: string) => Promise<any> }} MM
+ *   me: () => Promise<any>, team: (n: string) => Promise<any>, user: (n: string) => Promise<any>, openDialog: (d: any) => Promise<any> }} MM
  */
 
 export class Bridge {
@@ -357,7 +358,7 @@ export class Bridge {
     return String(id);
   }
 
-  // ---- presses and the slash command --------------------------------------------
+  // ---- presses, the edit dialog and the slash command ------------------------------------
 
   /**
    * A button press, as Mattermost posts it: {user_id, post_id, trigger_id, context}.
@@ -375,7 +376,46 @@ export class Bridge {
       }
       if (c.kind === "gate" && c.action === "send") return { body: await this.approve(id) };
       if (c.kind === "gate" && c.action === "discard") return { body: await this.reject(id) };
+      if (c.kind === "gate" && c.action === "edit") return { body: await this.openEdit(id, String(body.trigger_id || "")) };
       return { body: { ephemeral_text: "That button does nothing here." } };
+    });
+  }
+
+  /**
+   * Open the Edit dialog, filled from gate.get with what Send would send now, so an edit starts
+   * from the last revision (made here, by /vyre body or in the Deck), never the agent's draft.
+   * @param {string} id @param {string} trigger the press's trigger_id, which Mattermost needs to open a dialog
+   */
+  async openEdit(id, trigger) {
+    const g = await this.call("gate.get", { id });
+    if (!g || g.error || !g.data) return { ephemeral_text: `Could not open it: ${g && g.error ? g.error.message : "the Gate is not running"}` };
+    if (g.data.state && g.data.state !== "held") return { ephemeral_text: `This is already ${g.data.state}.` };
+    const dialog = editDialog(g.data, g.data.final ?? g.data.draft, this.h);
+    if (!dialog) return { ephemeral_text: "This has no words to edit here. Use Edit in Deck." };
+    try { await this.mm.openDialog({ trigger_id: trigger, url: this.hook + "/chat/dialog", dialog }); }
+    catch (e) { return { ephemeral_text: `Could not open the editor: ${cut(/** @type {Error} */ (e).message, 300)}` }; }
+    return {};
+  }
+
+  /**
+   * The Edit dialog's submission: {type, callback_id, state, user_id, submission, cancelled}.
+   * Saving is a revision: the item stays held, gate.revised patches the post to the new words,
+   * and the person then presses Send. The secret rides in `state`, as it rides on a button.
+   * @param {any} body @returns {Promise<{ status?: number, body: any }>}
+   */
+  async dialog(body) {
+    /** @type {any} */
+    let st = {};
+    try { st = JSON.parse(String((body && body.state) || "{}")) || {}; } catch {}
+    if (!same(st.s, this.secret) || st.kind !== "gate") return { status: 403, body: { error: "not a Vyre dialog" } };
+    if (!this.ownerId || body.user_id !== this.ownerId) return { body: { error: "Only the owner of this Vyre can change this." } };
+    if (body.cancelled) return { body: {} };
+    const fields = Array.isArray(st.fields) ? st.fields.map(String) : [];
+    const edited = dialogEdit(fields, (body && body.submission) || {});
+    const id = String(st.id || "");
+    return this.enqueue(async () => {
+      const r = await this.call("gate.revise", { id, edited, by: "chat" });
+      return { body: !r || r.error ? { error: `Not changed: ${r && r.error ? r.error.message : "the Gate is not running"}` } : {} };
     });
   }
 

@@ -4,9 +4,11 @@
 // The rule behind all of it, ported from the prototype (channels.cjs): if it has to work on the
 // phone, it is a post with buttons or a slash command, never custom UI. Web plugin panels do not
 // render in the mobile apps; interactive posts do, on every platform, and look native because
-// they are. A held draft is never edited in a form here: the post always shows the words Send
-// will send, `/vyre body` and `/vyre subject` replace them, and "Edit in Deck" opens the Deck,
-// where every field is edited inline.
+// they are. A held draft's post always shows the words Send will send. Mattermost cannot edit
+// inside a post, so Edit opens an interactive dialog (which the mobile apps render natively)
+// filled with those words; submitting it revises the item and the post, and Send still sends.
+// `/vyre body` and `/vyre subject` do the same from the keyboard, and "Edit in Deck" opens the
+// Deck, where every field is edited inline.
 //
 // Every button carries the id of the thing it answers ({kind, id, action}), because the answer
 // has to route back to the question that raised it. Matching on message text would be guessing,
@@ -81,7 +83,7 @@ export function draftText(item, draft) {
 }
 
 /**
- * Something held at the Gate: Send, Discard, and Edit in Deck when the Deck's address is known.
+ * Something held at the Gate: Send, Discard, Edit, and Edit in Deck when the Deck's address is known.
  * The message is the words Send will send; a revision patches it (heldPatch), so the two never
  * differ (floor rule 1).
  * @param {{ id: string, kind: string, via: string, to: any, summary?: string, agent?: string|null, why?: string|null }} item
@@ -113,11 +115,73 @@ function held(item, draft, h) {
   const message = [head, draftText(item, draft), item.why ? `_Why:_ ${cut(item.why, 400)}` : "", `Send sends exactly what is shown here. ${change}`.trim()]
     .filter(Boolean).join("\n\n");
   const actions = [button(h, "gate", item.id, "send", "Send", "primary"), button(h, "gate", item.id, "discard", "Discard", "danger")];
+  // Edit only when there are words to put in the dialog; a draft that could not be read has none.
+  if (dialogShape(draft)) actions.push(button(h, "gate", item.id, "edit", "Edit", "default"));
   // A link, not a callback: opening the Deck is something the person does. It carries the id
   // anyway, since every button does (channels.cjs); Mattermost ignores context on a link.
   if (h.deck) actions.push({ id: "deck", name: "Edit in Deck", style: "default",
     integration: { url: `${h.deck.replace(/\/+$/, "")}/now/held/${encodeURIComponent(item.id)}`, context: { kind: "gate", id: item.id, action: "deck" } } });
   return { message, props: { attachments: [{ fallback: head, title: "Held", actions }] } };
+}
+
+/** Which dialog a content takes: an email's fields, a request's, or none. @param {any} draft */
+function dialogShape(draft) {
+  if (!draft || typeof draft !== "object") return null;
+  if (typeof draft.url === "string") return "http";
+  if (typeof draft.body === "string" || typeof draft.subject === "string") return "mail";
+  return null;
+}
+
+/** A list of addresses as one line, and back. @param {any} v */
+const listText = v => (Array.isArray(v) ? v.join(", ") : v ? String(v) : "");
+
+/**
+ * The Edit dialog for a held item, filled with what Send would send now (the last revision, else
+ * the draft). Submitting it revises the item; it never sends. `state` carries the id, the secret
+ * and the fields shown back to us (Mattermost returns it untouched), so a submission names only
+ * fields we asked for, and a field left empty is a field cleared.
+ * @param {{ id: string, to: any }} item @param {any} draft @param {Hook} h
+ */
+export function editDialog(item, draft, h) {
+  const shape = dialogShape(draft);
+  if (!shape) return null;
+  /** @param {string} name @param {string} label @param {string} value @param {{ long?: boolean, optional?: boolean, help?: string }} [o] */
+  const el = (name, label, value, o = {}) => ({ display_name: label, name, type: o.long ? "textarea" : "text", default: value,
+    optional: Boolean(o.optional), max_length: o.long ? 10000 : 2000, ...(o.help ? { help_text: o.help } : {}) });
+  const elements = shape === "mail"
+    ? [el("to", "To", listText(item.to), { help: "Addresses, separated by commas." }),
+       el("cc", "Cc", listText(draft.cc), { optional: true, help: "Leave empty for no Cc." }),
+       el("subject", "Subject", String(draft.subject ?? "")),
+       el("body", "Body", String(draft.body ?? ""), { long: true })]
+    : [el("url", "URL", String(draft.url)),
+       el("body", "Body", typeof draft.body === "string" ? draft.body : "", { long: true, optional: true, help: "Leave empty to send no body." })];
+  return {
+    callback_id: "gate",
+    title: "Edit before sending",
+    introduction_text: "Saving changes the held post to these words. Nothing goes out until you press Send.",
+    submit_label: "Save",
+    notify_on_cancel: false,
+    state: JSON.stringify({ kind: "gate", id: item.id, fields: elements.map(e => e.name), s: h.secret }),
+    elements,
+  };
+}
+
+/**
+ * What Edit's submission becomes for gate.revise: every field the dialog showed, as the content
+ * should go out. Addresses are split on commas; an empty field is "", which clears it.
+ * @param {string[]} fields @param {Record<string, any>} submission
+ */
+export function dialogEdit(fields, submission) {
+  /** @type {Record<string, any>} */
+  const edited = {};
+  for (const k of fields) {
+    const v = submission[k] == null ? "" : String(submission[k]);
+    if (k === "to" || k === "cc") {
+      const list = v.split(/[,;]/).map(x => x.trim()).filter(Boolean);
+      edited[k] = list.length === 0 ? "" : k === "to" && list.length === 1 ? list[0] : list;
+    } else edited[k] = k === "body" ? v : v.trim();
+  }
+  return edited;
 }
 
 /**
