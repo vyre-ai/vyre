@@ -45,7 +45,7 @@ status: stable
 | `title` | yes | The page's name, as the nav and the `# H1` show it. |
 | `summary` | yes | One sentence. It appears in search, in `/llms.txt` and under the title. |
 | `audience` | yes | A comma list from `users`, `builders`, `operators`, `agents`. |
-| `owner` | yes | One team: `tailnet`, `capsule-pro`, `capsule-sight`, `connectors`, `mobile`, `polish-cli`, `polish-surfaces`, `e2e`, `integrator`, `docs`. The owner keeps the page true. |
+| `owner` | yes | One team: `tailnet`, `capsule-pro`, `capsule-sight`, `connectors`, `mobile`, `polish-cli`, `polish-surfaces`, `e2e`, `integrator`, `docs`, `planner`, `cc-plugin`, `glass-live`, `pwa`. The owner keeps the page true (`scripts/lib/docs/check.js` holds the list). |
 | `status` | yes | `stable` (shipped on main), `draft` (partly shipped, may change), `planned` (not built yet). |
 | `generated` | no | The script that writes the page. Only generated reference pages carry it. |
 

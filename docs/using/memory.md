@@ -138,13 +138,6 @@ terminal, the Deck, the Capsule), to the assistant, and to an agent granted ever
 You are the only one who can change memory: correcting, merging and splitting are open to your
 own surfaces and ask you to prove presence. A session never writes memory.
 
-> [!GAP]
-> `vyre memory correct`, `merge` and `split` do not yet ask you to prove presence, so vyred refuses
-> them with `presence_required`. Correct in the Deck, or run the tool through `vyre call`, which
-> asks for Touch ID on the Mac: `vyre call memory.correct '{"fact":"<fact id>","action":"wrong"}'`.
-> `corrections`, `uncorrect`, `pin` and `mute` work as shown. See
-> [known gaps](../known-gaps.md#vyre-memory-correct-merge-and-split-never-prove-presence).
-
 ```
 vyre memory correct '<fact id>' wrong                  # never true
 vyre memory correct '<fact id>' ended --at 2026-08-01  # stopped being true
