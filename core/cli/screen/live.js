@@ -66,6 +66,12 @@ export async function linkStatus(tools) {
 /** link.health's data as a phrase. Tolerant of shape: the tailnet team owns it. */
 export function formatLink(d) {
   if (typeof d === "string") return "link " + d;
+  // link.health as the tailnet team built it: { path: direct|relay|peer-relay|unknown, latencyMs, why }.
+  if (d && typeof d.path === "string") {
+    if (d.path === "unknown") return /not paired|say which node/.test(String(d.why || "")) ? "" : "link down";
+    const ms = typeof d.latencyMs === "number" ? ` ${Math.round(d.latencyMs)} ms` : "";
+    return `link ${d.path === "direct" ? "direct" : "relayed"}${ms}`;
+  }
   const up = d.ok ?? d.up ?? d.healthy ?? (d.state ? ["up", "ok", "running", "connected"].includes(String(d.state)) : undefined);
   const where = d.address || d.name || d.host || "";
   const peers = typeof d.peers === "number" ? `${d.peers} peer${d.peers === 1 ? "" : "s"}` : Array.isArray(d.peers) ? `${d.peers.length} peers` : "";

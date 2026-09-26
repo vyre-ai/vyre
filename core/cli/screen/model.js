@@ -28,7 +28,7 @@ const tilde = p => { const h = os.homedir(); const s = String(p || ""); return s
 export const ago = t => {
   if (!t) return "";
   const s = Math.max(0, (Date.now() - t) / 1000);
-  return s < 3600 ? Math.max(1, Math.round(s / 60)) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d";
+  return s < 60 ? "now" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d";
 };
 /** "just now" or "5m ago": for sentences, where "1m" for a second-old item reads wrong. */
 export const since = t => (!t ? "" : Date.now() - t < 60_000 ? "just now" : ago(t) + " ago");

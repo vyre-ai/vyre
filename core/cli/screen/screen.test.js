@@ -10,6 +10,7 @@ import { match, rank, highlight } from "./fuzzy.js";
 import * as model from "./model.js";
 import { transcript, apply, load } from "./transcript.js";
 import { render } from "./layout.js";
+import { formatLink } from "./live.js";
 
 const names = keys => keys.map(k => (k.name === "char" ? k.text : k.name === "paste" ? `paste(${k.text})` : k.name));
 
@@ -220,4 +221,17 @@ test("layout: exactly rows lines, none wider than the terminal, at every size, i
   assert.match(text, /Inbox \(2\)/);
   assert.match(text, /a allows · d denies/);
   assert.match(render(model.initial(d), { columns: 100, rows: 30 }).map(stripAnsi)[0], /1 working · 1 ask · 1 held/);
+});
+
+test("status line: link.health's real shape reads as a phrase; a box, or an unpaired Mac, shows none", () => {
+  assert.equal(formatLink({ path: "direct", latencyMs: 23.4, relay: null }), "link direct 23 ms");
+  assert.equal(formatLink({ path: "relay", relay: "fra", latencyMs: 80 }), "link relayed 80 ms");
+  assert.equal(formatLink({ path: "unknown", why: "the node is offline" }), "link down");
+  assert.equal(formatLink({ path: "unknown", why: "this Mac is not paired with a box" }), "");
+  assert.equal(formatLink({ path: "unknown", why: "say which node: a paired Mac's node id (vyre link peers)" }), "");
+});
+
+test("model: something from a few seconds ago is now, not 1m", () => {
+  assert.equal(model.ago(Date.now() - 5_000), "now");
+  assert.equal(model.ago(Date.now() - 90_000), "2m");
 });

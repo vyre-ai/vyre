@@ -11,6 +11,7 @@
 
 import { dim, bold, signal, beacon, recall } from "../style.js";
 import { fit, clip, width, wrap, sanitize } from "./width.js";
+import { label } from "../../daemon/build.js";
 import { highlight } from "./fuzzy.js";
 import { view, selectable, current, KEYS, ago, since, threadLabel, liveHolder, SURFACE } from "./model.js";
 
@@ -120,7 +121,11 @@ function pane(st, w, h, transcripts, details, alive) {
     const body = [];
     if (!tr || !tr.ready) body.push({ text: "loading", style: "dim" });
     else if (!tr.lines.length) body.push({ text: "nothing said yet", style: "dim" });
-    else for (const l of tr.lines) for (const piece of wrap(l.text, w)) body.push({ text: piece, style: l.style });
+    else for (const l of tr.lines) {
+      // A wrapped line keeps its indent, so a quoted prompt reads as one block.
+      const indent = /^ */.exec(l.text)[0].slice(0, Math.max(0, w - 10));
+      for (const piece of wrap(l.text.slice(indent.length), w - indent.length)) body.push({ text: indent + piece, style: l.style });
+    }
     const room = h - lines.length - 1;
     // Follow the end unless scrolled back; pgup in the compose line scrolls.
     const end = Math.max(0, body.length - st.scroll);
@@ -198,7 +203,7 @@ function describe(it, st, details) {
 
 function statusLine(st, C) {
   const d = st.data;
-  const right = [d.link || "", d.health && d.health.version ? "vyred " + d.health.version : ""].filter(Boolean).join(" · ");
+  const right = [d.link || "", d.health && d.health.version ? "vyred " + label(d.health) : ""].filter(Boolean).join(" · ");
   const it = current(st);
   const hint = st.focus === "compose" ? "enter sends · esc back · ctrl-l keyboard · pgup scroll"
     : st.action === "ask" ? "a allow · d deny · esc cancel"

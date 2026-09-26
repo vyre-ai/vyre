@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The `vyre` screen, polished from a captured frame
+
+- The status line reads link.health's real shape ("link direct 23 ms", "link relayed", "link
+  down"; nothing on a box or an unpaired Mac, where it said "link ?"), and shows the commit
+  ("vyred 0.0.1 · 1a2b3c4").
+- A wrapped transcript line keeps its indent, so a quoted prompt reads as one block.
+- Something seconds old is "now", not "1m". `core/cli/screen/`.
+
 #### One vyred per home, whatever path reached it
 
 - Two vyreds could run on one store when the home was reached through a symlink: the socket
