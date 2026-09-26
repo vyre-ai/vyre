@@ -79,7 +79,9 @@ services:
       MM_EMAILSETTINGS_PUSHNOTIFICATIONSERVER: "${VYRE_CHAT_PUSH_SERVER:-https://push-test.mattermost.com}"
       MM_EMAILSETTINGS_PUSHNOTIFICATIONCONTENTS: "${VYRE_CHAT_PUSH_CONTENTS:-id_loaded}"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8065/api/v4/system/ping"]
+      # The image has no shell and no curl: mmctl is the only client inside it, and --local talks
+      # over the socket ENABLELOCALMODE opens above, so this needs no token.
+      test: ["CMD", "/mattermost/bin/mmctl", "--local", "system", "status"]
       interval: 15s
       timeout: 5s
       retries: 10
