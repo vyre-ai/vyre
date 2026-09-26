@@ -66,6 +66,9 @@ Start vyred if needed with `ensureUp()` from `core/cli/daemonctl.js`.
 - Every done-when item passes: Harlow Legal plus the intake and hub picks, the hub also in
   Northwind, the subagent folded, the Harlow brief names Dana and never mentions Northwind.
 
+- The `vyre` home in `core/cli/commands/home.js` (spec section 10): projects, New session
+  without a project, agents; arrow keys and type-to-filter; plain list when piped.
+
 ## Doing
 - Nothing.
 
@@ -85,6 +88,10 @@ Start vyred if needed with `ensureUp()` from `core/cli/daemonctl.js`.
   one) makes vyred fail with `listen EINVAL`. Worth a clear error in `core/daemon`.
 
 ## Changed contracts
+- `vyre` with no arguments no longer opens this folder's project; it opens the home with that
+  project preselected. The home reads `agents.list` (an array, or `{agents}`, of
+  `{name, kind?, doing?|status?}`) and, when `agents.ask` is listed in `/v1/tools`, talks to an
+  agent with `agents.ask {agent, text}`, printing `data` as a string or its `text` / `reply`.
 - The marker keeps picks under `threads` (spec 7.2) and adds optional `org`, `people`,
   `watchers` (names). Workspaces are stored relative to the home. Subagent ids are folded to the
   parent id before they are stored.

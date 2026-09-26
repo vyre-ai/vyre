@@ -80,18 +80,23 @@ test("cli: vyre new with flags, then piped answers; the hub lands in both projec
   assert.match(list.out, /Northwind\s+3 threads/);
 });
 
-test("cli: vyre alone opens this folder's project; elsewhere it lists; context prints the brief", async t => {
+test("cli: vyre alone, piped, prints the home with this folder's project preselected; context prints the brief", async t => {
   const w = world(t);
   const harlow = path.join(w.work, "harlow-site");
   await w.run(["new", "Harlow Legal", "--home", harlow, "--thread", HUB, "--person", "Dana Reyes", "--no-pick"]);
   await w.run(["new", "Northwind", "--home", path.join(w.work, "northwind"), "--thread", HUB, "--no-pick"]);
-  const inside = await w.run([], { cwd: path.join(harlow) });
+  fs.mkdirSync(path.join(harlow, "src"));
+  const inside = await w.run([], { cwd: path.join(harlow, "src") });
   assert.equal(inside.code, 0, inside.out);
-  assert.match(inside.out, /What a new thread here is told/);
-  assert.match(inside.out, /Threads \(2\)/);
-  assert.match(inside.out, /Weekly planning[\s\S]*Harlow site rebuild/, "threads are not newest first");
+  assert.match(inside.out, /Projects\n/);
+  assert.match(inside.out, /› Harlow Legal {2}2 threads · \S+ · this folder/, "this folder's project is not preselected");
+  assert.match(inside.out, /  Northwind {2}3 threads/);
+  assert.match(inside.out, /New session without a project/);
+  assert.match(inside.out, /Agents\n\s+agents arrive with the switchboard/);
+  assert.doesNotMatch(inside.out, /What a new thread here is told/, "the home opened the project instead of preselecting it");
   const outside = await w.run([], { cwd: w.root });
-  assert.match(outside.out, /2 projects/);
+  assert.match(outside.out, /› Northwind|› Harlow Legal/);
+  assert.doesNotMatch(outside.out, /· this folder/);
   const ctx = await w.run(["context"], { cwd: harlow });
   assert.match(ctx.out, /^You are working in the Vyre project "Harlow Legal"/);
   assert.match(ctx.out, /People: Dana Reyes\./);

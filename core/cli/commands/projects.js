@@ -1,6 +1,6 @@
 // @ts-check
-// Projects and threads from the terminal. `vyre` alone lands here: inside a project's folder it
-// opens that project, anywhere else it lists them.
+// Projects and threads from the terminal. The `vyre` home, the picker `vyre` alone opens, is in
+// ./home.js and uses the launchers exported here.
 //
 // Every command is a call to vyred's projects tools, so the terminal and the Deck never disagree.
 // Every interactive step also has a flag, and prompts read piped stdin line by line when there
@@ -81,14 +81,14 @@ async function prompter() {
   return { ask: async q => { const a = (lines[i++] ?? "").trim(); out(q + a); return a; }, close: () => {} };
 }
 
-async function up() {
+export async function up() {
   const r = await ensureUp();
   if (!r.ok) { out(beacon("  vyred did not start") + dim(r.log ? ` · see ${r.log}` : "")); return false; }
   return true;
 }
 
 /** A tool call that prints its error and returns null on failure. */
-async function tool(name, input) {
+export async function tool(name, input) {
   const r = await call(name, input);
   if (r.error) { out(beacon(`  ${r.error.message}`)); return null; }
   return r.data;
@@ -136,7 +136,7 @@ function showList(list) {
 
 // ------------------------------------------------------------ finding threads and projects
 
-async function hereProject() {
+export async function hereProject() {
   const r = await call("projects.of", { cwd: process.cwd() });
   return r.data || null;
 }
@@ -193,7 +193,7 @@ export function harnessDir() {
  * SessionStart hook adds the brief, so the brief is passed on the command line only without it:
  * never both, or Claude reads it twice.
  */
-function claude(args, cwd, brief, project) {
+export function claude(args, cwd, brief, project) {
   const plugin = harnessDir();
   const full = plugin ? [...args, "--plugin-dir", plugin] : brief ? [...args, "--append-system-prompt", brief] : args;
   // VYRE_PROJECT tells the Harness hook which project was chosen, for a thread picked into several.
@@ -203,7 +203,7 @@ function claude(args, cwd, brief, project) {
   return r.status ?? 1;
 }
 
-async function resume(t, { project, name } = {}) {
+export async function resume(t, { project, name } = {}) {
   if (!t.cwd || !fs.existsSync(t.cwd)) return fail(`${t.label} ran in ${tilde(t.cwd) || "an unknown folder"}, which is gone; Claude Code can only resume it there`);
   const ctx = await call("projects.context", { ...(project ? { project } : {}), cwd: t.cwd, session: t.id });
   const brief = ctx.data?.text || "";
@@ -274,29 +274,6 @@ async function newProject(args) {
 // ------------------------------------------------------------ the commands
 
 export default [
-  {
-    name: "home", hidden: true, summary: "this folder's project, or all of them",
-    async run() {
-      if (!(await up())) return 1;
-      const here = await hereProject();
-      if (!here) {
-        const list = await tool("projects.list", {});
-        if (!list) return 1;
-        showList(list);
-        return 0;
-      }
-      const code = await openProject(here.slug);
-      // A person at a terminal can go straight on; a pipe or a test just gets the screen.
-      if (code || !process.stdin.isTTY || !process.stdout.isTTY) return code;
-      const pr = await prompter();
-      const a = await pr.ask("\n  resume which (number; n for a new thread; Enter to leave) › ");
-      pr.close();
-      if (!a) return 0;
-      if (a === "n") return startThread(["--project", here.slug]);
-      const f = await findThread(a, here.slug);
-      return f.error ? fail(f.error) : resume(f.thread, { project: here.slug });
-    },
-  },
   {
     name: "projects", order: 20, summary: "every project",
     async run() {
@@ -399,7 +376,7 @@ async function pickCmd(args, name) {
 }
 
 /** A new thread: Claude Code in the project's home, named when a name is given, with the brief. */
-async function startThread(args) {
+export async function startThread(args) {
   const { flags, pos } = parse(args);
   if (!(await up())) return 1;
   const ref = flags.project || (await hereProject())?.slug;
