@@ -177,12 +177,12 @@ test("glass: a ticket is spent once; reusing it is refused the same way", async 
 });
 
 /** Runs a full connection end to end: real fake-Xvnc server, real Glass, real browser socket. */
-async function connected({ canType = () => true, width = 800, height = 600 } = {}) {
+async function connected({ canType = () => true, renew = undefined, width = 800, height = 600 } = {}) {
   const xvnc = await fakeXvnc({ width, height });
   const pool = fakePool({ port: xvnc.port });
   const ticket = pool.issue("kit", "glass:laptop");
   const logs = [];
-  const glass = new Glass({ pool, keyboard: { canType }, log: m => logs.push(m) });
+  const glass = new Glass({ pool, keyboard: /** @type {any} */ ({ canType, renew }), log: m => logs.push(m) });
   const upgradeServer = net.createServer(sock => glass.handle(req(), sock, Buffer.alloc(0), { url: new URL(`http://vyred/v1/streams/computers/glass?ticket=${ticket}`) }));
   await new Promise(r => upgradeServer.listen(0, "127.0.0.1", r));
   const addr = /** @type {import("node:net").AddressInfo} */ (upgradeServer.address());
@@ -245,6 +245,22 @@ test("glass: input reaches the container when the surface holds the keyboard", a
   });
   assert.deepEqual(Buffer.concat(c.xvnc.received), keyEvent);
   await c.teardown();
+});
+
+test("glass: the holder's input renews its take-over; dropped input does not", async () => {
+  const renewed = [];
+  const keyEvent = Buffer.concat([Buffer.from([4, 1]), Buffer.alloc(2), Buffer.from([0, 0, 0, 65])]);
+  const held = await connected({ canType: () => true, renew: (a, s) => renewed.push([a, s]) });
+  held.sock.write(encodeClientFrame(keyEvent));
+  await new Promise(resolve => { const check = () => (held.xvnc.received.length ? resolve(undefined) : setTimeout(check, 10)); check(); });
+  assert.deepEqual(renewed, [["kit", "glass:laptop"]]);
+  await held.teardown();
+  renewed.length = 0;
+  const other = await connected({ canType: () => false, renew: (a, s) => renewed.push([a, s]) });
+  other.sock.write(encodeClientFrame(keyEvent));
+  await new Promise(r => setTimeout(r, 100));
+  assert.deepEqual(renewed, []);
+  await other.teardown();
 });
 
 test("glass: a non-input message (FramebufferUpdateRequest) reaches the container even without the keyboard", async () => {

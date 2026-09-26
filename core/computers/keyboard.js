@@ -30,7 +30,7 @@ const SURFACE = /^(glass|deck|phone|capsule):[A-Za-z0-9._-]{1,64}$/;
 export const isSurface = s => SURFACE.test(String(s || ""));
 
 /**
- * @typedef {{ surface: string, thread: string|null, since: number, beat: number }} Takeover
+ * @typedef {{ surface: string, thread: string|null, since: number, beat: number, leased?: number }} Takeover
  */
 
 export class Keyboard extends EventEmitter {
@@ -60,6 +60,27 @@ export class Keyboard extends EventEmitter {
     if (!t) return null;
     if (this.now() - t.beat >= TTL) { this.end(agent, "lease expired"); return null; }
     return t.surface;
+  }
+
+  /**
+   * A live sign from the holder's own stream (forwarded input, a pong) keeps its take-over alive
+   * (ADR 0005, decision 2: the relay renews, never a client timer). Without it a person typing
+   * steadily lost the keyboard 90 s after taking it. The thread's lease is renewed at most every
+   * 30 s. Synchronous from the caller's side: Glass calls it per message.
+   * @returns {boolean} whether this surface still holds the keyboard
+   */
+  renew(agent, surface) {
+    const t = this.takeovers.get(agent);
+    if (!t || t.surface !== surface || this.holder(agent) !== surface) return false;
+    const at = this.now();
+    t.beat = at;
+    if (t.thread && at - (t.leased || t.since) >= 30_000) {
+      t.leased = at;
+      Promise.resolve(this.call("threads.lease", { thread: t.thread, surface }))
+        .then(r => { if (r && r.error && r.error.code !== "no_such_tool") this.log(`could not renew ${agent}'s thread lease: ${r.error.message}`); })
+        .catch(() => {});
+    }
+    return true;
   }
 
   /** May this surface type into this computer? Synchronous, from memory: Glass asks per message. */

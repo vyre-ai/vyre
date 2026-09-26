@@ -16,6 +16,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8
 
 # tigervnc-standalone-server: Xvnc, the X server and VNC server in one process (ADR 0003).
+# tigervnc-tools: vncpasswd, which entrypoint.sh needs to write Xvnc's password file (bookworm
+#   moved it out of tigervnc-common; without it the container exits 127 on start).
 # fluxbox: a window manager light enough that it does not compete with the agent's work for CPU,
 #   and, importantly, one that actually manages windows (AT-SPI and Chrome both assume something
 #   is placing and focusing them; a bare Xvnc with no WM leaves every window unmapped at 0,0).
@@ -40,7 +42,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   every page renders tofu.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg \
-      tigervnc-standalone-server tigervnc-common \
+      tigervnc-standalone-server tigervnc-common tigervnc-tools \
       fluxbox xterm xdotool x11-utils \
       at-spi2-core dbus-x11 \
       python3 python3-gi gir1.2-atspi-2.0 \
@@ -60,6 +62,11 @@ RUN groupadd -g 1000 agent \
     && useradd -m -u 1000 -g 1000 -s /bin/bash -d /home/agent agent \
     && mkdir -p /home/agent/.vnc /home/agent/.fluxbox /opt/computerd \
     && chown -R agent:agent /home/agent /opt/computerd
+
+# Chromium's own password saving is off by policy: the Vault is the only store (ADR 0005, decision 3).
+RUN mkdir -p /etc/chromium/policies/managed \
+    && printf '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false}\n' \
+       > /etc/chromium/policies/managed/vyre.json
 
 COPY --chown=agent:agent computerd /opt/computerd
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

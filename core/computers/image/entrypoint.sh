@@ -27,7 +27,10 @@ log() { echo "[entrypoint] $*" >&2; }
 # ---- Xvnc: the X server and the VNC server in one process --------------------------------
 # TigerVNC wants the password obfuscated into its own file format, not passed raw on the command
 # line (which would also put it in `ps`). `-SecurityTypes VncAuth` matches what Glass's rfb.js
-# expects to negotiate (RFB security type 2) on the way in.
+# expects to negotiate (RFB security type 2) on the way in. The clipboard never leaves the
+# computer (-SendCutText=0 -SendPrimary=0): whatever the agent copies, a Vault value included,
+# would otherwise reach every watcher's browser (ADR 0005, decision 1). Nobody resizes the
+# agent's screen under it (-AcceptSetDesktopSize=0), and 24 frames a second is plenty.
 printf '%s' "${VNC_PASSWORD}" | vncpasswd -f > "${HOME}/.vnc/passwd"
 chmod 600 "${HOME}/.vnc/passwd"
 
@@ -39,7 +42,8 @@ Xvnc "${DISPLAY}" \
   -SecurityTypes VncAuth \
   -localhost=no \
   -AlwaysShared \
-  -SendCutText=1 -AcceptCutText=1 \
+  -SendCutText=0 -SendPrimary=0 -AcceptCutText=1 -MaxCutText=262144 \
+  -AcceptSetDesktopSize=0 -FrameRate=24 \
   &
 
 for _ in $(seq 1 50); do
@@ -70,6 +74,9 @@ sleep 1
 # and never relayed as a bare port. computerd (started below) is the only process that ever
 # dials it, over its own authenticated /cdp routes (docs/adr/0005-cdp-proxy.md).
 log "starting chromium"
+# The profile lives on the home volume; a container that was killed leaves Chromium's Singleton
+# locks behind, and the next Chromium then refuses to start with "profile in use".
+rm -f "${HOME}/.chromium/SingletonLock" "${HOME}/.chromium/SingletonSocket" "${HOME}/.chromium/SingletonCookie"
 chromium \
   --no-sandbox \
   --disable-gpu \
