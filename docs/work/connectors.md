@@ -45,12 +45,27 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 
 ## Doing
 
-- Nothing in flight.
+Connect Google as smoothly as the rest (lead, 2026-09-27). Plan:
+1. Backend (`core/google/connect.js` + tools in index.js): `google.connect {name, client}`
+   (people only) starts an installed-app OAuth flow with PKCE S256 and a state, on a one-shot
+   loopback listener at 127.0.0.1:0 that lives only while a flow is open (10 min cap), and
+   returns `{ id, url }`. `google.connect.finish {id, url}` takes the address the browser landed
+   on, for a Deck on another device. Finishing exchanges the code, reads the address from the
+   id_token, puts a new env-set item `google-<name>` (client_id, client_secret, refresh_token,
+   token_uri) as module:google with grants [google], adds the account, emits
+   `google.connected {id, name, email}` (never a value). Fake Google grows an authorization_code
+   grant.
+2. DWD helper: `google.test` on a service account returns its `client_id` (a public number) and
+   the exact scope line for the admin console.
+3. Deck: Google form becomes "Sign in with Google" (pick or name the OAuth client item, grant it
+   with presence, open the consent page, wait for `google.connected`, paste box as a fallback),
+   "Service account" (with the admin-console helper and copy buttons), and "Refresh token item".
+4. CLI `vyre connect add google --sign-in` prints the URL and waits (later, if time).
 
 ## Next
 
-- If the lead wants: make perf-check drop the first idle sample, or wait for CPU to settle
-  before sampling (perf-check is not mine; needs its owner).
+- Docs pages via the docs team (asked them which pages carry the connectors owner line).
+- The real-account run only after the user connects one himself.
 
 ## Needs from others
 
