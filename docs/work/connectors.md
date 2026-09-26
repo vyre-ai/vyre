@@ -50,9 +50,10 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 - `vyre connect add google <name> --sign-in [--client <vault item>]` in
   `core/cli/commands/connect.js`: follows `/v1/events/stream?type=google.*&since=latest` (opened
   before google.connect, so no event is missed), takes a pasted address on stdin for
-  google.connect.finish, cancels on Ctrl-C or stdin closing, one 10 minute timer and no polling.
-  The browser opens only with dialogsAllowed() and a TTY. Tests: `core/cli/commands/connect.test.js`
-  (8, five new: loopback, paste, missing client, refused flags, cancel on stdin close).
+  google.connect.finish, cancels on Ctrl-C (or end of input only when stdin is a TTY), one 10
+  minute timer and no polling. The browser opens only with dialogsAllowed() and a TTY. Tests:
+  `core/cli/commands/connect.test.js` (9, six new: loopback, paste, missing client, refused
+  flags, cancel on SIGINT, empty non-TTY stdin still finishing through the loopback).
 
 ## Doing
 

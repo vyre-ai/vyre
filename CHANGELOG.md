@@ -6,14 +6,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0016)
 
+- A held MCP call names its destination from `channel_id` and `chat_id` too, so a Slack post
+  held at the Gate shows the channel rather than the server's name.
 - CLI: `vyre connect add google <name> --sign-in [--client <vault item>]` signs in with Google
   from a terminal. The client defaults to `google-oauth-client`; without it, the command says so
   and prints the `vyre vault put` line for a Desktop app OAuth client. It grants the client to
   google with presence, runs google.connect and prints the consent address on its own line. It
   opens a browser only when dialogs are allowed and stdout is a terminal. It then waits for
   `google.connected` or `google.connect-failed` on the event stream, for a pasted address (sent
-  to google.connect.finish), for Ctrl-C or stdin closing (google.connect.cancel, "cancelled,
-  nothing stored") or for 10 minutes, and ends with the account's test. `--email`, `--item`
+  to google.connect.finish), for Ctrl-C (google.connect.cancel, "cancelled, nothing stored") or
+  for 10 minutes. End of input cancels only at a terminal; piped or empty stdin just stops the
+  paste reader and the loopback can still finish it, and ends with the account's test. `--email`, `--item`
   and `--dwd` are refused with `--sign-in`.
 - Deck, Settings, Connections: "Add a Google account" signs in with Google by default. Name the
   account, pick the OAuth client env set (the form shows the `vyre vault put` line for one), and

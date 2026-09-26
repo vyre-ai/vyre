@@ -107,8 +107,8 @@ Anything a server's tool does to the world outside is held, unless it is plainly
   A tool whose name has a send word can be `write` or `off`, never `read`.
 - An outward call becomes `gate.request { kind, via: "mcp:<server>", to, content: { tool,
   arguments } }`. `kind` is `delete` for delete-like names, `spend` for pay-like names, `send`
-  otherwise. `to` is the first of the argument's `to`, `channel`, `recipient`, `email`,
-  `address`, `url`, else the server name. The model gets `{ held: id, message }`.
+  otherwise. `to` is the first of the argument's `to`, `channel`, `channel_id`, `chat_id`,
+  `recipient`, `email`, `address`, `url`, else the server name. The model gets `{ held: id, message }`.
 - On approval the Gate calls `mcp.release` with exactly the approved content, as `module:gate`.
 
 The Gate change that makes this possible is small and generic: `gate.offer { name, tool, kinds,
@@ -192,7 +192,8 @@ draft). Deck: Settings, Connections (`deck/views/connections.js`).
 `vyre connect add google <name> --sign-in [--client <vault item>]` runs decision 6 from a
 terminal: it grants the client (default `google-oauth-client`) to google, prints the consent
 address, and waits on the event stream for the loopback, or for the landed address pasted on
-stdin. Ctrl-C or stdin closing cancels it; it gives up after 10 minutes.
+stdin. Ctrl-C cancels it, and so does end of input at a terminal (piped or empty stdin only
+stops the paste reader); it gives up after 10 minutes.
 
 ## Consequences
 

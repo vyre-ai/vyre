@@ -244,7 +244,7 @@ function follow(onEvent, onLost) {
 /**
  * `vyre connect add google <name> --sign-in`: grant the OAuth client to google, start the sign-in,
  * show the consent address, and wait for the browser to come back to the loopback, for a pasted
- * address, for Ctrl-C (or stdin closing), or for 10 minutes.
+ * address, for Ctrl-C (or end of input at a terminal), or for 10 minutes.
  * @param {string} name @param {string} client @param {string} [base]
  */
 async function signIn(name, client, base) {
@@ -279,12 +279,6 @@ async function signIn(name, client, base) {
   id = r.data.id;
   for (const e of early.splice(0)) seen(e);
 
-  out("");
-  out(r.data.url);
-  out("");
-  openBrowser(r.data.url);
-  out(dim(`  ${PASTE_HINT}`));
-
   const rl = readline.createInterface({ input: process.stdin, terminal: false });
   let finishing = false, said = "";
   rl.on("line", async line => {
@@ -300,15 +294,26 @@ async function signIn(name, client, base) {
     else if (!f.error) settle({ ok: true, email: String(f.data.email || "") });
   });
   const stop = () => settle({ ok: false, error: "cancelled, nothing stored", cancelled: true });
-  rl.on("close", stop);
+  // Ctrl-C cancels always. End of input cancels only at a terminal (Ctrl-D); piped or empty stdin
+  // (a script, < /dev/null) just ends the paste reader, and the loopback can still finish it.
+  const eof = () => { if (process.stdin.isTTY) stop(); };
+  rl.on("close", eof);
   process.on("SIGINT", stop);
   const timer = setTimeout(() => settle({ ok: false, error: "the sign-in expired after 10 minutes; nothing stored", cancelled: true }), SIGN_IN_WAIT_MS);
+
+  // Shown only once Ctrl-C and the paste reader are listening, so a person (or a script) acting
+  // on the address at once is heard.
+  out("");
+  out(r.data.url);
+  out("");
+  openBrowser(r.data.url);
+  out(dim(`  ${PASTE_HINT}`));
 
   const result = await ended;
   clearTimeout(timer);
   process.off("SIGINT", stop);
   rl.removeAllListeners("line");
-  rl.removeListener("close", stop);
+  rl.removeListener("close", eof);
   rl.close();
   process.stdin.destroy();
   stream.close();

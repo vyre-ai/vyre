@@ -264,7 +264,7 @@ test("connect: --sign-in refuses --email, --item and --dwd, and --client needs -
   assert.match(help.out, /vyre connect add google <name> --sign-in \[--client <vault item>\]/);
 });
 
-test("connect: closing stdin cancels an open sign-in and stores nothing", async t => {
+test("connect: Ctrl-C cancels an open sign-in and stores nothing", async t => {
   const g = await startFakeGoogle(t);
   const v = await vyred(t);
   await v.put("google-oauth-client", g.oauthClient(), "env-set");
@@ -272,7 +272,7 @@ test("connect: closing stdin cancels an open sign-in and stores nothing", async 
   const run = live(v.root, ["connect", "add", "google", "home", "--sign-in", "--base", g.base]);
   const url = (await run.line(/^https?:\/\//)).trim();
   await run.line(/Paste the address it lands on here/);
-  run.p.stdin.end();
+  run.p.kill("SIGINT");
   const r = await run.done;
   assert.equal(r.code, 1, r.all);
   assert.match(r.out, /cancelled, nothing stored/);
@@ -282,4 +282,22 @@ test("connect: closing stdin cancels an open sign-in and stores nothing", async 
   const late = await fetch(g.consent(url)).then(x => x.status, () => "closed");
   assert.notEqual(late, 200, "the cancelled sign-in no longer takes the browser's return");
   assert.equal((await v.cli("google.accounts")).data.length, 0);
+});
+
+test("connect: an empty stdin that is not a terminal does not cancel; the loopback still finishes the sign-in", async t => {
+  const g = await startFakeGoogle(t);
+  const v = await vyred(t);
+  await v.put("google-oauth-client", g.oauthClient(), "env-set");
+
+  const run = live(v.root, ["connect", "add", "google", "home", "--sign-in", "--base", g.base]);
+  run.p.stdin.end();
+  const url = (await run.line(/^https?:\/\//)).trim();
+  await run.line(/Paste the address it lands on here/);
+  const page = await fetch(g.consent(url));
+  assert.equal(page.status, 200);
+  const r = await run.done;
+  assert.equal(r.code, 0, r.all);
+  assert.doesNotMatch(r.out, /cancelled/);
+  assert.match(r.out, /added home alex@example\.com/);
+  assert.match(r.out, /ok home/);
 });
