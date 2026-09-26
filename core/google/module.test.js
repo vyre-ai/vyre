@@ -4,11 +4,13 @@
 //
 // What these prove: reads mint read-only tokens; a draft goes nowhere; a send and an invite with
 // attendees are held until the person approves, and then go out with exactly what was approved,
-// under the narrowest scope; nothing secret reaches a result, an event, a log line or the table.
+// under the narrowest scope; "Sign in with Google" ends in an account that works, and only a
+// person can start it; nothing secret reaches a result, an event, a log line or the table.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
@@ -58,6 +60,20 @@ function assertNoLeak(v, values) {
 }
 
 const readScopes = new Set([S + "calendar.readonly", S + "gmail.readonly"]);
+const ADMIN_SCOPES = [S + "calendar.readonly", S + "calendar.events", S + "gmail.readonly", S + "gmail.compose", S + "gmail.send"].join(",");
+
+/** TCP listeners in this process: the fakes' and, while a sign-in is open, the loopback's. */
+const tcp = () => process.getActiveResourcesInfo().filter(x => x === "TCPServerWrap").length;
+/** Wait until the count settles at `n` (a closed listener's handle goes on the next turn). */
+async function tcpIs(n) {
+  for (let i = 0; i < 100 && tcp() !== n; i++) await new Promise(r => setTimeout(r, 10));
+  return tcp();
+}
+const listening = port => new Promise(resolve => {
+  const s = net.connect(port, "127.0.0.1");
+  s.once("connect", () => { s.destroy(); resolve(true); });
+  s.once("error", () => resolve(false));
+});
 
 test("google: a DWD service account reads with read-only tokens, holds sends and invites, and leaks nothing", async t => {
   const fake = await startFakeGoogle(t);
@@ -78,6 +94,13 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
   const tested = await v.cli("google.test", { name: "work" });
   assert.equal(tested.data.ok, true, JSON.stringify(tested));
   assert.deepEqual(tested.data.scopes, { "calendar.readonly": true, "calendar.events": true, "gmail.readonly": true, "gmail.compose": true, "gmail.send": true });
+  // The domain-wide-delegation helper: the key's public client ID and the admin console's line,
+  // and nothing else from the key.
+  const saKey = JSON.parse(sa);
+  assert.deepEqual(Object.keys(tested.data).sort(), ["account", "admin_scopes", "client_id", "ok", "scopes"]);
+  assert.equal(tested.data.client_id, saKey.client_id);
+  assert.equal(tested.data.admin_scopes, ADMIN_SCOPES);
+  for (const k of ["client_email", "project_id", "private_key_id"]) assert.ok(!JSON.stringify(tested).includes(saKey[k]), `google.test returned the key's ${k}`);
   fake.calls.length = 0;
 
   // Reads.
@@ -265,7 +288,9 @@ test("google: OAuth refreshes, retries once on an expired token, and reads merge
   assert.deepEqual(rows.map(r => r.id).sort(), ["google:home:mail:mharlow1", "google:work:mail:mharlow1"]);
   assert.ok(rows.every(r => /home|work/.test(r.sub)));
 
-  assert.equal((await v.cli("google.test", { name: "home" })).data.ok, true);
+  const homeTest = (await v.cli("google.test", { name: "home" })).data;
+  assert.equal(homeTest.ok, true);
+  assert.ok(!("client_id" in homeTest) && !("admin_scopes" in homeTest), "an OAuth account gets no delegation helper");
   assert.equal(home.mail.sent.length, 0, "google.test sends nothing");
   assert.equal(home.mail.drafts.length, 1, "google.test drafts nothing");
 
@@ -282,6 +307,8 @@ test("google: google.test names the scopes domain-wide delegation refuses", asyn
   assert.deepEqual(r.scopes, { "calendar.readonly": true, "calendar.events": true, "gmail.readonly": true, "gmail.compose": true, "gmail.send": false });
   assert.match(r.error, /gmail\.send/);
   assert.match(r.error, /admin console/);
+  assert.match(r.client_id, /^\d+$/);
+  assert.equal(r.admin_scopes, ADMIN_SCOPES);
 
   // A held send that the admin console will refuse fails at release, stays held, and says why.
   const id = (await v.model("google.mail.send", { to: "dana@harlowlegal.com", subject: "s", body: "b" })).data.held;
@@ -295,4 +322,86 @@ test("google: with no account, reads say how to add one and the Capsule shows no
   const v = await vyred(t);
   assert.equal((await v.model("google.calendar.next", {})).error.code, "no_account");
   assert.deepEqual((await v.local("google.find", { q: "what's next" })).data, { rows: [] });
+});
+
+test("google: Sign in with Google over the loopback adds an account that works, and only a person can start it", async t => {
+  const fake = await startFakeGoogle(t);
+  const v = await vyred(t);
+  const client = fake.oauthClient();
+  await item(v, "google-client", "env-set", client);
+  const idle = tcp();
+
+  // A model cannot start, finish or cancel a sign-in.
+  for (const [tool, input] of [["google.connect", { name: "home", client: "google-client" }], ["google.connect.finish", { id: "gc_x", url: "http://127.0.0.1/" }], ["google.connect.cancel", { id: "gc_x" }]]) {
+    assert.equal((await v.model(tool, input)).error.code, "denied", tool);
+    assert.equal((await v.mcp(tool, input)).error.code, "denied", tool);
+  }
+  assert.equal(tcp(), idle, "nothing listens before a sign-in");
+  assert.match((await v.cli("google.connect", { name: "home", client: "google-client", base: "https://example.org" })).error.message, /loopback/);
+
+  const started = (await v.cli("google.connect", { name: "home", client: "google-client", base: fake.base })).data;
+  assert.ok(started?.id && started.url && started.redirect, JSON.stringify(started));
+  assert.equal(tcp(), idle + 1, "one listener while the sign-in is open");
+  const port = Number(new URL(started.redirect).port);
+
+  const back = fake.consent(started.url);
+  const page = await fetch(back);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /go back to Vyre/);
+  assert.equal(await tcpIs(idle), idle, "the listener closes when the sign-in ends");
+  assert.equal(await listening(port), false);
+
+  const accts = (await v.mcp("google.accounts")).data;
+  assert.deepEqual(accts.map(a => [a.name, a.email, a.auth]), [["home", ME, { type: "oauth", item: "google-home" }]]);
+  const vitem = (await v.cli("vault.list", { filter: "google-home" })).data.items.find(x => x.name === "google-home");
+  assert.equal(vitem.origin, "module:google");
+  assert.equal(vitem.kind, "env-set");
+  assert.deepEqual(vitem.fields.sort(), ["client_id", "client_secret", "refresh_token", "token_uri"]);
+  assert.deepEqual(vitem.grants, [{ module: "google" }]);
+
+  const tested = (await v.cli("google.test", { name: "home" })).data;
+  assert.equal(tested.ok, true, JSON.stringify(tested));
+  assert.ok(!("client_id" in tested));
+  assert.deepEqual((await v.model("google.calendar.next", {})).data.events.map(e => e.id), ["evharlow1", "evnorthwind1"]);
+
+  const events = v.d.registry.deps.events.since(0, { limit: 5000 }).filter(e => e.type.startsWith("google."));
+  assert.deepEqual(events.map(e => e.type), ["google.added", "google.connected"]);
+  assert.deepEqual(events[1].payload ?? events[1].data, { id: started.id, name: "home", email: ME });
+
+  // The name is taken now.
+  assert.match((await v.cli("google.connect", { name: "home", client: "google-client" })).error.message, /already connected/);
+  assert.equal(tcp(), idle);
+  assertNoLeak(v, [client.client_secret, ...fake.issued.keys(), ...fake.tokens.keys(), new URL(back).searchParams.get("code") || ""]);
+});
+
+test("google: a sign-in finished by the pasted address works once, and a cancelled one closes the listener", async t => {
+  const fake = await startFakeGoogle(t);
+  const v = await vyred(t);
+  const client = fake.oauthClient();
+  await item(v, "google-client", "env-set", client);
+  const idle = tcp();
+
+  const s = (await v.cli("google.connect", { name: "phone", client: "google-client", base: fake.base })).data;
+  const back = fake.consent(s.url, { email: "kit@northwindbakery.com" });
+  const done = await v.cli("google.connect.finish", { id: s.id, url: back });
+  assert.deepEqual(done.data, { name: "phone", email: "kit@northwindbakery.com", item: "google-phone" });
+  assert.match((await v.cli("google.connect.finish", { id: s.id, url: back })).error.message, /already used/);
+  assert.equal(await tcpIs(idle), idle);
+  assert.equal((await v.cli("google.test", { name: "phone" })).data.ok, true);
+
+  const c = (await v.cli("google.connect", { name: "other", client: "google-client", base: fake.base })).data;
+  assert.equal(tcp(), idle + 1);
+  assert.deepEqual((await v.local("google.connect.cancel", { id: c.id })).data, { cancelled: true });
+  assert.equal(await tcpIs(idle), idle, "the listener closes after cancel");
+  assert.equal(await listening(Number(new URL(c.redirect).port)), false);
+  assert.equal((await v.cli("google.accounts")).data.length, 1);
+
+  // A missing refresh token fails in plain words, with nothing saved.
+  const n = (await v.cli("google.connect", { name: "again", client: "google-client", base: fake.base })).data;
+  const noRefresh = await v.cli("google.connect.finish", { id: n.id, url: fake.consent(n.url, { refresh: false }) });
+  assert.match(noRefresh.error.message, /myaccount\.google\.com\/permissions/);
+  assert.ok(!(await v.cli("vault.list", { filter: "google-again" })).data.items.some(x => x.name === "google-again"));
+  const types = v.d.registry.deps.events.since(0, { limit: 5000 }).filter(e => e.type.startsWith("google.")).map(e => e.type);
+  assert.deepEqual(types, ["google.added", "google.connected", "google.connect-failed", "google.connect-failed"]);
+  assertNoLeak(v, [client.client_secret, ...fake.issued.keys(), ...fake.tokens.keys(), new URL(back).searchParams.get("code") || ""]);
 });

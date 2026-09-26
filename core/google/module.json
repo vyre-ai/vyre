@@ -12,7 +12,7 @@
       "google.find", "google.open", "google.release"
     ]
   },
-  "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent", "google.connected", "google.connect.failed"] },
+  "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent", "google.connected", "google.connect-failed"] },
   "shows": {
     "deck": ["settings:connections"],
     "capsule": {

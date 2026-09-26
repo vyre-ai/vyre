@@ -31,6 +31,11 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
   `vyre connect list|add|remove|test` in `core/cli/commands/connect.js`, with `--var VAR=value`
   added for plain stdio settings (the hub's `vars`). Test: `core/cli/commands/connect.test.js` (3).
 
+- Connect Google, steps 1 and 2 (backend): `core/google/connect.js` with `google.connect`,
+  `google.connect.finish`, `google.connect.cancel`; the DWD helper on `google.test`
+  (`client_id`, `admin_scopes`); fake Google's authorization_code grant and `consent(url)`.
+  Tests: `core/google/connect.test.js` (6), `core/google/module.test.js` (6, real vyred). The
+  failure event is `google.connect-failed`: the event bus refuses a name with two dots.
 - Read is disabled in Connections for a tool that sends (`mcp.test` marks it `sends`); the
   refusal says "set <tool> to write or off" (lead's decision: no migration, nothing shipped).
 - Screenshots: headless Chromium on the test box, shared with pwa, at `CHROME=/usr/local/bin/vyre-chrome`
@@ -46,7 +51,7 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 ## Doing
 
 Connect Google as smoothly as the rest (lead, 2026-09-27). Plan:
-1. Backend (`core/google/connect.js` + tools in index.js): `google.connect {name, client}`
+1. (done) Backend (`core/google/connect.js` + tools in index.js): `google.connect {name, client}`
    (people only) starts an installed-app OAuth flow with PKCE S256 and a state, on a one-shot
    loopback listener at 127.0.0.1:0 that lives only while a flow is open (10 min cap), and
    returns `{ id, url }`. `google.connect.finish {id, url}` takes the address the browser landed
@@ -55,7 +60,7 @@ Connect Google as smoothly as the rest (lead, 2026-09-27). Plan:
    token_uri) as module:google with grants [google], adds the account, emits
    `google.connected {id, name, email}` (never a value). Fake Google grows an authorization_code
    grant.
-2. DWD helper: `google.test` on a service account returns its `client_id` (a public number) and
+2. (done) DWD helper: `google.test` on a service account returns its `client_id` (a public number) and
    the exact scope line for the admin console.
 3. Deck: Google form becomes "Sign in with Google" (pick or name the OAuth client item, grant it
    with presence, open the consent page, wait for `google.connected`, paste box as a fallback),

@@ -6,6 +6,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0016)
 
+- "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
+  env-set holding an OAuth client's `client_id` and `client_secret` (granted to google) and
+  returns `{ id, url, redirect }`: the consent page, with PKCE S256, a random state, offline
+  access and the module's five scopes plus `openid email`. Google sends the browser back to a
+  loopback listener on 127.0.0.1 port 0 that exists only while a sign-in is open (10 minutes
+  each, one timer per sign-in). The refresh token goes into a new env-set `google-<name>` the
+  module makes and grants to itself, the account is added as google.add would, and
+  `google.connected {id, name, email}` is emitted (`google.connect-failed {id, error}` when it
+  does not work). `google.connect.finish {id, url}` takes the pasted address for a browser on
+  another device; `google.connect.cancel {id}` ends one. People only; a model never can. Every
+  error is scrubbed of the secret, the code, the verifier and every token.
+- `google.test` on a service account also returns `client_id` (the key's public number) and
+  `admin_scopes`, the exact comma-separated line for the Workspace admin console's domain-wide
+  delegation page. Nothing else from the key leaves.
+- The fake Google has an authorization_code grant that checks PKCE and the redirect, and
+  `consent(url)` to play the person on the consent page.
 - The MCP hub is never a route around the floor. A hub tool with a send word (`send`, `post`,
   `reply`, `forward`, `publish`, `share`, `invite`, `tweet`, `dm`, `comment`) is always held at
   the Gate, even when a person set its mode to `read` or the server marks it read-only, and

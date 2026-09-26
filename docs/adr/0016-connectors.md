@@ -161,6 +161,25 @@ Scopes are the narrowest per call: `calendar.readonly` and `gmail.readonly` for 
 must be allowed those scopes in the Workspace admin console; `google.test` names any that are
 refused.
 
+Sign-in. `google.connect {name, client}` (people only) runs Google's installed-app flow: the
+person keeps an OAuth client (`client_id`, `client_secret`, optionally `auth_uri` and
+`token_uri`, both https) as a vault env-set granted to google, and Vyre returns the consent
+address, with PKCE S256 and a random state, redirecting to a loopback listener on 127.0.0.1 port
+0. The listener exists only while a sign-in is open; each sign-in expires after 10 minutes on its
+own timer, and its state works once, compared in constant time. A browser on another device
+cannot reach that loopback, so `google.connect.finish {id, url}` takes the address it landed on,
+pasted. Finishing exchanges the code, reads the address from the id_token, and puts the refresh
+token in a new env-set `google-<name>` that the module makes and grants to itself (vault.put lets
+a module do that, for items it made); then the account is added as `google.add` does, with
+`google.connected {id, name, email}`, or `google.connect-failed {id, error}`. No value reaches a
+result, an event or a log. With no refresh token (a client allowed before), the error says to
+remove Vyre's access at myaccount.google.com/permissions and sign in again.
+
+Domain-wide delegation helper. For a service account, `google.test` also returns the key's
+`client_id`, a public number, and `admin_scopes`, the five scope URLs comma-separated, which are
+exactly what the Workspace admin console asks for under Security, API controls, Domain-wide
+delegation. No other field of the key is returned.
+
 Capsule: `shows.capsule` lists `results:google.find` and actions on its rows (open, reply as a
 draft). Deck: Settings, Connections (`deck/views/connections.js`).
 
@@ -178,8 +197,8 @@ draft). Deck: Settings, Connections (`deck/views/connections.js`).
 - A server's tool that the hub cannot classify is held. That is the safe mistake; the person can
   mark it `read` once.
 - The Gate learns one generic sender kind instead of one type per integration.
-- OAuth consent flows (getting the first refresh token) are not in this decision: the person
-  puts the env-set in the vault. A consent flow is a later addendum.
+- The first refresh token comes from "Sign in with Google" (decision 6); the person still
+  brings their own OAuth client, since Vyre ships no client secret.
 
 ## Rejected
 
