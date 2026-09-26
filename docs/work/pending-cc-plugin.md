@@ -39,4 +39,7 @@ Only you can edit, complete or delete them, or set an alarm that rings.
 ## Also
 
 - using/cli.md and using/learning.md: `/vyre remember` becomes `/vyre lesson` wherever they mention it.
-- A planner page (todos, reminders, agenda) may be needed once the planner module merges: ask the lead.
+- The planner's own user page (todos, reminders, agenda, alarms) belongs to the planner team (or
+  docs writes it from their contract). When it exists, link it from the /vyre todo, remind and
+  agenda rows. It must state the agent rule: agents add items labelled with the agent, at most 20
+  an hour each; only a person edits, completes, deletes or sets a ringing alarm.
