@@ -173,6 +173,11 @@ each item encrypted to the holder's box key.
   them as ordinary sealed items. Revoking a sealed pass cannot un-send it, so it marks each item
   **rotate**, and `vault.list` shows the mark until the item is `put` again.
 
+Behind `tailscale serve`, a pass can also be bound to the holder's Tailscale login: their card
+carries it (`vault.login`), and with `vault.relay.identity: "tailscale"` the listener refuses a
+request without serve's `Tailscale-User-Login` header or with another login. The header is
+trusted only because the listener is then reachable through serve alone.
+
 The relay listener is a separate HTTP server owned by the vault module, bound to
 `vault.relay.host`/`port` in config (the tailnet address in production, set up by the box
 workstream). It serves one route, `POST /v1/relay`, and nothing else. When the Gate lands (M9),
@@ -203,7 +208,7 @@ command's first word.
   Safari CSV, recognised by their headers. vyred reads the file itself, so values never pass
   through Claude. The file is never modified; the result tells the user to delete it. 1Password
   `.1pux` (a zip) is next.
-- Autofill, designed now and built after the core: `vault.match {url}` returns names and hosts of
+- Autofill is built as designed in the addendum, `docs/adr/0001-autofill.md`. The first sketch: `vault.match {url}` returns names and hosts of
   logins for a page (no values), and `vault.fill {name}` returns a login's username and password
   only to an unlocked surface session (Touch ID through the Capsule helper, or a passphrase on the
   Deck). Agents never get `vault.fill`.

@@ -62,12 +62,30 @@ function security(argv, stdin) {
 
 const NOT_FOUND = 44;
 
+/**
+ * `security` again, a few times, when it fails for a reason other than "not found". The
+ * keychain daemon answers "busy" or times out under load (many processes at once, a machine
+ * just woken), and a vault that cannot read its key for one second should not fail a release.
+ * Every command here is safe to repeat: read, add with -U, delete. `security -i` exits 0 when a
+ * command inside it fails and reports the failure on stderr, so with stdin that counts too.
+ * @param {string[]} argv @param {string} [stdin]
+ */
+async function securityRetry(argv, stdin) {
+  const failed = r => r.code !== 0 ? r.code !== NOT_FOUND : stdin !== undefined && r.err.trim() !== "";
+  let r = await security(argv, stdin);
+  for (let i = 0; i < 3 && failed(r); i++) {
+    await new Promise(res => setTimeout(res, 100 * 2 ** i));
+    r = await security(argv, stdin);
+  }
+  return r;
+}
+
 /** @param {string} dir @param {string} [keychain] */
 function keychainStore(dir, keychain) {
   const account = accountFor(dir);
   const tail = keychain ? [keychain] : [];
   const read = async () => {
-    const r = await security(["find-generic-password", "-s", SERVICE, "-a", account, "-w", ...tail]);
+    const r = await securityRetry(["find-generic-password", "-s", SERVICE, "-a", account, "-w", ...tail]);
     if (r.code === NOT_FOUND) return null;
     if (r.code !== 0) throw new Error(`could not read the vault key from the keychain: ${r.err.trim() || "exit " + r.code}`);
     const hex = r.out.trim();
@@ -80,7 +98,7 @@ function keychainStore(dir, keychain) {
     put: async mk => {
       const { argv, stdin } = keychainWriteCommand({ account, hex: mk.toString("hex"), keychain });
       const hex = mk.toString("hex");
-      const r = await security(argv, stdin);
+      const r = await securityRetry(argv, stdin);
       // `security -i` exits 0 even when a command fails; the failure shows on stderr, which may
       // repeat the command it was given, key and all, so the key is cut out before it is shown.
       const err = r.err.split(hex).join("<key>").trim();
@@ -88,7 +106,7 @@ function keychainStore(dir, keychain) {
     },
     read,
     remove: async () => {
-      const r = await security(["delete-generic-password", "-s", SERVICE, "-a", account, ...tail]);
+      const r = await securityRetry(["delete-generic-password", "-s", SERVICE, "-a", account, ...tail]);
       if (r.code !== 0 && r.code !== NOT_FOUND) throw new Error(`could not remove the vault key from the keychain: ${r.err.trim()}`);
     },
   };

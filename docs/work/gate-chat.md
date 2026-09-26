@@ -35,6 +35,7 @@ Tools:
 | `gate.senders` | all | `{}` | `[{name, type, kinds, content}]`: the `via` values that exist and the content each takes. Never a credential. |
 | `gate.held` | all | `{thread?, project?}` | held items, oldest first: `{id, kind, via, to, summary, why, agent, thread, project, at}` |
 | `gate.get` | cli, local, module | `{id}` | the item plus `draft`, `final`, `diff: {removed: [], added: []}`, `state`, `result`, `error` |
+| `gate.revise` | same as approve | `{id, edited: object, by?}` | the item as `gate.get` gives it, still held, with `final` the revision |
 | `gate.approve` | cli, local, and modules in `gate.approvers` (default `["chat"]`) | `{id, edited?: object, by?}` | `{id, state: "sent"\|"failed", result?, error?}` |
 | `gate.reject` | same as approve | `{id, reason?, by?}` | `{id, state: "rejected"}` |
 | `gate.route` | internal | `{tool, input, agent?, session?}` | `{decision, reason}` or `{decision: null}`: harness.rules asks this for a sending MCP tool |
@@ -48,6 +49,7 @@ Events (payloads never carry the content or a credential):
 - `gate.held` `{id, kind, via, to, summary, agent, thread, project}`
 - `gate.released` `{id, kind, via, to, edited, by, agent, thread, project}`, after a successful send
 - `gate.failed` `{id, via, error}`, when the send was approved and the sender failed; the item can be approved again
+- `gate.revised` `{id, via, to, by, agent, thread, project}`, when the person changed a held item without sending it
 - `gate.rejected` `{id, kind, via, by, reason}`
 
 Senders are configured in `config.json`, never by a model:
@@ -75,13 +77,20 @@ Mattermost as a surface. One channel per project (`<project-slug>`), one thread 
 
 - Out: `thread.started` makes the root; `thread.text` (done) and `thread.sent` from other
   surfaces become replies; `ask.raised` becomes a reply with Allow and Deny buttons;
-  `gate.held` becomes a post with Send, Edit and Discard; the answered or released post is
+  `gate.held` becomes a post with Send, Discard, Edit and (with `chat.deck` set) an "Edit in Deck"
+  link, and `gate.revised` patches it to the new words; the answered or released post is
   updated in place, with the buttons removed.
-- In: the owner's reply in a thread goes to `threads.send {surface: "chat"}`; a root post in a
+- In: the owner's reply in a thread goes to `threads.send {surface: "chat:<owner>"}`; a root post in a
   project channel starts a thread there; buttons go to `threads.answer`, `gate.approve` and
-  `gate.reject`. Edit opens a Mattermost interactive dialog (native on the phone apps too) with
-  the draft filled in; submitting it is `gate.approve {id, edited}`.
-- Slash command `/vyre`: `held`, `send <id>`, `discard <id>`, `new <prompt>`.
+  `gate.reject`. The post always shows what Send sends. Mattermost cannot edit inside a post, so
+  Edit opens an interactive dialog (`POST /api/v4/actions/dialogs/open` with the press's
+  `trigger_id`) filled from `gate.get` with the current final content: To, Cc, Subject and Body
+  for an email, URL and Body for an http request. Its submission (to `/chat/dialog`, the hook
+  secret in `state`, owner only) calls `gate.revise {id, edited: <every field shown>, by: "chat"}`,
+  never `gate.approve`: the item stays held, `gate.revised` patches the post, and the person then
+  presses Send. An emptied field clears it. `/vyre body <id> <text>` and `/vyre subject <id> <text>`
+  also call `gate.revise`, and the Deck edits every field inline.
+- Slash command `/vyre`: `held`, `send <id>`, `discard <id>`, `body <id> <text>`, `subject <id> <text>`, `new <prompt>`.
 - Only the configured owner's Mattermost user is obeyed. The bot token is a vault item.
 
 ## Done
@@ -90,7 +99,9 @@ Mattermost as a surface. One channel per project (`<project-slug>`), one thread 
 - `ed5c580` harness.rules routes an agent's send to the Gate; ask-first stays as the fallback.
 - `6f29a57` Mattermost compose fragment and SETUP.md (not run: no Docker here).
 - `9832842` Chat bridge: channels, threads, asks, held posts, edit dialog, /vyre, fake Mattermost.
+- `8ce3a50` `4c4e58a` `f900857` No Edit button: `gate.revise`, held posts patched to the words Send sends, `/vyre body|subject`, Edit in Deck, lease surface `chat:<owner>`.
 - `3b64c03` End-to-end Done-when in one vyred with fake Mattermost and fake Gmail. Suite: 316 pass, 0 fail.
+- (uncommitted) The Edit button is back as a Mattermost dialog prefilled with the current words; saving calls `gate.revise`, and Send sends. Suite: 420 pass, 0 fail, 1 skipped.
 
 ## Doing
 - Waiting on the lead's go-ahead for a real run on the box, and on box's compose layout.
@@ -109,7 +120,12 @@ Mattermost as a surface. One channel per project (`<project-slug>`), one thread 
 - learning: whether `gate.released {edited: true}` plus `gate.get` is enough for the edit signal (asked).
 
 ## Changed contracts
-- Chat buttons and dialogs carry `{kind, id, action, s}`, where `s` is a secret generated once per install; `gate.approve` and `gate.reject` accept `by`.
+- `gate.revise` and the `gate.revised` event are new; `gate.approve {edited}` takes the whole content, and "" clears a field.
+- Chat's lease surface is `chat:<owner>`.
+- The Edit button and `/chat/dialog` are back (the lead's call: Mattermost cannot edit inline, so
+  a prefilled dialog is its fallback). The dialog's submission calls `gate.revise`, not
+  `gate.approve`, as it did before `4c4e58a`; `state` carries `{kind, id, fields, s}`.
+- Chat buttons carry `{kind, id, action, s}`, where `s` is a secret generated once per install; `gate.approve` and `gate.reject` accept `by`.
 - `core/harness/index.js`: harness.rules calls `gate.route` for a floor rule 1 send when `agent` is set.
 - `package.json`: the test glob includes `modules/**/*.test.js`.
 - `core/modules/index.js`: `ctx.vault.fetch` accepts any `per-<thing>` declaration, not only
