@@ -6,6 +6,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0015)
 
+- `vyre mcp` runs the Vyre MCP server on stdio, so a plain `claude` outside a Vyre thread gets
+  the same tools with one line. `vyre mcp install` prints that line
+  (`claude mcp add -s user vyre -- vyre mcp`) and runs it only with `--yes`: Vyre never edits a
+  Claude config itself. The server is imported rather than spawned, so it still finds its session
+  by its parent's pid, and nothing but JSON-RPC reaches stdout.
+- `vyre connect list|add|remove|test` manages MCP servers and Google accounts in one place. A
+  connection names vault items (`--item`, `--env VAR=item`) and never takes a value on the
+  command line. After an add it asks the vault to grant each item to the module, as the person at
+  the terminal, then tests and prints the server's tool count or the Google scopes Workspace
+  refused. `--var` passes a plain setting to a stdio server; the hub still refuses one that looks
+  like a credential.
 - The Vyre MCP server (`harness/mcp/server.js`) now offers every hub tool beside the module
   tools, as `<server>__<tool>`, so a session sees its connected servers through the one `vyre`
   entry and no server needs its own line in a Claude config. Listing reads the hub's cache and
