@@ -166,14 +166,15 @@ const FIRST_WEEKLY = SESSIONS.find(s => s.name === "Weekly planning")?.id || "";
 export const EVAL_SESSIONS = [...SESSIONS, ...HARLOW, ...NORTHWIND, ...KEEL, ...UNFILED, WEEKLY];
 
 /**
- * Projects, in the shape projects.list returns them, with the threads picked into each. Both
+ * Projects, in the shape projects.list returns them: threads and picked are counts, picks the
+ * ids of the threads picked into each (only picks are read; threads here counts the picks). Both
  * planning threads are picked into Harlow and Northwind: a room must not learn another client
  * from them (decision 1, the anchor rule).
  */
 export const PROJECTS = [
-  { slug: "harlow", name: "Harlow Legal", org: "Harlow Legal", home: `${HOME}/Work/harlow-site`, workspaces: [`${HOME}/Work/harlow-intake`], threads: [FIRST_WEEKLY, WEEKLY.id] },
-  { slug: "northwind", name: "Northwind Bakery", org: "Northwind Bakery", home: `${HOME}/Work/northwind`, workspaces: [], threads: [FIRST_WEEKLY, WEEKLY.id] },
-  { slug: "keel-ash", name: "Keel & Ash Architects", org: "Keel & Ash Architects", home: `${HOME}/Work/keel-ash`, workspaces: [], threads: [] },
+  { slug: "harlow", name: "Harlow Legal", org: "Harlow Legal", home: `${HOME}/Work/harlow-site`, workspaces: [`${HOME}/Work/harlow-intake`], threads: 2, picked: 2, picks: [FIRST_WEEKLY, WEEKLY.id] },
+  { slug: "northwind", name: "Northwind Bakery", org: "Northwind Bakery", home: `${HOME}/Work/northwind`, workspaces: [], threads: 2, picked: 2, picks: [FIRST_WEEKLY, WEEKLY.id] },
+  { slug: "keel-ash", name: "Keel & Ash Architects", org: "Keel & Ash Architects", home: `${HOME}/Work/keel-ash`, workspaces: [], threads: 0, picked: 0, picks: [] },
 ];
 
 /** A project's folders: its home and workspaces. */

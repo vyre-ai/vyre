@@ -22,7 +22,7 @@ export default {
     try { P.refresh(); } catch (e) { ctx.log("could not read project markers: " + /** @type {Error} */ (e).message); }
 
     ctx.tool("projects.list", {
-      description: "Every project: name, home, folders, people and how many threads are in it (picked or by folder), newest activity first.",
+      description: "Every project: name, home, folders, people, how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
       input: { type: "object", properties: {} },
       run: async () => P.list(),
     });

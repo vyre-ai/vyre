@@ -156,6 +156,23 @@ test("projects: picks are added once, removed only by hand, and folder membershi
   assert.ok(!w.P.threadsOf(w.P.resolve(p.slug)).some(x => x.id === ID.hub));
 });
 
+test("projects: list carries each project's picked thread ids, subagents folded, counts unchanged", async t => {
+  const w = world(t);
+  const harlow = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site"), threads: [ID.intake, ID.hub, ID.agent] });
+  w.P.create({ name: "Northwind", home: path.join(w.work, "northwind"), threads: [ID.hub] });
+  w.P.create({ name: "Keel", home: path.join(w.work, "keel") });
+  // A hand-edited marker that names a subagent still lists its parent, once.
+  M.write(harlow.home, { threads: [ID.intake, ID.hub, ID.site, ID.agent] });
+  const rows = new Map(w.P.list().projects.map(p => [p.slug, p]));
+  assert.deepEqual(rows.get("harlow-legal").picks, [ID.intake, ID.hub, ID.site]);
+  assert.deepEqual(rows.get("northwind").picks, [ID.hub]);
+  assert.deepEqual(rows.get("keel").picks, []);
+  // threads and picked are still counts, as the CLI and the Deck read them.
+  assert.equal(typeof rows.get("harlow-legal").threads, "number");
+  assert.equal(rows.get("harlow-legal").picked, 3);
+  assert.equal(rows.get("harlow-legal").threads, 3);
+});
+
 test("projects: a marker edited by hand is followed; a folder added to it brings its sessions", async t => {
   const w = world(t);
   const p = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });

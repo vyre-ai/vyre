@@ -28,6 +28,13 @@ test("memory eval: nothing leaks with the optional relations switched on either"
   assert.equal(r.optional?.leakage, 0, "facts crossed rooms with config.memory.relations on:\n" + (r.optional?.failures.leaks || []).map(x => `  ${x.room}  ${x.id}  (${x.via})`).join("\n"));
 });
 
+test("memory eval: the threads picked into a project are members of its room", async () => {
+  const r = await report;
+  const rooms = Object.entries(r.rooms).filter(([room, v]) => room.startsWith("project:") && v && typeof v === "object" && v.picked !== null);
+  assert.ok(rooms.length, "no project in the world has picked threads to check");
+  for (const [room, v] of rooms) assert.equal(v.picked, true, `${room}: its picked threads are not in its room`);
+});
+
 test("memory eval: no metric is more than 0.02 below the baseline", async () => {
   const r = await report;
   const worse = regressions(r.metrics, baseline);

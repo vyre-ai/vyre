@@ -64,13 +64,15 @@ export default {
     soon();
 
     // Projects, as the projects module knows them, for rooms and for an agent's grants. Memory
-    // does not own projects; without the module there are simply no rooms. Picked threads are
-    // read when the list carries their ids (threads or picked as a list); counts are ignored.
+    // does not own projects; without the module there are simply no rooms. A project's picked
+    // threads are its members too: projects.list gives their ids as picks (subagents already
+    // folded to the parent); threads and picked there are counts. A list of ids under threads
+    // is read as well, for callers that pass the room shape directly.
     const projectList = async () => {
       const r = await ctx.call("projects.list", {});
       if (r.error && r.error.code !== "no_such_tool") throw new Error(r.error.message);
       const list = r.error ? [] : (Array.isArray(r.data) ? r.data : r.data?.projects || []);
-      const ids = p => (Array.isArray(p.threads) ? p.threads : Array.isArray(p.picked) ? p.picked : []).map(x => String(x && typeof x === "object" ? x.id : x));
+      const ids = p => (Array.isArray(p.picks) ? p.picks : Array.isArray(p.threads) ? p.threads : []).map(x => String(x && typeof x === "object" ? x.id : x));
       return list.filter(p => p && p.slug).map(p => ({ slug: String(p.slug), name: String(p.name || p.slug),
         folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))], threads: ids(p) }));
     };

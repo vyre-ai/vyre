@@ -290,8 +290,8 @@ CLI: `vyre memory [about] [--project <slug>]`, `vyre memory correct|pin|mute|mer
   - `deck`: the presence flow in `api.js`, the `learn` module name, turn links with `?seq=`, and
     lessons in Now's needs.
   - `capsule`: the lesson Waiting source and signed accept.
-  - `projects`: picked thread ids in `projects.list`, and teaching `project.client` and
-    `project.repo`.
+  - `projects`: picked thread ids in `projects.list` (done: `picks`), and teaching
+    `project.client` and `project.repo`.
 - Rejected: a model on the hot path; silent decay of lessons; letting Claude call accept after a
   yes in chat (ADR 0004 closes it, and accept by reply keeps the experience); installing learned
   skills into `~/.claude`.

@@ -117,7 +117,7 @@ async function startMemory(db, { me, projects, relations }) {
 
 /**
  * What to pass for a room. Projects are asked by slug and by folders (the picked threads come
- * from projects.list when Memory reads them); unfiled only by name, which the code may not take.
+ * from projects.list's picks); unfiled only by name, which the code may not take.
  */
 function roomInput(room, projects) {
   if (room === "*") return {};
@@ -139,8 +139,7 @@ async function roomFacts(call, room, input) {
     if (!ok) return { supported: false, reason: "memory.graph has no unfiled room" };
   }
   const facts = (g.edges || []).filter(e => e.rel !== "mentioned_in").map(e => ({ id: String(e.id), rel: String(e.rel), open: e.until === null || e.until === undefined }));
-  const sessions = new Set((g.edges || []).filter(e => e.rel === "mentioned_in").map(e => String(e.dst).slice(8)));
-  return { supported: true, facts, sessions, truncated: Boolean(g.truncated) };
+  return { supported: true, facts, truncated: Boolean(g.truncated) };
 }
 
 // ------------------------------------------------------------------ the world run
@@ -249,7 +248,7 @@ async function runWorld({ gold, sessions = EVAL_SESSIONS, projects = PROJECTS, m
     }
     const byRoom = {};
     for (const [room, v] of views) {
-      byRoom[room] = v.supported ? { ...sum(r => r === room), picked: pickedIn(room, v, projects), truncated: v.truncated } : "unsupported";
+      byRoom[room] = v.supported ? { ...sum(r => r === room), picked: pickedIn(db, room, projects), truncated: v.truncated } : "unsupported";
     }
     const byGroup = {};
     for (const [g, rels] of Object.entries(GROUPS)) {
@@ -345,7 +344,6 @@ async function runWorld({ gold, sessions = EVAL_SESSIONS, projects = PROJECTS, m
       unsupported: {
         relations: [...new Set(gold.facts.map(f => relOf(f.id)))].filter(r => !supportedRel(r)).sort(),
         rooms: [...views].filter(([, v]) => !v.supported).map(([r, v]) => ({ room: r, reason: v.reason })),
-        picked_threads: [...views].filter(([r, v]) => r.startsWith("project:") && v.supported && pickedIn(r, v, projects) === false).map(([r]) => r),
       },
       failures: {
         missed, wrong: wrongly, leaks, offered,
@@ -363,13 +361,18 @@ async function runWorld({ gold, sessions = EVAL_SESSIONS, projects = PROJECTS, m
   }
 }
 
-/** Does the room's view include the threads picked into the project? null when none are picked. */
-function pickedIn(room, v, projects) {
+/**
+ * Did the room read the threads picked into the project? Each must have come up in the room's
+ * own rows. Read from the database, not the drawing: a floor plan shows only a few recent
+ * threads per node. null when none are picked.
+ */
+function pickedIn(db, room, projects) {
   if (!room.startsWith("project:")) return null;
   const p = projects.find(p => "project:" + p.slug === room);
-  const picked = (p?.threads || []).filter(Boolean);
+  const picked = (p?.picks || []).filter(Boolean);
   if (!picked.length) return null;
-  return picked.every(id => v.sessions?.has(id));
+  const q = db.prepare("SELECT 1 FROM memory_edges WHERE room = ? AND dst = ? AND rel = 'mentioned_in' LIMIT 1");
+  return picked.every(id => Boolean(q.get(p.slug, "session:" + id)));
 }
 
 function roundAll(o) {
@@ -502,7 +505,6 @@ function print(r) {
   }
   if (r.unsupported.relations.length) line(`unsupported relations  ${r.unsupported.relations.join(", ")}${r.unsupported.relations.every(x => OPTIONAL.includes(x)) ? " (off by default; measured above as optional relations)" : ""}`);
   for (const x of r.unsupported.rooms) line(`unsupported room       ${x.room}: ${x.reason}`);
-  if (r.unsupported.picked_threads.length) line(`picked threads unused  ${r.unsupported.picked_threads.join(", ")} (rooms are folders only)`);
   const f = r.failures;
   if (f.offered.length) { line(""); line("closed facts offered"); for (const x of f.offered) line(`  ${x.room}  ${x.id}  "${x.text}"`); }
   if (f.leaks.length) { line(""); line("leaks"); for (const x of f.leaks) line(`  ${x.room}  ${x.id}  (${x.via})`); }

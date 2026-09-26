@@ -337,8 +337,10 @@ export class Projects {
         if (how.has("picked")) picked++; else folder++;
         last = Math.max(last, sessions.get(id)?.last || 0);
       }
+      // picks: the picked session ids themselves (subagents folded to their parent), for Memory's
+      // rooms. threads and picked stay counts: the CLI and the Deck print them.
       return { slug: p.slug, name: p.name, org: p.org, home: p.home, workspaces: p.workspaces, people: p.people,
-        watchers: p.watchers, threads: picked + folder, picked, folder, last };
+        watchers: p.watchers, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
     });
     out.sort((a, b) => b.last - a.last || a.name.localeCompare(b.name));
     const problems = this.all.filter(p => p.error).map(p => ({ home: p.home, error: p.error }));

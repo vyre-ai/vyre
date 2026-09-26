@@ -112,9 +112,6 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
 ## Needs from others
 - deck: `deck/views/projects.js` asks `memory.facts` with the project's folders; `room: slug`
   would read the right room for nested or folderless projects.
-- projects: picked thread ids in `projects.list` (ADR 0007, "Other teams"). Memory reads
-  `threads` (or `picked`) when it is a list of ids; today both are counts, so rooms are folders
-  only in a live vyred. Tests and the eval pass ids.
 - main / harness / switchboard: put the agent in the caller for agent sessions, e.g. the MCP
   server and hooks sending `x-vyre-caller` with `agent:<VYRE_AGENT>` in it, and the daemon
   keeping a caller from claiming an agent it is not. Today an agent that does not name itself
