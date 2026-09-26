@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -122,10 +123,14 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   process.env.VYRE_CLAUDE_BIN = FAKE;
   process.env.FAKE_CLAUDE_LOG = log;
   t.after(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  // The file keystore, so no test goes near the login keychain.
-  if (vault) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
-    // A Gate sender, so an agent's gate.request shows which thread vyred verified. Nothing is sent.
-    gate: { senders: { mail: { type: "gmail", vault: "no-such-item", from: "alex@example.com" } } } }));
+  // Transcripts in the temp home, so adopting never looks at the user's own sessions; the file
+  // keystore, so no test goes near the login keychain.
+  const transcripts = path.join(root, "transcripts");
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [transcripts],
+    ...(vault ? { vault: { keystore: "file" },
+      // A Gate sender, so an agent's gate.request shows which thread vyred verified. Nothing is sent.
+      gate: { senders: { mail: { type: "gmail", vault: "no-such-item", from: "alex@example.com" } } } } : {}) }));
   if (probe) {
     // Internal tools answer only modules: a module that asks threads.claimed for the test.
     writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.claimed"] } }, `
@@ -145,7 +150,21 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
     if (ungranted.includes(name)) continue;
     assert.equal((await tool("vault.grant", { name, module: "agents" })).data.grant.status, "active");
   }
-  return { root, d, work, launches, tool };
+  return { root, d, work, launches, tool, transcripts };
+}
+
+/** A terminal session's transcript, as Claude Code leaves one: in a project folder, cwd on its lines. */
+function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.randomUUID() } = {}) {
+  const dir = path.join(transcripts, "-" + cwd.replace(/[^A-Za-z0-9]/g, "-"));
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${id}.jsonl`);
+  fs.writeFileSync(file, [
+    { type: "user", cwd, sessionId: id, message: { role: "user", content: "start the intake form" } },
+    { type: "custom-title", customTitle: "Intake form", sessionId: id },
+  ].map(l => JSON.stringify(l)).join("\n") + "\n");
+  const when = (Date.now() - ageMs) / 1000;
+  fs.utimesSync(file, when, when);
+  return { id, file };
 }
 
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
@@ -422,4 +441,48 @@ test("sessions: a session binds to a running claude once, its key is checked, an
   up.delete(100);
   assert.equal(sessions.vouch(id, again.key), null, "the process is gone");
   assert.ok(sessions.bind(id, 200).key, "a resumed session binds from its new process");
+});
+
+test("adopt: a terminal session nobody has open is resumed headless with the lease; one that is open is refused", async t => {
+  const { tool, work, launches, transcripts, root } = await boot(t);
+  const quiet = terminalSession(transcripts, work);
+  const sent = (await tool("threads.send", { thread: quiet.id, text: "add a phone field", surface: "capsule" })).data;
+  assert.equal(sent.sent, true, JSON.stringify(sent));
+  const rec = (await tool("threads.get", { thread: quiet.id })).data.thread;
+  assert.deepEqual([rec.cwd, rec.name, rec.holder], [work, "Intake form", "capsule"]);
+  const launch = await until(() => launches().at(-1), "the launch");
+  assert.ok(launch.argv.includes("--resume") && launch.argv.includes(quiet.id), "resumed, not started anew");
+  await until(async () => (await tool("threads.get", { thread: quiet.id })).data.events.some(e => e.type === "thread.text" && e.payload.text === "echo: add a phone field"), "the reply");
+  assert.equal((await tool("threads.send", { thread: quiet.id, text: "and a note", surface: "deck" })).data.holder, "capsule", "the lease holds");
+
+  // Written a moment ago: someone is working in it.
+  const busy = terminalSession(transcripts, work, { ageMs: 1000 });
+  const r1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" })).data;
+  assert.equal(r1.sent, false);
+  assert.equal(r1.open_elsewhere, true);
+  assert.match(r1.note, /written \ds ago.*Only one keyboard/);
+
+  // Open but idle in a terminal: a running claude names it (`claude --resume <id>`).
+  const idle = terminalSession(transcripts, work);
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin);
+  fs.symlinkSync(process.execPath, path.join(bin, "claude"));
+  const { spawn } = await import("node:child_process");
+  const term = spawn(path.join(bin, "claude"), ["-e", "setTimeout(() => {}, 60000)", "--", "--resume", idle.id], { stdio: "ignore" });
+  t.after(() => term.kill());
+  await new Promise(r => setTimeout(r, 200));
+  const r2 = (await tool("threads.send", { thread: idle.id, text: "hi", surface: "capsule" })).data;
+  assert.equal(r2.sent, false);
+  assert.match(r2.note, new RegExp(`claude process ${term.pid} has it open`));
+  assert.equal(launches().filter(l => l.argv.includes(idle.id) || l.argv.includes(busy.id)).length, 0, "nothing was started for either");
+
+  // Bound by its SessionStart hook to a claude still running: open, even with no --resume.
+  const bound = terminalSession(transcripts, work);
+  const plain = spawn(path.join(bin, "claude"), ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+  t.after(() => plain.kill());
+  await new Promise(r => setTimeout(r, 200));
+  assert.ok((await tool("threads.bind", { session: bound.id, pid: plain.pid }, "harness")).data.key);
+  assert.match((await tool("threads.send", { thread: bound.id, text: "hi", surface: "capsule" })).data.note, new RegExp(`open in claude process ${plain.pid}`));
+
+  assert.match((await tool("threads.send", { thread: crypto.randomUUID(), text: "hi" })).error.message, /no thread/);
 });

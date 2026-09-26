@@ -71,6 +71,12 @@ export class Sessions {
     return { session, key };
   }
 
+  /** The process a session is bound to, or null. @param {string} session */
+  boundPid(session) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT pid FROM threads_binds WHERE session = ?").get(String(session)));
+    return r ? Number(r.pid) : null;
+  }
+
   /** The session, if this key is its key and its process still runs; else null. @param {string} session @param {string} key */
   vouch(session, key) {
     const r = /** @type {any} */ (this.db.prepare("SELECT key_hash, pid FROM threads_binds WHERE session = ?").get(String(session)));

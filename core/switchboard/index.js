@@ -21,7 +21,8 @@ import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
 import { register as registerClaim } from "./claim.js";
-import { Sessions, SESSIONS_MIGRATION } from "./sessions.js";
+import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
+import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -84,7 +85,8 @@ export class Switchboard {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, emit: (type: string, payload: any, where?: any) => any,
    *           call: (tool: string, input: any) => Promise<any>, root: string, log: (m: string) => void,
-   *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string }} deps
+   *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string,
+   *           transcripts?: string[], naming?: (id: string, ours: number[]) => number[], isClaude?: (pid: number) => boolean }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -98,7 +100,7 @@ export class Switchboard {
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
     /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
-    this.sessions = new Sessions(deps.db, { children: () => [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean),
+    this.sessions = new Sessions(deps.db, { children: () => this.ours(),
       ...(deps.isClaude ? { isClaude: deps.isClaude } : {}) });
   }
 
@@ -323,8 +325,48 @@ export class Switchboard {
     this.set(id, { status: "working" });
   }
 
-  /** Type into a thread. The lease decides who may; a stopped thread is resumed first. */
+  /** Our children's pids: a session bound to one of these is ours, not open elsewhere. */
+  ours() { return [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean); }
+
+  /**
+   * Before resuming a thread that is not running here: is it open somewhere else (adopt.js)?
+   * @param {string} id @returns {string|null} why it is, or null
+   */
+  elsewhere(id) {
+    const t = findSession(this.deps.transcripts || [], id);
+    const rec = this.record(id);
+    return openElsewhere({ id, mtime: t ? t.mtime : 0, boundPid: this.sessions.boundPid(id), ours: this.ours(), alive, naming: this.deps.naming,
+      ourLast: rec && rec.stopped_reason !== "adopted" ? rec.last : null });
+  }
+
+  /**
+   * Take on a session the Switchboard did not start (a terminal `claude`), so it can be resumed
+   * here. Only its record is made; send resumes it. No transcript, no thread.
+   * @param {string} id
+   */
+  async adopt(id) {
+    const t = findSession(this.deps.transcripts || [], id);
+    if (!t) throw new Error(`no thread ${id}`);
+    const info = sessionInfo(t.file);
+    if (!info.cwd || !fs.existsSync(info.cwd)) throw new Error(`session ${id.slice(0, 8)} ran in ${info.cwd || "a folder its transcript does not name"}, which is not here`);
+    const of = await this.deps.call("projects.of", { cwd: info.cwd });
+    const now = Date.now();
+    this.db.prepare(`INSERT OR IGNORE INTO threads_runs (id, name, cwd, project, status, auth, started_at, last_at, stopped_reason)
+      VALUES (?,?,?,?, 'stopped', 'ambient', ?,?, 'adopted')`).run(id, info.name, info.cwd, of.data?.slug || null, t.mtime, now);
+    return this.must(id);
+  }
+
+  /**
+   * Type into a thread. The lease decides who may. A thread that is not running here is resumed
+   * first, and a session the Switchboard never started is adopted; either only if no other
+   * process has it open, since one transcript takes one writer.
+   */
   async send(id, text, surface) {
+    if (!this.live.has(id)) {
+      if (!this.record(id)) await this.adopt(id);
+      const why = this.elsewhere(id);
+      if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
+    }
     const rec = this.must(id);
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
@@ -430,6 +472,7 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root: ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "",
+      transcripts: (ctx.config && ctx.config.transcripts) || [],
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
     });
