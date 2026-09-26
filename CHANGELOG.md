@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Every Claude Code session knows the user
+
+- `core/about`: keeps `<home>/about.md`, a few lines on the user (name, assistant, busiest projects
+  and their people, memory's profile when Memory offers `memory.profile`), under 600 characters,
+  with anything shaped like a credential, email or phone number dropped. Tool `about.text`.
+- The SessionStart hook reads that file and adds it ahead of the project brief, also with vyred
+  down. An agent scoped to some projects does not get it.
+- `/vyre todo`, `/vyre remind <when> <text>`, `/vyre agenda` (the planner's `planner.add` and
+  `planner.agenda`) and `/vyre remember <fact>` (memory-iq's `memory.remember`). Making a lesson
+  moves from `/vyre remember` to `/vyre lesson <rule>`.
+- The MCP server's instructions: back a promised reminder with `planner_add`, ask `memory_answer`
+  before saying you do not know.
+
 #### An assistant made with an API key uses it as one
 
 - With an API key at the Claude step, `onboard.finish` made the assistant with

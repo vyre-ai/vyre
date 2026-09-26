@@ -73,15 +73,34 @@ Perf:
   max 137.6 MB, no timer under 60 s. The sustained-CPU line fails at 13.1%, and fails the same way
   on main 7edfbfa (12.75%), so it predates this branch: the startup indexing tail, not statusline.
 
+## Done: the session knows the user (27 Sep)
+
+- `c4a30dd` core/about module + about.md, the hook reads it, `/vyre todo|remind|agenda|remember|lesson`,
+  MCP instructions for memory_answer and planner_add. ADR 0020 addendum.
+- Tests on the test box: core/about, cc-plugin (a stand-in planner module in the home, called
+  through the copied plugin's MCP server), harness, hygiene, modules: 54/54.
+- SessionStart hook with about.md and vyred down, on the Mac: 41 ms median, 47 ms p95, nearly all
+  node start and hook.js's imports; reading the file is well under 1 ms. The no-Vyre path is
+  unchanged (about 20 ms).
+
 ## Doing
 
-- Nothing in progress. Merged; waiting on the docs team's corrected page.
+- Waiting on memory-iq and planner to confirm the contracts below.
 
 ## Next
 
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 
 ## Needs from others
+
+- memory-iq: confirm `memory.answer {question, room?, project_cwds?, agent?}` -> `{answer|null, facts[]}`,
+  `memory.profile {limit?}` -> `{facts: [{text, kind, weight}]}` (owner's durable facts, nothing
+  sensitive), `memory.remember {text, room?}` -> `{id, text}` (a person-taught fact). Until then
+  about.md has no profile lines and `/vyre remember` offers a lesson instead.
+- planner: confirm `planner.add {text, kind?: todo|reminder, at?, project?, thread?}` -> `{id, text, kind, at|null, project}`
+  and `planner.agenda {day?, days?}` -> `{items: [{id, text, kind, at|null, done, project|null}]}`; who delivers
+  a due reminder; whether agents may call planner.add (if not, the MCP server hides it from them).
+- docs: using/claude-code.md needs the new `/vyre` rows and "About you" once this merges.
 
 - ci: publish `vyre-ai/vyre` with `.claude-plugin/marketplace.json` at the root. Keep
   `harness/.claude-plugin/plugin.json`'s version equal to `package.json` on release (a test checks).
@@ -92,6 +111,10 @@ Perf:
   work/connectors merges: its server.js changes arrive through the same import.
 
 ## Changed contracts
+
+- `/vyre remember <fact>` is a memory fact now; lessons are `/vyre lesson <rule>`.
+- New module `about`, tool `about.text` (not offered over MCP), file `<home>/about.md`.
+- SessionStart additionalContext now starts with about.md's text for a person's own session and the assistant.
 
 - `harness/hooks/hooks.json` runs `hooks/run.js <piece>`, and `harness/.mcp.json` runs `mcp/run.js`.
   `hook.js` and `server.js` are unchanged and still run directly.
