@@ -4,6 +4,148 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connectors (ADR 0016)
+
+- "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
+  env-set holding an OAuth client's `client_id` and `client_secret` (granted to google) and
+  returns `{ id, url, redirect }`: the consent page, with PKCE S256, a random state, offline
+  access and the module's five scopes plus `openid email`. Google sends the browser back to a
+  loopback listener on 127.0.0.1 port 0 that exists only while a sign-in is open (10 minutes
+  each, one timer per sign-in). The refresh token goes into a new env-set `google-<name>` the
+  module makes and grants to itself, the account is added as google.add would, and
+  `google.connected {id, name, email}` is emitted (`google.connect-failed {id, error}` when it
+  does not work). `google.connect.finish {id, url}` takes the pasted address for a browser on
+  another device; `google.connect.cancel {id}` ends one. People only; a model never can. Every
+  error is scrubbed of the secret, the code, the verifier and every token.
+- `google.test` on a service account also returns `client_id` (the key's public number) and
+  `admin_scopes`, the exact comma-separated line for the Workspace admin console's domain-wide
+  delegation page. Nothing else from the key leaves.
+- The fake Google has an authorization_code grant that checks PKCE and the redirect, and
+  `consent(url)` to play the person on the consent page.
+- The MCP hub is never a route around the floor. A hub tool with a send word (`send`, `post`,
+  `reply`, `forward`, `publish`, `share`, `invite`, `tweet`, `dm`, `comment`) is always held at
+  the Gate, even when a person set its mode to `read` or the server marks it read-only, and
+  `mcp.add` and `mcp.update` now refuse `read` for such a tool (it can be `write` or `off`).
+  They also refuse Vyre's own MCP server as a hub server (`vyre mcp`, or anything running
+  `harness/mcp/server.js`) and any `vars` or `env` name that starts with `VYRE_`. Every stdio hub
+  child now gets `VYRE_HUB_CHILD=1`, and Vyre's MCP server started under it answers every request
+  with an error, offers no tools and never contacts vyred.
+- Settings has a Connections section (`deck/views/connections.js`): the hub's MCP servers and the
+  Google accounts, each with its state, tool count or scopes, and Test, Restart and Remove.
+  Adding one picks vault items by name and asks for the `mcp` or `google` grant with presence;
+  without presence it shows the exact `vyre vault grant` line instead. The page only ever holds
+  item names, copies only the fields it draws, runs no timer, and redraws on `mcp.*` and
+  `google.*` events. Remove asks first. `google.test` calls Google, so it runs only on Test.
+  A tool that sends shows Read disabled, since the hub always holds it; `mcp.test` marks such
+  tools with `sends`.
+- The harness rules no longer ask, and `gate.route` no longer denies an agent, about
+  `google_mail_send` in Vyre's own MCP server (`mcp__vyre__` and `mcp__plugin_vyre_vyre__`): the
+  google module always holds a send at the Gate, so asking first only added a second prompt for
+  the same email. The list is explicit and short; `threads_send` and every other server's send
+  still ask.
+- The connectors credential tests make their token and private-key fixtures at run time, so the
+  hygiene scan finds no secret-shaped literal in shipped code and stays as strict as it was.
+- `vyre mcp` runs the Vyre MCP server on stdio, so a plain `claude` outside a Vyre thread gets
+  the same tools with one line. `vyre mcp install` prints that line
+  (`claude mcp add -s user vyre -- vyre mcp`) and runs it only with `--yes`: Vyre never edits a
+  Claude config itself. The server is imported rather than spawned, so it still finds its session
+  by its parent's pid, and nothing but JSON-RPC reaches stdout.
+- `vyre connect list|add|remove|test` manages MCP servers and Google accounts in one place. A
+  connection names vault items (`--item`, `--env VAR=item`) and never takes a value on the
+  command line. After an add it asks the vault to grant each item to the module, as the person at
+  the terminal, then tests and prints the server's tool count or the Google scopes Workspace
+  refused. `--var` passes a plain setting to a stdio server; the hub still refuses one that looks
+  like a credential.
+- The Vyre MCP server (`harness/mcp/server.js`) now offers every hub tool beside the module
+  tools, as `<server>__<tool>`, so a session sees its connected servers through the one `vyre`
+  entry and no server needs its own line in a Claude config. Listing reads the hub's cache and
+  never starts a server. Both the listing and each call carry the session key, so the hub scopes
+  them by the session's project. A tool the hub will hold says "(held for approval)" first, and a
+  held call answers with the Gate item and a plain sentence rather than an error. With no `mcp`
+  module running, nothing extra is offered and module tools behave as before.
+- The MCP hub (`core/mcp/`, module `mcp`) puts any number of MCP servers behind one tool list,
+  so a person can plug in a tracker, a CRM and a docs tool without a token in any config file. A
+  server row names vault items, never values: `mcp.add` refuses a header, env value, argument or
+  url that looks like a credential, and plain http is allowed only to this machine, the tailnet
+  (100.64.0.0/10) or an origin listed under `mcp.httpHosts`. Tokens are fetched under the `mcp`
+  grant at call time, and every result and error is scrubbed of them. Nothing starts at boot;
+  a server starts on its first call, its tools are cached so `mcp.tools` never spawns anything,
+  it stops after `idle` (10 minutes by default) on one timer, and a server that crashes stops
+  restarting after three tries in five minutes until `mcp.restart`. Scope follows what vyred
+  verified (the agent, its projects, the thread's project) and `mcp.call` checks it again. A
+  tool that is not plainly a read is held at the Gate as `mcp:<server>` and reaches the server
+  only with the arguments the person approved. Managing servers is for people and modules,
+  never a model.
+- `gate.request` now takes `agent` from a module caller (never from a model), so a request the
+  hub files for an agent still shows which agent asked: the hub's `ctx.call` runs as
+  `module:mcp`, which would otherwise lose it.
+- `core/google/` is native Google Calendar and Gmail, so the assistant and the Capsule can read
+  the person's day and mail without an MCP server holding a token in its env. Accounts
+  (`google.add`, people only, never a model) name a vault item, an OAuth env-set or a
+  domain-wide-delegation service account, and never hold a value. Every call mints the narrowest
+  scope it needs (`calendar.readonly` and `gmail.readonly` for reads, `calendar.events`,
+  `gmail.compose`, and `gmail.send` only at the moment of a send), retries once on a 401, and
+  returns results scrubbed of every value it touched. A send is always held at the Gate, and so is
+  an event with attendees, because Calendar mails them an invite; each account is its own Gate
+  sender, `google:<account>`, so the person sees which address it leaves from. A draft and an event
+  without attendees are written directly, since neither reaches anyone. `google.test` names each
+  scope a Workspace admin console refuses. `google.find` and `google.open` put "what's next",
+  "today" and "email from dana" in the Capsule. Nothing polls.
+- The fake Google records the scopes of the token behind each API call, so a test can prove a
+  read never used a write scope and a send used `gmail.send` alone.
+- `core/mcp/client.js` talks to one MCP server over stdio, streamable HTTP or legacy SSE, with no
+  dependencies, so the hub can reach any server a person adds. A stdio server gets only PATH,
+  HOME, LANG, TMPDIR and the env it was given, so a token vyred holds for one server is never
+  visible to another. HTTP headers are asked for on every request because credentials are minted
+  at call time, and redirects, an SSE endpoint on another origin and replies over 4 MB are
+  refused, so a credential never follows a request somewhere else. Errors carry a stable `code`
+  (`unauthorized` on a 401, so the caller can mint again and retry once) and never a header value.
+- `core/mcp/testing/fake-mcp.js` is a fake MCP server, as a child process or in-process over HTTP
+  and SSE, so no test starts a real one.
+- A module can now be a way out through the Gate. `gate.offer { name, tool, kinds?, content? }`
+  (internal, modules only) registers a sender named in the module's own namespace whose `tool` is
+  one of its own; after the user approves, the Gate calls that tool as `module:gate` with exactly
+  the approved content. The MCP hub and native Google need this to hold their sends. Offers live in
+  memory, so an item held under a module that has not started yet stays held, and Approve says
+  which module to start.
+- The floor's rule 1 and `gate.route` no longer ask about or deny a tool named
+  `mcp__vyre__<server>__<tool>` (or `mcp__plugin_vyre_vyre__<server>__<tool>` under the plugin),
+  where `<server>` is a hub server name. Those are the MCP hub's tools, which hold every outward
+  call at the Gate themselves with a stricter rule than the name check, so asking first would make
+  the user answer twice. Vyre's own tools (`mcp__vyre__threads_send`) and every other server are
+  unchanged.
+- `core/connectors/auth.js` turns a vault item into what a request carries, once for both the hub
+  and Google: a bearer header, an OAuth access token minted by refresh, or a Google
+  service-account JWT exchanged for one. Access tokens stay in memory, cached until a minute
+  before expiry. The library remembers every value it touched (raw token, refresh token, private
+  key and its lines, assertion, access token), so callers can scrub all of them from what leaves
+  the module. Token requests refuse redirects and time out after 30 s. Refusals read as sentences
+  and never quote a value; a domain-wide-delegation refusal names the user and the scopes, and
+  says where to allow them.
+- `core/connectors/testing/fake-google.js` is a Google for tests on 127.0.0.1. It verifies JWT
+  signatures against keys it generated, checks subject and scopes, plays the admin console's
+  delegation list, and requires its own tokens with the right scope on Calendar and Gmail calls.
+  A fake that accepted anything would hide the bugs that matter here, such as a read token used
+  to send.
+#### Vyre installs as a Claude Code plugin, and shows its line in every session
+
+- `.claude-plugin/marketplace.json`: the marketplace `vyre`, one plugin `vyre` from `./harness`.
+  Install with `/plugin marketplace add vyre-ai/vyre`, then `/plugin install vyre@vyre` (ADR 0020).
+- `harness/hooks/run.js`, `harness/mcp/run.js`, `harness/lib/vyre.js`: `/plugin install` copies only
+  `harness/`, so hooks and the MCP server start from launchers that find a Vyre package
+  (`VYRE_PACKAGE`, the package they sit in, or `vyre` on PATH) and run its own `hook.js` or
+  `server.js`. With no Vyre, a fresh session gets one line pointing at https://vyre.run/start, every other hook
+  exits 0 silently in about 20 ms, and the MCP server connects with no tools.
+- `/vyre` gains `ask <agent> <text>`, `send <session> <text>` and `statusline`.
+- `core/statusline`: a module that keeps `<home>/statusline` (pid and line, such as
+  `vyre · 2 need you · box ok · juno idle`), recomputed on events and once a minute.
+  `harness/statusline/statusline.sh` prints it in about 4 ms, never touching vyred or the network.
+  It reads and drops Claude Code's stdin JSON unless it chains, so the writer never hits EPIPE.
+- `vyre statusline [install [--chain] [--yes] | uninstall]`: sets Claude Code's `statusLine` with
+  consent, never replacing one the user has (`--chain` keeps theirs above Vyre's line). `vyre up`
+  on a Mac offers it once on a terminal.
+- Learning treats running `hooks/run.js` by hand as running a hook by hand.
+
 #### CI on GitHub's free runners
 
 - Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the
@@ -18,7 +160,91 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Docs and comments call the test server "the test box", the prototype's folder "the
   prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
   comments only).
+#### The Deck installs on a phone as an app
 
+- Add to Home Screen gives a full-screen app: a manifest with maskable icons, an Apple touch
+  icon, launch screens for twelve iPhone sizes, and a status bar in the theme's colour. The shell
+  keeps clear of the notch and the home indicator, never rubber-bands, and fills 100dvh.
+- Find is the phone's Capsule, a tab in place of Ask and a pull down from the top of any screen:
+  one box for asking juno, sessions (titles and what was said), box files, agents, memory and
+  projects. Vault items are never offered there.
+- Chat on the phone: a session fills the screen above the tab bar, a reply keeps the view at the
+  bottom or shows Jump to latest, and a session another keyboard has says so and keeps the draft.
+  Asks and held drafts answer inline with a passkey, and say Allowed, Denied or Sent after.
+- Now, the Deck's approvals (Send, Discard, Allow, Deny) prove a person with the passkey, as the
+  floor already required; before, they were refused with presence_required.
+- Set up this phone, on Now: install, notifications (asks and held drafts, iOS 16.4 and later from
+  the Home Screen app) and a passkey. Settings uses the same code for push and passkeys.
+- Offline: the service worker keeps the shell and the five phone tabs at install, a cold launch
+  reopens the last screen, and one line says when the phone is offline or the box is not answering.
+
+#### The `vyre` screen, polished from a captured frame
+
+- The status line reads link.health's real shape ("link direct 23 ms", "link relayed", "link
+  down"; nothing on a box or an unpaired Mac, where it said "link ?"), and shows the commit
+  ("vyred 0.0.1 · 1a2b3c4").
+- A wrapped transcript line keeps its indent, so a quoted prompt reads as one block.
+- Something seconds old is "now", not "1m". `core/cli/screen/`.
+
+#### One vyred per home, whatever path reached it
+
+- Two vyreds could run on one store when the home was reached through a symlink: the socket
+  path was worked out from the home's spelling (a long spelling moves it to /tmp under a hash),
+  and the "already running" check came after every module had started. Now vyred takes
+  `vyred.lock` in the home's real folder before it opens the store; the socket path is worked out
+  from the real folder too. A lock whose process is gone, is not a vyre process, or is from before
+  this boot (a reboot or a container restart reusing its pid) is taken over.
+  `core/daemon/lock.js`, `core/daemon/index.js`, `core/config/index.js`.
+
+#### `vyre threads` never answers with a blank screen
+
+- With no sessions it printed nothing. Now it says why: indexing still running, no transcript
+  folders configured, or no Claude Code sessions yet; a search with no hits names the words and
+  points at `vyre recall`; `--project` with none says how to start one. `core/cli/commands/projects.js`.
+- `vyre threads --help` crashed on main (projects.js parse rejected --help); the kit branch
+  already handles help in core/cli/index.js, and test/cli.test.js now pins it.
+
+#### A release says which commit it is
+
+- `scripts/build-site.sh` (the step that packs vyre.tgz for npm and for the box image) writes
+  `build.json` `{version, commit, dirty}` into the package; gitignored in the checkout.
+  `core/daemon/build.js` reads it, or in a checkout asks git once, lazily (never on a plain CLI
+  start). `/v1/health` and `system.info` report `commit` and `dirty` next to `version`, and
+  `vyre status` prints `0.0.1 · 1a2b3c4` (`+dirty` when it was).
+
+#### `vyre update` no longer voids the set-up link the user was sent
+
+- `vyre update` on a box ended with `vyre up`, which minted a new onboarding link and voided the
+  unused one; recreating the container also restarted vyred, which forgot the link and every open
+  onboarding page. Now update runs `vyre up --keep-link`, which calls `onboard.link {mint:false}`
+  and only reports: "set up is not finished; the link you have still works (42 min left)". A
+  plain `vyre up` still mints a fresh link, and says it voids the old one.
+- The unused link's hash, its port and the open onboarding sessions' hashes are kept in
+  `<VYRE_HOME>/onboard-link.json` (0600, hashes only) when vyred stops, and the next vyred reopens
+  the listener for them. The owner arriving on the tailnet deletes the file for good.
+  `core/onboard/loopback.js` (`keep`, `resume()`, `pending()`, `close({forget})`),
+  `core/onboard/index.js`, `core/cli/commands/up.js`, `box/vyre`.
+
+#### `npm i -g vyre` is 6 MB, not 750
+
+- The search model's library (`@huggingface/transformers` with ONNX Runtime) is no longer an npm
+  dependency of any kind. It made a global install 750 MB on Linux (onnxruntime-node 548 MB,
+  onnxruntime-web 141 MB), because npm ignores `--omit=optional` for a global package's own
+  optional deps. Measured on the test box from `npm pack`: the tarball is 1.50 MB before and after, and
+  the install into an empty prefix went from 750 MB to 5.9 MB on disk (4.5 MB of files; all of it
+  Vyre's own code, deck and docs). `package-lock.json` lost 1,048 lines.
+- Recall installs the library on first use into `<VYRE_HOME>/embedder` (on a box, the home's
+  volume) with the npm next to node, pinned to 4.3.0, and searches by keyword until then. It says
+  so in one line: `vyre recall` prints "downloading the search model (about 128 MB, once); search
+  is by keyword until then · vyre recall --setup", and vyred logs the same. `core/recall/embed.js`.
+- The install is pruned to what the CPU path opens: this platform's ONNX Runtime only, no GPU
+  providers (CUDA and TensorRT were 260 MB), and only onnxruntime-web's `ort.node` entry (its
+  WebAssembly builds were 115 MB). 500 MB becomes 105 MB, and the model loads and embeds the same
+  (checked on the test box: "croissant menu" vs "pastry list" 0.566, vs "kubernetes ingress" 0.065).
+- `vyre recall --setup` (new tool `recall.setup`) installs and loads it now and waits: 16 s on
+  the test box. A failed install leaves no half-written tree, says why, and `--setup` tries again. New
+  config keys `recall.embedder` (where it goes) and `recall.npm`.
+- `scripts/release-check.sh` now fails on any optional dependency and on an install over 10 MB.
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
 - Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
@@ -114,6 +340,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a file to the box with option-return.
 - `scripts/perf-check` waits for Memory's startup pass to finish before it measures idle, so a
   slow start on a loaded host is no longer counted as idle CPU.
+#### The Capsule answers from memory, and messages a session busy in a terminal
+
+- Quick answers read the memory on screen. When the "From memory" box shows facts or session quotes
+  for the same words, the quick question's system prompt carries exactly those lines, with their
+  ages, under "What the user's own notes say:". Nothing else from memory is sent.
+  `local/capsule/lib/bridge.js` (`memoItems`, `memoLines`, `quickAppend`).
+- A transcript hit reads as a quote ("You said, 2 weeks ago: ..."), never as a fact; the distilled
+  fact from memory.relevant sits above it. A box with only quotes is labelled "From your sessions".
+- The quotes are chosen for the question, not its words (`local/capsule/lib/said.js`): the question
+  echoed back, the Capsule's own ask threads ("Capsule: ..." or its scratch folder) and turns that
+  quote the whole question are dropped; questions and Claude's words rank under the user's own
+  first-person statements; at most two show. When the best is a clear statement ("I own a blue
+  Volvo XC40"), one line on top says it to the user ("You own a blue Volvo XC40.") with the quote
+  under it as its source. Still no model: the box shows before anything is sent.
+- Vyre's notices (a usage limit, the switch to the API key) are a faint status line under the
+  answer or the DM, never part of the answer's text. `local/capsule/lib/state.js` keeps them as
+  `notice`.
+- The switchboard says a usage limit in the thread only at 80% used or more, or when refused.
+  Claude Code warns from far lower (27% was seen). `thread.limit` still carries every report.
+- The reply shows the user's question as their own line ("You"), then who answers, then the answer.
+- `@<session>` for a session open in a terminal no longer refuses. A person's words are queued
+  (`threads_inbox`, event `thread.queued`), and the Harness hands them over when that session's
+  turn ends: the Stop hook returns `decision: block` with "Message from the user via the Capsule:
+  <text>", or the next prompt carries them when the session is idle. The Stop that ends the
+  answering turn emits its last message as the thread's `thread.text` and `thread.finished`, so the
+  Capsule shows the reply like any other. A model's send (caller `mcp*`) is still refused.
+  `vyre threads send` prints "queued". `core/switchboard`, `core/harness`, `core/cli/commands/threads.js`.
+- Opening over a full-screen app, behind `VYRE_CAPSULE_STAY=1` until checked: the panel joins every
+  Space again before each show, stays above full-screen windows, and becomes key without the app
+  activating, so macOS does not switch to the desktop Space. Off by default, where the app still
+  activates so typing reaches the panel over a normal app. `local/capsule/lib/present.js`;
+  `scripts/capsule-spaces/run.js` checks it against a throwaway full-screen window and runs only
+  with `VYRE_FULLSCREEN_OK=1`.
 
 #### The Capsule is Spotlight's size
 

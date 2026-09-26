@@ -213,7 +213,7 @@ test("up on a box after onboarding: the ending block, the same as on the Mac", a
 });
 
 /** mac() with a fake box and link; returns what it called and printed. */
-async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true } = {}) {
+async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true, io = undefined } = {}) {
   const calls = [], lines = [], saved = [];
   const log = console.log;
   console.log = (...a) => lines.push(a.join(" "));
@@ -228,6 +228,8 @@ async function runMac(box, { healthy = true, status = { linked: false, pending: 
       save: c => saved.push(c),
       platform,
       openCapsule: async () => { calls.push(["capsule"]); return opened; },
+      statusline: async () => { calls.push(["statusline"]); },
+      io: io || { tty: false, ask: async () => "" },
     });
   } finally { console.log = log; }
   return { code, calls, saved, text: lines.join("\n") };
@@ -266,6 +268,13 @@ test("up on a Mac: not paired starts pairing, prints the code to approve, then o
   assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
   assert.deepEqual(r.calls[1][1], { box: "https://alex.vyre.run" });
   assert.match(r.text, /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
+});
+
+test("up on a Mac: on a terminal the status line is offered before the Capsule; without one it is not", async () => {
+  const tty = await runMac("https://alex.vyre.run", { io: { tty: true, ask: async () => "" } });
+  assert.deepEqual(tty.calls.map(c => c[0]), ["link.status", "link.pair", "statusline", "capsule"]);
+  const piped = await runMac("https://alex.vyre.run", { io: { tty: false, ask: async () => "" } });
+  assert.ok(!piped.calls.some(c => c[0] === "statusline"));
 });
 
 test("up on a Mac: a pairing already waiting shows its code instead of starting another", async () => {
@@ -328,4 +337,24 @@ test("up --json: a throw anywhere is still exactly one error object and exit 1",
   const f = fakes(t);
   f.deps.bring = async () => { throw new Error("bring broke"); };
   await assert.rejects(up([], f.deps), /bring broke/);
+});
+
+test("up --keep-link on a box (vyre update): reports the open link, mints none, opens nothing", async t => {
+  world(t, running([]));
+  config.save({ role: "box" });
+  const open = { data: { url: null, pending: true, expires: Date.now() + 42 * 60_000, port: 7300, user: "alex", address: null, passkeyUrl: null } };
+  const f = fakes(t, { tools: { "onboard.link": () => open } });
+  f.deps.platform = "linux";
+  assert.equal(await up(["--keep-link"], f.deps), 0);
+  assert.deepEqual(f.calls.find(c => c[0] === "onboard.link")[1], { mint: false });
+  assert.match(f.text(), /set up is not finished; the link you have still works \(42 min left\)/);
+  assert.match(f.text(), /vyre up prints a new link and voids that one/);
+  assert.deepEqual(f.opened, []);
+  t.mock.restoreAll();
+
+  const none = { data: { ...open.data, pending: false, expires: null, port: null } };
+  const j = fakes(t, { tools: { "onboard.link": () => none } });
+  assert.equal(await up(["--keep-link", "--json"], j.deps), 0);
+  const o = JSON.parse(j.lines[0]);
+  assert.deepEqual([o.url, o.pending, o.expires], [null, false, null]);
 });

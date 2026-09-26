@@ -83,16 +83,19 @@ ok "no tests, fixtures, test helpers, design boards, build output or env files"
 node -e '
   const p = require(process.argv[1]);
   if (Object.keys(p.dependencies || {}).length) throw new Error("regular dependencies: " + Object.keys(p.dependencies));
-  if (!p.optionalDependencies || !p.optionalDependencies["@huggingface/transformers"]) throw new Error("the embedder is not an optional dependency");
+  // The embedder is fetched on first use (core/recall/embed.js), never by npm i -g.
+  if (Object.keys(p.optionalDependencies || {}).length) throw new Error("optional dependencies: " + Object.keys(p.optionalDependencies));
   if (p.bin.vyre !== "bin/vyre") throw new Error("bin.vyre is " + p.bin.vyre);
 ' "$repo/package.json" || fail "package.json"
-ok "no required dependencies; the embedder stays optional"
+ok "no dependencies at all; the embedder is fetched on first use"
 
 step "install into a temp prefix"
 npm i -g --prefix "$work/prefix" --no-audit --no-fund "$tgz" >"$work/install.log" 2>&1 || { cat "$work/install.log"; fail "npm i -g"; }
 vyre=$work/prefix/bin/vyre
 pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
+kb=$(du -sk "$work/prefix" | cut -f1)
+[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"
