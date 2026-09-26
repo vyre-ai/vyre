@@ -93,8 +93,9 @@ without editing Capsule files:
   with `VYRE_CAPSULE_OPT=1 build.sh test typing`). Before: p50 2.81 ms, p95 4.88 ms, 14 size
   changes and 7 flickers over 20 keys. After: p50 2.88 ms, p95 7.86 ms, 0 size changes, 0
   flickers, longest main-thread pass 10.25 ms, none over 16 ms.
-- Next after this: the "Vyre Local" identity with consent (lead's decision 2026-09-27: real
-  ~/.vyre and dialogsAllowed only, once, after a y/N that explains; no means ad hoc plus a note).
+- Done 2026-09-27: the "Vyre Local" identity with consent (capsule-native.js offerIdentity; 14
+  CLI tests on the test box with a fake keychain). The real keychain path has not run anywhere yet: it
+  needs the user's own `vyre capsule` (or a CI runner's throwaway keychain).
 - Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
 
 ## Next

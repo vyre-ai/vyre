@@ -69,7 +69,7 @@ test("capsule native: built on first run, not again while the source is the same
   const said2 = [];
   const c = ensureBuilt({ dir, home, runner: r, say: s => said2.push(s) });
   assert.equal(c.built, true);
-  assert.match(said2[0], /source changed/);
+  assert.match(said2[0], /changed: rebuilding/);
 });
 
 test("capsule native: no Command Line Tools is one line that names xcode-select --install", t => {
@@ -112,4 +112,71 @@ test("capsule native: the launch passes the home and socket through open --env",
   assert.deepEqual(launchArgs("/h/capsule/Vyre.app", { VYRE_HOME: "/h", VYRE_CAPSULE_OPEN: "1" }),
     ["--env", "VYRE_HOME=/h", "--env", "VYRE_CAPSULE_OPEN=1", "/h/capsule/Vyre.app"]);
   assert.equal(typeof nativeHash, "function");
+});
+
+// ------------------------------------------------------------------ the stable identity
+
+import { shouldAsk, offerIdentity, createIdentity, IDENTITY_QUESTION, AD_HOC_NOTE } from "./capsule-native.js";
+
+/** A keychain that answers like `security` and `openssl` do, and gains the identity on import. */
+function fakeKeychain({ trustFails = false } = {}) {
+  const calls = [];
+  let has = false;
+  /** @type {import("./capsule-native.js").Runner} */
+  const r = (cmd, args) => {
+    calls.push([cmd.split("/").pop(), args[0]]);
+    if (cmd.endsWith("security") && args[0] === "find-identity") return { status: 0, stdout: has ? '  1) ABC "Vyre Local"\n' : "0 valid identities found\n" };
+    if (cmd.endsWith("security") && args[0] === "add-trusted-cert") { if (trustFails) return { status: 1, stderr: "User canceled the operation." }; has = true; return { status: 0 }; }
+    return { status: 0 };
+  };
+  return { r, calls };
+}
+
+const OWN = { real: true, allowed: true };
+
+test("capsule native: the identity is offered only on the person's own install, with a terminal, once", async t => {
+  const home = tempHome(t);
+  const k = fakeKeychain();
+  assert.equal(shouldAsk({ home, tty: true, runner: k.r }), false, "a temp home is never asked (and tests have no dialogs)");
+  assert.equal(shouldAsk({ home, tty: false, runner: k.r, _gate: OWN }), false, "no terminal, no question");
+  assert.equal(shouldAsk({ home, tty: true, runner: k.r, _gate: { real: true, allowed: false } }), false, "dialogs off, no question");
+  assert.equal(shouldAsk({ home, tty: true, runner: k.r, _gate: OWN }), true);
+
+  const asked = [];
+  const line = await offerIdentity({ home, tty: true, runner: k.r, _gate: OWN, tmp: SCRATCH, ask: async q => { asked.push(q); return false; } });
+  assert.deepEqual(asked, [IDENTITY_QUESTION]);
+  assert.equal(line, AD_HOC_NOTE, "no means ad hoc, and one line that says what that costs");
+  assert.equal(k.calls.some(c => c[1] === "import"), false, "nothing touches the keychain on a no");
+  assert.equal(await offerIdentity({ home, tty: true, runner: k.r, _gate: OWN, ask: async () => { throw new Error("asked twice"); } }), null);
+});
+
+test("capsule native: yes makes the identity in the keychain given, trusted for code signing, and leaves no key on disk", async t => {
+  const home = tempHome(t);
+  const k = fakeKeychain();
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "sign-tmp-"));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const line = await offerIdentity({ home, tty: true, runner: k.r, _gate: OWN, tmp, keychain: "/k/test.keychain", ask: async () => true });
+  assert.match(line, /made "Vyre Local" in your login keychain/);
+  assert.deepEqual(k.calls.filter(c => c[0] !== "security" || c[1] !== "find-identity"),
+    [["openssl", "req"], ["openssl", "pkcs12"], ["security", "import"], ["security", "add-trusted-cert"]]);
+  assert.deepEqual(fs.readdirSync(tmp), [], "the key and certificate files are gone");
+});
+
+test("capsule native: a refused password leaves ad hoc signing and says so", t => {
+  const k = fakeKeychain({ trustFails: true });
+  const r = createIdentity({ runner: k.r, tmp: SCRATCH, keychain: "/k/test.keychain" });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /security add-trusted-cert did not work: User canceled/);
+});
+
+test("capsule native: an app signed ad hoc is rebuilt once the identity exists", t => {
+  const home = tempHome(t);
+  const dir = fakeNative(t);
+  const plain = fakeRunner();
+  ensureBuilt({ dir, home, runner: plain.r });
+  const withId = fakeRunner({ identity: true });
+  const b = ensureBuilt({ dir, home, runner: withId.r });
+  assert.equal(b.built, true);
+  assert.deepEqual(withId.calls.find(c => c[0] === "sign-with"), ["sign-with", "Vyre Local"]);
+  assert.equal(ensureBuilt({ dir, home, runner: withId.r }).built, false);
 });

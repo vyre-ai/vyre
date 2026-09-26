@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A stable signing identity for the Capsule, with consent
+
+- On the person's own install only (the real ~/.vyre, dialogs allowed, a terminal), `vyre
+  capsule` asks once: "macOS keeps the Capsule's permissions only if every build is signed the
+  same way. Create a local signing identity in your login keychain? macOS may ask for your
+  password once." Yes makes a self-signed "Vyre Local" code-signing identity (openssl, then
+  `security import` for codesign and `add-trusted-cert` for code signing), removes the temp key
+  files, and rebuilds the app signed with it. No keeps ad hoc signing and says permissions may
+  need granting again after an update. The answer is kept in `<home>/capsule/signing.json`.
+  Never asked in tests or temp homes. `core/cli/commands/capsule-native.js`.
+
 #### Typing into the native Capsule no longer jumps or flickers
 
 - The area under the bar has one fixed height while anything is shown there, as Spotlight's
