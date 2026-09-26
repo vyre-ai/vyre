@@ -30,7 +30,8 @@ async function main() {
   const opts = { caller: "harness", timeout: 3000 };
 
   if (piece === "brief") {
-    const r = await call("harness.brief", { ...base, source: h.source }, opts);
+    const project = process.env.VYRE_PROJECT || undefined;
+    const r = await call("harness.brief", { ...base, source: h.source, ...(project ? { project } : {}) }, opts);
     if (r.data && r.data.text) answer(EVENT.brief, { additionalContext: r.data.text });
   } else if (piece === "enrich") {
     const r = await call("harness.enrich", { ...base, prompt: String(h.prompt || "") }, opts);

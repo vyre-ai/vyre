@@ -54,6 +54,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Projects
 
+- Integration on main: `vyre resume` and `vyre start` load the Harness with `--plugin-dir` and
+  leave the brief to its SessionStart hook, so Claude reads it once. `VYRE_PROJECT` tells the
+  hook which project was chosen, for a thread picked into several. `harness.brief` now asks
+  `projects.context {cwd, session}` directly, the shape Projects actually offers. Verified with
+  real Claude Code: a project made with `vyre new` briefed a session started in its folder.
+
 - `core/projects`: a project is `<home>/.vyre/project.json`. The marker is the truth and
   `projects_projects` only caches where each home is, so a project outside the configured roots
   is still found and a hand-edited marker is followed. Paths in the marker are relative to the

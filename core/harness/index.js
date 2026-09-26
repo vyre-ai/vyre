@@ -39,14 +39,14 @@ export default {
 
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
-      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" } } },
-      run: async ({ cwd, session, source }) => {
+      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" } } },
+      run: async ({ cwd, session, source, project }) => {
         if (session) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
-        const project = await projectOf(cwd);
-        if (!project) return { text: "" };
-        const brief = await ask("projects.context", { project: project.slug ?? project.id ?? project.name });
+        // Projects decides which project this is: from the folder first, then from the session's
+        // single pick. A session picked into several projects gets no brief rather than a guess.
+        const brief = await ask("projects.context", project ? { project, session } : { cwd, session });
         const text = typeof brief === "string" ? brief : brief && typeof brief.text === "string" ? brief.text : "";
-        return { text, project: project.name ?? null };
+        return { text, project: brief && brief.project ? String(brief.project) : null };
       },
     });
 
@@ -56,7 +56,8 @@ export default {
       run: async ({ prompt, cwd }) => {
         if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: "" };
         const project = await projectOf(cwd);
-        const project_cwds = project && Array.isArray(project.folders) ? project.folders : cwd ? [cwd] : undefined;
+        const folders = project && (Array.isArray(project.folders) ? project.folders : project.home ? [project.home] : null);
+        const project_cwds = folders || (cwd ? [cwd] : undefined);
         const facts = await ask("memory.relevant", { text: prompt, project_cwds, limit: 5 });
         return { text: formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []) };
       },

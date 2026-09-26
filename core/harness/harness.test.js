@@ -46,22 +46,23 @@ async function harness(t, extra = []) {
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
-  await reg.start(discover([path.join(path.dirname(new URL(import.meta.url).pathname), ".."), root]).filter(f => ["harness", ...extra.map(e => e[0])].includes(f.manifest?.name)), { role: "local" });
+  const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "harness");
+  await reg.start([...core, ...discover([root])], { role: "local" });
   t.after(() => db.close());
   return { reg, events, home };
 }
 
 test("harness: with no other modules, every hook answers with nothing rather than failing", async t => {
   const { reg } = await harness(t);
-  assert.deepEqual(await reg.call("harness.brief", { cwd: "/home/alex/Work/harlow-site", session: "s1" }), { data: { text: "" } });
+  assert.equal((await reg.call("harness.brief", { cwd: "/home/alex/Work/harlow-site", session: "s1" })).data.text, "");
   assert.deepEqual(await reg.call("harness.enrich", { prompt: "what did Dana want?", cwd: "/x" }), { data: { text: "" } });
   assert.deepEqual(await reg.call("harness.rules", { tool_name: "Read", tool_input: { file_path: "/tmp/a" } }), { data: { decision: null } });
 });
 
 test("harness: brief and enrich use projects and memory when they are running", async t => {
   const projects = `export default { async start(ctx) {
-    ctx.tool("projects.of", { run: async ({ cwd }) => cwd.includes("harlow") ? { slug: "harlow-legal", name: "Harlow Legal", folders: ["/w/harlow-site"] } : null });
-    ctx.tool("projects.context", { run: async ({ project }) => ({ text: "Project " + project + ". People: Dana Reyes." }) });
+    ctx.tool("projects.of", { run: async ({ cwd }) => cwd.includes("harlow") ? { project: "harlow-legal", name: "Harlow Legal", home: "/w/harlow-site" } : null });
+    ctx.tool("projects.context", { run: async ({ cwd }) => cwd.includes("harlow") ? { project: "harlow-legal", candidates: [], text: "Project harlow-legal. People: Dana Reyes." } : { project: null, candidates: [], text: "" } });
     return {};
   } };`;
   const memory = `export default { async start(ctx) {
