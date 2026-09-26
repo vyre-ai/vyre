@@ -16,7 +16,8 @@ import { ending } from "../core/cli/ending.js";
 
 /** @type {Awaited<ReturnType<typeof makeRig>> | null} */
 let shared = null;
-const INSTALL_RUN = /^(-o \S+ )*\S+@\S+ env .*sh \/\S+ --yes$/;
+// ssh logs one line of argv: options, `--`, the target, then the remote command.
+const INSTALL_RUN = /(^| )-- \S+@\S+ env .*sh \/\S+ --yes$/;
 
 test.after(async () => { if (shared) await shared.close(); });
 
@@ -29,6 +30,8 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   let ok = false;
   t.after(() => {
     if (ok) return;
+    // A box add still waiting holds its tunnel; stop it the way a person would, with Ctrl-C.
+    run.child.kill("SIGINT");
     t.diagnostic(`box add printed:\n${run.output()}`);
     t.diagnostic(`the box's vyred:\n${tail(path.join(rig.root, "srv", "vyred.out"))}`);
   });
@@ -37,7 +40,7 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   assert.equal(typeof first, "string", `box add stopped before the browser:\n${/** @type {any} */ (first).out}`);
   const url = /** @type {string} */ (first);
   assert.match(url, new RegExp(`^http://127\\.0\\.0\\.1:${rig.onboardPort}/onboard\\?t=[A-Za-z0-9_-]{40,}$`), "the box's own onboarding port, same number on the Mac");
-  assert.ok(rig.ssh().some(l => l.includes(`-O forward -L ${rig.onboardPort}:127.0.0.1:${rig.onboardPort} ${TARGET}`)), "the tunnel rides the held connection");
+  assert.ok(rig.ssh().some(l => l.includes(`-O forward -L ${rig.onboardPort}:127.0.0.1:${rig.onboardPort} -- ${TARGET}`)), "the tunnel rides the held connection");
 
   // ---- the browser ----
   const b = await browser(url);
@@ -100,7 +103,8 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   assert.match(out, /Finish in your browser\. I'll wait here\./);
   for (const label of ["You", "Claude Code", "Tailscale", "Your history"]) assert.match(out, new RegExp(`^  ${label}\\s+done$`, "m"), label);
   assert.equal(out.match(/^ {2}Claude Code\s+done$/gm)?.length, 1, "each step is said once");
-  assert.ok(rig.ssh().some(l => / -O cancel -L /.test(l)), "the tunnel is closed at the end");
+  assert.ok(rig.ssh().some(l => l.includes(`-O cancel -L ${rig.onboardPort}:127.0.0.1:${rig.onboardPort} -- ${TARGET}`)), "the tunnel is closed at the end");
+  assert.ok(!rig.docker().some(l => / link approve /.test(l)), "pairing is never approved over SSH");
 
   const c = rig.macConfig();
   assert.equal(c.box?.ssh, TARGET);
@@ -108,9 +112,12 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
     assert.match(out, /^ {2}Your address\s+done$/m);
     assert.ok(out.includes(ending({ address, assistant: "Juno" }).join("\n")), out);
     assert.equal(c.network?.box, address);
+    // This Mac's vyred cannot reach the box's ts.net name here (see the skipped check below), so
+    // pairing says why instead of showing the Deck's code.
+    assert.match(out, /^ {2}pairing: |Approve this Mac in your Deck/m);
   } else {
     // ADR 0008 section 6: with the address step skipped, the ending says it is not done yet.
-    assert.match(out, /your box has no address yet\. Finish Your address in the Deck's Settings/);
+    assert.match(out, new RegExp(`your box has no address yet\\. Run vyre box add ${TARGET} again to finish Your address in the browser\\.`));
     assert.ok(out.includes(ending({ address: null, assistant: "Juno" }).join("\n")), out);
     assert.match(out, /^ {2}Almost there: your box has no address yet\.$/m);
   }
@@ -122,21 +129,37 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   });
 });
 
-test("journey 2, door A resumed: box add again skips the install and finishes", async t => {
+test("journey 2, door A resumed: box add again skips the install and carries on", async t => {
   const rig = shared;
   if (!rig) { t.skip("journey 1 did not set the machines up"); return; }
   const before = rig.ssh().length, opened = rig.opened().length;
-  const { code, out } = await rig.mac(["box", "add", TARGET], { timeout: 40_000 }).done;
+  const address = rig.macConfig().network?.box || null;
+  const run = rig.mac(["box", "add", TARGET], { timeout: 40_000 });
+  if (!address) {
+    // Finished without an address: the address is finished in the browser, so the link comes back.
+    const url = await until(() => rig.opened()[opened], Boolean, 30_000, "box add to open the browser again");
+    assert.ok(rig.ssh().slice(before).some(l => / -O forward -L /.test(l)), "the tunnel is back");
+    if (!rig.cert) { run.child.kill("SIGINT"); await run.done; return; }
+    const b = await browser(url);
+    await b.tool("onboard.name", { action: "reserve" });
+    await until(() => b.tool("onboard.name", { action: "status" }), s => s.state === "done", 30_000, "the address to serve");
+  }
+  const { code, out } = await run.done;
   assert.equal(code, 0, out);
   assert.match(out, new RegExp(`Vyre is already on ${TARGET}; carrying on from where it stands\\.`));
   const calls = rig.ssh().slice(before);
   assert.ok(!calls.some(l => INSTALL_RUN.test(l)), `no second installer run:\n${calls.join("\n")}`);
   assert.ok(!calls.some(l => / cat > /.test(l)), "the installer was not even copied over");
   assert.doesNotMatch(out, /Go ahead\?|nothing changed/, "a resume asks nothing");
-  assert.equal(rig.opened().length, opened, "no second browser open");
-  assert.ok(!calls.some(l => / -O forward /.test(l)), "no second tunnel");
-  assert.doesNotMatch(out, /Finish in your browser/);
-  assert.ok(out.includes(ending({ address: rig.macConfig().network?.box || null, assistant: "Juno" }).join("\n")), out);
+  if (address) {
+    // Finished with an address: straight to the end.
+    assert.equal(rig.opened().length, opened, "no second browser open");
+    assert.ok(!calls.some(l => / -O forward /.test(l)), "no second tunnel");
+    assert.doesNotMatch(out, /Finish in your browser/);
+  }
+  const now = rig.macConfig().network?.box || null;
+  assert.ok(now, "the Mac knows the box's address now");
+  assert.ok(out.includes(ending({ address: now, assistant: "Juno" }).join("\n")), out);
 });
 
 test("journey 3, door A refused: no --yes and no terminal prints the plan and touches nothing", async () => {
@@ -152,7 +175,7 @@ test("journey 3, door A refused: no --yes and no terminal prints the plan and to
     assert.equal(fs.existsSync(rig.env.server.VYRE_DIR), false, "no stack folder");
     assert.equal(fs.existsSync(rig.env.server.VYRE_WRAPPER), false, "no wrapper");
     assert.ok(!rig.ssh().some(l => / cat > /.test(l) || INSTALL_RUN.test(l)), "the installer never went over");
-    assert.deepEqual(rig.docker().filter(l => !/^(compose version|info)\b/.test(l)), [], "docker was only asked, never told");
+    assert.deepEqual(rig.docker().filter(l => !/^(compose version|info|volume (ls|inspect))\b/.test(l)), [], "docker was only asked, never told");
     assert.equal(rig.opened().length, 0);
   } finally { await rig.close(); }
 });
@@ -170,8 +193,7 @@ test("journey 4, door B: the installer on the server prints the link and the ssh
     assert.ok(rig.docker().includes("compose up -d"), "the wrapper started the stack");
 
     // ---- later, on the Mac: the box has joined the tailnet ----
-    const skip = rig.macTailscaleApp && "this Mac has the real Tailscale app, which link.find would run: core/link/transport.js:36 ignores VYRE_TAILSCALE_BIN";
-    await t.test("the Mac's vyre up --json looks for the box on the tailnet", { skip }, async t => {
+    await t.test("the Mac's vyre up --json looks for the box on the tailnet", async t => {
       rig.boxSignedIn();
       const m = await rig.mac(["up", "--json"], { timeout: 30_000 }).done;
       assert.equal(m.code, 0, m.out);
@@ -212,26 +234,18 @@ test("journey 6, after onboarding: vyre up --json on the server", async t => {
     return JSON.parse(r.out.trim().split("\n").pop() || "");
   };
   const address = rig.boxConfig().network?.address || null;
+  assert.ok(address, "journey 1 or 2 left the box serving its address");
   const after = await upJson();
   assert.equal(after.role, "box");
+  assert.equal(after.url, null, "a finished box with an address hands out no link");
+  assert.equal(after.port, null);
+  assert.equal(after.ssh, null);
   assert.equal(after.address, address);
+  assert.equal(after.ready, true, "ready follows names.status: the address serves");
 
-  await t.test("right after onboard.finish, url is null", { todo: "core/onboard/index.js:269 returns url null only once network.ownerSeen is set (the owner reached the tailnet listener); a finished onboarding still mints a link" }, () => {
-    assert.equal(after.url, null);
-  });
-
-  // The owner reaching the box over the tailnet is what closes the door today. That needs a
-  // tailnet source address, which this machine cannot fake, so write what it would have saved.
+  // After a restart the address serves again.
   assert.equal((await rig.server(`cd ${rig.env.server.VYRE_DIR} && docker compose stop`, { timeout: 20_000 }).done).code, 0);
-  const cfg = rig.boxConfig();
-  fs.writeFileSync(path.join(rig.env.container.VYRE_HOME, "config.json"), JSON.stringify({ ...cfg, network: { ...cfg.network, ownerSeen: new Date().toISOString() } }));
-  const seen = await upJson();
-  assert.equal(seen.url, null);
-  assert.equal(seen.port, null);
-  assert.equal(seen.ssh, null);
-  assert.equal(seen.address, address);
-  // The stop and start above is a restart, and a ts.net box does not serve again after one.
-  await t.test("after a restart the address serves again, so ready is true", { todo: "core/names/service.js:229 serve() reads certName() before tailscale() (line 243) sets the node, so for via ts.net the name is null at start, serve() returns false, and names.status stays idle after any vyred restart" }, () => {
-    assert.equal(seen.ready, Boolean(address));
-  });
+  const again = await until(upJson, j => j.ready === true, 20_000, "the address to serve after a restart");
+  assert.equal(again.url, null);
+  assert.equal(again.address, address);
 });

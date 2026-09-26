@@ -43,6 +43,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The journey harness follows `box add` pairing over SSH and the finished-box resume: door A runs
   the real installer, a resume opens no browser and no tunnel, and the Mac's discovery step is
   skipped where the real Tailscale app is installed, since the link module would run it.
+- The journey harness follows pairing approved in the Deck, `--` before ssh targets, the preflight's
+  read-only volume check, and a resume that reopens the browser only while the address is unset.
+  The Mac's discovery step runs again now that the link module honours VYRE_TAILSCALE_BIN.
 - `test/helpers.js` points `VYRE_TAILSCALE_BIN` at a path that does not exist, so no test runs the
   machine's real `tailscale` when `vyre up` looks for a box.
 - `vyre box add <user@host>` (ADR 0008 section 2): checks the Mac is on its tailnet, reaches the

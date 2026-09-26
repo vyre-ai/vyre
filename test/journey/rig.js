@@ -84,8 +84,6 @@ function makeCert(dir) {
 /**
  * Build both machines. JOURNEY_INSTALLER and JOURNEY_BOX_DIR may point at another installer and
  * box folder, to try the harness against a branch's copies without touching this tree.
- * macTailscaleApp is true when this machine has the real Tailscale app, which the link module
- * would run in place of the fake (core/link/transport.js reads no VYRE_TAILSCALE_BIN).
  * @param {{ mac?: "running"|"signed-out" }} [o]
  */
 export async function makeRig(o = {}) {
@@ -108,15 +106,13 @@ export async function makeRig(o = {}) {
   // fakes: the Mac's ssh, open and tailscale; the box's tailscale and claude; the server's PATH
   shim(d("fakes", "ssh"), "ssh.mjs");
   shim(d("fakes", "tailscale-mac"), "tailscale.mjs", "mac");
-  // The link module runs `tailscale` from PATH (or the Mac app, when one is installed).
-  shim(d("fakes", "macbin", "tailscale"), "tailscale.mjs", "mac");
   shim(d("fakes", "tailscale-box"), "tailscale.mjs", "box");
   exe(d("fakes", "open"), `#!/bin/sh\nprintf '%s\\n' "$1" >> "${d("state", "opened")}"\n`);
   exe(d("fakes", "claude"), CLAUDE);
   shim(d("srv", "fakebin", "docker"), "docker.mjs");
   exe(d("srv", "fakebin", "sudo"), `#!/bin/sh\nwhile [ $# -gt 0 ]; do case "$1" in -n|-E|-H|--) shift ;; -u) shift 2 ;; *) break ;; esac; done\nexec "$@"\n`);
   exe(d("srv", "fakebin", "uname"), `#!/bin/sh\necho Linux\n`);
-  exe(d("srv", "fakebin", "id"), `#!/bin/sh\ncase "$1" in -u) echo 1000 ;; -un|-nu) echo alex ;; -gn|-ng) echo alex ;; -g) echo 1000 ;; *) echo "uid=1000(alex) gid=1000(alex)" ;; esac\n`);
+  exe(d("srv", "fakebin", "id"), `#!/bin/sh\ncase "$1" in -u) echo 1000 ;; -un|-nu) echo alex ;; -gn|-ng) echo alex ;; -nG|-Gn) echo alex ;; -g) echo 1000 ;; *) echo "uid=1000(alex) gid=1000(alex)" ;; esac\n`);
 
   const cert = makeCert(d("state"));
   const py = python3Dir();
@@ -136,7 +132,7 @@ export async function makeRig(o = {}) {
       PATH: [path.dirname(NODE), SYSTEM_PATH, py].filter(Boolean).join(":"), JOURNEY_RIG: d("rig.json"),
     } },
     mac: { env: {
-      HOME: d("mac"), VYRE_HOME: d("mac", ".vyre"), PATH: `${d("fakes", "macbin")}:${path.dirname(NODE)}:${SYSTEM_PATH}`, NO_COLOR: "1",
+      HOME: d("mac"), VYRE_HOME: d("mac", ".vyre"), PATH: `${path.dirname(NODE)}:${SYSTEM_PATH}`, NO_COLOR: "1",
       VYRE_TAILSCALE_BIN: d("fakes", "tailscale-mac"), VYRE_SSH_BIN: d("fakes", "ssh"), VYRE_OPEN_BIN: d("fakes", "open"),
       VYRE_BOX_POLL_MS: "250", JOURNEY_RIG: d("rig.json"),
       ...(process.env.JOURNEY_INSTALLER ? { VYRE_BOX_INSTALLER: installer } : {}),
@@ -167,7 +163,6 @@ export async function makeRig(o = {}) {
 
   return {
     ...rig, onboardPort, tailnetPort, installer, python3: py,
-    macTailscaleApp: process.platform === "darwin" && fs.existsSync("/Applications/Tailscale.app"),
     env: { mac: rig.mac.env, server: rig.server.env, container: rig.container.env },
     /** `vyre <args>` on the Mac, no terminal. */
     mac: (args, opts) => spawnOne(NODE, [BIN, ...args], rig.mac.env, opts),
