@@ -1,9 +1,12 @@
 // @ts-check
-// The first-passkey page (ADR 0004): onboard.finish's ending sends the person here when
-// passkeyUrl is set, as https://<addr>/onboard/passkey#e=<code>. The code is single use, lasts
-// 10 minutes, and only proves presence.enroll — security's design, not this file's. A standalone
-// page, not part of the onboarding wizard or the Deck's router: it exists only to run one
-// WebAuthn ceremony and hand back to the Deck.
+// The first-passkey page (ADR 0004). onboard.finish only hands back passkeyUrl to a caller with
+// the loopback onboarding session (box: caller onboard/cli/local, never a tailnet caller) — and
+// that session does not survive the redirect from loopback to the https address (it lives in
+// this origin's sessionStorage). So the "name" step calls finish itself, one moment before that
+// redirect, and sends the browser here instead when passkeyUrl comes back: this page is a detour
+// in the middle of onboarding, not its ending. It always continues to /onboard#history after,
+// enrolled or not. A standalone page, not part of the wizard's own router: it exists only to run
+// one WebAuthn ceremony and hand back to onboarding.
 
 import { h, put } from "../../js/dom.js";
 import { canProve, callWithCode } from "../../js/api.js";
@@ -28,7 +31,7 @@ function done() {
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "Passkey added."),
     h("p", { class: "lead" }, "It's yours to approve a held item or take over a session with, from now on — Touch ID, Face ID, or whatever this device offers."),
-    h("div", { class: "ob-foot" }, h("a", { class: "btn btn-primary", href: "/now" }, "Open Vyre")));
+    h("div", { class: "ob-foot" }, h("a", { class: "btn btn-primary", href: "/onboard#history" }, "Continue setting up")));
 }
 
 function missingCode() {
@@ -36,14 +39,14 @@ function missingCode() {
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "This link is missing its code."),
     h("p", { class: "lead" }, "Open the link Vyre gave you again, or add a passkey later from Settings."),
-    h("div", { class: "ob-foot" }, h("a", { class: "btn", href: "/now" }, "Open Vyre")));
+    h("div", { class: "ob-foot" }, h("a", { class: "btn", href: "/onboard#history" }, "Continue setting up")));
 }
 
 function screen() {
   const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "pk-name", autocomplete: "off", placeholder: "e.g. My MacBook" }));
   const st = h("div", { class: "check-line", "aria-live": "polite" });
   const btn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-primary", onclick: enroll }, "Add a passkey"));
-  const skip = h("a", { class: "btn btn-ghost", href: "/now" }, "Skip for now");
+  const skip = h("a", { class: "btn btn-ghost", href: "/onboard#history" }, "Skip for now");
 
   async function enroll() {
     btn.disabled = true;
@@ -88,6 +91,6 @@ if (!canProve()) {
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "This browser cannot create a passkey." ),
     h("p", { class: "lead" }, "Open this link in Safari or Chrome, over your tailnet, or add one later from Settings."),
-    h("div", { class: "ob-foot" }, h("a", { class: "btn", href: "/now" }, "Open Vyre")));
+    h("div", { class: "ob-foot" }, h("a", { class: "btn", href: "/onboard#history" }, "Continue setting up")));
 } else if (!code) missingCode();
 else screen();

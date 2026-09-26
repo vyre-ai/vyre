@@ -376,7 +376,14 @@ const SCREENS = {
         put(note, h("p", { class: "notice" }, "From here the loopback link stops working. The rest of the setup continues at your address."));
         s.foot({ label: `Switch to ${r.url.replace(/^https?:\/\//, "")}`, run: async () => {
           await mark_("name", "done");
-          location.href = r.url.replace(/\/$/, "") + "/onboard#history";
+          // onboard.finish hands back a passkey link only when it is called with the loopback
+          // session still good (box: caller onboard/cli/local, never a tailnet caller) — which
+          // this is, one moment longer, and the https address after this redirect never will be:
+          // the session lives in this origin's sessionStorage, and does not follow a page to a
+          // new origin. So the passkey detour is asked for here, before leaving, not at the end.
+          const f = await attempt("onboard.finish");
+          const next = f.data?.passkeyUrl || r.url.replace(/\/$/, "") + "/onboard#history";
+          location.href = next;
         } });
         return true;
       }
@@ -556,8 +563,9 @@ function showEnding(d) {
     { id: "history", label: "Your history", done: stepState("history") !== "todo" },
   ];
   put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo")));
-  // A passkey (ADR 0004) proves a person is present for a Gate approval or a Glass take-over;
-  // with none enrolled yet, onboard.finish's passkeyUrl sends the person to set one up first.
+  // The passkey detour already happened earlier, at the address step (onboard.finish only hands
+  // back passkeyUrl to the loopback session, which is gone by now); this is a defensive fallback,
+  // not the usual path.
   const open = d.passkeyUrl || (d.url.replace(/\/$/, "") + "/now");
   put(root, h("div", { class: "ob-end" },
     h("span", { class: "brand", "aria-label": "vyre" }, mark(24), wordmark(26)),
