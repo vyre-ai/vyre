@@ -63,8 +63,9 @@ One step a screen. Any step can be skipped and finished later in Settings.
 ## 4. Done
 
 Your assistant says hello on the last screen. Press **Open Vyre**. Back in the terminal, Vyre
-asks you to approve your Mac in the Deck with the passkey you just made, and shows a code to
-check it is the same Mac. Then it ends with:
+opens one more page to make your passkey (Touch ID or your phone), which approves everything on
+your box from now on. Then it asks you to approve your Mac in the Deck with it, and shows a code
+to check it is the same Mac. Then it ends with:
 
 ```
   Vyre is ready.

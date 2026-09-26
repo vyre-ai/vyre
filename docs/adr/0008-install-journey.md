@@ -73,8 +73,9 @@ The glue this ADR adds. Run on the Mac; everything on the server happens through
    printing one line per step as it completes. Ctrl-C leaves the box as it is; running `vyre box
    add` again resumes from where it stands, because every step is worked out from the box.
 7. **Finish on the Mac.** When the address serves, close the tunnel, save `network.box` and
-   `box.ssh` (`user@host`, for `vyre box update|backup|move|remove`), start pairing and ask for
-   the approval in the Deck (section 7), and print the ending. A box that already finished onboarding goes
+   `box.ssh` (`user@host`, for `vyre box update|backup|move|remove`), open the first-passkey
+   link (`onboard.link`'s `passkeyUrl`, given only to the box's own terminal, null once a passkey
+   exists), start pairing and ask for the approval in the Deck (section 7), and print the ending. A box that already finished onboarding goes
    straight here, so running `vyre box add` again is how a person resumes.
 
 Door B joins the same journey at step 5: its `vyre up` prints the link, and when the person later

@@ -279,6 +279,7 @@ async function finish(r, target, s, t, env, tool = call) {
     printEnding({ address: null, assistant: s.assistant });
     return 0;
   }
+  await passkey(r, env);
   const up = await ensureUp();
   if (!up.ok) out(beacon("  this Mac's vyred did not start: ") + dim(String(up.log)));
   else await pairOver(s.address, tool);
@@ -288,13 +289,24 @@ async function finish(r, target, s, t, env, tool = call) {
 }
 
 /** Pair this Mac with the box, approving the code on the box over the SSH connection. */
+/**
+ * The owner's first passkey, made at the box's address before anything asks for one. The box hands
+ * its one-time enrollment link only to its own terminal; null once a passkey exists.
+ */
+async function passkey(r, env) {
+  const l = await r.json(vyre(["call", "onboard.link"], env)).catch(() => null);
+  if (!l || !l.passkeyUrl) return;
+  openBrowser(l.passkeyUrl, env);
+  out(`\n  Make your passkey, which approves everything on your box from now on ${dim("(works once, for 10 minutes)")}:\n\n    ${signal(l.passkeyUrl)}\n`);
+}
+
 async function pairOver(address, tool) {
   const st = await tool("link.status");
   if (st.error && st.error.code === "no_such_tool") { out(dim("  pairing is not in this version yet; this Mac will pair when it is")); return; }
   if (st.data && st.data.linked) return;
   const p = await tool("link.pair", { box: address });
   if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
-  out(`  Approve this Mac in your Deck: it asks for your passkey and names this Mac (${os.hostname()}). Code: ${signal(p.data.code)}`);
+  out(`  Approve this Mac in your Deck: it names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(p.data.code)}`);
   out(dim("  vyre link shows when it is done."));
 }
 

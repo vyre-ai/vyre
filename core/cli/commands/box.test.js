@@ -58,6 +58,7 @@ echo "$*" >> "$FAKE_BOX/vyre.log"
 case "$1" in
   up) cat "$FAKE_BOX/up.out" ;;
   call)
+    [ "$2" = onboard.link ] && [ -f "$FAKE_BOX/link.json" ] && { cat "$FAKE_BOX/link.json"; exit 0; }
     n=$(( $(cat "$FAKE_BOX/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$FAKE_BOX/n"
     [ -f "$FAKE_BOX/status.$n.json" ] && cp "$FAKE_BOX/status.$n.json" "$FAKE_BOX/last.json"
     cat "$FAKE_BOX/last.json" ;;
@@ -212,6 +213,21 @@ test("box add: a finished box pairs this Mac and asks for the approval in the De
   assert.doesNotMatch(r.read("vyre.log"), /^up /m, "a finished box needs no link, tunnel or browser");
   assert.equal(r.read("opened"), "");
   assert.match(text, /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
+});
+
+test("box add: with no passkey yet, the enrollment link opens before pairing", async t => {
+  const r = rig(t);
+  fs.mkdirSync(r.stack, { recursive: true });
+  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  r.setStatuses([status(6, { finished: true })]);
+  const passkeyUrl = `${ADDRESS}/onboard/passkey#e=abcd1234`;
+  fs.writeFileSync(path.join(r.root, "box", "link.json"), JSON.stringify({ url: null, address: ADDRESS, passkeyUrl }));
+  const call = async (tool, input) => tool === "link.status" ? { data: { linked: false } } : tool === "link.pair" ? { data: { code: "123-456" } } : { error: { code: "no_such_tool", message: tool } };
+  const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
+  assert.equal(code, 0, text);
+  for (let i = 0; i < 50 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
+  assert.equal(r.read("opened").trim(), passkeyUrl);
+  assert.ok(text.indexOf("Make your passkey") < text.indexOf("Approve this Mac"), "the passkey comes first: it is what approves the Mac");
 });
 
 test("box add: onboarding finished without an address reopens the browser, says what is left, and pairs nothing", async t => {

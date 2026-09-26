@@ -6,6 +6,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `vyre box add` opens the owner's first-passkey link (`onboard.link`'s `passkeyUrl`, handed
+  only to the box's own terminal) before it starts pairing, since that passkey is what approves the
+  Mac in the Deck. Both doors print one approval line; there is no terminal approval on a box.
 - Pairing follows the presence floor: `vyre box add` and `vyre up` on a Mac start pairing and ask
   for the approval in the Deck, with the passkey onboarding enrolled. `vyre box add` no longer
   approves over SSH: anything in the box's container could run the same command.

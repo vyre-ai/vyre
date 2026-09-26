@@ -172,7 +172,7 @@ test("up on a Mac: an unpaired box starts pairing through link.pair and shows th
   const f = fakes(t, { answering: [BOX], tools: { "link.status": () => ({ data: { linked: false, pending: null } }), "link.pair": () => ({ data: { code: "123-456" } }) } });
   assert.equal(await up([], f.deps), 0);
   assert.deepEqual(f.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
-  assert.match(f.text(), /vyre link approve 123-456/);
+  assert.match(f.text(), /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
 });
 
 test("up --box on a Mac: the one-time link is printed and opened; --json gives url and port", async t => {
@@ -265,13 +265,13 @@ test("up on a Mac: not paired starts pairing, prints the code to approve, then o
   assert.equal(r.code, 0);
   assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
   assert.deepEqual(r.calls[1][1], { box: "https://alex.vyre.run" });
-  assert.match(r.text, /vyre link approve 123-456/);
+  assert.match(r.text, /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
 });
 
 test("up on a Mac: a pairing already waiting shows its code instead of starting another", async () => {
   const r = await runMac("https://alex.vyre.run", { status: { linked: false, pending: { code: "654-321" } } });
   assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "capsule"]);
-  assert.match(r.text, /vyre link approve 654-321/);
+  assert.match(r.text, /Approve this Mac in your Deck[\s\S]*Code: 654-321/);
 });
 
 test("up on a Mac: already linked goes straight to the Capsule; --no-capsule skips it", async () => {
