@@ -31,7 +31,7 @@ const doc = () => h("span", { class: "i" }, svg(`<svg width="14" height="14" vie
 function svg(markup) { const t = document.createElement("template"); t.innerHTML = markup; return /** @type {Node} */ (t.content.firstChild); }
 
 const S = {
-  /** @type {"ask"|"waiting"|"review"|"source"|"reply"} */ mode: "ask",
+  /** @type {"ask"|"waiting"|"review"|"source"|"reply"|"report"} */ mode: "ask",
   /** @type {any} */ snap: { up: false, waiting: [], reply: null, has: {}, assistant: null, hotkey: { ok: true, message: "" } },
   /** @type {any} */ chip: null,
   text: "",
@@ -44,6 +44,7 @@ const S = {
   /** @type {any} */ sent: null,
   note: "",
   /** @type {any} */ takeable: null,
+  /** @type {any} */ report: null,
   // What a bare query finds on this Mac, ranked with Vyre's own. `sel` runs over the results and
   // then the ask row, which is always last: results.length means "send it".
   /** @type {any[]} */ results: [], intent: "ask",
@@ -153,10 +154,27 @@ function timed(kind) {
 }
 
 /** Open a local result, or make a Vyre one the chip, the way @ would. */
-async function pickResult(r) {
+async function pickResult(r, { take = false } = {}) {
   if (r.kind === "agent" || r.kind === "project" || r.kind === "thread") {
     box.value = ""; S.results = []; S.selKey = null;
     return choose(r);
+  }
+  if (r.kind === "drive") {
+    const d = { kind: "thread", thread: r.target, threadLabel: r.thread, meta: "", show: { who: r.thread, where: [] } };
+    const sent = await api.send(d, r.text, { take });
+    // Someone else has that thread's keyboard. Taking it is the user's call: ⌘⏎, never ours.
+    if (sent.error) { S.note = sent.error + (sent.holder ? " ⌘⏎ takes the keyboard." : ""); S.takeable = sent.holder ? { drive: r } : null; return paint(); }
+    await api.watch(r.target, r.thread);
+    S.note = `Sent to ${r.thread}. A notification says when it is done or asks.`;
+    box.value = ""; S.results = []; S.selKey = null;
+    return paint();
+  }
+  if (r.kind === "watch") {
+    const label = r.label.replace(/^Watch /, "");
+    await api.watch(r.target, label);
+    S.note = `Watching ${label}. A notification says when it is done or asks.`;
+    box.value = ""; S.results = []; S.selKey = null;
+    return paint();
   }
   const r2 = await api.pick(r, box.value.trim());
   S.note = r2.error || r2.note || "";
@@ -243,6 +261,7 @@ window.addEventListener("keydown", e => {
     if (S.mode === "review" && inField()) { /** @type {HTMLElement} */ (document.activeElement).blur(); return; }
     if (S.mode === "review") { S.mode = "waiting"; S.review = null; api.pin(false); return paint(); }
     if (S.mode === "source") { S.mode = "ask"; S.source = null; paint(); return box.focus(); }
+    if (S.mode === "report") { S.mode = "ask"; S.report = null; paint(); return box.focus(); }
     // An answer still streaming: the first Esc stops it and keeps what came; the next one closes.
     if (S.mode === "reply" && S.snap.reply && !S.snap.reply.finished) { api.cancel().then(r => { if (r && r.note) { S.note = r.note; paint(); } }); return; }
     // One press, always the same result: the Capsule goes and the keyboard goes back.
@@ -302,6 +321,7 @@ window.addEventListener("keydown", e => {
     if (k === "Enter" && srcs.length) { e.preventDefault(); return openSource(srcs[S.srcIndex]); }
     if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
   }
+  if (k === "Enter" && e.metaKey && S.takeable && S.takeable.drive) { e.preventDefault(); const r = S.takeable.drive; S.takeable = null; return pickResult(r, { take: true }); }
   if (k === "Enter" && e.metaKey && S.takeable) { e.preventDefault(); return send(S.takeable, { take: true }); }
   if (k === "Enter" && opts.length) { e.preventDefault(); return send(opts[S.destIndex]); }
   // Tab means something only where the footer says so; elsewhere it must not move focus out of
@@ -474,7 +494,7 @@ function paint() {
     if (S.note) kids.push(h("div", { class: "sect note" }, S.note));
     const cur = E[selected(E)];
     const primary = opts[0] && opts[0].kind !== "recall" ? opts[0].show.who : null;
-    keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "clip" ? "⏎ copy, then ⌘V" : cur.r.kind === "clipclear" ? "⏎ clear" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
+    keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "clip" ? "⏎ copy, then ⌘V" : cur.r.kind === "clipclear" ? "⏎ clear" : cur.r.kind === "watch" ? "⏎ watch" : cur.r.kind === "drive" ? "⏎ send and watch" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
       primary && !(cur && cur.ask === opts[0]) ? `⇥ ask ${primary}` : null, "esc close");
     done(panel, kids);
     loadIcons();
@@ -508,7 +528,22 @@ function paint() {
     return done(panel, kids);
   }
 
+  if (S.mode === "report" && S.report) {
+    const r = S.report;
+    kids.push(h("div", { class: "sect replyhead" }, h("span", { class: "lbl on" }, WHY[r.why] || "Report"), h("span", { class: "who" }, r.label),
+      h("span", { class: "state" }, [r.cost != null ? `$${Number(r.cost).toFixed(3)}` : null, age(r.at)].filter(Boolean).join(" · "))));
+    kids.push(h("div", { class: "reply md" }, r.text ? md(r.text) : r.why === "finished" ? "It finished its turn." : ""));
+    keys("esc back");
+    return done(panel, kids);
+  }
+
   // Empty.
+  const reports = snap.reports || [];
+  if (reports.length) kids.push(h("div", { class: "sect pad" }, reports.slice(0, 4).map(r => h("div", { class: "row res", onmousedown: e => { e.preventDefault(); openReport(r); } },
+    glyph(r.why === "asked" ? "held" : "thread"), h("span", { class: "t" }, `${r.label} · ${(WHY[r.why] || "").toLowerCase()}`),
+    h("span", { class: "s" }, (r.text || "").replace(/\s+/g, " ").slice(0, 90)), h("span", { class: "acc" }, age(r.at))))));
+  const watching = snap.watching || [];
+  if (watching.length) kids.push(h("div", { class: "sect note" }, `Watching ${watching.map(w => w.label).join(", ")}.`));
   if (nWait) hint.append(h("span", { class: "kbd live" }, "↑"));
   if (nWait) kids.push(h("div", { class: "sect note" }, `${nWait} waiting on you. Press ↑ to see ${nWait === 1 ? "it" : "them"}.`));
   if (!snap.hotkey.ok && snap.hotkey.message && snap.hotkey.message !== "starting") kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Hotkey"), snap.hotkey.message));
@@ -548,7 +583,7 @@ function entryRows(E) {
   return out;
 }
 const KIND_LABEL = { calc: "", app: "App", setting: "Settings", file: "File", folder: "Folder", contact: "Contact", define: "Dictionary", grant: "Contacts",
-  agent: "Agent", project: "Project", thread: "Thread", memory: "Memory", vault: "Vault", boxfile: "Box", clip: "Clipboard", clipclear: "" };
+  agent: "Agent", project: "Project", thread: "Thread", memory: "Memory", vault: "Vault", boxfile: "Box", clip: "Clipboard", clipclear: "", watch: "Watch", drive: "Thread" };
 
 // ------------------------------------------------------------------ pictures
 
@@ -604,6 +639,8 @@ const GLYPHS = {
   grant: `<circle cx="6" cy="6" r="2.2"/><path d="M2.5 13c.4-2 1.8-3.2 3.5-3.2S9.1 11 9.5 13"/><path d="M12 6v4M10 8h4"/>`,
   calc: `<path d="M4 6h8M4 10h8"/>`,
   file: `<path d="M4 1.5h5l3 3v10H4z"/>`,
+  drive: `<path d="M3 4.5l3 3.5-3 3.5"/><path d="M8 11.5h5"/><circle cx="13" cy="4" r="1.6" fill="#C6F36B" stroke="none"/>`,
+  watch: `<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>`,
   clip: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 2.5V1.5h4v1M6 7h4M6 10h3"/>`,
   clipclear: `<rect x="3.5" y="2.5" width="9" height="12" rx="1.5"/><path d="M6 7l4 4M10 7l-4 4"/>`,
 };
@@ -614,6 +651,23 @@ function glyph(kind) {
   const stroke = TONE[kind] || "#F1EEE6";
   return h("span", { class: "ic vy" + (kind === "memory" ? " gold" : kind === "held" ? " hot" : "") },
     svg(`<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`));
+}
+
+// ------------------------------------------------------------------ watches
+
+const WHY = { finished: "Done", failed: "Failed", stopped: "Stopped", asked: "Asking" };
+
+/** "3 min ago" for a report. */
+function age(at) {
+  const m = Math.round((Date.now() - Number(at || 0)) / 60000);
+  return m < 1 ? "now" : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`;
+}
+
+/** Read a report: what the watched thread said last, and it leaves the list. */
+function openReport(r) {
+  S.report = r; S.mode = "report";
+  api.reportRead(r.id);
+  paint();
 }
 
 // ------------------------------------------------------------------ direct messages
@@ -783,3 +837,5 @@ api.onOpen(d => {
   box.focus();
 });
 api.snapshot().then(s => { S.snap = s; paint(); });
+// A notification the user clicked: open that report.
+api.onReport(id => { const r = (S.snap.reports || []).find(x => x.id === id); if (r) openReport(r); });

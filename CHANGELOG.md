@@ -299,6 +299,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Drive and watch sessions from the Capsule. "watch the intake thread" offers a row per thread it
+  could mean; picking one sets a watch (`lib/watch.js`), a filter on the event stream the Capsule
+  follows anyway. When the thread finishes, fails, stops or asks, a macOS notification says so and
+  the report (the last thing it said, and its cost) waits in the empty Capsule until read. "tell
+  the intake thread to run the tests" shows the thread and the words, sends them as the user and
+  watches the thread; a thread someone else holds says who, and only ⌘⏎ takes it.
 - In the Capsule: clipboard items rank beside apps and files, "clipboard" lists them newest first
   with a row that clears the history, and Enter puts one back on the pasteboard and closes, for the
   user's own ⌘V. `@` an agent opens a DM: its history, your messages from any surface, the reply

@@ -19,6 +19,7 @@ import * as local from "./local.js";
 import * as route from "./route.js";
 import { evaluate } from "./calc.js";
 import { toResults, toDefineResult } from "./helper.js";
+import { watchWords } from "./watch.js";
 
 /** @typedef {route.Result} Result */
 
@@ -87,6 +88,21 @@ export class Launcher {
     const word = defineWord(q);
     const [people, def] = await Promise.all([this.people(q), word && this.helper ? this.helper.define(word) : null]);
     extra.push(...people);
+    // "tell the intake thread to run the tests": the row names the thread and the words, so what
+    // is sent and where is on screen before Enter (floor rule 2). It is sent as the user, and
+    // watched, so the answer comes back here.
+    const drive = /^(?:tell|ask)\s+(?:the\s+)?(.+?)(?:\s+thread)?\s+to\s+(.+)$/i.exec(q);
+    if (drive && cat) for (const t of (cat.threads || [])) {
+      const m = local.match(drive[1], t.label || "");
+      if (m >= 0.5) extra.push({ kind: "drive", id: "drive:" + t.id, label: `Tell ${t.label}: ${drive[2]}`, sub: "sent as you, then watched", target: t.id,
+        text: drive[2], thread: t.label, score: 1.85 + m / 10 });
+    }
+    // "watch the intake thread": a row per thread it could mean, to be told when it is done.
+    const target = watchWords(q);
+    if (target && cat) for (const t of (cat.threads || [])) {
+      const m = local.match(target, t.label || "");
+      if (m >= 0.5) extra.push({ kind: "watch", id: "watch:" + t.id, label: `Watch ${t.label}`, sub: "tell me when it is done or asks", target: t.id, score: 1.8 + m / 10 });
+    }
     if (this.clips) {
       const found = this.clips.search(q, 6);
       extra.push(...found);

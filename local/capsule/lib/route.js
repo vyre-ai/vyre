@@ -301,7 +301,9 @@ export function asksQuestion(text) {
 export function intent(text, results) {
   const top = results[0];
   if (!top) return "ask";
-  if (top.kind === "calc") return "open";
+  // A sum, and the rows that exist only because the words named them ("watch the intake thread",
+  // "tell the site thread to run the tests"), are what the user meant even when it reads as a sentence.
+  if (top.kind === "calc" || top.kind === "drive" || top.kind === "watch") return "open";
   if (questionLike(text)) return "ask";
   return (top.score || 0) >= 0.8 ? "open" : "ask";
 }

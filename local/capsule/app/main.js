@@ -19,7 +19,7 @@
 //   - It runs from source (`vyre capsule --dev`). A packaged app runs app.asar, so an edit to the
 //     source changes nothing until it is repackaged; `vyre capsule` checks for that.
 
-import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, clipboard } from "electron";
+import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, clipboard, Notification } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -31,6 +31,7 @@ import { Apps, Frecency } from "../lib/local.js";
 import { LocalHelper } from "../lib/helper.js";
 import { Icons } from "../lib/icons.js";
 import { Clips } from "../lib/clips.js";
+import { Watches, notice } from "../lib/watch.js";
 import os from "node:os";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +73,17 @@ const withIcons = r => {
   const known = iconsNow().peek(r.results);
   return { ...r, results: r.results.map(x => (known[x.id] ? { ...x, icon: known[x.id] } : x)) };
 };
+// Threads the user asked to be told about. The stream is followed anyway; a watch only filters it.
+const watches = new Watches({ file: DRIVEN ? path.join(HOME, "capsule-test-watches.json") : path.join(HOME, "capsule", "watches.json") });
+/** A watched thread reported: say so where the user is, once. */
+function reported(r) {
+  push();
+  paintTray();
+  if (!Notification.isSupported() || DRIVEN) return say({ report: r });
+  const n = new Notification({ ...notice(r), silent: false });
+  n.on("click", () => { show("notification").then(() => tell("capsule:report", r.id)); });
+  n.show();
+}
 /** The last timings, newest last: how long the Capsule took to show, and to answer a keystroke. */
 const timings = [];
 /** @type {BrowserWindow|null} */
@@ -172,7 +184,7 @@ function tell(channel, data) {
 function push() {
   if (!win || win.isDestroyed()) return;
   const s = bridge.snapshot();
-  tell("capsule:state", { ...s, hotkey: { ok: hotkey.ok, message: hotkey.message } });
+  tell("capsule:state", { ...s, hotkey: { ok: hotkey.ok, message: hotkey.message }, watching: watches.list(), reports: watches.unread() });
   pinned = Boolean(s.reply && !s.reply.finished) || pinned;
 }
 
@@ -262,6 +274,8 @@ async function follow() {
     onEvent: e => {
       if (e.type === "capsule.requested") { const a = (e.payload || {}).action; a === "hide" ? hide() : a === "toggle" ? toggle("vyred") : show("vyred"); return; }
       bridge.onEvent(e);
+      const r = watches.onEvent(e);
+      if (r) reported(r);
     },
     onState: s => { say({ stream: s }); bridge.refresh().catch(() => {}); },
   });
@@ -269,7 +283,10 @@ async function follow() {
 
 // ------------------------------------------------------------------ what the page may ask
 
-ipcMain.handle("capsule:snapshot", () => ({ ...bridge.snapshot(), hotkey: { ok: hotkey.ok, message: hotkey.message } }));
+ipcMain.handle("capsule:snapshot", () => ({ ...bridge.snapshot(), hotkey: { ok: hotkey.ok, message: hotkey.message }, watching: watches.list(), reports: watches.unread() }));
+ipcMain.handle("capsule:watch", (_e, thread, label) => { const w = watches.add(String(thread || ""), String(label || "")); push(); return w; });
+ipcMain.handle("capsule:unwatch", (_e, thread) => { watches.remove(String(thread || "")); push(); return { ok: true }; });
+ipcMain.handle("capsule:report-read", (_e, id) => { const r = watches.read(String(id || "")); push(); return r; });
 ipcMain.handle("capsule:mention", (_e, text, caret) => bridge.mention(String(text || ""), Number(caret) || 0));
 ipcMain.handle("capsule:destinations", (_e, target, text) => bridge.destinations(target || null, String(text || "")));
 ipcMain.handle("capsule:recall", (_e, text) => bridge.recall(String(text || "")));
