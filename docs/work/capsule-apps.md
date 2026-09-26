@@ -87,7 +87,10 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   (core/cli/commands/apps.js). 150 targeted tests pass on the testbox, 5 opt-in skipped.
 
 ## Doing (saved 2026-09-27 at logout)
-- T4 WIP (uncommitted work saved as a wip commit, tests NOT run): planner by default and
+- T4 WIP (170f3dd; testbox local/apps: 178 tests, 173 pass, 0 fail, 5 skipped). Built: A in full
+  (planner adapter, todo rules, appleAsked opt-in, @Planner scope) and B on the route and tool side
+  (fuzzy.js, didYouMean). NOT built: the CLI prompt loop (TTY choice; exit 3 otherwise), unit tests
+  for fuzzy.js, the CHANGELOG entry: planner by default and
   structured re-prompts. Files: local/apps/adapters/planner.js, local/apps/fuzzy.js, edits in
   route.js, route.test.js, adapters/index.js, index.js. Spec, as approved by the lead:
   - timer, alarm, wake me, remind me, todo and note route to Planner add {text, kind}, which
