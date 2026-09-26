@@ -121,12 +121,19 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - Slice 1 screenshots: <team-dir>/chat-shots/ (reported to main).
 
 ## Doing
-- Nothing in flight. 2254e34: session.js port (Mac read-only rows, parallel reads), labelFor in
-  deck/chat/lib/names.js, deep links ?at= / ?ask= / ?tool=, deck-design card specs. Chat +
-  pwa + switchboard tests 124/124 on testbox (the cards.test.js red is fixed).
+- Nothing in flight. a577ad8 merged work/federation 2379a0c (tailnet's Mac send core, shapes
+  frozen). 1ec063b: Mac sessions have a composer (threads.send with machine; queued note "On
+  <machine> · ..."; mac_offline keeps the draft with an offline chip; timeout warns it may have
+  gone; lease line "On <machine>[ · Queued for <name>]"; no Take; cards read "Answer it on
+  <machine>"; re-read via recall.thread {source: "mac"} after finished; labelFor treats box:*
+  as "you"; New session shows the assistant's name). Tested against fakes only (85 chat + 5 pwa
+  on testbox); not against a real Mac or in a browser. A re-read replaces live tool cards with the
+  plain turn view on Mac sessions (by design until recall.transcript is federated).
 
 ## Next
-- newsession.js: the "Vyre" choice should read the assistant's name (labelFor / readNames).
+- Try Mac messaging against a paired Mac once federation is on main; ask tailnet to federate
+  recall.transcript so Mac sessions get the rich view.
+- Merge tailnet's WebSocket upgrade sha when it lands (next tailnet session).
 - Real-browser screenshot pass and deck/test/pwa-perf.js (Back under 100 ms) after 2254e34.
 - Diff summary for phone-design's Changes row: permission asks for Edit/MultiEdit/Write get
   detail.changes [{file, added, removed}]; gate.held for a git push gets changes [...] + totals
