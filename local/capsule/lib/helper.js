@@ -1,5 +1,6 @@
 // @ts-check
-// helper: the Capsule's client for bin/local, the Swift helper for Contacts and the Dictionary.
+// helper: the Capsule's client for bin/local, the Swift helper for Contacts, the Dictionary and
+// result icons.
 //
 // It runs `local serve` once and keeps it: one JSON request per line in, one JSON answer per line
 // out, matched by id. A spawn per keystroke would cost more than the lookup (see the header of
@@ -24,6 +25,7 @@ export const NOT_BUILT = "not built: run vyre capsule build";
 /** @typedef {{ resolve: (v: any) => void, timer: NodeJS.Timeout }} Pending */
 
 const BACKOFF = [0, 250, 1000, 4000, 15000];
+export const ICONS_TIMEOUT_MS = 1500;
 /** A child that has answered for this long is healthy again, and the backoff starts over. */
 const HEALTHY_MS = 10_000;
 
@@ -57,6 +59,18 @@ export class LocalHelper {
 
   /** The system dictionary's definition of a word: { word, definition } with null for none. */
   define(word) { return this.#ask({ op: "define", q: String(word ?? "") }); }
+
+  /**
+   * Icons for launcher rows, rendered to PNGs in `dir`: { icons: { [key]: path | null } }.
+   * Each item is { key, kind, path?, target?, contact? } (see the icons section of local.swift).
+   * A batch renders off the helper's main loop and may take longer than a lookup, hence its own
+   * timeout. It never asks for Contacts: a contact gets its photo only if access is granted.
+   * @param {{ key: string, kind: string, path?: string, target?: string, contact?: string }[]} items
+   * @param {{ dir: string, size?: number, timeoutMs?: number }} opts
+   */
+  icons(items, { dir, size = 64, timeoutMs = ICONS_TIMEOUT_MS }) {
+    return this.#ask({ op: "icons", items, size, dir }, timeoutMs);
+  }
 
   close() {
     this.closed = true;
@@ -128,14 +142,14 @@ export class LocalHelper {
     for (const [id, p] of this.pending) { clearTimeout(p.timer); p.resolve({ error: why }); this.pending.delete(id); }
   }
 
-  /** @param {Record<string, any>} req @returns {Promise<any>} */
-  #ask(req) {
+  /** @param {Record<string, any>} req @param {number} [timeoutMs] @returns {Promise<any>} */
+  #ask(req, timeoutMs = this.timeoutMs) {
     const got = this.#ensure();
     if ("error" in got) return Promise.resolve(got);
     const { child } = got;
     const id = this.nextId++;
     return new Promise(resolve => {
-      const timer = setTimeout(() => { this.pending.delete(id); resolve({ error: "timeout" }); }, this.timeoutMs);
+      const timer = setTimeout(() => { this.pending.delete(id); resolve({ error: "timeout" }); }, timeoutMs);
       this.pending.set(id, { resolve, timer });
       try {
         child.stdin?.write(JSON.stringify({ id, ...req }) + "\n");

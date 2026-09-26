@@ -299,6 +299,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Real icons, fetched by `bin/local` in batches off the main thread: app bundle icons,
+  system type icons or QuickLook thumbnails for files, each settings pane's own icon (resolved
+  from its extension bundle), and contact photos when Contacts is already allowed. `lib/icons.js`
+  keeps them as 64 px PNGs in a bounded cache (1500 files, 24 MB, least recently used first),
+  keyed by path and mtime.
+- Questions get answers in place: a bare query that reads as a question offers Claude (a fast
+  model, haiku) or the assistant, whichever fits: the assistant first when it names the user's own
+  projects, threads, agents or people. A deeper option runs sonnet. A quick answer is a headless
+  thread started in `<vyred home>/capsule/ask`; follow-ups go to the same thread, `cancel()` stops
+  it, and the reply carries its model, cost and what memory said.
 - `vyre capsule` opens an installed Vyre.app (/Applications or ~/Applications) when there is no
   dist build of this source, and leaves it on its own bundled helpers. Packaged apps declare
   `NSContactsUsageDescription`, without which macOS refuses the Contacts ask silently.

@@ -1,4 +1,5 @@
-// local: the Capsule's on-device lookups that Node cannot reach: Contacts and the Dictionary.
+// local: the Capsule's on-device lookups that Node cannot reach: Contacts, the Dictionary, and
+// the icons the launcher draws beside its results.
 //
 //   local contacts --status              the Contacts permission, never prompting
 //   local contacts <query> [--limit N]   people whose name (or exact email) matches
@@ -10,11 +11,13 @@
 // few tens of milliseconds. Requests in serve mode look like
 //   {"id":1,"op":"contacts","q":"ann","limit":5}   {"id":2,"op":"define","q":"serendipity"}
 //   {"id":3,"op":"status"}
+//   {"id":4,"op":"icons","items":[{"key":"...","kind":"app","path":"/Applications/X.app"}],"size":64,"dir":"/cache"}
 // and each answer carries the same id. Answers can arrive out of order: a contacts fetch never
 // holds up a definition. Serve exits when stdin closes, so a crashed Capsule leaves nothing.
 //
 // Nothing here touches the network or writes anything down (proposal section 5). A query goes in,
-// matches come out, and neither is kept.
+// matches come out, and neither is kept. The one exception is `icons`, which writes PNGs into the
+// cache directory the caller names, and nowhere else.
 //
 // Only `contacts <query>` may ask for the Contacts permission, and only while macOS has never
 // been asked (notDetermined). `--status` and the serve `status` op read it without asking, so
@@ -32,9 +35,12 @@
 //
 // build: local/capsule/build.sh
 
-import Foundation
+import AppKit
 import Contacts
 import CoreServices
+import CryptoKit
+import QuickLookThumbnailing
+import UniformTypeIdentifiers
 
 let outLock = NSLock()
 func emit(_ obj: [String: Any]) {
@@ -134,6 +140,137 @@ func define(_ word: String) -> [String: Any] {
     return ["word": w, "definition": text]
 }
 
+// MARK: icons
+//
+// {"op":"icons","items":[{"key","kind","path"?,"target"?,"contact"?}],"size":64,"dir":"<cache>"}
+// answers {"icons":{"<key>":"<png path>"|null}}. Each PNG is size x size pixels (size/2 points
+// at 2x) with alpha, written to <dir>/<first 32 hex of sha256(key)>.png, so the caller can find
+// a file again by hashing the same key. Sources by kind:
+//   app, file, folder   the system icon for the path; images and PDFs get a QuickLook thumbnail
+//                       when one comes within THUMB_WAIT, else the type icon
+//   setting             "target" is an x-apple.systempreferences: URL; its extension id is looked
+//                       up among the .appex bundles System Settings loads, and that bundle's icon
+//                       is the pane's icon. Unknown ids get System Settings' own icon.
+//   contact             "contact" is a CNContact id; its thumbnail only if access is already
+//                       granted. This never asks: no access, or no photo, answers null.
+
+let THUMB_WAIT: Double = 0.3
+let SETTINGS_APP = "/System/Applications/System Settings.app"
+
+func iconName(_ key: String) -> String {
+    let digest = SHA256.hash(data: Data(key.utf8))
+    return String(digest.map { String(format: "%02x", $0) }.joined().prefix(32)) + ".png"
+}
+
+/// Settings extension id -> its .appex path. Read once, on the first settings icon.
+let paneBundles: [String: String] = {
+    var map: [String: String] = [:]
+    let dirs = ["/System/Library/ExtensionKit/Extensions", SETTINGS_APP + "/Contents/PlugIns", SETTINGS_APP + "/Contents/Extensions"]
+    for dir in dirs {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { continue }
+        for n in names where n.hasSuffix(".appex") {
+            let p = dir + "/" + n
+            if let info = NSDictionary(contentsOfFile: p + "/Contents/Info.plist"), let id = info["CFBundleIdentifier"] as? String, map[id] == nil {
+                map[id] = p
+            }
+        }
+    }
+    return map
+}()
+
+func paneBundle(_ target: String) -> String {
+    var id = target
+    if let colon = id.firstIndex(of: ":") { id = String(id[id.index(after: colon)...]) }
+    if let q = id.firstIndex(of: "?") { id = String(id[..<q]) }
+    return paneBundles[id] ?? SETTINGS_APP
+}
+
+func thumbnail(_ path: String, px: Int) -> NSImage? {
+    let url = URL(fileURLWithPath: path)
+    guard let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image) || type.conforms(to: .pdf) else { return nil }
+    let req = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: px / 2, height: px / 2), scale: 2, representationTypes: .thumbnail)
+    let done = DispatchSemaphore(value: 0)
+    var image: NSImage?
+    let lock = NSLock()
+    QLThumbnailGenerator.shared.generateBestRepresentation(for: req) { rep, _ in
+        lock.lock(); image = rep?.nsImage; lock.unlock()
+        done.signal()
+    }
+    if done.wait(timeout: .now() + THUMB_WAIT) == .timedOut { QLThumbnailGenerator.shared.cancel(req); return nil }
+    lock.lock(); defer { lock.unlock() }
+    return image
+}
+
+func contactImage(_ id: String) -> NSImage? {
+    let s = statusName()
+    guard s == "authorized" || s == "limited" else { return nil }
+    let c = try? store.unifiedContact(withIdentifier: id, keysToFetch: [CNContactThumbnailImageDataKey as CNKeyDescriptor])
+    guard let data = c?.thumbnailImageData else { return nil }
+    return NSImage(data: data)
+}
+
+/// The image drawn into a px x px RGBA bitmap: `fill` crops to the square (photos), otherwise
+/// the image fits inside it, centred (icons, thumbnails of any aspect).
+func png(_ img: NSImage, px: Int, fill: Bool) -> Data? {
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4,
+                                     hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+          let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+    let pt = CGFloat(px) / 2
+    rep.size = NSSize(width: pt, height: pt)
+    let w = max(img.size.width, 1), h = max(img.size.height, 1)
+    let k = fill ? max(pt / w, pt / h) : min(pt / w, pt / h)
+    let rect = NSRect(x: (pt - w * k) / 2, y: (pt - h * k) / 2, width: w * k, height: h * k)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = ctx
+    ctx.imageInterpolation = .high
+    img.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+    ctx.flushGraphics()
+    NSGraphicsContext.restoreGraphicsState()
+    return rep.representation(using: .png, properties: [:])
+}
+
+func icon(_ item: [String: Any], px: Int, dir: String) -> String? {
+    guard let key = item["key"] as? String, !key.isEmpty else { return nil }
+    let kind = item["kind"] as? String ?? ""
+    var img: NSImage?
+    var fill = false
+    switch kind {
+    case "app", "file", "folder":
+        guard let path = item["path"] as? String, path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else { return nil }
+        if kind == "file" { img = thumbnail(path, px: px) }
+        if img == nil { img = NSWorkspace.shared.icon(forFile: path) }
+    case "setting":
+        let path = (item["path"] as? String) ?? paneBundle(item["target"] as? String ?? key)
+        img = NSWorkspace.shared.icon(forFile: path)
+    case "contact":
+        guard let id = item["contact"] as? String, !id.isEmpty else { return nil }
+        img = contactImage(id)
+        fill = true
+    default:
+        return nil
+    }
+    guard let image = img, let data = png(image, px: px, fill: fill) else { return nil }
+    let out = URL(fileURLWithPath: dir).appendingPathComponent(iconName(key))
+    do { try data.write(to: out, options: .atomic) } catch { return nil }
+    return out.path
+}
+
+func icons(_ req: [String: Any]) -> [String: Any] {
+    guard let dir = req["dir"] as? String, dir.hasPrefix("/") else { return ["error": "no dir"] }
+    let px = min(max((req["size"] as? Int) ?? 64, 8), 512)
+    let items = Array(((req["items"] as? [[String: Any]]) ?? []).prefix(100))
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    var paths = [String?](repeating: nil, count: items.count)
+    let lock = NSLock()
+    DispatchQueue.concurrentPerform(iterations: items.count) { i in
+        let p = autoreleasepool { icon(items[i], px: px, dir: dir) }
+        lock.lock(); paths[i] = p; lock.unlock()
+    }
+    var out: [String: Any] = [:]
+    for (i, item) in items.enumerated() { if let k = item["key"] as? String { out[k] = paths[i] ?? NSNull() } }
+    return ["icons": out]
+}
+
 // MARK: entry
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -171,6 +308,7 @@ case "serve":
             case "status": ans = ["status": statusName()]
             case "contacts": ans = contacts(q, limit: limit, wait: false)
             case "define": ans = define(q)
+            case "icons": ans = icons(req)
             default: ans = ["error": "unknown op"]
             }
             ans["id"] = id
