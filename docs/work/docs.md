@@ -79,6 +79,9 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   reason on the box. Trigger: integrator merges work/glass-live c006e55.
 - cc-plugin c4a30dd + 2d9a274: planner rows, "Every session knows you", reminders; text in
   docs/work/pending-cc-plugin.md.
+- planner: the planner team drafts docs/using/planner.md from merged code (alarms, timers,
+  reminders, todos, notes, calendar sync, delivery to whichever device is up, what agents may do);
+  docs edits it, adds it to nav under Using Vyre, links it from claude-code.md's /vyre rows.
 - capsule-pro 4c957a4: `vyre capsule` builds the native app locally; the download is retired.
 - main f3b5e36 (spec: no ctx.projects): close that gap in known-gaps.md and module-contract.md.
 
