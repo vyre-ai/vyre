@@ -486,3 +486,21 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
 
   assert.match((await tool("threads.send", { thread: crypto.randomUUID(), text: "hi" })).error.message, /no thread/);
 });
+
+test("agents.history: each question with its answer and thread, newest last, pageable, and only for the assistant or a person", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  await tool("agents.create", { name: "scout", projects: [] });
+  for (const [agent, text] of [["juno", "one"], ["scout", "two"], ["juno", "three"]]) {
+    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" })).data.text, `echo: ${text}`);
+  }
+  const juno = (await tool("agents.history", { agent: "juno" })).data;
+  assert.deepEqual(juno.map(x => [x.agent, x.text, x.answer, x.surface]), [["juno", "one", "echo: one", "deck"], ["juno", "three", "echo: three", "deck"]]);
+  assert.ok(juno.every(x => x.thread && x.at && x.id), "each has its thread, time and id");
+  const all = (await tool("agents.history", { limit: 2 })).data;
+  assert.deepEqual(all.map(x => x.text), ["two", "three"], "the latest two, across agents");
+  assert.deepEqual((await tool("agents.history", { before: all[0].id })).data.map(x => x.text), ["one"], "the page before");
+  const inside = async (agent, call) => JSON.parse((await tool("agents.ask", { agent, text: `vyre ${call}` })).data.text);
+  assert.match((await inside("scout", "agents.history {}")).error.message, /only the assistant/);
+  assert.match((await tool("agents.history", { agent: "nobody" })).error.message, /no agent nobody/);
+});

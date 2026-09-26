@@ -42,6 +42,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- `agents.history {agent?, limit?, before?}`: past exchanges with an agent, or with every agent,
+  newest last: `[{id, at, agent, thread, project, surface, text, answer}]`. `text` is what was
+  sent and `answer` the done replies before the next send. `before` takes an exchange's `id`.
+  Built by the internal `threads.history` from stored `thread.sent` and done `thread.text`
+  events. Guarded like `agents.threads`. This is the shape the Deck's ask view reads.
 - Adopt: `threads.send` to a session the Switchboard did not start (a terminal `claude`) finds its
   transcript, makes its record (cwd and name from the transcript, `stopped_reason: "adopted"`) and
   resumes it headless with the lease. Before resuming any thread that is not running here, it

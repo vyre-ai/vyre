@@ -437,6 +437,40 @@ export class Switchboard {
     return { thread: rec, asks: this.asks.open(id), events };
   }
 
+  /**
+   * Conversations with agents, as exchanges: what a person or surface sent, and the replies that
+   * came back before the next send. Newest last. Built from the stored events (thread.sent and
+   * thread.text with done; partial text and notices are left out), so it outlives each process.
+   * @param {{ agent?: string, limit?: number, before?: number }} o before: an exchange id (its send's event id)
+   */
+  history({ agent, limit = 20, before } = {}) {
+    const runs = /** @type {any[]} */ (agent
+      ? this.db.prepare("SELECT id, agent, project FROM threads_runs WHERE agent = ?").all(agent)
+      : this.db.prepare("SELECT id, agent, project FROM threads_runs WHERE agent IS NOT NULL").all());
+    if (!runs.length) return [];
+    const byId = new Map(runs.map(r => [String(r.id), r]));
+    const want = Math.max(1, Math.min(200, Number(limit) || 20));
+    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, thread, payload FROM events
+      WHERE thread IN (${runs.map(() => "?").join(",")}) AND id < ?
+        AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL))
+      ORDER BY id DESC`).iterate(...runs.map(r => r.id), Number(before) || Number.MAX_SAFE_INTEGER));
+    /** @type {Map<string, string[]>} replies seen (newest first) per thread, waiting for their send */
+    const replies = new Map();
+    const out = [];
+    for (const e of rows) {
+      const p = JSON.parse(String(e.payload));
+      const th = String(e.thread);
+      if (e.type === "thread.text") { if (typeof p.text === "string") replies.set(th, [...(replies.get(th) || []), p.text]); continue; }
+      const r = byId.get(th);
+      const said = (replies.get(th) || []).reverse();
+      replies.delete(th);
+      out.push({ id: e.id, at: e.at, agent: r.agent, thread: th, project: r.project || null, surface: p.surface || null,
+        text: String(p.text || ""), answer: said.length ? said.join("\n\n") : null });
+      if (out.length >= want) break;
+    }
+    return out.reverse();
+  }
+
   /** The kind of agent a caller is, from the threads it runs. Unknown is not the assistant. */
   kindOf(agent) {
     const r = /** @type {any} */ (this.db.prepare("SELECT agent_kind FROM threads_runs WHERE agent = ? ORDER BY last_at DESC LIMIT 1").get(agent));
@@ -539,6 +573,12 @@ export default {
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" } } },
       run: async i => sb.launch(i),
+    });
+    // For agents.history: conversations with agents, from the event log.
+    ctx.tool("threads.history", {
+      description: "Exchanges with agents (a send and its replies), newest last.", internal: true,
+      input: { type: "object", properties: { agent: str, limit: { type: "integer" }, before: { type: "integer" } } },
+      run: async i => sb.history(i),
     });
     // For vyred only: is this caller the agent it names ({agent, key}), or in the session it names
     // ({session, key})? See the route in core/daemon.
