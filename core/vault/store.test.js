@@ -2,14 +2,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { ensureDir, writeSealed, readSealed, removeSealed } from "./store.js";
 import { newMasterKey, sealItem, openItem } from "./crypto.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 /** @param {import("node:test").TestContext} t */
 function tmp(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-vault-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-vault-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
