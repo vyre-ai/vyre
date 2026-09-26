@@ -42,6 +42,12 @@ export const MIGRATIONS = [
 
 /** Partial text is sent at most this often per thread: 20 a second, not one event per token. */
 export const TEXT_EVERY_MS = 50;
+/**
+ * A turn's partial text (thread.text with a delta) is deleted from the event log this long after
+ * its thread.finished: the done text holds the whole message, and the grace lets a surface that
+ * is still catching up on the SSE backlog see the deltas first. VYRE_TEXT_PRUNE_MS overrides it.
+ */
+export const TEXT_PRUNE_MS = 60_000;
 const LIVE = ["starting", "working", "waiting", "idle"];
 
 /**
@@ -63,7 +69,7 @@ export class Switchboard {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, emit: (type: string, payload: any, where?: any) => any,
    *           call: (tool: string, input: any) => Promise<any>, root: string, log: (m: string) => void,
-   *           run?: typeof defaultRun, bin?: string }} deps
+   *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -74,6 +80,19 @@ export class Switchboard {
     this.live = new Map();
     this.run = deps.run || defaultRun;
     this.bin = deps.bin || process.env.VYRE_CLAUDE_BIN || "claude";
+    /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
+    this.prunes = new Set();
+  }
+
+  /** Delete a thread's partial text up to a finished turn, after the grace. */
+  schedulePrune(thread, before) {
+    if (!this.deps.prune) return;
+    const ms = Number(process.env.VYRE_TEXT_PRUNE_MS ?? TEXT_PRUNE_MS);
+    const job = { timer: null, run: () => { this.prunes.delete(job); clearTimeout(job.timer);
+      try { this.deps.prune?.(thread, before); } catch (e) { this.deps.log(`pruning ${thread}'s partial text failed: ${/** @type {Error} */ (e).message}`); } } };
+    job.timer = setTimeout(job.run, Number.isFinite(ms) && ms >= 0 ? ms : TEXT_PRUNE_MS);
+    job.timer.unref?.();
+    this.prunes.add(job);
   }
 
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
@@ -215,7 +234,8 @@ export class Switchboard {
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });
       }
       if (e.type === "thread.tool" && e.payload.phase === "started") this.set(id, { status: "working" });
-      this.emit(e.type, e.payload, id, project);
+      const ev = this.emit(e.type, e.payload, id, project);
+      if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
     }
     if (t.ask) {
       const a = this.asks.raise({ thread: id, request_id: t.ask.request_id, tool: t.ask.tool, summary: t.ask.summary, destination: t.ask.destination, reason: t.ask.reason ? cut(t.ask.reason) : null });
@@ -362,6 +382,7 @@ export class Switchboard {
 
   async stopAll() {
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
+    for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
   }
 }
 
@@ -374,6 +395,7 @@ export default {
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root: ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "",
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
+      prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
     });
     sb.recover();
 
@@ -386,7 +408,7 @@ export default {
       if (agent && sb.kindOf(agent) !== "assistant") throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
     const surfaceOf = (input, caller) => String(input.surface || caller || "vyre");
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run });
+    const tool = (name, description, input, run, callers) => ctx.tool(name, { description, input, run, callers });
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str } },
@@ -418,10 +440,11 @@ export default {
 
     tool("threads.answer", "Answer a permission question: allow or deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
       { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny"] }, message: str, surface: str } },
-      async (i, { caller }) => {
-        if (String(caller).startsWith("mcp")) throw new Error("permission questions are answered by the user, not by a model");
-        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message);
-      });
+      async (i, { caller }) => sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message),
+      // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
+      // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
+      // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
+      ["cli", "local", "module", "deck", "capsule"]);
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },

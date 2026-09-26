@@ -10,7 +10,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
-import { call } from "../daemon/client.js";
+import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { translate, describe } from "./translate.js";
@@ -172,8 +172,16 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   assert.equal(open[0].request_id, undefined, "Claude Code's request id stays inside vyred");
   assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "waiting");
 
-  const byModel = await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" }, "mcp");
-  assert.match(byModel.error.message, /answered by the user/, "a model never approves a permission");
+  // A model never approves a permission: the loader refuses both MCP caller forms and hides the tool.
+  for (const who of ["mcp", "mcp:agent:juno"]) {
+    const byModel = await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" }, who);
+    assert.equal(byModel.error.code, "denied", who);
+    const listed = (await request("GET", "/v1/tools", undefined, { root, caller: who })).data.map(x => x.name);
+    assert.ok(!listed.includes("threads.answer") && listed.includes("threads.get"), `${who} does not see threads.answer`);
+  }
+  for (const who of ["deck", "capsule", "local"]) {
+    assert.ok((await request("GET", "/v1/tools", undefined, { root, caller: who })).data.some(x => x.name === "threads.answer"), `${who} can answer`);
+  }
   assert.equal(fs.existsSync(target), false);
 
   const ans = await tool("threads.answer", { ask: raised.payload.ask, decision: "allow", surface: "capsule" });
@@ -204,6 +212,25 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   await until(() => of(a.got, id, "thread.text").some(e => e.payload.text === "echo: still there?"), "the resumed reply");
   const last = launches().at(-1);
   assert.deepEqual(last.argv.slice(last.argv.indexOf("--resume"), last.argv.indexOf("--resume") + 2), ["--resume", id]);
+});
+
+test("switchboard: a finished turn's partial text is pruned after the grace; the done text stays", async t => {
+  const was = process.env.VYRE_TEXT_PRUNE_MS;
+  process.env.VYRE_TEXT_PRUNE_MS = "200";
+  t.after(() => { if (was === undefined) delete process.env.VYRE_TEXT_PRUNE_MS; else process.env.VYRE_TEXT_PRUNE_MS = was; });
+  const { root, work, tool } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "hello there, this is a longer prompt" })).data.id;
+  await until(() => of(s.got, id, "thread.finished")[0], "the turn to end");
+  const texts = async () => (await tool("threads.get", { thread: id, limit: 1000 })).data.events.filter(e => e.type === "thread.text");
+  assert.ok((await texts()).some(e => e.payload.delta), "the deltas are there during the grace");
+  await until(async () => !(await texts()).some(e => e.payload.delta), "the deltas to go");
+  const done = (await texts()).filter(e => e.payload.done);
+  assert.deepEqual(done.map(e => e.payload.text), ["echo: hello there, this is a longer prompt"]);
+  const got = (await tool("threads.get", { thread: id })).data;
+  assert.equal(got.thread.turns, 1);
+  assert.ok(got.events.some(e => e.type === "thread.finished") && got.events.some(e => e.type === "thread.started"));
 });
 
 test("switchboard: a stopped thread's open question is closed, not left waiting", async t => {

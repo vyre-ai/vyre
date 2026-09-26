@@ -76,9 +76,8 @@ with real Claude Code, not only a fake.
 ## Next
 1. A terminal `claude --resume <id>` on a thread that is headless right now: warn from the Harness SessionStart
    (the prototype's claim.cjs). Two processes on one transcript is the real two-writer risk.
-2. Prune `thread.text` deltas from the event log after a turn ends. Only the `done` text needs to stay.
-3. Scope for `recall.thread` and `memory.*` over MCP, which is not done yet (see Needs).
-4. When the vault merges, switch `vault.release` calls to its real contract, and have onboarding create the assistant.
+2. Scope for `recall.thread` and `memory.*` over MCP, which is not done yet (see Needs).
+3. When the vault merges, switch `vault.release` calls to its real contract, and have onboarding create the assistant.
 
 ## Needs from others
 - vault (contract final on work/vault): grants are per item and per module, via `vyre vault grant <item> agents`.
@@ -102,6 +101,10 @@ with real Claude Code, not only a fake.
 - `harness/hooks/hook.js`: passes `VYRE_PROJECTS` to brief and enrich.
 - `core/harness/index.js` (+ test): scope check in brief and enrich.
 - `core/cli/commands/home.test.js`, `test/projects-cli.test.js`: they asserted that agents did not exist yet.
+- `core/events/index.js` (+ test): `Events.prune({ type, before, source?, thread?, has? })`, the log's one
+  exception to append-only, for events another event made redundant.
+- `core/modules/index.js` (+ test): `ctx.events.prune(type, { before, thread?, has? })`, limited to the module's own
+  `watches.emits` types and to rows it emitted itself.
 
 ## Assumptions
 - `--permission-prompt-tool stdio` is not in `claude --help`. It is what the SDK passes, and without it

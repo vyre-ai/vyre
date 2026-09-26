@@ -28,6 +28,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - An agent's scope reaches the Harness: `harness.brief` and `harness.enrich` take `projects`, and
   the MCP server tags calls `mcp:agent:<name>`. It hides `threads.*`/`agents.*` from non-assistant
   agents and holds `recall.search` inside the agent's project folders.
+- `threads.answer` declares `callers: ["cli", "local", "module", "deck", "capsule"]`, so the loader
+  refuses `mcp` and `mcp:agent:<name>` with `denied` and leaves it out of their `/v1/tools`.
+- A turn's partial text (`thread.text` with `delta`) is deleted from the event log 60 seconds after
+  its `thread.finished` (`VYRE_TEXT_PRUNE_MS`); the `done` text stays. Modules get
+  `ctx.events.prune(type, { before, thread, has })` for their own event types only.
 - CLI: `vyre threads start|send|watch|lease|release|asks|answer|stop` (other `vyre threads`
   arguments still search the catalogue) and `vyre agents [create|update|ask|threads|stop]`.
 - Verified with real Claude Code on haiku: a thread started from the CLI streamed to two curl SSE
