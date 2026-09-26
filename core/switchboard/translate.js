@@ -55,7 +55,8 @@ export function describe(tool, input = {}) {
  * @param {any} m
  */
 export function translate(m) {
-  /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, limited?: boolean, turn?: any }} */
+  /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, limited?: boolean, turn?: any,
+   *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
   if (!m || typeof m !== "object") return out;
 
@@ -100,15 +101,26 @@ export function translate(m) {
   }
   if (m.type === "control_cancel_request") { out.cancel = m.request_id; return out; }
 
-  if (m.type === "rate_limit_event" && m.rate_limit_info && m.rate_limit_info.status === "rejected") { out.limited = true; return out; }
+  // The subscription's rate limit, as Claude Code reports it: every status is passed on (a warning
+  // is worth showing), and "rejected" also means the limit was hit.
+  if (m.type === "rate_limit_event" && m.rate_limit_info) {
+    const r = m.rate_limit_info;
+    out.limit = { status: String(r.status || "unknown"), kind: r.rateLimitType || null, resets_at: typeof r.resetsAt === "number" ? r.resetsAt : null,
+      ...(typeof r.utilization === "number" ? { utilization: r.utilization } : {}) };
+    if (r.status === "rejected") out.limited = true;
+    return out;
+  }
 
   if (m.type === "result") {
     const text = typeof m.result === "string" ? m.result : "";
     // A turn that failed on the subscription's limit reads as an error result naming the limit.
     if (m.is_error && /usage limit|rate limit|limit reached|out of (extra )?usage/i.test(text)) out.limited = true;
     out.turn = { ok: !m.is_error, text, cost_usd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : 0 };
+    const u = m.usage || {};
+    const n = v => (typeof v === "number" && v >= 0 ? v : 0);
+    const tokens = { input: n(u.input_tokens), output: n(u.output_tokens), cache_read: n(u.cache_read_input_tokens), cache_write: n(u.cache_creation_input_tokens) };
     out.events.push({ type: "thread.finished", payload: { ok: !m.is_error, stop_reason: m.stop_reason || m.subtype || null,
-      cost_usd: out.turn.cost_usd, duration_ms: m.duration_ms || null, turns: m.num_turns || null, ...(m.is_error ? { error: cut(text) } : {}) } });
+      cost_usd: out.turn.cost_usd, duration_ms: m.duration_ms || null, turns: m.num_turns || null, tokens, ...(m.is_error ? { error: cut(text) } : {}) } });
     return out;
   }
   return out;

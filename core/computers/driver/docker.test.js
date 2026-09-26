@@ -78,7 +78,7 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
     Hostname: "kit",
     Env: ["VNC_PASSWORD=abcdefgh", "COMPUTERD_TOKEN=t0ken", "SCREEN=1440x900"],
     Labels: { "vyre.computer": "kit", "vyre.managed": "true", "run.vyre": "1" },
-    ExposedPorts: { "5900/tcp": {}, "9223/tcp": {}, "7000/tcp": {} },
+    ExposedPorts: { "5900/tcp": {}, "7000/tcp": {} },
     HostConfig: {
       NetworkMode: "vyre-computers",
       PidMode: "container",

@@ -109,6 +109,13 @@ export default {
       if (!vec.on) return Promise.resolve(null);
       if (vec.embedder) return Promise.resolve(vec.embedder);
       if (!vec.loading) {
+        // Under `node --test`, never fetch or load the real model unless a test asks for it by
+        // naming a models folder: otherwise every test that starts vyred downloads 23 MB into its
+        // temp home, which the home's cleanup then races.
+        if (process.env.NODE_TEST_CONTEXT && !injected && !opts.models) {
+          vec.on = false; vec.why = "not loaded under tests";
+          return Promise.resolve(null);
+        }
         const models = opts.models || path.join(ctx.paths.root, "models");
         // The one network call Recall ever makes, once. Said out loud, so a first `vyre status`
         // explains the wait instead of looking stuck.
@@ -217,6 +224,8 @@ export default {
         if (timer) clearInterval(timer);
         await chain;
         await vec.done;
+        // A model load in flight writes into the home; let it settle before the home can go.
+        if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]);
       },
     };
   },

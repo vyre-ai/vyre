@@ -26,6 +26,12 @@ import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+/** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
+const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
+     cost_usd REAL NOT NULL, duration_ms INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL);
+   CREATE INDEX threads_turns_agent ON threads_turns (agent, at);
+   ALTER TABLE threads_runs ADD COLUMN last_limit TEXT;`;
+
 export const MIGRATIONS = [
   `CREATE TABLE threads_runs (
      id TEXT PRIMARY KEY, name TEXT, cwd TEXT NOT NULL, project TEXT, agent TEXT, agent_kind TEXT,
@@ -47,13 +53,35 @@ export const MIGRATIONS = [
   `ALTER TABLE threads_runs ADD COLUMN opts TEXT;
    CREATE TABLE threads_watches (id TEXT PRIMARY KEY, thread TEXT NOT NULL, until TEXT NOT NULL, notify TEXT, note TEXT, by TEXT, at INTEGER NOT NULL);
    CREATE INDEX threads_watches_thread ON threads_watches (thread);`,
+  USAGE_MIGRATION,
 ];
+
+
+/**
+ * Learned skills (written by Learning): the account's folder for every thread, and a project's
+ * for that project's threads. Each is a Claude Code plugin, and loads only if it is complete.
+ * @param {string} root @param {string|null} project
+ */
+export function learnedDirs(root, project) {
+  const dirs = [path.join(root, "learned", "account")];
+  if (project) dirs.push(path.join(root, "learned", "projects", project));
+  return dirs.filter(d => fs.existsSync(path.join(d, ".claude-plugin", "plugin.json")));
+}
+
+/** A rate-limit report in words, for the thread. @param {{ status: string, kind: string|null, resets_at: number|null, utilization?: number }} l */
+function limitNotice(l) {
+  const which = l.kind ? String(l.kind).replace(/_/g, "-") + " " : "";
+  const when = l.resets_at ? `; it resets at ${new Date(l.resets_at * 1000).toISOString().slice(11, 16)} UTC` : "";
+  if (l.status === "rejected") return `Claude's ${which}usage limit is reached${when}.`;
+  const pct = typeof l.utilization === "number" ? ` is at ${Math.round(l.utilization * 100)}%` : " is close";
+  return `Claude's ${which}usage limit${pct}${when}.`;
+}
 
 /** The events a watch waits for, and the reason each gives. */
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "tools", "settings", "once"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once"];
 
 /** Partial text is sent at most this often per thread: 20 a second, not one event per token. */
 export const TEXT_EVERY_MS = 50;
@@ -249,7 +277,9 @@ export class Switchboard {
     if (o.scope) { env.VYRE_PROJECTS = o.scope.projects === "*" ? "*" : o.scope.projects.join(","); env.VYRE_SCOPE_CWDS = JSON.stringify(o.scope.cwds || []); }
     else { delete env.VYRE_PROJECTS; delete env.VYRE_SCOPE_CWDS; }
     const rec = this.must(id);
-    const args = argsFor({ id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), model: o.model || rec.model, name: rec.name,
+    // Learned skills load with the Harness; a job without the plugin gets only what it names.
+    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project)), ...(o.plugins || [])];
+    const args = argsFor({ id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined });
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };
     this.live.set(id, state);
@@ -277,6 +307,10 @@ export class Switchboard {
         this.flush(id, st);
         const cost = Number(e.payload.cost_usd) || 0;
         this.db.prepare("UPDATE threads_runs SET cost_usd = cost_usd + ?, turns = turns + 1, last_at = ? WHERE id = ?").run(cost, Date.now(), id);
+        const tk = e.payload.tokens || {};
+        this.db.prepare(`INSERT INTO threads_turns (thread, agent, auth, at, ok, cost_usd, duration_ms, input, output, cache_read, cache_write)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, rec ? rec.agent : null, rec ? rec.auth || "ambient" : "ambient", Date.now(), e.payload.ok ? 1 : 0, cost,
+          Number(e.payload.duration_ms) || 0, Number(tk.input) || 0, Number(tk.output) || 0, Number(tk.cache_read) || 0, Number(tk.cache_write) || 0);
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });
         // A one-shot thread (a job, not a conversation) ends with its first answer.
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
@@ -296,7 +330,66 @@ export class Switchboard {
       const a = this.asks.byRequest(id, t.cancel);
       if (a) this.closeAsk(a, "cancelled", "claude");
     }
+    if (t.limit) this.limit(id, st, t.limit, project);
     if (t.limited && st.launch.fallback && !st.switching) this.fallback(id, st);
+  }
+
+  /**
+   * Claude Code reported the subscription's rate limit: kept on the thread, emitted as
+   * thread.limit, and said in the thread when it is a warning or a refusal (once per status).
+   */
+  limit(id, st, l, project) {
+    this.db.prepare("UPDATE threads_runs SET last_limit = ? WHERE id = ?").run(JSON.stringify({ ...l, at: Date.now() }), id);
+    this.emit("thread.limit", l, id, project);
+    if (l.status === "allowed" || st.limitStatus === l.status) { st.limitStatus = l.status; return; }
+    st.limitStatus = l.status;
+    this.emit("thread.text", { message: "vyre", text: limitNotice(l), done: true, notice: true }, id, project);
+  }
+
+  /** Say something in a thread as Vyre (a notice, not the model). */
+  notice(id, text) {
+    const rec = this.must(id);
+    this.emit("thread.text", { message: "vyre", text: String(text), done: true, notice: true }, id, rec.project);
+    return { thread: id, said: true };
+  }
+
+  /** Stop a thread with a reason the thread shows (a budget, say). */
+  async halt(id, reason, text) {
+    if (text) this.notice(id, text);
+    const st = this.live.get(id);
+    if (!st) return { thread: id, stopped: false, note: "not running" };
+    st.haltReason = String(reason);
+    st.stopping = true;
+    await st.proc.stop();
+    return { thread: id, stopped: true };
+  }
+
+  /**
+   * Usage from the turns table: per agent (null for threads no agent ran), since a time.
+   * @param {{ agent?: string, since?: number }} o
+   */
+  usage({ agent, since = 0 } = {}) {
+    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT agent, auth, COUNT(*) AS turns, SUM(cost_usd) AS cost_usd, SUM(duration_ms) AS duration_ms,
+        SUM(input) AS input, SUM(output) AS output, SUM(cache_read) AS cache_read, SUM(cache_write) AS cache_write, COUNT(DISTINCT thread) AS threads, MAX(at) AS last_at
+      FROM threads_turns WHERE at >= ? ${agent ? "AND agent = ?" : ""} GROUP BY agent, auth`).all(Number(since) || 0, ...(agent ? [agent] : [])));
+    /** @type {Map<string|null, any>} */
+    const by = new Map();
+    for (const r of rows) {
+      const a = by.get(r.agent) || { agent: r.agent, turns: 0, threads: 0, duration_ms: 0, cost_usd: 0, api_cost_usd: 0,
+        tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0 }, by_auth: {}, last_at: 0 };
+      a.turns += r.turns; a.threads += r.threads; a.duration_ms += r.duration_ms; a.cost_usd += r.cost_usd;
+      if (r.auth === "api-key") a.api_cost_usd += r.cost_usd;
+      for (const k of ["input", "output", "cache_read", "cache_write"]) a.tokens[k] += r[k];
+      a.by_auth[r.auth] = { turns: r.turns, duration_ms: r.duration_ms, cost_usd: r.cost_usd };
+      a.last_at = Math.max(a.last_at, r.last_at);
+      by.set(r.agent, a);
+    }
+    for (const a of by.values()) {
+      const l = /** @type {any} */ (this.db.prepare(`SELECT last_limit FROM threads_runs WHERE ${a.agent == null ? "agent IS NULL" : "agent = ?"} AND last_limit IS NOT NULL
+        ORDER BY json_extract(last_limit, '$.at') DESC LIMIT 1`).get(...(a.agent == null ? [] : [a.agent])));
+      a.limit = l ? JSON.parse(String(l.last_limit)) : null;
+    }
+    return [...by.values()];
   }
 
   /** Send what partial text has built up, as one event. */
@@ -329,7 +422,7 @@ export class Switchboard {
     this.flush(id, st);
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
-    const reason = st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`;
+    const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);
     this.set(id, { status: "stopped", pid: null, stopped_reason: reason });
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
     const rec = this.record(id);
@@ -647,8 +740,24 @@ export default {
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
-        plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
+        plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
       run: async i => sb.launch(i),
+    });
+    // For agents: usage per agent, and Vyre's own words in a thread (budget warnings, a halt).
+    ctx.tool("threads.usage", {
+      description: "Turns, time, tokens and cost per agent, and the last rate-limit report.", internal: true,
+      input: { type: "object", properties: { agent: str, since: { type: "integer" } } },
+      run: async i => sb.usage(i),
+    });
+    ctx.tool("threads.notice", {
+      description: "Say something in a thread as Vyre.", internal: true,
+      input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str } },
+      run: async i => sb.notice(i.thread, i.text),
+    });
+    ctx.tool("threads.halt", {
+      description: "Stop a thread with a reason, saying why in the thread first.", internal: true,
+      input: { type: "object", required: ["thread", "reason"], properties: { thread: str, reason: str, text: str } },
+      run: async i => sb.halt(i.thread, i.reason, i.text),
     });
     // For agents.history: conversations with agents, from the event log.
     ctx.tool("threads.history", {

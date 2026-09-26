@@ -11,13 +11,27 @@
 // AT-SPI is Python's job (atspi.py, next to this file); xdotool and ImageMagick's `import` are
 // shelled out to directly, since there is nothing here worth a binding for a single command each.
 //
+// Chrome's own debugging port (9222) is never reachable off 127.0.0.1: earlier this relayed it
+// out on its own unauthenticated port, which meant full CDP access (cookies, page content,
+// arbitrary JS, anything the Vault autofilled) to anything else on the internal network. Now
+// computerd is the only thing that ever dials 9222, and only after the same bearer check every
+// other route gets: GET /cdp/json/version proxies Chrome's own answer with its
+// webSocketDebuggerUrl rewritten to point back through here, and the WebSocket upgrade at
+// /cdp/... relays raw bytes to and from 127.0.0.1:9222 once its own check passes. A plain
+// WebSocket cannot carry an Authorization header, so that one check reads the token from
+// `?token=` on the upgrade request instead — modules/hands-chrome/cdp.js appends it, and it is
+// never logged or echoed, same as everywhere else here.
+//
 // UNVALIDATED: written by inspection, never run against a live X display or AT-SPI bus. See the
 // report to the lead for what needs checking once the box is up.
 
 import { createServer } from "node:http";
+import { connect } from "node:net";
 import { spawn } from "node:child_process";
 import { URL } from "node:url";
 import { createFs } from "./fs.js";
+
+const CHROME = { host: "127.0.0.1", port: 9222 };
 
 const PORT = Number(process.env.COMPUTERD_PORT || 7000);
 const TOKEN = process.env.COMPUTERD_TOKEN || "";
@@ -32,6 +46,8 @@ const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
 // touch the screen answer 423 (ADR 0005, decision 3). In memory, so a restart starts unshielded.
 const files = createFs();
 let shielded = false;
+/** Open CDP pipes, so raising the shield can cut every one already attached. */
+const cdpPipes = new Set();
 const SHIELDED_ROUTES = new Set(["GET /tree", "GET /screenshot", "POST /act", "POST /input"]);
 
 /** Run a subprocess, collect stdout/stderr, resolve/reject on exit. Never throws synchronously. */
@@ -138,7 +154,7 @@ async function health() {
   } catch { /* leave size null; /health still answers */ }
   let chrome = null;
   try {
-    const res = await fetch("http://127.0.0.1:9222/json/version", { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`http://${CHROME.host}:${CHROME.port}/json/version`, { signal: AbortSignal.timeout(2000) });
     chrome = res.ok ? await res.json() : null;
   } catch { chrome = null; }
   return { ok: true, display, size, chrome };
@@ -147,6 +163,66 @@ async function health() {
 async function screenshot() {
   // Reads straight off the X display; no window server extension beyond what Xvnc already is.
   return run("import", ["-window", "root", "png:-"], { binary: true, timeout: 20_000 });
+}
+
+/**
+ * Chrome's own /json/version, fetched over loopback and handed back with its
+ * webSocketDebuggerUrl rewritten to point through this proxy instead of at 127.0.0.1:9222 —
+ * `host` is whatever the caller used to reach computerd (req.headers.host), so the URL it gets
+ * back is exactly the address it can actually dial next.
+ * @param {string} host
+ */
+async function cdpVersion(host) {
+  let res;
+  try { res = await fetch(`http://${CHROME.host}:${CHROME.port}/json/version`, { signal: AbortSignal.timeout(5000) }); }
+  catch (e) { throw new Error(`chromium is not answering on its debugging port: ${/** @type {Error} */ (e).message}`); }
+  if (!res.ok) throw new Error(`chromium's /json/version answered HTTP ${res.status}`);
+  const info = await res.json();
+  if (info && typeof info.webSocketDebuggerUrl === "string") {
+    // ws://127.0.0.1:9222/devtools/browser/<id> -> ws://<host, from the caller's own request>/cdp/devtools/browser/<id>
+    info.webSocketDebuggerUrl = info.webSocketDebuggerUrl.replace(/^wss?:\/\/[^/]+/, `ws://${host}/cdp`);
+  }
+  return info;
+}
+
+/**
+ * Proxy a CDP WebSocket upgrade to Chrome's loopback debugging port, once the token in the
+ * request's own query string checks out (a plain WebSocket cannot send an Authorization header).
+ * Nothing here parses CDP itself: once the token is checked, it is a dumb authenticated pipe.
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:net").Socket} socket
+ * @param {Buffer} head
+ */
+function proxyCdpUpgrade(req, socket, head) {
+  const url = new URL(req.url || "/", "http://computerd");
+  const token = url.searchParams.get("token") || "";
+  if (token !== TOKEN) { socket.end("HTTP/1.1 401 Unauthorized\r\nconnection: close\r\n\r\n"); return; }
+  if (!url.pathname.startsWith("/cdp/")) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
+  // While a person signs in, no one attaches to Chrome: a CDP session could read the form.
+  if (shielded) { socket.end("HTTP/1.1 423 Locked\r\nconnection: close\r\n\r\n"); return; }
+  const targetPath = url.pathname.slice("/cdp".length);
+
+  const upstream = connect(CHROME.port, CHROME.host);
+  cdpPipes.add(socket);
+  socket.on("close", () => { cdpPipes.delete(socket); try { upstream.destroy(); } catch {} });
+  upstream.on("error", () => { try { socket.destroy(); } catch {} });
+  socket.on("error", () => { try { upstream.destroy(); } catch {} });
+  upstream.on("connect", () => {
+    // Chrome's own handshake, rebuilt from the browser's request rather than replayed verbatim:
+    // the path loses its /cdp prefix and the token never leaves computerd, and Host must name
+    // Chrome's own loopback address or its DevTools host check refuses the upgrade.
+    const headers = [];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const name = req.rawHeaders[i];
+      if (/^host$/i.test(name)) continue;
+      headers.push(`${name}: ${req.rawHeaders[i + 1]}`);
+    }
+    headers.push(`Host: ${CHROME.host}:${CHROME.port}`);
+    upstream.write(`GET ${targetPath} HTTP/1.1\r\n${headers.join("\r\n")}\r\n\r\n`);
+    if (head && head.length) upstream.write(head);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
 }
 
 const server = createServer(async (req, res) => {
@@ -170,6 +246,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && pathname === "/shield") {
       const body = await readBody(req);
       shielded = Boolean(body && body.on === true);
+      if (shielded) for (const pipe of cdpPipes) { try { pipe.destroy(); } catch {} }
       return send(200, { shielded });
     }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
@@ -187,6 +264,9 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && pathname === "/screenshot") {
       return sendBinary(200, await screenshot(), "image/png");
+    }
+    if (req.method === "GET" && pathname === "/cdp/json/version") {
+      return send(200, await cdpVersion(String(req.headers.host || `127.0.0.1:${PORT}`)));
     }
     if (req.method === "POST" && pathname === "/act") {
       const body = await readBody(req);
@@ -208,6 +288,11 @@ const server = createServer(async (req, res) => {
     send(500, { error: { message } });
   }
 });
+
+// CDP's WebSocket upgrade never reaches the request handler above (Node routes it here
+// instead), so it gets its own auth check: proxyCdpUpgrade reads the token from the query
+// string, since a plain WebSocket cannot set a header.
+server.on("upgrade", (req, socket, head) => proxyCdpUpgrade(req, socket, head));
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`computerd listening on :${PORT}`);

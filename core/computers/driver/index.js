@@ -6,8 +6,13 @@
 // never knows which one it has, so everything it does is tested against the fake and the docker
 // driver only has to prove it sends the right requests.
 
-/** Ports inside every computer. None is published on the host; vyred reaches them over the internal network. */
-export const PORTS = Object.freeze({ vnc: 5900, cdp: 9223, helper: 7000 });
+/**
+ * Ports inside every computer. None is published on the host; vyred reaches them over the
+ * internal network. Chrome's own debugging port (9222) is not here and never published anywhere:
+ * it stays loopback-only inside the container, reached only by computerd, which proxies it out
+ * authenticated on `helper` (see computerd's `/cdp/...` routes and modules/hands-chrome/cdp.js).
+ */
+export const PORTS = Object.freeze({ vnc: 5900, helper: 7000 });
 
 /** The screen every computer starts with. Glass and the image both read it from SCREEN. */
 export const SIZE = Object.freeze({ w: 1440, h: 900 });
@@ -27,7 +32,7 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
 
 /**
  * @typedef {"running"|"paused"|"exited"|"missing"} ContainerState
- * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, cdp: number, helper: number } }} Inspection
+ * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, helper: number } }} Inspection
  */
 
 /**

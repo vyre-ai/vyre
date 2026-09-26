@@ -73,7 +73,8 @@ export default {
     const session = async agent => {
       const r = await ctx.call("computers.endpoint", { agent });
       if (r.error) throw new Error(r.error.message);
-      const cdp = await pool.get(agent, r.data.cdp);
+      // Chrome's own port is never handed out; only computerd's authenticated /cdp proxy is.
+      const cdp = await pool.get(agent, `${r.data.helper.url}/cdp`, r.data.helper.token);
       const sessionId = await cdp.page();
       return { cdp, sessionId };
     };

@@ -569,3 +569,78 @@ test("threads.watch: said once when the thread finishes or asks, always when it 
   assert.ok(!of(s.got, id, "thread.watched").some(e => e.payload.watch === gone.watch));
   assert.equal((await tool("threads.watch", { thread: id })).data.fired, true, "a stopped thread fires at once");
 });
+
+test("usage and budget: turns, tokens and cost per agent; a warning at 80% and a stop at 100% on the API key", async t => {
+  const { root, tool } = await boot(t, { vault: { "api-key": "fake-api-value" } });
+  const s = sse(root);
+  t.after(() => s.close());
+  await tool("agents.create", { name: "scout", projects: [], auth: { fallback: "api-key", budget_usd: 1 } });
+  const ask = async text => (await tool("agents.ask", { agent: "scout", text })).data;
+  const first = await ask("spend 0.5");
+  const thread = first.thread;
+  const notices = () => of(s.got, thread, "thread.text").filter(e => e.payload.notice).map(e => e.payload.text);
+  assert.deepEqual(notices(), [], "half the budget: nothing to say");
+  await ask("spend 0.35");
+  await until(() => notices().length === 1, "the 80% warning");
+  assert.equal(notices()[0], "scout has spent $0.85 of its $1.00 API-key budget (85%).");
+  await ask("spend 0.2");
+  const stopped = await until(() => of(s.got, thread, "thread.stopped")[0], "the stop");
+  assert.equal(stopped.payload.reason, "budget");
+  assert.match(notices()[1], /^scout has spent \$1\.05 of its \$1\.00 API-key budget, so this thread has stopped\. To go on, raise it: vyre agents update scout --budget <dollars>$/);
+  assert.match((await tool("agents.ask", { agent: "scout", text: "more" })).error.message, /spent its \$1 budget/);
+
+  const [u] = (await tool("agents.usage", { agent: "scout" })).data;
+  assert.equal(u.turns, 3);
+  assert.equal(u.threads, 1);
+  assert.equal(Number(u.api_cost_usd.toFixed(2)), 1.05);
+  assert.equal(Number(u.spent_usd.toFixed(2)), 1.05);
+  assert.equal(u.left_usd, 0);
+  assert.deepEqual(u.tokens, { input: 30, output: "spent 0.5".length + "spent 0.35".length + "spent 0.2".length, cache_read: 300, cache_write: 150 });
+  assert.equal(u.auth, "api-key");
+  assert.equal(u.by_auth["api-key"].turns, 3);
+  assert.equal((await tool("agents.usage", { agent: "scout", since: Date.now() + 60_000 })).data[0].turns, 0, "nothing since the future");
+});
+
+test("usage on the subscription: turns and time, no dollars, and the rate-limit report said in the thread", async t => {
+  const { root, tool } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  const r = (await tool("agents.ask", { agent: "juno", text: "nearlimit" })).data;
+  const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
+  assert.deepEqual(limit.payload, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
+  const said = await until(() => of(s.got, r.thread, "thread.text").find(e => e.payload.notice), "the notice");
+  assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets at \d\d:\d\d UTC\.$/);
+  const all = (await tool("agents.usage", {})).data;
+  const juno = all.find(x => x.agent === "juno");
+  assert.equal(juno.turns, 1);
+  assert.equal(juno.api_cost_usd, 0);
+  assert.equal(juno.auth, "ambient");
+  assert.equal(juno.limit.status, "allowed_warning");
+  assert.ok(juno.duration_ms >= 5);
+});
+
+test("learned skills: the account's and the project's folders load as plugins; lean threads and jobs get only what they name", async t => {
+  const { d, root, tool, work, launches } = await boot(t);
+  assert.ok(!(await tool("projects.create", { name: "Harlow", home: work })).error);
+  const plugin = dir => { fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true }); fs.writeFileSync(path.join(dir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: path.basename(dir) })); return dir; };
+  const account = plugin(path.join(root, "learned", "account"));
+  const harlow = plugin(path.join(root, "learned", "projects", "harlow"));
+  fs.mkdirSync(path.join(root, "learned", "projects", "other"), { recursive: true });   // incomplete: never loaded
+  const dirsOf = argv => argv.flatMap((a, i) => (a === "--plugin-dir" ? [argv[i + 1]] : []));
+
+  await tool("threads.start", { project: "harlow", prompt: "hi", surface: "deck" });
+  const full = dirsOf((await until(() => launches()[0], "a launch")).argv);
+  assert.equal(full.length, 3);
+  assert.deepEqual(full.slice(1), [account, harlow], "the Harness first, then the account's, then the project's");
+
+  await tool("threads.start", { cwd: fs.mkdtempSync(path.join(root, "elsewhere-")), prompt: "hi", surface: "deck" });
+  assert.deepEqual(dirsOf((await until(() => launches()[1], "a second launch")).argv).slice(1), [account], "outside the project: the account's only");
+
+  await tool("threads.start", { project: "harlow", prompt: "2+2", lean: true, surface: "capsule" });
+  assert.deepEqual(dirsOf((await until(() => launches()[2], "the lean launch")).argv), []);
+
+  const own = plugin(path.join(root, "job-skills"));
+  await d.registry.call("threads.launch", { cwd: work, prompt: "distil", plugin: false, tools: "none", once: true, plugins: [own] }, "module:learn");
+  assert.deepEqual(dirsOf((await until(() => launches()[3], "the job")).argv), [own]);
+});
