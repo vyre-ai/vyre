@@ -13,6 +13,7 @@
 //   {"id":3,"op":"status"}
 //   {"id":4,"op":"icons","items":[{"key":"...","kind":"app","path":"/Applications/X.app"}],"size":64,"dir":"/cache"}
 //   {"id":5,"op":"clip.watch","on":true}   {"id":6,"op":"clip.write","text":"..."}
+//   {"id":7,"op":"front"}   the app in front now: {"front":{"bundle","pid","name"}} or {"front":null}
 // and each answer carries the same id. The clipboard watcher also writes unsolicited lines,
 // {"event":"clip","item":{...}}, with no id (see the clipboard section). Answers can arrive out of order: a contacts fetch never
 // holds up a definition. Serve exits when stdin closes, so a crashed Capsule leaves nothing.
@@ -465,6 +466,20 @@ case "serve":
             let q = req["q"] as? String ?? ""
             let limit = (req["limit"] as? Int).map { max(1, $0) } ?? 8
             let op = req["op"] as? String ?? ""
+            if op == "front" {
+                // For opens that do not come through the hotkey (menu, CLI): which app was in front
+                // before the Capsule shows. Read on the main queue, whose run loop keeps it current.
+                // It asks macOS for no permission.
+                DispatchQueue.main.async(group: group) {
+                    var ans: [String: Any] = ["front": NSNull()]
+                    if let a = NSWorkspace.shared.frontmostApplication {
+                        ans["front"] = ["bundle": a.bundleIdentifier ?? "", "pid": Int(a.processIdentifier), "name": a.localizedName ?? ""]
+                    }
+                    ans["id"] = id
+                    emit(ans)
+                }
+                continue
+            }
             if op.hasPrefix("clip.") {
                 DispatchQueue.main.async(group: group) {
                     var ans = autoreleasepool { clipOp(op, req) }

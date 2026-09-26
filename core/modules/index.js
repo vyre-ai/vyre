@@ -302,7 +302,10 @@ export class Registry {
   }
 
   status() {
-    return [...this.modules.entries()].map(([name, r]) => ({ name, version: r.manifest && r.manifest.version, state: r.state, error: r.error }));
+    // `shows` says which surfaces a module offers itself to (SPEC 5.1): the Capsule reads
+    // shows.capsule here for the results and actions it lists.
+    return [...this.modules.entries()].map(([name, r]) => ({ name, version: r.manifest && r.manifest.version, state: r.state, error: r.error,
+      ...(r.manifest && r.manifest.shows ? { shows: r.manifest.shows } : {}) }));
   }
 
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */

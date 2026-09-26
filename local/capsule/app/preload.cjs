@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld("vyre", {
   unwatch: thread => ipcRenderer.invoke("capsule:unwatch", thread),
   reportRead: id => ipcRenderer.invoke("capsule:report-read", id),
   // Results that arrived late (files on the box), for the words they were asked for.
+  // A module's verbs on one of its results (the vault's fill, copy, code), and running one.
+  actions: result => ipcRenderer.invoke("capsule:actions", result),
+  act: (result, key) => ipcRenderer.invoke("capsule:act", result, key),
   onMore: fn => ipcRenderer.on("capsule:more", (_e, m) => fn(m)),
   onReport: fn => ipcRenderer.on("capsule:report", (_e, id) => fn(id)),
   // The page says how tall it is; the window follows. Width never changes.

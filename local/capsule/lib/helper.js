@@ -73,6 +73,18 @@ export class LocalHelper {
   /** Contacts matching a name (or an exact email). The only call that may raise the dialog. */
   contacts(q, { limit = 8 } = {}) { return this.#ask({ op: "contacts", q: String(q ?? ""), limit }); }
 
+  /**
+   * The app in front right now, { bundle, pid, name }, or null when there is none or the helper
+   * cannot say. For opens that do not come through the hotkey, whose line already carries it:
+   * ask before the Capsule shows, or the answer is the Capsule. Asks macOS for no permission.
+   * @returns {Promise<{ bundle: string, pid: number, name: string } | null>}
+   */
+  async front() {
+    const a = await this.#ask({ op: "front" });
+    const f = a && a.front;
+    return f && typeof f.bundle === "string" && Number.isInteger(f.pid) ? { bundle: f.bundle, pid: f.pid, name: String(f.name || "") } : null;
+  }
+
   /** The system dictionary's definition of a word: { word, definition } with null for none. */
   define(word) { return this.#ask({ op: "define", q: String(word ?? "") }); }
 

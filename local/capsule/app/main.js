@@ -31,6 +31,7 @@ import { Apps, Frecency } from "../lib/local.js";
 import { LocalHelper } from "../lib/helper.js";
 import { Icons } from "../lib/icons.js";
 import { Clips } from "../lib/clips.js";
+import { Providers } from "../lib/providers.js";
 import { Watches, notice } from "../lib/watch.js";
 import os from "node:os";
 
@@ -80,7 +81,13 @@ const helper = new LocalHelper(path.join(BIN, "local"));
 const clips = DRIVEN
   ? new Clips({ file: path.join(HOME, "capsule-test-clips.json"), helper, board: "vyre-drive-" + process.pid })
   : new Clips({ file: path.join(app.getPath("userData"), "clips.json"), helper });
-const launcher = new Launcher({ apps: new Apps(), helper, clips,
+// Modules that offer the Capsule results and actions (shows.capsule in their manifest).
+const providers = new Providers({ client: vyred });
+/** The app that was in front when the user opened the Capsule: what "fill" and "paste" act on. */
+let front = /** @type {{ bundle: string, pid: number, name?: string }|null} */ (null);
+const OWN_BUNDLE = "run.vyre.capsule";
+let providersAt = 0;
+const launcher = new Launcher({ apps: new Apps(), helper, clips, providers,
   frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t),
   // Files on the box come through this Mac's vyred (files.search, files.fetch), only while shown.
   vyred: (tool, input) => vyred.call(tool, input), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
@@ -160,11 +167,21 @@ let wakeStart = 0n;
 const TRACE_WAKE = Boolean(process.env.VYRE_CAPSULE_TRACE_WAKE);
 
 /** Open ready to type. Called only for the user's own gesture. */
-async function show(via, at = Date.now()) {
+async function show(via, at = Date.now(), from = undefined) {
+  // Which app the user was in: the gesture says (read the moment Control was pressed twice); for
+  // other ways of opening (menu, CLI), ask while that app is still in front, before this one
+  // takes focus. The hotkey path never waits for this.
+  if (from !== undefined) front = from && from.bundle !== OWN_BUNDLE ? from : null;
+  else if (!(win && !win.isDestroyed() && win.isVisible())) {
+    const f = await Promise.race([helper.front().catch(() => null), new Promise(r => setTimeout(() => r(null), 150))]);
+    front = f && f.bundle && f.bundle !== OWN_BUNDLE && !/electron/i.test(String(f.bundle)) ? f : null;
+  }
   wakeStart = process.hrtime.bigint();
   const w = create();
   const refresh = bridge.refresh();
   launcher.warm().catch(() => {});
+  // Which modules offer results and actions changes rarely: read it on open, at most twice a minute.
+  if (Date.now() - providersAt > 30_000) { providersAt = Date.now(); providers.refresh().catch(() => {}); }
   w.setBounds(place());
   // Driven by a test, the Capsule must not take the keyboard: whoever is at the Mac keeps typing
   // into their own app, and those keys once landed in a test window instead. Test keys go to this
@@ -212,9 +229,9 @@ function hide() {
   paintTray();
 }
 
-function toggle(via, at) {
+function toggle(via, at, from) {
   if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) return hide();
-  show(via, at);
+  show(via, at, from);
 }
 
 /** Send to the page, if there still is one. A window closing mid-send must not throw. */
@@ -290,7 +307,7 @@ function startHotkey() {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
       let m; try { m = JSON.parse(line); } catch { continue; }
       if (m.ready) { hotkey = { ...hotkey, ok: true, message: "ready" }; push(); }
-      if (m.gesture === "double-control") toggle("hotkey", Number(m.at) || Date.now());
+      if (m.gesture === "double-control") toggle("hotkey", Number(m.at) || Date.now(), m.front || null);
       if (m.error) { hotkey = { ...hotkey, ok: false, message: m.message }; push(); }
     }
   });
@@ -318,7 +335,7 @@ async function follow() {
       const r = watches.onEvent(e);
       if (r) reported(r);
     },
-    onState: s => { say({ stream: s }); bridge.refresh().catch(() => {}); },
+    onState: s => { say({ stream: s }); bridge.refresh().catch(() => {}); if (s === "open") { providersAt = Date.now(); providers.refresh().catch(() => {}); } },
   });
 }
 
@@ -375,6 +392,10 @@ ipcMain.handle("capsule:full", async (_e, text) => {
 });
 ipcMain.handle("capsule:icons", (_e, results) => (Array.isArray(results) ? iconsNow().get(results.slice(0, 40)) : {}));
 ipcMain.handle("capsule:cancel", () => bridge.cancel());
+ipcMain.handle("capsule:actions", (_e, r) => providers.actions(r));
+// A module's verb on one of its results, with the app that was in front. Whatever it says is
+// shown as it is; a value (a password) never comes back here, only what the module chose to say.
+ipcMain.handle("capsule:act", (_e, r, key) => providers.run(r, String(key || ""), front));
 ipcMain.handle("capsule:dm-open", (_e, agent) => bridge.openDm(String(agent || "")));
 ipcMain.handle("capsule:dm-close", () => bridge.closeDm());
 ipcMain.handle("capsule:copy", (_e, text) => { clipboard.writeText(String(text || "")); return { ok: true }; });

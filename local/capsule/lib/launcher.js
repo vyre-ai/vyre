@@ -60,9 +60,11 @@ export class Launcher {
    *   vyred?: Vyred|null, boxName?: string|null, visible?: () => boolean, boxTimeoutMs?: number, now?: () => number }} [deps]
    */
   constructor({ apps = new local.Apps(), helper = null, frecency = null, files = local.files, open = local.open, run = execFile, copy = () => {}, clips = null,
-    vyred = null, boxName = null, visible = () => true, boxTimeoutMs = BOX_TIMEOUT, now = Date.now } = {}) {
+    vyred = null, boxName = null, providers = null, visible = () => true, boxTimeoutMs = BOX_TIMEOUT, now = Date.now } = {}) {
     /** @type {Vyred|null} (tool, input) => { data } | { error }, on the Mac's own vyred socket; null keeps files to this Mac */
     this.vyred = vyred;
+    /** @type {any} modules' results and actions (lib/providers.js), or null */
+    this.providers = providers;
     /** @type {string|null} what box rows say they came from; link.status's name when not given */
     this.boxName = boxName;
     /** Whether the Capsule is on screen. Nothing about box files runs while it is hidden. */
@@ -161,13 +163,22 @@ export class Launcher {
     /** @type {Result[]|null} */
     let box = null;
     const boxP = this.boxFiles(q, ctl.signal).then(b => (box = b));
+    // Results from modules that offer them to the Capsule (the vault's names, say): names only,
+    // on this slow path, and late like box files when they take longer than the Mac's own.
+    /** @type {Result[]|null} */
+    let mods = this.providers && this.visible() ? null : [];
+    const modsP = mods ? Promise.resolve(mods) : this.providers.search(q).catch(() => []).then(m => (mods = m));
     const [base, found] = await Promise.all([this.quick(q, cat), this.filesFn(q, { signal: ctl.signal })]);
     if (ctl.signal.aborted) return null;
     const answer = () => {
-      const results = route.rank(q, { local: base.results, files: found, box: box || [], cat: null, boost: this.boost });
+      let results = route.rank(q, { local: [...base.results, ...(mods || [])], files: found, box: box || [], cat: null, boost: this.boost });
+      if (results.some(r => r.kind !== "grant" && (r.score || 0) >= 0.8)) results = results.filter(r => r.kind !== "grant");
       return { results, intent: route.intent(q, results) };
     };
-    if (box === null && onMore) boxP.then(b => { if (b.length && !ctl.signal.aborted && this.visible()) onMore(answer()); });
+    if (onMore) {
+      if (box === null) boxP.then(b => { if (b.length && !ctl.signal.aborted && this.visible()) onMore(answer()); });
+      if (mods === null) modsP.then(m => { if (m.length && !ctl.signal.aborted && this.visible()) onMore(answer()); });
+    }
     return answer();
   }
 
@@ -259,6 +270,7 @@ export class Launcher {
       if (a && a.error === "asking") return { ok: true, note: "macOS is asking. Answer its dialog, then type again." };
       return { error: "Contacts are off for Vyre. Turn them on in System Settings, Privacy & Security, Contacts." };
     }
+    if (r.kind === "module") return { error: "choose an action for it" };
     if (r.kind === "clip") {
       if (!this.clips) return { error: "no clipboard history here" };
       const c = await this.clips.pick(r.id);

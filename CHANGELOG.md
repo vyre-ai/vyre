@@ -636,6 +636,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Modules can offer the Capsule results and actions (`shows.capsule`, SPEC 5.1): `lib/providers.js`
+  reads them from GET /v1/modules, which now carries each module's `shows`. Their results (names
+  only, never a value) rank with the rest on the slow path; Enter runs the first action, → or ⌘K
+  lists the others, each call gets `{...input, id, front}` with the app that was in front when the
+  Capsule opened (from the double-Control line, or `bin/local`'s `front` op for other ways in),
+  and what the module says is shown as it is. A one-time code counts down. This is how the vault's
+  fill, copy, code and lock appear.
 - Proposed lessons wait in the Capsule, quietly: "Vyre proposes: <rule>" joins the waiting list
   from `learn.lessons {status: "proposed"}` and `lesson.proposed`, leaves on `lesson.learned` or
   `lesson.retired`, and never turns the dot or the tray Beacon. Accept is `learn.accept`, Decline

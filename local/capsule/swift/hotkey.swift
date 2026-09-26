@@ -1,6 +1,7 @@
-// hotkey — press Control twice, anywhere on the Mac, and the Capsule opens.
+// hotkey: press Control twice, anywhere on the Mac, and the Capsule opens.
 //
-//   hotkey              listen; print one JSON line per gesture on stdout
+//   hotkey              listen; print one JSON line per gesture on stdout:
+//                       {"gesture":"double-control","at":<ms>,"front":{"bundle","pid","name"}|null}
 //   hotkey --check      print what macOS allows this process: listening, posting, accessibility
 //   hotkey --simulate   post a double-Control, for testing the whole path without a hand
 //
@@ -33,6 +34,14 @@ func emit(_ obj: [String: Any]) {
     }
 }
 func now() -> Double { Date().timeIntervalSince1970 * 1000 }
+
+// The app in front when the gesture fired, read before the Capsule takes focus, so an action on a
+// result (fill a login, say) knows which app it was meant for. NSWorkspace answers from state it
+// keeps current on this run loop; reading it asks macOS for no permission.
+func frontApp() -> Any {
+    guard let a = NSWorkspace.shared.frontmostApplication else { return NSNull() }
+    return ["bundle": a.bundleIdentifier ?? "", "pid": Int(a.processIdentifier), "name": a.localizedName ?? ""]
+}
 
 let args = CommandLine.arguments.dropFirst()
 
@@ -90,7 +99,7 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
             ctrlDown = false
             if chordUsed { chordUsed = false; lastBareTap = 0; break }
             let t = now()
-            if t - lastBareTap < DOUBLE_MS { emit(["gesture": "double-control", "at": Int(t)]); lastBareTap = 0 } else { lastBareTap = t }
+            if t - lastBareTap < DOUBLE_MS { emit(["gesture": "double-control", "at": Int(t), "front": frontApp()]); lastBareTap = 0 } else { lastBareTap = t }
         } else if isDown && others {
             chordUsed = true
         }
