@@ -30,6 +30,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   itself, with tool lines, recalled memory in gold, held calls in Beacon with their answers, and a
   composer that takes the keyboard lease first and goes read-only when another screen holds it.
   The files pane lists what a thread touched; file contents have no API yet, and it says so.
+- **Memory**: a map of each project's facts drawn as inline SVG, a list, and a fact panel with
+  its source turns quoted from the threads they came from, pin, mute and forget (mute everywhere,
+  with undo). Everything on it came from memory, so it is the one view where gold is the norm.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
