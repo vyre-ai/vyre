@@ -21,7 +21,8 @@ import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
 import { register as registerClaim } from "./claim.js";
-import { Sessions, SESSIONS_MIGRATION } from "./sessions.js";
+import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
+import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,7 +42,18 @@ export const MIGRATIONS = [
    CREATE INDEX threads_asks_open ON threads_asks (state, at);
    CREATE TABLE threads_leases (thread TEXT PRIMARY KEY, surface TEXT NOT NULL, since INTEGER NOT NULL, beat INTEGER NOT NULL);`,
   SESSIONS_MIGRATION,
+  // How a thread was launched, so a resume runs it the same way (a lean thread stays lean), and
+  // watches: a surface or the assistant waiting for a thread to finish or ask.
+  `ALTER TABLE threads_runs ADD COLUMN opts TEXT;
+   CREATE TABLE threads_watches (id TEXT PRIMARY KEY, thread TEXT NOT NULL, until TEXT NOT NULL, notify TEXT, note TEXT, by TEXT, at INTEGER NOT NULL);
+   CREATE INDEX threads_watches_thread ON threads_watches (thread);`,
 ];
+
+/** The events a watch waits for, and the reason each gives. */
+const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
+
+/** Launch options kept with a thread and reused on every resume. */
+const KEPT = ["plugin", "tools", "settings", "once"];
 
 /** Partial text is sent at most this often per thread: 20 a second, not one event per token. */
 export const TEXT_EVERY_MS = 50;
@@ -84,7 +96,8 @@ export class Switchboard {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, emit: (type: string, payload: any, where?: any) => any,
    *           call: (tool: string, input: any) => Promise<any>, root: string, log: (m: string) => void,
-   *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string }} deps
+   *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string,
+   *           transcripts?: string[], naming?: (id: string, ours: number[]) => number[], isClaude?: (pid: number) => boolean }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -98,7 +111,7 @@ export class Switchboard {
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
     /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
-    this.sessions = new Sessions(deps.db, { children: () => [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean),
+    this.sessions = new Sessions(deps.db, { children: () => this.ours(),
       ...(deps.isClaude ? { isClaude: deps.isClaude } : {}) });
   }
 
@@ -128,6 +141,12 @@ export class Switchboard {
    * is withheld and the event still goes out, saying so.
    */
   emit(type, payload, thread, project) {
+    const ev = this.emitRaw(type, payload, thread, project);
+    if (WATCHED[type]) this.fire(type, thread, payload, project);
+    return ev;
+  }
+
+  emitRaw(type, payload, thread, project) {
     const where = { thread, project: project || undefined };
     try { return this.deps.emit(type, { thread, ...payload }, where); }
     catch (e) {
@@ -183,10 +202,13 @@ export class Switchboard {
    */
   async launch(o) {
     let id, rec;
+    if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);
       id = rec.id;
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.record(id); }
+      const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+      if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
       const w = await this.where(o);
       id = crypto.randomUUID();
@@ -194,6 +216,8 @@ export class Switchboard {
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
+      const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
+      if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
@@ -225,7 +249,8 @@ export class Switchboard {
     if (o.scope) { env.VYRE_PROJECTS = o.scope.projects === "*" ? "*" : o.scope.projects.join(","); env.VYRE_SCOPE_CWDS = JSON.stringify(o.scope.cwds || []); }
     else { delete env.VYRE_PROJECTS; delete env.VYRE_SCOPE_CWDS; }
     const rec = this.must(id);
-    const args = argsFor({ id, resume: o.resume, plugin: pluginDir(), model: o.model || rec.model, name: rec.name, append: o.append, budgetUsd: o.budget_usd });
+    const args = argsFor({ id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), model: o.model || rec.model, name: rec.name,
+      append: o.append, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined });
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };
     this.live.set(id, state);
     state.proc = this.run({
@@ -253,6 +278,8 @@ export class Switchboard {
         const cost = Number(e.payload.cost_usd) || 0;
         this.db.prepare("UPDATE threads_runs SET cost_usd = cost_usd + ?, turns = turns + 1, last_at = ? WHERE id = ?").run(cost, Date.now(), id);
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });
+        // A one-shot thread (a job, not a conversation) ends with its first answer.
+        if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
       if (e.type === "thread.tool" && e.payload.phase === "started") this.set(id, { status: "working" });
       const ev = this.emit(e.type, e.payload, id, project);
@@ -302,7 +329,7 @@ export class Switchboard {
     this.flush(id, st);
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
-    const reason = st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`;
+    const reason = st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`;
     this.set(id, { status: "stopped", pid: null, stopped_reason: reason });
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
     const rec = this.record(id);
@@ -312,7 +339,7 @@ export class Switchboard {
   closeAsk(a, decision, by) {
     if (!this.asks.close(a.id, decision, by)) return false;
     const rec = this.record(a.thread);
-    this.emit("ask.answered", { ask: a.id, decision, by: by || null }, a.thread, rec ? rec.project : null);
+    this.emit("ask.answered", { ask: a.id, decision, by: by || null, tool: a.tool, summary: a.summary || null }, a.thread, rec ? rec.project : null);
     return true;
   }
 
@@ -323,8 +350,48 @@ export class Switchboard {
     this.set(id, { status: "working" });
   }
 
-  /** Type into a thread. The lease decides who may; a stopped thread is resumed first. */
+  /** Our children's pids: a session bound to one of these is ours, not open elsewhere. */
+  ours() { return [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean); }
+
+  /**
+   * Before resuming a thread that is not running here: is it open somewhere else (adopt.js)?
+   * @param {string} id @returns {string|null} why it is, or null
+   */
+  elsewhere(id) {
+    const t = findSession(this.deps.transcripts || [], id);
+    const rec = this.record(id);
+    return openElsewhere({ id, mtime: t ? t.mtime : 0, boundPid: this.sessions.boundPid(id), ours: this.ours(), alive, naming: this.deps.naming,
+      ourLast: rec && rec.stopped_reason !== "adopted" ? rec.last : null });
+  }
+
+  /**
+   * Take on a session the Switchboard did not start (a terminal `claude`), so it can be resumed
+   * here. Only its record is made; send resumes it. No transcript, no thread.
+   * @param {string} id
+   */
+  async adopt(id) {
+    const t = findSession(this.deps.transcripts || [], id);
+    if (!t) throw new Error(`no thread ${id}`);
+    const info = sessionInfo(t.file);
+    if (!info.cwd || !fs.existsSync(info.cwd)) throw new Error(`session ${id.slice(0, 8)} ran in ${info.cwd || "a folder its transcript does not name"}, which is not here`);
+    const of = await this.deps.call("projects.of", { cwd: info.cwd });
+    const now = Date.now();
+    this.db.prepare(`INSERT OR IGNORE INTO threads_runs (id, name, cwd, project, status, auth, started_at, last_at, stopped_reason)
+      VALUES (?,?,?,?, 'stopped', 'ambient', ?,?, 'adopted')`).run(id, info.name, info.cwd, of.data?.slug || null, t.mtime, now);
+    return this.must(id);
+  }
+
+  /**
+   * Type into a thread. The lease decides who may. A thread that is not running here is resumed
+   * first, and a session the Switchboard never started is adopted; either only if no other
+   * process has it open, since one transcript takes one writer.
+   */
   async send(id, text, surface) {
+    if (!this.live.has(id)) {
+      if (!this.record(id)) await this.adopt(id);
+      const why = this.elsewhere(id);
+      if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
+    }
     const rec = this.must(id);
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
@@ -395,6 +462,79 @@ export class Switchboard {
     return { thread: rec, asks: this.asks.open(id), events };
   }
 
+  /**
+   * Conversations with agents, as exchanges: what a person or surface sent, and the replies that
+   * came back before the next send. Newest last. Built from the stored events (thread.sent and
+   * thread.text with done; partial text and notices are left out), so it outlives each process.
+   * @param {{ agent?: string, limit?: number, before?: number }} o before: an exchange id (its send's event id)
+   */
+  history({ agent, limit = 20, before } = {}) {
+    const runs = /** @type {any[]} */ (agent
+      ? this.db.prepare("SELECT id, agent, project FROM threads_runs WHERE agent = ?").all(agent)
+      : this.db.prepare("SELECT id, agent, project FROM threads_runs WHERE agent IS NOT NULL").all());
+    if (!runs.length) return [];
+    const byId = new Map(runs.map(r => [String(r.id), r]));
+    const want = Math.max(1, Math.min(200, Number(limit) || 20));
+    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, thread, payload FROM events
+      WHERE thread IN (${runs.map(() => "?").join(",")}) AND id < ?
+        AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL))
+      ORDER BY id DESC`).iterate(...runs.map(r => r.id), Number(before) || Number.MAX_SAFE_INTEGER));
+    /** @type {Map<string, string[]>} replies seen (newest first) per thread, waiting for their send */
+    const replies = new Map();
+    const out = [];
+    for (const e of rows) {
+      const p = JSON.parse(String(e.payload));
+      const th = String(e.thread);
+      if (e.type === "thread.text") { if (typeof p.text === "string") replies.set(th, [...(replies.get(th) || []), p.text]); continue; }
+      const r = byId.get(th);
+      const said = (replies.get(th) || []).reverse();
+      replies.delete(th);
+      out.push({ id: e.id, at: e.at, agent: r.agent, thread: th, project: r.project || null, surface: p.surface || null,
+        text: String(p.text || ""), answer: said.length ? said.join("\n\n") : null });
+      if (out.length >= want) break;
+    }
+    return out.reverse();
+  }
+
+  /**
+   * Wait for a thread to finish a turn, ask a question, or stop, and hear about it once as
+   * `thread.watched`. A stopped thread always ends a watch. Watches are rows, so they outlive a
+   * vyred restart; a thread already stopped fires at once.
+   * @param {{ thread: string, until?: string, notify?: string, note?: string }} o @param {string} by
+   */
+  watch(o, by) {
+    const rec = this.must(o.thread);
+    const until = o.until || "either";
+    const id = "w" + crypto.randomBytes(6).toString("hex");
+    this.db.prepare("INSERT INTO threads_watches (id, thread, until, notify, note, by, at) VALUES (?,?,?,?,?,?,?)")
+      .run(id, rec.id, until, o.notify || null, o.note || null, by || null, Date.now());
+    if (!this.live.has(rec.id)) { this.fire("thread.stopped", rec.id, {}, rec.project); return { watch: id, fired: true }; }
+    return { watch: id, fired: false };
+  }
+
+  unwatch(id) {
+    return { removed: Number(this.db.prepare("DELETE FROM threads_watches WHERE id = ?").run(String(id)).changes) > 0 };
+  }
+
+  /** An event a watch may be waiting for: emit thread.watched for each such watch, once. */
+  fire(type, thread, payload, project) {
+    const reason = WATCHED[type];
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM threads_watches WHERE thread = ?").all(thread))
+      .filter(w => reason === "stopped" || w.until === "either" || (w.until === "finished" && reason === "finished") || (w.until === "asks" && reason === "asked"));
+    if (!rows.length) return;
+    let summary = null;
+    if (reason === "asked") summary = payload.summary || payload.tool || null;
+    else {
+      const last = /** @type {any} */ (this.db.prepare(`SELECT payload FROM events WHERE thread = ? AND type = 'thread.text'
+        AND json_extract(payload, '$.done') = 1 ORDER BY id DESC LIMIT 1`).get(thread));
+      summary = last ? cut(String(JSON.parse(String(last.payload)).text || ""), 280) : null;
+    }
+    for (const w of rows) {
+      if (Number(this.db.prepare("DELETE FROM threads_watches WHERE id = ?").run(w.id).changes) === 0) continue;
+      this.emitRaw("thread.watched", { watch: w.id, reason, notify: w.notify, note: w.note, by: w.by, ...(summary ? { summary } : {}) }, thread, project);
+    }
+  }
+
   /** The kind of agent a caller is, from the threads it runs. Unknown is not the assistant. */
   kindOf(agent) {
     const r = /** @type {any} */ (this.db.prepare("SELECT agent_kind FROM threads_runs WHERE agent = ? ORDER BY last_at DESC LIMIT 1").get(agent));
@@ -430,6 +570,7 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root: ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "",
+      transcripts: (ctx.config && ctx.config.transcripts) || [],
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
     });
@@ -447,7 +588,8 @@ export default {
     const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
-      { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str } },
+      { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
+        lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
       async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
 
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first.",
@@ -485,6 +627,14 @@ export default {
       // read in the Touch ID dialog or at the terminal before the answer goes through.
       { presence: { summary: i => answerSummary(sb, i) } });
 
+    tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
+      { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
+      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.watch(i, String(caller || "")); });
+
+    tool("threads.unwatch", "Stop waiting on a watch.",
+      { type: "object", required: ["watch"], properties: { watch: str } },
+      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.unwatch(i.watch); });
+
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); });
@@ -494,8 +644,17 @@ export default {
     ctx.tool("threads.launch", {
       description: "Start or resume a thread for an agent, with its credentials set only in that child.", internal: true,
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
-        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" } } },
+        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
+        // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
+        // hooks; no tools; none of the user's settings; and stop after the first answer.
+        plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
       run: async i => sb.launch(i),
+    });
+    // For agents.history: conversations with agents, from the event log.
+    ctx.tool("threads.history", {
+      description: "Exchanges with agents (a send and its replies), newest last.", internal: true,
+      input: { type: "object", properties: { agent: str, limit: { type: "integer" }, before: { type: "integer" } } },
+      run: async i => sb.history(i),
     });
     // For vyred only: is this caller the agent it names ({agent, key}), or in the session it names
     // ({session, key})? See the route in core/daemon.

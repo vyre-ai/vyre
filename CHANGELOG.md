@@ -90,6 +90,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- `agents.list` rows carry `computer` again; without it core/computers refused every agent a
+  computer. Found by the computers workstream, which made the same one-line fix on its branch.
+- Lean threads: `threads.start {lean: true}` runs with no Vyre plugin, `--tools ""`,
+  `--strict-mcp-config` and `--setting-sources ""`. Checked on Claude Code 2.1.283 with haiku:
+  "What is 2+2?" cost $0.013 (6.5k tokens of Claude Code's own system prompt), where the
+  Capsule measured $0.027 with the plugin. Not `--bare`, which skips keychain reads and with
+  them a subscription's login.
+- Jobs: internal `threads.launch` takes `plugin: false`, `tools: "none"`, `settings: false` and
+  `once: true`. A one-shot thread stops after its first `thread.finished`, with
+  `thread.stopped {reason: "done"}`. These options are kept on the thread (`threads_runs.opts`),
+  so a resume runs the same way.
+- `ask.answered` carries `tool` and `summary`, so an approval or a denial can teach Learning.
+- `threads.watch {thread, until?: finished|asks|either, notify?, note?}` -> `{watch, fired}` and
+  `threads.unwatch {watch}`. Exactly once, `thread.watched {watch, reason: finished|asked|stopped,
+  notify, note, by, summary?}` is emitted. A stop always fires it, and a thread already stopped
+  fires at once. Watches are rows (`threads_watches`), so they survive a vyred restart.
+- `agents.history {agent?, limit?, before?}`: past exchanges with an agent, or with every agent,
+  newest last: `[{id, at, agent, thread, project, surface, text, answer}]`. `text` is what was
+  sent and `answer` the done replies before the next send. `before` takes an exchange's `id`.
+  Built by the internal `threads.history` from stored `thread.sent` and done `thread.text`
+  events. Guarded like `agents.threads`. This is the shape the Deck's ask view reads.
+- Adopt: `threads.send` to a session the Switchboard did not start (a terminal `claude`) finds its
+  transcript, makes its record (cwd and name from the transcript, `stopped_reason: "adopted"`) and
+  resumes it headless with the lease. Before resuming any thread that is not running here, it
+  refuses with `{sent: false, open_elsewhere: true, note}` if the session is open elsewhere: bound
+  to a running claude that is not ours, named by a running claude's arguments (`--resume <id>`),
+  or its transcript written in the last 30 seconds by anything but our own child
+  (`core/switchboard/adopt.js`).
 - Tools learn the verified thread: `registry.call(tool, input, caller, via)` and
   `run(input, { caller, thread?, agent? })`. vyred sets both for an agent caller whose key it
   vouched. For any other session, the SessionStart hook calls `threads.bind {session, pid}` for
