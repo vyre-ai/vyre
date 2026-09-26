@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Colours from config, Find's commands, and the owner's phone reads memory by meaning
+
+- `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
+  only) is served as GET /theme.css, read on every request, and every Deck page links it after
+  deck.css. Anything but a colour is dropped, so config cannot add CSS.
+- Find understands the Capsule's commands: `@kit ...`, `tell <session> to ...` (types, then
+  watches), `watch <session>`, and `tell me when <session> is done|asks`. A line under the box says
+  what Enter will do, and a tap picks another matching session.
+- memory.relevant answers the owner's tailnet devices without a room, so Find on the phone searches
+  memory by meaning. system.info names the owner (owner.name), and the Deck's avatar uses it.
+- Now asks for a first passkey while the box has none, and names the commands that print its link.
+
 #### Pairing a Mac is approved in the Deck, and onboarding's last steps read right on a box
 
 - Now shows each Mac asking to pair: its name and node, a field for the code on the Mac's screen,

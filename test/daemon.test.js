@@ -339,3 +339,21 @@ test("daemon: system.info names the owner as onboarding saved them, for a device
   t.after(() => d.stop());
   assert.deepEqual((await call("system.info", {}, { root })).data.owner, { name: "Alex Rivera" });
 });
+
+test("daemon: /theme.css serves config's theme.colors, read on every request", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = () => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: "/theme.css" }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ type: res.headers["content-type"], body: b }));
+  }).on("error", reject));
+  const before = /** @type {any} */ (await get());
+  assert.equal(before.type, "text/css");
+  assert.doesNotMatch(before.body, /--/);
+  const cfgPath = path.join(root, "config.json");
+  const cur = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, "utf8")) : {};
+  fs.writeFileSync(cfgPath, JSON.stringify({ ...cur, theme: { colors: { dark: { signal: "#B4E35A" } } } }));
+  assert.match(/** @type {any} */ (await get()).body, /--signal: #B4E35A;/);
+});
