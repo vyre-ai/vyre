@@ -6,6 +6,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `vyre up` on a Mac: with no box known it finds one among the tailnet's peers (one answer is
+  saved; several are listed and asked about), otherwise asks "Where should Vyre run?" (a server
+  through `vyre box add`, this Mac, or an address). Without a terminal it prints the three
+  commands. With a box known it checks the box answers from here, pairs through `link.status` /
+  `link.pair` when those tools exist, and prints the "Vyre is ready." block. A box after
+  onboarding prints the same block. `vyre up --box` on a Mac also opens the link in the browser.
+- `vyre up --json`: one object `{ role, version, url, port, ssh, address, box, ready }` on exit 0,
+  or `{ error: { code, message } }` on exit 1.
+- `vyre capsule install`: downloads `Vyre-mac.zip`, checks it against `SHA256SUMS`, unpacks it
+  with ditto into `~/Applications/Vyre.app` (asks before replacing one; `--yes`). Never
+  `/Applications`, never sudo.
 - `core/cli/ending.js`: the "Vyre is ready." block (ADR 0008 section 6), shared by `vyre box add`
   and `vyre up`.
 - `core/cli/tailnet.js`: the Mac's own view of its tailnet, read-only (`tailscale status --json`
