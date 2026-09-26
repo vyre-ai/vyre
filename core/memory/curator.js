@@ -86,6 +86,10 @@ export class Curator {
     this.dirty = false;
   }
 
+  /** The durable graph cursor: how many times the drawable graph has changed. */
+  updated() { return Number(this.db.prepare("SELECT v FROM memory_meta WHERE k = 'graph_version'").get()?.v || 0); }
+  bump() { this.db.prepare("UPDATE memory_meta SET v = v + 1 WHERE k = 'graph_version'").run(); }
+
   /** Recall's tables may not exist yet (Recall not installed, or not run). That is not an error. */
   hasRecall() {
     const n = this.db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('recall_sessions', 'recall_turns')").get();
@@ -803,7 +807,7 @@ export class Curator {
       const delSf = db.prepare("DELETE FROM memory_shortforms WHERE node = ? AND form = ?");
       for (const [k] of haveSf) if (!wantSf.has(k)) { const [n, f] = k.split("\u0000"); delSf.run(n, f); changed++; }
 
-      if (changed) this.version++;
+      if (changed) { this.version++; this.bump(); }
       return changed;
     });
   }
