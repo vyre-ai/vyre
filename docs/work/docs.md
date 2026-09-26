@@ -55,20 +55,35 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 - Cloudflare: the vault token (`CLOUDFLARE_API_TOKEN`, account token) reads and writes Pages.
   Created project `vyre-docs` (production branch main, nothing deployed to production, no custom
   domain). Preview deployed: https://preview.vyre-docs.pages.dev (branch `preview`).
+- Round 2 and 3 merged to main (integrator at 9335919, main f3b5e36): renderer syntax (tabs,
+  SNAG, WHY, figures with dark twins, demos, colours), terms index (docs/index.json,
+  reference/index.md, stale-mention check), screenshots with content-hash staleness, install
+  rewrite, Tailscale from zero, Vyre in Claude Code, connectors, Glass, today's merges.
+- theme.js: pwa's themeCss plus THEME_COLORS/THEME_USE; test/theme-defaults.test.js ties it to
+  deck.css. Preview at https://preview.vyre-docs.pages.dev (branch preview, noindex).
+- d5659d9 sent to integrator: vyre doctor first in troubleshooting, vault/memory presence gaps
+  closed, box-update gap renamed to the printed command.
 
 ## Doing
 
-- aaeb16a sent to integrator (round 2 + main at d51dd69). Round 3 on top, subagents:
-  T Tailscale-from-zero guide (get-started/tailscale.md); M1 sweep of get-started, known-gaps,
-  concepts, build, security, architecture for today's merges (pairing in onboarding, rules for
-  every non-person call, vault.caps, federation ADR 0021, install 6 MB and lazy model); M2 sweep of
-  using/ (connectors patch from scratchpad, new using/claude-code.md from cc-plugin, glass-live
-  text into using/glass.md, pwa Settings > Devices, Create your assistant, theme.colors).
-  Then retake shots (180 stale after main's Deck changes), regen, tests, preview redeploy.
-- Capsule "build locally" waits for capsule-pro 4c957a4 to reach main.
+- Screenshot retake (180 stale after main's Deck changes). Stopped mid-run at session end, while
+  capturing onboarding-devices; tooling committed as WIP (scripts/docs-shots, shots.js with the
+  new shots: Settings > Connections, Your devices, Appearance, onboarding step 6 and Create your
+  assistant, the Now pairing card, Find in the phone tab bar). No new PNGs copied back yet.
+  Resume: on the test box, rsync to ~/vyre-ci/docs-s, `npm run docs:shots` (CHROME=/usr/local/bin/
+  vyre-chrome), copy back PNGs + docs/shots.json, place new shots on pages, regen reference/index
+  from a clean git archive, run docs tests, redeploy preview (`--branch preview`), send the lead.
+
+## Next
+
+- Production deploy of docs.vyre.run only after the user's yes on the preview.
 
 ## Pending page changes (apply when the code reaches main)
 
+- USER STANDING RULE, Vyre must not nag: fewer prompts. Touch ID only for pairing a device, vault
+  secrets, and sending, posting or paying outside; one Touch ID lasts about 30 minutes. Pages
+  change only when that code lands (presence.md, vault.md, memory.md, learning.md, glass.md,
+  deck.md, troubleshooting, first-day, install, concepts/floor.md all describe presence prompts).
 - glass-live: using/glass.md "If a computer does not start" becomes: Glass shows "kit's computer
   did not start", the reason (e.g. "kit's computer stopped as soon as it started (exit code 3)"),
   then ". Press Restart computer on kit's page, then Retry. If it fails again, the box's log says
