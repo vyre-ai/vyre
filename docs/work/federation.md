@@ -144,16 +144,48 @@ box.
   (core/link/mac.js). link-federation + federation-reads, three at once, four rounds: 12 of 12
   (2 of 9 failed before). link + hygiene 9/9.
 
+- The browser look (the pass "Next" asked for). `deck/test/mac-world.js` (a box and a Mac in one
+  process, paired as the link tests pair them; Mac: Harlow intake, Northwind invoices, weekly
+  planning; box: the Harlow site rebuild and its subagent, the headless Northwind summary; a box
+  project Harlow Legal) and `deck/test/mac-shots.js` (asserts each chip or note, no sideways
+  scroll, no page errors). Run on the test box's shared headless Chrome. Shots, 1440 and 390 each
+  (in <team-dir>/shots/federation/): chat-list, chat-mac-session, now, search, board,
+  onboard-history, chat-offline, now-offline. 15 of 16 checks pass; no console errors on any page.
+  The offline chip appeared within about 7 s of `/__mac/off` (hold 2 s plus the 5 s window).
+  Right: Mac rows carry the alex-mac chip in Chat, Now, the header search and the board; box rows
+  carry none; a Mac session reads its turns with no composer and the note "On alex-mac. Open it
+  there to continue."; the picked Mac session resolves on the board with the chip and the note;
+  the dashed "alex-mac offline" chip sits beside Chat's title and in Now's Working head, and Mac
+  rows drop out while it shows.
+  Wrong, for the pwa / deck owners (none fixed here):
+  - Find page (/find, the phone's search): Mac sessions have no machine chip (the check that
+    fails), and it says "Files on your Mac show here when your Mac is online." while the Mac is
+    online.
+  - Onboarding history (deck/onboard/onboard.js): the meter reads `recall.status`, the box's own
+    index, so it says "3 sessions" while `onboard.status` counts 6 (3 box, 3 Mac); it never shows
+    `detail.history.machines` or "Your Mac (alex-mac) is offline". The picker lists the Mac's
+    sessions with no chip. On the phone it read "Reading sessions" at about a third, the desktop
+    load a moment earlier said done.
+  - Chat's project row says "Harlow Legal 1 session" while the board lists 2 threads (the picked
+    Mac session is not counted).
+  - Now on a phone: the chip sits on its own line between title and meta, so Mac rows are a line
+    taller than box rows; on the laptop it sits inline after the title. The chips are below two
+    setup cards (passkey, assistant), off the first screen.
+  - The rail footer shows the machine's OS hostname (`system.info` host) with "On this machine
+    only", not the box's name (harlow-box); onboarding's header says "Setting up alex-box" (the
+    fake tailnet's name). Three names for one box.
+  - Board thread pane header says "on alex-mac" in plain text while everywhere else uses the
+    chip; Chat's session header has the chip plus a grey status dot that means nothing for a Mac
+    session.
+  - Not ours: at 1440 the address pill wraps a long /chat/thread/<id> path onto two lines.
+
 ## Doing
 
 - (nothing; Task C is done)
 
 ## Next
 
-- A browser pass on the fixture Deck (`?fixtures=1` on a machine without the link, or a box with
-  a paired Mac): chips in Chat, Now, search and a project board; a Mac thread in Chat and at
-  /threads/:id shows no composer and the note; the offline chip in Chat and Now. Screenshots
-  from a test world only.
+- The pwa / deck owners: the problems listed under "The browser look".
 - Chat's rail groups by project slug, and a Mac project whose slug is also a box project's shares
   that group (both chips show). Worth a decision with the deck owner if it confuses.
 

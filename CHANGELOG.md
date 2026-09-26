@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck on a box with a paired Mac, in a browser
+
+- `deck/test/mac-world.js`: one process runs a box vyred (harlow-box) and a Mac vyred (alex-mac)
+  in temp homes, paired through the link seams and a simulated tailnet (test/link-harness.js),
+  with the fictional corpus split between them, and serves the box's Deck on 127.0.0.1.
+  `POST /__mac/off` and `/__mac/on` stop and start the simulated tailnet, for the offline chip.
+- `deck/test/mac-shots.js`: shots of Chat, a Mac session, Now, search, a project board with a
+  picked Mac session, onboarding history and the offline chip, at 1440x900 and 390x844, through
+  a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
+- `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
+  `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+
 #### Live Claude Code sessions are seen on node 24
 
 - node 24 names its main thread "MainThread", so `ps -o comm=` said that for every claude running
