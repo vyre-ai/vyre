@@ -283,7 +283,7 @@ export default {
         await kits.stop();
         vault.devices.stop();
         await cli.stop();
-        vault.lock();
+        await vault.stop();
         await surfaces.stop();
         if (listener) await listener.close();
         if (fillListener) await fillListener.close();

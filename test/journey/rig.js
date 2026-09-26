@@ -222,3 +222,23 @@ export async function browser(url) {
   }
   return { status: r.status, location, session, tool };
 }
+
+/**
+ * The box's own terminal, `vyre call <tool>` through the host wrapper, for what the page does
+ * once the address serves. The page moves to https://<ts.net name> and the loopback link stops
+ * working: box add takes the tunnel down as soon as it sees the address step done. The harness
+ * cannot follow the page there, since the box answers only its owner at the address and a
+ * caller on 127.0.0.1 is not a tailnet address (the same gap as linking, below), so the rest of
+ * the onboarding runs from the box's terminal, which may call every onboarding tool.
+ * @param {{ server: (cmd: string, o?: any) => Running, env: { server: Record<string, string> } }} rig
+ */
+export function terminal(rig) {
+  const wrapper = `env VYRE_DIR=${rig.env.server.VYRE_DIR} ${rig.env.server.VYRE_WRAPPER}`;
+  /** @returns {Promise<any>} the tool's data; throws with its error */
+  async function tool(name, input = {}) {
+    const r = await rig.server(`${wrapper} call ${name} '${JSON.stringify(input)}'`, { timeout: 30_000 }).done;
+    if (r.code !== 0) throw new Error(`${name}: ${r.out.trim()}`);
+    return JSON.parse(r.out.slice(r.out.search(/^[{[]/m)));
+  }
+  return { tool };
+}

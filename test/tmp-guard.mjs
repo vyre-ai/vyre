@@ -21,7 +21,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SCRATCH } from "./scratch.mjs";
+import { SCRATCH, HOMES } from "./scratch.mjs";
 
 const mode = process.argv[2];
 if (mode !== "before" && mode !== "after") {
@@ -37,6 +37,7 @@ function snapshot() {
 
 if (mode === "before") {
   fs.writeFileSync(STATE, JSON.stringify(snapshot()));
+  try { fs.writeFileSync(HOMES, ""); } catch {}
   process.exit(0);
 }
 
@@ -60,7 +61,9 @@ for (let i = 0; added.length && i < 4; i++) {
 
 if (added.length) {
   console.error(`tmp-guard: ${added.length} entr${added.length === 1 ? "y" : "ies"} under ${SCRATCH} appeared during this test run and were never cleaned up:`);
-  for (const n of added) console.error("  " + path.join(SCRATCH, n));
+  const made = new Map();
+  try { for (const l of fs.readFileSync(HOMES, "utf8").split("\n")) { const [n, file, name] = l.split("\t"); if (n) made.set(n, `${file}: ${name}`); } } catch {}
+  for (const n of added) console.error("  " + path.join(SCRATCH, n) + (made.has(n) ? `  (made by ${made.get(n)})` : ""));
   console.error("Find the test that created it (grep for mkdtemp/SCRATCH) and clean it up in t.after/finally.");
   process.exit(1);
 }

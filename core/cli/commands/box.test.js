@@ -90,6 +90,8 @@ function rig(t) {
   exe("docker", FAKE_DOCKER);
   // With a sudo-password file, sudo -n fails as it does when sudo needs a password.
   exe("sudo", `#!/bin/sh\nif [ "$1" = -n ]; then [ -f "$FAKE_BOX/sudo-password" ] && exit 1; shift; fi\nexec "$@"\n`);
+  // Not in the docker group, whatever this machine's account is in (the test box's is).
+  exe("id", `#!/bin/sh\ncase "$1" in -nG|-Gn) echo staff ;; *) exec /usr/bin/id "$@" ;; esac\n`);
   exe("usermod", `#!/bin/sh\necho "$*" >> "$FAKE_BOX/usermod.log"\n`);
   exe("open", `#!/bin/sh\necho "$1" >> "$FAKE_BOX/opened"\n`);
   exe("installer.sh", `#!/bin/sh\necho "$*" >> "$FAKE_BOX/installer.log"\nenv | grep -q '^VYRE_NO_UP=1' && echo no-up >> "$FAKE_BOX/installer.log"\nmkdir -p "$VYRE_DIR" && touch "$VYRE_DIR/compose.yml"\necho installed\n`);

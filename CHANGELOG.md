@@ -111,6 +111,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   delegation list, and requires its own tokens with the right scope on Calendar and Gmail calls.
   A fake that accepted anything would hide the bugs that matter here, such as a read token used
   to send.
+#### The suite passes on the test box (Linux, node 22) as it does on the Mac
+
+- Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
+  code. The vault tests' cheap KDF is Argon2id only where node has it (24.7+), else scrypt at its
+  test floor (`core/vault/testing.js` TEST_KDF). `vyre` drops node 22's "SQLite is an
+  experimental feature" line, which broke output read as JSON (`core/quiet.js`, loaded first by
+  `bin/vyre`; the box image already sets NODE_OPTIONS for it). The installer tests hide a real
+  Docker when a test takes it away, box add's rig answers `id -nG` without the docker group, the
+  presence challenge test pins `role: local` (Linux defaults to the box), the bypass test reads
+  the hook's stdout only, and the real Capsule helper tests skip off macOS.
+
+#### The vault writes nothing after it stops
+
+- 200 ms after start the vault pulls its shared vaults, and with none it still asked for this
+  device's identity, which made a key, the agent vault key and an identity item. When that timer
+  fired after a test had removed its home, it put `vault/` back: the intermittent leaked
+  `vyre-test-*` home holding only `vault/` (three in one full run on the test box, from `link`,
+  `computers` and `switchboard` tests, any in-process vyred). With no shared vaults the pull now
+  does nothing (`core/vault/shared.js`). Both start-up syncs go through `vault.later()`, and
+  `vault.stop()` cancels the waiting ones, awaits the running ones and refuses to open or make a
+  key from then on (`core/vault/vault.js`, `index.js`, `devices.js`). `core/vault/stop.test.js`.
+- `tempHome` records which test made each home in `<SCRATCH>.homes`, beside SCRATCH so it
+  survives the home's removal, and `test/tmp-guard.mjs` names that test next to a leaked folder.
+
+#### Journey 1 no longer races box add for the tunnel
+
+- `vyre box add` takes the onboarding tunnel down as soon as the address step is done, so the
+  journey's last loopback calls (onboard.status, onboard.finish) failed now and then with
+  ECONNREFUSED. Once the address serves, the journey finishes from the box's own terminal
+  (`vyre call` through the host wrapper, `test/journey/rig.js` terminal), since the harness cannot
+  reach the address as the owner. The fake box tailscale now names this account as its operator,
+  so the journey also runs on Linux. Journeys 1 to 6 pass together, three runs in a row, on the test box.
+
 #### The Capsule is Spotlight's size
 
 - The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it
