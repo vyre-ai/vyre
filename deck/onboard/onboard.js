@@ -171,9 +171,9 @@ const SCREENS = {
       if (n !== seq) return;
       if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the box module runs.")); }
       else if (r.error) put(status, String(r.error.message));
+      // No vyre.run token (the usual box): the address is this machine's ts.net name, set up in step 4.
+      else if (r.data.via === "ts.net" && r.data.available) { ok = true; put(status, h("span", { class: "faint" }, r.data.address ? `Your address will be ${r.data.address.replace(/^https:\/\//, "")}.` : "Your address will be on your tailnet, set up in step 4.")); }
       else if (r.data.available) { ok = true; put(status, icon("check", 14), "Available."); }
-      // No vyre.run token (the usual box): the address is the ts.net one, chosen in step 4.
-      else if (r.data.valid && /^could not check/.test(r.data.why || "")) { ok = true; put(status); }
       else put(status, `That name is not free${r.data.why ? ": " + r.data.why : "."} Try another.`);
       sync();
     };
