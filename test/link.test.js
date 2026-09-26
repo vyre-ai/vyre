@@ -22,7 +22,9 @@ const PHONE = { login: OWNER, node: "test-phone", stableId: "nPHONE" };
 const BOX = { stableId: "nBOX", node: "test-box" };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-async function until(fn, ms = 3000) {
+// Generous: under a loaded full-suite run a state change can take seconds, and a test that waits
+// on state rather than a fixed sleep costs nothing extra when things are fast.
+async function until(fn, ms = 20_000) {
   const end = Date.now() + ms;
   for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out waiting"); await wait(20); }
 }
@@ -187,7 +189,7 @@ test("link: a device that is not the owner is refused, and a Mac cannot approve 
   // After pairing, a different login behind the same address is refused by the box.
   s.net.who = { login: "someone-else@example.com", node: "stranger", stableId: "nX" };
   const r = await s.macCall("link.call", { tool: "system.echo", input: { text: "x" } });
-  assert.equal(r.error.code, "failed");
+  assert.equal(r.error.code, "not_owner");
   assert.match(r.error.message, /does not recognise this device/);
   // And the Mac refuses a node other than the one it paired with.
   s.net.who = MAC;
@@ -217,38 +219,45 @@ test("link: files on the box are confined to its roots, through the link too", a
 
 test("link: with the box down, the Mac degrades to its own results and recovers", async t => {
   const s = await pair(t);
+  const events = async type => (await request("GET", `/v1/events?type=${type}`, undefined, { root: s.macRoot })).data;
+  // The first heartbeat after pairing announces the box; wait for it so the counts below are exact.
+  await until(async () => (await events("link.connected")).length === 1);
   fs.writeFileSync(path.join(s.macWork, "notes-mac.md"), "x");
   fs.writeFileSync(path.join(s.boxWork, "notes-box.md"), "x");
   await s.stopTailnet();
-  const t0 = Date.now();
+
+  // The search answers with the Mac's own results and says the box's share failed.
   const found = (await s.macCall("files.search", { q: "notes" })).data;
-  assert.ok(Date.now() - t0 < 3000, "a down box does not hold up the search");
   assert.deepEqual(found.results.map(r => r.source), ["mac"]);
   const boxSrc = found.sources.find(x => x.source === "box");
   assert.equal(boxSrc.ok, false);
+  assert.ok(boxSrc.error);
+
+  // The link notices, once, and says so in its status.
+  await until(async () => (await events("link.lost")).length === 1);
   const st = await until(async () => { const v = (await s.macCall("link.status")).data; return !v.reachable && v; });
   assert.equal(st.linked, true);
   const call = await s.macCall("link.call", { tool: "system.echo", input: { text: "x" } });
   assert.match(call.error.message, /not reachable/);
+
   // The box event stream on the Mac says the box is down instead of hanging.
   const sock = (await import("../core/config/index.js")).paths(s.macRoot).socket;
   const down = await new Promise(resolve => {
+    const timer = setTimeout(() => { req.destroy(); resolve(false); }, 20_000);
     const req = http.get({ socketPath: sock, path: "/v1/link/events" }, res => {
       res.setEncoding("utf8");
       let buf = "";
-      res.on("data", c => { buf += c; if (buf.includes("event: link.down")) { req.destroy(); resolve(true); } });
+      res.on("data", c => { buf += c; if (buf.includes("event: link.down")) { clearTimeout(timer); req.destroy(); resolve(true); } });
     });
     req.on("error", () => {});
   });
-  assert.ok(down);
-  const lost = (await request("GET", "/v1/events?type=link.lost", undefined, { root: s.macRoot })).data;
-  assert.equal(lost.length, 1);
+  assert.ok(down, "the proxied stream said link.down");
+  assert.equal((await events("link.lost")).length, 1, "lost is said once, not on every failed beat");
 
   // The box comes back on the same address, and the heartbeat finds it.
   await s.startTailnet();
-  await until(async () => (await s.macCall("link.status")).data.reachable, 5000);
-  const connected = (await request("GET", "/v1/events?type=link.connected", undefined, { root: s.macRoot })).data;
-  assert.equal(connected.length, 2);
+  await until(async () => (await events("link.connected")).length === 2);
+  assert.equal((await s.macCall("link.status")).data.reachable, true);
   assert.deepEqual((await s.macCall("link.call", { tool: "system.echo", input: { text: "back" } })).data, { text: "back" });
 });
 

@@ -7,9 +7,9 @@
 // through client.js, and gates every attempted action against the keyboard (computers.may-act)
 // so a take-over stops the hands exactly where the checkout's Docker container is not touched.
 //
-// Reads (tree, apps, screenshot) are never gated by may-act: ADR 0003 says a take-over leaves
-// an agent's reads and screenshots working, since only one keyboard, not one pair of eyes, is
-// the rule.
+// Reads (tree, apps, screenshot) ask may-act with `read: true`: a take-over leaves them working
+// (ADR 0003: one keyboard, not one pair of eyes), but a shield, a person signing in, refuses
+// them too (ADR 0005, decision 3).
 //
 // No computerd token is ever returned from a tool, logged, or put in the desktop.acted event:
 // client.js already scrubs it from every error string it raises, and nothing here holds it
@@ -69,6 +69,12 @@ export default {
       return createClient({ url: helper.url, token: helper.token });
     };
 
+    /** May the agent's hands look right now? Refused only while shielded. Throws if not. */
+    const mayRead = async (agent, tool) => {
+      const r = await ctx.call("computers.may-act", { agent, tool, read: true });
+      if (!r.error && r.data && r.data.ok === false) throw new Error(r.data.why);
+    };
+
     /** One look, shaped into a Snapshot. */
     const perceiveWith = (client, app) => async () => snapshot.toSnapshot(app || "", await client.tree(app || undefined));
 
@@ -100,6 +106,7 @@ export default {
       obj({ agent: str, thread: str, app: str }, ["agent"]),
       async (i, { caller }) => {
         const agent = await resolveAgent(i, caller);
+        await mayRead(agent, "hands-desktop.tree");
         const client = await clientFor(agent, i.thread);
         return snapshot.toSnapshot(i.app || "", await client.tree(i.app || undefined));
       });
@@ -108,6 +115,7 @@ export default {
       obj({ agent: str, thread: str }, ["agent"]),
       async (i, { caller }) => {
         const agent = await resolveAgent(i, caller);
+        await mayRead(agent, "hands-desktop.apps");
         return { apps: await (await clientFor(agent, i.thread)).apps() };
       });
 
@@ -115,6 +123,7 @@ export default {
       obj({ agent: str, thread: str }, ["agent"]),
       async (i, { caller }) => {
         const agent = await resolveAgent(i, caller);
+        await mayRead(agent, "hands-desktop.screenshot");
         const png = await (await clientFor(agent, i.thread)).screenshot();
         return { image: png.toString("base64"), mime: "image/png" };
       });
@@ -129,6 +138,7 @@ export default {
       }, ["agent", "name"]),
       async (i, { caller }) => {
         const agent = await resolveAgent(i, caller);
+        await mayRead(agent, "hands-desktop.act");
         const client = await clientFor(agent, i.thread);
         const actionName = i.action || "press";
         const result = await act.once({

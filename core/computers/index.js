@@ -19,6 +19,8 @@ import { Pool, MIGRATIONS, NO_DRIVER } from "./pool.js";
 import { Keyboard, isSurface } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
+import { Shield } from "./shield.js";
+import { helper, tellComputerd } from "./helper.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -44,6 +46,7 @@ export default {
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg });
     const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log });
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on) => tellComputerd(pool, agent, on) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -101,8 +104,33 @@ export default {
     };
 
     const surfaceOf = input => {
-      if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device> or phone:<device>`);
+      if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
       return String(input.surface);
+    };
+
+    /** A caller claiming to be an agent, in any of the forms vyred recognizes: "mcp:agent:kit", "harness:agent:kit". */
+    const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+
+    /**
+     * A surface, refused when the caller is an agent that is not the assistant. `surface` names
+     * a person's screen; an ordinary agent is not a person, and take-over/giveback/watch are
+     * actions a person takes on an agent's computer, never the reverse. Without this, an agent
+     * whose hands were just refused by a take-over could call computers.giveback on itself and
+     * end a person's take-over mid-action (found in review, e.g. mid-password during a Glass
+     * sign-in). The assistant is exempt: it is how the user reaches these tools from chat or the
+     * Capsule, the same trust resolve() already gives it to name another agent's computer.
+     *
+     * This is a floor, not the whole guard: it stops an ordinary agent claiming to be any
+     * surface, but it cannot tell "deck:laptop" from an impersonator on the same trusted channel
+     * (cli, local, a module, or the assistant) — that needs the caller-identity-matches-claimed-
+     * surface check the Rules layer does for HUMAN_ONLY tools (asked of security 26 Sep, open).
+     */
+    const ownSurface = async (input, caller) => {
+      const surface = surfaceOf(input);
+      const who = String(caller || "");
+      const claim = AGENT_CLAIM.exec(who);
+      if (claim && (await kindOf(claim[1])) !== "assistant") throw new Error(`"${who}" is an agent, not a person's screen; ${surface} speaks for itself`);
+      return surface;
     };
 
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
@@ -148,16 +176,16 @@ export default {
       obj({ agent: str, surface: str }, ["surface"]), async (i, { caller }) => {
         const agent = await resolve(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
-        return keyboard.takeover(agent, surfaceOf(i));
+        return keyboard.takeover(agent, await ownSurface(i, caller));
       });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),
-      async (i, { caller }) => keyboard.giveback(await resolve(i, caller), surfaceOf(i)));
+      async (i, { caller }) => keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller)));
 
     tool("computers.watch", "A one-use ticket (30 s) to open an agent's screen in Glass.", obj({ agent: str, surface: str }, ["surface"]),
       async (i, { caller }) => {
         const agent = await resolve(i, caller);
-        const surface = surfaceOf(i);
+        const surface = await ownSurface(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
         await pool.allowed(agent);
         const ticket = pool.ticket(agent, surface);
@@ -172,14 +200,24 @@ export default {
         return pool.endpoint(agent);
       }, { internal: true });
 
-    tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard.",
-      obj({ agent: str, tool: str }), async (i, { caller }) => keyboard.mayAct(await resolve(i, caller), i.tool), { internal: true });
+    tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
+      obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        return shield.mayAct(agent, i.read === true, () => keyboard.mayAct(agent, i.tool));
+      }, { internal: true });
+
+    tool("computers.helper", "Where computerd answers, and its token. Thaws and touches without taking a screen.",
+      obj({ agent: str }), async (i, { caller }) => helper(pool, await resolve(i, caller)), { internal: true });
+
+    tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
+      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true), { internal: true });
 
     return {
-      pool, keyboard, driver, sweep,
+      pool, keyboard, shield, driver, sweep,
       async stop() {
         if (timer) clearInterval(timer);
         keyboard.stop();
+        shield.stop();
         pool.wake();
         if (glass && typeof glass.stop === "function") { try { await glass.stop(); } catch {} }
       },

@@ -201,7 +201,7 @@ test("pool: vnc, endpoint and size come from memory and the table", async t => {
   await pool.checkout("kit");
   const r = pool.row("kit");
   assert.deepEqual(pool.vnc("kit"), { host: "fake-kit", port: 5900, password: r.vnc_password });
-  assert.deepEqual(pool.endpoint("kit"), { cdp: "http://fake-kit:9223", helper: { url: "http://fake-kit:7000", token: r.helper_token } });
+  assert.deepEqual(pool.endpoint("kit"), { helper: { url: "http://fake-kit:7000", token: r.helper_token } });
   assert.deepEqual(pool.size("kit"), { w: 1440, h: 900 });
 });
 

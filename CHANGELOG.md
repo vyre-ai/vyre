@@ -4,6 +4,81 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Link and the real Tailscale
+
+- `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or
+  `tailscale` on the PATH) for whois and status. A test that ran `vyre up` on a Mac could
+  therefore query the user's real Tailscale. The link now uses `VYRE_TAILSCALE_BIN` when it is
+  set. Under `node --test` it never uses the real binary unless a test opts in with
+  `VYRE_TEST_REAL_TAILSCALE=1`. Without one, whois answers "unknown peer" and the peer list is
+  empty. A test fails if the real app is resolved during tests.
+
+#### Release
+
+- `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
+  modules, box) plus SPEC, MODULES, INSTALL, GETTING-STARTED and the ADRs. It leaves out tests,
+  fixtures, `testing` helpers, design boards, working notes and Capsule build output: 186 files,
+  about 570 KB packed. The embedder stays an optional dependency. npm -g still installs it
+  (about 480 MB), because npm ignores `--omit=optional` for a global package's own optional deps.
+- `scripts/build-site.sh --src <checkout> [--mac-zip <zip>]` puts what the box installer downloads
+  under `site/box/`: the compose files, the host wrapper, the Dockerfile, `install-box.sh`,
+  `vyre.tgz` (npm pack, until the package is on npm), `Vyre-mac.zip`, `VERSION` and `SHA256SUMS`.
+  It also copies the installer to `site/install.sh`. All generated and gitignored. The Capsule
+  zip (about 120 MB) is over Pages' 25 MiB file limit. It goes to the R2 bucket `vyre-downloads`
+  (`dl.vyre.run`) under a key named by its hash, and the generated `site/_redirects` sends
+  `/box/Vyre-mac.zip` there. Before zipping, the whole Vyre.app is ad-hoc signed
+  (`codesign --force --deep -s -`). Packager signs only the Electron binary, which fails
+  `codesign --verify`, and a downloaded app in that state is refused as damaged.
+- `scripts/release-check.sh [--skip-tests] [--claude] [--live]`: the suite, then the pack and what
+  the tarball may and may not hold. Then a global install into a temp prefix, and `vyre up`,
+  `status`, `modules`, `call` and `down` in a temp HOME. Then the Harness MCP server from the
+  installed folder, and with `--claude` a real `claude -p --plugin-dir` call. Then `site/box`
+  against its checksums, and with `--live` the bytes vyre.run actually serves.
+- `vyre up` on a Mac (role `local`) now finishes the Mac's setup once the box answers. If the
+  Mac is not paired, it starts pairing and prints the `vyre link approve <code>` line to run on
+  the box, or shows the code of a pairing already waiting. Then it opens the Capsule
+  (`vyre capsule`), or points at the Vyre-mac.zip download when no Capsule is installed.
+  `--no-capsule` skips the Capsule.
+  With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
+- `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,
+  zip, and a signature check after unzipping; the build output is deleted afterwards.
+  `release-check` runs perf-check after the suite (`--skip-perf` to leave it out).
+- `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
+  `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
+  finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
+  with 200.
+
+#### Glass
+
+- ADR 0005: Glass is a module and a set of Deck views on top of computers. RFB over a WebSocket
+  stays the stream (ADR 0003). A hidden tab disconnects, so a background Deck runs no timer.
+- `core/glass` (module `glass`, role box). Tools: `glass.targets`, `open`, `close`, `take`,
+  `release`, and `glass.files.list`, `stat`, `preview`, `download`, `upload`, `move`, `mkdir`,
+  `trash`. Events: `glass.opened`, `closed`, `taken`, `released`, `file.uploaded`, `moved`,
+  `trashed`, `created`, carrying paths and sizes, never content.
+- `glass.take` and `glass.release` declare presence. `take {private: true}` is the private
+  sign-in: it raises the computers shield, and undoes the take-over when the shield is missing.
+  Hand-back leaves a note in the agent's thread (who, how long, the person's note), never what
+  was typed.
+- Files: one guard for every path. Paths are relative, no `..`, no NUL, symlinks must stay
+  inside the root, and secret places (`.vyre`, `.ssh`, `.env*`, keys, Chrome's cookie and
+  login stores) are refused and hidden at any depth. Bytes move only on ticketed
+  `/v1/glass/raw` and `/v1/glass/put` (one use, 60 s, size-bound), served `nosniff` with a
+  sandboxing CSP; only raster images and PDFs are shown inline. An agent reaches only its own
+  computer's files through Glass.
+- `ctx.route(name, fn)`: a raw HTTP route at `/v1/<module>/<name>`, the same shape link uses.
+- `deck/glass`: Screen, Files and a disabled Terminal tab, the take-over bar, Sign in privately,
+  a phone layout with touch gestures, drag and drop upload, and drag-out download. noVNC 1.7.0 is
+  vendored under `deck/glass/vendor/novnc` (MPL 2.0, as separate files); Glass needs an RFB client
+  in the browser and noVNC is the maintained one.
+
+#### Link heartbeat
+
+- The Mac's link heartbeat ran every 30 seconds on every Mac, paired or not, which broke the
+  60-second floor for recurring timers (principle 8, `scripts/perf-check`). It now starts only
+  once the Mac is paired, runs once a minute, and stops on unpair or when the box forgets the
+  Mac. Recovery does not depend on it, because a failed call only pauses retries.
+
 #### Link follow-ups
 
 - The tailnet peer that box's listener establishes now reaches the tool. `handler(policy)`
@@ -566,6 +641,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Drive and watch sessions from the Capsule. "watch the intake thread" offers a row per thread it
+  could mean; picking one sets a watch (`lib/watch.js`), a filter on the event stream the Capsule
+  follows anyway. When the thread finishes, fails, stops or asks, a macOS notification says so and
+  the report (the last thing it said, and its cost) waits in the empty Capsule until read. "tell
+  the intake thread to run the tests" shows the thread and the words, sends them as the user and
+  watches the thread; a thread someone else holds says who, and only ⌘⏎ takes it.
+- In the Capsule: clipboard items rank beside apps and files, "clipboard" lists them newest first
+  with a row that clears the history, and Enter puts one back on the pasteboard and closes, for the
+  user's own ⌘V. `@` an agent opens a DM: its history, your messages from any surface, the reply
+  streaming into the list, and its asks in Beacon to click and answer. A test run watches a
+  private pasteboard, never the user's.
+- Clipboard history, on this Mac only (`lib/clips.js`, `clip.watch` in `bin/local`): the helper
+  reads the pasteboard's change count every 750 ms, the one thing that runs while the Capsule is
+  hidden. Concealed, transient and auto-generated items, password managers, Universal Clipboard,
+  and anything that looks like a secret (token prefixes, JWTs, keys, codes, card numbers,
+  high-entropy strings) are never recorded. At most 200 items for 7 days, in a 0600 file. Picking
+  one writes it to the pasteboard for the user's own ⌘V; nothing is typed for them.
+- Direct messages with agents (`bridge.openDm`, `st.applyDm`): an agent's current thread as
+  history, the user's messages from any surface marked with where they came from, a sent message
+  shown at once and reconciled when it lands, the reply streaming into the same list, and the
+  agent's asks beside it. Nothing is fetched unless a DM is open.
 - Result rows look native: each has its real picture (a 24 px box that never moves when the
   icon lands), its name, where it is, and its kind or the key that takes it, with the selected
   row in Signal. Vyre's own kinds (agents, the assistant, projects, threads, memory in Recall gold,
