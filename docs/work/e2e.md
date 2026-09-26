@@ -81,6 +81,9 @@ the tailnet and asked it to pair.
 | 16 | Vault: after a refused vault.update the editor closes and says nothing; the Deck calls `vault.usage`, which main does not have (404) | vault-deck |
 | 17 | Onboarding: revisiting "Your address" after it serves says "Not reserved yet" until Get your address is pressed again; reopening /onboard without a token (a new browser) shows step 1 empty with Continue disabled and no hint to run `vyre up --print-link` | polish-surfaces |
 | 18 | With Claude skipped, the end screen says "juno is ready when you are" while Agents says "No assistant yet. Onboarding makes one." (none is made without a Claude sign-in) | polish-surfaces |
+| 19 | Live box, step 2: the Claude sign-in code never submitted. The code and Enter went into `claude setup-token` in one write, Ink reads that as a paste, and the page waited 60 s in silence | fixed, a10fcec (Enter on its own; OAuth errors reported at once) |
+| 20 | Live box, step 4 claimed a public `<name>.vyre.run` after step 1 was skipped: step 1's live check saved every name it checked | fixed, b405bfc (checks save nothing; vyre.run needs a confirmed name) |
+| 21 | Slow steps gave no sign of time: the address takes about a minute | fixed, b405bfc (time up front, elapsed seconds per line) |
 
 ## Headscale run (27 Sep): everything after Tailscale
 
@@ -136,6 +139,9 @@ Capsule on macOS.
 | Agent nodes | not built yet (waits on the image change) |
 
 ## Needs from others
+
+- lead: yes or no to letting the asking Mac approve its own pairing once a passkey proves presence
+  (plus a Deck card for link.pending). The user cannot pair his Mac tonight without it or a phone.
 
 - deck and link (lead decides): a Deck card for `link.pending` with the code and Approve/Deny
   behind presence (snag 15), and whether the Mac's own browser may approve its own pairing once a
