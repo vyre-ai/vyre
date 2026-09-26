@@ -328,3 +328,46 @@ test("vault: a per-agent module fetches dynamic names, still only with a grant p
   await cli("vault.grant", { name: "juno-setup-token", module: "agents" });
   assert.deepEqual((await cli("agents.probe", { name: "juno-setup-token" })).data, { length: token.length });
 });
+
+test("vault: behind tailscale serve, a relayed pass answers only its holder's Tailscale login", async t => {
+  const token = fake("token");
+  const api = http.createServer((req, res) => { res.end(JSON.stringify({ ok: req.headers.authorization === `Bearer ${token}` })); });
+  await new Promise(r => api.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => api.close());
+  const apiOrigin = `http://127.0.0.1:${/** @type {any} */ (api.address()).port}`;
+
+  // A stand-in for tailscale serve: it proxies to the relay listener and sets the identity
+  // header from whoever is calling, which here is whatever `as` says.
+  let as = /** @type {string|null} */ ("mate@example.com");
+  const free = await new Promise(r => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => r(p)); }); });
+  const serve = http.createServer((req, res) => {
+    const headers = { ...req.headers };
+    delete headers["tailscale-user-login"];
+    if (as) headers["tailscale-user-login"] = as;
+    const up = http.request({ host: "127.0.0.1", port: free, path: req.url, method: req.method, headers }, r => { res.writeHead(r.statusCode || 502, r.headers); r.pipe(res); });
+    req.pipe(up);
+  });
+  await new Promise(r => serve.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => serve.close());
+  const serveUrl = `http://127.0.0.1:${/** @type {any} */ (serve.address()).port}`;
+
+  const owner = await boot(t, { keystore: "file", relay: { host: "127.0.0.1", port: free, url: serveUrl, identity: "tailscale" } });
+  t.after(() => owner.d.stop());
+  const mate = await boot(t, { keystore: "file", login: "mate@example.com" });
+  t.after(() => mate.d.stop());
+  const o = owner.as("cli"), m = mate.as("cli");
+
+  await o("vault.put", { name: "api-token", kind: "api-key", value: token, hosts: [apiOrigin] });
+  const card = (await m("vault.identity")).data.card;
+  const { ticket } = (await o("vault.pass.create", { holder: "teammate", card, items: ["api-token"] })).data;
+  await m("vault.pass.accept", { ticket });
+  const use = () => m("vault.relay", { item: "api-token", request: { url: `${apiOrigin}/`, headers: { authorization: "Bearer {{vault}}" } } });
+
+  assert.equal(JSON.parse((await use()).data.body).ok, true);
+  as = "someone-else@example.com";
+  assert.match((await use()).error.message, /another Tailscale user/);
+  as = null;
+  assert.match((await use()).error.message, /only through tailscale serve/);
+  const trail = (await o("vault.audit", { name: "api-token" })).data.entries;
+  assert.ok(trail.some(e => e.action === "relay" && e.ok && /as mate@example\.com/.test(e.why)));
+});

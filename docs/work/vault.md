@@ -80,4 +80,8 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `grant.requested`, `pass.requested`, `pass.created`, `pass.revoked`, `pass.accepted`,
   `person.offboarded`. None carries a value.
 - Config: `vault.keystore` (`keychain` | `file` | `passphrase`), `vault.keychain` (a keychain
-  file), `vault.relay` (`{host, port, url?}`).
+  file), `vault.relay` (`{host, port, url?, identity?: "tailscale"}`), `vault.fill`
+  (`{host, port}`), `vault.login` (this person's Tailscale login, put on their card).
+- Cards may carry `login`. With `vault.relay.identity: "tailscale"` the relay listener requires
+  the `Tailscale-User-Login` header from `tailscale serve`, and a pass made from a card with a
+  login answers only that login.

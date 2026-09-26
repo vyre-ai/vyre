@@ -101,6 +101,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the whole vault, including the device identity so passes stay valid, sealed to its own
   passphrase (scrypt, AES-256-GCM), safe to keep in any cloud drive. Restoring re-seals every
   item under the new vault's key.
+- Relayed passes can be bound to the holder's Tailscale login as well as their device key:
+  with `vault.relay.identity: "tailscale"` the listener answers only through `tailscale serve`,
+  and only the login on the holder's card.
 - 1Password `.1pux` import, through a small ZIP reader over `node:zlib` with CRC checks and a
   zip-bomb guard.
 - Shared core, kept small:

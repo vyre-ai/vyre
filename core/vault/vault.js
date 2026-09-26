@@ -51,6 +51,9 @@ export const MIGRATIONS = [
      items TEXT NOT NULL, mode TEXT NOT NULL, expires INTEGER, accepted INTEGER NOT NULL
    );`,
   FILL_MIGRATION,
+  // A pass can be bound to the holder's Tailscale login as well as their device key.
+  `ALTER TABLE vault_people ADD COLUMN login TEXT;
+   ALTER TABLE vault_passes ADD COLUMN holder_login TEXT;`,
 ];
 
 export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set"];
@@ -103,6 +106,10 @@ export class Vault {
     this.seen = new Map();
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
+    /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
+    this.relayIdentity = opts.relay && opts.relay.identity === "tailscale" ? "tailscale" : null;
+    /** This person's Tailscale login, put on the card so passes to them can be bound to it. */
+    this.login = opts.login ? String(opts.login) : null;
     ensureDir(dir);
   }
 
@@ -396,7 +403,7 @@ export class Vault {
 
   async card() {
     const id = await this.identity();
-    const card = { name: this.name, sign: id.sign.public, box: id.box.public, relay: this.relayUrl || "" };
+    const card = { name: this.name, sign: id.sign.public, box: id.box.public, relay: this.relayUrl || "", ...(this.login ? { login: this.login } : {}) };
     return { card: relay.encodeCard(card), name: card.name, relay: card.relay || null };
   }
 
@@ -421,7 +428,7 @@ export class Vault {
     if (card) {
       const c = relay.decodeCard(card);
       if (person && person.sign !== c.sign && kindOf(caller) === "mcp") throw new Error(`${holder}'s card changed; a person must confirm that with vyre vault pass create`);
-      this.db.prepare("INSERT OR REPLACE INTO vault_people (name, sign, box, relay, added) VALUES (?,?,?,?,?)").run(holder, c.sign, c.box, c.relay || null, now());
+      this.db.prepare("INSERT OR REPLACE INTO vault_people (name, sign, box, relay, login, added) VALUES (?,?,?,?,?,?)").run(holder, c.sign, c.box, c.relay || null, c.login || null, now());
       person = this.db.prepare("SELECT * FROM vault_people WHERE name=?").get(holder);
     }
     if (!person) throw new Error(`no card for ${holder} yet: ask them to run vyre vault card and pass it with --card`);
@@ -436,8 +443,8 @@ export class Vault {
     }
     const id = "p_" + newId();
     const status = kindOf(caller) === "mcp" ? "pending" : "active";
-    this.db.prepare("INSERT INTO vault_passes (id, holder, holder_sign, holder_box, items, mode, hosts, expires, note, status, by, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(id, holder, person.sign, person.box, JSON.stringify(items), mode, narrowed ? JSON.stringify(narrowed) : null, parseExpiry(expires), String(note), status, String(caller), now());
+    this.db.prepare("INSERT INTO vault_passes (id, holder, holder_sign, holder_box, holder_login, items, mode, hosts, expires, note, status, by, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, holder, person.sign, person.box, person.login || null, JSON.stringify(items), mode, narrowed ? JSON.stringify(narrowed) : null, parseExpiry(expires), String(note), status, String(caller), now());
     this.audit(status === "active" ? "pass" : "pass-requested", null, caller, true, `${id} to ${holder}: ${items.join(", ")} (${mode})`);
     if (status === "pending") {
       this.emit("pass.requested", { pass: id, holder, items, mode });
@@ -542,7 +549,7 @@ export class Vault {
    * The relay listener's handler: a holder's signed request, checked against its pass, sent on
    * with the value added, and the value scrubbed from whatever comes back.
    */
-  async onRelay(env) {
+  async onRelay(env, meta = {}) {
     const deny = (status, message) => ({ status, body: { error: { code: status === 403 ? "denied" : "bad_request", message } } });
     const p = env && typeof env.pass === "string" ? /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(env.pass)) : null;
     const who = p ? `pass:${p.id}:${p.holder}` : "pass:unknown";
@@ -550,6 +557,10 @@ export class Vault {
     if (!p) return refuse("no such pass");
     const why = relay.checkEnvelope(env, { holderKey: p.holder_sign, seen: this.seen });
     if (why) return refuse(why);
+    if (this.relayIdentity === "tailscale") {
+      if (!meta.login) return refuse("this relay answers only through tailscale serve");
+      if (p.holder_login && meta.login !== p.holder_login) return refuse("this pass belongs to another Tailscale user");
+    }
     if (p.revoked) return refuse("this pass was revoked");
     if (p.status !== "active") return refuse("this pass is not approved");
     if (p.expires && p.expires < now()) return refuse("this pass has expired");
@@ -569,7 +580,7 @@ export class Vault {
     catch (e) { this.audit("relay", env.item, who, false, "upstream failed"); return { status: 502, body: { error: { code: "upstream", message: relay.scrub(/** @type {Error} */ (e).message, sub.values) } } }; }
     const headers = {};
     for (const [k, v] of Object.entries(res.headers || {})) headers[k] = relay.scrub(String(v), sub.values);
-    this.audit("relay", env.item, who, true, `${origin(env.request.url)} ${res.status}`);
+    this.audit("relay", env.item, who, true, `${origin(env.request.url)} ${res.status}${meta.login ? " as " + meta.login : ""}`);
     this.emit("vault.released", { name: env.item, pass: p.id, holder: p.holder });
     return { status: 200, body: { data: { status: res.status, headers, body: relay.scrub(res.body, sub.values) } } };
   }

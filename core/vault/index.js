@@ -32,7 +32,7 @@ export default {
     const opts = (ctx.config && ctx.config.vault) || {};
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), onRelay: env => vault.onRelay(env) });
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), onRelay: (env, meta) => vault.onRelay(env, meta) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }

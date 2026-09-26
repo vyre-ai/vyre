@@ -146,8 +146,8 @@ export async function restore(vault, blob, passphrase, { mode = "merge", who = "
   };
   const grants = insert("vault_grants", ["id", "item", "module", "watcher", "status", "by", "at"],
     (payload.grants || []).map(g => ({ ...g, watcher: g.watcher ?? "" })));
-  const people = insert("vault_people", ["name", "sign", "box", "relay", "added"], payload.people);
-  const passes = insert("vault_passes", ["id", "holder", "holder_sign", "holder_box", "items", "mode", "hosts", "expires", "note", "status", "by", "created", "issued", "revoked"],
+  const people = insert("vault_people", ["name", "sign", "box", "relay", "login", "added"], payload.people);
+  const passes = insert("vault_passes", ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "expires", "note", "status", "by", "created", "issued", "revoked"],
     (payload.passes || []).map(p => ({ ...p, note: p.note ?? "" })));
   const held = insert("vault_held", ["id", "owner", "relay", "owner_sign", "items", "mode", "expires", "accepted"], payload.held);
 
