@@ -118,12 +118,28 @@ export default {
       const history = { state: "todo", why: null, sessions: 0, indexed: r ? r.sessions : 0, running: Boolean(r && r.indexing) || Boolean(indexing) };
       if (!r) Object.assign(history, { state: "blocked", why: recall.__error });
       else {
-        const cat = await tryCall("projects.catalog", { limit: 100000 });
-        history.sessions = Math.max(cat.__error ? 0 : Number(cat.total) || 0, history.indexed);
+        // total does not depend on the limit, so one row is enough. On the box the catalogue
+        // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
+        // sources says which machines answered.
+        const box = ctx.config.role === "box";
+        const cat = await tryCall("projects.catalog", { limit: 1, ...(box ? { machines: "all" } : {}) });
+        const sources = !cat.__error && Array.isArray(cat.sources) ? cat.sources : null;
+        const count = x => Number(x && x.total) || 0;
+        // The box's own sessions are what its index has to catch up with; a Mac indexes its own.
+        const own = Math.max(sources ? count(sources[0]) : count(cat.__error ? null : cat), history.indexed);
+        const macs = sources ? sources.filter(x => x.source === "mac") : [];
+        history.sessions = own + macs.reduce((n, m) => n + count(m), 0);
+        if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
-        else if (history.sessions === 0) Object.assign(history, { state: "done",
-          why: ctx.config.role === "box" ? "Your Mac's sessions appear here when you connect your Mac" : "no Claude Code sessions on this machine yet" });
-        else if (ob().history && history.indexed >= history.sessions) history.state = "done";
+        else if (history.sessions === 0) {
+          const peers = box ? await tryCall("link.macs") : [];
+          const off = Array.isArray(peers) ? peers.find(m => !m.online) : null;
+          Object.assign(history, { state: "done",
+            why: !box ? "no Claude Code sessions on this machine yet"
+              : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
+              : "Your Mac's sessions appear here when you connect your Mac" });
+        }
+        else if (ob().history && history.indexed >= own) history.state = "done";
       }
 
       // The Mac counts once link has paired one; the first paired is the one shown.
