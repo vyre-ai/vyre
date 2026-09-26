@@ -17,9 +17,9 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var menuBar: MenuBarItem?
     lazy var health = Health(vyred: vyred)
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
-    /// Clipboard, contacts, modules, Glass and watches (Agent/Wiring.swift).
+    /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
     let wiring: AgentWiring
-    /// Repaints the mark when the waiting list changes (Agent/MenuBar.swift).
+    /// Repaints the mark when the waiting list changes (Agent/AgentMenuBar.swift).
     var agentSink: AnyCancellable?
 
     override init() {

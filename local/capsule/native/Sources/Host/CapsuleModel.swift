@@ -65,9 +65,9 @@ public final class CapsuleModel: ObservableObject {
     let frecency: Frecency
     let vyred: VyredClient
     let home: String
-    /// The threads the Capsule holds, released and stopped on hide (Agent/Keeper.swift).
+    /// The threads the Capsule holds, released and stopped on hide (Agent/AgentKeeper.swift).
     lazy var keeper = Keeper(vyred: vyred)
-    /// The conversation with the agent in the chip (Agent/Direct.swift).
+    /// The conversation with the agent in the chip (Agent/AgentDirect.swift).
     public lazy var direct: Direct = {
         let d = Direct(vyred: vyred)
         d.changed = { [weak self] in self?.objectWillChange.send() }
@@ -75,11 +75,11 @@ public final class CapsuleModel: ObservableObject {
         d.onError = { [weak self] why in self?.line = why }
         return d
     }()
-    /// ⌘K: the highlighted row's verbs (Agent/Wiring.swift).
+    /// ⌘K: the highlighted row's verbs (Agent/AgentWiring.swift).
     lazy var actionMenu: ActionMenu = { let a = ActionMenu(); a.changed = { [weak self] in self?.objectWillChange.send() }; return a }()
-    /// Each agent's threads, for where @agent sends (Agent/Destinations.swift).
+    /// Each agent's threads, for where @agent sends (Agent/AgentDestinations.swift).
     lazy var routes = RouteCache()
-    /// What waits on the user and the card that answers it (Agent/Desk.swift).
+    /// What waits on the user and the card that answers it (Agent/AgentDesk.swift).
     public lazy var desk: Desk = {
         let d = Desk(vyred: vyred)
         d.changed = { [weak self] in self?.objectWillChange.send() }
@@ -278,7 +278,7 @@ public final class CapsuleModel: ObservableObject {
         }
         // Answers (calc) sit first: they are what the user typed, worked out.
         if let i = out.firstIndex(where: { $0.section == .answer }), i != 0 { out.insert(out.remove(at: i), at: 0) }
-        // Where the words go (Agent/Destinations.swift): first for a question nothing here answers,
+        // Where the words go (Agent/AgentDestinations.swift): first for a question nothing here answers,
         // or with a chip or an answer on screen; last otherwise.
         var asks = Group(section: .vyre, items: askItems(q))
         // One Vyre group: rows from Vyre's own providers (Glass, watch) join the destinations.

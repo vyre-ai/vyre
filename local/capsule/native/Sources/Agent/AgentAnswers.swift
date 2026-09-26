@@ -1,4 +1,4 @@
-// Whether vyred is known to be down, for the offline line (UI/AgentDesk.swift OfflineBanner).
+// Whether vyred is known to be down, for the offline line (UI/AgentDeskView.swift OfflineBanner).
 // (Enter on a sum copying it is capsule-pro's, in CapsuleModel.search.)
 
 import AppKit
