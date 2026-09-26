@@ -4,6 +4,38 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Tailnet: more of Tailscale, and still never a change to the tailnet (ADR 0014)
+
+- Vyre now knows how the box and a device reach each other. `link.health` says whether the
+  connection is direct or relayed, its latency and the last handshake. Each node is checked at
+  most once a minute and only when something asks, so it costs nothing while nobody looks. The
+  Deck's Network settings and the Capsule show "direct 12 ms" or "relayed via fra 80 ms", so a
+  slow screen has a visible reason.
+- Glass uses that answer. A viewer on a relayed or slow link gets at most five frame updates a
+  second at lower quality, and taps and keys still go through at once, so a phone on a relay sees
+  a steady picture instead of a stalled one.
+- Files go from the Mac to the box with Taildrop: `vyre send <file>` and `files.send`. Only what
+  the files guard passes is sent, so a key or an `.env` never leaves the Mac, and when Taildrop
+  cannot reach the box (a tagged box is the usual case) it says why. The box keeps one
+  `tailscale file get --loop` blocked in tailscaled, so idle costs nothing, and announces each
+  arrival in `files.inbox` as `files.received`. Nothing opens or runs a received file.
+- The box can share chosen folders with the paired Mac through Taildrive, so Finder and the
+  Capsule open box files where they live instead of pulling a copy. Only named shares that pass
+  the guard can be shared, and only by the owner. Vyre cannot edit the policy that decides who
+  reaches a share, so `files.drive.audit` checks it and reports any node that is not a paired Mac.
+  tailscaled now sees `/work`, read-only unless the owner opts in.
+- `vyre box add` and `vyre box move` reach a server on the tailnet over Tailscale SSH first, so no
+  key or password is needed, and fall back to the address as typed. A check-mode sign-in link is
+  shown on the terminal rather than hidden.
+- Onboarding and Settings explain Tailnet Lock and show the exact commands to turn it on from the
+  Mac, with the box's key filled in. Vyre only reads the lock's state and never turns it on or
+  signs anything, because those commands change the whole tailnet.
+- An agent's Chrome can send a chosen list of sites through the owner's Mac, off by default, for
+  sites that refuse a datacenter address. The box's own tailscaled never uses an exit node (that
+  would route everything); an optional sidecar (`box/compose.egress.yml`) does, in userspace, on
+  the computers network only. The listed sites have no direct fallback, so when the Mac is away
+  they fail instead of showing the box's address. Only the owner can change the list.
+
 #### Presence: a person proves they are there (ADR 0004)
 
 - A model could approve its own held email. The caller is only a header on a socket the user
