@@ -9,7 +9,7 @@
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules } from "../js/api.js";
+import { attempt, modules, canProve, callWithCode } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
 
@@ -21,6 +21,8 @@ const SECTIONS = [
   ["network", "Network"],
   ["history", "History and memory"],
   ["lessons", "Lessons"],
+  ["notifications", "Notifications"],
+  ["security", "Security"],
   ["modules", "Modules"],
   ["appearance", "Appearance"],
   ["machine", "This machine"],
@@ -83,10 +85,12 @@ export default async function settings(ctx) {
 
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
-    drawNetwork(body.network), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx), drawModules(body.modules),
+    drawNetwork(body.network), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
-  const hash = location.hash.slice(1);
+  // A push notification's path is a query (?section=lessons, a plain fetchable link), not a hash.
+  const hash = location.hash.slice(1) || ctx.query.get("section") || "";
   if (hash && SECTIONS.some(([id]) => id === hash)) {
     jump(hash, false);
     await Promise.all(loads);
@@ -397,6 +401,165 @@ function lessonRow(l, reload) {
   };
   show();
   return el;
+}
+
+// ---- notifications ---------------------------------------------------------------------------
+
+/** base64url (as push.key gives it) to the raw bytes pushManager.subscribe wants. */
+const b64 = s => {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+};
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+const isStandalone = () => !!(window.matchMedia?.("(display-mode: standalone)").matches || /** @type {any} */ (window.navigator).standalone);
+/** push.devices never gives back an endpoint to match against, so this device's id is kept here,
+ * set once from push.subscribe's own answer. */
+const DEVICE_KEY = "vyre.push.device";
+const myDevice = () => { try { return localStorage.getItem(DEVICE_KEY); } catch { return null; } };
+const setMyDevice = id => { try { id ? localStorage.setItem(DEVICE_KEY, id) : localStorage.removeItem(DEVICE_KEY); } catch {} };
+
+async function drawNotifications(el, ctx) {
+  // iOS only delivers Web Push to an installed (Home Screen) app; asking for permission from an
+  // ordinary Safari tab silently cannot work, so say so instead of showing a button that fails.
+  if (isIOS() && !isStandalone()) {
+    put(el, note('iOS only delivers notifications to an installed app. Add Vyre to your Home Screen first — the Share button, then "Add to Home Screen" — then open it from there and come back here.'));
+    return;
+  }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    put(el, note("This browser does not support push notifications."));
+    return;
+  }
+  const deviceBox = h("div");
+  const settingsBox = h("div");
+  const st = status();
+  put(el, deviceBox, settingsBox, st);
+
+  const draw = async () => {
+    const [devicesR, settingsR] = await Promise.all([attempt("push.devices"), attempt("push.settings")]);
+    if (!ctx.alive()) return;
+    if (devicesR.error) { put(deviceBox, empty("Push is kept by its own module.", devicesR.error)); return; }
+    const reg = await navigator.serviceWorker.ready.catch(() => null);
+    const sub = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
+    const devices = devicesR.data || [];
+
+    const subscribe = async () => {
+      put(st, "Asking for permission…");
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { put(st, "Notifications were not allowed."); return; }
+      const key = await attempt("push.key");
+      if (key.error) { put(st, errText(key.error)); return; }
+      put(st, "Turning on…");
+      let newSub;
+      try { newSub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key.data.public_key) }); }
+      catch (e) { put(st, String(/** @type {any} */ (e)?.message || e)); return; }
+      const label = isIOS() ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android" : "This browser";
+      const r = await attempt("push.subscribe", { subscription: newSub.toJSON(), label });
+      if (r.error) { put(st, errText(r.error)); newSub.unsubscribe().catch(() => {}); return; }
+      setMyDevice(r.data?.device || null);
+      put(st, "");
+      draw();
+    };
+    // "This device" unsubscribes by the id push.subscribe gave; if that was lost (another tab,
+    // cleared storage) but the browser still holds a live subscription, the endpoint still
+    // identifies it server-side. A listed device unsubscribes by its id, browser-side or not.
+    const unsubscribe = async (device, endpoint) => {
+      put(st, "Turning off…");
+      const r = await attempt("push.unsubscribe", device ? { device } : { endpoint });
+      if (r.error) { put(st, errText(r.error)); return; }
+      if (device && device === myDevice()) setMyDevice(null);
+      if (sub && (device === myDevice() || endpoint === sub.endpoint)) await sub.unsubscribe().catch(() => {});
+      put(st, "");
+      draw();
+    };
+
+    const mine = myDevice();
+    put(deviceBox, h("div", { class: "rows" },
+      sub
+        ? row("This device", stateLbl("On"), h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => unsubscribe(mine, sub.endpoint) }, "Turn off"))
+        : row("This device", h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: subscribe }, "Turn on notifications")),
+      ...devices.filter(d => d.device !== mine).map(d => row(d.label || "A device",
+        h("span", { class: "small faint" }, d.fails ? "failing" : d.last_ok ? `last delivered ${since(d.last_ok)} ago` : "not tried yet"),
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => unsubscribe(d.device) }, "Remove")))));
+
+    if (settingsR.error) { put(settingsBox); return; }
+    const s = settingsR.data || {};
+    const quietOn = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: !!s.quiet }));
+    const start = /** @type {HTMLInputElement} */ (h("input", { type: "time", class: "input", value: s.quiet?.start || "22:00" }));
+    const end = /** @type {HTMLInputElement} */ (h("input", { type: "time", class: "input", value: s.quiet?.end || "07:00" }));
+    const syncQuiet = () => { start.disabled = end.disabled = !quietOn.checked; };
+    const saveQuiet = () => attempt("push.settings", { quiet: quietOn.checked
+      ? { start: start.value, end: end.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : null });
+    syncQuiet();
+    for (const el2 of [quietOn, start, end]) el2.addEventListener("change", () => { syncQuiet(); saveQuiet(); });
+    const KINDS = [["ask", "Permission questions"], ["draft", "Held drafts"], ["watch", "Threads you're watching"], ["lesson", "Lessons"]];
+    put(settingsBox, h("div", { class: "rows" },
+      row("Quiet hours", quietOn, start, h("span", { class: "small faint" }, "to"), end)),
+      h("div", { class: "rows" }, KINDS.map(([k, label]) => {
+        const box = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: s.kinds?.[k] !== false,
+          onchange: () => attempt("push.settings", { kinds: { [k]: box.checked } }) }));
+        return row(label, box);
+      })),
+      sub ? foot(h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
+        put(st, "Sending…"); const t = await attempt("push.test");
+        put(st, t.error ? errText(t.error) : t.data?.sent ? "Sent." : "Not sent.");
+      } }, "Send a test")) : null);
+  };
+  draw();
+}
+
+// ---- security (passkeys, ADR 0004) -------------------------------------------------------------
+
+/** WebAuthn's own base64url, for the enrollment call (api.js's is not exported; this one is
+ * small enough to keep local rather than widen api.js's surface for one call site). */
+const b64url = buf => btoa(String.fromCharCode(.../** @type {any} */ (new Uint8Array(buf)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+/**
+ * Add a passkey: proves a person is here for a Gate approval or a Glass take-over (ADR 0004).
+ * The first one needs a one-time code from `vyre presence code`, typed on the box, since there
+ * is no passkey yet to prove with.
+ */
+function drawSecurity(el, ctx) {
+  if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet.")); return; }
+  const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "off", spellcheck: "false",
+    placeholder: "from vyre presence code, on the box" }));
+  const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: "e.g. My MacBook" }));
+  const st = status();
+  const btn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: enroll }, "Add a passkey"));
+  async function enroll() {
+    const code = codeIn.value.trim();
+    if (!code) { put(st, "Paste the code first."); return; }
+    btn.disabled = true;
+    put(st, "Waiting for your passkey…");
+    /** @type {any} */ let cred;
+    try {
+      cred = await navigator.credentials.create({ publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: "Vyre", id: location.hostname },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: nameIn.value.trim() || "you", displayName: nameIn.value.trim() || "you" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { userVerification: "required" }, timeout: 60_000,
+      } });
+    } catch (e) { btn.disabled = false; put(st, `The passkey was not created: ${/** @type {any} */ (e)?.message || e}`); return; }
+    if (!cred) { btn.disabled = false; put(st, "The passkey was cancelled."); return; }
+    const r = cred.response;
+    try {
+      await callWithCode("presence.enroll", {
+        kind: "passkey", name: nameIn.value.trim() || "This device",
+        public_key: b64url(r.getPublicKey()), alg: r.getPublicKeyAlgorithm(),
+        rp_id: location.hostname, credential_id: b64url(cred.rawId),
+      }, code);
+    } catch (e) { btn.disabled = false; put(st, errText(e)); return; }
+    codeIn.value = "";
+    btn.disabled = false;
+    put(st, "Passkey added.");
+  }
+  put(el,
+    note("A passkey (Touch ID, Face ID, a security key) proves you're the one approving a Gate item or taking over a session in Glass — never typed, never phished."),
+    h("div", { class: "rows" },
+      row("Code", codeIn),
+      row("Name this device", nameIn)),
+    foot(btn), st);
 }
 
 // ---- 8. Modules ----------------------------------------------------------------------------

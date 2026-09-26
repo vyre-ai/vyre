@@ -44,12 +44,18 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
+ * @param {{ presence?: boolean }} [opts] presence: true proves a person is here with a passkey
+ *   first (ADR 0004), for a human-only call (Gate approvals, Glass take-over, …). The proof is
+ *   bound to this exact tool and input.
  */
-export async function call(name, input = {}) {
+export async function call(name, input = {}, opts = {}) {
+  let presence;
+  if (opts.presence) presence = await presenceProof(name, input); // throws ApiError on refusal or a cancelled passkey
   let res, body;
   try {
     res = await fetch("/v1/tools/" + encodeURIComponent(name), {
-      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...headers }, body: JSON.stringify(input),
+      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...(presence ? { "x-vyre-presence": presence } : {}), ...headers },
+      body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);
   } catch {
@@ -61,9 +67,66 @@ export async function call(name, input = {}) {
   throw err;
 }
 
+// ---- presence (ADR 0004): proving a person is here with a passkey, for a human-only call -----
+// Like upload(), a byte exchange outside the usual JSON-in/JSON-out shape, lifted here from
+// deck/glass/presence.js (which wrote it exactly to be moved) since Gate approvals need the same
+// proof. The dance: POST /v1/presence/challenge gets WebAuthn options bound to this tool and
+// input (hashed as canonical JSON), navigator.credentials.get asks the person (Touch ID, Face
+// ID, a security key), then the tool call itself carries the signed proof as x-vyre-presence.
+
+const b64url = buf => btoa(String.fromCharCode(.../** @type {any} */ (new Uint8Array(buf)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64url = s => Uint8Array.from(atob(String(s).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(s).length + 3) % 4)), c => c.charCodeAt(0));
+
+/** Can this browser make a passkey proof at all? */
+export const canProve = () => typeof window !== "undefined" && !!/** @type {any} */ (window).PublicKeyCredential && !!navigator.credentials;
+
+/**
+ * A tool call authenticated by a one-time enrollment code (`vyre presence code`, typed on the
+ * box), for `presence.enroll` when adding a first passkey — the normal passkey proof isn't
+ * available yet, so a code stands in for it once. Resolves to the data; throws an ApiError.
+ * @param {string} name @param {Record<string, any>} input @param {string} code
+ */
+export async function callWithCode(name, input, code) {
+  let res, body;
+  try {
+    res = await fetch("/v1/tools/" + encodeURIComponent(name), {
+      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": `code code=${code}` },
+      body: JSON.stringify(input),
+    });
+    body = await res.json().catch(() => null);
+  } catch { throw new ApiError("offline", "vyred did not answer", name); }
+  if (body && "data" in body && !body.error) return body.data;
+  throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
+}
+
+/** @param {string} tool @param {Record<string, any>} input @returns {Promise<string>} the x-vyre-presence header value */
+async function presenceProof(tool, input) {
+  if (!canProve()) throw new ApiError("no_passkey", "This browser cannot use a passkey. Open the Deck in Safari or Chrome over your tailnet.", tool);
+  let ch;
+  try {
+    const res = await fetch("/v1/presence/challenge", { method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...headers },
+      body: JSON.stringify({ tool, input, method: "passkey" }) });
+    ch = await res.json().catch(() => null);
+  } catch { throw new ApiError("offline", "The box did not answer.", tool); }
+  if (!ch || ch.error || !ch.data?.webauthn) throw new ApiError(ch?.error?.code || "denied", ch?.error?.message || "The box did not offer a passkey challenge.", tool, ch?.error);
+  const w = ch.data.webauthn;
+  /** @type {any} */ let cred;
+  try {
+    cred = await navigator.credentials.get({ publicKey: {
+      challenge: unb64url(w.challenge), rpId: w.rpId, userVerification: w.userVerification || "required", timeout: w.timeout,
+      allowCredentials: (w.allowCredentials || []).map((/** @type {any} */ c) => ({ type: "public-key", id: unb64url(c.id) })),
+    } });
+  } catch (e) {
+    throw new ApiError("cancelled", /** @type {any} */ (e).name === "NotAllowedError" ? "The passkey was cancelled or timed out." : `The passkey did not work: ${/** @type {any} */ (e).message}`, tool);
+  }
+  if (!cred) throw new ApiError("cancelled", "The passkey was cancelled.", tool);
+  const r = cred.response;
+  return `passkey id=${ch.data.challenge} cred=${b64url(cred.rawId)} ad=${b64url(r.authenticatorData)} cd=${b64url(r.clientDataJSON)} sig=${b64url(r.signature)}`;
+}
+
 /** Call, but resolve to { data } or { error } so a view can render either without try/catch. */
-export async function attempt(name, input = {}) {
-  try { return { data: await call(name, input) }; } catch (error) { return { error }; }
+export async function attempt(name, input = {}, opts = {}) {
+  try { return { data: await call(name, input, opts) }; } catch (error) { return { error }; }
 }
 
 /**
