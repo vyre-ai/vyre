@@ -6,15 +6,25 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 - docs/design/phone.md: the phone design. The user's pick (2026-09-27): Direction B's shell (no
   tab bar, swiped pages, the floating Capsule) with Direction A's screens (Chat, Find, Agents,
   the approval sheet), and A's grouped Needs you list with swipe and a detail sheet with Open
-  session.
+  session. Native presence is a device key (ADR 0018). Colour roles use the Deck's names.
+- Red ban: attention is violet through the --beacon-* variables; errors and destructive actions
+  carry no colour.
+- Contrast: all 15 mockup artboards rendered in both themes, 1,048 text, placeholder and icon
+  checks, all at WCAG AA. The mockups are a private design canvas owned by the user (ask the lead).
+- Handed to pwa and mobile; the three contracts (transcript anchors, questions as Needs items,
+  the "Always in <project>" rule) went to the chat team.
 
 ## Doing
-- phone.md pushed and handed to pwa and mobile; waiting on the desktop pick to converge the
-  shared system with deck-design.
+- Waiting on deck-design's reduced system (2 families, neutrals, lime, one attention colour, no
+  gold, no red) to apply it to phone.md and the canvas.
 
 ## Next
-- Review pwa and mobile builds against phone.md (screenshots of test windows only).
-- Keep phone.md aligned with deck-design's shared tokens when they land.
+1. Apply deck-design's reduced set exactly: drop gold (From memory blocks become neutral unless
+   they say otherwise), cut the type sizes to their scale, re-run the contrast pass, republish
+   the canvas, tell the integrator the head.
+2. The attention colour pick is still pending with the user: violet (current), honey or teal.
+   It is a one-line swap per theme of the three --beacon-* values.
+3. Review pwa and mobile builds against phone.md as screenshots arrive.
 
 ## Needs from others
 - chat: an anchor (event or tool_use id) on threads.asks and gate.held rows, so Open session can
