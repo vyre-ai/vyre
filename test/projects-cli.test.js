@@ -92,7 +92,7 @@ test("cli: vyre alone, piped, prints the home with this folder's project presele
   assert.match(inside.out, /› Harlow Legal {2}2 threads · \S+ · this folder/, "this folder's project is not preselected");
   assert.match(inside.out, /  Northwind {2}3 threads/);
   assert.match(inside.out, /New session without a project/);
-  assert.match(inside.out, /Agents\n\s+agents arrive with the switchboard/);
+  assert.match(inside.out, /Agents\n\s+none yet/);
   assert.doesNotMatch(inside.out, /What a new thread here is told/, "the home opened the project instead of preselecting it");
   const outside = await w.run([], { cwd: w.root });
   assert.match(outside.out, /› Northwind|› Harlow Legal/);

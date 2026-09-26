@@ -232,12 +232,13 @@ ipcMain.handle("capsule:mention", (_e, text, caret) => bridge.mention(String(tex
 ipcMain.handle("capsule:destinations", (_e, target, text) => bridge.destinations(target || null, String(text || "")));
 ipcMain.handle("capsule:recall", (_e, text) => bridge.recall(String(text || "")));
 ipcMain.handle("capsule:source", (_e, ref) => bridge.source(ref));
-ipcMain.handle("capsule:send", async (_e, dest, text) => {
-  const r = await bridge.send(dest, String(text || ""));
-  if (r.thread) pinned = true;
+ipcMain.handle("capsule:send", async (_e, dest, text, opts) => {
+  const r = await bridge.send(dest, String(text || ""), { take: Boolean(opts && opts.take) });
+  if (!r.error) pinned = true;
   return r;
 });
-ipcMain.handle("capsule:answer", (_e, item, decision, text) => bridge.answer(item, decision, text));
+ipcMain.handle("capsule:held", (_e, id) => bridge.held(String(id || "")));
+ipcMain.handle("capsule:answer", (_e, item, decision, edited) => bridge.answer(item, decision, edited));
 ipcMain.on("capsule:size", (_e, h) => {
   const next = Math.max(52, Math.min(640, Math.round(Number(h) || 0)));
   if (!win || win.isDestroyed() || Math.abs(next - height) < 1) return;

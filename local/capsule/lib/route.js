@@ -14,7 +14,7 @@
  * @typedef {{ agents: Agent[]|null, projects: Project[], threads: Thread[] }} Catalog
  * @typedef {{ kind: "agent"|"project"|"thread", id: string, label: string, sub: string, last: number }} Candidate
  * @typedef {{ kind: "assistant"|"agent"|"recall"|"thread"|"new-thread", agent?: string, project?: string|null,
- *   projectName?: string|null, thread?: string, threadLabel?: string, cwd?: string|null, fresh?: boolean, meta: string }} Destination
+ *   projectName?: string|null, thread?: string, threadLabel?: string, cwd?: string|null, meta: string }} Destination
  */
 
 const KIND_ORDER = { agent: 0, project: 1, thread: 2 };
@@ -137,7 +137,12 @@ export function destinations(target, text, cat, { agentThreads = [], now = Date.
     const hit = bestThread(text, agentThreads);
     const current = /** @type {Destination} */ ({ kind: "agent", agent: target.id, meta: "its current thread" });
     if (!hit) return { options: [current], why: null };
-    return { options: [threadDest(hit.thread, target.id), { ...current, fresh: true, meta: "" }], why: why(hit, `where ${target.id} works on it`) };
+    // agents.ask always goes to the agent's current thread; there is no asking for a new one. So
+    // the other choice is that current thread, unless the words already matched it.
+    const currentId = ((cat.agents || []).find(a => a.name === target.id) || {}).thread;
+    const options = [threadDest(hit.thread, target.id)];
+    if (hit.thread.id !== currentId) options.push({ ...current, meta: "" });
+    return { options, why: why(hit, `where ${target.id} works on it`) };
   }
   if (target.kind === "project") {
     const p = projectOf(target.id);
@@ -157,7 +162,7 @@ export function destinations(target, text, cat, { agentThreads = [], now = Date.
 export function describe(d) {
   if (d.kind === "recall") return { who: "memory", where: [] };
   if (d.kind === "assistant") return { who: d.agent || "assistant", where: [] };
-  if (d.kind === "agent") return { who: d.agent || "agent", where: [d.fresh ? "new thread" : "current thread"] };
+  if (d.kind === "agent") return { who: d.agent || "agent", where: ["current thread"] };
   if (d.kind === "new-thread") return { who: d.projectName || d.project || "project", where: ["new thread"] };
   return { who: d.agent || d.projectName || "thread", where: d.agent && d.projectName ? [d.projectName, d.threadLabel || ""] : [d.threadLabel || ""] };
 }

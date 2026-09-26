@@ -53,10 +53,19 @@ export function readSnapshot(root, agent) {
 const dir = root => path.join(root, DIR);
 const stateFile = (root, session) => path.join(dir(root), String(session || "none").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100) + ".json");
 
-/** This session's offline turn. A new prompt_id is a new turn: only the commands and when a file last changed carry over. */
+/**
+ * This session's offline turn. A new prompt_id is a new turn: only the commands and when a file
+ * last changed carry over. Order is `n`, a counter kept in this file, not the clock: an edit and
+ * the next command often land in the same millisecond, and then a timestamp cannot say which came
+ * first. `changed` is the `n` of the newest edit; commands with a higher `n` came after it.
+ */
 function load(root, session, prompt_id) {
-  let s = { prompt: null, blocks: 0, touched: [], ran: [], changed: 0 };
-  try { s = { ...s, ...JSON.parse(fs.readFileSync(stateFile(root, session), "utf8")) }; } catch {}
+  let s = { prompt: null, blocks: 0, touched: [], ran: [], n: 0, changed: 0 };
+  try {
+    const saved = JSON.parse(fs.readFileSync(stateFile(root, session), "utf8"));
+    // A file written before the counter kept a timestamp in `changed`; it would outrank every `n`.
+    s = Number.isInteger(saved.n) ? { ...s, ...saved } : { ...s, ...saved, n: 0, changed: 0 };
+  } catch {}
   if (prompt_id && s.prompt !== prompt_id) s = { ...s, prompt: prompt_id, blocks: 0, touched: [] };
   return s;
 }
@@ -80,8 +89,9 @@ export function offlineTool({ root, session, prompt_id, agent, tool, input }) {
   const guard = weakens(tool, input || {});
   if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.` };
   const s = load(root, session, prompt_id);
-  const ran = s.ran.filter(r => r.at > (s.changed || -1)).map(r => r.command);
-  if (tool === "Bash" && typeof input?.command === "string") s.ran.push({ command: input.command.slice(0, 2000), at: Date.now() });
+  // An entry from before `n` existed has none, and so never counts: at worst the tests run again.
+  const ran = s.ran.filter(r => Number.isInteger(r.n) && r.n > s.changed).map(r => r.command);
+  if (tool === "Bash" && typeof input?.command === "string") s.ran.push({ command: input.command.slice(0, 2000), at: Date.now(), n: ++s.n });
 
   /** @type {{ decision: "deny"|"ask"|null, reason?: string, lesson?: number }} */
   let verdict = { decision: null };
@@ -106,7 +116,7 @@ export function offlineTouched({ root, session, prompt_id, agent, cwd, tool, inp
   const s = load(root, session, prompt_id);
   const at = Date.now();
   s.touched.push({ path: path.resolve(cwd || process.cwd(), raw), at });
-  s.changed = at;
+  s.changed = ++s.n;
   save(root, session, s);
 }
 

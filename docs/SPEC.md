@@ -72,6 +72,10 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    `--append-system-prompt`, `-n`, `--resume`, `-p` with `stream-json`, `--permission-prompts`).
    Reading transcript files on disk is the one exception. It lives in a single adapter
    (`core/transcripts`), is best effort, and must degrade to "no history" rather than fail.
+   One flag is a known risk: the Switchboard passes `--permission-prompt-tool stdio` so a
+   headless thread's permission questions come to vyred. It is the flag the Agent SDK passes,
+   but `claude --help` does not list it, so a release could change it without notice. It lives
+   in one place (`core/switchboard/runner.js`), and a thread without it denies every question.
 2. **Local first.** Everything runs on machines the user owns. Nothing leaves them except
    through the Gate, and nothing about the user reaches Vyre AI beyond a DNS record.
 3. **One process per machine.** `vyred` runs every service on that machine. On the box it runs
@@ -83,7 +87,18 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    SQLite through the built-in `node:sqlite`. Tests with the built-in `node:test`.
 6. **The terminal is first class.** Anything the Deck can do, `vyre` can do.
 7. **The security floor cannot be configured away** (section 11).
-8. **Nothing personal in the repo.** No names, folders, domains, clients or keys. Personal
+8. **Light by default.** Vyre runs all day on the user's own machines, so idle must cost almost
+   nothing. Budgets, checked by `scripts/perf-check` and in CI:
+   - vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
+     once a minute when nothing is happening; work is driven by events and file-system notice.
+   - Capsule hidden: under 0.2% CPU, no GPU use, under 250 MB resident for all its processes;
+     shown and idle, under 2% CPU. It wakes in under 100 ms.
+   - Deck in a background tab: no timers faster than a minute; the event stream only.
+   - Heavy work (indexing, embedding, curation) runs at low priority, yields, pauses on battery
+     and when the user is active, and never blocks a hook or the Capsule.
+   - Memory that grows with the corpus (search indexes, caches) is bounded and measured.
+   A change that breaks a budget is a bug, like a failing test.
+9. **Nothing personal in the repo.** No names, folders, domains, clients or keys. Personal
    settings live in `~/.vyre/config.json`. A test fails if the source names a real person.
 
 ---

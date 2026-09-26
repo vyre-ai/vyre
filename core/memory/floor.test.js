@@ -151,16 +151,14 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   // The corpus, moved under the temp home so real projects can own its folders.
   const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
-  writeModule(path.join(root, "modules"), "agents", { does: { tools: ["agents.list"] } },
-    `export default { async start(ctx) {
-      ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "assistant", projects: "*" }, { name: "kit", kind: "agent", projects: ["northwind"] }] });
-      return {};
-    } };`);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const opts = { root };
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
+  // The real agents module: the assistant, and an agent with one project.
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
   await call("memory.curate", {}, opts);
 
   const main = (await call("memory.graph", {}, opts)).data;
@@ -183,9 +181,13 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   }
   assert.equal((await call("memory.pin", { node: "Sam Okafor", scope: path.join(work, "northwind"), agent: "kit" }, opts)).data?.mode, "pin");
   assert.match((await call("memory.mute", { node: "Harlow Legal", scope: path.join(work, "northwind"), agent: "kit" }, opts)).error?.message || "", /nothing in memory/);
-  // The agent can also be named by the caller; the two must agree.
-  assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp agent:kit" })).error?.message || "", /main graph is for the assistant/);
-  assert.match((await call("memory.graph", { agent: "juno" }, { ...opts, caller: "mcp agent:kit" })).error?.message || "", /came from agent kit/);
+  // The agent can also be named by the caller; the two must agree. Over HTTP vyred takes that
+  // name only with the key of the agent's live thread, so Memory's part is checked in-process.
+  assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp:agent:kit" })).error?.message || "", /no thread of that agent/);
+  for (const caller of ["mcp agent:kit", "mcp:agent:kit"]) {
+    assert.match((await d.registry.call("memory.graph", {}, caller)).error?.message || "", /main graph is for the assistant/, caller);
+    assert.match((await d.registry.call("memory.graph", { agent: "juno" }, caller)).error?.message || "", /came from agent kit/, caller);
+  }
   // A session that has not said who it is gets a project's graph, not the main one.
   assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /drawn for the Deck/);
   assert.equal((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).data?.scope, "project");
@@ -194,6 +196,8 @@ test("graph: the main graph is only for the user and the assistant; an agent see
 
 test("graph: a named agent is refused when agents cannot be checked", async t => {
   const root = tempHome(t);
+  // Agents is a core module now; switch it off to see Memory refuse rather than trust.
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ modules: { enable: [], disable: ["agents"] } }));
   const db = open(path.join(root, "vyre.db")); seedRecall(db); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());

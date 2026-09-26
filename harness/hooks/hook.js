@@ -31,16 +31,23 @@ async function main() {
   const h = await stdin();
   // prompt_id names the turn; VYRE_AGENT, set by the Switchboard, names the agent a lesson may be scoped to.
   const base = { cwd: h.cwd, session: h.session_id, prompt_id: h.prompt_id, agent: process.env.VYRE_AGENT || undefined };
-  const opts = { caller: "harness", timeout: 3000 };
+  // An agent's thread carries its projects (set by the switchboard); the brief and Enrich stay inside them.
+  const scope = process.env.VYRE_PROJECTS ? { projects: process.env.VYRE_PROJECTS } : {};
+  // Inside an agent's thread the hooks say which agent they are, and the client sends the thread's
+  // key with it (VYRE_AGENT_KEY), so vyred can tell that claim from a made-up one.
+  const opts = { caller: base.agent ? `harness:agent:${base.agent}` : "harness", timeout: 3000 };
   const down = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
   const offline = { root: home(), session: h.session_id, prompt_id: h.prompt_id, agent: base.agent };
 
   if (piece === "brief") {
     const project = process.env.VYRE_PROJECT || undefined;
-    const r = await call("harness.brief", { ...base, source: h.source, ...(project ? { project } : {}) }, opts);
+    // Inside our own headless child VYRE_THREAD is its session id; anything else (a terminal
+    // resume of the same id) may be a second writer, which harness.brief warns about.
+    const headless = Boolean(process.env.VYRE_THREAD) && process.env.VYRE_THREAD === h.session_id;
+    const r = await call("harness.brief", { ...base, ...scope, source: h.source, headless, ...(project ? { project } : {}) }, opts);
     if (r.data && r.data.text) answer(EVENT.brief, { additionalContext: r.data.text });
   } else if (piece === "enrich") {
-    const r = await call("harness.enrich", { ...base, prompt: String(h.prompt || "") }, opts);
+    const r = await call("harness.enrich", { ...base, ...scope, prompt: String(h.prompt || "") }, opts);
     if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });
   } else if (piece === "rules") {
     const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} };

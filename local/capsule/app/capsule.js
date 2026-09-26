@@ -39,10 +39,11 @@ const S = {
   /** @type {any} */ dest: null, destIndex: 0,
   /** @type {any} */ recall: null,
   waitIndex: 0,
-  /** @type {any} */ review: null, editing: false, draft: "",
+  /** @type {any} */ review: null, /** @type {any} */ draft: null, summary: "", loading: false,
   /** @type {any} */ source: null, srcIndex: 0,
   /** @type {any} */ sent: null,
   note: "",
+  /** @type {any} */ takeable: null,
   busy: false,
 };
 let seq = 0;
@@ -89,13 +90,18 @@ function choose(item) {
 
 // ------------------------------------------------------------------ doing
 
-async function send(d) {
+async function send(d, { take = false } = {}) {
   const text = box.value.trim();
   if (!text || S.busy) return;
-  S.busy = true; S.note = "";
-  const r = await api.send(d, text);
+  S.busy = true; S.note = ""; S.takeable = null;
+  const r = await api.send(d, text, { take });
   S.busy = false;
-  if (r.error) { S.note = r.error; return paint(); }
+  if (r.error) {
+    // Someone else has the keyboard in that thread. Taking it is the user's call, never ours.
+    S.note = r.error + (r.holder ? " ⌘⏎ takes the keyboard." : "");
+    S.takeable = r.holder ? d : null;
+    return paint();
+  }
   S.sent = { dest: d, text };
   S.mode = "reply";
   box.value = ""; S.text = "";
@@ -111,12 +117,14 @@ async function openSource(ref) {
 }
 
 async function decide(item, decision) {
-  if (S.busy) return;
+  if (S.busy || S.loading) return;
   S.busy = true; S.note = "";
-  const r = await api.answer(item, decision, S.editing ? S.draft : undefined);
+  // Send sends exactly what is on screen. What changed is passed as `edited`, so the Gate sends
+  // the user's words and Learning sees the correction (spec 7.11).
+  const r = await api.answer(item, decision, decision === "send" ? changes() : undefined);
   S.busy = false;
   if (r.error) { S.note = r.error; return paint(); }
-  S.review = null; S.editing = false; api.pin(false);
+  S.review = null; S.draft = null; api.pin(false);
   S.mode = S.snap.waiting.length ? "waiting" : "ask";
   S.waitIndex = 0;
   paint();
@@ -125,7 +133,7 @@ async function decide(item, decision) {
 
 function reset() {
   seq++;
-  Object.assign(S, { mode: "ask", chip: null, text: "", comp: null, dest: null, destIndex: 0, recall: null, review: null, editing: false, source: null, sent: null, note: "", waitIndex: 0 });
+  Object.assign(S, { mode: "ask", chip: null, text: "", comp: null, dest: null, destIndex: 0, recall: null, review: null, draft: null, summary: "", loading: false, source: null, sent: null, note: "", waitIndex: 0 });
   box.value = "";
   box.placeholder = "Ask, or @agent";
   api.pin(false);
@@ -133,31 +141,32 @@ function reset() {
 
 // ------------------------------------------------------------------ keys
 
-box.addEventListener("input", () => { S.note = ""; if (S.mode !== "reply") S.mode = "ask"; soon(); });
+box.addEventListener("input", () => { S.note = ""; S.takeable = null; if (S.mode !== "reply") S.mode = "ask"; soon(); });
 
 window.addEventListener("keydown", e => {
   const k = e.key;
   if (k === "Escape") {
     e.preventDefault();
     if (S.comp) { S.comp = null; return paint(); }
-    if (S.mode === "review" && S.editing) { S.editing = false; return paint(); }
+    // Esc in a field leaves the field; Esc again leaves the hold.
+    if (S.mode === "review" && inField()) { /** @type {HTMLElement} */ (document.activeElement).blur(); return; }
     if (S.mode === "review") { S.mode = "waiting"; S.review = null; api.pin(false); return paint(); }
     if (S.mode === "source") { S.mode = "ask"; S.source = null; paint(); return box.focus(); }
     // One press, always the same result: the Capsule goes and the keyboard goes back.
     return api.dismiss();
   }
   if (S.mode === "review") {
-    if (S.editing) { if (k === "Enter" && e.metaKey) { e.preventDefault(); decide(S.review, "send"); } return; }
-    if (k === "Enter" && (e.metaKey || S.review.source === "ask")) { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "allow" : "send"); }
-    if (k === "e" || k === "E") { if (S.review.draft) { e.preventDefault(); S.editing = true; S.draft = S.review.draft.body || ""; paint(); const t = document.querySelector("textarea"); t && /** @type {HTMLTextAreaElement} */ (t).focus(); } return; }
-    if (k === "Backspace" || k === "d" || k === "D") { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "deny" : "discard"); }
+    // No single-letter keys here: every line of a draft takes typing, and a letter that
+    // discarded the draft would fire mid-word.
+    if (k === "Enter" && e.metaKey) { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "allow" : "send"); }
+    if (k === "Enter" && S.review.source === "ask" && !inField()) { e.preventDefault(); return decide(S.review, "allow"); }
     return;
   }
   if (S.mode === "waiting") {
     const n = S.snap.waiting.length;
     if (k === "ArrowDown") { e.preventDefault(); S.waitIndex = (S.waitIndex + 1) % n; return paint(); }
     if (k === "ArrowUp") { e.preventDefault(); if (S.waitIndex === 0) { S.mode = "ask"; return paint(); } S.waitIndex--; return paint(); }
-    if (k === "Enter") { e.preventDefault(); S.review = S.snap.waiting[S.waitIndex]; S.mode = "review"; api.pin(true); return paint(); }
+    if (k === "Enter") { e.preventDefault(); return openReview(S.snap.waiting[S.waitIndex]); }
     if (k === "a" || k === "A") { e.preventDefault(); return decide(S.snap.waiting[S.waitIndex], "allow"); }
     return;
   }
@@ -185,6 +194,7 @@ window.addEventListener("keydown", e => {
     if (k === "Enter" && srcs.length) { e.preventDefault(); return openSource(srcs[S.srcIndex]); }
     if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
   }
+  if (k === "Enter" && e.metaKey && S.takeable) { e.preventDefault(); return send(S.takeable, { take: true }); }
   if (k === "Enter" && opts.length) { e.preventDefault(); return send(opts[S.destIndex]); }
   // Tab means something only where the footer says so; elsewhere it must not move focus out of
   // the box and select its text.
@@ -224,7 +234,7 @@ function paint() {
 
   if (S.mode === "waiting" && nWait) {
     kids.push(h("div", { class: "sect waithead" }, h("span", { class: "lbl" }, `Waiting on you · ${nWait}`), h("span", { class: "s" }, "oldest first")));
-    kids.push(h("div", { class: "pad" }, snap.waiting.map((w, i) => h("div", { class: "wait" + (i === S.waitIndex ? " on" : ""), onclick: () => { S.waitIndex = i; S.review = w; S.mode = "review"; api.pin(true); paint(); } },
+    kids.push(h("div", { class: "pad" }, snap.waiting.map((w, i) => h("div", { class: "wait" + (i === S.waitIndex ? " on" : ""), onclick: () => { S.waitIndex = i; openReview(w); } },
       h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null),
       h("span", { class: "a" }, w.age), i === S.waitIndex ? h("span", { class: "kbd" }, "⏎") : null))));
     keys("↑↓ move", "⏎ review", "A allow", "esc close");
@@ -233,18 +243,31 @@ function paint() {
 
   if (S.mode === "review" && S.review) {
     const w = S.review;
+    // Repainting would rebuild the fields under the caret. Once the card for this hold is drawn,
+    // only its note changes; the words are the user's until they send or leave.
+    const key = `${w.source}:${w.id}:${S.loading ? "loading" : "ready"}`;
+    if (panel.dataset.review === key) { const n = panel.querySelector(".heldnote"); if (n) n.textContent = S.note; return; }
     hint.append(h("span", { class: "badge" }, h("i"), "HELD FOR YOU"));
     box.hidden = true;
-    const title = h("span", { class: "heldtitle" }, w.title);
     $("chip").hidden = true;
     const field = /** @type {HTMLElement} */ (box.parentElement);
     field.querySelector(".heldtitle")?.remove();
-    field.append(title);
-    const d = w.draft;
+    field.append(h("span", { class: "heldtitle" }, w.title));
+    const d = S.draft;
     const body = [];
     if (d) {
-      body.push(h("div", { class: "grid" }, d.to ? [h("span", { class: "k" }, "To"), h("span", { class: "v mono" }, d.to)] : null, d.subject ? [h("span", { class: "k" }, "Subject"), h("span", { class: "v" }, d.subject)] : null));
-      body.push(S.editing ? h("textarea", { oninput: e => { S.draft = e.target.value; } }, S.draft) : h("div", { class: "body" }, d.body || ""));
+      body.push(h("div", { class: "grid" },
+        h("span", { class: "k" }, "To"), editable("to", "v mono"),
+        h("span", { class: "k" }, "Subject"), editable("subject", "v")));
+      body.push(editable("body", "body"));
+      body.push(h("div", { class: "howto" }, "Click any line to change it. ⌘⏎ sends what you see. Esc leaves a field."));
+    } else if (S.loading) {
+      body.push(h("div", { class: "howto" }, "Opening the draft…"));
+    } else if (w.source === "gate") {
+      // Not mail (an http call, a payment): shown as the Gate summarised it, approved as it is.
+      body.push(h("div", { class: "grid" }, w.to ? [h("span", { class: "k" }, "To"), h("span", { class: "v mono" }, w.to)] : null,
+        w.via ? [h("span", { class: "k" }, "Via"), h("span", { class: "v mono" }, w.via)] : null));
+      if (S.summary) body.push(h("div", { class: "body" }, S.summary));
     } else {
       body.push(h("div", { class: "grid" }, w.tool ? [h("span", { class: "k" }, "Tool"), h("span", { class: "v mono" }, w.tool)] : null, w.sub ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.sub)] : null));
     }
@@ -252,13 +275,15 @@ function paint() {
     const ask = w.source === "ask";
     kids.push(h("div", { class: "sect actions" },
       h("button", { type: "button", class: "btn btn-primary", onclick: () => decide(w, ask ? "allow" : "send") }, ask ? "Allow" : "Send", h("span", { class: "k" }, ask ? "⏎" : "⌘⏎")),
-      d && !S.editing ? h("button", { type: "button", class: "btn btn-ghost", onclick: () => { S.editing = true; S.draft = d.body || ""; paint(); } }, "Edit") : null,
       h("button", { type: "button", class: "btn btn-ghost quiet", onclick: () => decide(w, ask ? "deny" : "discard") }, ask ? "Deny" : "Discard"),
-      w.rule ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : null));
-    if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
+      w.rule ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : w.why ? h("span", { class: "rule" }, w.why) : null));
+    kids.push(h("div", { class: "heldnote note warn" }, S.note));
     $("keys").hidden = true;
-    return done(panel, kids);
+    done(panel, kids);
+    panel.dataset.review = key;
+    return null;
   }
+  delete panel.dataset.review;
   box.hidden = false;
   box.parentElement?.querySelector(".heldtitle")?.remove();
   $("keys").hidden = false;
@@ -334,6 +359,47 @@ function paint() {
   if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
   keys("⏎ ask " + (snap.assistant || "memory"), "@ agent, project or thread", nWait ? "↑ waiting" : null, "esc close");
   return done(panel, kids);
+}
+
+/** One line of a held draft, editable in place. It reads as text until focused. */
+function editable(name, cls) {
+  const el = h("span", { class: cls + " edit", contenteditable: "plaintext-only", spellcheck: "true", role: "textbox", "aria-label": name,
+    oninput: e => { S.draft[name] = /** @type {HTMLElement} */ (e.target).innerText; } }, S.draft[name] || "");
+  // To and Subject are one line: Enter would put a newline in an address.
+  if (name !== "body") el.addEventListener("keydown", e => { if (e.key === "Enter" && !e.metaKey) e.preventDefault(); });
+  return el;
+}
+
+const inField = () => Boolean(document.activeElement && /** @type {HTMLElement} */ (document.activeElement).isContentEditable);
+
+/** Open a hold. A Gate hold's words come from gate.get; a question has none to edit. */
+async function openReview(w) {
+  Object.assign(S, { review: w, mode: "review", note: "", draft: null, loading: w.source === "gate" });
+  api.pin(true);
+  paint();
+  if (w.source !== "gate") return;
+  const r = await api.held(w.id);
+  if (S.review !== w) return;
+  S.loading = false;
+  if (r.error) S.note = r.error;
+  else {
+    S.draft = r.draft ? { ...r.draft } : null;
+    S.summary = r.summary;
+    // It was approved before and the sender failed; it is back, as the user last left it.
+    if (r.error) S.note = `The last send failed: ${r.error}`;
+  }
+  paint();
+}
+
+/**
+ * Every field on screen, changed or not: another surface may have revised the hold since the card
+ * opened, and Send must send what this card shows. The Gate diffs the result against the agent's
+ * draft, so Learning only sees a correction when there was one.
+ */
+function changes() {
+  if (!S.draft) return undefined;
+  // The Gate takes recipients as a list.
+  return { to: String(S.draft.to || "").split(/[,;\n]/).map(x => x.trim()).filter(Boolean), subject: S.draft.subject || "", body: S.draft.body || "" };
 }
 
 function done(panel, kids) {

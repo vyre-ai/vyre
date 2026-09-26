@@ -23,6 +23,8 @@ const MISSING = {
   gate: "Holds come from the Gate, which this vyred is not running yet.",
 };
 
+const s = v => (v == null ? "" : String(v));
+
 /** Words for an error, for the one line the Capsule shows. */
 export function explain(err) {
   if (!err) return "";
@@ -51,6 +53,17 @@ export class Bridge extends EventEmitter {
     this.reply = null;
     this.up = false;
     this.lease = /** @type {string|null} */ (null);
+    /** The agent a reply is expected from while its thread id is not known yet. */
+    this.pendingAgent = /** @type {string|null} */ (null);
+  }
+
+  /** Who is asking, for a waiting row: the agent whose thread it is, else the thread's name. */
+  who(thread) {
+    if (!thread) return null;
+    const a = (this.catalog.agents || []).find(x => x.thread === thread);
+    if (a) return a.name;
+    const t = (this.catalog.threads || []).find(x => x.id === thread);
+    return t ? t.label : null;
   }
 
   has(tool) { return this.tools.has(tool); }
@@ -89,7 +102,7 @@ export class Bridge extends EventEmitter {
     }
     const agentRows = agents && agents.data ? (Array.isArray(agents.data) ? agents.data : agents.data.agents || []) : null;
     this.catalog = {
-      agents: agentRows ? agentRows.map(a => ({ name: String(a.name), kind: a.kind, doing: a.doing || a.status || null })) : null,
+      agents: agentRows ? agentRows.map(a => ({ name: String(a.name), kind: a.kind, doing: a.doing || a.status || null, thread: a.thread || null })) : null,
       projects: list.map(p => ({ slug: p.slug, name: p.name, org: p.org, home: p.home, threads: p.threads, last: p.last })),
       threads,
     };
@@ -120,8 +133,8 @@ export class Bridge extends EventEmitter {
     if (target && target.kind === "agent" && this.has("agents.threads")) {
       const r = await this.client.call("agents.threads", { agent: target.id });
       const rows = r.data ? (Array.isArray(r.data) ? r.data : r.data.threads || []) : [];
-      agentThreads = rows.map(x => ({ id: x.id || x.thread, label: x.label || x.name || x.title || String(x.id || x.thread).slice(0, 8),
-        last: x.last || x.at, project: x.project || null, projectName: x.projectName || x.project_name || null, agent: target.id }));
+      agentThreads = rows.map(x => ({ id: x.id || x.thread, label: x.name || x.label || x.title || String(x.id || x.thread).slice(0, 8),
+        last: x.last || x.started, project: x.project || null, projectName: x.project ? this.projectName(x.project) : null, agent: target.id }));
     }
     const r = route.destinations(target, text, this.catalog, { agentThreads, now: this.now() });
     // Each option carries how it reads, so the page draws it without a copy of the rules.
@@ -176,38 +189,55 @@ export class Bridge extends EventEmitter {
   }
 
   /**
-   * Send, to exactly the destination the Capsule showed. Returns the thread the reply will stream
-   * from, or an error in words.
-   * @param {route.Destination} d @param {string} text
+   * Send, to exactly the destination the Capsule showed. Returns the thread the reply will
+   * stream from, or an error in words. `take` takes the keyboard from whoever holds it, and is only ever the user's choice.
+   * @param {route.Destination} d @param {string} text @param {{ take?: boolean }} [opts]
    */
-  async send(d, text) {
+  async send(d, text, { take = false } = {}) {
     if (d.kind === "recall") return { error: "Nothing to send to: there is no assistant on this vyred yet. Memory has answered what it can." };
+    if (d.kind === "assistant" || d.kind === "agent") {
+      // wait:false returns once the words are in the agent's thread, and the reply follows on the
+      // stream. Waiting for the answer would hold the call for up to ten minutes. The first
+      // thread.sent from this surface names the thread if the stream beats the call's answer.
+      this.reply = st.reply("");
+      this.pendingAgent = d.agent || null;
+      this.emit("change");
+      const r = await this.client.call("agents.ask", { agent: d.agent, text, surface: "capsule", wait: false });
+      this.pendingAgent = null;
+      const x = (r && r.data) || {};
+      if (r.error || x.ok === false) {
+        this.reply = null;
+        this.emit("change");
+        return { error: r.error ? explain(r.error) : x.note || `${d.agent} did not get it.` };
+      }
+      const thread = String(x.thread || (this.reply && this.reply.thread) || "");
+      if (this.reply && !this.reply.thread) this.reply = { ...this.reply, thread };
+      // agents.ask with wait:false keeps the keyboard; it goes back when the Capsule closes.
+      if (thread) this.lease = thread;
+      this.emit("change");
+      return { thread };
+    }
     let r;
-    if (d.kind === "assistant" || d.kind === "agent") r = await this.client.call("agents.ask", { agent: d.agent, text, ...(d.kind === "agent" && d.fresh ? { new: true } : {}) });
-    else if (d.kind === "new-thread") r = await this.client.call("threads.start", { project: d.project || undefined, cwd: d.cwd || undefined, prompt: text });
+    if (d.kind === "new-thread") r = await this.client.call("threads.start", { project: d.project || undefined, cwd: d.cwd || undefined, prompt: text, surface: "capsule" });
     else {
-      // One keyboard per thread (floor rule 4). Take it before typing into the thread, and say
-      // who has it if someone else does, rather than typing over them.
-      const lease = await this.takeLease(d.thread || "");
-      if (lease.error) return lease;
-      r = await this.client.call("threads.send", { thread: d.thread, text });
+      // One keyboard per thread (floor rule 4). A free thread is taken by typing into it; one
+      // someone else holds is theirs until the user chooses to take it.
+      if (take) {
+        const l = await this.client.call("threads.lease", { thread: d.thread, surface: "capsule" });
+        if (l.error) return { error: explain(l.error) };
+      }
+      r = await this.client.call("threads.send", { thread: d.thread, text, surface: "capsule" });
+      if (!r.error && r.data && r.data.sent === false) {
+        const holder = r.data.holder || null;
+        return { error: r.data.note || `${holder || "Another screen"} has the keyboard in this thread.`, holder };
+      }
+      if (!r.error) this.lease = String(d.thread);
     }
     if (r.error) return { error: explain(r.error) };
-    const thread = String((r.data && (r.data.thread || r.data.id || r.data.session)) || d.thread || "");
+    const thread = String((r.data && (r.data.thread || r.data.id)) || d.thread || "");
     this.reply = thread ? st.reply(thread) : null;
     this.emit("change");
     return { thread };
-  }
-
-  /** @param {string} thread */
-  async takeLease(thread) {
-    if (!this.has("threads.lease")) return { error: explain({ code: "no_such_tool", message: "no tool threads.lease" }) };
-    const r = await this.client.call("threads.lease", { thread, surface: "capsule" });
-    if (r.error) return { error: explain(r.error) };
-    const holder = r.data && (r.data.holder || r.data.surface);
-    if (holder && holder !== "capsule") return { error: `${holder} has the keyboard in this thread. It is read only here until they hand it back.` };
-    this.lease = thread;
-    return { ok: true };
   }
 
   /** Hand the keyboard back when the Capsule closes. */
@@ -231,28 +261,57 @@ export class Bridge extends EventEmitter {
     }
     if (this.has("threads.asks")) {
       const a = await this.client.call("threads.asks");
-      for (const x of a.data ? (Array.isArray(a.data) ? a.data : a.data.asks || []) : []) rows.push(st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: x.project, payload: x }, s => this.projectName(s)));
+      for (const x of a.data ? (Array.isArray(a.data) ? a.data : a.data.asks || []) : []) {
+        // Only questions still open; an answered one stays in the table with its decision.
+        if (x.decision || (x.state && !["open", "pending", "waiting"].includes(x.state))) continue;
+        rows.push(st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: x.project, payload: { ...x, agent: x.agent || this.who(x.thread) } }, s => this.projectName(s)));
+      }
     } else {
       const raised = await this.client.get("/v1/events?type=ask.raised&limit=1000");
       const answered = await this.client.get("/v1/events?type=ask.answered&limit=1000");
       const done = new Set(((answered.data) || []).map(e => String((e.payload || {}).ask || (e.payload || {}).id)));
-      for (const e of raised.data || []) if (!done.has(String((e.payload || {}).ask || (e.payload || {}).id))) rows.push(st.fromAsk(e, s => this.projectName(s)));
+      for (const e of raised.data || []) if (!done.has(String((e.payload || {}).ask || (e.payload || {}).id))) rows.push(st.fromAsk(this.named(e), s => this.projectName(s)));
     }
     this.waiting = st.waiting(rows);
   }
 
   /**
+   * The words of a hold, for the card. gate.held carries a summary only; gate.get has the draft
+   * (for mail, `{subject, body}`) and where it is going. What was edited and failed to send is
+   * `final`, which is what Send would send again.
+   * @param {string} id
+   */
+  async held(id) {
+    const r = await this.client.call("gate.get", { id });
+    if (r.error) return { error: explain(r.error) };
+    const g = r.data || {};
+    const c = g.final || g.draft || {};
+    const to = (Array.isArray(g.to) ? g.to : [g.to]).filter(Boolean).join(", ");
+    // Mail reads as To, Subject and a body, each editable. Anything else (an http call) is shown
+    // as the Gate summarised it and approved as it is.
+    const mail = typeof c.subject === "string" || typeof c.body === "string";
+    return { draft: mail ? { to, subject: s(c.subject), body: s(c.body) } : null, summary: g.summary || "",
+      via: g.via || null, kind: g.kind || null, error: g.error || null };
+  }
+
+  /**
    * Answer a waiting item. Nothing is removed on optimism: the item goes when vyred says it was
    * answered (ask.answered, gate.approved), so a yes that never arrived still shows as waiting.
-   * @param {st.Waiting} w @param {"allow"|"deny"|"send"|"discard"} decision @param {string} [text] an edited draft
+   * @param {st.Waiting} w @param {"allow"|"deny"|"send"|"discard"} decision
+   * @param {{ to?: string[], subject?: string, body?: string }} [edited] what the user changed in a draft
    */
-  async answer(w, decision, text) {
+  async answer(w, decision, edited) {
     let r;
     if (w.source === "gate") {
-      if (decision === "send" || decision === "allow") r = await this.client.call("gate.approve", { id: w.id, ...(text ? { text } : {}) });
+      // `by` is left to the Gate: it records the caller, which is this surface.
+      if (decision === "send" || decision === "allow") r = await this.client.call("gate.approve", { id: w.id, ...(edited ? { edited } : {}) });
       else r = await this.client.call("gate.reject", { id: w.id });
+      // A send the user approved and the sender refused goes back to held with its error: say so,
+      // and leave the card up so they can send it again.
+      if (!r.error && r.data && r.data.state === "failed") return { error: `Not sent: ${r.data.error || "the sender failed"}. It is still held; Send tries again.` };
     } else {
-      r = await this.client.call("threads.answer", { ask: w.id, decision: decision === "send" ? "allow" : decision === "discard" ? "deny" : decision });
+      r = await this.client.call("threads.answer", { ask: w.id, decision: decision === "send" ? "allow" : decision === "discard" ? "deny" : decision, surface: "capsule" });
+      if (!r.error && r.data && r.data.answered === false) return { error: r.data.note || "That question was already answered or withdrawn." };
     }
     if (r.error) return { error: explain(r.error) };
     // Some answers come back without an event (an older Gate); re-read so the list stays true.
@@ -261,9 +320,24 @@ export class Bridge extends EventEmitter {
     return { ok: true };
   }
 
+  /** An ask.raised event with who is asking filled in. */
+  named(e) {
+    const p = e.payload || {};
+    return p.agent ? e : { ...e, payload: { ...p, agent: this.who(e.thread || p.thread) } };
+  }
+
   /** One event from the stream. */
   onEvent(e) {
-    const w = st.applyWaiting(this.waiting, e, s => this.projectName(s));
+    // An agent's reply whose thread was not known when it was sent: the first sign of it on the
+    // stream names it. A thread this Capsule typed into, or one started for that agent.
+    if (this.reply && !this.reply.thread && e.thread) {
+      const p = e.payload || {};
+      if (this.pendingAgent && ((e.type === "thread.sent" && p.surface === "capsule") || (e.type === "thread.started" && p.agent === this.pendingAgent))) {
+        this.reply = { ...this.reply, thread: String(e.thread) };
+        this.pendingAgent = null;
+      }
+    }
+    const w = st.applyWaiting(this.waiting, e.type === "ask.raised" ? this.named(e) : e, s => this.projectName(s));
     const r = this.reply ? st.applyReply(this.reply, e) : null;
     const changed = w !== this.waiting || r !== this.reply;
     this.waiting = w;
