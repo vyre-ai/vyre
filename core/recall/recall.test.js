@@ -11,7 +11,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
-import { search, thread, sessions, anyOf, FLOOR } from "./search.js";
+import { search, thread, sessions, anyOf, floorFor } from "./search.js";
 import { Dense } from "./dense.js";
 import { chunks, encode, decode, cosine, CHUNK } from "./embed.js";
 import { SESSIONS, writeTranscripts, seedRecall } from "../../test/fixtures/corpus.js";
@@ -356,7 +356,10 @@ test("recall: a question with no near turn returns nothing, because of the floor
   const emb = fakeEmbedder();
   await e.ix.vectorize(emb);
   assert.deepEqual((await search(e.db, { q: "zygomorphic quux" }, emb, new Dense(e.db))).hits, []);
-  assert.ok(FLOOR > 0.186 && FLOOR < 0.339, "the floor no longer sits between the measured nonsense and real matches");
+  // The two measured corpora: the floor must sit between nonsense and real matches in each.
+  assert.ok(floorFor(16) > 0.186 && floorFor(16) < 0.339, "the floor no longer fits the fixture measurement");
+  assert.ok(floorFor(36878) > 0.413 && floorFor(36878) < 0.476, "the floor no longer fits the real-corpus measurement");
+  assert.equal(floorFor(10_000_000), 0.45);
 });
 
 test("recall: dense retrieval honours role and project folders", async t => {

@@ -114,6 +114,12 @@ export class Dense {
     return this.index;
   }
 
+  /** How many chunk vectors the index holds, building it if needed. */
+  async size() {
+    const x = this.index && this.index.gen === this.generation() ? this.index : await this.build();
+    return x.n;
+  }
+
   /** Size and build time, for recall.status. */
   stats() {
     return this.index ? { chunks: this.index.n, bytes: this.index.bytes, ms: this.index.ms } : null;

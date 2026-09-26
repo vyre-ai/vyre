@@ -77,12 +77,19 @@ function match(db, expr, { role, cwds, limit }) {
 }
 
 /**
- * A dense hit only counts when it is at least this close. Measured with the real model on the
- * fixture corpus: the turns meant scored 0.339 ("making it easier for blind visitors") and 0.473
- * ("how much money did the baker spend"); keyboard mash and unrelated questions scored at most
- * 0.186. Without a floor every query has a nearest neighbour, and nonsense would return results.
+ * How close a dense hit must be to count, for a corpus of n chunks. Without a floor every query
+ * has a nearest neighbour, and nonsense would return results.
+ *
+ * It rises with the corpus, because the best score pure noise reaches does: the expected maximum
+ * of n noise scores grows like sqrt(2 ln n). Fitted to two measurements with the real model:
+ *   16 fixture turns    nonsense at most 0.186, the questions meant 0.339 and 0.473
+ *   36,878 real chunks  nonsense at most 0.413, the weakest real question's best 0.476
+ * giving 0.276 and 0.444. The margins are a few hundredths at the real corpus's size, which is
+ * why it is capped: past that, a stricter floor starts losing real questions instead.
  */
-export const FLOOR = 0.25;
+export function floorFor(/** @type {number} */ n) {
+  return Math.min(0.45, Math.max(0.25, 0.10 + 0.075 * Math.sqrt(2 * Math.log(Math.max(2, n)))));
+}
 /** How many turns meaning may add to the pool. */
 export const DENSE_K = 200;
 /** The reciprocal-rank constant: the usual 60, so the top few of each list stay close. */
@@ -124,7 +131,7 @@ export async function search(db, query, embedder = null, dense = null) {
       const qv = await embedder.embed(q);
       const cwds = opts.cwds.map(c => String(c).replace(/\/+$/, "")).filter(Boolean);
       const keep = cwds.length ? (/** @type {string|null} */ cwd) => !!cwd && cwds.some(c => cwd === c || cwd.startsWith(c + "/")) : undefined;
-      const near = await dense.search(qv, { k: DENSE_K, floor: FLOOR, role: opts.role, keep });
+      const near = await dense.search(qv, { k: DENSE_K, floor: floorFor(await dense.size()), role: opts.role, keep });
       used = (dense.stats()?.chunks || 0) > 0;
       const fetch = db.prepare(`SELECT t.rowid AS rid, t.session, t.seq, t.role, t.ts, t.text, s.name, s.title, s.cwd
         FROM recall_turns t JOIN recall_sessions s ON s.id = t.session WHERE t.rowid = ?`);
