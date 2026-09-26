@@ -3,7 +3,8 @@
 // at a time: this surface asks glass.take, and while it holds, noVNC sends input and the control
 // bar counts the time. Hand-back is the button, Ctrl+Enter, or the lease lapsing on the box.
 //
-// Both glass.take and glass.release need a presence proof. When the box asks for one
+// glass.take needs a presence proof; glass.release does not (handing back is always safe), but
+// the view still answers a box that asks for one. When the box asks
 // (presence_required), the view shows a "Confirm it's you" step; its button makes a passkey
 // proof (api.js, { presence: true }) and repeats the same call with it.
 

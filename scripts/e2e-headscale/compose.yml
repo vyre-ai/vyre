@@ -45,6 +45,9 @@ services:
     networks:
       e2e:
         aliases: [vyred]
+        gw_priority: 1
+      docker-api: {}
+      computers: {}
 
   vyre:
     <<: *e2e
@@ -69,6 +72,29 @@ services:
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s
+
+  # Agents' computers (profile computers): the box's Docker proxy, with its own image, network and
+  # label prefix, so it can neither see nor touch the live box's computers.
+  docker-api:
+    <<: *e2e
+    image: vyre-e2e:local
+    command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
+    profiles: ["computers"]
+    init: true
+    user: "1000:1000"
+    group_add: ["${DOCKER_GID:-987}"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - VYRE_COMPUTERS_NETWORK=vyre-e2e-computers
+      - VYRE_COMPUTERS_IMAGE=vyre-e2e/computer:0.1
+      - VYRE_COMPUTERS_LABEL_PREFIX=run.vyre.e2e.computers
+      - VYRE_COMPUTERS_CAP_ADD=
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [docker-api]
 
   # The stand-in Mac: one tailnet node that the browser and the Mac's vyred share.
   mac-ts:
@@ -195,4 +221,11 @@ volumes:
 networks:
   e2e:
     name: vyre-e2e
+    labels: { run.vyre.e2e: "1" }
+  computers:
+    name: vyre-e2e-computers
+    labels: { run.vyre.e2e: "1" }
+  docker-api:
+    name: vyre-e2e-docker-api
+    internal: true
     labels: { run.vyre.e2e: "1" }

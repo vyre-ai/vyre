@@ -129,7 +129,7 @@ export default {
 | `ctx.upgrader(policy)` | vyred's WebSocket router for such a listener, so streams (Glass) work over it too |
 
 > [!GAP]
-> Spec Section 5.2 lists `ctx.projects`; the code has none. Call `ctx.call("projects.list", {})` and the other `projects.*` tools instead. See [known gaps](../known-gaps.md#ctxprojects-does-not-exist).
+> Projects and threads are read through `ctx.call("projects.list", {})` and the other `projects.*` and `threads.*` tools (spec Section 5.2).
 
 Never import another module's files. `ctx.call` is the only way one module uses another.
 

@@ -22,6 +22,7 @@ In the order `vyre help` lists them.
 | [`vyre up`](#vyre-up) | start vyred and print the onboarding link, or this box's address |
 | [`vyre down`](#vyre-down) | stop it |
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
+| [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
 | [`vyre projects`](#vyre-projects) | every project |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
@@ -80,6 +81,17 @@ Put Vyre on a server from this Mac, and look after it.
 ```
 vyre box [status|add|update|backup|move|remove] [--json]
 ```
+
+### vyre doctor
+
+Check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix.
+
+```
+vyre doctor [--json]
+```
+
+Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.
+Exit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.
 
 ### vyre status
 

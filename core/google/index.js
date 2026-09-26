@@ -170,7 +170,7 @@ export default {
     });
 
     ctx.tool("google.test", {
-      description: "Check an account: mint a token for each scope Vyre uses and make a harmless call with each. Names any scope that is refused.",
+      description: "Check an account: mint a token for each scope Vyre uses and make a harmless call with each. Names any scope that is refused. For a service account it also returns client_id and admin_scopes, the two values to paste into the Google Workspace admin console (Security, API controls, Domain-wide delegation).",
       input: obj({ name: str }),
       callers: PEOPLE,
       run: safe(async ({ name }) => {

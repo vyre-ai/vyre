@@ -249,7 +249,8 @@ export default {
     // ctx.events     emit(type, payload), on(type, fn)
     // ctx.vault      fetch(name) for items its manifest declares
     // ctx.memory     teach(kind, fact): goes to the curator's queue
-    // ctx.projects   read projects and threads
+    // ctx.call       another module's tool, through the same checks as any caller; projects
+    //                and threads are read this way (projects.list, threads.list)
     // ctx.log        structured logging
     // ctx.tool(name, { input, run })   register a tool declared in `does`; run(input, { caller,
     //                thread?, agent? }): thread and agent only when vyred verified them

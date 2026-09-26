@@ -76,7 +76,8 @@
       "contributing/index.md",
       "CONTRIBUTING-DOCS.md",
       "contributing/testing.md",
-      "design/TOKENS.md"
+      "design/TOKENS.md",
+      "design/phone.md"
     ]},
     { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
   ],

@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
-| [`capsule`](#capsule) | `local/capsule` | `local` | 2 | 1 | capsule, cli |
+| [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 21 | 14 | cli, deck |
 | [`files`](#files) | `core/files` | `box`, `local` | 14 | 3 | capsule, cli, deck |
@@ -63,8 +63,8 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Folder: `local/capsule`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [2](tools.md#capsule)
-- Emits: [1 events](events.md#capsule)
+- Tools: [3](tools.md#capsule)
+- Emits: [2 events](events.md#capsule)
 - Shows on: capsule, cli
 
 ## chrome

@@ -63,6 +63,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | --- | --- | --- |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js`, `local/capsule/lib/dialogs.js` |
+| `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_APPS_DIR` | Where `vyre capsule install` puts the app. Default `~/Applications`. | `core/cli/commands/capsule-install.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
 | `VYRE_BOX_POLL_MS` | How often `vyre box` checks on an install in progress. Default 5000. | `core/cli/commands/box.js` |
@@ -81,7 +82,13 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
 | `VYRE_DOWNLOAD_BASE` | Where `vyre capsule install` downloads the app from. | `core/cli/commands/capsule-install.js` |
+| `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_EGRESS_GATE_STATUS` | Not described yet. | `core/computers/egress.js` |
+| `VYRE_EGRESS_GATE_STATUS_PORT` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_PROXY` | Not described yet. | `core/computers/egress.js` |
+| `VYRE_EGRESS_SOCKET` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/capsule/app/main.js`, `local/capsule/lib/bridge.js`, `local/capsule/lib/dialogs.js`, `local/capsule/lib/vyred.js` |
@@ -93,7 +100,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `core/cli/commands/up.js`, `core/daemon/index.js` |
-| `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/transport.js` |
+| `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |

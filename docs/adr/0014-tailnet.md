@@ -141,27 +141,55 @@ traffic from an agent's Chrome leaves through their own Mac. Off by default.
 
 - **Not the box's own tailscaled.** An exit node applies to a whole node, so setting one on the box
   would send vyred and everything else through the Mac. Instead an optional sidecar
-  (`box/compose.egress.yml`, service `egress`, `computers` profile) runs a userspace tailscaled
-  with `--exit-node=<the Mac>` and a SOCKS5 server on `:1055`, on the computers network only, no
-  published port, `read_only`, `cap_drop: ALL`, in-memory state. It joins as an ephemeral node
-  tagged `tag:vyre-egress` with a key the person makes.
+  (`box/compose.egress.yml`, service `egress-node`, `computers` profile) runs a userspace
+  tailscaled with `--exit-node=<the Mac>` and a SOCKS5 server on `:1056`, `read_only`,
+  `cap_drop: ALL`, in-memory state, on an internal network (`vyre-egress`) that only the gate
+  shares, plus the project's default network for the internet. It is not on the computers
+  network. It joins as an ephemeral node tagged `tag:vyre-egress`.
+- **A gate in front, so every failure is closed.** tailscaled alone fails closed only when the
+  Mac is off the tailnet. When the Mac stops offering the exit node, or its route is unapproved,
+  its SOCKS5 server dials the site directly from the box (found by the e2e run: 200 OK, the
+  datacenter's address). So the computers never reach the sidecar. They reach the gate
+  (`core/computers/egressgate.js`, service `egress` in the vyre image, alias `egress` on the
+  computers network, port 1055, `read_only`, `cap_drop: ALL`, uid 1000, node built-ins only). It
+  reads the SOCKS5 greeting and CONNECT request (no-auth; IPv4, domain or IPv6), then either
+  relays the connection byte for byte to the sidecar's `:1056` or answers REP 0x02 ("connection
+  not allowed by ruleset") and closes. It never dials a site itself. It allows only when the
+  sidecar's LocalAPI (`GET /localapi/v0/status` over its socket, shared read-only through the
+  `egress-sock` volume, `TS_SOCKET=/var/run/tailscale/tailscaled.sock` since containerboot's
+  default is `/tmp/tailscaled.sock`) shows all of: `BackendState` `"Running"`; exactly one peer
+  with `ExitNode: true`; that peer `Online: true` and `ExitNodeOption: true`; and, when the
+  field is present, `ExitNodeStatus.Online: true`. Any other state, or any error reading it, is
+  a refusal. The verdict is kept 2 s, read on demand only, with no timer while idle. Each change
+  of reason is logged once. GET /status on port 1057 answers the verdict, which
+  `computers.egress.status` shows as `gate`.
 - **Per site, fail closed.** Chrome gets a proxy auto-config script (`VYRE_PROXY_PAC`, a
   `data:` URL, checked by shape in the image's entrypoint) sending the listed sites to
   `SOCKS5 egress:1055` with no DIRECT fallback: when the Mac is away, those sites fail rather than
   show the box's address. WebRTC is held to proxied UDP so a STUN reply cannot leak it either.
-  Site names are validated strictly before they reach the script.
+  Site names are validated strictly before they reach the script. The PAC is tested only with the
+  computer image's Chromium: chromedp/headless-shell ignores every PAC, `data:` or http.
 - **Owner only.** `computers.egress.set` needs presence and refuses every agent caller. A change
   applies to a computer the next time it starts: a stopped computer whose script no longer
   matches is made again, keeping its home volume and Chrome profile.
+- **A key that survives restarts.** State is in memory, so every start logs in again. A single-use
+  auth key fails the first restart with "authkey already used" and the sidecar never comes back.
+  The key is a Tailscale OAuth client secret, `tskey-client-...?ephemeral=true&preauthorized=true`
+  (preferred: it does not expire), or a reusable, ephemeral, pre-authorized auth key, either for
+  `tag:vyre-egress`. The sidecar always passes `--advertise-tags=tag:vyre-egress`, which an OAuth
+  client secret requires and a tagged key accepts.
 - The auth key and the exit node's name go in `/srv/vyre/.env`, not `vyre.env`: `vyre.env` is
   loaded into vyred's environment, where every Claude session would see the key.
 
 The person's steps: on the Mac, Tailscale menu, Exit Node, Run as Exit Node. In the admin console:
-approve the Mac as an exit node; add the tag and grant below; make a reusable, ephemeral,
-pre-approved auth key tagged `tag:vyre-egress`. On the box: `VYRE_EGRESS_AUTHKEY` and
-`VYRE_EGRESS_EXIT_NODE=alex-mac` in `/srv/vyre/.env`, `box/compose.egress.yml` added to
-`COMPOSE_FILE`, `docker compose up -d`, then `vyre call --tty computers.egress.set
-'{"enabled":true,"sites":["portal.northwind.example","*.harlow.example"]}'`.
+approve the Mac as an exit node; add the tag and grant below; make an OAuth client (scope Auth
+Keys, write, tag `tag:vyre-egress`), or a reusable, ephemeral, pre-approved auth key tagged
+`tag:vyre-egress` (never single-use). On the box: `VYRE_EGRESS_AUTHKEY` (the client secret with
+`?ephemeral=true&preauthorized=true`) and `VYRE_EGRESS_EXIT_NODE=alex-mac` in `/srv/vyre/.env`,
+`box/compose.egress.yml` added to `COMPOSE_FILE`, `docker compose up -d`, then `vyre call --tty
+computers.egress.set '{"enabled":true,"sites":["portal.northwind.example","*.harlow.example"]}'`
+and `vyre call computers.egress.status` (its `gate` says whether the listed sites can go out now,
+and why not).
 
 ```json
 "tagOwners": { "tag:vyre-egress": ["alex@example.com"] },

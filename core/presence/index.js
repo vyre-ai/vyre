@@ -462,7 +462,7 @@ export class Presence {
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
   keys() {
-    return this.db.prepare("SELECT id, kind, name, created, last_used FROM presence_keys ORDER BY created").all();
+    return this.db.prepare("SELECT id, kind, name, rp_id, created, last_used FROM presence_keys ORDER BY created").all();
   }
 
   /**

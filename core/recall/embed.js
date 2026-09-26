@@ -26,7 +26,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import os from "node:os";
+import { execFile, fork } from "node:child_process";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
@@ -209,7 +210,11 @@ export async function load({ cacheDir, runtime, download = true, npm }) {
     tf.env.allowRemoteModels = download;
     tf.env.allowLocalModels = true;
     tf.env.localModelPath = path.resolve(cacheDir);
-    const pipe = await tf.pipeline("feature-extraction", MODEL, { dtype: "q8", device: "cpu" });
+    // One thread each way: a first index is hours of background work, and ONNX Runtime's
+    // default of a thread per core held a Mac at about 500% CPU. Pacing is spawnEmbedder's.
+    if (tf.env.backends && tf.env.backends.onnx) tf.env.backends.onnx.numThreads = 1;
+    const pipe = await tf.pipeline("feature-extraction", MODEL, { dtype: "q8", device: "cpu",
+      session_options: { intraOpNumThreads: 1, interOpNumThreads: 1 } });
     return {
       embedder: {
         model: MODEL,
@@ -222,4 +227,62 @@ export async function load({ cacheDir, runtime, download = true, npm }) {
   } catch (e) {
     return { why: `the embedding model did not load (${String(/** @type {Error} */ (e).message).slice(0, 160)}); search is by keyword` };
   }
+}
+
+/**
+ * The model in a process of its own at the lowest priority (embed-worker.js), so its CPU never
+ * competes with the person's work or with vyred itself. Resolves like load(): { embedder } or
+ * { why }. The embedder has close(), and usage() for measuring it. If the process dies, every
+ * embed after that fails with why, and Recall says so.
+ * @param {{ cacheDir: string, runtime?: string, download?: boolean, npm?: string }} opts
+ * @returns {Promise<{ embedder?: Embedder & { close(): void, usage(): Promise<{ cpu: NodeJS.CpuUsage, nice: number | null }>, pid: number }, why?: string }>}
+ */
+export function spawnEmbedder(opts) {
+  const child = fork(new URL("./embed-worker.js", import.meta.url), [], {
+    stdio: ["ignore", "ignore", "pipe", "ipc"], serialization: "advanced",
+    execArgv: ["--disable-warning=ExperimentalWarning"],
+  });
+  try { if (child.pid) os.setPriority(child.pid, 19); } catch {}
+  let err = "";
+  child.stderr?.on("data", d => { err = (err + d).slice(-400); });
+  let seq = 0;
+  /** @type {Map<number, { resolve: (v: any) => void, reject: (e: Error) => void }>} */
+  const waiting = new Map();
+  let dead = /** @type {string | null} */ (null);
+  const ask = (/** @type {any} */ m) => new Promise((resolve, reject) => {
+    if (dead) return reject(new Error(dead));
+    const id = ++seq;
+    waiting.set(id, { resolve, reject });
+    child.send({ ...m, id });
+  });
+  /** @type {(r: any) => void} */
+  let onLoaded = () => {};
+  child.on("message", (/** @type {any} */ m) => {
+    if (m.type === "loaded") return onLoaded(m);
+    const w = waiting.get(m.id);
+    if (!w) return;
+    waiting.delete(m.id);
+    if (m.error) w.reject(new Error(m.error)); else w.resolve(m);
+  });
+  child.on("exit", code => {
+    dead = `the search model's process stopped (${code ?? "signal"})${err ? ": " + err.trim().split("\n").pop() : ""}`;
+    for (const w of waiting.values()) w.reject(new Error(dead));
+    waiting.clear();
+    onLoaded({ model: null, why: dead });
+  });
+  return new Promise(resolve => {
+    onLoaded = m => {
+      onLoaded = () => {};
+      if (!m.model) { child.kill(); return resolve({ why: m.why || "the embedding model did not load" }); }
+      resolve({
+        embedder: {
+          model: m.model, pid: /** @type {number} */ (child.pid),
+          async embed(text) { const r = await ask({ type: "embed", text: String(text ?? "") }); return new Float32Array(r.v); },
+          async usage() { const r = await ask({ type: "usage" }); return { cpu: r.cpu, nice: r.nice }; },
+          close() { if (!dead) { dead = "closed"; child.kill(); } },
+        },
+      });
+    };
+    child.send({ type: "load", opts });
+  });
 }
