@@ -1,0 +1,13 @@
+{
+  "name": "link",
+  "version": "0.1.0",
+  "description": "Makes the Mac and the box one system: pairing, box tools from the Mac, and box events on the Mac.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["link.status", "link.pair", "link.unpair", "link.call", "link.remote",
+    "link.pair.request", "link.pair.poll", "link.pair.approve", "link.pair.deny", "link.pending", "link.peers", "link.hello"] },
+  "watches": { "emits": ["link.pair-requested", "link.paired", "link.unpaired", "link.connected", "link.lost"] },
+  "shows": { "deck": [], "capsule": [], "cli": ["link"] },
+  "needs": {},
+  "teaches": {}
+}
