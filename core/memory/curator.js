@@ -534,7 +534,10 @@ export class Curator {
       out.push(...(emailsOf.get(id) || []));
       return out;
     };
-    const forms = !recall ? [] : await this.shortForms([...kept].filter(id => ["org", "person"].includes(kind.get(id)) && role.get(id) !== "hub"), agg, cluster, sess);
+    // One thing written several ways ("Harlow Legal", "Harlow Legal Group") is one identity when
+    // the spellings share a domain. Short forms are measured per identity, not per spelling.
+    const identity = id => orgDomain.get(id) || id;
+    const forms = !recall ? [] : await this.shortForms([...kept].filter(id => ["org", "person"].includes(kind.get(id)) && role.get(id) !== "hub"), agg, cluster, sess, identity);
 
     // ---- who works where, by vote
     // Only outside organisations vote, and a session votes by focus: its share of the org
@@ -607,7 +610,7 @@ export class Curator {
    * Recall's full-text index, so it counts the word wherever it was said, not only where the
    * extractor noticed it.
    */
-  async shortForms(ids, agg, cluster, sess) {
+  async shortForms(ids, agg, cluster, sess, identity = id => id) {
     const q = this.db.prepare("SELECT rowid FROM recall_turns WHERE recall_turns MATCH ?");
     const one = this.db.prepare("SELECT session FROM recall_turns WHERE rowid = ?");
     if (!this.rowSession.size) {
@@ -631,11 +634,21 @@ export class Curator {
     /** Sessions saying each word, asked once per pass however many names start with it. */
     const saidBy = new Map();
     let asked = 0;
+    /** form -> identity -> the spellings of that identity starting with the form */
+    const claims = new Map();
     for (const id of ids) {
       const words = agg.get(id).key.split(/\s+/).filter(w => w !== "&");
       if (words.length < 2) continue;
       const form = words[0].toLowerCase();
       if (form.length < 3 || OPENERS.has(form) || HEADINGS.has(form) || TOOL_WORDS.has(form) || ORG_WORDS.has(form)) continue;
+      if (!claims.has(form)) claims.set(form, new Map());
+      const byIdentity = claims.get(form);
+      const who = identity(id);
+      if (!byIdentity.has(who)) byIdentity.set(who, []);
+      byIdentity.get(who).push(id);
+    }
+    const aboutOf = list => { const out = new Set(); for (const id of list) for (const c of cluster(id)) for (const s of agg.get(c)?.by.keys() || []) out.add(parentOf(s, sess)); return out; };
+    for (const [form, byIdentity] of claims) {
       let said = saidBy.get(form);
       if (!said) {
         try { said = [...new Set(q.all(`"${form.replace(/"/g, "")}"`).map(r => sessionOf(Number(r.rowid))).filter(Boolean))]; } catch { said = []; }
@@ -643,18 +656,26 @@ export class Curator {
         if (++asked % 50 === 0) await yieldNow();
       }
       if (!said.length) continue;
-      const about = new Set();
-      for (const c of cluster(id)) for (const s of agg.get(c)?.by.keys() || []) about.add(parentOf(s, sess));
       const saidParents = new Set(said.map(s => parentOf(s, sess)));
-      const hit = [...saidParents].filter(s => about.has(s)).length;
-      measured.push({ node: id, form, precision: Number((hit / saidParents.size).toFixed(3)), count: saidParents.size, sessions: said, usable: false });
+      const precisionOf = about => Number(([...saidParents].filter(s => about.has(s)).length / saidParents.size).toFixed(3));
+      for (const list of byIdentity.values()) {
+        // Measured on the whole identity and credited to its most-seen spelling; the other
+        // spellings keep their own, lower, measure, so they never win the form. On a real
+        // corpus one firm written three ways measured 0.57, 0.29 and 0.21 apart, and none of
+        // them could be called by the word everyone used for it.
+        const lead = [...list].sort((a, b) => agg.get(b).parents.size - agg.get(a).parents.size || (a < b ? -1 : 1))[0];
+        for (const id of list) {
+          const precision = id === lead ? precisionOf(aboutOf(list)) : precisionOf(aboutOf([id]));
+          measured.push({ node: id, form, precision, count: saidParents.size, sessions: said, usable: false });
+        }
+      }
     }
     // Two things can claim one word; only the best claimant may use it, so the weaker reading
     // never dilutes the stronger one.
     const best = new Map();
     for (const m of measured) if (m.precision >= T.shortPrecision && m.count >= T.shortMinSessions) {
       const b = best.get(m.form);
-      if (!b || m.precision > b.precision || (m.precision === b.precision && m.count > b.count)) best.set(m.form, m);
+      if (!b || m.precision > b.precision || (m.precision === b.precision && (m.count > b.count || (m.count === b.count && m.node < b.node)))) best.set(m.form, m);
     }
     for (const m of best.values()) m.usable = true;
     return measured;

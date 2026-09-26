@@ -54,6 +54,7 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   index is available, reports counts and timings only.
 
 ## Done
+- Short forms pooled per identity (spellings sharing a domain), so "the Harlow team" style references match on the real index.
 - `memory.teach` and lesson provenance; paged cold derive (worst event-loop block 70 to 120ms).
 - Curator, graph, module, CLI (`core/memory/`, `core/cli/commands/memory.js`), on `work/memory`.
 - Every "Done when" item above holds against `seedRecall()`, including a working `memory.why`
