@@ -41,7 +41,17 @@ export async function start(opts = {}) {
 
   const db = open(p.db);
   const events = new Events(db);
-  const registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules });
+  const started = Date.now();
+  /** Open event streams, closed on stop so server.close() is not held open by them. */
+  const streams = new Set();
+  /** @type {any} */
+  let registry;
+  // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
+  // calling themselves, then hand the request to this same router with that caller and a policy
+  // limiting what it may reach. The router never reads a caller from their headers.
+  const handler = (policy = {}) => (req, res, caller) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller })
+    .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
+  registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, handler });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
@@ -52,9 +62,6 @@ export async function start(opts = {}) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const started = Date.now();
-  /** Open event streams, closed on stop so server.close() is not held open by them. */
-  const streams = new Set();
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
@@ -89,16 +96,28 @@ async function body(req) {
   try { return JSON.parse(raw); } catch { throw new Error("request body is not JSON"); }
 }
 
-async function route(req, res, { registry, events, cfg, started, streams }) {
+/**
+ * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
+ *   eventType?: string, headers?: Record<string, string> }} Policy
+ * A policy from a module's listener: the caller it established, which tools and paths it may reach,
+ * the only event type its streams may see, and headers to add to every response. The socket has none.
+ */
+
+async function route(req, res, { registry, events, cfg, started, streams }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
-  const caller = String(req.headers["x-vyre-caller"] || "local");
+  const caller = policy.caller || String(req.headers["x-vyre-caller"] || "local");
+  for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
+  if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
+  if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {
+    return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });
+  }
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
-    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started,
+    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null,
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
-  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools() });
+  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools().filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     const result = await registry.call(name, await body(req), caller);
@@ -109,7 +128,11 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
     return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
       type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) }) });
   }
-  if (req.method === "GET" && url.pathname === "/v1/events/stream") return stream(req, res, url, events, streams);
+  if (req.method === "GET" && url.pathname === "/v1/events/stream") {
+    if (policy.eventType) url.searchParams.set("type", policy.eventType);
+    return stream(req, res, url, events, streams);
+  }
+  if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }

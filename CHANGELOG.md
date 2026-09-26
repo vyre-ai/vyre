@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+### M5 · the box (2026-09-26)
+
+#### Box
+
+- Shared core, kept small: `ctx.handler(policy)` gives a module that opens its own listener
+  vyred's router, with the caller the module established and limits on which tools, paths and
+  event types it can reach. The router never takes a caller from a listener's headers.
+  `config.save(patch, root, live)` writes config.json atomically at 0600 and updates the loaded
+  config every module shares. `paths()` gains `certs`, `names`, `models` and `env`. `/v1/health`
+  reports `supervisor` ("systemd" or null), so `vyre up` knows who restarts vyred.
+
+
 ### Shared core for the parallel workstreams (2026-09-26)
 
 - `ctx.vault.fetch(name)`: a module gets only the vault items its manifest declares, through the
