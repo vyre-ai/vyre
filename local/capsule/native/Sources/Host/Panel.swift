@@ -80,8 +80,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.setFrame(NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h), display: false)
         // Set again before every show (capsule-now rule 6): macOS can drop it after a Space change.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        // In quickly: a fade over two frames' worth, so it arrives rather than blinks.
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.makeKey()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.11
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+        }
         focus.count += 1
         startKeys()
         onShownChange?(true)

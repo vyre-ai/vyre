@@ -20,17 +20,17 @@ public final class CapsuleModel: ObservableObject {
     }
 
     @Published public var text = "" { didSet { if text != oldValue { search() } } }
-    @Published public private(set) var groups: [Group] = []
+    @Published public internal(set) var groups: [Group] = []
     @Published public var selected = 0
     /// One line under the bar ("Copied", an error), cleared on the next keystroke.
     @Published public var line: String?
-    @Published public private(set) var reply: Reply?
-    @Published public private(set) var asked: String?
-    @Published public private(set) var pending = false
+    @Published public internal(set) var reply: Reply?
+    @Published public internal(set) var asked: String?
+    @Published public internal(set) var pending = false
     /// What memory says about the words in the box (recall.search and memory.relevant), or nil.
-    @Published public private(set) var memory: MemoryAnswer?
+    @Published public internal(set) var memory: MemoryAnswer?
     /// What memory showed for the question that was asked, kept beside its reply.
-    @Published public private(set) var askedMemory: MemoryAnswer?
+    @Published public internal(set) var askedMemory: MemoryAnswer?
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
@@ -135,7 +135,18 @@ public final class CapsuleModel: ObservableObject {
         }
         recall(q.text, token: t)
         if q.normalized.isEmpty { partial = [:]; groups = []; selected = 0; return }
-        if let c = calcResult(q) { partial["calc"] = [c] }
+        if var c = calcResult(q) {
+            // Enter copies the answer, as the footer says.
+            let copy = c.copyText ?? c.title
+            c.actions = [ResultAction(id: "copy", title: "Copy", symbol: "doc.on.doc", shortcut: KeyShortcut("return")) { _, _ in
+                await MainActor.run {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(copy, forType: .string)
+                }
+                return .close("Copied \(copy)")
+            }]
+            partial["calc"] = [c]
+        }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
             let s = Match.score(q.normalized, c.title, synonyms: c.keywords)

@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The native Capsule's design pass
+
+- Rows are inset and rounded; the selected one is a raised plate with the signal pill at its left
+  edge, easing in over 90 ms. Symbols sit on small tiles so they line up with app icons (26 pt,
+  32 for the top hit). App rows show only the name; every row says what it is at the right
+  ("Application", "PDF document", "Command"). The top hit is larger, and a calculator answer is
+  a card with the number in large rounded figures; Enter copies it.
+- A footer under the results says what Enter does ("Open ⏎"), the count, and the Capsule's
+  one-line notes and confirm questions. The destination in the bar is a small chip.
+- `@` rows are headed "Send to", and a session live in a terminal carries a signal badge. The
+  chip for a picked destination is a capsule with its icon.
+- The answer reads You and the question, then who answers (a breathing signal dot while it
+  works), the memory box with a recall rule down its side and quotes as quotes with who said
+  them, then the answer with room to breathe; an answer alone scrolls in the whole area.
+- The panel fades in over 110 ms. `Tests/SnapshotTests.swift` draws each state to PNGs off
+  screen (VYRE_CAPSULE_SNAP=<dir>).
+
 #### The session window for sight's side view
 
 - The Capsule-owned session window becomes key when its field is clicked, draws nothing under
