@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { SKILL_MIGRATIONS, shapeOf, stepsOf, fingerprints, createSkills, pluginDirs, template, frontmatter } from "./skills.js";
+import { SKILL_MIGRATIONS, shapeOf, stepsOf, fingerprints, createSkills, pluginDirs, template, frontmatter, PLUGIN_NAMES } from "./skills.js";
 import { tempHome } from "../../test/helpers.js";
 
 /** An in-memory store with the skill tables, a fake clock and a list of emitted events. */
@@ -181,10 +181,12 @@ test("install: account, project, private project and agent each land in their ow
 
   const q = skills.install(proposed(skills).id, { home: vyre, scope: "project", private: true });
   assert.equal(q.path, path.join(vyre, "learned", "projects", "harlow-site", "skills", q.name, "SKILL.md"), "the slug comes from the skill's scope");
-  assert.equal(JSON.parse(fs.readFileSync(path.join(vyre, "learned", "projects", "harlow-site", ".claude-plugin", "plugin.json"), "utf8")).name, "vyre-learned-project-harlow-site");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(vyre, "learned", "projects", "harlow-site", ".claude-plugin", "plugin.json"), "utf8")).name, "vyre-learned-harlow-site",
+    "a private project's skills are the plugin vyre-learned-<slug>, as the Switchboard loads it");
 
   const g = skills.install(proposed(skills).id, { home: vyre, scope: "agent", agent: "scout" });
   assert.equal(g.path, path.join(vyre, "learned", "agents", "scout", "skills", g.name, "SKILL.md"));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(vyre, "learned", "agents", "scout", ".claude-plugin", "plugin.json"), "utf8")).name, "vyre-learned-agent-scout");
   assert.equal(mode(g.path), 0o600);
 
   assert.deepEqual(pluginDirs(vyre, { project: "harlow-site", agent: "scout" }),
@@ -196,6 +198,26 @@ test("install: account, project, private project and agent each land in their ow
   assert.deepEqual(inst.map(e => e.payload.scope), ["account", "project", "project", "agent"]);
   assert.deepEqual(Object.keys(inst[0].payload).sort(), ["scope", "skill"]);
   assert.throws(() => skills.install(a.id, { home: vyre, scope: "account" }), /installed/, "installed once");
+});
+
+test("plugin names: vyre-learned, vyre-learned-<slug>, vyre-learned-agent-<name>, always lower-case kebab", () => {
+  assert.equal(PLUGIN_NAMES.account, "vyre-learned");
+  assert.equal(PLUGIN_NAMES.project("harlow-site"), "vyre-learned-harlow-site");
+  assert.equal(PLUGIN_NAMES.project("Harlow_Site.v2"), "vyre-learned-harlow-site-v2");
+  assert.equal(PLUGIN_NAMES.agent("Scout"), "vyre-learned-agent-scout");
+});
+
+test("pluginDirs: the same folders, in the same order, as the Switchboard's learnedDirs", t => {
+  const home = tempHome(t);
+  const vyre = path.join(home, "vyre-home");
+  for (const d of ["account", "projects/harlow-site", "agents/scout"]) {
+    fs.mkdirSync(path.join(vyre, "learned", d, ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(vyre, "learned", d, ".claude-plugin", "plugin.json"), "{}");
+  }
+  fs.mkdirSync(path.join(vyre, "learned", "projects", "bare"), { recursive: true });
+  assert.deepEqual(pluginDirs(vyre, { project: "harlow-site", agent: "scout" }),
+    ["account", "projects/harlow-site", "agents/scout"].map(d => path.join(vyre, "learned", d)));
+  assert.deepEqual(pluginDirs(vyre, { project: "bare" }), [path.join(vyre, "learned", "account")], "a folder with no plugin.json is not a plugin");
 });
 
 test("install: never under ~/.claude, never outside its roots, never over someone else's skill", t => {

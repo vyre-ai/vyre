@@ -340,13 +340,27 @@ function real(p) {
   }
 }
 
-/** The account plugin, and the ones made for a project's private skills and for an agent. */
+/**
+ * The account plugin, and the ones made for a project's private skills and for an agent. The
+ * layout and names are agreed with the Switchboard (its learnedDirs): `learned/account` is the
+ * plugin `vyre-learned`, `learned/projects/<slug>` is `vyre-learned-<slug>`, and
+ * `learned/agents/<name>` is `vyre-learned-agent-<name>`. Each is a complete plugin
+ * (`.claude-plugin/plugin.json` and `skills/<name>/SKILL.md`).
+ */
 const plugins = home => ({
   root: path.join(home, "learned"),
   account: path.join(home, "learned", "account"),
   project: slug => path.join(home, "learned", "projects", slug),
   agent: agent => path.join(home, "learned", "agents", agent),
 });
+
+/** A plugin name from a slug or agent name: lower case, kebab. */
+const kebab = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "x";
+export const PLUGIN_NAMES = {
+  account: "vyre-learned",
+  project: (/** @type {string} */ slug) => `vyre-learned-${kebab(slug)}`,
+  agent: (/** @type {string} */ agent) => `vyre-learned-agent-${kebab(agent)}`,
+};
 
 const MANIFEST = (name, what) => ({
   name, displayName: "Vyre learned skills" + (what ? ` (${what})` : ""), version: "0.0.1",
@@ -384,7 +398,8 @@ export function pluginDirs(home, { project, agent } = {}) {
   const dirs = [p.account];
   if (project && SLUG.test(project)) dirs.push(p.project(project));
   if (agent && SLUG.test(agent)) dirs.push(p.agent(agent));
-  return dirs.filter(d => fs.existsSync(path.join(d, ".claude-plugin", "plugin.json")) && fs.existsSync(path.join(d, "skills")));
+  // As the Switchboard's learnedDirs: a folder loads when it is a plugin.
+  return dirs.filter(d => fs.existsSync(path.join(d, ".claude-plugin", "plugin.json")));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -515,14 +530,15 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
       const p = plugins(home);
       let root, dir;
       if (scope === "account") {
-        ensurePlugin(p.account, MANIFEST("vyre-learned", ""));
         root = p.account;
+        guard(path.join(root, "skills"), p.root);
+        ensurePlugin(root, MANIFEST(PLUGIN_NAMES.account, ""));
       } else if (scope === "project" && where.private) {
         const slug = where.project || (s.scope && s.scope.project);
         if (!slug || !SLUG.test(slug)) throw new Error("a private project skill needs the project's slug");
         root = p.project(slug);
         guard(path.join(root, "skills"), p.root);
-        ensurePlugin(root, MANIFEST(`vyre-learned-project-${slug}`.toLowerCase(), `project ${slug}`));
+        ensurePlugin(root, MANIFEST(PLUGIN_NAMES.project(slug), `project ${slug}`));
       } else if (scope === "project") {
         if (!where.projectHome || !path.isAbsolute(where.projectHome)) throw new Error("a project skill needs the project's home folder");
         root = path.join(where.projectHome, ".claude", "skills");
@@ -531,7 +547,7 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
         if (!where.agent || !SLUG.test(where.agent)) throw new Error("an agent skill needs the agent's name");
         root = p.agent(where.agent);
         guard(path.join(root, "skills"), p.root);
-        ensurePlugin(root, MANIFEST(`vyre-learned-agent-${where.agent}`.toLowerCase(), `agent ${where.agent}`));
+        ensurePlugin(root, MANIFEST(PLUGIN_NAMES.agent(where.agent), `agent ${where.agent}`));
       } else throw new Error('scope must be "account", "project" or "agent"');
       dir = dir || path.join(root, "skills", s.name);
       const file = path.join(dir, "SKILL.md");
