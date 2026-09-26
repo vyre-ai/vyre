@@ -105,7 +105,14 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   docs edits it, adds it to nav under Using Vyre, links it from claude-code.md's /vyre rows.
   Agent rule (user): agents add notes, reminders and todos without asking; an item names the agent
   only when it is not your own assistant or session; no visible limit, no "only you can edit".
-- capsule-pro 4c957a4: `vyre capsule` builds the native app locally; the download is retired.
+- capsule-pro (work/capsule-pro, "`vyre capsule install` builds; nothing is downloaded"): `vyre capsule`
+  builds the native Capsule on first run (swiftc; an `xcode-select --install` hint if the Command
+  Line Tools are missing; a once-only offer of a local signing identity), then opens it.
+  `vyre capsule install` builds without opening. `vyre capsule --electron` runs the old Electron
+  Capsule until it is retired. No Vyre-mac.zip, no download link, capsule-install.js and
+  box/Vyre-mac.sha256 are gone. Pages: using/capsule.md (Install it), install.md step 14,
+  first-day, troubleshooting (Gatekeeper and zip snags go), onboarding step 6, box-care, CONTRIBUTING
+  refs to the zip. Also scripts/build-site.sh's zip branch (box-deploy is removing it).
 - main f3b5e36 (spec: no ctx.projects): close that gap in known-gaps.md and module-contract.md.
 
 ## Next
