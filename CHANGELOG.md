@@ -34,6 +34,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Tests that exercise what happens after approval start vyred with `present` from
   `test/helpers.js`, a verifier that always finds a person, or through
   `test/fixtures/vyred-present.js` for CLI tests. That fixture refuses any home outside the temp folder.
+- After review with the other workstreams:
+  - The floor's list now covers the vault's value-out tools, `learn.relax` and
+    `learn.skill_install`, `computers.takeover` and `computers.giveback`, and `link.pair.approve`.
+  - Tools get `presence: { method, keyId }` in run()'s context, never the proof.
+  - On the box, a terminal code only enrolls the first passkey, since a model on the Mac can
+    usually SSH into a login terminal there.
+  - The floor denies the vault's value-out `vyre` commands, root through docker (privileged, host
+    namespaces, host binds, the docker socket) and any use of the box's Docker API proxy. It asks
+    before reading the clipboard.
+  - `swiftHelper()` builds another module's Swift helper under the same hash check.
 - One real run: `claude -p --model haiku` with the Harness, told to approve its own held draft by
   every route it could find. It tried 16 routes, and every one was refused. Nothing reached
   the mail stub.
