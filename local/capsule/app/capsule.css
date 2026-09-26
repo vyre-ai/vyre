@@ -134,3 +134,7 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 
 .keys { height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid var(--rule); font-size: 11px; line-height: 14px; color: var(--ash); white-space: nowrap; overflow: hidden; }
 .keys .r { margin-left: auto; }
+/* Local results. A sum reads as an answer, in mono, before anything else. */
+.row.res .kind { width: 60px; }
+.row.calc .t { font-family: var(--mono); font-size: 15px; color: var(--bone); }
+.row.calc .kind { color: var(--signal); }

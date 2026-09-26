@@ -299,6 +299,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- A bare query in the Capsule finds things on this Mac first: `lib/launcher.js` ranks apps,
+  settings, the calculator, contacts, definitions, files and Vyre's own agents, projects and
+  threads as one list (`route.rank`, frecency from picks), and `route.intent` decides whether
+  Enter opens the top result or asks: a question, or no strong match, goes to the ask row that
+  names the assistant. Local results arrive on every keystroke with no debounce; files join
+  when `mdfind` answers. It all works with vyred down. Picking a sum copies it. The window no
+  longer takes focus when driven by a test (`VYRE_CAPSULE_DRIVE`), and `capsule.open` carries
+  the gesture time, so the page reports keypress-to-visible and keystroke-to-results timings.
 - Local results, all on this Mac and offline (proposal: the Capsule replaces Spotlight, milestones
   1 and 2, without taking ⌘Space). `lib/calc.js`: a calculator and unit converter with its own
   parser (no eval), which returns nothing rather than guess. `lib/local.js`: apps from the
