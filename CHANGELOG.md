@@ -298,6 +298,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   - The daemon client no longer pools connections: the first call after a vyred restart failed
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
+- The Deck's Vault app (ADR 0006, section 6): places in the rail (a chip row below 1200px),
+  fuzzy search over names, hosts, kinds and field names, the keyboard map, the item pane with
+  concealed fields, copy with a draining 90 s toast, reveal behind `vault.caps`, TOTP ring,
+  history, add and edit per kind with an inline generator whose value is made on the box,
+  Watchtower, passes with approvals on top, the share and offboard sheets, devices, and a phone
+  layout. The passkey presence client is `deck/vault/presence.js`. New tools `vault.caps`,
+  `vault.health`, `vault.breach.check` (opt-in network call, `vault.breach: "ask"`) and
+  `vault.update` (merging put with `generate`). vyred now serves the Deck's shell for any folder
+  path, so `/vault` routes even though `deck/vault/` exists.
 
 #### Watchers
 

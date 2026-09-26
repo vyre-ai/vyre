@@ -33,6 +33,10 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Keychain tests that hold up under parallel runs (`testing.js`): a unique keychain per test,
   taken off the search list under a machine-wide lock, `security` retried when busy.
 
+- The Deck's Vault app (`deck/views/vault*.js`, `deck/vault/`), Watchtower (`health.js`), the
+  opt-in breach check and `vault.update` (`tools/deck.js`). Click-through against a real vyred:
+  `node deck/test/vault-shots.js <out-dir>`.
+
 ## Doing
 
 - The relayed pass between two machines on the tailnet, end to end through the box
@@ -89,3 +93,18 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Cards may carry `login`. With `vault.relay.identity: "tailscale"` the relay listener requires
   the `Tailscale-User-Login` header from `tailscale serve`, and a pass made from a card with a
   login answers only that login.
+- New tools (deck branch): `vault.caps {}` returns `{reveal, breach, host}` (`vault.deck.reveal`,
+  default false; `vault.breach`, "off" or "ask", default "off"). `vault.health {}` (all callers,
+  MCP too) returns `{items: [{name, kind, reasons, group?}], counts, checked, at}` with reasons
+  weak, reused (opaque per-run group ids), old, rotate, 2fa-available, unprotected.
+  `vault.breach.check {}` (cli, local, deck; presence) returns `{breached: [names], checked,
+  requests, at}`. `vault.update {name, kind?, description?, url?, hosts?, fields?, remove?,
+  generate?: {field, length?, symbols?, words?}}` (cli, local, deck; presence) merges with the
+  item's fields and returns `{name, kind, created, changed, generated?, bits?}`, never a value.
+- The Deck expects (degrading without them): `vault.session.open {surface}` to `{session,
+  expires}`, `vault.session.close {session}`, `vault.copy {name, field, session}` to `{copied,
+  clearsAt}` (field "totp" copies the current code), `vault.clipboard.clear {}`, `vault.reveal
+  {name, field, session}` to `{value}`, `vault.totp {name, session}`, `vault.history {name}` to
+  `{versions: [{ver, at, by, fields}], passwords: [{at}]}`, `vault.ssh.generate {name}`. It
+  needs the "deck" caller on `vault.totp`, `grant`, `pending`, `approve`, `pass.create` and
+  `offboard`, which exclude it today.

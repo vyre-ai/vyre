@@ -1,5 +1,5 @@
 // @ts-check
-// health — Watchtower. vyred opens each item, judges it, and hands back names and reason codes
+// health: Watchtower. vyred opens each item, judges it, and hands back names and reason codes
 // only: never a value, a length, a strength number or a hash of one (docs/adr/0006, section 6).
 //
 // Reasons:
