@@ -1,0 +1,20 @@
+# Keep the image to what vyred runs. See box/Dockerfile.
+**/node_modules
+.git
+.github
+.vyre
+**/.vyre
+*.log
+**/*.log
+.env
+.env.*
+**/.DS_Store
+coverage
+test
+scripts
+# Design mockups and working notes: not read at runtime.
+docs/design/boards
+docs/work
+# The box files themselves.
+box
+.dockerignore
