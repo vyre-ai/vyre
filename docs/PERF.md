@@ -169,6 +169,13 @@ to watch (an active or not-yet-frozen checkout), back off toward 60s when everyt
 frozen or the pool is empty (the common case for most installs, since `computers` is not yet
 widely used).
 
+**Fixed** by `computers` on `work/computers` (6b07020): exactly the adaptive approach suggested
+— a self-rescheduling `setTimeout` (not `setInterval`, so each cycle can pick a fresh delay)
+that runs at `sweepMs` (5s default) while `pool.checkouts`/`pool.idle`/`keyboard.takeovers` has
+anything in it, and backs off to a new `idleSweepMs` (60s default) once everything is already
+frozen/stopped or actively watched. Verified directly (`core/computers/index.js:70-92`) and
+`node --test core/computers/*.test.js`: 73/73 pass.
+
 ## Deck audit
 
 `grep -rn "setInterval\|setTimeout" deck` — one real violation, everything else is either a
