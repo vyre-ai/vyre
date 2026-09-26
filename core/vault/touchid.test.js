@@ -7,18 +7,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Helper } from "./mac/helper.js";
 import { writeFakes } from "./mac/fakes.js";
+import { TEST_KDF } from "./testing.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
-const TEST_KDF = { kdf: "argon2id", m: 256, t: 1, p: 1 };
 const PASSWORD = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
 
 function setup(t, enclaveMode = "ok") {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-touchid-"));
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-touchid-"));
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   t.after(() => { db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
@@ -84,7 +84,7 @@ test("touch id: without a helper (not a Mac) it says so", async t => {
 });
 
 test("touch id: the real enclave helper builds, is hash-checked and answers `available` (no dialog)", { skip: process.platform !== "darwin" || !fs.existsSync("/usr/bin/swiftc") }, async t => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-enclave-"));
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-enclave-"));
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   const { enclaveCall } = await import("./touchid.js");
   const r = await enclaveCall(new Helper({ name: "enclave", dir: path.join(tmp, "helpers") }), { op: "available" });

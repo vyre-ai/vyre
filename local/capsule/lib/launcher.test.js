@@ -2,14 +2,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Apps, Frecency } from "./local.js";
 import { Launcher, defineWord } from "./launcher.js";
 import { rank, intent, questionLike } from "./route.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 function appsIn(t, names) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-apps-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-apps-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   for (const n of names) fs.mkdirSync(path.join(dir, n + ".app"));
   return new Apps({ dirs: [dir] });
@@ -59,10 +59,12 @@ test("launcher: apps, settings and the calculator answer offline, ranked", async
 });
 
 test("launcher: frecency lifts what the user picks, from a file under the Capsule's own home", async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-frec-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-frec-"));
+  const frecency = new Frecency(path.join(dir, "frecency.json"));
+  // pick() saves on a 500 ms debounce; write it now, or the timer fires after the rm and makes the folder again.
+  t.after(() => { frecency.flush(); fs.rmSync(dir, { recursive: true, force: true }); });
   const opened = [];
-  const l = new Launcher({ apps: appsIn(t, ["Notes", "Notability"]), frecency: new Frecency(path.join(dir, "frecency.json")),
+  const l = new Launcher({ apps: appsIn(t, ["Notes", "Notability"]), frecency,
     open: async r => (opened.push(r.target), { ok: true }), files: async () => [] });
   await l.warm();
   const before = await l.quick("not", null);
@@ -219,7 +221,7 @@ test("launcher: picking a box file fetches it, then opens the local copy", async
 });
 
 test("launcher: preview reads a text file's first 4 kB, asks the box for box files, else null", async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-prev-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-prev-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, "a.txt"), "é".repeat(3000));
   fs.writeFileSync(path.join(dir, "b.bin"), Buffer.from([1, 0, 2]));

@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SCRATCH } from "./scratch.mjs";
+import { SCRATCH, HOMES } from "./scratch.mjs";
 
 // No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
 // the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
@@ -15,6 +15,10 @@ if (!process.env.VYRE_TAILSCALE_BIN) process.env.VYRE_TAILSCALE_BIN = path.join(
 
 export function tempHome(t) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-test-"));
+  // A leaked home can come back holding only what a late write put there, so the name of the
+  // test that made it is kept outside it.
+  const name = /** @type {any} */ (t).fullName || t.name;
+  try { fs.appendFileSync(HOMES, `${path.basename(dir)}\t${path.relative(path.resolve(import.meta.dirname, ".."), process.argv[1] || "?")}\t${name}\n`); } catch {}
   const real = path.join(os.homedir(), ".vyre");
   if (path.resolve(dir) === path.resolve(real)) throw new Error("a test tried to use the real ~/.vyre");
   const prev = process.env.VYRE_HOME;

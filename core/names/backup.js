@@ -46,7 +46,8 @@ function copyTree(from, to) {
  */
 export async function backup({ root = config.home(), file, db }) {
   if (!file) throw new Error("backup needs a file to write");
-  const staging = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-backup-"));
+  // VYRE_TMPDIR moves the staging folder (the tests point it at their own scratch folder).
+  const staging = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-backup-"));
   const target = path.resolve(file);
   const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
   try {
@@ -57,7 +58,7 @@ export async function backup({ root = config.home(), file, db }) {
         if (!db && !fs.existsSync(src)) continue;
         const out = path.join(staging, "vyre.db");
         // VACUUM INTO takes a string literal, not a parameter. Refuse quotes instead of escaping.
-        if (/['"\0]/.test(out)) throw new Error(`temp folder ${staging} has a quote in it; set TMPDIR elsewhere`);
+        if (/['"\0]/.test(out)) throw new Error(`temp folder ${staging} has a quote in it; set VYRE_TMPDIR or TMPDIR elsewhere`);
         let own = null;
         if (!db) {
           const { DatabaseSync } = await import("node:sqlite");

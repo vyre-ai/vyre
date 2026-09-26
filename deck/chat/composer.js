@@ -16,7 +16,7 @@ export function mountComposer(opts) {
   const { thread } = opts;
   let leaseTimer = null;
   const ta = h("textarea", {
-    rows: 1, placeholder: "Message this session. @ to mention, / for Claude Code's own commands",
+    rows: 1, placeholder: "Message this session",
     "aria-label": "Message",
     oninput: e => { grow(); maybeLease(); mention(/** @type {any} */ (e.target)); },
     onkeydown: onKey,
@@ -26,7 +26,8 @@ export function mountComposer(opts) {
   const wrap = h("div", { class: "composer-wrap" }, menu,
     h("div", { class: "composer-row" }, ta, send),
   );
-  const root = h("div", { class: "composer" }, wrap, h("div", { class: "composer-hint" }, h("span", { class: "kbd" }, "Enter"), " to send · ", h("span", { class: "kbd" }, "Shift+Enter"), " for a new line"));
+  const note = h("div", { class: "composer-note", role: "status" });
+  const root = h("div", { class: "composer" }, note, wrap, h("div", { class: "composer-hint" }, h("span", { class: "kbd" }, "Enter"), " to send · ", h("span", { class: "kbd" }, "Shift+Enter"), " for a new line · @ to mention · / for Claude Code's commands"));
 
   function grow() { ta.style.height = "auto"; ta.style.height = Math.min(200, ta.scrollHeight) + "px"; }
 
@@ -41,9 +42,11 @@ export function mountComposer(opts) {
     if (!text) return;
     ta.value = ""; grow();
     send.disabled = true;
+    note.textContent = "";
     const r = await attempt("threads.send", { thread, text });
     send.disabled = false;
-    if (r.error) root.append(h("div", { class: "gate-note" }, "Could not send: " + r.error.message));
+    // One note, replaced each time, and the words go back in the box so nothing typed is lost.
+    if (r.error) { note.textContent = "Could not send: " + r.error.message; if (!ta.value) { ta.value = text; grow(); } }
   }
 
   function onKey(e) {

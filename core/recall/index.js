@@ -212,6 +212,24 @@ export default {
       },
     });
 
+    // A Claude Code turn just ended (the harness's Stop hook) or a session began: index that one
+    // session now, so the Deck's Chat mirrors a terminal session a moment after each turn instead
+    // of at the next pass. Debounced per session, and run on the pass chain so it never overlaps
+    // a pass. The whole-folder pass below still catches anything without the hooks.
+    const SOON_MS = opts.soonMs ?? 1500;
+    /** @type {Map<string, ReturnType<typeof setTimeout>>} */
+    const soon = new Map();
+    const indexSoon = (/** @type {any} */ e) => {
+      const id = e?.payload?.session;
+      if (stopped || typeof id !== "string" || !id) return;
+      clearTimeout(soon.get(id));
+      soon.set(id, setTimeout(() => {
+        soon.delete(id);
+        chain = chain.then(() => { if (!stopped) indexer.session(folders, id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+      }, SOON_MS));
+    };
+    const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon)];
+
     // After start returns, so vyred's startup never waits on a pass.
     const first = setTimeout(() => { pass().catch(() => {}); }, 0);
     const timer = every > 0 ? setInterval(() => { if (!running) pass().catch(() => {}); }, every * 60_000) : null;
@@ -221,6 +239,8 @@ export default {
       async stop() {
         stopped = true;
         clearTimeout(first);
+        for (const off of offs) if (typeof off === "function") off();
+        for (const t of soon.values()) clearTimeout(t);
         if (timer) clearInterval(timer);
         await chain;
         await vec.done;

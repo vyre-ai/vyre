@@ -5,10 +5,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { build, available, authenticate } from "./index.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 const FAKE_HELPER = `#!/bin/sh
 case "$1" in
@@ -22,7 +22,7 @@ esac
 `;
 
 function stub() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-touchid-test-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-touchid-test-"));
   const swiftc = path.join(dir, "swiftc");
   fs.writeFileSync(swiftc, `#!/bin/sh
 while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done
@@ -80,7 +80,7 @@ test("not available off macOS or without swiftc", async (t) => {
 
 test("under tests, without VYRE_TEST_DIALOGS, authenticate never runs the helper", async (t) => {
   assert.ok(process.env.NODE_TEST_CONTEXT, "node --test sets NODE_TEST_CONTEXT");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-touchid-gate-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-touchid-gate-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   // A helper that records every run in a file, for any argument.
   const ran = path.join(dir, "ran");
@@ -107,7 +107,7 @@ chmod 700 "$out"
 
 const real = process.platform === "darwin" && fs.existsSync("/usr/bin/swiftc");
 test("real compile, --check only", { skip: !real && "needs macOS and /usr/bin/swiftc", timeout: 300_000 }, async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-touchid-real-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-touchid-real-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const h = await build({ dir, swiftc: "/usr/bin/swiftc", platform: "darwin" });
   let word = "";

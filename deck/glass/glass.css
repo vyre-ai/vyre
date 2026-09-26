@@ -204,3 +204,11 @@
 .gl-is-phone .gl-tr { grid-template-columns: minmax(0, 1fr) 28px; }
 .gl-is-phone .gl-tr > .code, .gl-is-phone .gl-tr > .bar { grid-column: 1 / -1; }
 .gl-is-phone .gl-tr > .gl-tr-acts { grid-column: 2; grid-row: 1; }
+
+/* No box paired: one short panel, nothing to take over. */
+.gl-nobox { max-width: 560px; margin: 48px auto 0; display: flex; flex-direction: column; gap: 10px; }
+.gl-nobox h1 { margin: 0; }
+.gl-nobox p { margin: 0; }
+.gl-nobox-cmd { margin: 4px 0 6px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel);
+  color: var(--text); overflow-x: auto; white-space: pre; }
+.gl-is-phone .gl-nobox { margin-top: 16px; }
