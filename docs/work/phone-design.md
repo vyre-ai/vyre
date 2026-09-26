@@ -19,9 +19,12 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
   gold, no red) to apply it to phone.md and the canvas.
 
 ## Next
-1. Apply deck-design's reduced set exactly: drop gold (From memory blocks become neutral unless
-   they say otherwise), cut the type sizes to their scale, re-run the contrast pass, republish
-   the canvas, tell the integrator the head.
+1. Apply deck-design's reduced set when they send it (first job after their restart; their notes
+   at deck-design 24c3f31). Working answers: From memory goes neutral (--hover fill, --text-2, a
+   memory icon, no gold); --match stays as lime's wash; sizes collapse to 12/13/15/20/28 (phone
+   22/26 to 20 or 28, 17/16 to 15). Open: 15 is below iOS body (17); ask for a fixed phone offset
+   (+2 on 15 and 20) if 15 reads small. Then re-run the contrast pass (scratchpad phone-render/
+   build.py, rebuilt if the scratchpad is gone), republish the canvas, tell the integrator.
 2. The attention colour pick is still pending with the user: violet (current), honey or teal.
    It is a one-line swap per theme of the three --beacon-* values.
 3. Review pwa and mobile builds against phone.md as screenshots arrive.
