@@ -24,13 +24,25 @@ the contract in ADR 0025.
   (alarms, daily repeats, reminders, todos, notes), idle 60 s: CPU 0.00%, RSS mean 103.1 MB, max
   105.5 MB; adding them took 9.5 ms each over the socket; planner.agenda 16 ms.
 
+- Calendar slice (core/planner/calendar.js): planner.calendar.sync reads google.calendar.list per
+  account (a day back to 14 days ahead; a full page of 100 is read again in halves) into
+  planner_calendar, drops what is no longer returned, keeps a failing account's copy, forgets a
+  removed account, records synced_at. A scheduler wake hook syncs every 15 minutes while any
+  account is connected and not at all otherwise; google.added and google.removed sync at once.
+  Each timed cached event rings event_lead minutes before its start (kind event, with account and
+  start), once per (account, event, start); all-day events never ring. planner.agenda entries carry
+  source (planner or the account), start, end, all_day, where, url; `busy: true` and `next: n`.
+  planner.calendar.create makes the planner's own event, or calls google.calendar.create (attendees
+  held at the Gate). Tests: core/planner/calendar.test.js (6, fake clock, fake google over ctx.call).
+  On the test box: 36 of 36 pass with `node --test core/planner/*.test.js core/push/push.test.js`.
+
 ## Doing
-- Nothing in flight. Slice 1 is committed.
+- Nothing in flight. The calendar slice is committed.
 
 ## Next
 1. CLI: `vyre alarm`, `vyre remind`, `vyre todo`, `vyre notes`, `vyre agenda` (on planner.add/parse/agenda).
-2. Calendar: planner.calendar.sync (google.calendar.list every 15 min as a scheduler wake hook,
-   into planner_calendar), event reminders for cached events, planner.calendar.create through the Gate.
+2. Deck and CLI: label calendar entries by `e.source !== "planner"` (source is now the account
+   name, not "calendar"): deck/views/planner.js line 146, core/cli/commands/planner.js line 294.
 3. Minimal Deck view (panel:planner).
 4. Later: email/SMS fallback after the last ring (off, through the Gate).
 
@@ -46,8 +58,22 @@ the contract in ADR 0025.
 - Deleting an item that is ringing cancels the firing and emits planner.acked (action dismiss) so
   surfaces drop the banner.
 - A month or year repeat on a day a month lacks (the 31st, 29 Feb) rings on that month's last day.
-- planner.calendar.sync and planner.calendar.create are not declared yet: they come with the
-  calendar slice.
+
+## Decisions made in the calendar slice
+- Cache rows have a stable id `c_<hash(account, event)>`; a firing for a calendar event has that id
+  as `item`. Dedupe: `rung_start` on the row, plus a firing with the same due for that id.
+- A calendar ring does not escalate (it rings once, and again only when snoozed). An event that has
+  begun by the time its ring is due (vyred was down) stays quiet. One found inside its lead rings at once.
+- done, snooze and dismiss work on a calendar ring (the copy stays read-only); agents cannot
+  finish an event.
+- Busy time counts timed events only (the planner's with a length, and every calendar's): not
+  all-day events, alarms or reminders.
+- An agent may only use planner.calendar.create to ask for an invite (account and attendees), so it
+  always waits at the Gate. It cannot make the planner's own events or write to a calendar unasked.
+- A planner event made without an end lasts an hour (as Google's default). planner_items gains
+  where_ (migration 2), shown as `where`.
+- If google.accounts is missing at start (the google module not up yet), the planner looks once
+  more a minute later and then waits for google.added.
 
 ## Needs from others
 - pwa: service worker handles push kind `planner` with `done`/`snooze` actions; Now shows agenda, todos, alarms, notes.
@@ -56,6 +82,9 @@ the contract in ADR 0025.
 - switchboard (push owner): the `planner` kind in core/push (listed under Changed contracts).
 
 ## Changed contracts
+- planner.agenda (own): a calendar entry's `source` is the Google account name, no longer
+  "calendar"; entries gain start, all_day, where, url on planner entries too. ADR 0025 contract
+  table updated. planner.fired for a calendar event adds `account` and `start`.
 - core/push/index.js (switchboard owns push): `planner.fired` maps to kind `planner` with a fixed
   title per item kind (alarm "Alarm", timer "Timer finished", reminder "Reminder", event "Starting
   soon", todo "Todo due"), path `/planner/<firing>`, tag `planner-<firing>`, `actions: ["done",

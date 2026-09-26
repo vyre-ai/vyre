@@ -29,6 +29,13 @@ export const MIGRATIONS = [
      UNIQUE (account, event_id));
    CREATE INDEX planner_calendar_start ON planner_calendar (start);
    CREATE TABLE planner_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+  // The calendar slice: a cached event's pending ring, the start it last rang for (so a resync
+  // never rings twice), a snooze; and a place for the planner's own events.
+  `ALTER TABLE planner_calendar ADD COLUMN next_fire INTEGER;
+   ALTER TABLE planner_calendar ADD COLUMN rung_start INTEGER;
+   ALTER TABLE planner_calendar ADD COLUMN snooze_until INTEGER;
+   CREATE INDEX planner_calendar_fire ON planner_calendar (next_fire) WHERE next_fire IS NOT NULL;
+   ALTER TABLE planner_items ADD COLUMN where_ TEXT;`,
 ];
 
 export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event"];
@@ -46,7 +53,7 @@ export function shape(r) {
     at: r.at ?? null, tz: r.tz ?? null, floating: Boolean(r.floating), wall: r.wall ?? null, date: r.date ?? null,
     repeat: safeJSON(r.repeat, null), due: r.due ?? null, duration_ms: r.duration_ms ?? null, snooze_until: r.snooze_until ?? null,
     next_fire: r.next_fire ?? null, created: r.created, updated: r.updated, done_at: r.done_at ?? null, deleted_at: r.deleted_at ?? null,
-    source: r.source ?? null,
+    source: r.source ?? null, where: r.where_ ?? null,
   };
 }
 export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
@@ -55,7 +62,7 @@ export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, du
 function safeJSON(s, fallback) { try { return s == null ? fallback : JSON.parse(String(s)); } catch { return fallback; } }
 
 const COLUMNS = ["kind", "title", "body", "list", "priority", "parent", "project", "thread", "tags", "pinned", "state", "at", "tz", "floating",
-  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source"];
+  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "where_"];
 
 /** Plain values for SQLite: objects as JSON, booleans as 0/1. */
 const cell = (k, v) => v === undefined ? null : (k === "tags" || k === "repeat") ? (v == null ? (k === "tags" ? "[]" : null) : JSON.stringify(v))

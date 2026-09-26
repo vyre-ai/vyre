@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The planner's calendar: Google copies, event reminders, busy time, and events through the Gate
+
+- planner.calendar.sync reads connected Google calendars through google.calendar.list (never a
+  token), a day back to 14 days ahead, into planner_calendar: new and moved events are added,
+  cancelled ones dropped, a failing account keeps its copy, a removed account's events go. It runs
+  every 15 minutes as a scheduler wake hook while any account is connected, and on google.added /
+  google.removed; with no account it never runs.
+- Each timed calendar event rings event_lead minutes (10) before it starts, as planner.fired kind
+  event with account and start; once per event and start, whatever the resyncs. All-day events do
+  not ring. done, snooze and dismiss work on these rings.
+- planner.agenda entries carry source (planner or the account name), start, end, all_day, where,
+  url; `busy: true` returns merged busy intervals; `next: n` the next n entries.
+- planner.calendar.create: without account the planner's own event; with account it calls
+  google.calendar.create, where attendees are held at the Gate. Agents may only ask for an invite.
+- Migration 2 adds next_fire, rung_start and snooze_until to planner_calendar and where_ to
+  planner_items. Tests in core/planner/calendar.test.js.
+
 #### The planner in the Deck: a minimal panel at /planner
 
 - deck/views/planner.js: Agenda (planner.agenda, today), Alarms (the next five alarms and timers,

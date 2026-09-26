@@ -7,6 +7,7 @@
 
 import { MIGRATIONS, KINDS, STATES, store, shape, shapeFiring, newId } from "./store.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
+import { calendarCache, shapeCal } from "./calendar.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerAllowed, callerKind } from "../modules/index.js";
 
@@ -81,7 +82,7 @@ export default {
       const was = linked;
       linked = Boolean(r && r.data && r.data.linked);
       if (linked && !was) scheduler.stop();
-      if (!linked && was) scheduler.start();
+      if (!linked && was) { scheduler.start(); cal.sync().catch(() => {}); }
       return linked;
     };
     const offs = [];
@@ -293,9 +294,38 @@ export default {
       emit("planner.acked", { firing: f.id, item: id, action: "dismiss", by: "planner" }, st.item(id));
     };
     const already = f => ({ already: true, firing: f.id, state: f.state, action: f.action ?? null });
+
+    /** A ring for a cached calendar event: its firing (by firing id, or the row's live one) and row, or null. */
+    const calTarget = i => {
+      if (i.firing) {
+        const f = st.firing(i.firing);
+        if (!f || st.item(f.item)) return null;
+        const row = cal.row(f.item);
+        return row ? { f, row } : null;
+      }
+      const row = i.item ? cal.row(i.item) : null;
+      return row ? { f: st.ringing(row.id) || null, row } : null;
+    };
+    /** done, snooze or dismiss on a calendar event's ring: the copy is read-only, so only the ring changes. */
+    const calAck = (c, action, caller, minutes) => {
+      agentKind("event", caller, "finish");
+      if (c.f && c.f.state !== "ringing") return already(c.f);
+      let until = null;
+      if (action === "snooze") {
+        const m = minutes === undefined ? 9 : Number(minutes);
+        if (!Number.isFinite(m) || m < 1 || m > 7 * 1440) throw fail("minutes is 1 to 10080");
+        until = now() + Math.round(m * 60_000);
+        cal.snooze(c.row.id, until);
+      } else cal.clearSnooze(c.row.id);
+      if (c.f) ack(c.f, action, caller, until);
+      else if (action === "dismiss") throw fail("nothing is ringing for that event", "not_found");
+      return { item: shapeCal(cal.row(c.row.id)), firing: c.f ? shapeFiring(st.firing(c.f.id)) : null, ...(until ? { until } : {}) };
+    };
     const oneOffEnds = item => !item.repeat;
 
     const done = (i, caller) => {
+      const c = calTarget(i);
+      if (c) return calAck(c, "done", caller);
       const { f, item } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
       agentKind(item.kind, caller, "finish");
@@ -317,6 +347,8 @@ export default {
     };
 
     const snooze = (i, caller) => {
+      const c = calTarget(i);
+      if (c) return calAck(c, "snooze", caller, i.minutes);
       const { f, item } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
       if (i.firing && f && f.state !== "ringing") return already(f);
@@ -330,6 +362,8 @@ export default {
     };
 
     const dismiss = (i, caller) => {
+      const c = calTarget(i);
+      if (c) return calAck(c, "dismiss", caller);
       const { f, item } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
       if (!f) throw fail("nothing is ringing for that item", "not_found");
@@ -371,6 +405,12 @@ export default {
       const s = settings();
       const tz = s.timezone;
       const t = now();
+      if (i.next !== undefined) {
+        const n = Number(i.next);
+        if (!Number.isInteger(n) || n < 1 || n > 100) throw fail("next is 1 to 100");
+        const ahead = agenda({ from: t, to: t + 60 * 86_400_000 });
+        return { tz, from: t, entries: ahead.entries.filter(e => e.at >= t).slice(0, n) };
+      }
       const edge = (v, end) => {
         if (v === undefined || v === null || v === "") return null;
         if (typeof v === "number") return v;
@@ -390,7 +430,8 @@ export default {
       const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE deleted_at IS NULL AND kind IN ('alarm','timer','reminder','event')
         AND (repeat IS NOT NULL OR (at >= ? AND at < ?) OR (snooze_until >= ? AND snooze_until < ?))`).all(from, to, from, to));
       for (const r of rows) {
-        const base = { source: "planner", item: r.id, kind: r.kind, title: r.title, state: r.state, repeat: Boolean(r.repeat) };
+        const base = { source: "planner", item: r.id, kind: r.kind, title: r.title, state: r.state, repeat: Boolean(r.repeat), all_day: false,
+          where: r.where_ ?? null, url: null };
         const end = r.kind === "event" && r.duration_ms ? ms => ms + r.duration_ms : () => null;
         if (r.repeat && r.wall && r.state === "open") {
           const rule = JSON.parse(r.repeat);
@@ -398,18 +439,37 @@ export default {
           for (let k = 0; k < 100; k++) {
             const n = nextOccurrence({ wall: r.wall, tz: zoneOf(r, s), after: a, repeat: rule });
             if (n == null || n >= to) break;
-            entries.push({ ...base, at: n, end: end(n) });
+            entries.push({ ...base, at: n, start: n, end: end(n) });
             a = n;
           }
         } else if (!r.repeat) {
-          if (r.at != null && r.at >= from && r.at < to) entries.push({ ...base, at: r.at, end: end(r.at) });
-          if (r.snooze_until != null && r.state === "open") entries.push({ ...base, at: r.snooze_until, end: null, snoozed: true });
+          if (r.at != null && r.at >= from && r.at < to) entries.push({ ...base, at: r.at, start: r.at, end: end(r.at) });
+          if (r.snooze_until != null && r.state === "open") entries.push({ ...base, at: r.snooze_until, start: r.snooze_until, end: null, snoozed: true });
         }
       }
-      const cal = /** @type {any[]} */ (db.prepare("SELECT * FROM planner_calendar WHERE start < ? AND COALESCE(end, start) >= ? ORDER BY start").all(to, from));
-      for (const c of cal) entries.push({ source: "calendar", account: c.account, event: c.event_id, kind: "event", title: c.title, at: c.start, end: c.end ?? null,
-        all_day: Boolean(c.all_day), where: c.where_ ?? null, url: c.url ?? null });
-      entries.sort((a, b) => a.at - b.at);
+      const copies = /** @type {any[]} */ (db.prepare("SELECT * FROM planner_calendar WHERE start < ? AND COALESCE(end, start) >= ? ORDER BY start").all(to, from));
+      for (const c of copies) {
+        const e = shapeCal(c);
+        entries.push({ source: e.source, account: e.account, event: e.event, item: e.id, kind: "event", title: e.title, at: e.at, start: e.start, end: e.end,
+          all_day: e.all_day, where: e.where, url: e.url });
+      }
+      // By start; on the same instant, all-day first, then the planner's own, then by title.
+      entries.sort((a, b) => a.at - b.at || Number(b.all_day) - Number(a.all_day) || Number(b.source === "planner") - Number(a.source === "planner")
+        || String(a.title).localeCompare(String(b.title)));
+
+      if (i.busy) {
+        // Busy time: timed events (the planner's with a length, and every calendar's), clipped to
+        // the range and merged. Instants are UTC, so events made in different zones merge as they overlap.
+        const spans = entries.filter(e => e.kind === "event" && !e.all_day && e.end != null && e.end > e.at && e.state !== "cancelled")
+          .map(e => ({ start: Math.max(e.at, from), end: Math.min(e.end, to) })).filter(x => x.end > x.start).sort((a, b) => a.start - b.start);
+        const busy = [];
+        for (const x of spans) {
+          const last = busy.at(-1);
+          if (last && x.start <= last.end) last.end = Math.max(last.end, x.end);
+          else busy.push({ ...x });
+        }
+        return { tz, from, to, busy };
+      }
 
       // Todos due by the end of the range, overdue ones included: what needs doing is still due.
       const toDate = dateString(localDate(to - 1, tz));
@@ -445,7 +505,57 @@ export default {
         }
         scheduler.arm();
       }
+      if (after.event_lead !== cur.event_lead) cal.relead();
       return after;
+    };
+
+    // ---- Calendar -----------------------------------------------------------------------------
+
+    const cal = calendarCache({ ctx, db, st, scheduler, settings, now, emit, cancelRinging, active: () => role === "box" || !linked });
+
+    /** An agent may only ask for an invite on a connected calendar, which the google module holds at the Gate. */
+    const createCheck = (i, caller) => {
+      if (isPerson(caller)) return;
+      const to = Array.isArray(i.attendees) ? i.attendees.filter(Boolean) : i.attendees ? [i.attendees] : [];
+      if (!i.account || !to.length) throw fail("an agent may only ask for an invite on a connected calendar (account and attendees), which waits at the Gate", "denied");
+    };
+
+    /** A time for Google: a date stays a date; a local time is read in the planner's zone. */
+    const googleTime = (v, tz) => {
+      if (v === undefined || v === null || v === "") return undefined;
+      if (typeof v === "number") return new Date(v).toISOString();
+      const str = String(v).trim();
+      if (parseDate(str)) return str;
+      const m = LOCAL_ISO.exec(str);
+      if (m && !ZONED.test(str)) return new Date(toUTC(/** @type {any} */ (parseDate(m[1])), /** @type {any} */ (parseWall(m[2])), tz)).toISOString();
+      return str;
+    };
+
+    const createEvent = async (i, caller) => {
+      createCheck(i, caller);
+      const s = settings();
+      if (i.tz !== undefined && i.tz !== null && !validZone(i.tz)) throw fail(`${i.tz} is not a time zone`);
+      const tz = String(i.tz || s.timezone);
+      if (!i.account) {
+        const ms = v => (typeof v === "number" ? v : Date.parse(String(googleTime(v, tz))));
+        const startAt = ms(i.start);
+        let endAt = null;
+        if (i.end !== undefined && i.end !== null && i.end !== "") {
+          endAt = ms(i.end);
+          if (!Number.isFinite(endAt) || !(endAt > startAt)) throw fail("end must be a time after start");
+        }
+        const item = add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread }, caller);
+        st.patch(item.id, { duration_ms: endAt != null ? endAt - item.at : 3_600_000, where_: clip(i.where, 500) });
+        return shape(st.item(item.id));
+      }
+      const input = { title: String(i.title ?? ""), start: googleTime(i.start, tz), account: String(i.account), time_zone: tz,
+        ...(i.end !== undefined ? { end: googleTime(i.end, tz) } : {}), ...(i.where ? { where: String(i.where) } : {}),
+        ...(i.attendees !== undefined ? { attendees: i.attendees } : {}), ...(i.why ? { why: String(i.why) } : {}) };
+      const r = await ctx.call("google.calendar.create", input);
+      if (r.error) throw fail(r.error.message, r.error.code || "failed");
+      // Written at once (no invite): keep it in the copy so the agenda and its reminder have it now.
+      if (r.data && r.data.event) cal.upsert(r.data.event, String(i.account));
+      return r.data;
     };
 
     // ---- Tools --------------------------------------------------------------------------------
@@ -497,7 +607,11 @@ export default {
       async i => {
         const f = i.firing ? st.firing(i.firing) : null;
         const item = st.item(f ? f.item : i.item);
-        if (!item) throw fail("no such item", "not_found");
+        if (!item) {
+          const row = cal.row(f ? f.item : i.item);
+          if (row) return { item: shapeCal(row), firings: st.firingsOf(row.id).map(shapeFiring), ...(f ? { firing: shapeFiring(f) } : {}) };
+          throw fail("no such item", "not_found");
+        }
         return { item: shape(item), firings: st.firingsOf(item.id).map(shapeFiring), ...(f ? { firing: shapeFiring(f) } : {}) };
       }, { agents: true });
 
@@ -517,8 +631,16 @@ export default {
     tool("planner.delete", "Delete an item. It can be restored (restore: true) for 30 days.",
       { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async i => remove(i));
 
-    tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the calendar's events, and the todos due.",
-      { type: "object", properties: { from: when, to: when } }, async i => agenda(i), { agents: true });
+    tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
+      { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => agenda(i), { agents: true });
+
+    tool("planner.calendar.sync", "Read the connected Google calendars (a day back to 14 days ahead) into the planner's copy now. It also runs every 15 minutes while an account is connected.",
+      { type: "object", properties: {} }, async () => cal.sync(), { agents: true });
+
+    tool("planner.calendar.create", "Make an event. Without account it is the planner's own event. With account it is written to that Google calendar through google.calendar.create; attendees mean invites, which wait at the Gate for the user (returns { held, message }). Agents may only ask for an invite (account and attendees).",
+      { type: "object", required: ["title", "start"], properties: { title: str, start: when, end: when, where: str, attendees: { anyOf: [str, { type: "array", items: str }] },
+        account: str, tz: str, why: str, project: str, thread: str } },
+      async (i, caller) => createEvent(i, caller), { agents: true, check: async (i, caller) => createCheck(i, caller) });
 
     tool("planner.parse", "Read words like \"alarm 7am\", \"timer 10 min\" or \"remind me to call the printer at 6\" into a proposed item, or null.",
       { type: "object", required: ["text"], properties: { text: str } }, async i => parseText(i.text), { agents: true });
@@ -532,9 +654,11 @@ export default {
       try { await checkLink(); } catch { linked = false; }
     }
     if (!linked) scheduler.start();
+    offs.push(...cal.watch());
 
     return {
       scheduler,
+      calendar: cal,
       async stop() { scheduler.stop(); for (const off of offs) { try { off(); } catch {} } },
     };
   },

@@ -47,7 +47,9 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         log: m => logs.push(m),
         events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn) },
         tool: (name, def) => w.tools.set(name, def),
-        call: async tool => tool === "link.status" ? { data: { linked: w.linked } } : { error: { code: "no_such_tool", message: "no" } },
+        // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
+        call: async tool => tool === "link.status" ? { data: { linked: w.linked } } : tool === "google.accounts" ? { data: [] }
+          : { error: { code: "no_such_tool", message: "no" } },
         remote: async (tool, input) => w.remote ? w.remote(tool, input) : { error: { code: "no_link", message: "no link" } },
       };
       w.handle = await planner.start(ctx);

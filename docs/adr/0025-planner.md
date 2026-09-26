@@ -79,8 +79,21 @@ Events (all carry `item`, the item id; titles are the user's own words and stay 
 | `planner.added` | `{ item, kind, title, at? }` |
 | `planner.changed` | `{ item, kind, fields }` |
 | `planner.removed` | `{ item, kind }` |
-| `planner.fired` | `{ firing, item, kind, title, due, ring, missed, actions: ["done","snooze"] }` |
+| `planner.fired` | `{ firing, item, kind, title, due, ring, missed, actions: ["done","snooze"] }`; a connected calendar's event also carries `account` and `start`, and its `item` is the cache row id (`c_...`) |
 | `planner.acked` | `{ firing, item, action: "done"\|"snooze"\|"dismiss", by, until? }` |
+
+Calendar tools and the agenda:
+
+| Tool | Input | Output |
+|---|---|---|
+| `planner.calendar.sync` | `{}` | `{ synced_at, accounts: [name], events, added, changed, removed, errors?: [{ account, error }] }` |
+| `planner.calendar.create` | `{ title, start, end?, where?, attendees?, account?, tz?, why?, project?, thread? }` | no account: the planner's own event (an item of kind `event`); with account: what `google.calendar.create` returns, `{ event }` or `{ held, message }` |
+| `planner.agenda` | `{ from?, to?, busy?, next? }` | `{ tz, from, to, entries, todos }`; `busy: true` gives `{ tz, from, to, busy: [{ start, end }] }`; `next: n` gives `{ tz, from, entries }` (the next n from now) |
+
+An agenda entry: `{ source: "planner" | <account name>, item, kind, title, at, start, end, all_day,
+where, url, ... }`; a calendar entry also has `account` and `event` (Google's id). People may use
+`planner.calendar.create` in full; an agent may only ask for an invite (an account and attendees),
+which the google module holds at the Gate.
 
 Push payload (kind `planner`): `{ kind: "planner", title, path: "/planner/<firing>", tag:
 "planner-<firing>", at, actions: ["done", "snooze"] }`. A notification action posts
