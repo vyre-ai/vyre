@@ -70,14 +70,44 @@ turns) running past perf-check's 250 ms settle, not idle work. perf-check now wa
 
 ## Doing
 
-Nothing. work/tailnet is ready for the lead to merge (verified under "Done"). The surfaces
-sub-worktree's WIP is merged; `../vyre-tailnet-surfaces` and its branch can be removed.
+SAVED 27 Sep 2026 (the user logged out). Nothing in progress; the test box is clean.
 
-Targeted run for the merged branch (one command, from the worktree root):
-`nice -n 15 node --test core/presence/*.test.js core/harness/*.test.js core/files/*.test.js core/hooks/*.test.js core/watchers/*.test.js core/computers/*.test.js core/computers/driver/*.test.js core/computers/image/computerd/*.test.js core/dockerproxy/*.test.js core/vault/grants.test.js core/vault/presence.test.js core/vault/share.test.js core/vault/relay.test.js core/vault/module.test.js core/vault/surfaces.test.js core/names/*.test.js core/link/*.test.js core/glass/*.test.js core/config/*.test.js core/modules/*.test.js core/cli/*.test.js core/cli/commands/box.test.js core/memory/access.test.js core/gate/*.test.js test/link.test.js test/guests.test.js test/daemon.test.js test/presence-bypass.test.js test/onboard.test.js test/hygiene.test.js deck/js/health.test.js deck/glass/*.test.js local/capsule/lib/*.test.js`.
+Exact next step: the WebSocket upgrade handler, owner-only (lead, 27 Sep). Chat is blocked on it:
+/v1/streams/* (terminal, Glass) works only on the unix socket because neither
+core/names/service.js nor core/onboard/loopback.js handles an upgrade.
+1. core/daemon: an upgrade hook next to ctx.handler, so a module's listener can hand an upgrade
+   (req, socket, head, caller) to registry.upgrades.
+2. core/names/service.js: an `upgrade` handler that runs whois, refuses guests and agent nodes
+   (the same rule as callerAllowed / ownerOverTailnet), and dispatches to registry.upgrades as
+   the owner's caller.
+3. core/onboard/loopback.js: accept an upgrade only with Host 127.0.0.1:<port>, as its HTTP
+   handler does.
+4. Tests: owner allowed, guest refused, agent node refused, wrong Host refused on loopback.
+   Run on the test box only. Then send the sha to chat and the lead.
+
+Shas waiting to merge:
+- work/tailnet bd833dc: egress fails closed (62ebce3, 7b8242f) and link.health owner-only. The
+  lead asked the integrator to merge it.
+- work/federation 2379a0c (../vyre-federation): sending to Mac sessions from the box, and
+  ctx.call `as` limited to core modules. Given to the integrator; chat merges it once frozen.
+
 ## Next
 
-After the merge. The lead's decisions of 27 Sep 2026, to build in this order:
+Order (lead, 27 Sep 2026): the WebSocket upgrade handler (above), then the Mac-session send
+path's loose ends (below), then Taildrive.
+
+- Mac-session send, loose ends (work/federation):
+  - Fix the phone /find page: no machine chip on Mac rows (lead's item 3).
+  - Chat asks that the Mac's rows in threads.list and projects.catalog carry `source: "mac"`,
+    as main does. Check the labels survive on the paths chat reads, then send chat the frozen sha.
+  - ADR 0021: record v2 of threads.answer on a Mac session. The box verifies presence, then
+    sends a signed assertion from the paired box, which the Mac accepts for threads.answer
+    only. v1 ships the Deck line "Answer it on <mac>" (lead's decision).
+  - capsule-now has not answered the queue-flow review yet.
+  - projects.list does not count a picked Mac session in a project's thread count (Chat shows
+    "1 session" where the board has 2).
+
+The lead's earlier decisions of 27 Sep 2026, still to build in this order:
 
 1. Done: **link.health on the box: modules and the owner only.** `core/link/box.js` refuses
    guests, agent nodes, agents at the box, MCP, anonymous callers and any tailnet login that is not
@@ -156,6 +186,12 @@ only read-only checks on the test box.
 
 ## Needs from others
 
+- chat: builds the Mac-session composer on work/chat against work/federation 2379a0c. It is
+  waiting on the WebSocket upgrade handler for the terminal and Glass.
+- integrator: merge work/tailnet bd833dc and work/federation 2379a0c.
+- e2e: re-run the egress checks on headscale (the list under "Verify on first real run").
+- capsule-now: review of the queue flow for sends from the box.
+
 - vault: see the tailnet entry in docs/work/vault.md "Needs from others".
 - computers: review the Pacer (`glass.js`), the pool's egress remake and agent-node join, the
   `stable_id`/`node`/`egress` columns, and `entrypoint.sh`'s PAC check. Part 9 needs the image
@@ -171,6 +207,15 @@ only read-only checks on the test box.
   challenge route refuses what it cannot start` (test/daemon.test.js:320, 403 not 400), and
   `bypass: a Bash tool call that tries it is denied...` (test/presence-bypass.test.js:129, Node
   22's SQLite ExperimentalWarning lands in the JSON it parses).
+
+## Standing rules (user, 27 Sep 2026)
+
+- Vyre does not nag: the user runs on bypass permissions. Nothing the person, their own sessions
+  or their assistant do to their own things prompts or asks for Touch ID. Agents add notes,
+  reminders and todos freely.
+- Touch ID only for pairing a new device, vault secrets, and sending, posting or paying to the
+  outside world. One Touch ID covers about 30 minutes per device.
+- Agents stay silently refused on person-only tools.
 
 ## Decisions needed from the user
 
