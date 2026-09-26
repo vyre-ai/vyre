@@ -42,6 +42,10 @@ async function stopDaemon(dir) {
     try { process.kill(pid, 0); } catch { return; }
     await new Promise(r => setTimeout(r, 50));
   }
+  // SIGTERM alone did not make it exit within 2.5s (a held-open SSE stream or a stuck signal
+  // handler can do this). Force it, but say so loudly: a silent SIGKILL here would paper over a
+  // real hang instead of surfacing it, the same class of bug that used to hang this whole suite.
+  console.error(`test helpers: vyred pid ${pid} did not exit on SIGTERM within 2.5s, sending SIGKILL`);
   try { process.kill(pid, "SIGKILL"); } catch {}
 }
 
