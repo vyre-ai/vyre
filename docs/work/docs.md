@@ -67,7 +67,6 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 ## Needs from others
 
 - Every team: its pages, on the template, with each feature.
-
 - lead: sign-off on the site; a Cloudflare token for Pages; the public security contact
   address (security/index.md shows security@example.com as a placeholder).
 - polish-surfaces / polish-cli: Deck Settings shows `vyre up --step ...`, which the CLI lacks.
