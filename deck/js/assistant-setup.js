@@ -44,6 +44,9 @@ export function assistantCard({ onCreated } = {}) {
   const status = h("p", { class: "asst-status small", id: id + "-status", role: "status", "aria-live": "polite" });
   const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id, required: true, autocomplete: "off", spellcheck: "false",
     autocapitalize: "none", placeholder: "juno", maxlength: "40", "aria-describedby": id + "-status" }));
+  // The same offer as a new agent's form (views/agents.js): a computer from the pool, which the
+  // assistant can browse and use, and the user can watch and take over in Glass.
+  const computer = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox" }));
   const create = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary asst-go" }, "Create"));
 
   const submit = async (/** @type {Event} */ e) => {
@@ -54,16 +57,18 @@ export function assistantCard({ onCreated } = {}) {
     if (display.length > 40 || /[\u0000-\u001f]/.test(display)) { put(status, "The name is one line of up to 40 characters."); nameIn.focus(); return; }
     create.disabled = true;
     nameIn.disabled = true;
+    computer.disabled = true;
     put(status, "Creating.");
     // Who the person is and how Claude is signed in, as onboard.finish reads them.
     const st = await attempt("onboard.status");
     const person = st.data?.person || null;
     const via = st.data?.detail?.claude?.auth || null;
-    const input = { name: slug(display), kind: "assistant", projects: "*", auth: authFor(via),
+    const input = { name: slug(display), kind: "assistant", projects: "*", auth: authFor(via), computer: computer.checked,
       instructions: `Your name is ${display}.${person ? ` You work for ${person}.` : ""} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` };
     const r = await attempt("agents.create", input);
     create.disabled = false;
     nameIn.disabled = false;
+    computer.disabled = false;
     if (r.error) { put(status, problem(r.error)); nameIn.focus(); return; }
     put(status);
     const a = r.data && typeof r.data === "object" ? r.data : input;
@@ -77,5 +82,7 @@ export function assistantCard({ onCreated } = {}) {
     h("form", { class: "asst-form", onsubmit: submit, novalidate: true },
       h("label", { class: "asst-label small", for: id }, "Its name"),
       h("div", { class: "asst-row" }, nameIn, create),
+      h("label", { class: "asst-check small" }, computer, h("span", null, "Give it its own computer, from the pool. ",
+        h("span", { class: "faint" }, "It can browse and use apps there, and you can watch or take over in Glass."))),
       status));
 }

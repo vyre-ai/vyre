@@ -88,3 +88,5 @@
   .asst-card .input { font-size: 16px; height: 44px; }
   .asst-go { height: 44px; }
 }
+.asst-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; color: var(--text); cursor: pointer; }
+.asst-check input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--primary-bg); }
