@@ -27,14 +27,16 @@ async function main() {
   if (!(piece in EVENT)) return;
   const h = await stdin();
   const base = { cwd: h.cwd, session: h.session_id };
+  // An agent's thread carries its projects (set by the switchboard); the brief and Enrich stay inside them.
+  const scope = process.env.VYRE_PROJECTS ? { projects: process.env.VYRE_PROJECTS } : {};
   const opts = { caller: "harness", timeout: 3000 };
 
   if (piece === "brief") {
     const project = process.env.VYRE_PROJECT || undefined;
-    const r = await call("harness.brief", { ...base, source: h.source, ...(project ? { project } : {}) }, opts);
+    const r = await call("harness.brief", { ...base, ...scope, source: h.source, ...(project ? { project } : {}) }, opts);
     if (r.data && r.data.text) answer(EVENT.brief, { additionalContext: r.data.text });
   } else if (piece === "enrich") {
-    const r = await call("harness.enrich", { ...base, prompt: String(h.prompt || "") }, opts);
+    const r = await call("harness.enrich", { ...base, ...scope, prompt: String(h.prompt || "") }, opts);
     if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });
   } else if (piece === "rules") {
     const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} };

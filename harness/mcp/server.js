@@ -18,11 +18,29 @@ let names = new Map();
 
 const mcpName = t => t.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
 
+// Inside an agent's thread the switchboard sets VYRE_AGENT, VYRE_AGENT_KIND and the agent's
+// scope. The caller names the agent, so vyred can refuse what it may not do; an agent that is
+// not the assistant is not even offered the tools that drive other sessions; and recall.search
+// is held inside the folders of the agent's projects.
+const AGENT = process.env.VYRE_AGENT || "";
+const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
+const DRIVES = /^(threads|agents)\./;
+const offered = t => !t.name.startsWith("harness.") && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
+/** @param {string} tool @param {any} input */
+function scoped(tool, input) {
+  const projects = process.env.VYRE_PROJECTS;
+  if (tool !== "recall.search" || !projects || projects === "*") return input;
+  let cwds = [];
+  try { cwds = JSON.parse(process.env.VYRE_SCOPE_CWDS || "[]"); } catch {}
+  // An agent with no project folders searches nothing rather than everything.
+  return { ...input, project_cwds: cwds.length ? cwds : ["/nonexistent/vyre-agent-scope"] };
+}
+
 async function tools() {
-  let r = await request("GET", "/v1/tools", undefined, { caller: "mcp" });
-  if (r.error && r.error.code === "unreachable") { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: "mcp" }); }
+  let r = await request("GET", "/v1/tools", undefined, { caller: CALLER });
+  if (r.error && r.error.code === "unreachable") { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: CALLER }); }
   if (r.error) return [];
-  const list = r.data.filter(t => !t.name.startsWith("harness."));
+  const list = r.data.filter(offered);
   names = new Map(list.map(t => [mcpName(t.name), t.name]));
   return list.map(t => ({ name: mcpName(t.name), description: t.description || t.name, inputSchema: { type: "object", ...(t.input || {}) } }));
 }
@@ -39,7 +57,8 @@ async function handle(msg) {
     case "tools/call": {
       if (!names.size) await tools();
       const tool = names.get(params?.name) || String(params?.name || "");
-      const r = await call(tool, params?.arguments || {}, { caller: "mcp", timeout: 120_000 });
+      // agents.ask waits for a whole turn of another session, which can take minutes.
+      const r = await call(tool, scoped(tool, params?.arguments || {}), { caller: CALLER, timeout: tool === "agents.ask" ? 600_000 : 120_000 });
       if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
       return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
     }

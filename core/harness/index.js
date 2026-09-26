@@ -34,28 +34,39 @@ export default {
       return r && "data" in r ? r.data : null;
     };
 
+    /**
+     * An agent's scope, as the hook passes it: "*" or a comma list of project slugs. Absent means
+     * a person's own session, which sees whatever its folder's project is.
+     * @param {string|undefined} projects @param {string|null} slug
+     */
+    const inScope = (projects, slug) => !projects || projects === "*" || (slug != null && projects.split(",").includes(slug));
+
     /** The project a folder is in, if Projects is running and knows one. */
     const projectOf = async cwd => (cwd ? ask("projects.of", { cwd }) : null);
 
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
-      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" } } },
-      run: async ({ cwd, session, source, project }) => {
+      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" } } },
+      run: async ({ cwd, session, source, project, projects }) => {
         if (session) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
         // Projects decides which project this is: from the folder first, then from the session's
         // single pick. A session picked into several projects gets no brief rather than a guess.
         const brief = await ask("projects.context", project ? { project, session } : { cwd, session });
         const text = typeof brief === "string" ? brief : brief && typeof brief.text === "string" ? brief.text : "";
-        return { text, project: brief && brief.project ? String(brief.project) : null };
+        const slug = brief && brief.project ? String(brief.project) : null;
+        if (!inScope(projects, slug)) return { text: "", project: null };
+        return { text, project: slug };
       },
     });
 
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
-      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" } } },
-      run: async ({ prompt, cwd }) => {
+      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, projects: { type: "string" } } },
+      run: async ({ prompt, cwd, projects }) => {
         if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: "" };
         const project = await projectOf(cwd);
+        // An agent outside its projects gets no memory at all, not memory from elsewhere.
+        if (!inScope(projects, project ? project.slug : null)) return { text: "" };
         const folders = project && (Array.isArray(project.folders) ? project.folders : project.home ? [project.home] : null);
         const project_cwds = folders || (cwd ? [cwd] : undefined);
         const facts = await ask("memory.relevant", { text: prompt, project_cwds, limit: 5 });

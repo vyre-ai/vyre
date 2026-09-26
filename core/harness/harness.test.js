@@ -84,6 +84,11 @@ test("harness: brief and enrich use projects and memory when they are running", 
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" })).data.text, /Dana Reyes is at Harlow Legal/);
   assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" })).data.text, "", "slash commands get nothing");
   assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" })).data.text, "", "outside a project, no brief");
+  // An agent's scope, as the switchboard hands it to the hooks.
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "Project harlow-legal. People: Dana Reyes.");
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "an agent outside its projects gets no brief");
+  assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "nor their memory");
+  assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" })).data.text, /Dana Reyes/, "the assistant sees every project");
 });
 
 test("harness: learn records changed files; touched lists them; the vault rule emits tool.held", async t => {
