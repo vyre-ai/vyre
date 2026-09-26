@@ -51,6 +51,15 @@ final class FixedRows: ResultProvider, ImmediateResults, @unchecked Sendable {
 }
 
 let snapshotSuite = Suite("snapshots") { t in
+    t.test("the link line says how the box is reached, as the Deck does") {
+        let now = 1_800_000_000_000.0
+        t.eq(LinkLine.from(["path": "direct", "latencyMs": 12, "lastHandshake": now - 30_000], now: now),
+             LinkLine(path: "direct 12 ms", handshake: "last handshake just now", dot: .direct))
+        t.eq(LinkLine.from(["path": "relay", "relay": "fra", "latencyMs": 80], now: now)?.path, "relayed via fra 80 ms")
+        t.eq(LinkLine.from(["path": "unknown", "why": "the node is offline"], now: now)?.path, "offline")
+        t.eq(LinkLine.from([:], now: now), nil)
+    }
+
     t.test("each state draws") {
         let dir = ProcessInfo.processInfo.environment["VYRE_CAPSULE_SNAP"]
         if let dir { try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true) }
@@ -87,8 +96,18 @@ let snapshotSuite = Suite("snapshots") { t in
                                      threads: [VyreThread(id: "t1", label: "Northwind menu rebuild", cwd: "/home/alex/Work/northwind", last: Date().timeIntervalSince1970 * 1000 - 120_000)])
             m5.text = "@"
             out.append(snapshot(m5, "5-mention", dir: dir))
+            let h = Health(vyred: VyredClient(socket: vyScratch("snap") + "/none.sock"))
+            h.set(up: true)
+            let pop = NSHostingView(rootView: MenuBarPopover(health: h, hotkeys: "⌥Space", canTurnOnControl: true, open: {}, turnOnControl: {}, quit: {}))
+            pop.frame = NSRect(origin: .zero, size: pop.fittingSize)
+            pop.layoutSubtreeIfNeeded()
+            if let rep = pop.bitmapImageRepForCachingDisplay(in: pop.bounds) {
+                pop.cacheDisplay(in: pop.bounds, to: rep)
+                if let dir, let png = rep.representation(using: .png, properties: [:]) { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("6-popover.png")) }
+                out.append(rep.pixelsWide > 0)
+            }
             return out
         }
-        t.eq(ok, [true, true, true, true, true])
+        t.eq(ok, [true, true, true, true, true, true])
     }
 }
