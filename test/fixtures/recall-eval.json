@@ -1,0 +1,20 @@
+{
+  "about": "Questions about the fictional corpus in corpus.js, each with the turns that answer it. Most are worded the way someone remembers a conversation, not the way it was written, so keyword search alone misses some on purpose.",
+  "queries": [
+    { "q": "intake form", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000001", "seq": 0 }, { "session": "11111111-aaaa-4000-8000-000000000001", "seq": 1 }, { "session": "11111111-aaaa-4000-8000-000000000001", "seq": 3 }] },
+    { "q": "northwind-invoices watcher", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000003", "seq": 1 }] },
+    { "q": "7am summary", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000002", "seq": 1 }] },
+    { "q": "move the signup box to the top of the homepage", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000001", "seq": 1 }, { "session": "11111111-aaaa-4000-8000-000000000001", "seq": 3 }] },
+    { "q": "which page lists the kinds of law they practise", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000001", "seq": 2 }, { "session": "11111111-aaaa-4000-8000-000000000001", "seq": 3 }] },
+    { "q": "which repository holds the law firm's site", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000001", "seq": 1 }] },
+    { "q": "making it easier for blind visitors", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000001/agent-a5ub", "seq": 0 }, { "session": "11111111-aaaa-4000-8000-000000000001/agent-a5ub", "seq": 1 }] },
+    { "q": "the button you cannot see when tabbing through the page", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000001/agent-a5ub", "seq": 1 }] },
+    { "q": "how much money did the baker spend", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000006", "seq": 1 }] },
+    { "q": "a daily email about new clients", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000002", "seq": 0 }, { "session": "11111111-aaaa-4000-8000-000000000002", "seq": 1 }] },
+    { "q": "where do new enquiries end up", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000002", "seq": 1 }] },
+    { "q": "filing bills from the bakery automatically", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000003", "seq": 0 }, { "session": "11111111-aaaa-4000-8000-000000000003", "seq": 1 }] },
+    { "q": "end of week sum for the bakery", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000003", "seq": 3 }, { "session": "11111111-aaaa-4000-8000-000000000006", "seq": 1 }] },
+    { "q": "what still needs doing before the weekend", "answers": [{ "session": "11111111-aaaa-4000-8000-000000000004", "seq": 0 }, { "session": "11111111-aaaa-4000-8000-000000000004", "seq": 1 }] }
+  ],
+  "nonsense": ["zygomorphic flux capacitor", "asdf qwerty", "purple elephants dancing on the moon", "blorft wibble snark"]
+}

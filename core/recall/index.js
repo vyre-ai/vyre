@@ -22,6 +22,7 @@ import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
+import { evaluate } from "./eval.js";
 import { load as loadModel, cached } from "./embed.js";
 import { Dense } from "./dense.js";
 
@@ -186,6 +187,18 @@ export default {
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
           vectors: { on: vec.on, why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
+      },
+    });
+
+    ctx.tool("recall.eval", {
+      description: "Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.",
+      input: { type: "object", required: ["queries"], properties: {
+        queries: { type: "array", items: { type: "object", required: ["q", "answers"], properties: { q: { type: "string" }, answers: { type: "array" } } } },
+        nonsense: stringArray, k: { type: "integer" } } },
+      run: async input => {
+        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+        const e = any ? await embedder() : null;
+        return evaluate(db, input, { embedder: e, dense, k: input.k || 10 });
       },
     });
 
