@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Journey 1 no longer races box add for the tunnel
+
+- `vyre box add` takes the onboarding tunnel down as soon as the address step is done, so the
+  journey's last loopback calls (onboard.status, onboard.finish) failed now and then with
+  ECONNREFUSED. Once the address serves, the journey finishes from the box's own terminal
+  (`vyre call` through the host wrapper, `test/journey/rig.js` terminal), since the harness cannot
+  reach the address as the owner. The fake box tailscale now names this account as its operator,
+  so the journey also runs on Linux. Journeys 1 to 6 pass together, three runs in a row, on the test box.
+
 #### The Capsule is Spotlight's size
 
 - The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it
