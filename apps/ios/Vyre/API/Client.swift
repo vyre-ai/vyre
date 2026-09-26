@@ -153,6 +153,18 @@ final class VyreClient: Sendable {
         return try await send(req)
     }
 
+    /// Call without a proof; if the box answers `presence_required`, sign once with the device key
+    /// (Face ID shows `reason`) and send the byte-identical input again. Exactly one retry: a
+    /// second refusal is thrown as it came.
+    @discardableResult
+    func callProvingIfAsked(_ tool: String, _ input: JSON = [:], reason: String) async throws -> JSON {
+        do {
+            return try await call(tool, input)
+        } catch VyreError.presenceRequired {
+            return try await call(tool, input, proof: .device(reason: reason))
+        }
+    }
+
     private func presenceHeader(tool: String, input: JSON, proof: Proof) async throws -> String? {
         switch proof {
         case .none: return nil

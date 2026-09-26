@@ -11,7 +11,7 @@ enum Page: String, Hashable, CaseIterable {
 
 /// The sheets over the pages: Find (the Capsule, opened) and Settings (the avatar).
 enum Sheet: String, Identifiable {
-    case find, settings
+    case find, settings, newAgent
     var id: String { rawValue }
 }
 
@@ -79,6 +79,8 @@ final class AppModel {
     /// What the Settings and Find sheets have pushed inside themselves.
     var settingsPath: [Dest] = []
     var findPath: [Dest] = []
+    /// Bumped when an agent is made or changed, so the Agents page reads the list again.
+    var agentsVersion = 0
     /// A link that could not be followed: its item is gone.
     var gone: String?
     var route: Route?
@@ -199,6 +201,19 @@ final class AppModel {
         guard let client else { throw VyreError.offline("Not signed in.") }
         do {
             let out = try await client.call(tool, input, proof: proof)
+            online = true
+            return out
+        } catch let e as VyreError {
+            if case .offline = e { online = false }
+            throw e
+        }
+    }
+
+    /// `callProvingIfAsked` with the offline banner kept up to date.
+    func callProvingIfAsked(_ tool: String, _ input: JSON = [:], reason: String) async throws -> JSON {
+        guard let client else { throw VyreError.offline("Not signed in.") }
+        do {
+            let out = try await client.callProvingIfAsked(tool, input, reason: reason)
             online = true
             return out
         } catch let e as VyreError {

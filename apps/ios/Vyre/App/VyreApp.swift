@@ -82,6 +82,8 @@ struct MainShell: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                     .presentationBackground(Color.panel)
+            case .newAgent:
+                NewAgentSheet()
             case .settings:
                 NavigationStack(path: $app.settingsPath) {
                     SettingsView()
@@ -108,7 +110,6 @@ struct MainShell: View {
 /// holds "+" for a new agent. It stays 48 tall; at large text sizes the labels shrink, then scroll.
 struct ShellHeader: View {
     @Environment(AppModel.self) private var app
-    @State private var newAgentNote = false
 
     var body: some View {
         HStack(spacing: Space.m) {
@@ -132,16 +133,12 @@ struct ShellHeader: View {
                 }
             }
             if app.page == .agents {
-                Button { newAgentNote.toggle() } label: {
+                Button { app.sheet = .newAgent } label: {
                     Image(systemName: "plus").font(.system(size: 20, weight: .regular)).foregroundStyle(Color.text)
                         .frame(width: Space.target, height: Space.target)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("New agent")
-                .popover(isPresented: $newAgentNote) {
-                    Text("New agents are made on the Deck or the Mac for now.").vyre(.small).foregroundStyle(Color.text2)
-                        .padding(Space.gutter).presentationCompactAdaptation(.popover)
-                }
             } else {
                 Button { app.sheet = .settings } label: { Avatar(name: app.ownerName, host: app.address?.host ?? "v") }
                     .buttonStyle(.plain)

@@ -35,7 +35,7 @@ struct AgentsHome: View {
             .padding(.bottom, Space.xxl)
         }
         .vyreGround()
-        .task { await load() }
+        .task(id: app.agentsVersion) { await load() }
         .onAppear {
             guard token == nil else { return }
             let watched: Set<String> = ["thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered"]
