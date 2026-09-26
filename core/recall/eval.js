@@ -34,13 +34,13 @@ function score(/** @type {string[]} */ ranked, /** @type {Answer[]} */ answers, 
  * Run a labelled set.
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {{ queries: Case[], nonsense?: string[] }} set
- * @param {{ embedder?: import("./embed.js").Embedder | null, dense?: import("./dense.js").Dense | null, k?: number }} [opts]
+ * @param {{ embedder?: import("./embed.js").Embedder | null, dense?: import("./dense.js").Dense | null, k?: number, floor?: number, dense_weight?: number }} [opts]
  */
-export async function evaluate(db, set, { embedder = null, dense = null, k = 10 } = {}) {
+export async function evaluate(db, set, { embedder = null, dense = null, k = 10, ...knobs } = {}) {
   const queries = (set.queries || []).filter(c => c && c.q && Array.isArray(c.answers) && c.answers.length);
   const meaning = Boolean(embedder && dense && (await dense.size()) > 0);
   const n = meaning && dense ? await dense.size() : 0;
-  const floor = floorFor(n);
+  const floor = knobs.floor ?? floorFor(n);
   /** @type {Map<number, string>} rowid -> turn key, for the dense-only ranking */
   const byRid = new Map();
   if (meaning) for (const r of /** @type {any[]} */ (db.prepare("SELECT rowid AS rid, session, seq FROM recall_turns").all())) byRid.set(Number(r.rid), key(r));
@@ -66,7 +66,7 @@ export async function evaluate(db, set, { embedder = null, dense = null, k = 10 
       if (h.score < floor) belowFloor++;
     }
     answers += want.size;
-    const hy = (await search(db, { q: c.q, limit: k, per_session: 0 }, embedder, dense)).hits.map(key);
+    const hy = (await search(db, { q: c.q, limit: k, per_session: 0, ...knobs }, embedder, dense)).hits.map(key);
     const y = score(hy, c.answers, k);
     sum.hybrid.rr += y.rr; sum.hybrid.recall += y.recall;
   }
@@ -74,7 +74,7 @@ export async function evaluate(db, set, { embedder = null, dense = null, k = 10 
   const nonsense = { n: 0, withDense: 0, withHits: 0, top: /** @type {number|null} */ (null) };
   for (const q of set.nonsense || []) {
     nonsense.n++;
-    const hits = (await search(db, { q, limit: k }, meaning ? embedder : null, meaning ? dense : null)).hits;
+    const hits = (await search(db, { q, limit: k, ...knobs }, meaning ? embedder : null, meaning ? dense : null)).hits;
     if (hits.length) nonsense.withHits++;
     if (!meaning || !embedder || !dense) continue;
     const best = (await dense.search(await embedder.embed(q), { k: 1, floor: -1 }))[0];
