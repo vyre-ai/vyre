@@ -226,7 +226,13 @@ public final class CapsuleModel: ObservableObject {
     func publish() {
         let q = Query(text, front: front)
         var all = partial.values.flatMap { $0 }
-        for i in all.indices { all[i].score += frecency.boost(all[i].id, query: q.normalized) }
+        let canSend = vyred.has("files.send")
+        for i in all.indices {
+            all[i].score += frecency.boost(all[i].id, query: q.normalized)
+            if canSend, all[i].kind == "file", let url = all[i].fileURL, !all[i].actions.contains(where: { $0.id == "send-box" }) {
+                all[i].actions.append(sendToBox(url))
+            }
+        }
         all.sort { $0.score > $1.score }
         var out: [Group] = []
         if let top = all.first, top.score >= 0.6, top.section != .answer {
@@ -244,6 +250,18 @@ public final class CapsuleModel: ObservableObject {
         let keep = current?.id
         groups = out
         if let keep, let i = flat.firstIndex(where: { $0.id == keep }) { selected = i } else { selected = 0 }
+    }
+
+    /// Taildrop a file to the paired box (files.send). vyred's guard decides whether it may
+    /// leave (secrets and dotfiles are refused), and its words are shown as they are.
+    func sendToBox(_ url: URL) -> ResultAction {
+        ResultAction(id: "send-box", title: "Send to box", symbol: "paperplane", shortcut: KeyShortcut("s", command: true)) { [vyred] _, _ in
+            let r = await vyred.call("files.send", ["path": url.path], timeout: 120)
+            if let d = r.data as? [String: Any], let sent = VJ.nonEmpty(d["sent"]) {
+                return .said("Sent \(sent) to \(VJ.nonEmpty(d["to"]) ?? "your box"). It is in the box's inbox.")
+            }
+            return .failed("Could not send it: \(Bridge.explain(r) ?? "nothing came back").")
+        }
     }
 
     func commandItem(_ c: SystemCommand, score: Double) -> ResultItem {

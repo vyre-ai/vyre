@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Send a file to the box from the native Capsule
+
+- A file row has "Send to box" (⌘S, shown in the footer) when vyred has `files.send`: Taildrop
+  to the paired box's inbox. vyred's guard decides what may leave, and its refusal is shown in
+  its own words. ⌘S rather than Option-Return, which is sight's talk chord now.
+
 #### Touch ID in the panel, banners, and the menu-bar popover
 
 - Human-only calls from the native Capsule (ADR 0004, method `capsule`): the panel shows

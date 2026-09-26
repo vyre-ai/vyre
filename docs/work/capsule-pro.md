@@ -106,6 +106,7 @@ without editing Capsule files:
 - Done 2026-09-27: Touch ID in the panel (presence method capsule, cross-checked with
   core/presence in Node), banners for answers landing while hidden, menu-bar popover and health
   dot, headless footprint mode (16.1 MB footprint hidden). Swift tests all pass (200).
+- Done 2026-09-27: Taildrop send (⌘S on a file row).
 - Not yet run for real: enrolment (vyred's Touch ID dialog) and the in-panel Touch ID, which need
   the user at the Mac; the banner permission prompt.
 

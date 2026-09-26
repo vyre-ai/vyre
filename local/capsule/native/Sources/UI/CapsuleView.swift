@@ -215,6 +215,9 @@ struct CapsuleView: View {
                 if let alt = item.actions.dropFirst().first(where: { $0.shortcut == KeyShortcut("return", command: true) }) {
                     KeyHint(title: alt.title, keys: ["⌘", "⏎"])
                 }
+                if let send = item.actions.first(where: { $0.id == "send-box" }) {
+                    KeyHint(title: send.title, keys: ["⌘", "S"])
+                }
             }
         }
         .padding(.horizontal, 14)
