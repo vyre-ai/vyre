@@ -112,7 +112,7 @@ export function mountSession(container, opts) {
   let me = /** @type {string|null} */ (null);
   let replaying = false;
   const agentName = () => labelFor({ role: "assistant", agent: record.current?.agent }, names);
-  const headFor = ts => headFor(ts, isAssistant({ agent: record.current?.agent }, names));
+  const headFor = ts => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names));
 
   // ---- open -----------------------------------------------------------------------
 

@@ -169,7 +169,7 @@ test("permission card: no Always unless offered; an Edit shows its diff; the old
 test("tool cards: the checklist, a short diff and a run open on their own; a read waits for a tap; Bash shows 6 lines", async () => {
   const { toolCard, personAv, agentAv } = await import("./blocks.js");
   const byTool = t => fx.blocks.find(b => b.tool === t);
-  const open = el => !$(el, ".cv-tool-body").hidden;
+  const open = el => el.hasAttribute("data-open");
   assert.equal(open(toolCard(byTool("TodoWrite"))), true);
   assert.equal(open(toolCard(byTool("Edit"))), true);
   const long = { ...byTool("Edit"), input: { file_path: "a.js", old_string: "x\n".repeat(20), new_string: "y\n".repeat(20) } };

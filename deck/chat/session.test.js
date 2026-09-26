@@ -99,7 +99,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   else data = {};
   return { status: 200, statusText: "", json: async () => ({ data }) };
 });
-let owner = null;
+let owner = "alex"; // system.info is read once per page (lib/names.js), so one owner for the file
 const wait = (ms = 10) => new Promise(r => setTimeout(r, ms));
 
 const { mountSession } = await import("./session.js");
@@ -108,9 +108,8 @@ doc.body.append(container);
 const stop = mountSession(container, { thread: SID, project: null, onBack() {} });
 await wait();
 
-test("chips: a plain dot for you when the name is unknown, the Vyre mark for replies", () => {
-  assert.ok($(container, ".cv-user .cv-av-dot"));
-  assert.doesNotMatch(text($(container, ".cv-user .msg-av")), /YO/);
+test("chips: the owner's initial for you, the Vyre mark for replies", () => {
+  assert.equal(text($(container, ".cv-user .msg-av")), "A");
   assert.ok($(container, ".cv-head .cv-av-vyre svg"));
 });
 
@@ -193,7 +192,6 @@ test("a question: raised, filled from threads.asks, answered by keys, folded whe
 });
 
 test("a live thread the transcript cannot find yet: threads.get's events drawn, then swapped for blocks", async () => {
-  owner = "alex";
   const box = new El("div");
   doc.body.append(box);
   const stop2 = mountSession(box, { thread: LIVE, project: null, onBack() {} });
