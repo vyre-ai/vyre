@@ -209,4 +209,6 @@ export const MIGRATIONS = [
   -- Sentences with a personal cue that no rule understood: the model pass's candidates.
   CREATE TABLE memory_me_cues (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, text TEXT NOT NULL, PRIMARY KEY (session, seq, text)) WITHOUT ROWID;
   `,
+  // The model pass (personal/model.js): its runs, and the cues it has read, kept apart from the cues so a full re-read never pays for them twice.
+  `CREATE TABLE memory_me_model (id INTEGER PRIMARY KEY, thread TEXT, started INTEGER NOT NULL, finished INTEGER, status TEXT NOT NULL, cues TEXT NOT NULL, facts INTEGER NOT NULL DEFAULT 0, result TEXT); CREATE TABLE memory_me_cues_done (session TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, how TEXT NOT NULL, PRIMARY KEY (session, seq, text)) WITHOUT ROWID;`,
 ];
