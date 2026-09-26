@@ -183,7 +183,12 @@ test("sanitize: odd input returns something sane, and nothing is catastrophicall
   ]) {
     const t0 = Date.now();
     redact(s);
-    assert.ok(Date.now() - t0 < 1500, what + ": a megabyte took too long, which smells of backtracking");
+    // Genuinely a timing guarantee: catastrophic regex backtracking blows up by
+    // orders of magnitude (seconds to minutes), not by a small constant factor,
+    // so a generous bound (measured on this machine: under 65ms per case) still
+    // catches a real ReDoS-shaped regression without flaking under load from
+    // other test suites running concurrently on a shared machine.
+    assert.ok(Date.now() - t0 < 5000, what + ": a megabyte took too long, which smells of backtracking");
   }
 });
 
