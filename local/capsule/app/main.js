@@ -89,7 +89,7 @@ const OWN_BUNDLE = "run.vyre.capsule";
 let providersAt = 0;
 const launcher = new Launcher({ apps: new Apps(), helper, clips, providers,
   frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t),
-  // Files on the box come through this Mac's vyred (files.search, files.fetch), only while shown.
+  // Files on the box come through this Mac's vyred (files.search, files.fetch, and files.drive.local for a mounted share), only while shown.
   vyred: (tool, input) => vyred.call(tool, input), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
 /** Icons, bounded, in the Capsule's own app-data folder ("-2": the helper once drew them a quarter size). Asked for only while the page is showing results. */
 let icons = /** @type {Icons|null} */ (null);

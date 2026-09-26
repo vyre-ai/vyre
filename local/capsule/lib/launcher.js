@@ -296,10 +296,20 @@ export class Launcher {
     return { error: `the Capsule does not open ${r.kind} results` };
   }
 
-  /** Pull a box file to this Mac (vyred puts it under its fetched folder), then open that copy. */
+  /**
+   * Open a box file. When a Taildrive share holding it is mounted (files.drive.local), open it
+   * there, where edits land on the box. Otherwise pull a copy to this Mac (vyred puts it under
+   * its fetched folder) and open that.
+   */
   async fetch(r) {
     const name = this.boxName || "the box";
     if (!this.vyred) return { error: UNREACHABLE };
+    const m = await this.vyred("files.drive.local", { path: r.target }).catch(() => null);
+    const mounted = m && m.data && typeof m.data.local === "string" && path.isAbsolute(m.data.local) ? m.data.local : "";
+    if (mounted) {
+      const o = await this.openFn(/** @type {any} */ ({ ...r, kind: "file", target: mounted }));
+      if (!("error" in o)) return { ok: true, close: true };
+    }
     const f = await this.vyred("files.fetch", { path: r.target, source: "box" }).catch(e => ({ error: e }));
     const localPath = f && f.data && typeof f.data.local === "string" ? f.data.local : "";
     if (!localPath || !path.isAbsolute(localPath)) {

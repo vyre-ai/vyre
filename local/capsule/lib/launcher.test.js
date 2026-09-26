@@ -218,6 +218,23 @@ test("launcher: picking a box file fetches it, then opens the local copy", async
   assert.deepEqual(await gone.pick(row, "bud"), { error: "Could not fetch it from studio: no such file." });
 });
 
+test("launcher: a box file inside a mounted Taildrive share opens there, without fetching", async t => {
+  const opened = [];
+  const v = fakeVyred({ "files.drive.local": { data: { local: "/Users/x/Vyre/Box/projects/docs/budget 0.pdf", share: "projects" } } });
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: v.fn, boxName: "studio", open: async r => (opened.push(r.target), { ok: true }) });
+  const row = { kind: "boxfile", id: "box:/work/docs/budget 0.pdf", label: "budget 0.pdf", sub: "", last: 0, target: "/work/docs/budget 0.pdf", source: "box" };
+  assert.deepEqual(await l.pick(row, "bud"), { ok: true, close: true });
+  assert.deepEqual(v.calls, [["files.drive.local", { path: "/work/docs/budget 0.pdf" }]]);
+  assert.deepEqual(opened, ["/Users/x/Vyre/Box/projects/docs/budget 0.pdf"]);
+  // The mounted copy will not open (the share dropped): fetch as before.
+  const w = fakeVyred({ "files.drive.local": { data: { local: "/Users/x/Vyre/Box/projects/a.pdf" } }, "files.fetch": { data: { local: "/Users/x/.vyre/files/fetched/a.pdf" } } });
+  const tried = [];
+  const l2 = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: w.fn, boxName: "studio",
+    open: async r => (tried.push(r.target), r.target.includes("/Vyre/Box/") ? { error: "gone" } : { ok: true }) });
+  assert.deepEqual(await l2.pick({ ...row, target: "/work/a.pdf" }, "a"), { ok: true, close: true, note: "Fetched from studio." });
+  assert.deepEqual(tried, ["/Users/x/Vyre/Box/projects/a.pdf", "/Users/x/.vyre/files/fetched/a.pdf"]);
+});
+
 test("launcher: preview reads a text file's first 4 kB, asks the box for box files, else null", async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-prev-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

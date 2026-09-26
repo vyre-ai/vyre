@@ -22,6 +22,7 @@ import { guard } from "./safety.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
 import { drop } from "./drop.js";
+import { drive } from "./drive.js";
 
 const run = promisify(execFile);
 const KIB = 1024, MIB = 1024 * KIB, GIB = 1024 * MIB;
@@ -312,6 +313,8 @@ export default {
 
     // Taildrop: files.send on the Mac, the inbox receiver on the box (drop.js).
     const dropped = drop(ctx, { role, g, cfg });
+    // Taildrive: the box's chosen folders, mounted on the paired Mac (drive.js).
+    drive(ctx, { role, guard: g, roots });
 
     return { async stop() { await dropped.stop(); } };
   },
