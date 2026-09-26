@@ -18,7 +18,9 @@ import { finished } from "node:stream/promises";
 import os from "node:os";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
+import { inspect } from "../../vault/backup.js";
 
 const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
 const fail = r => { out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message); return 1; };
@@ -206,7 +208,7 @@ async function totp(args) {
   if (!name || args.length > 1) return oops("vyre vault totp <name>");
   const r = await call("vault.totp", { name });
   if (r.error) return fail(r);
-  out(`  ${bold(signal(r.data.code))}  ${dim(`${r.data.remaining}s left`)}`);
+  out(`  ${bold(signal(r.data.display || r.data.code))}  ${dim(`${r.data.remaining}s left`)}`);
   return 0;
 }
 
@@ -383,6 +385,88 @@ async function relayCmd(args) {
   return r.data.status >= 200 && r.data.status < 400 ? 0 : 1;
 }
 
+// ------------------------------------------------------------ devices and backups
+
+/** A passphrase typed twice on a terminal, once when piped. */
+async function newPassphrase(what) {
+  const a = await hiddenPrompt(`${what}: `);
+  if (process.stdin.isTTY && (await hiddenPrompt("again: ")) !== a) throw new Error("the two did not match");
+  return a;
+}
+
+async function pair(args) {
+  const f = flags(args, { string: ["name"] });
+  const r = await call("vault.device.code", f.name ? { name: f.name } : {});
+  if (r.error) return fail(r);
+  out(`\n  pairing code  ${bold(signal(r.data.display || r.data.code))}  ${dim("· single use, for 5 minutes")}\n`);
+  if (r.data.fill) out(`  fill address  ${bold(r.data.fill)}\n`);
+  else out(beacon("  this vyred has no fill listener yet ") + dim("· set vault.fill in config.json\n"));
+  out(dim("  type both into the Vyre extension's settings\n"));
+  return 0;
+}
+
+async function devices(args) {
+  if (args[0] === "revoke") {
+    if (args.length !== 2) return oops("vyre vault devices revoke <id>");
+    const r = await call("vault.device.revoke", { id: args[1] });
+    if (r.error) return fail(r);
+    out(`  ${signal("revoked")} ${args[1]} ${dim("· its sessions end now")}`);
+    return 0;
+  }
+  if (args[0] === "unlock") {
+    if (args.length !== 2) return oops("vyre vault devices unlock <id>");
+    const r = await call("vault.device.unlock", { device: args[1] });
+    if (r.error) return fail(r);
+    out(`  ${signal("unlocked")} ${args[1]}${r.data.expires ? dim(" · until " + new Date(r.data.expires).toISOString().slice(11, 16)) : ""}`);
+    return 0;
+  }
+  const r = await call("vault.devices");
+  if (r.error) return fail(r);
+  const list = r.data.devices || [];
+  if (!list.length) { out(dim("  no paired devices · vyre vault pair")); return 0; }
+  for (const d of list) out(`  ${dim(d.id)}  ${bold(d.name)}  ${d.revoked ? dim("revoked") : d.sessions ? signal("unlocked") : dim("locked")}${d.lastSeen ? dim(" · seen " + day(d.lastSeen)) : ""}`);
+  return 0;
+}
+
+async function unlockPassphrase() {
+  let passphrase;
+  try { passphrase = await newPassphrase("unlock passphrase for browser autofill"); } catch (e) { return oops(e.message); }
+  const r = await call("vault.unlock-passphrase", { passphrase });
+  passphrase = "";
+  if (r.error) return fail(r);
+  out(`  ${signal("set")} ${dim("· paired extensions ask for it before they fill anything")}`);
+  return 0;
+}
+
+async function backupCmd(args) {
+  if (args.length !== 1) return oops("vyre vault backup <file>");
+  let passphrase;
+  try { passphrase = await newPassphrase("backup passphrase (12 characters or more)"); } catch (e) { return oops(e.message); }
+  const r = await call("vault.backup", { file: path.resolve(args[0]), passphrase }, { timeout: 60_000 });
+  passphrase = "";
+  if (r.error) return fail(r);
+  out(`  ${signal("backed up")} ${plural(r.data.items, "item")} to ${bold(r.data.file)}`);
+  out(dim("  it opens only with that passphrase; keep the two apart"));
+  return 0;
+}
+
+async function restoreCmd(args) {
+  const f = flags(args, { boolean: ["replace"] });
+  if (f._.length !== 1) return oops("vyre vault restore <file> [--replace]");
+  const file = path.resolve(f._[0]);
+  let info;
+  try { info = inspect(fs.readFileSync(file, "utf8").trim()); } catch (e) { return oops(`${file} is not a Vyre backup: ${e.message}`); }
+  out(dim(`  backup from ${day(info.at)} · ${plural(info.items, "item")}`));
+  let passphrase;
+  try { passphrase = await hiddenPrompt("backup passphrase: "); } catch { return oops("cancelled"); }
+  const r = await call("vault.restore", { file, passphrase, mode: f.replace ? "replace" : "merge" }, { timeout: 60_000 });
+  passphrase = "";
+  if (r.error) return fail(r);
+  const d = r.data;
+  out(`  ${signal("restored")} ${plural(d.added.length, "item")}${d.kept.length ? dim(` · ${d.kept.length} already here, kept`) : ""} ${dim(`· identity ${d.identity}`)}`);
+  return 0;
+}
+
 // ------------------------------------------------------------ lock
 
 async function unlock() {
@@ -424,6 +508,9 @@ const HELP = [
   ["relay <item> <url> [--header 'Name: {{vault}}'] [--data d]", "use an item relayed to you; the value is added on its owner's box"],
   ["offboard <person>", "revoke everything they hold, list what to rotate"],
   ["unlock | lock", "for the passphrase keystore"],
+  ["pair [--name n] | devices [revoke|unlock <id>]", "browser extensions that autofill logins"],
+  ["unlock-passphrase", "what an extension asks for before it fills"],
+  ["backup <file> | restore <file> [--replace]", "the whole vault, sealed to a passphrase of its own"],
 ];
 
 function help() {
@@ -434,7 +521,7 @@ function help() {
 }
 
 const SUBS = {
-  list, ls: list, put, delete: remove, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, pass, offboard, unlock, lock, help,
+  list, ls: list, put, delete: remove, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, pass, offboard, unlock, lock, help,
 };
 
 export default {

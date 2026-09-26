@@ -2,7 +2,9 @@
 // Every fixture here is fictional and inline: example.com hosts, made-up passwords.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, parseCSV, merge } from "./import.js";
+import zlib from "node:zlib";
+import { parse, parseFile, parseCSV, merge } from "./import.js";
+import { crc32 } from "./zip.js";
 
 // A password with a comma, a quote and a newline, as it appears once CSV-quoted.
 const HARD = 'correct,horse "7Q!x"\nsecond-line';
@@ -215,4 +217,188 @@ test("import: no value ever reaches skipped or an error", () => {
     const out = JSON.stringify(r.skipped) + (r.error ?? "");
     for (const v of VALUES) assert.ok(!out.includes(v), `leaked ${JSON.stringify(v.slice(0, 4))}...`);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// 1Password .1pux
+
+/** A minimal zip writer: stored or deflated entries. @param {[string, string|Buffer, (0|8)?][]} entries */
+function zip(entries) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [n, d, method = 8] of entries) {
+    const data = Buffer.from(d);
+    const body = method === 8 ? zlib.deflateRawSync(data) : data;
+    const name = Buffer.from(n);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0x800, 6); lh.writeUInt16LE(method, 8);
+    lh.writeUInt32LE(crc32(data), 14); lh.writeUInt32LE(body.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(name.length, 26);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(0x800, 8); ch.writeUInt16LE(method, 10);
+    ch.writeUInt32LE(crc32(data), 16); ch.writeUInt32LE(body.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(name.length, 28);
+    ch.writeUInt32LE(offset, 42);
+    locals.push(lh, name, body);
+    centrals.push(ch, name);
+    offset += 30 + name.length + body.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(entries.length, 8); eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cd.length, 12); eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, eocd]);
+}
+
+const PUX = {
+  login: "pux-login-pass-7Rq!",
+  card: "4111111111111111",
+  cvv: "987",
+  note: "pux note body with a fictional recovery phrase",
+  password: "pux-standalone-secret-5Tz",
+  apiKey: "pux-api-key-0000-bbbb",
+  apiHost: "api.example.net",
+  archived: "pux-archived-pass-2Lk",
+  server: "pux-server-root-9Qw",
+  attachment: "fictional attachment body",
+};
+const PUX_TOTP = "otpauth://totp/Example:alex@example.com?secret=GEZDGNBVGY3TQOJQ&issuer=Example";
+
+const EXPORT_DATA = {
+  accounts: [{
+    attrs: { accountName: "Example Account", email: "alex@example.com" },
+    vaults: [{
+      attrs: { name: "Personal" },
+      items: [
+        { uuid: "u1", categoryUuid: "001", state: "active",
+          overview: { title: "Example Mail", url: "https://mail.example.com/login", urls: [{ url: "https://mail.example.com/login" }, { url: "https://webmail.example.com" }], tags: ["work"] },
+          details: {
+            loginFields: [
+              { designation: "username", name: "email", value: "alex@example.com" },
+              { designation: "password", name: "password", value: PUX.login },
+            ],
+            notesPlain: "",
+            sections: [{ title: "", fields: [{ title: "one-time password", id: "TOTP_1", value: { totp: PUX_TOTP } }] }],
+          } },
+        { uuid: "u2", categoryUuid: "002", state: "active",
+          overview: { title: "Example Card", tags: [] },
+          details: { sections: [{ title: "", fields: [
+            { title: "cardholder name", id: "cardholder", value: { string: "Alex Example" } },
+            { title: "type", id: "type", value: { creditCardType: "Visa" } },
+            { title: "number", id: "ccnum", value: { creditCardNumber: "4111 1111 1111 1111" } },
+            { title: "verification number", id: "cvv", value: { concealed: PUX.cvv } },
+            { title: "expiry date", id: "expiry", value: { monthYear: 203012 } },
+            { title: "valid from", id: "validFrom", value: { monthYear: 202501 } },
+            { title: "issuing bank", id: "bank", value: { string: "Example Bank" } },
+          ] }] } },
+        { uuid: "u3", categoryUuid: "003", state: "active",
+          overview: { title: "Example Recovery", tags: [] },
+          details: { notesPlain: PUX.note, sections: [] } },
+        { uuid: "u4", categoryUuid: "005", state: "active",
+          overview: { title: "Example Router" },
+          details: { password: PUX.password } },
+        { uuid: "u5", categoryUuid: "112", state: "active",
+          overview: { title: "Example API" },
+          details: { notesPlain: "", sections: [{ title: "", fields: [
+            { title: "username", id: "username", value: { string: "svc-example" } },
+            { title: "credential", id: "credential", value: { concealed: PUX.apiKey } },
+            { title: "type", id: "type", value: { menu: "bearer" } },
+            { title: "hostname", id: "hostname", value: { string: PUX.apiHost } },
+            { title: "expires", id: "expires", value: { date: 1893456000 } },
+          ] }] } },
+        { uuid: "u6", categoryUuid: "001", state: "archived",
+          overview: { title: "Old Example Login", url: "https://old.example.com" },
+          details: { loginFields: [{ designation: "password", value: PUX.archived }] } },
+        { uuid: "u7", categoryUuid: "110", state: "active",
+          overview: { title: "Example Server" },
+          details: { notesPlain: "rack 4", sections: [{ title: "Admin", fields: [
+            { title: "admin password", id: "admin_console_password", value: { concealed: PUX.server } },
+            { title: "address", id: "addr", value: { address: { street: "1 Example Way", city: "Example" } } },
+          ] }] } },
+        { uuid: "u8", categoryUuid: "006", state: "active", overview: { title: "Example Scan" }, details: {} },
+      ],
+    }],
+  }],
+};
+
+const PUX_FILE = zip([
+  ["export.attributes", '{"version":3}', 0],
+  ["export.data", JSON.stringify(EXPORT_DATA)],
+  ["files/", "", 0],
+  ["files/doc123__scan.pdf", PUX.attachment],
+]);
+
+test("import: 1Password .1pux logins, cards, notes, passwords, API credentials and the rest", () => {
+  const r = parseFile(PUX_FILE, { filename: "Export.1pux" });
+  assert.equal(r.error, undefined);
+  assert.equal(r.format, "1password-1pux");
+  const by = Object.fromEntries(r.items.map(i => [i.name, i]));
+  assert.deepEqual(Object.keys(by), ["example-mail", "example-card", "example-recovery", "example-router", "example-api", "example-server"]);
+
+  assert.equal(by["example-mail"].kind, "login");
+  assert.deepEqual(by["example-mail"].fields, { username: "alex@example.com", password: PUX.login, totp: PUX_TOTP });
+  assert.equal(by["example-mail"].url, "https://mail.example.com/login");
+  assert.deepEqual(by["example-mail"].hosts, ["https://mail.example.com", "https://webmail.example.com"]);
+  assert.deepEqual(by["example-mail"].tags, ["work"]);
+
+  assert.equal(by["example-card"].kind, "card");
+  assert.deepEqual(by["example-card"].fields, { holder: "Alex Example", number: PUX.card, expiry: "12/30", cvv: PUX.cvv, "valid-from": "01/25", "issuing-bank": "Example Bank" });
+  assert.equal(by["example-card"].description, "Example Card (Visa)");
+
+  assert.deepEqual(by["example-recovery"], { name: "example-recovery", kind: "note", description: "Example Recovery", fields: { text: PUX.note }, hosts: [] });
+  assert.equal(by["example-router"].kind, "secret");
+  assert.deepEqual(by["example-router"].fields, { value: PUX.password });
+
+  assert.equal(by["example-api"].kind, "api-key");
+  assert.deepEqual(by["example-api"].fields, { value: PUX.apiKey, username: "svc-example", type: "bearer", hostname: PUX.apiHost, expires: "2030-01-01" });
+
+  assert.equal(by["example-server"].kind, "note");
+  assert.deepEqual(by["example-server"].fields, { text: "rack 4", "admin-password": PUX.server });
+
+  assert.deepEqual(r.skipped, [
+    "item 6 (Old Example Login): archived",
+    "item 7 (Example Server): field address (address) not imported",
+    "item 8 (Example Scan): nothing to import",
+    "attachment doc123__scan.pdf not imported",
+  ]);
+  const out = JSON.stringify(r.skipped);
+  for (const v of [...Object.values(PUX), PUX_TOTP, "1 Example Way"]) assert.ok(!out.includes(v), `leaked ${JSON.stringify(v.slice(0, 4))}...`);
+  for (const i of r.items) assert.match(i.name, /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
+});
+
+test("import: a .1pux is found by its bytes, and a broken one fails without a value", () => {
+  assert.equal(parseFile(PUX_FILE).format, "1password-1pux");
+  assert.equal(parseFile(new Uint8Array(PUX_FILE)).items.length, 6);
+
+  const bad = [
+    parseFile(zip([["export.attributes", "{}"]]), { filename: "x.1pux" }),
+    parseFile(zip([["export.data", `{"accounts": [ "${PUX.password}", `]]), { filename: "x.1pux" }),
+    parseFile(zip([["export.data", `{"items": ["${PUX.password}"]}`]])),
+    parseFile(Buffer.from(`not a zip ${PUX.password} at all, just some text`), { filename: "x.1pux" }),
+    parseFile(Buffer.from(`EXAMPLE=${PUX.password}\n`), { format: "1password-1pux" }),
+    parseFile(PUX_FILE.subarray(0, PUX_FILE.length - 30)),
+    parseFile(PUX_FILE, { format: "csv" }),
+    parse(`{"accounts": []}`, { format: "1password-1pux" }),
+  ];
+  for (const r of bad) {
+    assert.ok(r.error, "an error is reported");
+    assert.deepEqual(r.items, []);
+    const out = JSON.stringify(r.skipped) + r.error;
+    for (const v of [...Object.values(PUX), PUX_TOTP]) assert.ok(!out.includes(v), `leaked in ${r.error}`);
+  }
+  assert.match(bad[0].error ?? "", /no export\.data/);
+  assert.match(bad[1].error ?? "", /not valid JSON/);
+  assert.match(bad[5].error ?? "", /could not be read/);
+  assert.match(bad[6].error ?? "", /zip archive/);
+});
+
+test("parseFile: CSV and .env bytes still go through parse", () => {
+  const csv = parseFile(Buffer.from(ONEPASSWORD, "utf8"));
+  assert.equal(csv.format, "1password-csv");
+  assert.deepEqual(csv.items.map(i => i.name), parse(ONEPASSWORD).items.map(i => i.name));
+  const env = parseFile(Buffer.from("\ufeff" + ENV, "utf8"), { filename: "prod.env" });
+  assert.equal(env.format, "env");
+  assert.deepEqual(env.items, parse(ENV, { filename: "prod.env" }).items);
+  assert.match(parseFile(Buffer.from([0x41, 0x3d, 0xff, 0xfe])).error ?? "", /not UTF-8/);
+  // @ts-expect-error: not bytes
+  assert.ok(parseFile("KEY=value").error);
 });
