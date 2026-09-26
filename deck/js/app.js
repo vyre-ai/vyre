@@ -148,7 +148,9 @@ window.addEventListener("deck:pins", drawRail);
 async function drawFoot() {
   const r = await attempt("system.info");
   info.host = r.data?.host || location.hostname;
-  put(avatar, initials(info.host).slice(0, 2) || "V");
+  // The owner's own initials when onboarding saved a name, else the machine's.
+  put(avatar, initials(r.data?.owner?.name || info.host).slice(0, 2) || "V");
+  if (r.data?.owner?.name) avatar.setAttribute("title", r.data.owner.name);
   const onTailnet = /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
   put(foot,
     h("div", { class: "code", style: { color: "var(--text-2)" } }, info.host),

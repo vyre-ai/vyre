@@ -21,7 +21,9 @@ test("daemon: answers health, lists the system module and runs its tools", { tim
   const tools = (await request("GET", "/v1/tools", undefined, { root })).data.map(x => x.name);
   assert.ok(tools.includes("system.echo"));
   assert.deepEqual(await call("system.echo", { text: "hello" }, { root }), { data: { text: "hello" } });
-  assert.match((await call("system.info", {}, { root })).data.version, /^\d+\.\d+\.\d+/);
+  const info = (await call("system.info", {}, { root })).data;
+  assert.match(info.version, /^\d+\.\d+\.\d+/);
+  assert.deepEqual(info.owner, { name: null }, "no name before onboarding step 1");
   const ev = (await request("GET", "/v1/events", undefined, { root })).data;
   assert.ok(ev.some(e => e.type === "system.started"));
   // A surface follows the stream from here rather than replaying the whole log.
@@ -328,4 +330,12 @@ test("daemon: the presence challenge route refuses what it cannot start", async 
   assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "presence.code", input: {}, method: "tty", tty: "/etc/passwd" }, {})).status, 400);
   assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "presence.code", input: {}, method: "passkey" }, {})).status, 400);
   assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "presence.code", input: {}, method: "tty", tty: "/dev/ttys999" }, {})).status, 403);
+});
+
+test("daemon: system.info names the owner as onboarding saved them, for a device's avatar", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ onboard: { person: "Alex Rivera" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  assert.deepEqual((await call("system.info", {}, { root })).data.owner, { name: "Alex Rivera" });
 });

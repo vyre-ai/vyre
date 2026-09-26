@@ -103,8 +103,10 @@ test("tailnet: the user's other devices read as the owner, and never correct", a
     const r = await call(tool, input, TAILNET);
     assert.equal(r.code, "denied", `${tool}: ${JSON.stringify(r)}`);
   }
-  // Only the reads named: Enrich's read is for sessions, which name their room.
-  assert.equal((await call("memory.relevant", { text: "email Dana Reyes" }, TAILNET)).code, "denied");
+  // Find on the owner's phone searches memory by meaning, account-wide, as the Deck does.
+  const rel = await call("memory.relevant", { text: "email Dana Reyes" }, TAILNET);
+  assert.ok(!rel.error && !rel.code, `memory.relevant: ${JSON.stringify(rel)}`);
+  assert.equal((await call("memory.relevant", { text: "email Dana Reyes" }, "tailnet:")).code, "denied", "not a login");
   // A caller that merely looks like one, or names an agent, is not the owner.
   for (const caller of ["tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex"]) assert.equal((await call("memory.stats", {}, caller)).code, "denied", caller);
   assert.equal((await call("memory.corrections", {}, "tailnet:alex@example.com agent:kit")).code, "denied");
