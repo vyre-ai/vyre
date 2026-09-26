@@ -44,6 +44,10 @@ const S = {
   /** @type {any} */ sent: null,
   note: "",
   /** @type {any} */ takeable: null,
+  // What a bare query finds on this Mac, ranked with Vyre's own. `sel` runs over the results and
+  // then the ask row, which is always last: results.length means "send it".
+  /** @type {any[]} */ results: [], intent: "ask", sel: 0,
+  typedAt: 0,
   busy: false,
 };
 let seq = 0;
@@ -65,14 +69,76 @@ async function think() {
   const body = text.trim();
   if (!body && !S.chip) { S.dest = null; S.recall = null; return paint(); }
   const [dest, recall] = await Promise.all([
-    api.destinations(S.chip, body),
+    S.snap.up ? api.destinations(S.chip, body) : null,
     // Memory answers only for the default destination; an @ is an instruction, not a question.
-    !S.chip && body.length >= 3 ? api.recall(body) : null,
+    !S.chip && body.length >= 3 && S.snap.up ? api.recall(body) : null,
   ]);
   if (mine !== seq) return;
+  if (!S.chip) {
+    // Files take hundreds of milliseconds; they join the list when they land, if the box has not moved on.
+    api.full(body).then(f => { if (f && mine === seq && box.value.trim() === body) { showResults(f, "files"); paint(); } });
+  }
+  if (!dest) { S.dest = null; S.recall = null; return paint(); }
   S.dest = dest;
   S.destIndex = Math.min(S.destIndex, dest.options.length - 1);
   S.recall = recall && (recall.answer || (dest.options[0].kind === "recall" && recall.sources.length)) ? recall : null;
+  // A name to open wins over memory; a question is for memory and the assistant.
+  if (S.intent === "open") S.recall = null;
+  paint();
+}
+
+/**
+ * Local results on every keystroke, with no debounce: they are answered in the main process from
+ * memory and the helper in a few milliseconds, and a launcher that waits for typing to pause
+ * feels slow. vyred (destinations, memory) and mdfind wait for the pause in think().
+ */
+let lookSeq = 0;
+async function look() {
+  const mine = ++lookSeq;
+  const body = box.value.trim();
+  if (S.chip || !body || S.comp || /(^|\s)@\S*$/.test(box.value)) { if (!body || S.chip) S.results = []; return; }
+  const found = await api.quick(body);
+  if (mine !== lookSeq || box.value.trim() !== body) return;
+  showResults(found);
+  if (S.intent === "open") S.recall = null;
+  paint();
+  timed("results");
+}
+
+/** Take a ranked list, keeping the highlighted row where it was if it is still there. */
+function showResults(found, why) {
+  const was = S.results[S.sel];
+  S.results = found ? found.results : [];
+  S.intent = found ? found.intent : "ask";
+  const keep = was && why === "files" ? S.results.findIndex(r => r.id === was.id) : -1;
+  S.sel = keep >= 0 ? keep : S.intent === "open" ? firstPickable() : S.results.length;
+  if (why === "files") requestAnimationFrame(() => timed("files"));
+}
+
+/**
+ * The first result Enter may take by default. Never the contacts offer: picking it raises a macOS
+ * dialog, so it happens only when the user moves to it on purpose.
+ */
+function firstPickable() {
+  const i = S.results.findIndex(r => r.kind !== "grant");
+  return i;
+}
+
+/** How long from the keystroke to this frame, for the numbers the proposal asks for. */
+function timed(kind) {
+  const at = S.typedAt;
+  if (!at) return;
+  requestAnimationFrame(() => api.timing({ kind, ms: performance.now() - at, n: S.results.length }));
+}
+
+/** Open a local result, or make a Vyre one the chip, the way @ would. */
+async function pickResult(r) {
+  if (r.kind === "agent" || r.kind === "project" || r.kind === "thread") {
+    box.value = ""; S.results = []; S.sel = 0;
+    return choose(r);
+  }
+  const r2 = await api.pick(r, box.value.trim());
+  S.note = r2.error || r2.note || "";
   paint();
 }
 let thinkTimer = 0;
@@ -133,7 +199,7 @@ async function decide(item, decision) {
 
 function reset() {
   seq++;
-  Object.assign(S, { mode: "ask", chip: null, text: "", comp: null, dest: null, destIndex: 0, recall: null, review: null, draft: null, summary: "", loading: false, source: null, sent: null, note: "", waitIndex: 0 });
+  Object.assign(S, { mode: "ask", chip: null, text: "", comp: null, dest: null, destIndex: 0, recall: null, review: null, draft: null, summary: "", loading: false, source: null, sent: null, note: "", waitIndex: 0, results: [], intent: "ask", sel: 0, typedAt: 0 });
   box.value = "";
   box.placeholder = "Ask, or @agent";
   api.pin(false);
@@ -141,7 +207,7 @@ function reset() {
 
 // ------------------------------------------------------------------ keys
 
-box.addEventListener("input", () => { S.note = ""; S.takeable = null; if (S.mode !== "reply") S.mode = "ask"; soon(); });
+box.addEventListener("input", () => { S.typedAt = performance.now(); S.note = ""; S.takeable = null; if (S.mode !== "reply") S.mode = "ask"; look(); soon(); });
 
 window.addEventListener("keydown", e => {
   const k = e.key;
@@ -185,6 +251,18 @@ window.addEventListener("keydown", e => {
   if (k === "ArrowUp" && !box.value && !S.chip && S.snap.waiting.length && S.mode === "ask") { e.preventDefault(); S.mode = "waiting"; S.waitIndex = 0; return paint(); }
   if (S.mode === "reply" && k === "Enter") { e.preventDefault(); return S.sent && send(S.sent.dest); }
   const opts = S.dest ? S.dest.options : [];
+  if (!S.chip && S.results.length && !S.recall && S.mode === "ask" && box.value.trim()) {
+    const n = S.results.length + (opts.length && opts[0].kind !== "recall" && S.snap.up ? 1 : 0);
+    if (k === "ArrowDown") { e.preventDefault(); S.sel = (S.sel + 1) % n; return paint(); }
+    if (k === "ArrowUp") { e.preventDefault(); S.sel = S.sel <= 0 ? n - 1 : S.sel - 1; return paint(); }
+    // Tab always asks, whatever is highlighted: the one key that sends the words on.
+    if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
+    if (k === "Enter" && !e.metaKey) {
+      e.preventDefault();
+      if (S.sel >= 0 && S.sel < S.results.length) return pickResult(S.results[S.sel]);
+      return opts.length ? send(opts[0]) : undefined;
+    }
+  }
   if (k === "ArrowDown" && opts.length > 1 && !S.recall) { e.preventDefault(); S.destIndex = (S.destIndex + 1) % opts.length; return paint(); }
   if (k === "ArrowUp" && opts.length > 1 && !S.recall) { e.preventDefault(); S.destIndex = (S.destIndex - 1 + opts.length) % opts.length; return paint(); }
   if (S.recall) {
@@ -225,8 +303,19 @@ function paint() {
   $("chip").hidden = !S.chip;
   if (S.chip) $("chip").textContent = "@" + S.chip.label;
   hint.replaceChildren();
+  // With nothing to send to, the ask row is not drawn, so the highlight stays on a result.
+  const canAsk = snap.up && S.dest && S.dest.options[0].kind !== "recall";
+  if (!canAsk && S.results.length && S.sel >= S.results.length) S.sel = firstPickable();
 
   if (!snap.up) {
+    // This Mac's own results still work (floor rule 9); only Vyre's are gone.
+    if (S.results.length && box.value.trim()) {
+      kids.push(resultRows(null));
+      kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Offline"), "vyred is not running, so nothing can be sent. Results here are from this Mac."));
+      if (S.note) kids.push(h("div", { class: "sect note" }, S.note));
+      keys("↑↓ move", "⏎ open", "esc close");
+      return done(panel, kids);
+    }
     kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Offline"), "vyred is not running on this Mac. Start it with vyre up. Nothing here is live until it is."));
     keys("esc close");
     return done(panel, kids);
@@ -338,6 +427,17 @@ function paint() {
     return done(panel, kids);
   }
 
+  if (!S.chip && S.results.length && box.value.trim() && !S.comp) {
+    const opts = S.dest ? S.dest.options : [];
+    kids.push(resultRows(opts[0]));
+    if (S.note) kids.push(h("div", { class: "sect note" }, S.note));
+    const onAsk = S.sel >= S.results.length;
+    const who = !opts[0] || opts[0].kind === "recall" ? null : opts[0].show.who;
+    const cur = S.results[S.sel];
+    keys("↑↓ move", onAsk ? (who ? `⏎ ask ${who}` : null) : cur ? (cur.kind === "calc" ? "⏎ copy" : cur.kind === "grant" ? "⏎ allow contacts" : "⏎ open") : null, !onAsk && who ? `⇥ ask ${who}` : null, "esc close");
+    return done(panel, kids);
+  }
+
   if (S.dest && (box.value.trim() || S.chip)) {
     const opts = S.dest.options;
     hint.append(h("span", { class: "kbd" }, "⏎"));
@@ -360,6 +460,24 @@ function paint() {
   keys("⏎ ask " + (snap.assistant || "memory"), "@ agent, project or thread", nWait ? "↑ waiting" : null, "esc close");
   return done(panel, kids);
 }
+
+/**
+ * The ranked results, then the ask row. The ask row names who the words would go to before
+ * anything is sent (floor rule 2); with no assistant (or vyred down) there is none.
+ */
+function resultRows(ask) {
+  const rows = S.results.map((r, i) => h("div", { class: "row res" + (r.kind === "calc" ? " calc" : "") + (i === S.sel ? " on" : ""),
+    onmousedown: e => { e.preventDefault(); S.sel = i; pickResult(r); } },
+    h("span", { class: "lbl kind" }, KIND_LABEL[r.kind] || r.kind), h("span", { class: "t" }, r.label), r.sub ? h("span", { class: "s" }, r.sub) : null));
+  if (ask && ask.kind !== "recall" && S.snap.up) {
+    const on = S.sel >= S.results.length;
+    const row = destRow(ask, on, on ? "Sends to" : "Or ask");
+    row.addEventListener("mousedown", e => { e.preventDefault(); send(ask); });
+    rows.push(row);
+  }
+  return h("div", { class: "sect pad" }, rows);
+}
+const KIND_LABEL = { calc: "=", app: "app", setting: "setting", file: "file", folder: "folder", contact: "contact", define: "define", grant: "people", agent: "agent", project: "project", thread: "thread" };
 
 /** One line of a held draft, editable in place. It reads as text until focused. */
 function editable(name, cls) {
@@ -418,7 +536,9 @@ api.onState(s => {
   S.waitIndex = Math.min(S.waitIndex, Math.max(0, s.waiting.length - 1));
   paint();
 });
-api.onOpen(() => {
+api.onOpen(d => {
+  // Two frames after the page hears it, the Capsule is on screen: that is "keypress to visible".
+  if (d && d.at) requestAnimationFrame(() => requestAnimationFrame(() => api.timing({ kind: "open:" + d.via, ms: Date.now() - d.at })));
   // Opened by the user: a fresh Capsule with the caret in the box. A reply still streaming is
   // kept, since coming back to read it is the point of opening it again.
   if (!(S.mode === "reply" && S.snap.reply && !S.snap.reply.finished)) reset();

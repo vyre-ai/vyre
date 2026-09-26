@@ -19,16 +19,21 @@
 //   - It runs from source (`vyre capsule --dev`). A packaged app runs app.asar, so an edit to the
 //     source changes nothing until it is repackaged; `vyre capsule` checks for that.
 
-import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } from "electron";
+import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, clipboard } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { client, socketPath } from "../lib/vyred.js";
 import { Bridge } from "../lib/bridge.js";
+import { Launcher } from "../lib/launcher.js";
+import { Apps, Frecency } from "../lib/local.js";
+import { LocalHelper } from "../lib/helper.js";
+import os from "node:os";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV = !app.isPackaged;
+const DRIVEN = DEV && Boolean(process.env.VYRE_CAPSULE_DRIVE);
 const BIN = process.env.VYRE_CAPSULE_BIN || (DEV ? path.join(HERE, "..", "bin") : path.join(process.resourcesPath, "bin"));
 const WIDTH = 560;
 /** Room around the Capsule for the shadow the page draws; the window itself is transparent. */
@@ -43,6 +48,13 @@ if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
 const vyred = client(socketPath());
 const bridge = new Bridge(vyred);
+// Local results: this Mac only, working with vyred down. What the user picks is remembered beside
+// vyred's home (ids and six-letter prefixes, never whole queries), not in vyred.
+const HOME = process.env.VYRE_HOME || path.join(os.homedir(), ".vyre");
+const launcher = new Launcher({ apps: new Apps(), helper: new LocalHelper(path.join(BIN, "local")),
+  frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t) });
+/** The last timings, newest last: how long the Capsule took to show, and to answer a keystroke. */
+const timings = [];
 /** @type {BrowserWindow|null} */
 let win = null;
 /** @type {Tray|null} */
@@ -80,26 +92,35 @@ function create() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   // Driven in development, focus moves to whatever runs the commands; closing on that would end
   // every scripted look at the Capsule.
-  win.on("blur", () => { if (!pinned && !(DEV && process.env.VYRE_CAPSULE_DRIVE)) hide(); });
+  win.on("blur", () => { if (!pinned && !DRIVEN) hide(); });
   win.on("closed", () => { win = null; });
   return win;
 }
 
 /** Open ready to type. Called only for the user's own gesture. */
-async function show(via) {
+async function show(via, at = Date.now()) {
   const w = create();
   const refresh = bridge.refresh();
+  launcher.warm().catch(() => {});
   w.setBounds(place());
-  w.show();
-  w.setAlwaysOnTop(true, "screen-saver");
-  // With another app active, focusing a panel alone does not make it key, and the keys the user
-  // types next go nowhere (measured: typed over TextEdit, they reached neither). The user asked
-  // for the Capsule, so this app takes the keyboard; hide() gives it back.
-  app.focus({ steal: true });
-  w.focus();
+  // Driven by a test, the Capsule must not take the keyboard: whoever is at the Mac keeps typing
+  // into their own app, and those keys once landed in a test window instead. Test keys go to this
+  // window's webContents directly and need no focus.
+  if (DRIVEN) { w.showInactive(); w.setAlwaysOnTop(true, "screen-saver"); }
+  else {
+    w.show();
+    w.setAlwaysOnTop(true, "screen-saver");
+    // With another app active, focusing a panel alone does not make it key, and the keys the user
+    // types next go nowhere (measured: typed over TextEdit, they reached neither). The user asked
+    // for the Capsule, so this app takes the keyboard; hide() gives it back.
+    app.focus({ steal: true });
+    w.focus();
+  }
   // On first launch the page may still be loading, and a message sent now would be lost with
   // the caret nowhere; wait for it.
-  const opened = () => tell("capsule:open", { at: Date.now(), via });
+  // `at` is when the user asked (for double-Control, the second release), so the page can say how
+  // long it took to be on screen.
+  const opened = () => tell("capsule:open", { at, via });
   if (w.webContents.isLoading()) w.webContents.once("did-finish-load", opened); else opened();
   await refresh;
   push();
@@ -117,9 +138,9 @@ function hide() {
   paintTray();
 }
 
-function toggle(via) {
+function toggle(via, at) {
   if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) return hide();
-  show(via);
+  show(via, at);
 }
 
 /** Send to the page, if there still is one. A window closing mid-send must not throw. */
@@ -195,7 +216,7 @@ function startHotkey() {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
       let m; try { m = JSON.parse(line); } catch { continue; }
       if (m.ready) { hotkey = { ...hotkey, ok: true, message: "ready" }; push(); }
-      if (m.gesture === "double-control") toggle("hotkey");
+      if (m.gesture === "double-control") toggle("hotkey", Number(m.at) || Date.now());
       if (m.error) { hotkey = { ...hotkey, ok: false, message: m.message }; push(); }
     }
   });
@@ -248,6 +269,19 @@ ipcMain.on("capsule:size", (_e, h) => {
   win.setBounds({ x: b.x, y: b.y, width: b.width, height: height + MARGIN.top + MARGIN.bottom });
 });
 ipcMain.on("capsule:dismiss", () => hide());
+ipcMain.handle("capsule:quick", (_e, text) => launcher.quick(String(text || ""), bridge.up ? bridge.catalog : null));
+ipcMain.handle("capsule:full", (_e, text) => launcher.full(String(text || ""), bridge.up ? bridge.catalog : null));
+ipcMain.handle("capsule:pick", async (_e, r, query) => {
+  const out = await launcher.pick(r, String(query || ""));
+  if (out.close) hide();
+  return out;
+});
+ipcMain.on("capsule:timing", (_e, t) => {
+  const row = { kind: String((t && t.kind) || ""), ms: Math.round(Number(t && t.ms) * 10) / 10, n: Number(t && t.n) || 0 };
+  timings.push(row);
+  if (timings.length > 200) timings.shift();
+  say({ timing: row });
+});
 ipcMain.on("capsule:pin", (_e, on) => { pinned = Boolean(on); });
 
 // ------------------------------------------------------------------ driving it in development
@@ -285,6 +319,7 @@ function drive() {
       }
       // Read-only: what has the caret and what is in the box.
       const probe = wc && c.probe ? await wc.executeJavaScript("({ active: document.activeElement && document.activeElement.id, box: document.getElementById('box').value, panel: document.getElementById('panel').textContent.slice(0, 200), keys: document.getElementById('keys').textContent, area: (document.querySelector('textarea') || {}).value })") : undefined;
+      if (c.timings) say({ timings });
       const js = wc && c.js ? await wc.executeJavaScript(String(c.js)).catch(e => "error: " + e.message) : undefined;
       say({ drove: c, probe, js, focused: Boolean(win && win.isFocused()), visible: Boolean(win && win.isVisible()) });
       if (c.wait && !c.shot) await new Promise(r => setTimeout(r, c.wait));
@@ -298,7 +333,7 @@ app.on("second-instance", (_e, argv) => {
   if (argv.includes("--toggle")) toggle("cli"); else show("cli");
 });
 app.on("window-all-closed", () => {});   // the Capsule lives in the menu bar; closing the window is not quitting
-app.on("will-quit", () => { try { hotkey.child && hotkey.child.kill(); } catch {} try { stream && stream.stop(); } catch {} });
+app.on("will-quit", () => { try { launcher.close(); } catch {} try { hotkey.child && hotkey.child.kill(); } catch {} try { stream && stream.stop(); } catch {} });
 
 app.whenReady().then(async () => {
   if (app.dock) app.dock.hide();

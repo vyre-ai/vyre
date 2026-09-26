@@ -34,8 +34,9 @@ test("state: a hold reads as a sentence, whatever it carries", () => {
 
 test("state: a reply streams in pieces and the whole message wins", () => {
   let r = reply("t1");
-  r = applyReply(r, ev(1, "thread.text", { message: "m1", text: "The Q3 ", done: false }, { thread: "t1" }));
-  r = applyReply(r, ev(2, "thread.text", { message: "m1", text: "numbers", done: false }, { thread: "t1" }));
+  // The switchboard's shapes: pieces are {message, delta}, the whole block {message, text, done: true}.
+  r = applyReply(r, ev(1, "thread.text", { message: "m1", delta: "The Q3 " }, { thread: "t1" }));
+  r = applyReply(r, ev(2, "thread.text", { message: "m1", delta: "numbers" }, { thread: "t1" }));
   assert.equal(replyText(r), "The Q3 numbers");
   r = applyReply(r, ev(3, "thread.text", { message: "m9", text: "other thread" }, { thread: "t2" }));
   assert.equal(replyText(r), "The Q3 numbers", "another thread's words never land here");
@@ -46,4 +47,16 @@ test("state: a reply streams in pieces and the whole message wins", () => {
   r = applyReply(r, ev(7, "thread.finished", { ok: true }, { thread: "t1" }));
   assert.equal(replyText(r), "The Q3 numbers are in.");
   assert.equal(r.finished, true);
+  r = applyReply(r, ev(8, "lease.changed", { holder: "deck", previous: "capsule" }, { thread: "t1" }));
+  assert.equal(r.lease, "deck");
+  r = applyReply(r, ev(9, "lease.changed", { holder: null, previous: "deck" }, { thread: "t1" }));
+  assert.equal(r.lease, null);
+  r = applyReply(r, ev(10, "thread.stopped", { code: 0, reason: "stopped" }, { thread: "t1" }));
+  assert.deepEqual([r.finished, r.ok, r.error], [true, false, "the thread stopped: stopped"]);
+});
+
+test("state: a withdrawn question is an ask.answered with decision cancelled", () => {
+  const w = applyWaiting([], ev(1, "ask.raised", { ask: "a1", tool: "Write", summary: "Write /w/a.txt", destination: "/w/a.txt", reason: null, holder: null }, { thread: "t1" }));
+  assert.equal(w[0].sub, "to /w/a.txt");
+  assert.deepEqual(applyWaiting(w, ev(2, "ask.answered", { ask: "a1", decision: "cancelled", by: "thread stopped" }, { thread: "t1" })), []);
 });

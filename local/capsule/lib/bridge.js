@@ -7,9 +7,9 @@
 // is one copy of what is true (the waiting list, the reply streaming in) that any window, shown
 // or re-shown, is handed whole.
 //
-// The switchboard (agents.*, threads.*) and the Gate (gate.*) are being built alongside this.
-// Which of their tools exist is read from GET /v1/tools, and every feature that needs a missing
-// one says so in words, rather than failing a call and showing nothing.
+// The switchboard (core/switchboard, module `threads`, and core/agents) and the Gate (gate.*) are
+// optional modules. Which of their tools exist is read from GET /v1/tools, and every feature that
+// needs a missing one says so in words, rather than failing a call and showing nothing.
 
 import { EventEmitter } from "node:events";
 import * as route from "./route.js";
@@ -34,6 +34,8 @@ export function explain(err) {
     return (mod && MISSING[mod[1]]) || err.message;
   }
   if (err.code === "denied") return `The rules stopped it: ${err.message}`;
+  // threads.send knows only the sessions the switchboard runs; a terminal's own session is not one.
+  if (/^no thread /.test(err.message || "")) return "That session is not one vyred runs, so it cannot be typed into from here. Open it where it runs, or start a new thread.";
   return err.message || err.code;
 }
 
@@ -53,8 +55,12 @@ export class Bridge extends EventEmitter {
     this.reply = null;
     this.up = false;
     this.lease = /** @type {string|null} */ (null);
-    /** The agent a reply is expected from while its thread id is not known yet. */
-    this.pendingAgent = /** @type {string|null} */ (null);
+    /**
+     * A reply whose thread id is not known yet (agents.ask, threads.start): the first thread.sent
+     * from this surface names it. The switchboard emits thread.sent right after the words reach
+     * the child, before any of its output, so nothing of the reply comes before it.
+     */
+    this.pending = false;
   }
 
   /** Who is asking, for a waiting row: the agent whose thread it is, else the thread's name. */
@@ -77,12 +83,14 @@ export class Bridge extends EventEmitter {
     if (t.error) { this.up = false; this.catalog = { agents: null, projects: [], threads: [] }; this.waiting = []; this.emit("change"); return { up: false, why: explain(t.error) }; }
     this.up = true;
     this.tools = new Set(t.data.map(x => x.name));
-    const [agents, projects, recent] = await Promise.all([
+    const [agents, projects, recent, headless] = await Promise.all([
       this.has("agents.list") ? this.client.call("agents.list") : null,
       this.client.call("projects.list"),
       this.client.call("projects.catalog", { limit: 30, human: true }),
+      this.has("threads.list") ? this.client.call("threads.list") : null,
     ]);
     const list = (projects && projects.data && projects.data.projects) || [];
+    const nameOf = slug => ((list.find(p => p.slug === slug) || {}).name) || slug;
     /** @type {route.Thread[]} */
     const threads = [];
     const seen = new Set();
@@ -95,6 +103,14 @@ export class Bridge extends EventEmitter {
         threads.push({ id: x.id, label: x.label || x.name || x.title || x.id.slice(0, 8), cwd: x.cwd, last: x.last, project: p.slug, projectName: p.name });
       }
     });
+    // The switchboard's own threads (running, or active in the last day): the ones threads.send
+    // can type into. threads.list rows are {id, name, cwd, project, agent, status, last, holder}.
+    for (const x of (headless && Array.isArray(headless.data) ? headless.data : [])) {
+      if (seen.has(x.id)) continue;
+      seen.add(x.id);
+      threads.push({ id: x.id, label: x.name || folderOf(x.cwd) || x.id.slice(0, 8), cwd: x.cwd, last: x.last, project: x.project || null,
+        projectName: x.project ? nameOf(x.project) : null, agent: x.agent || null });
+    }
     for (const x of (recent && recent.data && recent.data.sessions) || []) {
       if (seen.has(x.id)) continue;
       seen.add(x.id);
@@ -199,16 +215,27 @@ export class Bridge extends EventEmitter {
       // wait:false returns once the words are in the agent's thread, and the reply follows on the
       // stream. Waiting for the answer would hold the call for up to ten minutes. The first
       // thread.sent from this surface names the thread if the stream beats the call's answer.
+      // agents.ask has no take: the keyboard of the agent's current thread is taken first, and
+      // only when the user chose to.
+      const current = ((this.catalog.agents || []).find(a => a.name === d.agent) || {}).thread;
+      if (take && current) {
+        const l = await this.client.call("threads.lease", { thread: current, surface: "capsule" });
+        if (l.error) return { error: explain(l.error) };
+      }
       this.reply = st.reply("");
-      this.pendingAgent = d.agent || null;
+      this.pending = true;
       this.emit("change");
       const r = await this.client.call("agents.ask", { agent: d.agent, text, surface: "capsule", wait: false });
-      this.pendingAgent = null;
+      this.pending = false;
       const x = (r && r.data) || {};
       if (r.error || x.ok === false) {
         this.reply = null;
         this.emit("change");
-        return { error: r.error ? explain(r.error) : x.note || `${d.agent} did not get it.` };
+        if (r.error) return { error: explain(r.error) };
+        // Refused by the lease: agents.ask says so in a note, and threads.get says who holds it.
+        const holder = x.thread ? await this.holder(String(x.thread)) : null;
+        if (holder && holder !== "capsule") return { error: `${holder} has the keyboard in ${d.agent}'s thread.`, holder };
+        return { error: x.note || `${d.agent} did not get it.` };
       }
       const thread = String(x.thread || (this.reply && this.reply.thread) || "");
       if (this.reply && !this.reply.thread) this.reply = { ...this.reply, thread };
@@ -218,26 +245,51 @@ export class Bridge extends EventEmitter {
       return { thread };
     }
     let r;
-    if (d.kind === "new-thread") r = await this.client.call("threads.start", { project: d.project || undefined, cwd: d.cwd || undefined, prompt: text, surface: "capsule" });
-    else {
+    if (d.kind === "new-thread") {
+      // threads.start answers after the first words are typed, so the reply may already be
+      // streaming: its thread.sent names the thread.
+      this.reply = st.reply("");
+      this.pending = true;
+      this.emit("change");
+      r = await this.client.call("threads.start", { project: d.project || undefined, cwd: d.cwd || undefined, prompt: text, surface: "capsule" });
+      this.pending = false;
+      if (r.error) { this.reply = null; this.emit("change"); return { error: explain(r.error) }; }
+      const thread = String(r.data.id);
+      // The surface that starts a thread holds its keyboard; it goes back when the Capsule closes.
+      this.lease = thread;
+      if (this.reply && !this.reply.thread) this.reply = { ...this.reply, thread };
+      this.emit("change");
+      return { thread };
+    } else {
       // One keyboard per thread (floor rule 4). A free thread is taken by typing into it; one
       // someone else holds is theirs until the user chooses to take it.
       if (take) {
         const l = await this.client.call("threads.lease", { thread: d.thread, surface: "capsule" });
         if (l.error) return { error: explain(l.error) };
       }
+      // The reply is listened for before the words go: the child can answer before the call does.
+      const before = this.reply;
+      this.reply = st.reply(String(d.thread));
       r = await this.client.call("threads.send", { thread: d.thread, text, surface: "capsule" });
+      if (r.error || (r.data && r.data.sent === false)) this.reply = before;
       if (!r.error && r.data && r.data.sent === false) {
+        // {sent:false, holder, note}; the note names a tool, so the Capsule says it in words.
         const holder = r.data.holder || null;
-        return { error: r.data.note || `${holder || "Another screen"} has the keyboard in this thread.`, holder };
+        return { error: holder ? `${holder} has the keyboard in this thread.` : r.data.note || "This thread could not be typed into.", holder };
       }
       if (!r.error) this.lease = String(d.thread);
     }
     if (r.error) return { error: explain(r.error) };
-    const thread = String((r.data && (r.data.thread || r.data.id)) || d.thread || "");
-    this.reply = thread ? st.reply(thread) : null;
+    const thread = String((r.data && r.data.thread) || d.thread);
     this.emit("change");
     return { thread };
+  }
+
+  /** Who holds a thread's keyboard now, or null. */
+  async holder(thread) {
+    if (!this.has("threads.get")) return null;
+    const r = await this.client.call("threads.get", { thread, limit: 1 });
+    return (r.data && r.data.thread && r.data.thread.holder) || null;
   }
 
   /** Hand the keyboard back when the Capsule closes. */
@@ -264,7 +316,11 @@ export class Bridge extends EventEmitter {
       for (const x of a.data ? (Array.isArray(a.data) ? a.data : a.data.asks || []) : []) {
         // Only questions still open; an answered one stays in the table with its decision.
         if (x.decision || (x.state && !["open", "pending", "waiting"].includes(x.state))) continue;
-        rows.push(st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: x.project, payload: { ...x, agent: x.agent || this.who(x.thread) } }, s => this.projectName(s)));
+        // threads.asks rows are {id, thread, tool, summary, destination, reason, at, state}: no
+        // project and no agent, so both come from the thread as the catalog knows it.
+        const t = (this.catalog.threads || []).find(y => y.id === x.thread);
+        rows.push(st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: x.project || (t && t.project) || null,
+          payload: { ...x, agent: x.agent || this.who(x.thread) } }, s => this.projectName(s)));
       }
     } else {
       const raised = await this.client.get("/v1/events?type=ask.raised&limit=1000");
@@ -330,12 +386,9 @@ export class Bridge extends EventEmitter {
   onEvent(e) {
     // An agent's reply whose thread was not known when it was sent: the first sign of it on the
     // stream names it. A thread this Capsule typed into, or one started for that agent.
-    if (this.reply && !this.reply.thread && e.thread) {
-      const p = e.payload || {};
-      if (this.pendingAgent && ((e.type === "thread.sent" && p.surface === "capsule") || (e.type === "thread.started" && p.agent === this.pendingAgent))) {
-        this.reply = { ...this.reply, thread: String(e.thread) };
-        this.pendingAgent = null;
-      }
+    if (this.pending && this.reply && !this.reply.thread && e.thread && e.type === "thread.sent" && (e.payload || {}).surface === "capsule") {
+      this.reply = { ...this.reply, thread: String(e.thread) };
+      this.pending = false;
     }
     const w = st.applyWaiting(this.waiting, e.type === "ask.raised" ? this.named(e) : e, s => this.projectName(s));
     const r = this.reply ? st.applyReply(this.reply, e) : null;
@@ -366,6 +419,8 @@ function needs(d) {
   if (d.kind === "thread") return "threads.send";
   return null;
 }
+
+const folderOf = cwd => (cwd ? String(cwd).split("/").filter(Boolean).pop() || null : null);
 
 /** Recall marks matches «like this»; the Capsule shows plain words. */
 const plain = s => String(s || "").replace(/[«»]/g, "");

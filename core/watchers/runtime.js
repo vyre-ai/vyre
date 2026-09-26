@@ -71,7 +71,7 @@ export const MIGRATIONS = [`
  * @typedef {{ db: import("node:sqlite").DatabaseSync, dir: string,
  *   emit: (type: string, payload: object, where?: object) => any,
  *   call: (tool: string, input: object) => Promise<{ data?: any, error?: any }>,
- *   fetch: (name: string, watcher: string) => Promise<string>,
+ *   fetch: (name: string, watcher: string, field?: string) => Promise<string>,
  *   teach: (kind: string, fact: object) => Promise<boolean>,
  *   log: (msg: string) => void, now?: () => number }} Deps
  */
@@ -320,7 +320,7 @@ export class Runtime {
 
   /** Run in a child and check the items; a bad item is the run's error. */
   async exec(dir, spec, since, hook) {
-    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: name => this.d.fetch(name, spec.name), signal: this.abort.signal });
+    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal });
     if (res.error) return res;
     try { return { ...res, items: normalize(res.items) }; }
     catch (e) { return { ...res, items: [], error: /** @type {Error} */ (e).message }; }

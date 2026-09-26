@@ -421,3 +421,59 @@ test("recall: the real model finds both questions and returns nothing for nonsen
     assert.deepEqual((await search(e.db, { q }, embedder, dense)).hits, [], `nonsense returned hits: ${q}`);
   }
 });
+
+test("recall: new vectors are appended to the dense index in place, and a rewrite still rebuilds it", async t => {
+  const e = setup(t);
+  const emb = fakeEmbedder({ same: SAME });
+  const dense = new Dense(e.db);
+  const ix = new Indexer(e.db, { onVector: item => dense.add(item) });
+  e.writeTurns(["the intake form question", "the intake form answer"]);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  await dense.build();
+  assert.equal(dense.builds, 1);
+  assert.equal(dense.stats()?.chunks, 2);
+
+  // Many new turns: the arrays have to grow, and nothing is rebuilt.
+  const more = ["the intake form question", "the intake form answer"];
+  for (let i = 0; i < 100; i++) more.push(i === 99 ? "the accessibility problems in the audit" : `filler turn number ${i}`);
+  e.writeTurns(more);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  assert.equal(dense.builds, 1, "appending new vectors rebuilt the whole index");
+  assert.equal(dense.stats()?.chunks, 102);
+  const hit = (await search(e.db, { q: "blind visitors" }, emb, dense)).hits[0];
+  assert.equal(hit?.seq, 101, "an appended vector was not searchable");
+  assert.equal(dense.builds, 1);
+
+  // A new session is appended with its folder, so project filters still apply to it.
+  fs.writeFileSync(path.join(e.dir, "-tmp-p", "s9.jsonl"), JSON.stringify({ type: "user", cwd: "/tmp/other", message: { role: "user", content: "accessibility problems elsewhere" } }) + "\n");
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  const other = (await search(e.db, { q: "blind visitors", project_cwds: ["/tmp/other"] }, emb, dense)).hits;
+  assert.deepEqual(other.map(h => h.session), ["s9"]);
+  assert.equal(dense.builds, 1);
+
+  // A rewrite deletes turns: that is the one thing that must rebuild.
+  e.writeTurns(["a different opening", "and a different answer"]);
+  await ix.run([e.dir]);
+  await search(e.db, { q: "blind visitors" }, emb, dense);
+  assert.equal(dense.builds, 2, "a rewrite did not rebuild the index");
+});
+
+test("recall: vectors that arrive during a build are not lost", async t => {
+  const e = setup(t);
+  const emb = fakeEmbedder({ same: SAME });
+  const dense = new Dense(e.db);
+  const ix = new Indexer(e.db, { onVector: item => dense.add(item) });
+  e.writeTurns(["one", "two"]);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  const building = dense.build();
+  e.writeTurns(["one", "two", "the accessibility problems"]);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  await building;
+  assert.equal(dense.stats()?.chunks, 3);
+  assert.equal((await search(e.db, { q: "blind visitors" }, emb, dense)).hits[0]?.seq, 2);
+});
