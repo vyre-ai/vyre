@@ -12,9 +12,11 @@
 // connect made when asked.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { Readable } from "node:stream";
 import * as config from "../../core/config/index.js";
 import { listener, LOCAL } from "./listen.js";
+import { MIC_BIN } from "./talk.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
 
 /** A spoken reply is a sentence or two, not a document. */
@@ -50,7 +52,7 @@ export default {
     };
 
     ctx.tool("voice.status", {
-      description: "The speech provider, whether its key is saved (never the key), whether replies are spoken, and whether the provider can be reached right now.",
+      description: "The speech provider, whether its key is saved (never the key), whether replies are spoken, whether the provider can be reached right now, and the path of the built mic helper (null until local/voice/build.sh has run).",
       callers: LOCAL,
       input: { type: "object", properties: {} },
       run: async (_input, meta) => {
@@ -66,7 +68,7 @@ export default {
           speak: s.speak, voice: s.voice,
           streaming: DEFAULTS[s.provider].streaming, mode: DEFAULTS[s.provider].streaming ? "streaming" : "on-release",
           online: base ? await reachable(base) : false, endpoint,
-          stream: "/v1/streams/voice/listen", format: { encoding: "linear16", sample_rate: 16000, channels: 1 },
+          stream: "/v1/streams/voice/listen", mic: fs.existsSync(MIC_BIN) ? MIC_BIN : null, format: { encoding: "linear16", sample_rate: 16000, channels: 1 },
         };
       },
     });
