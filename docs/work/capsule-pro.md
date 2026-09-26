@@ -106,21 +106,22 @@ without editing Capsule files:
 - Done 2026-09-27: Touch ID in the panel (presence method capsule, cross-checked with
   core/presence in Node), banners for answers landing while hidden, menu-bar popover and health
   dot, headless footprint mode (16.1 MB footprint hidden). Swift tests all pass (200).
-- Done 2026-09-27: Taildrop send (⌘S on a file row).
+- Done 2026-09-27: Taildrop send (⌘S on a file row). SendAttaching (c61e3af). Merged
+  capsule-sight 45be614 and capsule-agent (fcfcef0). Spotlight-strict short matching. Memory as one
+  line, replies by the assistant's name, answer takes the area (801038f). `vyre capsule install`
+  builds locally, zip retired (1a503e9). Planner banners (d608b8a). Swift 238/238.
 - Not yet run for real: enrolment (vyred's Touch ID dialog) and the in-panel Touch ID, which need
   the user at the Mac; the banner permission prompt.
 
 ## Next
-0. (Done 2026-09-27, see Doing.) capsule-now rules 1-5 and 7 in native (read from ../vyre-capsule-now/docs/work/capsule-now.md):
-   the memory box (recall.search + memory.relevant, ranked like said.js, quotes as quotes, fact
-   first), memory lines in the quick-answer append, notices as a faint line, question/answer
-   layout, queued messages for a session busy in a terminal. Rule 6 is in (behaviour re-set
-   before every show).
-1. Native shell: NSPanel, hotkey in process, menu-bar item, vyred link, the launcher's local
-   results, the Vyre half (bridge, state, watches, DMs, held cards), build and sign.
-2. Parity check against every "Done" line in capsule.md, then retire Electron.
-3. Pro Max features, each native.
-4. Gallery gaps and the moved polish items.
+1. Switch the "live in terminal" badge to a real flag once projects.catalog/threads.list carry
+   `live` (asked capsule-now, who owns the open-elsewhere code, 2026-09-27).
+2. Merge capsule-apps' Kit branch (nested and async mentions) when it sends the hash; review it.
+3. memory.answer from memory-iq: fold its {answer, confidence, facts, sources} into MemoryAnswer
+   (conversations, confidence) in place of Said ranking; said.js stays the fallback.
+4. Planner rows (next alarm, today's agenda) if the planner team wants them.
+5. A perf-check entry for the native app (VYRE_CAPSULE_HEADLESS=1 footprint, typing check).
+6. Prove the enrolment and in-panel Touch ID with the user at the Mac.
 
 ## Needs from others
 - capsule-now: its rules doc (docs/work/capsule-now.md) is not written yet; the lead asked the
