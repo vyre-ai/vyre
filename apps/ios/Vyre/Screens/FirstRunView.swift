@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import SwiftUI
 
 /// First run: find the box (a QR from the Deck's setup page, or a typed address), check it

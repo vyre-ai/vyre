@@ -98,7 +98,7 @@ final class AppModel {
     /// Sign out: remove the key from the box, then wipe the key, the cache and the push key.
     func signOut() async {
         if let client, let key {
-            try? await client.call("presence.remove", ["id": .string(key.id)], proof: .device(reason: "Sign this phone out of Vyre"))
+            _ = try? await client.call("presence.remove", ["id": .string(key.id)], proof: .device(reason: "Sign this phone out of Vyre"))
         }
         await push.unregister(client: client)
         wipe()

@@ -16,7 +16,7 @@ final class PushClient {
     private(set) var device: String?
     @ObservationIgnored private var pending: CheckedContinuation<Data, Error>?
 
-    nonisolated init() {
+    init() {
         device = UserDefaults.standard.string(forKey: "push-device")
     }
 
@@ -88,14 +88,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 
     /// A tap: the service extension put the opened path in userInfo.
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let path = response.notification.request.content.userInfo["path"] as? String
         await MainActor.run {
             if let path, let r = Route(path: path) { AppDelegate.model?.open(r) }
         }
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .list]
     }
 }

@@ -81,7 +81,7 @@ struct HeldDraft: Equatable, Sendable, Identifiable {
     /// "Send" for a send, otherwise "Approve".
     var primaryLabel: String { kind == "send" ? "Send" : "Approve" }
 
-    /// The title as the boards write it: "Email to Dana Reyes", "POST api.example.com".
+    /// The title as the boards write it: "Email to alex", "POST api.example.com".
     var title: String {
         let to = fields.first { $0.key == "to" }?.original ?? ""
         switch kind {
@@ -242,7 +242,7 @@ final class NeedsStore {
 
     func discard(_ d: HeldDraft) async throws {
         guard let app else { return }
-        try await app.call("gate.reject", ["id": .string(d.id)], proof: .device(reason: "Discard: \(d.title)"))
+        _ = try await app.call("gate.reject", ["id": .string(d.id)], proof: .device(reason: "Discard: \(d.title)"))
         held.removeAll { $0.id == d.id }
     }
 
@@ -250,7 +250,7 @@ final class NeedsStore {
     func answer(_ a: AskItem, allow: Bool) async throws {
         guard let app else { return }
         let verb = allow ? "Allow" : "Deny"
-        try await app.call("threads.answer", ["ask": .string(a.id), "decision": allow ? "allow" : "deny", "surface": "ios"],
+        _ = try await app.call("threads.answer", ["ask": .string(a.id), "decision": allow ? "allow" : "deny", "surface": "ios"],
                            proof: .device(reason: "\(verb): \(a.summary)".prefix(120).description))
         asks.removeAll { $0.id == a.id }
         if allow { Haptics.success() }
