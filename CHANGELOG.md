@@ -17,6 +17,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   still a keychain file for tests. `vyre up` on a real Mac install writes `vault.keychain: true`.
 - `dialogsAllowed()` (and the Capsule's copy) is false for a `VYRE_HOME` other than `~/.vyre`, and
   vyred started in-process on such a root sets `VYRE_NO_DIALOGS=1` outside tests.
+  `VYRE_ALLOW_DIALOGS=1` is the override for a person who keeps Vyre in a custom home on purpose:
+  it never applies under `node --test`, and `VYRE_NO_DIALOGS=1` still wins.
 - `deck/test/world.js`, `deck/test/vault-shots.js`, `test/fixtures/vyred-present.js` and
   `scripts/release-check.sh` pass `VYRE_NO_DIALOGS=1` and the file keystore.
 - `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and

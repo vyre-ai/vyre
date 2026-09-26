@@ -34,7 +34,8 @@ export async function start(opts = {}) {
   const root = opts.root || config.home();
   // A vyred on any home but ~/.vyre (a demo or dev world started in-process with `root`) raises
   // nothing on screen: every dialog gate reads the environment, so say it there.
-  if (!isRealHome(root) && !process.env.NODE_TEST_CONTEXT) process.env.VYRE_NO_DIALOGS = "1";
+  // VYRE_ALLOW_DIALOGS=1 is a person's deliberate custom home (core/config/dialogs.js).
+  if (!isRealHome(root) && !process.env.NODE_TEST_CONTEXT && process.env.VYRE_ALLOW_DIALOGS !== "1") process.env.VYRE_NO_DIALOGS = "1";
   const p = config.ensure(root);
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");

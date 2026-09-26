@@ -24,12 +24,22 @@ the leftovers from the user's login keychain.
 
 - `config.vault.keychain` may now be `true` (opt in to the login keychain) as well as a keychain file.
 - `keystore({ login })`, `secretKeyStore({ login })`: new option, default false.
-- `dialogsAllowed(env)`: also false for a non-real `VYRE_HOME`.
+- `dialogsAllowed(env)`: also false for a non-real `VYRE_HOME`, unless `VYRE_ALLOW_DIALOGS=1` (not under tests).
 
 ## Needs from others
 
 - polish-cli: `scripts/stress-drive` (not on main yet) should write `vault: { keystore: "file" }` and
   set `VYRE_NO_DIALOGS=1`; after this merge it gets the file keystore anyway.
+
+## Done after the pause
+
+- VYRE_ALLOW_DIALOGS=1, the lead's decision 1: the override for a deliberate custom VYRE_HOME, in
+  core/config/dialogs.js, the Capsule's copy and daemon start. It never applies under tests, and
+  VYRE_NO_DIALOGS still wins. The test is in core/vault/login-keychain.test.js, and the Capsule's
+  copy is checked against the core rule. The lead also approved decisions 2 and 3: an old dev home
+  opens a fresh file key, and teams rebase after the merge. NOT RUN YET because the Mac is paused.
+  First step when running is allowed: `nice -n 15 node --test core/vault/login-keychain.test.js
+  core/vault/mac/dialogs.test.js`.
 
 ## Doing
 
@@ -55,4 +65,3 @@ the leftovers from the user's login keychain.
   no reply yet.
 - e2e: 4 orphaned journey vyreds (51999, 53170, 56736, 59570). They use the file keystore. Asked e2e
   to stop them.
-- Lead: a custom VYRE_HOME now gets no dialogs at all. Add an env override for that?

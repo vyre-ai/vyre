@@ -11,6 +11,8 @@
 //     NODE_TEST_CONTEXT, so this covers them too.
 //   - VYRE_HOME set to anything but ~/.vyre (a dev world, a demo, a stress run): never. Those
 //     homes are thrown away, and a prompt from one looks exactly like one from the real install.
+//     A person who keeps Vyre in a custom home on purpose sets VYRE_ALLOW_DIALOGS=1. It never
+//     applies under tests, and VYRE_NO_DIALOGS still wins.
 //   - otherwise: yes.
 
 import os from "node:os";
@@ -36,7 +38,7 @@ export function isRealHome(root) {
 export function dialogsAllowed(env = process.env) {
   if (env.VYRE_NO_DIALOGS === "1") return false;
   if (env.NODE_TEST_CONTEXT) return env.VYRE_TEST_DIALOGS === "1";
-  if (env.VYRE_HOME && !isRealHome(env.VYRE_HOME)) return false;
+  if (env.VYRE_HOME && !isRealHome(env.VYRE_HOME)) return env.VYRE_ALLOW_DIALOGS === "1";
   return true;
 }
 
