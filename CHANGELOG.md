@@ -19,6 +19,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the onboarding page are real. Six scenarios: door A through the browser to the ready block,
   door A resumed, door A refused, door B with the Mac looking for the box, a signed-out Mac, and
   `vyre up --json` on a finished box. Gaps against ADR 0008 stay as todo subtests naming the code.
+- The journey harness follows `box add` pairing over SSH and the finished-box resume: door A runs
+  the real installer, a resume opens no browser and no tunnel, and the Mac's discovery step is
+  skipped where the real Tailscale app is installed, since the link module would run it.
 - `test/helpers.js` points `VYRE_TAILSCALE_BIN` at a path that does not exist, so no test runs the
   machine's real `tailscale` when `vyre up` looks for a box.
 - `vyre box add <user@host>` (ADR 0008 section 2): checks the Mac is on its tailnet, reaches the

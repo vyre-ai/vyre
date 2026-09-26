@@ -7,7 +7,8 @@
 //   the node's address, so the tailnet listener can bind on this machine. `cert` copies a
 //   self-signed certificate the rig made for vyre.tail0000.ts.net.
 // mac: the Mac's Tailscale, Running as alex@example.com (or signed out, per mac-tailscale.json),
-//   with the box as a peer once the box's own state is Running.
+//   with the box as a peer once the box's own state is Running. The peer's address is 127.0.0.1,
+//   so looking it up never leaves this machine.
 
 import fs from "node:fs";
 
@@ -23,7 +24,7 @@ if (who === "mac") {
   if (mac.mode === "signed-out") { process.stdout.write(JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "", Self: null, User: null, Peer: null }) + "\n"); process.exit(0); }
   const box = read(rig.state.box);
   const Peer = box.BackendState === "Running" || mac.peer
-    ? { "nodekey:b0": { HostName: "vyre", DNSName: "vyre.tail0000.ts.net.", TailscaleIPs: ["100.64.0.1"], Online: true, UserID: 7, OS: "linux" } } : {};
+    ? { "nodekey:b0": { HostName: "vyre", DNSName: "vyre.tail0000.ts.net.", TailscaleIPs: ["127.0.0.1"], ID: "nbox", Online: true, UserID: 7, OS: "linux" } } : {};
   process.stdout.write(JSON.stringify({ BackendState: "Running", Self: { HostName: "laptop", DNSName: "laptop.tail0000.ts.net.", TailscaleIPs: ["100.64.0.2"], UserID: 7 }, User: USER, Peer }) + "\n");
   process.exit(0);
 }

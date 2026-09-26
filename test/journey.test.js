@@ -16,20 +16,15 @@ import { ending } from "../core/cli/ending.js";
 
 /** @type {Awaited<ReturnType<typeof makeRig>> | null} */
 let shared = null;
-/** Set when install-box.sh cannot run as shipped, so later scenarios say why they lay the stack. */
-let installerBlocked = "";
 const INSTALL_RUN = /^(-o \S+ )*\S+@\S+ env .*sh \/\S+ --yes$/;
 
 test.after(async () => { if (shared) await shared.close(); });
 
 const tail = f => { try { return fs.readFileSync(f, "utf8").split("\n").slice(-30).join("\n"); } catch { return "(nothing)"; } };
 
-/** The installer's own failure line, when the box add output says it stopped. */
-const installerWhy = out => (out.match(/^.*(No such file|not a checksum list|has no line for|checksum mismatch|curl: \(\d+\)).*$/m) || [""])[0].trim();
-
 test("journey 1, door A: box add installs, the browser onboards, the Mac ends ready", async t => {
   const rig = shared = await makeRig();
-  let run = rig.mac(["box", "add", TARGET, "--yes"]);
+  const run = rig.mac(["box", "add", TARGET, "--yes"]);
   // On a failure, say what the Mac printed and what the box's vyred logged.
   let ok = false;
   t.after(() => {
@@ -37,20 +32,9 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
     t.diagnostic(`box add printed:\n${run.output()}`);
     t.diagnostic(`the box's vyred:\n${tail(path.join(rig.root, "srv", "vyred.out"))}`);
   });
-  // The Mac waits with the link open in the browser, or stops early if the installer failed.
-  let first = await Promise.race([until(() => rig.opened()[0], Boolean, 40_000, "box add to open the browser"), run.done]);
-  if (typeof first !== "string") {
-    const why = installerWhy(first.out);
-    assert.match(first.out, /the installer stopped/, `box add stopped before the browser:\n${first.out}`);
-    installerBlocked = `scripts/install-box.sh cannot install from ${rig.env.server.VYRE_BOX_URL}: ${why}`;
-    t.todo(installerBlocked);
-    t.diagnostic(installerBlocked);
-    assert.ok(!fs.existsSync(path.join(rig.env.server.VYRE_DIR, "compose.yml")), "a failed install left no half stack");
-    rig.layStack();
-    run = rig.mac(["box", "add", TARGET, "--yes"]);
-    first = await Promise.race([until(() => rig.opened()[0], Boolean, 40_000, "box add to open the browser"), run.done]);
-    assert.equal(typeof first, "string", `box add stopped on the laid stack:\n${/** @type {any} */ (first).out}`);
-  }
+  // The Mac waits with the link open in the browser, or stops early if something failed.
+  const first = await Promise.race([until(() => rig.opened()[0], Boolean, 40_000, "box add to open the browser"), run.done]);
+  assert.equal(typeof first, "string", `box add stopped before the browser:\n${/** @type {any} */ (first).out}`);
   const url = /** @type {string} */ (first);
   assert.match(url, new RegExp(`^http://127\\.0\\.0\\.1:${rig.onboardPort}/onboard\\?t=[A-Za-z0-9_-]{40,}$`), "the box's own onboarding port, same number on the Mac");
   assert.ok(rig.ssh().some(l => l.includes(`-O forward -L ${rig.onboardPort}:127.0.0.1:${rig.onboardPort} ${TARGET}`)), "the tunnel rides the held connection");
@@ -108,11 +92,11 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   assert.equal(code, 0, out);
   assert.match(out, new RegExp(`reaching ${TARGET}`));
   assert.match(out, /Docker Compose 2\.29\.0/);
-  if (!installerBlocked) {
-    assert.match(out, new RegExp(`Vyre will, on ${TARGET}:`));
-    assert.match(out, /the stack goes in /, "the installer's own output is shown");
-    assert.equal(rig.ssh().filter(l => INSTALL_RUN.test(l)).length, 1, "the installer ran once, with --yes");
-  }
+  assert.match(out, new RegExp(`Vyre will, on ${TARGET}:`));
+  assert.match(out, /the stack goes in /, "the installer's own output is shown");
+  assert.equal(rig.ssh().filter(l => INSTALL_RUN.test(l)).length, 1, "the installer ran once, with --yes");
+  assert.ok(fs.existsSync(path.join(rig.env.server.VYRE_DIR, ".env")), "the installer wrote the stack");
+  assert.ok(rig.docker().includes("compose up -d"), "and the wrapper started it");
   assert.match(out, /Finish in your browser\. I'll wait here\./);
   for (const label of ["You", "Claude Code", "Tailscale", "Your history"]) assert.match(out, new RegExp(`^  ${label}\\s+done$`, "m"), label);
   assert.equal(out.match(/^ {2}Claude Code\s+done$/gm)?.length, 1, "each step is said once");
@@ -125,10 +109,17 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
     assert.ok(out.includes(ending({ address, assistant: "Juno" }).join("\n")), out);
     assert.equal(c.network?.box, address);
   } else {
-    // ADR 0008 section 6: the ending is the same everywhere; with the address pending it says so.
+    // ADR 0008 section 6: with the address step skipped, the ending says it is not done yet.
+    assert.match(out, /your box has no address yet\. Finish Your address in the Deck's Settings/);
     assert.ok(out.includes(ending({ address: null, assistant: "Juno" }).join("\n")), out);
+    assert.match(out, /^ {2}Almost there: your box has no address yet\.$/m);
   }
   ok = true;
+
+  await t.test("the Mac ends linked to the box", { skip: address ? "the harness cannot link: this Mac's vyred reaches the box by its ts.net name, which does not resolve here, and both ends refuse a peer that is not a tailnet address (core/link/transport.js isTailnet, core/names/identity.js); link's seams are in-process only (core/link/index.js)" : "no address, so nothing to link to" }, async () => {
+    const r = await rig.mac(["link"], { timeout: 20_000 }).done;
+    assert.match(r.out, /linked/);
+  });
 });
 
 test("journey 2, door A resumed: box add again skips the install and finishes", async t => {
@@ -142,12 +133,10 @@ test("journey 2, door A resumed: box add again skips the install and finishes", 
   assert.ok(!calls.some(l => INSTALL_RUN.test(l)), `no second installer run:\n${calls.join("\n")}`);
   assert.ok(!calls.some(l => / cat > /.test(l)), "the installer was not even copied over");
   assert.doesNotMatch(out, /Go ahead\?|nothing changed/, "a resume asks nothing");
-  assert.match(out, /^ {2}Vyre is ready\.$/m);
-
-  await t.test("a finished box does not send the person back to the onboarding page", { todo: "onboard.link keys on network.ownerSeen, not onboard.finished: core/onboard/index.js:269 mints a fresh link after finish, so box add (core/cli/commands/box.js:281) opens a tunnel and the browser again" }, () => {
-    assert.equal(rig.opened().length, opened, "no second browser open");
-    assert.doesNotMatch(out, /Finish in your browser/);
-  });
+  assert.equal(rig.opened().length, opened, "no second browser open");
+  assert.ok(!calls.some(l => / -O forward /.test(l)), "no second tunnel");
+  assert.doesNotMatch(out, /Finish in your browser/);
+  assert.ok(out.includes(ending({ address: rig.macConfig().network?.box || null, assistant: "Juno" }).join("\n")), out);
 });
 
 test("journey 3, door A refused: no --yes and no terminal prints the plan and touches nothing", async () => {
@@ -172,14 +161,7 @@ test("journey 4, door B: the installer on the server prints the link and the ssh
   const rig = await makeRig();
   try {
     // ---- on the server, in its own shell over SSH ----
-    let r = await rig.server(`sh ${JSON.stringify(rig.installer)} --yes`, { timeout: 40_000 }).done;
-    if (r.code !== 0) {
-      const why = installerWhy(r.out) || r.out.trim().split("\n").pop();
-      t.todo(`scripts/install-box.sh cannot install from ${rig.env.server.VYRE_BOX_URL}: ${why}`);
-      rig.layStack();
-      // What the installer's last step runs.
-      r = await rig.server(`env VYRE_DIR=${rig.env.server.VYRE_DIR} ${rig.env.server.VYRE_WRAPPER} up`, { timeout: 40_000 }).done;
-    }
+    const r = await rig.server(`sh ${JSON.stringify(rig.installer)} --yes`, { timeout: 40_000 }).done;
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /Open this link to set up Vyre/);
     assert.match(r.out, new RegExp(`^ {4}http://127\\.0\\.0\\.1:${rig.onboardPort}/onboard\\?t=\\S+$`, "m"));
@@ -188,20 +170,23 @@ test("journey 4, door B: the installer on the server prints the link and the ssh
     assert.ok(rig.docker().includes("compose up -d"), "the wrapper started the stack");
 
     // ---- later, on the Mac: the box has joined the tailnet ----
-    rig.boxSignedIn();
-    const m = await rig.mac(["up", "--json"], { timeout: 30_000 }).done;
-    assert.equal(m.code, 0, m.out);
-    const j = JSON.parse(m.out.trim().split("\n").pop() || "");
-    assert.equal(j.role, "local");
-    // The peer is found, but its ts.net name does not resolve here and it has no answering TLS:
-    // the probe fails and nothing is saved, so the Mac falls back to "no box yet".
-    assert.equal(j.box, null);
-    assert.equal(j.ready, false);
-    assert.equal(rig.macConfig().network?.box, undefined, "nothing unconfirmed is saved");
-    assert.ok(fs.readFileSync(rig.log.tailscale, "utf8").includes("mac status --json"), "it read the Mac's tailnet");
+    const skip = rig.macTailscaleApp && "this Mac has the real Tailscale app, which link.find would run: core/link/transport.js:36 ignores VYRE_TAILSCALE_BIN";
+    await t.test("the Mac's vyre up --json looks for the box on the tailnet", { skip }, async t => {
+      rig.boxSignedIn();
+      const m = await rig.mac(["up", "--json"], { timeout: 30_000 }).done;
+      assert.equal(m.code, 0, m.out);
+      const j = JSON.parse(m.out.trim().split("\n").pop() || "");
+      assert.equal(j.role, "local");
+      // link.find sees the peer, but its ts.net name does not resolve here, so nothing answers and
+      // nothing is saved: the Mac falls back to "no box yet".
+      assert.equal(j.box, null);
+      assert.equal(j.ready, false);
+      assert.equal(rig.macConfig().network?.box, undefined, "nothing unconfirmed is saved");
+      assert.ok(fs.readFileSync(rig.log.tailscale, "utf8").includes("mac status --json"), "it read the Mac's tailnet");
 
-    await t.test("--json says a Vyre peer was seen but did not answer", { todo: "core/cli/commands/up.js:115 discover() drops peers whose probe fails, and up.js:202 prints box:null with no candidates or reason, so a caller cannot tell 'no box' from 'box unreachable'" }, () => {
-      assert.match(JSON.stringify(j), new RegExp(TS_NAME.replace(/\./g, "\\.")));
+      await t.test("--json says a Vyre peer was seen but did not answer", { todo: "link.find (core/link/mac.js) returns only boxes that answered, and vyre up --json (core/cli/commands/up.js mac()) prints box:null with no candidates or reason, so a caller cannot tell 'no box' from 'box unreachable'" }, () => {
+        assert.match(JSON.stringify(j), new RegExp(TS_NAME.replace(/\./g, "\\.")));
+      });
     });
   } finally { await rig.close(); }
 });
@@ -245,9 +230,8 @@ test("journey 6, after onboarding: vyre up --json on the server", async t => {
   assert.equal(seen.port, null);
   assert.equal(seen.ssh, null);
   assert.equal(seen.address, address);
-  assert.equal(typeof seen.ready, "boolean");
-
-  await t.test("ready is true when the box serves its address", { todo: "core/cli/commands/up.js:216 probes the box's own address from inside the box; its tailnet listener refuses a caller from this box itself (core/names/identity.js, 'from this box itself'), and with --accept-dns=false the container may not resolve its ts.net name, so ready can never be true on a box" }, () => {
-    assert.equal(seen.ready, true);
+  // The stop and start above is a restart, and a ts.net box does not serve again after one.
+  await t.test("after a restart the address serves again, so ready is true", { todo: "core/names/service.js:229 serve() reads certName() before tailscale() (line 243) sets the node, so for via ts.net the name is null at start, serve() returns false, and names.status stays idle after any vyred restart" }, () => {
+    assert.equal(seen.ready, Boolean(address));
   });
 });
