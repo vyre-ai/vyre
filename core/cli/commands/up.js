@@ -32,13 +32,15 @@ export function parse(args, valued = ["user", "connect"]) {
 
 /**
  * The line that reaches a headless box's loopback page from the person's own computer, or null
- * when this terminal is not over SSH.
+ * when this terminal is not over SSH. In the box's container, the host's `vyre` passes its own
+ * SSH_CONNECTION through and names the host account in VYRE_HOST_USER, since the container's
+ * account is not the one the person signs in with.
  */
 export function sshLine(port, user, env = process.env) {
   const conn = String(env.SSH_CONNECTION || "").split(" ");
   if (conn.length < 4) return null;
   const host = conn[2].includes(":") ? `[${conn[2]}]` : conn[2];
-  return `ssh -N -L ${port}:127.0.0.1:${port} ${user}@${host}`;
+  return `ssh -N -L ${port}:127.0.0.1:${port} ${env.VYRE_HOST_USER || user}@${host}`;
 }
 
 const UNIT = path.join(system.ETC, "vyre.service");
@@ -65,6 +67,12 @@ async function bring(role) {
     try { process.kill(h.pid, "SIGTERM"); } catch {}
     const back = await waitFor(VERSION);
     return back ? { ok: true, note: `restarted ${h.version} → ${VERSION}` } : { ok: false, note: "vyred did not come back; see journalctl -u vyre" };
+  }
+  if (process.env.VYRE_SUPERVISOR === "docker") {
+    // In the box's container vyred is the container's main process: the image is the version, and
+    // Docker restarts it. A new version arrives with `docker compose pull && docker compose up -d`.
+    return h ? { ok: true, note: h.version === VERSION ? null : `running ${h.version}; this image is ${VERSION}` }
+      : { ok: false, note: "vyred is not answering in its container: docker compose -p vyre logs vyre" };
   }
   if (!h && systemdManaged()) return { ok: false, note: "vyred is installed as a service and is stopped: sudo systemctl start vyre" };
   if (h) await stop();

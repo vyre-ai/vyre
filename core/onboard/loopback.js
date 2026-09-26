@@ -12,6 +12,7 @@
 
 import crypto from "node:crypto";
 import http from "node:http";
+import os from "node:os";
 
 const HOUR = 3_600_000;
 const SESSION = 12 * HOUR;
@@ -23,11 +24,27 @@ export const TOOLS = new Set(["onboard.status", "onboard.name", "onboard.claude"
   "onboard.skip", "onboard.finish", "projects.catalog", "projects.create", "recall.status"]);
 
 const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");
+const TAILNET4 = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./;
 
 /**
- * @param {{ handler: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, port?: number, now?: () => number, log?: (m: string) => void }} deps
+ * Where the listener binds. On a host, 127.0.0.1. In the box's container the port is published
+ * from the host's loopback by Docker, which forwards to the container's own network address,
+ * never to its 127.0.0.1; so there it binds that address (not 0.0.0.0, which would include the
+ * tailnet interface), and the person still reaches it as 127.0.0.1 through `ssh -L`.
  */
-export function loopback({ handler, port: wanted = 7300, now = Date.now, log = () => {} }) {
+export function bindAddress(mode = process.env.VYRE_ONBOARD_HOST, ifaces = os.networkInterfaces()) {
+  if (mode !== "container") return "127.0.0.1";
+  for (const [name, list] of Object.entries(ifaces)) {
+    if (name === "lo" || name.startsWith("tailscale")) continue;
+    for (const a of list || []) if (a.family === "IPv4" && !a.internal && !TAILNET4.test(a.address)) return a.address;
+  }
+  throw new Error("no container network address to bind the onboarding listener to");
+}
+
+/**
+ * @param {{ handler: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, port?: number, now?: () => number, log?: (m: string) => void, host?: string }} deps
+ */
+export function loopback({ handler, port: wanted = 7300, now = Date.now, log = () => {}, host = bindAddress() }) {
   /** @type {http.Server | null} */
   let server = null;
   let port = 0;
@@ -87,7 +104,7 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
     return new Promise((resolve, reject) => {
       const s = http.createServer((req, res) => { onRequest(req, res).catch(e => json(res, 500, "internal", e.message)); });
       s.once("error", reject);
-      s.listen(p, "127.0.0.1", () => { s.off("error", reject); resolve(s); });
+      s.listen(p, host, () => { s.off("error", reject); resolve(s); });
     });
   }
 
@@ -95,14 +112,17 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
     /** Open the listener (if needed) and mint a fresh token, voiding any unredeemed one. */
     async link() {
       if (!server) {
-        for (let p = wanted; p < wanted + 20 && !server; p++) {
+        // In a container the published port is fixed, so there is no next free one to try.
+        const tries = host === "127.0.0.1" ? 20 : 1;
+        for (let p = wanted; p < wanted + tries && !server; p++) {
           if (p === 0) { server = /** @type {http.Server} */ (await listen(0)); break; }
           try { server = /** @type {http.Server} */ (await listen(p)); }
           catch (e) { if (/** @type {any} */ (e).code !== "EADDRINUSE") throw e; }
         }
+        if (!server && tries === 1) throw new Error(`port ${wanted} is taken inside the container`);
         if (!server) server = /** @type {http.Server} */ (await listen(0));
         port = /** @type {any} */ (server.address()).port;
-        log(`onboard: listening on 127.0.0.1:${port}`);
+        log(`onboard: listening on ${host}:${port}`);
       }
       const t = crypto.randomBytes(32).toString("base64url");
       token = { hash: sha(t), expires: now() + HOUR };

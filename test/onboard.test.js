@@ -11,6 +11,7 @@ import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { tempHome } from "./helpers.js";
+import { bindAddress } from "../core/onboard/loopback.js";
 
 /** A fake executable that prints `out` for any arguments. */
 function fakeBin(dir, name, out) {
@@ -132,4 +133,15 @@ test("onboard: a new link voids the old unredeemed one; the owner arriving on th
   d.events.emit("names", "owner.seen", {});
   await new Promise(r => setTimeout(r, 100));
   assert.equal(await fetch(`http://127.0.0.1:${b.port}/onboard`).then(() => "open", () => "closed"), "closed");
+});
+
+test("onboard: in the box's container the listener binds the container's own address, never the tailnet's", () => {
+  const ifaces = {
+    lo: [{ family: "IPv4", address: "127.0.0.1", internal: true }],
+    tailscale0: [{ family: "IPv4", address: "100.101.2.3", internal: false }],
+    eth0: [{ family: "IPv6", address: "fe80::1", internal: false }, { family: "IPv4", address: "172.20.0.2", internal: false }],
+  };
+  assert.equal(bindAddress(undefined, ifaces), "127.0.0.1");
+  assert.equal(bindAddress("container", ifaces), "172.20.0.2");
+  assert.throws(() => bindAddress("container", { lo: ifaces.lo, tailscale0: ifaces.tailscale0 }), /no container network address/);
 });
