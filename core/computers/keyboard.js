@@ -30,7 +30,7 @@ const SURFACE = /^(glass|deck|phone|capsule):[A-Za-z0-9._-]{1,64}$/;
 export const isSurface = s => SURFACE.test(String(s || ""));
 
 /**
- * @typedef {{ surface: string, thread: string|null, since: number, beat: number, leased?: number }} Takeover
+ * @typedef {{ surface: string, thread: string|null, since: number, beat: number, leased?: number, by?: string }} Takeover
  */
 
 export class Keyboard extends EventEmitter {
@@ -100,9 +100,15 @@ export class Keyboard extends EventEmitter {
   /**
    * Take the computer for a person's surface. Calling it again from the same surface renews it
    * (and re-leases the thread), which is how Glass keeps a take-over alive.
+   *
+   * `caller` is whoever vyred verified made this call (presence now gates `computers.takeover`
+   * itself — a module, or a person who just proved they are here — so recording it is recording
+   * a real identity, not a string the input made up). `giveback` requires the same caller, so a
+   * second person who also proved presence cannot end someone else's take-over.
+   * @param {string} agent @param {string} surface @param {string} [caller]
    * @returns {Promise<{ agent: string, surface: string, thread: string|null, previous: string|null }>}
    */
-  async takeover(agent, surface) {
+  async takeover(agent, surface, caller) {
     if (!isSurface(surface)) throw new Error(`"${surface}" is not a person's screen; a surface looks like glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
     const before = this.holder(agent);
     // A take-over needs the screen: it checks out (and thaws), and holds the checkout while it lasts.
@@ -122,20 +128,26 @@ export class Keyboard extends EventEmitter {
     const at = this.now();
     const t = this.takeovers.get(agent);
     if (t && t.surface === surface) {
-      Object.assign(t, { beat: at, thread: leased });
+      Object.assign(t, { beat: at, thread: leased, by: caller || t.by });
       return { agent, surface, thread: leased, previous };
     }
-    this.takeovers.set(agent, { surface, thread: leased, since: at, beat: at });
+    this.takeovers.set(agent, { surface, thread: leased, since: at, beat: at, by: caller });
     this.send("computer.taken-over", { agent, surface, thread: leased }, leased ? { thread: leased } : {});
     this.log(`${surface} took over ${agent}'s computer`);
     this.emit("changed", { agent, surface });
     return { agent, surface, thread: leased, previous };
   }
 
-  /** Hand the keyboard back. Only the surface that has it can; anyone else changes nothing. */
-  async giveback(agent, surface) {
+  /**
+   * Hand the keyboard back. Only the surface that has it can; and when it was taken over by a
+   * caller vyred verified (not one moved here by the lease alone, see `onLease`), only that same
+   * caller or a module can — so a second person who also proved presence for `computers.giveback`
+   * cannot end someone else's take-over just by naming their surface.
+   */
+  async giveback(agent, surface, caller) {
     const t = this.takeovers.get(agent);
     if (!t || t.surface !== surface) return { agent, handed_back: false };
+    if (t.by && t.by !== caller && !String(caller || "").startsWith("module:")) return { agent, handed_back: false };
     this.takeovers.delete(agent);
     if (t.thread) {
       this.quiet.add(t.thread);
@@ -173,7 +185,9 @@ export class Keyboard extends EventEmitter {
       else if (holder === t.surface) t.beat = this.now();
       else if (isSurface(holder)) {
         const at = this.now();
-        Object.assign(t, { surface: String(holder), since: at, beat: at });
+        // The lease moved this, not a verified computers.takeover call: nobody to bind giveback
+        // to but the surface itself, same as before presence existed.
+        Object.assign(t, { surface: String(holder), since: at, beat: at, by: undefined });
         this.send("computer.taken-over", { agent, surface: t.surface, thread: t.thread }, { thread: t.thread });
         this.log(`${agent}'s take-over moved to ${t.surface}`);
         this.emit("changed", { agent, surface: t.surface });

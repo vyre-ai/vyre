@@ -79,6 +79,26 @@ test("keyboard: take-over stops the agent's hands, names the holder, and givebac
   assert.deepEqual(changes, [{ agent: "kit", surface: "glass:laptop" }, { agent: "kit", surface: null }]);
 });
 
+test("keyboard: giveback is bound to whoever took over, when vyred verified who that was", async t => {
+  const { kb } = setup(t);
+  await kb.takeover("kit", "glass:laptop", "deck:someones-ipad");
+  // The same surface, from a different verified caller (someone else's presence, or none at
+  // all), cannot end it - only the caller who took it over, or a module, can.
+  assert.deepEqual(await kb.giveback("kit", "glass:laptop", "deck:someone-elses-ipad"), { agent: "kit", handed_back: false });
+  assert.deepEqual(await kb.giveback("kit", "glass:laptop"), { agent: "kit", handed_back: false });
+  assert.deepEqual(await kb.giveback("kit", "glass:laptop", "module:glass"), { agent: "kit", handed_back: true }, "a module acting behind its own presence check still can");
+});
+
+test("keyboard: a take-over the lease moved has no verified caller to bind giveback to", async t => {
+  const { kb, leases } = setup(t);
+  await kb.takeover("kit", "glass:laptop", "deck:someones-ipad");
+  leases.set("th-kit-2", "phone:pocket");
+  kb.onLease({ thread: "th-kit-2", payload: { holder: "phone:pocket", previous: "glass:laptop" } });
+  // Nobody vyred can verify made this happen (the lease moved it, not a direct takeover call),
+  // so it falls back to the surface-only check that predates presence.
+  assert.deepEqual(await kb.giveback("kit", "phone:pocket"), { agent: "kit", handed_back: true });
+});
+
 test("keyboard: the checkout's thread wins over the agent's latest", async t => {
   const { kb, pool } = setup(t);
   await pool.checkout("kit", { thread: "th-kit-1" });
