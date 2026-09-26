@@ -20,6 +20,7 @@ import {
   passwordKdf, clampKdf, ARGON2, AUK_SCRYPT, MIN_PASSWORD,
 } from "./crypto.js";
 import { keystore, defaultKind, secretKeyStore } from "./keys.js";
+import { isRealHome } from "../config/dialogs.js";
 import {
   ensureDir, writeSealed, readSealed, removeSealed, promoteSealed, stagedIds, STAGED, writeJsonFile, readJsonFile,
 } from "./store.js";
@@ -180,13 +181,20 @@ export class Vault {
     this.emit = (type, payload) => { emit(type, payload); try { this.onEmit?.(type, payload); } catch {} };
     const opts = (config && config.vault) || {};
     this.name = (config && config.name) || "vyre";
-    this.kind = opts.keystore || defaultKind();
-    this.guarded = this.kind === "keychain" && !opts.keychain && Boolean(process.env.NODE_TEST_CONTEXT);
+    // vault.keychain is a keychain file (tests), or true: this home may use the login keychain.
+    // Only ~/.vyre may use it without saying so; `vyre up` on a real install writes true. A dev
+    // world, demo or stress home that picks no keystore gets the file keystore, so it never
+    // leaves an item in the person's login keychain or asks them for their password.
+    const file = typeof opts.keychain === "string" ? opts.keychain : undefined;
+    this.login = !file && (opts.keychain === true || isRealHome(path.dirname(dir)));
+    this.kind = opts.keystore || (defaultKind() === "keychain" && !file && !this.login ? "file" : defaultKind());
+    const loginRefused = this.kind === "keychain" && !file && (!this.login || Boolean(process.env.NODE_TEST_CONTEXT));
+    this.guarded = loginRefused;
     // On a Mac the keychain is written by a hash-checked helper that is the only app on each
     // item's access list (ADR 0006 finding 1); elsewhere there is no keychain keystore.
-    const kcHelper = this.kind === "keychain" && process.platform === "darwin" ? new Helper({ name: "keychain", dir: path.join(dir, "helpers") }) : null;
-    this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain, helper: kcHelper });
-    this.secretKeys = secretKeyStore({ dir, kind: this.kind === "keychain" ? "keychain" : "file", keychain: opts.keychain, helper: kcHelper });
+    const kcHelper = this.kind === "keychain" && !loginRefused && process.platform === "darwin" ? new Helper({ name: "keychain", dir: path.join(dir, "helpers") }) : null;
+    this.keys = keystore({ dir, kind: this.kind, keychain: file, helper: kcHelper, login: !loginRefused });
+    this.secretKeys = secretKeyStore({ dir, kind: this.kind === "keychain" ? "keychain" : "file", keychain: file, helper: kcHelper, login: !loginRefused });
     this.testKdf = testKdf;
     /** The agent vault's key, the personal vault's key while unlocked, and the row MAC key. All KeyObjects. */
     /** @type {import("node:crypto").KeyObject|null} */ this.vk = null;
@@ -234,9 +242,12 @@ export class Vault {
   }
 
   async openAgents() {
-    // Under node --test the real login keychain is out of bounds: a test that forgot to pick a
-    // keystore must fail loudly, not quietly write a key into someone's keychain.
-    if (this.guarded) throw new Error("under tests the keychain keystore needs vault.keychain (a temporary keychain file)");
+    // Under node --test, and for any home but ~/.vyre that has not opted in, the login keychain
+    // is out of bounds: a home that asked for it must fail loudly, not quietly write a key there.
+    if (this.guarded) {
+      if (process.env.NODE_TEST_CONTEXT) throw new Error("under tests the keychain keystore needs vault.keychain (a temporary keychain file)");
+      throw new Error("the login keychain is only for ~/.vyre: set vault.keystore to file, or vault.keychain to true to use it for this home");
+    }
     let raw;
     if (await this.keys.exists()) {
       raw = await this.keys.load();

@@ -66,6 +66,40 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   HTTPS switch a ts.net address needs as plain steps, then offers Tailnet Lock. The Capsule sends
   a file to the box with option-return.
 
+#### The Capsule is Spotlight's size
+
+- The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it
+  replaces. `local/capsule/app/main.js`, `capsule.css`.
+
+#### The login keychain and every dialog belong to ~/.vyre alone
+
+- A dev world (`deck/test/world.js`), a demo and a stress run each started a real vyred on a temp
+  `VYRE_HOME` outside `node --test`, so the vault's test guard did not apply: with no
+  `vault.keystore` a Mac defaulted to the login keychain, and 32 `vyre-vault` items built up in the
+  user's login keychain while prompts kept reaching their screen. All 32 are deleted.
+- The vault now uses the login keychain only for `~/.vyre` (the account's home from the user
+  database, not `$HOME`) or a home whose config says `vault.keychain: true`. Any other home that
+  picks no keystore gets the file keystore; one that asks for `keychain` is refused with a message
+  naming both fixes, before any helper is built or `security` runs. `vault.keychain` as a string is
+  still a keychain file for tests. `vyre up` on a real Mac install writes `vault.keychain: true`.
+- `dialogsAllowed()` (and the Capsule's copy) is false for a `VYRE_HOME` other than `~/.vyre`, and
+  vyred started in-process on such a root sets `VYRE_NO_DIALOGS=1` outside tests.
+  `VYRE_ALLOW_DIALOGS=1` is the override for a person who keeps Vyre in a custom home on purpose:
+  it never applies under `node --test`, and `VYRE_NO_DIALOGS=1` still wins.
+- `deck/test/world.js`, `deck/test/vault-shots.js`, `test/fixtures/vyred-present.js` and
+  `scripts/release-check.sh` pass `VYRE_NO_DIALOGS=1` and the file keystore.
+- `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and
+  `osascript` that record calls, keeps its key in a file, builds no keychain helper and calls
+  neither; a temp home that asks for the keychain is refused; the world scripts set the flags.
+#### e2e: a real install walked from main
+
+- The onboarding page kept Continue off on step 1 whenever the box had no vyre.run zone token,
+  which is every box: "That name is not free: could not check". A name the check cannot run for
+  is fine now, since the address is the ts.net one, chosen in step 4. The name field also gets the
+  same `input` style as the assistant's.
+- `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
+  still starting (6s on a loaded Mac). It waits up to 15s now.
+
 #### No Touch ID prompt, or anything else on screen, under tests
 
 - A test run raised a real Touch ID dialog ("Relax Vyre lesson 1") on the user's screen: presence's

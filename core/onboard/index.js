@@ -200,6 +200,15 @@ export default {
       run: async ({ name, action = "check" }, { caller }) => {
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
+          // No zone token and no own domain: the address is this machine's ts.net name, so there
+          // is nothing on vyre.run to check and every valid name is free.
+          const n = await tryCall("names.status");
+          if (!n.__error && via(n) === "ts.net") {
+            const v = checkName(name), dns = n.tailscale && n.tailscale.node && n.tailscale.node.dnsName;
+            if (v.valid) save({ name: v.name });
+            await status(caller);
+            return { name: v.name, valid: v.valid, available: v.valid, why: v.why, via: "ts.net", address: dns ? `https://${String(dns).replace(/\.$/, "")}` : null };
+          }
           const c = await call("names.check", { name });
           if (c.valid && c.available) save({ name: c.name });
           await status(caller);
