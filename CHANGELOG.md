@@ -33,6 +33,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Verified with real Claude Code on haiku: a thread started from the CLI streamed to two curl SSE
   clients, a Write permission was answered from one of them, the lease moved between them, and
   `agents.ask` got a reply from a test agent.
+- A terminal `claude --resume <id>` on a thread vyred is running headless is now visible (floor
+  rule 4). The Harness SessionStart hook passes `headless` (true only inside vyred's own child),
+  and `harness.brief` asks the internal `threads.claimed {session}` ->
+  `{headless, holder, status}`. When the thread is live, the brief opens with a warning naming the
+  holder and `vyre threads stop <id8>`, and the internal `threads.contend` emits
+  `thread.contended {thread, session, holder}`. The session still starts: the hook never blocks.
 
 #### Learning
 
