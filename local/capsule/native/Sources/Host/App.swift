@@ -3,6 +3,7 @@
 // vyred follower backs off to a minute, and the event tap only wakes on key events.
 
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -14,6 +15,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var extensions: ExtensionHost!
     let hotkeys = Hotkeys()
     var status: NSStatusItem?
+    /// Repaints the mark when the waiting list changes (Agent/MenuBar.swift).
+    var agentSink: AnyCancellable?
 
     override init() {
         let env = ProcessInfo.processInfo.environment
@@ -36,6 +39,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         (model.providers.first as? AppsProvider)?.refreshIfChanged(wait: false)
         vyred.follower.start()
         makeStatusItem()
+        followWaiting()
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }
 
@@ -60,6 +64,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     @objc func statusClicked(_ sender: NSStatusBarButton) {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Capsule", action: #selector(openCapsule), keyEquivalent: "").target = self
+        addWaitingItem(menu)
         menu.addItem(.separator())
         let ways = [hotkeys.doubleControl ? "Control twice" : nil, hotkeys.chord.map(Self.pretty)].compactMap { $0 }
         let how = NSMenuItem(title: ways.isEmpty ? "No hot key: open it from here" : "Opens with " + ways.joined(separator: " or "), action: nil, keyEquivalent: "")

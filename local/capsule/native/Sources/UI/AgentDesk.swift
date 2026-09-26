@@ -174,7 +174,7 @@ struct WaitingHint: View {
     static func directShown(_ m: CapsuleModel) -> Bool { m.desk.mode == .none && m.direct.dm != nil && m.asked == nil }
     static func height(_ m: CapsuleModel) -> CGFloat {
         switch m.desk.mode {
-        case .none: return (hintShown(m) ? 1 + WaitingHint.height : 0) + (directShown(m) ? DirectView.height(m.direct) : 0)
+        case .none: return (m.offline ? 1 + OfflineBanner.height : 0) + (hintShown(m) ? 1 + WaitingHint.height : 0) + (directShown(m) ? DirectView.height(m.direct) : 0)
         case .list: return 1 + WaitingList.height(m.desk)
         case .card: return m.desk.open.map { 1 + HeldCardView.height(m.desk, $0) } ?? 0
         }
@@ -183,10 +183,24 @@ struct WaitingHint: View {
     @ViewBuilder static func view(_ m: CapsuleModel) -> some View {
         switch m.desk.mode {
         case .none:
+            if m.offline { Rule(); OfflineBanner() }
             if directShown(m) { Rule(); DirectView(direct: m.direct, desk: m.desk) }
             else if hintShown(m) { Rule(); WaitingHint(desk: m.desk) }
         case .list: Rule(); WaitingList(desk: m.desk)
         case .card: if let w = m.desk.open { Rule(); HeldCardView(desk: m.desk, w: w) }
         }
     }
+}
+
+/// vyred is not running: nothing can be sent, and results here are from this Mac.
+struct OfflineBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("OFFLINE").font(Theme.label).tracking(1.6).foregroundColor(Theme.ash)
+            Text("vyred is not running on this Mac. Start it with vyre up. Results here are from this Mac.").font(Theme.subtitle).foregroundColor(Theme.bone).lineLimit(1)
+            Spacer()
+        }
+        .padding(.horizontal, 16).frame(height: OfflineBanner.height)
+    }
+    static let height: CGFloat = 30
 }

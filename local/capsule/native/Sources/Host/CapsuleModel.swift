@@ -153,7 +153,7 @@ public final class CapsuleModel: ObservableObject {
         }
         recall(q.text, token: t)
         if q.normalized.isEmpty { groups = []; selected = 0; return }
-        if let c = calcResult(q) { partial["calc"] = [c] }
+        if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
             let s = Match.score(q.normalized, c.title, synonyms: c.keywords)
