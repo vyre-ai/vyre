@@ -134,6 +134,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   message.
 - Fix: a command run in the same millisecond as a file change counted as after it, so a test
   run could clear a commit it did not follow. Commands now count only when strictly later.
+- Fix: offline, "strictly later" by the clock dropped a test run made in the same millisecond as
+  the edit before it, so a commit after fresh tests was denied (the flaky "tests from before the
+  last change" test: 358 of 2000 probe runs, 15 of 60 file runs, alone or in the suite). The
+  offline state now orders edits and commands by a counter it keeps (`n`), not by `Date.now()`;
+  a state file from before the counter starts over rather than letting its timestamp outrank it.
+  The online check still compares the Harness's timestamps with Learning's.
 - Lessons are checked with vyred down, as the floor is. Learning keeps the accepted lessons in
   `<home>/lessons.json` (mode 0600), rewritten on every change. When vyred does not answer,
   `hook.js` runs the tool and Stop checks in-process from it (`core/learn/offline.js`), keeping
