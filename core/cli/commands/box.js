@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as config from "../../config/index.js";
 import * as tailnet from "../tailnet.js";
-import { remote, quote, line } from "../ssh.js";
+import { remote, quote, line, validTarget } from "../ssh.js";
 import { ensureUp } from "../daemonctl.js";
 import { call } from "../../daemon/client.js";
 import { VERSION } from "../../daemon/index.js";
@@ -23,7 +23,6 @@ import { out, dim, signal, beacon } from "../style.js";
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
 const VOLUMES = ["vyre-home", "vyre-work", "tailscale-state"];
 const LABELS = { you: "You", claude: "Claude Code", tailscale: "Tailscale", name: "Your address", history: "Your history", devices: "Your devices" };
-const TARGET = /^[^@\s'"]+@[^@\s'"]+$/;
 
 // A remote script's first lines: the stack folder, and whether this account reaches Docker itself
 // or through sudo (a fresh Docker install leaves the account out of the docker group).
@@ -54,10 +53,14 @@ export const PREFLIGHT = [
   'if [ -f "$DIR/compose.yml" ]; then echo box=yes; else echo box=no; fi',
   'echo "distro=$( . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME")"',
   'echo "dir=$DIR"',
+  'echo "user=$(id -un)"',
+  'if id -nG | tr " " "\\n" | grep -qx docker; then echo docker_group=yes; else echo docker_group=no; fi',
+  'echo "volumes=$($D docker volume ls -q --filter label=com.docker.compose.project=vyre 2>/dev/null | tr "\\n" " ")"',
 ].join("\n");
 
 /**
- * @typedef {{ os: string, docker: string|null, sudo: "root"|"yes"|"no", tun: boolean, box: boolean, distro: string, dir: string }} Preflight
+ * @typedef {{ os: string, docker: string|null, sudo: "root"|"yes"|"no", tun: boolean, box: boolean, distro: string, dir: string,
+ *   user: string, dockerGroup: boolean, volumes: string[] }} Preflight
  * @param {string} text key=value lines
  * @returns {Preflight}
  */
@@ -67,7 +70,16 @@ export function parsePreflight(text) {
     os: kv.os || "", docker: kv.docker && kv.docker !== "none" ? kv.docker : null,
     sudo: kv.sudo === "root" || kv.sudo === "yes" ? kv.sudo : "no",
     tun: kv.tun === "yes", box: kv.box === "yes", distro: kv.distro || "", dir: kv.dir || "/srv/vyre",
+    user: kv.user || "", dockerGroup: kv.docker_group === "yes", volumes: (kv.volumes || "").split(/\s+/).filter(Boolean),
   };
+}
+
+/**
+ * Must the account join the docker group? When sudo needs a password, every later call over SSH
+ * (which cannot ask) would fail to reach Docker; joining once, while sudo can ask, avoids that.
+ */
+export function needsGroup(p) {
+  return p.sudo === "no" && !p.dockerGroup;
 }
 
 /** What installing will do, in the words the person is asked about. */
@@ -78,6 +90,7 @@ export function plan(p) {
     "add /usr/local/bin/vyre",
     "start Vyre, which waits for you to finish setting it up in your browser",
     ...(p.sudo === "no" ? ["sudo will ask for your password on this terminal"] : []),
+    ...(needsGroup(p) ? [`add ${p.user || "your account"} to the docker group (root-equivalent on this server; lets Vyre manage the stack without your password)`] : []),
   ];
 }
 
@@ -149,30 +162,44 @@ export function settled(s) {
 
 /**
  * Poll onboard.status, printing each step once as it is done or skipped. Resolves with the last
- * status, or "stopped" on Ctrl-C.
+ * status, or "late" once the link has expired (it lives an hour; the wait gives it 65 minutes).
  */
 async function wait(r, env = process.env) {
   const every = Number(env.VYRE_BOX_POLL_MS) || 5000;
+  const until = Date.now() + (Number(env.VYRE_BOX_WAIT_MS) || 65 * 60_000);
   const said = new Set();
-  let stop = () => {};
-  const interrupted = new Promise(res => { stop = () => res("stopped"); });
-  process.once("SIGINT", stop);
   let quiet = false;
-  try {
-    for (;;) {
-      let s = null;
-      try { s = await r.json(vyre(["call", "onboard.status"], env)); quiet = false; }
-      catch (e) { if (!quiet) out(dim(`  the box did not answer (${/** @type {Error} */ (e).message}); still trying`)); quiet = true; }
-      for (const [k, state] of Object.entries((s && s.steps) || {})) {
-        if (said.has(k) || !["done", "skipped"].includes(state)) continue;
-        said.add(k);
-        out(`  ${(LABELS[k] || k).padEnd(14)} ${state === "done" ? signal("done") : dim("skipped")}`);
-      }
-      if (settled(s)) return s;
-      if ((await Promise.race([sleep(every).then(() => null), interrupted])) === "stopped") return "stopped";
+  for (;;) {
+    let s = null;
+    try { s = await r.json(vyre(["call", "onboard.status"], env)); quiet = false; }
+    catch (e) { if (!quiet) out(dim(`  the box did not answer (${/** @type {Error} */ (e).message}); still trying`)); quiet = true; }
+    for (const [k, state] of Object.entries((s && s.steps) || {})) {
+      if (said.has(k) || !["done", "skipped"].includes(state)) continue;
+      said.add(k);
+      out(`  ${(LABELS[k] || k).padEnd(14)} ${state === "done" ? signal("done") : dim("skipped")}`);
     }
-  } finally { process.off("SIGINT", stop); }
+    if (settled(s)) return s;
+    if (Date.now() >= until) return "late";
+    await sleep(every);
+  }
 }
+
+/**
+ * One Ctrl-C handler for a whole command run: fn closes the SSH masters (which removes their
+ * /tmp folders) and says what state things were left in, then the command exits 130.
+ */
+function onInterrupt(fn) {
+  let busy = false;
+  const h = () => {
+    if (busy) return;
+    busy = true;
+    Promise.resolve().then(fn).catch(() => {}).finally(() => process.exit(130));
+  };
+  process.on("SIGINT", h);
+  return () => { process.off("SIGINT", h); };
+}
+
+const resume = target => `run vyre box add ${target} again to carry on.`;
 
 // ---- add ----
 
@@ -206,7 +233,7 @@ async function look(r, env) {
  * Step 4: copy the installer that shipped with this package and run it. The copy matches the
  * Mac's version; --yes because the person already said yes to the plan; a terminal so sudo can ask.
  */
-async function install(r, args, env) {
+async function install(r, args, env, group = false) {
   const src = env.VYRE_BOX_INSTALLER || INSTALLER;
   const tmp = (await r.run("mktemp")).stdout.trim();
   if (!tmp) throw new Error(`could not make a temporary file on ${r.target}`);
@@ -214,8 +241,15 @@ async function install(r, args, env) {
     const put = await r.put(src, tmp);
     if (put.code !== 0) throw new Error(put.stderr.trim() || "could not copy the installer");
     const tty = Boolean(process.stdin.isTTY);
-    const res = await r.run(line("env", ...passEnv(env), ...(env.VYRE_NO_UP ? ["VYRE_NO_UP=1"] : []), "sh", tmp, ...args), { tty });
+    // Joining the docker group rides the same terminal session, so sudo's cached password covers it.
+    const join = group ? ' && sudo usermod -aG docker "$(id -un)"' : "";
+    const res = await r.run(line("env", ...passEnv(env), ...(env.VYRE_NO_UP ? ["VYRE_NO_UP=1"] : []), "sh", tmp, ...args) + join, { tty });
     if (!tty) { if (res.stdout.trim()) out(res.stdout.replace(/^/gm, "  ").trimEnd()); if (res.stderr.trim()) out(dim(res.stderr.trim())); }
+    if (res.code === 0 && group) {
+      // Group membership comes with a new login, so the held connection is made again.
+      const o = await r.reopen();
+      if (!o.ok) throw new Error(`could not reach ${r.target} again after joining the docker group: ${o.why}`);
+    }
     return res.code;
   } finally { await r.run(line("rm", "-f", tmp)); }
 }
@@ -270,10 +304,11 @@ async function pairOver(r, address, env, tool) {
  */
 export async function add(target, opts = {}) {
   const env = opts.env || process.env;
-  if (!TARGET.test(String(target || ""))) { out("  vyre box add <user@host>"); return 1; }
+  if (!validTarget(target)) { out("  vyre box add <user@host>"); return 1; }
   const t = await macFirst(env);
   if (!t) return 1;
   const r = remote(target, { env });
+  const off = onInterrupt(async () => { await r.close(); out(`\n  Stopped. Your box is as you left it; ${resume(target)}`); });
   try {
     if (!(await reach(r))) return 1;
     const p = await look(r, env);
@@ -284,14 +319,14 @@ export async function add(target, opts = {}) {
       out(`\n  Vyre will, on ${r.target}:`);
       const no = await agree(plan(p), "Go ahead?", opts.yes);
       if (no !== null) return no;
-      const code = await install(r, ["--yes"], env);
+      const code = await install(r, ["--yes"], env, needsGroup(p));
       if (code !== 0) { out(beacon(`  the installer stopped (exit ${code}). Fix what it said, then run this again.`)); return 1; }
     }
     return await onboard(r, target, t, env, opts.call || call);
   } catch (e) {
     out(beacon("  stopped: ") + /** @type {Error} */ (e).message);
     return 1;
-  } finally { await r.close(); }
+  } finally { off(); await r.close(); }
 }
 
 /** Steps 5 to 7: link, tunnel, browser, wait, finish. */
@@ -308,9 +343,9 @@ async function onboard(r, target, t, env, tool) {
     out(`\n  Finish in your browser. I'll wait here.\n\n    ${signal(l.url)}\n`);
     s = await wait(r, env);
   } finally { await tunnel.close(); }
-  if (s === "stopped") {
-    out(`\n  Stopped. Your box is as you left it; run vyre box add ${target} again to carry on.`);
-    return 130;
+  if (s === "late") {
+    out(beacon("\n  The setup link has expired.") + ` Your box is as you left it; ${resume(target)}`);
+    return 1;
   }
   return finish(r, target, s, t, env, tool);
 }
@@ -325,12 +360,13 @@ function saved() {
   return t || null;
 }
 
-/** Open the saved box, run fn with it, close it. */
-async function withBox(target, fn) {
+/** Open the saved box, run fn with it, close it. On Ctrl-C, close it and run stopped. */
+async function withBox(target, fn, stopped = () => out("\n  Stopped.")) {
   const r = remote(target);
+  const off = onInterrupt(async () => { await r.close(); stopped(); });
   try { return (await reach(r)) ? await fn(r) : 1; }
   catch (e) { out(beacon("  stopped: ") + /** @type {Error} */ (e).message); return 1; }
-  finally { await r.close(); }
+  finally { off(); await r.close(); }
 }
 
 async function status() {
@@ -366,19 +402,27 @@ async function update() {
   });
 }
 
-// The stack stops so the files are still, and starts again however the copy ends.
+/** A script that fails, naming them, when any of the three volumes is missing on this server. */
+const HAS_VOLUMES = `for v in ${VOLUMES.join(" ")}; do $D docker volume inspect vyre_$v >/dev/null 2>&1 || { echo "vyre_$v is missing on this server" >&2; exit 3; }; done`;
+
+// The restart is set up before the stack stops, and runs however the copy ends: a dropped
+// connection (HUP) or a Ctrl-C exits the script, and EXIT starts the stack again.
 const BACKUP = [
-  'cd "$DIR"', "$D docker compose stop >&2", "trap '$D docker compose start >&2' EXIT",
+  'cd "$DIR"', HAS_VOLUMES,
+  "trap '$D docker compose start >&2' EXIT", "trap 'exit 1' HUP INT TERM",
+  "$D docker compose stop >&2",
   `$D docker run --rm ${VOLUMES.map(v => `-v vyre_${v}:/b/${v}:ro`).join(" ")} alpine tar czf - -C /b ${VOLUMES.join(" ")}`,
 ].join("\n");
 
-async function backup(file) {
+async function backup(file, flags = {}) {
   const target = saved();
   if (!target) return 1;
   const dest = path.resolve(file || `vyre-box-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
+  if (fs.existsSync(dest) && !flags.force) { out(beacon(`  ${dest} exists; `) + "pick another file, or add --force to replace it"); return 1; }
+  const partial = dest + ".partial";
   return withBox(target, async r => {
     out(dim(`  stopping the box while it copies; it starts again after`));
-    const fd = fs.openSync(dest, "w", 0o600);
+    const fd = fs.openSync(partial, "w", 0o600);
     fs.fchmodSync(fd, 0o600);
     const child = r.spawn(script(BACKUP), ["ignore", fd, "pipe"]);
     let err = "";
@@ -386,59 +430,129 @@ async function backup(file) {
     const code = await new Promise(res => { child.on("close", c => res(c ?? 1)); child.on("error", () => res(127)); });
     fs.closeSync(fd);
     if (code !== 0) {
-      fs.rmSync(dest, { force: true });
+      fs.rmSync(partial, { force: true });
       out(beacon(`  the backup failed: `) + (err.trim().split("\n").pop() || `exit ${code}`));
       return 1;
     }
+    fs.renameSync(partial, dest);
     out(`  ${signal(dest)} ${dim(`· ${Math.round(fs.statSync(dest).size / 1024)} KB · ${VOLUMES.join(", ")}`)}`);
     out(dim("  keep it private: it holds your vault"));
     return 0;
-  });
+  }, () => { fs.rmSync(partial, { force: true }); out("\n  Stopped. The box starts its stack again on its own; no backup was written."); });
 }
+
+const tail = (s, n = 3) => s.trim().split("\n").slice(-n).join(" / ");
 
 /** Stream one volume from the old server to the new one through this Mac. */
 async function carry(from, to, v) {
   const src = from.spawn(script(`exec $D docker run --rm -v vyre_${v}:/v:ro alpine tar czf - -C /v .`), ["ignore", "pipe", "pipe"]);
   const labels = `--label run.vyre=1 --label com.docker.compose.project=vyre --label com.docker.compose.volume=${v}`;
   const dst = to.spawn(script(`$D docker volume create ${labels} vyre_${v} >/dev/null && exec $D docker run --rm -i -v vyre_${v}:/v alpine tar xzf - -C /v`), ["pipe", "ignore", "pipe"]);
+  const err = { src: "", dst: "" };
+  src.stderr?.on("data", c => { err.src += c; });
+  dst.stderr?.on("data", c => { err.dst += c; });
+  // The new side may die first; its closed stdin must fail this volume, not crash the Mac.
+  dst.stdin?.on("error", () => {});
+  src.stdout?.on("error", () => {});
   /** @type {any} */ (src.stdout).pipe(dst.stdin);
   const done = c => new Promise(res => { c.on("close", x => res(x ?? 1)); c.on("error", () => res(127)); });
   const [a, b] = await Promise.all([done(src), done(dst)]);
-  if (a !== 0 || b !== 0) throw new Error(`copying ${v} failed (old ${a}, new ${b})`);
+  if (a !== 0 || b !== 0) {
+    const why = [a !== 0 && `old: ${tail(err.src) || `exit ${a}`}`, b !== 0 && `new: ${tail(err.dst) || `exit ${b}`}`].filter(Boolean).join("; ");
+    throw new Error(`copying ${v} failed (${why})`);
+  }
   out(`  ${v.padEnd(16)} ${signal("moved")}`);
 }
 
-async function move(newTarget, flags) {
+/** Wait for the box's address to answer from this Mac, up to VYRE_BOX_PROBE_MS (default 2 minutes). */
+async function answers(address, probe, env = process.env) {
+  const until = Date.now() + (Number(env.VYRE_BOX_PROBE_MS ?? 120_000));
+  for (;;) {
+    if (await probe(address)) return true;
+    if (Date.now() >= until) return false;
+    await sleep(3000);
+  }
+}
+
+/**
+ * `vyre box move user@newhost` (ADR 0008 section 8). Once the old stack stops, every way out
+ * either finishes the move or starts the old stack again, and says which.
+ * @param {string} newTarget
+ * @param {{ yes?: boolean }} [flags]
+ * @param {{ probe?: (address: string) => Promise<any> }} [deps] probe stands in for tailnet.probe in tests
+ */
+export async function move(newTarget, flags = {}, deps = {}) {
+  const probe = deps.probe || tailnet.probe;
   const oldTarget = saved();
   if (!oldTarget) return 1;
-  if (!TARGET.test(String(newTarget || ""))) { out("  vyre box move <user@newhost>"); return 1; }
+  if (!validTarget(newTarget)) { out("  vyre box move <user@newhost>"); return 1; }
   const env = { ...process.env, VYRE_NO_UP: "1" };
   const from = remote(oldTarget), to = remote(newTarget, { env });
+  let oldStopped = false;
+
+  /** Start the old stack again and say truthfully whether it came back. */
+  const restore = async () => {
+    const r = await from.run(script('cd "$DIR" && $D docker compose start'));
+    if (r.code === 0) out(`  your box is running again on ${signal(oldTarget)}, as it was`);
+    else out(beacon(`  the old box did not start again (${tail(r.stderr) || `exit ${r.code}`}).`) + ` On ${oldTarget}, run: cd /srv/vyre && docker compose start`);
+  };
+  const off = onInterrupt(async () => {
+    out("\n  Stopped.");
+    if (oldStopped) await restore();
+    else out(`  ${oldTarget} was not touched.`);
+    await from.close(); await to.close();
+  });
+
   try {
     if (!(await reach(from)) || !(await reach(to))) return 1;
     const p = await look(to, env);
     const why = unfit(p);
     if (why) { out(beacon(`  ${why}. Nothing changed.`)); return 1; }
     if (p.box) { out(beacon(`  ${newTarget} already holds a box in ${p.dir}; moving would overwrite it. Nothing changed.`)); return 1; }
+    if (p.volumes.length) { out(beacon(`  ${newTarget} holds Vyre volumes from an earlier box (${p.volumes.join(", ")}); moving would overwrite them. Nothing changed.`)); return 1; }
+    const has = await from.run(script(HAS_VOLUMES));
+    if (has.code !== 0) { out(beacon(`  ${tail(has.stderr) || `the volumes on ${oldTarget} could not be checked`}. Nothing changed.`)); return 1; }
+
     out(`\n  Vyre will move from ${oldTarget} to ${newTarget}:`);
-    const no = await agree([...plan(p).slice(0, 3), `stop Vyre on ${oldTarget} (it is down until the move ends)`,
+    const no = await agree([...plan(p).filter(l => !l.startsWith("start Vyre")), `stop Vyre on ${oldTarget} (it is down until the move ends)`,
       `copy ${VOLUMES.join(", ")} across, through this computer`, `start Vyre on ${newTarget}, same name and address`,
-      `take Vyre off ${oldTarget}, keeping its volumes`], "Go ahead?", flags.yes);
+      `take Vyre off ${oldTarget} once the new one answers, keeping its volumes`], "Go ahead?", flags.yes);
     if (no !== null) return no;
-    if ((await install(to, ["--yes"], env)) !== 0) { out(beacon("  the installer stopped on the new server; the old box was not touched.")); return 1; }
-    const stop = await from.run(script('cd "$DIR" && $D docker compose stop'));
-    if (stop.code !== 0) throw new Error(`could not stop the old box: ${stop.stderr.trim()}`);
-    for (const v of VOLUMES) await carry(from, to, v);
-    const up = await to.run(vyre(["up"], env), { tty: Boolean(process.stdin.isTTY) });
-    if (up.code !== 0) throw new Error(`vyre up on ${newTarget} stopped (exit ${up.code}); the old box still has everything: vyre box update`);
+
+    if ((await install(to, ["--yes"], env, needsGroup(p))) !== 0) { out(beacon(`  the installer stopped on ${newTarget}; ${oldTarget} was not touched.`)); return 1; }
+    // Until install-box.sh honours VYRE_NO_UP, the installer starts a fresh stack: take it down,
+    // with the empty volumes it just made (the preflight saw none there before), so nothing holds them.
+    const down = await to.run(script('cd "$DIR" && $D docker compose down -v'));
+    if (down.code !== 0) { out(beacon(`  could not clear the fresh stack on ${newTarget}: ${tail(down.stderr)}. ${oldTarget} was not touched.`)); return 1; }
+
+    oldStopped = true;
+    try {
+      const stop = await from.run(script('cd "$DIR" && $D docker compose stop'));
+      if (stop.code !== 0) throw new Error(`could not stop the old box: ${tail(stop.stderr) || `exit ${stop.code}`}`);
+      for (const v of VOLUMES) await carry(from, to, v);
+      const l = await link(to, env);
+      if (!l.address) throw new Error(`${newTarget} started but has no address`);
+      out(dim(`  waiting for ${l.address} to answer from here`));
+      if (!(await answers(l.address, probe, env))) throw new Error(`${l.address} did not answer from this Mac`);
+    } catch (e) {
+      out(beacon("  the move stopped: ") + /** @type {Error} */ (e).message);
+      const s = await to.run(script('cd "$DIR" && $D docker compose stop'));
+      out(s.code === 0 ? `  stopped Vyre on ${newTarget}` : beacon(`  could not stop Vyre on ${newTarget}: `) + tail(s.stderr));
+      await restore();
+      return 1;
+    }
+
     config.save({ box: { ssh: newTarget } });
-    await install(from, ["--yes", "--uninstall"], process.env);
     out(`  your box now runs on ${signal(newTarget)}`);
+    const u = await install(from, ["--yes", "--uninstall"], process.env);
+    if (u === 0) out(`  Vyre is off ${oldTarget}; its volumes stay there until you delete them`);
+    else out(beacon(`  taking Vyre off ${oldTarget} stopped (exit ${u}).`) + ` Its stack is stopped and its volumes kept; to finish, run install-box.sh --uninstall on ${oldTarget}.`);
     return 0;
   } catch (e) {
     out(beacon("  stopped: ") + /** @type {Error} */ (e).message);
+    if (oldStopped) await restore();
     return 1;
-  } finally { await from.close(); await to.close(); }
+  } finally { off(); await from.close(); await to.close(); }
 }
 
 async function remove(flags) {
@@ -466,7 +580,7 @@ async function run(args) {
     case undefined: case "status": return status();
     case "add": return add(arg, { yes: Boolean(flags.yes) });
     case "update": return update();
-    case "backup": return backup(arg);
+    case "backup": return backup(arg, flags);
     case "move": return move(arg, flags);
     case "remove": return remove(flags);
     default: out(`  ${USAGE}`); return 1;

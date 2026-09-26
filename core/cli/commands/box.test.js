@@ -10,7 +10,7 @@ import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
 import * as config from "../../config/index.js";
 import { ending } from "../ending.js";
-import box, { add, parsePreflight, parseLink, plan, unfit, settled, newer } from "./box.js";
+import box, { add, move, parsePreflight, parseLink, plan, unfit, settled, newer, needsGroup } from "./box.js";
 
 const FAKE_SSH = `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_SSH_LOG"
@@ -24,9 +24,31 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+export FAKE_TARGET="$1"
 shift
 [ -n "$op" ] && exit 0
 exec sh -c "$*"
+`;
+
+// Docker on the "server": logs each call with the ssh target, streams a line of "data" for a
+// volume tar, and fails a volume named in the box's missing or fail files.
+const FAKE_DOCKER = `#!/bin/sh
+echo "\${FAKE_TARGET:-} $*" >> "$FAKE_BOX/docker.log"
+case "$1 $2" in
+  "compose version") echo 2.29.1; exit 0 ;;
+  "volume inspect") grep -qx "$3" "$FAKE_BOX/missing" 2>/dev/null && exit 1; exit 0 ;;
+  "volume ls") cat "$FAKE_BOX/volumes" 2>/dev/null; exit 0 ;;
+esac
+if [ "$1" = run ]; then
+  v=""
+  for w in "$@"; do case "$w" in vyre_*) v=\${w%%:*} ;; esac; done
+  case "$*" in
+    *czf*) grep -qx "$v" "$FAKE_BOX/fail" 2>/dev/null && { echo "tar: read error on $v" >&2; exit 2; }
+           echo "data $v"; exit 0 ;;
+    *xzf*) cat >/dev/null; exit 0 ;;
+  esac
+fi
+exit 0
 `;
 
 // The box's vyre: canned `up` output, and onboard.status from status.1.json, status.2.json, ...
@@ -64,8 +86,10 @@ function rig(t) {
   exe("vyre", FAKE_VYRE);
   exe("tailscale", `#!/bin/sh\ncat <<'J'\n${JSON.stringify(TAILNET)}\nJ\n`);
   exe("uname", "#!/bin/sh\necho Linux\n");
-  exe("docker", `#!/bin/sh\n[ "$1 $2" = "compose version" ] && { echo 2.29.1; exit 0; }\nexit 0\n`);
-  exe("sudo", `#!/bin/sh\n[ "$1" = -n ] && shift\nexec "$@"\n`);
+  exe("docker", FAKE_DOCKER);
+  // With a sudo-password file, sudo -n fails as it does when sudo needs a password.
+  exe("sudo", `#!/bin/sh\nif [ "$1" = -n ]; then [ -f "$FAKE_BOX/sudo-password" ] && exit 1; shift; fi\nexec "$@"\n`);
+  exe("usermod", `#!/bin/sh\necho "$*" >> "$FAKE_BOX/usermod.log"\n`);
   exe("open", `#!/bin/sh\necho "$1" >> "$FAKE_BOX/opened"\n`);
   exe("installer.sh", `#!/bin/sh\necho "$*" >> "$FAKE_BOX/installer.log"\nenv | grep -q '^VYRE_NO_UP=1' && echo no-up >> "$FAKE_BOX/installer.log"\nmkdir -p "$VYRE_DIR" && touch "$VYRE_DIR/compose.yml"\necho installed\n`);
   const env = {
@@ -78,7 +102,8 @@ function rig(t) {
   t.after(() => { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   const read = f => { try { return fs.readFileSync(path.join(fb, f), "utf8"); } catch { return ""; } };
   const setStatuses = list => list.forEach((s, i) => fs.writeFileSync(path.join(fb, `status.${i + 1}.json`), JSON.stringify(s, null, 2)));
-  return { home, root, fb, read, setStatuses, upOut: s => fs.writeFileSync(path.join(fb, "up.out"), s), stack: env.VYRE_DIR };
+  const put = (f, text) => fs.writeFileSync(path.join(fb, f), text);
+  return { home, root, fb, read, put, setStatuses, upOut: s => fs.writeFileSync(path.join(fb, "up.out"), s), stack: env.VYRE_DIR };
 }
 
 /** Run fn with console.log captured; resolves { code, text }. */
@@ -90,7 +115,11 @@ async function capture(fn) {
 
 test("box: preflight lines parse, and the plan says what will change", () => {
   const p = parsePreflight("os=Linux\ndocker=none\nsudo=no\ntun=yes\nbox=no\ndistro=Ubuntu 24.04 LTS\ndir=/srv/vyre\n");
-  assert.deepEqual(p, { os: "Linux", docker: null, sudo: "no", tun: true, box: false, distro: "Ubuntu 24.04 LTS", dir: "/srv/vyre" });
+  assert.deepEqual(p, { os: "Linux", docker: null, sudo: "no", tun: true, box: false, distro: "Ubuntu 24.04 LTS", dir: "/srv/vyre", user: "", dockerGroup: false, volumes: [] });
+  assert.equal(needsGroup(p), true, "sudo needs a password and the account is not in the docker group");
+  assert.equal(needsGroup({ ...p, sudo: "yes" }), false);
+  assert.equal(needsGroup({ ...p, dockerGroup: true }), false);
+  assert.deepEqual(parsePreflight("volumes=vyre_vyre-home vyre_vyre-work \n").volumes, ["vyre_vyre-home", "vyre_vyre-work"]);
   assert.match(plan(p).join("\n"), /install Docker with get\.docker\.com[\s\S]*create \/srv\/vyre[\s\S]*\/usr\/local\/bin\/vyre[\s\S]*sudo will ask/);
   assert.match(String(unfit({ ...p, os: "Darwin" })), /not Linux/);
   assert.match(String(unfit({ ...p, tun: false })), /\/dev\/net\/tun/);
@@ -234,4 +263,125 @@ test("box remove --yes: uninstalls on the server and forgets the box", async t =
   const c = /** @type {any} */ (config.load());
   assert.equal(c.box, undefined);
   assert.equal(c.network.box, undefined);
+});
+
+const OLD = "alex@203.0.113.9", NEW = "alex@203.0.113.10";
+const ssh = r => fs.readFileSync(path.join(r.root, "ssh.log"), "utf8");
+
+test("box: a target ssh would read as an option never reaches ssh", async t => {
+  const r = rig(t);
+  const { code } = await capture(() => add("-oProxyCommand=touch /tmp/pwned@203.0.113.9", { yes: true }));
+  assert.equal(code, 1);
+  assert.equal(fs.existsSync(path.join(r.root, "ssh.log")), false);
+});
+
+test("box add: sudo with a password adds the account to the docker group in the same session, then reconnects", async t => {
+  const r = rig(t);
+  r.put("sudo-password", "");
+  const user = (await import("node:os")).userInfo().username;
+  r.setStatuses([status(6, { finished: true })]);
+  const { code, text } = await capture(() => add(OLD, { yes: true, call: async () => ({ error: { code: "no_such_tool", message: "" } }) }));
+  assert.equal(code, 0, text);
+  assert.match(text, new RegExp(`add ${user} to the docker group \\(root-equivalent on this server; lets Vyre manage the stack without your password\\)`));
+  assert.match(ssh(r), /sh \/\S+ --yes && sudo usermod -aG docker "\$\(id -un\)"/);
+  assert.match(r.read("usermod.log"), new RegExp(`^-aG docker ${user}$`, "m"));
+  assert.equal(ssh(r).match(/ControlMaster=auto/g)?.length, 2, "the master is opened again so the group applies");
+});
+
+test("box add: the wait gives up when the link expires, and says how to carry on", async t => {
+  const r = rig(t);
+  fs.mkdirSync(r.stack, { recursive: true });
+  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  const port = await freePort();
+  r.upOut(JSON.stringify({ url: `http://127.0.0.1:${port}/onboard?t=x`, port, address: null }));
+  r.setStatuses([status(1)]);
+  process.env.VYRE_BOX_WAIT_MS = "100";
+  t.after(() => { delete process.env.VYRE_BOX_WAIT_MS; });
+  const { code, text } = await capture(() => add(OLD));
+  assert.equal(code, 1);
+  assert.match(text, /setup link has expired/);
+  assert.match(text, /run vyre box add alex@203\.0\.113\.9 again to carry on/);
+});
+
+test("box backup: writes through .partial at 0600, refuses to overwrite without --force", async t => {
+  const r = rig(t);
+  config.save({ box: { ssh: OLD } });
+  const run = /** @type {any} */ (box[0]).run;
+  const file = path.join(r.root, "b.tar.gz");
+  const first = await capture(() => run(["backup", file]));
+  assert.equal(first.code, 0, first.text);
+  assert.match(fs.readFileSync(file, "utf8"), /data vyre_tailscale-state/);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.equal(fs.existsSync(file + ".partial"), false);
+  const log = ssh(r);
+  assert.ok(log.indexOf("trap") < log.indexOf("docker compose stop"), "the restart is armed before the stack stops");
+  assert.match(log, /EXIT/);
+  assert.match(log, /HUP INT TERM/);
+
+  const again = await capture(() => run(["backup", file]));
+  assert.equal(again.code, 1);
+  assert.match(again.text, /exists; pick another file, or add --force/);
+  assert.equal((await capture(() => run(["backup", file, "--force"]))).code, 0);
+});
+
+test("box backup: a missing volume fails before the stack stops", async t => {
+  const r = rig(t);
+  config.save({ box: { ssh: OLD } });
+  r.put("missing", "vyre_vyre-work\n");
+  const file = path.join(r.root, "b.tar.gz");
+  const { code, text } = await capture(() => /** @type {any} */ (box[0]).run(["backup", file]));
+  assert.equal(code, 1);
+  assert.match(text, /vyre_vyre-work is missing/);
+  assert.equal(fs.existsSync(file), false);
+  assert.equal(fs.existsSync(file + ".partial"), false);
+  assert.doesNotMatch(r.read("docker.log"), /compose stop/);
+});
+
+/** A saved box on OLD, and the new server's vyre up answering with the same address. */
+function moving(t) {
+  const r = rig(t);
+  config.save({ box: { ssh: OLD }, network: { box: ADDRESS } });
+  r.upOut(JSON.stringify({ role: "box", url: null, port: 7300, address: ADDRESS }));
+  process.env.VYRE_BOX_PROBE_MS = "0";
+  t.after(() => { delete process.env.VYRE_BOX_PROBE_MS; });
+  return r;
+}
+
+test("box move: carries the volumes, checks the new box answers, then takes the old one off", async t => {
+  const r = moving(t);
+  const { code, text } = await capture(() => move(NEW, { yes: true }, { probe: async () => ({ version: "0.0.1" }) }));
+  assert.equal(code, 0, text);
+  const inst = r.read("installer.log");
+  assert.match(inst, /^--yes$/m);
+  assert.match(inst, /^no-up$/m, "VYRE_NO_UP reaches the installer");
+  assert.match(inst, /^--yes --uninstall$/m);
+  assert.doesNotMatch(inst, /--purge/);
+  const dk = r.read("docker.log");
+  assert.ok(dk.indexOf(`${NEW} compose down -v`) >= 0 && dk.indexOf(`${NEW} compose down -v`) < dk.indexOf(`${OLD} compose stop`), "the fresh stack is down before any volume moves");
+  for (const v of ["vyre-home", "vyre-work", "tailscale-state"]) assert.match(text, new RegExp(`${v}\\s+moved`));
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, NEW);
+});
+
+test("box move: a new box that does not answer is stopped and the old one started again", async t => {
+  const r = moving(t);
+  const { code, text } = await capture(() => move(NEW, { yes: true }, { probe: async () => null }));
+  assert.equal(code, 1);
+  assert.match(text, /did not answer from this Mac/);
+  const dk = r.read("docker.log");
+  assert.match(dk, new RegExp(`${NEW.replace(/\./g, "\\.")} compose stop`));
+  assert.ok(dk.lastIndexOf(`${OLD} compose start`) > dk.indexOf(`${OLD} compose stop`));
+  assert.match(text, /running again on alex@203\.0\.113\.9, as it was/);
+  assert.doesNotMatch(r.read("installer.log"), /--uninstall/);
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, OLD);
+});
+
+test("box move: a failed copy starts the old box again and says which side failed", async t => {
+  const r = moving(t);
+  r.put("fail", "vyre_vyre-work\n");
+  const { code, text } = await capture(() => move(NEW, { yes: true }, { probe: async () => ({}) }));
+  assert.equal(code, 1);
+  assert.match(text, /copying vyre-work failed \(old: tar: read error on vyre_vyre-work\)/);
+  assert.match(r.read("docker.log"), new RegExp(`${OLD} compose start`));
+  assert.match(text, /running again on/);
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, OLD);
 });

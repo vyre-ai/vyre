@@ -55,8 +55,19 @@ function holder(port) {
  *   put(localFile: string, remotePath: string): Promise<Result>,
  *   tunnel(localPort: number, remotePort: number): Promise<{ close(): Promise<void> }>,
  *   spawn(cmd: string, stdio: any[]): import("node:child_process").ChildProcess,
+ *   reopen(): Promise<{ ok: boolean, why: string|null }>,
  *   close(): Promise<void>, target: string }} Remote
  */
+
+/**
+ * Is this a `user@host` we will hand to ssh? A word starting with "-" would be read as an option
+ * (`-oProxyCommand=...` runs a command on this Mac), so neither half may start with one.
+ * @param {unknown} target
+ */
+export function validTarget(target) {
+  const m = /^([^@\s'"]+)@([^@\s'"]+)$/.exec(String(target || ""));
+  return Boolean(m && !m[1].startsWith("-") && !m[2].startsWith("-"));
+}
 
 /**
  * A server reached as `user@host`.
@@ -65,12 +76,19 @@ function holder(port) {
  * @returns {Remote}
  */
 export function remote(target, { env = process.env } = {}) {
+  if (!validTarget(target)) throw new Error(`not a user@host: ${target}`);
   const bin = env.VYRE_SSH_BIN || "ssh";
   const dir = fs.mkdtempSync(path.join("/tmp", "vyre-ssh-"));
   fs.chmodSync(dir, 0o700);
   // Every call names the control socket, so it rides on the master when there is one. Only
   // open() may become the master; a later call never forks a second one behind our back.
   const ctl = ["-o", `ControlPath=${dir}/%C`];
+  // After the master, nothing may stop to ask (BatchMode), and a dead link is noticed within a
+  // minute rather than hanging a poll forever.
+  const quiet = [...ctl, "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"];
+  // `--` ends ssh's options, so the target is never read as one.
+  const to = ["--", target];
+  let closed = false;
 
   /** Run ssh with these arguments; resolves with its exit code and output. */
   function ssh(args, { tty = false, input } = /** @type {{ tty?: boolean, input?: string|Buffer }} */ ({})) {
@@ -92,7 +110,7 @@ export function remote(target, { env = process.env } = {}) {
   function master(interactive) {
     const errFile = path.join(dir, "open.err");
     const fd = fs.openSync(errFile, "w", 0o600);
-    const args = ["-o", "ControlMaster=auto", ...ctl, "-o", "ControlPersist=600", ...(interactive ? [] : ["-o", "BatchMode=yes"]), target, "true"];
+    const args = ["-o", "ControlMaster=auto", ...ctl, "-o", "ControlPersist=600", ...(interactive ? [] : ["-o", "BatchMode=yes"]), ...to, "true"];
     return new Promise(resolve => {
       const child = spawn(bin, args, { env, stdio: [interactive ? "inherit" : "ignore", "ignore", interactive ? "inherit" : fd] });
       child.on("error", e => { fs.closeSync(fd); resolve({ code: 127, why: e.message }); });
@@ -115,8 +133,15 @@ export function remote(target, { env = process.env } = {}) {
       return { ok: false, why: r.why || `ssh ${target} failed (exit ${r.code})` };
     },
 
+    async reopen() {
+      // A new login session, so a group just added (docker) applies to the calls after it.
+      await ssh([...quiet, "-O", "exit", ...to]);
+      return this.open();
+    },
+
     run(cmd, { tty = false, input } = {}) {
-      return ssh([...ctl, ...(tty ? ["-t"] : []), target, cmd], { tty, input });
+      // With a terminal, sudo on the server may ask; ssh itself still rides the master.
+      return ssh([...(tty ? [...ctl, "-o", "ServerAliveInterval=15", "-t"] : quiet), ...to, cmd], { tty, input });
     },
 
     async json(cmd) {
@@ -132,6 +157,9 @@ export function remote(target, { env = process.env } = {}) {
     },
 
     async tunnel(localPort, remotePort) {
+      if (!Number.isInteger(localPort) || !Number.isInteger(remotePort) || localPort <= 0 || remotePort <= 0) {
+        throw new Error(`the box gave no port to forward (${localPort}); run vyre up on it and try again`);
+      }
       if (!(await portFree(localPort))) {
         const who = await holder(localPort);
         throw new Error(`port ${localPort} on this computer is taken${who ? ` by ${who}` : ""}; stop that and run this again`);
@@ -139,17 +167,19 @@ export function remote(target, { env = process.env } = {}) {
       // The forward is added to the held master (-O forward), not a second connection, so a
       // password is never asked for again; -O cancel takes it away.
       const spec = `${localPort}:127.0.0.1:${remotePort}`;
-      const r = await ssh([...ctl, "-o", "ExitOnForwardFailure=yes", "-O", "forward", "-L", spec, target]);
+      const r = await ssh([...quiet, "-o", "ExitOnForwardFailure=yes", "-O", "forward", "-L", spec, ...to]);
       if (r.code !== 0) throw new Error(firstLine(r.stderr) || `could not forward port ${localPort}`);
-      return { close: async () => { await ssh([...ctl, "-O", "cancel", "-L", spec, target]); } };
+      return { close: async () => { await ssh([...quiet, "-O", "cancel", "-L", spec, ...to]); } };
     },
 
     spawn(cmd, stdio) {
-      return spawn(bin, [...ctl, target, cmd], { env, stdio });
+      return spawn(bin, [...quiet, ...to, cmd], { env, stdio });
     },
 
     async close() {
-      await ssh([...ctl, "-O", "exit", target]);
+      if (closed) return;
+      closed = true;
+      await ssh([...quiet, "-O", "exit", ...to]);
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };

@@ -6,6 +6,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `vyre box` hardening: a `user@host` whose user or host starts with `-` is refused, and every ssh
+  call puts `--` before the target; calls after the master use `BatchMode` and `ServerAlive`.
+  When sudo needs a password and the account is not in the docker group, the plan says so and
+  the install adds it in the same terminal session, then reconnects. The wait gives up after 65
+  minutes and says how to carry on. `backup` checks the volumes first, arms the restart before
+  stopping, writes through `.partial` and needs `--force` to replace a file. `move` refuses a
+  server with old Vyre volumes, clears the installer's fresh stack before copying, checks the new
+  box answers from the Mac before uninstalling the old one, and starts the old stack again on any
+  failure. Ctrl-C in `add`, `move` or `backup` closes the SSH master and its `/tmp` folder.
 - `core/link/transport.js` honours `VYRE_TAILSCALE_BIN` like the rest of Vyre, so no test that runs
   `vyre up` on a Mac reaches the real Tailscale app.
 - The npm package carries `scripts/install-box.sh`, which `vyre box add` copies to the server so
