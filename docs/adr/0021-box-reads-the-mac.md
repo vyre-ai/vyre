@@ -50,12 +50,64 @@ to ask it anything, and a new box showed "0 sessions" to a person whose whole hi
   timeout. The box's own rows never wait on it.
 - A Mac that drops off while holding its request looks online for up to the 60 s hold. A read in
   that window answers `timeout`, not `mac_offline`.
-- Mac threads are read-only on the box in this version. Sending to one through the same channel
-  is the next step.
+- Sending to a Mac thread is the one write (below). Answering its permission questions, taking
+  or releasing its keyboard, starting or stopping it from the box are not in this version.
+
+## Sending to a Mac session
+
+Added 27 Sep 2026, so the person can message the Mac's Claude Code sessions from the Deck and the
+phone.
+
+1. **The rule.** `threads.send` on the box, for a thread the box does not have (not running,
+   not recorded, no transcript it could adopt), goes to the paired Macs when the caller is the
+   person: the Deck, the terminal, the Capsule, or the owner over the tailnet (`wantsMacs` in
+   `core/modules/federate.js`, with no `machines` input, so a module never qualifies). An
+   optional `machine` input names one Mac. The Mac's answer comes back unchanged, plus
+   `source: "mac"` and `machine`. Agents, MCP, guests and modules get the box's own answer
+   (`no thread <id>`), and the Mac never sees their call. A thread the box has is the box's.
+2. **One write at both ends.** `WRITE` in `core/link/allow.js` holds only `threads.send`. The box
+   queues it only when `link.macs.call` is given `as: "person"`, and the request carries `as` to
+   the Mac; the Mac runs a write only when the request says `as: "person"`. Writes wait 15 s,
+   since a send that resumes a stopped session headless takes a moment.
+3. **The Mac runs it as the person's.** The Mac calls `threads.send` as the caller `link:box`
+   (declared in the link manifest's `needs.callAs`), so the switchboard's `queuesFor` treats it
+   as a person: a session busy in a terminal gets the words queued and handed over at its next
+   Stop, exactly as for the person on the Mac. Its `surface` is `box:<surface>` (`box:deck`), so
+   the Mac's lease and inbox rows show the words came from the box.
+4. **The events come back.** After a send that did not fail, the Mac follows that thread's
+   `thread.queued`, `thread.sent`, `thread.text`, `thread.finished`, `thread.stopped`,
+   `thread.contended` and `thread.limit`, and sends them to the box's `link.events` in batches, at
+   most every 250 ms while they flow. Events that arrive while the send runs are held and sent
+   only if it succeeds. The box takes them only for a thread it sent to in the last 30 minutes,
+   only from the Mac it sent to, and re-emits each with `source: "mac"` and `machine` added to
+   the payload, the thread id in the envelope and no project (the Mac's slugs are not the box's).
+   One that looks like a secret is dropped alone.
+5. **The follow ends** at the thread's `thread.finished` or `thread.stopped`, 30 minutes after
+   the last send, on unpair, on revoke and when vyred stops. Queued words: a `thread.queued` adds
+   its id to the follow's waiting set, and the `thread.sent { queued }` that hands it over removes
+   it. A `thread.finished` while any is still waiting is another turn ending, not this answer, so
+   the follow goes on. Each send starts or extends the follow. No listener or timer runs while
+   nothing is followed. A batch the box does not take is dropped, never retried: the Deck can
+   read the thread again with `recall.thread`.
+6. **Not forwarded in v1:** `threads.answer` (permission questions are answered on the Mac),
+   `threads.lease` and `threads.release` (the box cannot hold a Mac's lease; the send takes the
+   Mac's lease for `box:<surface>` as any send does), and every other thread tool.
+7. **Offline is an answer.** A Mac that is not polling makes `threads.send` fail at once with
+   `mac_offline`, "<name> is offline; your message was not sent". Nothing is queued on either
+   machine: the box does not keep words for a Mac that is away.
+
+**Trust.** The Mac trusts its paired box's `as: "person"`, because on the box only the
+switchboard's person rule produces it, and `link.macs.call` is internal (modules only). A box
+that was taken over could claim it; what it gains is typing into the Mac's sessions as the owner
+would from the Deck, the same reach the owner's Deck already has. It still cannot answer a
+permission question, run any other write, or read beyond the allowlist, because the Mac checks
+those itself.
 
 ## Consequences
 
 - A paired Mac keeps one held request open to the box: one request a minute while idle.
+- A send to a Mac thread costs the Mac at most four link.events calls a second while its answer
+  streams, and nothing once it has finished.
 - The box's reads can take up to 5 s longer when a Mac is slow, never longer.
 - Onboarding's history step counts the Mac's sessions, held for 30 s and keyed on the Macs'
   online state, so its 2 s poll asks the Mac at most twice a minute.

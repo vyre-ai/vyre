@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The person on the box types into a Mac's session
+
+- `threads.send` on the box, for a thread only a paired Mac has, goes to that Mac for the
+  person's own callers (the Deck, the terminal, the Capsule, the owner over the tailnet); `machine`
+  picks one Mac. The answer is the Mac's, plus `source: "mac"` and `machine`; a Mac that is away
+  answers `mac_offline`, "<name> is offline; your message was not sent". Agents, MCP, guests and
+  modules never reach a Mac (core/switchboard/index.js).
+- The link carries one write: `WRITE = ["threads.send"]` (core/link/allow.js), only with
+  `as: "person"`, checked by the box before queueing and by the Mac before running. The Mac runs
+  it as `link:box` with the surface `box:<surface>`, so a session busy in a terminal queues the
+  words and hands them over at its next Stop (core/link/mac.js, core/link/box.js).
+- The Mac follows that thread's events and sends them to the new box tool `link.events` at most
+  every 250 ms while they flow, until the answer finishes (a finish while queued words wait does
+  not count), 30 minutes pass, or the link ends; the box re-emits them with `source: "mac"` and
+  `machine` for threads it sent to, from the Mac it sent to.
+- `ctx.call(tool, input, { as })` calls as a caller label the manifest declares under
+  `needs.callAs` (core/modules/index.js).
+- Tests: test/federation-send.test.js. Decision: ADR 0021, "Sending to a Mac session".
+
 #### The Deck on a box with a paired Mac, in a browser
 
 - `deck/test/mac-world.js`: one process runs a box vyred (harlow-box) and a Mac vyred (alex-mac)

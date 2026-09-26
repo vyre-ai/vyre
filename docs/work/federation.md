@@ -179,11 +179,44 @@ box.
     session.
   - Not ours: at 1440 the address pill wraps a long /chat/thread/<id> path onto two lines.
 
+- Sending to a Mac session (ADR 0021, "Sending to a Mac session"). Main merged first (8b5dabe);
+  work in d15d21c. The person on the box types into a Mac's session; a session busy in a
+  terminal queues the words on the Mac; the thread's events come back to the box's bus labelled
+  with the Mac. Tests on the test box: test/federation-send.test.js 7/7, three runs in a row and
+  two copies at once (7/7 each); test/link.test.js 10/10, test/link-federation.test.js 7/7,
+  test/federation-reads.test.js 7/7, core/switchboard/switchboard.test.js 31/31,
+  core/harness/floor.test.js 8/8, core/harness/harness.test.js 12/12, test/harness.test.js 15/15,
+  test/hygiene.test.js 1/1. Choices: the box remembers which Macs it sent a thread to at queue
+  time (not at the answer), since the Mac's first batch can beat its reply; a Mac that answered
+  with an error other than a timeout is struck off at once. A widened test `allow` list sends
+  `threads.send` as a read, without `as`, which is how the Mac's own refusal is tested. A timeout
+  answers `timeout`, "<name> did not answer in time; your message may not have been sent". The
+  Mac's `link.status` gains `following`. `threads.unqueue` does not exist on main, so WRITE is
+  `threads.send` alone.
+
+  What the Deck sees from `threads.send` for a Mac thread (as the person, on the box):
+  - sent: `{ sent: true, thread, source: "mac", machine: "alex-mac" }`
+  - busy in a terminal: `{ sent: false, queued: true, open_elsewhere: true, thread, name, note,
+    source: "mac", machine }`, note "<name> is busy in your terminal. I'll hand it your message
+    when this turn ends."
+  - another surface on the Mac holds the keyboard: `{ sent: false, holder, note, source, machine }`
+  - Mac offline: error `{ code: "mac_offline", message: "alex-mac is offline; your message was not sent" }`
+  - no machine has it: the box's own error `{ code: "failed", message: "no thread <id>" }`
+  Then, on the box's event stream, with `thread` in the envelope, `project` null and the source
+  module "link": `thread.queued { queued, text, surface: "box:deck" }`, `thread.sent { text,
+  surface, queued?, via? }`, `thread.text { message, delta }` and `{ message, text, done: true,
+  notice? }`, `thread.finished { ok, cost_usd?, via? }`, `thread.stopped { code, reason }`,
+  `thread.contended`, `thread.limit`; every payload also carries `thread`, `source: "mac"` and
+  `machine`.
+
 ## Doing
 
-- (nothing; Task C is done)
+- (nothing; sending to a Mac session is done)
 
 ## Next
+
+- Chat: a composer for Mac sessions (the read-only rule in deck/js/machine.js lifts for
+  threads.send only; lease, answer and release stay off).
 
 - The pwa / deck owners: the problems listed under "The browser look".
 - Chat's rail groups by project slug, and a Mac project whose slug is also a box project's shares
@@ -194,6 +227,10 @@ box.
 - lead: ADR 0021 assigned (done).
 - deck: review the machine and offline chips, the read-only rule and the choices above (Task C).
 - projects, recall, switchboard owners: review the `machines` input and the row labels.
+- chat: a composer for Mac sessions, sending with `threads.send { thread, text, machine }` and
+  showing the answers above; the note and the offline chip stay for everything else.
+- capsule-now: review the queue-to-busy-session flow as it now runs for the box's words
+  (surface `box:deck`, caller `link:box`), and the follow's end rule for queued words.
 
 ## Changed contracts
 
@@ -250,6 +287,20 @@ box.
   machine "alex-mac"); new `deck/fixtures/link.json` answers `link.macs` with alex-mac online and
   alex-air offline. There are no projects, recall or catalogue fixtures (those modules are live
   wherever the Deck runs), so none were added.
+
+- Sending to a Mac session: `WRITE = ["threads.send"]` and `FOLLOWED` (the event types) in
+  `core/link/allow.js`. `link.macs.call` takes `mac` (a peer id or name: that Mac only) and `as`
+  (a WRITE tool needs `as: "person"`, else `denied` before queueing); writes default to a 15 s
+  timeout; the queued request carries `as`. New box tool `link.events { key, events: [{ type,
+  thread, project, at, payload }] }` answering `{ ok, taken }` or `{ paired: false }`; the link
+  manifest declares it and emits the seven thread types it re-emits. On the Mac a WRITE runs only
+  with `as: "person"`, as the caller `link:box`, with `surface` forced to `box:<surface or
+  deck>`. `ctx.call(tool, input, { as })` (core/modules/index.js): calls as a caller label the
+  manifest declares under `needs.callAs` (never a `module:` label), else throws; the link
+  declares `link:box`. `threads.send` takes `machine` and, on the box for the person, forwards a
+  thread the box does not have; the answer gains `source: "mac"` and `machine`; new errors
+  `mac_offline` and `timeout`. New `Switchboard.knows(id)`. Re-emitted events' payloads gain
+  `source: "mac"` and `machine`. The Mac's `link.status` gains `following`.
 
 ## Notes for Task B
 
