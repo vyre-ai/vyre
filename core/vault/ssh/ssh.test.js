@@ -14,13 +14,14 @@ import { execFile } from "node:child_process";
 import { parsePrivate, serializePrivate, generateKey, sign, verify, fingerprint, publicFromBlob } from "./keys.js";
 import { SshAgent, listen, describe, summarize } from "./agent.js";
 import { Reader, str, u32, byte } from "./wire.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 const have = bin => { try { return fs.statSync(`/usr/bin/${bin}`).isFile() || fs.statSync(`/opt/homebrew/bin/${bin}`).isFile(); } catch { return false; } };
 const OPENSSH = have("ssh-keygen") && have("ssh-add");
 
 function tmp(t) {
   // Short, so the socket path fits the 104-byte unix limit.
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), "vssh-"));
+  const d = fs.mkdtempSync(path.join(SCRATCH, "vssh-"));
   t.after(() => fs.rmSync(d, { recursive: true, force: true }));
   return d;
 }

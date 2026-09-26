@@ -7,16 +7,16 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { issue, newKey, expiry, needsRenewal, thumbprint, DIRECTORIES } from "./acme.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 
 /** A self-signed certificate valid for `days`, made with openssl. */
 function selfSigned(days = 90) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-acme-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-acme-"));
   try {
     execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
       "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-subj", "/CN=box1.example.test", "-days", String(days)], { stdio: "ignore" });
