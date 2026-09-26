@@ -219,7 +219,9 @@ export default {
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       return { mode, role: ctx.config.role, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
-        current, finished: Boolean(ob().finished), steps, detail };
+        // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
+        // loopback page is done with and `vyre box add` may close its tunnel.
+        current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
     }
 
     /** How the name step serves: what it already uses, else a vyre.run claim when a zone token or own domain is here, else ts.net. */

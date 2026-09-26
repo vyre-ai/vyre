@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre box add` waits for the switch, and the pairing code for the passkey
+
+- It moved on as soon as the address served: it closed the tunnel, opened a second passkey tab and
+  printed the pairing code before the person pressed "Switch to", whose passkey link then came
+  over a closed tunnel, and the 10-minute code could run out before anyone could approve it.
+  onboard.status now says `arrived` once the owner reaches the address; box add keeps the tunnel
+  until then, opens no second passkey tab after a switch, makes the pairing code only once a
+  passkey exists, waits for the approval, and replaces a code that expires unapproved.
+  `core/cli/commands/box.js`, `core/onboard/index.js`.
+
 #### Handing the keyboard back needs no passkey
 
 - `glass.release` asked for a passkey, so a person in control had to prove presence again just
