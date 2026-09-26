@@ -3,9 +3,11 @@
 #
 # Xvnc first (it is the X server; nothing else has a display until it exists), then the session
 # bus (AT-SPI needs one to publish on), the window manager (AT-SPI and Chrome both assume
-# something is mapping and focusing windows), Chrome (debugging port loopback-only, relayed
-# outward by socat per ADR 0003), a terminal, and finally computerd in the foreground, which is
-# what keeps the container alive: its exit is the container's exit.
+# something is mapping and focusing windows), Chrome (debugging port loopback-only, reached from
+# outside this container only through computerd's authenticated /cdp proxy — see
+# computerd/index.js; an earlier version relayed it out on its own unauthenticated port, which
+# was a real hole), a terminal, and finally computerd in the foreground, which is what keeps the
+# container alive: its exit is the container's exit.
 #
 # Runs under tini (the Dockerfile's ENTRYPOINT), so a `docker stop` SIGTERM reaches this script
 # and, through it, computerd; tini reaps whatever computerd does not wait on.
@@ -63,10 +65,10 @@ fluxbox >/home/agent/.fluxbox/log 2>&1 &
 
 sleep 1
 
-# ---- Chrome, debugging port loopback-only, relayed outward by socat ----------------------
-# --remote-debugging-port binds loopback by default; the container's 9222 never needs to be
-# reachable itself, only 9223 (ADR 0003's port table), which is why the relay exists at all
-# rather than just publishing 9222.
+# ---- Chrome, debugging port loopback-only, proxied out by computerd only ------------------
+# --remote-debugging-port binds loopback by default and stays that way: 9222 is never published
+# and never relayed as a bare port. computerd (started below) is the only process that ever
+# dials it, over its own authenticated /cdp routes (docs/adr/0012-cdp-proxy.md).
 log "starting chromium"
 chromium \
   --no-sandbox \
@@ -80,9 +82,6 @@ chromium \
   --start-maximized \
   about:blank \
   >/home/agent/.chromium.log 2>&1 &
-
-log "relaying 127.0.0.1:9222 -> 0.0.0.0:9223"
-socat TCP-LISTEN:9223,fork,reuseaddr TCP:127.0.0.1:9222 &
 
 # ---- a terminal, per computers.md's "a desktop, Chrome and a terminal" -------------------
 xterm -geometry 100x30 &

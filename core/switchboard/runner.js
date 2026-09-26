@@ -27,14 +27,15 @@ import { spawn } from "node:child_process";
  * (no MCP servers). `settings: false` is `--setting-sources ""`: none of the user's settings,
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
- * @param {{ id: string, resume?: boolean, plugin?: string|null, model?: string|null, name?: string|null,
+ * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
+ * @param {{ id: string, resume?: boolean, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           append?: string|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
     "--permission-prompts", "host", "--permission-prompt-tool", "stdio"];
   a.push(...(o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
-  if (o.plugin) a.push("--plugin-dir", o.plugin);
+  for (const dir of [o.plugin, ...(o.plugins || [])]) if (dir) a.push("--plugin-dir", dir);
   if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
   if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);

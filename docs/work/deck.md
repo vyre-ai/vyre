@@ -96,9 +96,48 @@ Vyre"). Verified against a rewritten `deck/fixtures/onboard.json`, not yet again
 branch (not merged into this worktree).
 
 Shell hooks landed for the four carve-outs: `deck/chat/` mounts via `deck/views/chat.js` (same
-"not here yet" pattern as Glass) at `/chat` and `/chat/:id`, nav placement left to gate-chat;
-`/vault/:place` and `/vault/:place/:name` routed; `ctx.rail(el)` lets a view fill the rail's lower
-group. `js/api.js`'s module-name map said `learn` was named "learning"; it's `learn`.
+"not here yet" pattern as Glass) routed at `/chat`, `/chat/thread/:thread` (a thread with no
+project — added once gate-chat hit the ambiguity: `/chat/:project` and a hypothetical flat
+`/chat/:thread` are both two segments and the router picks by segment count, not content, so they
+can't coexist; `/chat/thread/:thread` is a third, unambiguous, literal-prefixed pattern, listed
+before `/chat/:project/:thread` since match() takes the first same-length pattern that fits),
+`/chat/:project`, `/chat/:project/:thread`, plus a rail entry; `/vault/:place` and
+`/vault/:place/:name` routed; `/glass/:name` alongside `/agents/:name/glass`; `ctx.rail(el)` lets
+a view fill the rail's lower group; `js/api.js` gained `ApiError.detail` (the whole error body,
+not just code/message) and `upload()` (a ticketed-PUT-with-progress, lifted from glass's
+`transfer.js`, which was written to be moved here). `js/api.js`'s module-name map said `learn`
+was named "learning"; it's `learn`.
+
+**Gotcha for the next carve-out that gets its own real subfolder** (gate-chat hit this): vyred's
+`serveDeck()` falls back to the root `deck/index.html` shell only when a path matches no file at
+all. A view folder that is a real directory (`deck/chat/`, `deck/glass/`, …) makes a bare
+`/chat`-style path resolve to that folder's own `index.html` if one exists, or 404 if it doesn't
+— the root shell never gets a chance. gate-chat's fix: keep a byte-identical copy of
+`deck/index.html` inside `deck/chat/` (harmless duplication; `js/app.js` reads `location.pathname`
+itself regardless of which file served it). Any of vault/memory/glass doing the same thing should
+do the same fix if they see a 404 on their own section's bare route.
+
+Now made a real home (2026-09-27): the assistant's name and what it's doing (`agents.list`'s
+`doing`), Recent projects, and an offline read of the last state (`localStorage`, counts and a
+timestamp only, never a held item's words — the service worker already refuses `/v1/` for the
+same reason) shown as "Offline. As of … ago: …" when `threads.list` fails with the offline error
+code. Found and fixed a real bug while wiring this: Working read `t.state === "running"`, but the
+real field is `status`, and the switchboard never sets `"running"` or `"finished"` — only
+starting/working/waiting/idle/stopped — so Working always said "Nothing is running" no matter
+what was actually live. Verified against a real thread (`status: "working"`).
+
+PWA installability: manifest, icons (already generated from the mark, matching `icons.js`'s
+`mark()` exactly), iOS meta tags and the shell-caching service worker were already in place from
+an earlier pass; the offline-Now read above completes the "offline gives you something" half of
+the ask. Web Push is not built: there is no server-side piece anywhere in the codebase (no VAPID
+keys, no subscribe tool, nothing that would call a push service when an event fires while the
+Deck is closed) — a client `Notification`/`PushManager` registration alone cannot deliver anything
+without one. iOS 16.4+ supports Web Push for an installed (Add to Home Screen) PWA, and the
+tailnet does not block it (the box has ordinary outbound internet to reach Apple's/the browser's
+push service; the tailnet only restricts inbound). So it is feasible, but it needs a new module
+(VAPID keypair in the vault, a `push.subscribe`/`push.send` pair, called from wherever
+`ask.raised`/`gate.held` already fire) that nobody owns yet — flagged to the lead rather than
+guessed at.
 
 ## Doing
 - Nothing; waiting on box's onboard core to merge, and answers from box below.
@@ -114,18 +153,33 @@ group. `js/api.js`'s module-name map said `learn` was named "learning"; it's `le
 - `/threads/:id?seq=N` scroll-to-and-highlight (intelligence asked, for provenance links).
 - Proposed lessons in Now's needs, with a count (intelligence asked) — a new need "kind" next to
   draft/ask, bigger scope, not started.
-- `agents.history` is not a real tool; Ask's past-exchange log degrades to empty rather than
-  builds something from `threads.list` per agent — worth deciding whether switchboard adds the
-  tool or deck reconstructs it.
 - Settings: confirm the per-step `vyre` commands it shows once box's core is in.
+- Web Push client side: subscribe UI in Settings, iOS "install first" hint, and the service
+  worker's `push`/`notificationclick` handlers — waiting on switchboard's `core/push` shapes
+  (VAPID, subscribe, delivery on ask.raised/gate.held/thread.watched, no content in the payload).
+- A usage badge on the Agents *list* rows (turns or spend, at a glance) — the detail page's Usage
+  section (below) covers "per agent"; the list is a natural follow-up, not started.
+
+## Done (continued)
+- `agents.history` turned out to already be a real tool by the time I checked (switchboard added
+  it alongside `agents.usage`) — Ask's past-exchange log, which already read the right field names
+  defensively, works with no code change.
+- A per-agent Usage section on the Agents detail page (`agents.usage`, switchboard, merged to
+  main): money only for `auth:"api-key"` (`spent_usd` of `budget_usd`, `left_usd`); subscription/
+  ambient agents show turns and time instead, since `cost_usd` there is Claude Code's notional
+  figure, not money spent. Tokens, last used, and the last rate-limit report
+  (`allowed_warning`/`rejected`, with when it resets) when there is one. Verified the real shape
+  live (curl) and the populated state (mocked at the fetch layer, since a fake `claude` binary
+  can't produce real turns).
 
 ## Needs from others
 - box: whether `detail.devices.phoneUrl`/`macDownload`/`mac.connected` (Devices step) are the
   real field names or my guess at them from install's ADR 0008 description; confirmed already:
   the blocked-Tailscale and bad-setup-token-code shapes.
 - switchboard: `agents.ask` returning a recall-first answer (so Ask's already-built "From memory"
-  block and "Ask a model" button have something to show); `agents.history`, if it's coming;
-  `computers.*` shapes (`computers.get`, `restart`, `limits`), `watchers.list/pause` shapes.
+  block and "Ask a model" button have something to show); `computers.*` shapes (`computers.get`,
+  `restart`, `limits`), `watchers.list/pause` shapes; `core/push`'s client-facing shapes, when
+  ready.
 - vault: the new `vault.*` event names, for `js/api.js`'s known SSE list (asked 2026-09-27).
 
 ## Changed contracts

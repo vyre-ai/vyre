@@ -4,7 +4,7 @@ Branch: work/switchboard · Worktree: ../vyre-switchboard · Milestone: M6 · Wa
 
 ## Scope
 
-Owns `core/switchboard/`, `core/agents/`, `core/cli/commands/threads.js`, `core/cli/commands/agents.js`.
+Owns `core/switchboard/`, `core/agents/`, `core/push/`, `core/cli/commands/threads.js`, `core/cli/commands/agents.js`.
 
 Runs Claude Code sessions headless and makes one thread the same thing wherever it is viewed
 (floor rule 3), with one keyboard at a time (rule 4).
@@ -96,8 +96,15 @@ with real Claude Code, not only a fake.
   `transcripts` at the temp home.
 
 - For others: `agents.history` (Deck), lean threads and `threads.watch` (Capsule), job options for
-  `threads.launch` and `tool`/`summary` on `ask.answered` (Intelligence). Still open from
-  Intelligence: `plugins: [dirs]`, so learned skills load in headless threads.
+  `threads.launch` and `tool`/`summary` on `ask.answered` (Intelligence).
+- Learned skills load as plugins from `<home>/learned/{account,projects/<slug>}` (layout sent to
+  Intelligence), and `plugins: [dirs]` on threads.launch.
+- Usage and budgets: per-turn rows, `agents.usage`, the 80% notice and 100% halt for API-key agents,
+  and `thread.limit` for the subscription's rate-limit reports. Shapes sent to deck.
+
+- `core/push` (module `push`, ADR 0011): Web Push with node:crypto only (VAPID, RFC 8291), with the
+  key in the Vault, per-device subscriptions, quiet hours and per-kind switches. The payload is a
+  kind, a fixed title and a path. Shapes sent to deck for the subscribe UI and the service worker.
 
 ## Answers
 - gate-chat asked whether a tool called inside a thread can see its session id. Inside a thread the

@@ -16,7 +16,7 @@ import { PORTS } from "./index.js";
 const shared = new Map();
 
 export class FakeDriver {
-  /** @param {{ local?: { host?: string, ports?: { cdp?: number, vnc?: number, helper?: number } } }} [opts] */
+  /** @param {{ local?: { host?: string, ports?: { vnc?: number, helper?: number } } }} [opts] */
   constructor(opts = {}) {
     this.name = "fake";
     this.local = opts.local || null;
@@ -93,7 +93,7 @@ export class FakeDriver {
     const state = c.state === "created" ? "exited" : c.state;
     if (this.local) {
       const p = this.local.ports || {};
-      return { state, host: this.local.host || "127.0.0.1", ports: { vnc: p.vnc || PORTS.vnc, cdp: p.cdp || PORTS.cdp, helper: p.helper || PORTS.helper } };
+      return { state, host: this.local.host || "127.0.0.1", ports: { vnc: p.vnc || PORTS.vnc, helper: p.helper || PORTS.helper } };
     }
     return { state, host: `fake-${c.agent}` };
   }
