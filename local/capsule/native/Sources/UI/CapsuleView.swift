@@ -8,6 +8,7 @@
 // raised plate with the signal pill at its left edge. The top hit is larger, like Spotlight's.
 
 import AppKit
+import LocalAuthentication
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -27,7 +28,9 @@ struct CapsuleView: View {
                 // One area of fixed height below the bar, like Spotlight's: results, memory and
                 // answers arrive in waves inside it and never resize the panel mid-word.
                 VStack(spacing: 0) {
-                    if model.asked != nil && model.groups.isEmpty && side == nil {
+                    if let a = model.presenceAsk {
+                        PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
+                    } else if model.asked != nil && model.groups.isEmpty && side == nil {
                         // An answer alone gets the whole area, and scrolls in it.
                         ScrollView(.vertical, showsIndicators: false) { answer }
                             .frame(maxHeight: .infinity, alignment: .top)
@@ -233,7 +236,7 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = 30
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil
+        m.presenceAsk != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil
     }
 
     /// The panel's height: the bar alone, the bar and a line, or the bar and the fixed area.

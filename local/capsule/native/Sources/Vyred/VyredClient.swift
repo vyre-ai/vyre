@@ -198,8 +198,12 @@ struct HTTPHead {
 }
 
 enum VyHTTP {
-    static func requestBytes(_ method: String, _ path: String, body: Data?, accept: String = "application/json") -> Data {
+    static func requestBytes(_ method: String, _ path: String, body: Data?, accept: String = "application/json", headers: [String: String] = [:]) -> Data {
         var s = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\nAccept: \(accept)\r\nx-vyre-caller: capsule\r\n"
+        // Extra headers (x-vyre-presence), with anything that could end a header line taken out.
+        for (k, v) in headers.sorted(by: { $0.key < $1.key }) {
+            s += "\(k.filter { $0.isLetter || $0.isNumber || $0 == "-" }): \(v.filter { $0 != "\r" && $0 != "\n" })\r\n"
+        }
         if let body { s += "Content-Type: application/json\r\nContent-Length: \(body.count)\r\n" }
         s += method == "GET" && accept == "text/event-stream" ? "Connection: keep-alive\r\n\r\n" : "Connection: close\r\n\r\n"
         var d = Data(s.utf8)
@@ -210,12 +214,12 @@ enum VyHTTP {
     enum Failure: Error { case unreachable, timeout, broken }
 
     /// One request, blocking. The body as sent, or why not.
-    static func exchange(socket: String, method: String, path: String, body: Data?, timeout: TimeInterval) -> Result<(Int, Data), Failure> {
+    static func exchange(socket: String, method: String, path: String, body: Data?, timeout: TimeInterval, headers: [String: String] = [:]) -> Result<(Int, Data), Failure> {
         let deadline = Date().addingTimeInterval(timeout)
         let fd = VySock.connect(socket)
         if fd < 0 { return .failure(.unreachable) }
         defer { close(fd) }
-        guard VySock.writeAll(fd, requestBytes(method, path, body: body), deadline: deadline) else { return .failure(.broken) }
+        guard VySock.writeAll(fd, requestBytes(method, path, body: body, headers: headers), deadline: deadline) else { return .failure(.broken) }
         var raw = Data(), head: HTTPHead?, bodyBytes = Data(), chunks = ChunkDecoder()
         var buf = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
@@ -374,11 +378,33 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
         return (j["data"] ?? .null, nil)
     }
 
+    /// Makes the x-vyre-presence header for a human-only call, or says why not (the person
+    /// cancelled, or no way to prove it here). Set by the app (Host/Presence.swift); nil in tests.
+    public var presenceProof: (@Sendable (String, [String: Any]) async -> Result<String, VyredFailure>)? {
+        get { lock.lock(); defer { lock.unlock() }; return proofMaker }
+        set { lock.lock(); proofMaker = newValue; lock.unlock() }
+    }
+    private var proofMaker: (@Sendable (String, [String: Any]) async -> Result<String, VyredFailure>)?
+
     public func call(_ tool: String, _ input: [String: Any], presence: Bool) async -> VyredResult {
-        // Presence (Touch ID or the Capsule's key, ADR 0004) is not built yet. Saying so is better
-        // than sending a call that vyred will refuse in words that blame the user.
-        if presence { return .failure(code: "presence", message: presenceNotBuilt) }
-        return await call(tool, input, timeout: 10)
+        guard presence else { return await call(tool, input, timeout: 10) }
+        // A human-only tool (ADR 0004): the person proves they are here, in the panel, first.
+        guard let make = presenceProof else { return .failure(code: "presence", message: presenceNotBuilt) }
+        switch await make(tool, input) {
+        case .failure(let f): return .failure(code: "presence", message: f.message)
+        case .success(let header): return await call(tool, input, timeout: 30, headers: ["x-vyre-presence": header])
+        }
+    }
+
+    public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval, headers: [String: String]) async -> VyredResult {
+        guard let body = VJ.encode(input) else { return .failure(code: "bad_input", message: "The input to \(tool) is not JSON.") }
+        let socket = self.socket
+        return await withCheckedContinuation { (k: CheckedContinuation<VyredResult, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                k.resume(returning: VyHTTP.result(VyHTTP.exchange(socket: socket, method: "POST", path: "/v1/tools/" + Glass.encode(tool), body: body,
+                                                                  timeout: timeout, headers: headers), timeout: timeout))
+            }
+        }
     }
 
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {

@@ -15,6 +15,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     let hotkeys = Hotkeys()
     var menuBar: MenuBarItem?
     lazy var health = Health(vyred: vyred)
+    lazy var presence = CapsulePresence(home: home, vyred: vyred)
 
     override init() {
         let env = ProcessInfo.processInfo.environment
@@ -38,6 +39,17 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         hotkeys.fire = { [weak self] front in self?.panel.toggle(front: front) }
         if !headless { hotkeys.start() }
         (model.providers.first as? AppsProvider)?.refreshIfChanged(wait: false)
+        // Human-only calls (ADR 0004): "Confirm it's you" in the panel, then the Capsule's key signs.
+        presence.ask = { [weak self] a in
+            guard let self else { return false }
+            if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
+            return await self.model.askPresence(a)
+        }
+        let presence = self.presence
+        vyred.presenceProof = { tool, input in
+            let box = UncheckedBox(input)
+            return await MainActor.run { presence }.proofFromAnyThread(tool: tool, input: box)
+        }
         vyred.follower.onState = { [weak self] st in self?.health.set(up: st == .open) }
         vyred.follower.start()
         panel.onShownChange = { [weak self] shown in if shown { self?.health.refresh() } else { self?.menuBar?.close() } }

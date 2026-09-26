@@ -24,7 +24,17 @@ public final class CapsuleModel: ObservableObject {
     @Published public var selected = 0
     /// One line under the bar ("Copied", an error), cleared on the next keystroke.
     @Published public var line: String?
-    @Published public internal(set) var reply: Reply?
+    @Published public internal(set) var reply: Reply? {
+        didSet {
+            // An answer that lands while the Capsule is hidden is a banner, top right.
+            if let r = reply, r.finished, oldValue?.finished == false, oldValue?.thread == r.thread, !r.cancelled, !isShown() {
+                let who = r.queued?.name ?? "Claude"
+                let text = VyState.replyText(r).split(separator: "\n").first.map(String.init) ?? ""
+                Notifier.shared.post(title: r.ok == false ? "\(who) stopped" : "\(who) answered",
+                                     body: text.isEmpty ? (asked ?? "") : String(text.prefix(180)))
+            }
+        }
+    }
     @Published public internal(set) var asked: String?
     @Published public internal(set) var pending = false
     /// What memory says about the words in the box (recall.search and memory.relevant), or nil.
@@ -44,6 +54,8 @@ public final class CapsuleModel: ObservableObject {
     var extensionMentions: ((String) -> [(VyreCandidate, MentionTarget)])?
     var sendToExtension: ((String, VyreCandidate, Query) async -> ActionOutcome)?
     private var appTargets: [String: MentionTarget] = [:]
+    /// A human-only call waiting for the person to prove they are here (Presence.swift).
+    @Published var presenceAsk: PresenceAsk?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 
@@ -62,6 +74,8 @@ public final class CapsuleModel: ObservableObject {
     private var staleTimer: Timer?
     /// Asked to close the panel (an action finished with .close).
     public var onClose: ((String?) -> Void)?
+    /// Whether the panel is on screen (a reply that finishes while it is not gets a banner).
+    var isShown: () -> Bool = { false }
     /// Asked to step aside for the front app.
     public var onStepAside: (() async -> Bool)?
 
@@ -108,6 +122,29 @@ public final class CapsuleModel: ObservableObject {
     }
 
     // MARK: searching
+
+    /// Show "Confirm it's you" and wait for Touch ID (or the Mac's password), or a cancel.
+    func askPresence(_ a: PresenceAsk) async -> Bool {
+        presenceAsk?.done?(false)
+        presenceAsk = a
+        // The view starts the evaluation once Touch ID's glyph is on screen (PresenceView), so
+        // macOS draws the prompt in the panel rather than as a dialog.
+        let ok: Bool = await withCheckedContinuation { k in
+            var once = false
+            a.done = { v in if !once { once = true; k.resume(returning: v) } }
+        }
+        if presenceAsk === a { presenceAsk = nil }
+        return ok
+    }
+
+    /// Esc while "Confirm it's you" shows.
+    func cancelPresence() {
+        guard let a = presenceAsk else { return }
+        a.context.invalidate()
+        a.done?(false)
+        presenceAsk = nil
+        line = "Not approved. Nothing was done."
+    }
 
     /// Search again for the same words (an extension's commands changed).
     func refresh() { search() }

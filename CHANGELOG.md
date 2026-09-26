@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Touch ID in the panel, banners, and the menu-bar popover
+
+- Human-only calls from the native Capsule (ADR 0004, method `capsule`): the panel shows
+  "Confirm it's you" with the exact words and Touch ID drawn inside it (LAAuthenticationView;
+  the Mac's password where there is no Touch ID), then signs the call with the Capsule's
+  Ed25519 key. The key is made once, kept in the login keychain for the Capsule alone, and
+  enrolled with vyred's own Touch ID dialog. Esc cancels; nothing is done. Checked against
+  core/presence in Node: same canonical input, same hash, signature verifies.
+  `Sources/Host/Presence.swift`, `Sources/UI/PresenceView.swift`.
+- An answer that lands while the Capsule is hidden is a banner, top right
+  (UNUserNotificationCenter; macOS asks once, the first time there is one, never in tests).
+- The menu-bar mark carries a health dot (signal: vyred up and the box direct; recall: the box
+  through a relay; ash: vyred not running), and a click opens a popover with the same words
+  and the Capsule's actions; right-click keeps the plain menu. Nothing is polled: vyred's state
+  comes from the follower, the box's from link.health on open, at most once a minute.
+- `VYRE_CAPSULE_HEADLESS=1` runs the app with no hot keys and no menu-bar item, for footprint
+  checks: 16.1 MB physical footprint hidden (RSS 80 MB, most of it shared system libraries).
+- The contact-photo icon test drew its red in a colour space with no components; fixed.
+
 #### Extensions can be named with @
 
 - `CapsuleExtension.mentions(matching:)` and `send(_:to:query:)`: an extension lists targets

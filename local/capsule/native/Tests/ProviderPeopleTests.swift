@@ -142,7 +142,8 @@ let providerPeopleSuite = Suite("provider people") { t in
         // A 64 px red PNG, written by this test.
         let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 64, pixelsHigh: 64, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
                                    isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-        for x in 0..<64 { for y in 0..<64 { rep.setColor(.red, atX: x, y: y) } }
+        let red = NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1)
+        for x in 0..<64 { for y in 0..<64 { rep.setColor(red, atX: x, y: y) } }
         let png = rep.representation(using: .png, properties: [:])!
         try? png.write(to: URL(fileURLWithPath: dir + "/northwind.png"))
         let r = t.wait(timeout: 15) { @MainActor () -> [String] in

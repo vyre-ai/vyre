@@ -103,7 +103,11 @@ without editing Capsule files:
   needs the user's own `vyre capsule` (or a CI runner's throwaway keychain).
 - Done 2026-09-27: design pass (snapshots in Tests/SnapshotTests.swift), and `@` targets for
   extensions (`mentions(matching:)`, `send(_:to:query:)`, CandidateKind.app) for capsule-apps.
-- Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
+- Done 2026-09-27: Touch ID in the panel (presence method capsule, cross-checked with
+  core/presence in Node), banners for answers landing while hidden, menu-bar popover and health
+  dot, headless footprint mode (16.1 MB footprint hidden). Swift tests all pass (200).
+- Not yet run for real: enrolment (vyred's Touch ID dialog) and the in-panel Touch ID, which need
+  the user at the Mac; the banner permission prompt.
 
 ## Next
 0. (Done 2026-09-27, see Doing.) capsule-now rules 1-5 and 7 in native (read from ../vyre-capsule-now/docs/work/capsule-now.md):

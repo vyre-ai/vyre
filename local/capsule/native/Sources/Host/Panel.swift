@@ -8,6 +8,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import UserNotifications
 
 final class CapsulePanel: NSPanel {
     init() {
@@ -52,7 +53,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         host.sizingOptions = []
         panel.contentView = host
         panel.delegate = self
-        model.onClose = { [weak self] note in self?.hide(); if let note { Notifier.shared.post(title: "Vyre", body: note) } }
+        // A note on close ("Copied 87") needs no banner: the user just did it and saw it.
+        model.onClose = { [weak self] _ in self?.hide() }
+        model.isShown = { [weak self] in self?.isShown ?? false }
         model.onStepAside = { [weak self] in await self?.stepAside() ?? false }
         observe = model.objectWillChange.sink { [weak self] in DispatchQueue.main.async { self?.fit() } }
     }
@@ -187,6 +190,7 @@ final class PanelController: NSObject, NSWindowDelegate {
            extensions?.handle(chord: c) == true { return true }
         switch e.keyCode {
         case 53: // escape
+            if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             if !model.text.isEmpty { model.text = ""; return true }
@@ -220,16 +224,40 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 }
 
-/// Top-right banners, through the Notification Center. Only when the Capsule is hidden; while it
-/// is shown a note is said under the box instead.
+/// Top-right banners, through the Notification Center (UNUserNotificationCenter), only while the
+/// Capsule is hidden; while it is shown a note is said in its footer instead. macOS asks the
+/// person once whether Vyre may show banners, the first time there is one to show, and never
+/// under tests (dialogsAllowed()).
 @MainActor final class Notifier {
     static let shared = Notifier()
+    private var asked = false
+
     func post(title: String, body: String) {
-        guard dialogsAllowed() else { return }
-        let n = NSUserNotification()
-        n.title = title
-        n.informativeText = body
-        NSUserNotificationCenter.default.deliver(n)
+        guard dialogsAllowed(), Bundle.main.bundleIdentifier != nil else { return }
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            let status = settings.authorizationStatus
+            Task { @MainActor in
+                switch status {
+                case .authorized, .provisional: Self.deliver(title: title, body: body)
+                case .notDetermined:
+                    guard !self.asked else { return }
+                    self.asked = true
+                    center.requestAuthorization(options: [.alert, .sound]) { ok, _ in
+                        if ok { Task { @MainActor in Self.deliver(title: title, body: body) } }
+                    }
+                default: break
+                }
+            }
+        }
+    }
+
+    private static func deliver(title: String, body: String) {
+        let c = UNMutableNotificationContent()
+        c.title = title
+        c.body = body
+        c.threadIdentifier = "vyre.capsule"
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
 }
 
