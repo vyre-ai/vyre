@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
-import { allowCreate, allowExec, allowContainerOp, isComputerLabels } from "./policy.js";
+import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels } from "./policy.js";
 
 /** A one-request fake Engine: capture the create body it was actually sent, nothing else. */
 async function capture(t) {
@@ -31,8 +31,13 @@ async function capture(t) {
 
 const SPEC = {
   agent: "kit", image: "vyre/computer:0.1", network: "vyre-computers", cpus: 2, memoryMb: 3072, size: { w: 1440, h: 900 },
-  env: { VNC_PASSWORD: "abcdefgh", COMPUTERD_TOKEN: "t0ken", SCREEN: "1440x900" }, volume: "vyre-home-kit",
+  env: { VNC_PASSWORD: "abcdefgh", COMPUTERD_TOKEN: "t0ken", SCREEN: "1440x900" },
+  // Real deployments derive this from labelPrefix (pool.js's ensure()); docker.js itself just
+  // takes whatever spec.volume says, so this fixture must already be the derived name for the
+  // "run.vyre.computers" prefix realBody() configures below, the same way pool.js would build it.
+  volume: "run.vyre.computers-home-kit",
 };
+const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1" };
 
 /** The real body docker.js sends for the box's own configured prefix, from a real driver call. */
 async function realBody(t, opts = {}) {
@@ -44,16 +49,26 @@ async function realBody(t, opts = {}) {
 
 test("policy: allows exactly the body DockerDriver.create() actually sends", async t => {
   const body = await realBody(t);
-  assert.deepEqual(allowCreate(body), { ok: true });
+  assert.deepEqual(allowCreate(body, CONFIG), { ok: true });
   assert.deepEqual(allowExec(body.Labels), { ok: true });
   assert.deepEqual(allowContainerOp(body.Labels), { ok: true });
   // The volume's own labels carry the same pair, and are checked too.
   assert.equal(isComputerLabels(body.HostConfig.Mounts[0].VolumeOptions.Labels), true);
+  assert.equal(body.HostConfig.Mounts[0].Source, "run.vyre.computers-home-kit", "the derived name policy.js requires");
 });
 
-test("policy: allows the capAdd escape hatch, and nothing else added beside it", async t => {
+test("policy: allows the capAdd escape hatch when configured, and nothing beside it", async t => {
   const body = await realBody(t, { capAdd: ["SYS_NICE"] });
-  assert.deepEqual(allowCreate(body), { ok: true });
+  assert.deepEqual(allowCreate(body, { ...CONFIG, capAdd: ["SYS_NICE"] }), { ok: true });
+  // The same body, without that capability configured, is refused - config decides, not the body.
+  assert.equal(allowCreate(body, CONFIG).ok, false);
+});
+
+test("policy: never a forbidden capability, even if a box misconfigures capAdd to ask for one", async t => {
+  const body = await realBody(t, { capAdd: ["SYS_ADMIN"] });
+  for (const cap of ["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_RAWIO"]) {
+    assert.equal(allowCreate(body, { ...CONFIG, capAdd: [cap] }).ok, false, cap);
+  }
 });
 
 /** A body that passes, then one field broken. */
@@ -64,37 +79,54 @@ async function mutate(t, patch) {
 
 test("policy: refuses privileged, whatever else about the body is fine", async t => {
   const bad = await mutate(t, b => { b.HostConfig.Privileged = true; return b; });
-  assert.equal(allowCreate(bad).ok, false);
+  assert.equal(allowCreate(bad, CONFIG).ok, false);
 });
 
-test("policy: refuses host network and much for free host PID", async t => {
-  const net = await mutate(t, b => { b.HostConfig.NetworkMode = "host"; return b; });
-  assert.equal(allowCreate(net).ok, false);
-  const pid = await mutate(t, b => { b.HostConfig.PidMode = "host"; return b; });
-  assert.equal(allowCreate(pid).ok, false);
+test("policy: NetworkMode must be exactly the one configured computers network", async t => {
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.NetworkMode = "host"; return b; }), CONFIG).ok, false);
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.NetworkMode = "bridge"; return b; }), CONFIG).ok, false);
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.NetworkMode = "container:vyre"; return b; }), CONFIG).ok, false, "joining another container's namespace");
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.PidMode = "host"; return b; }), CONFIG).ok, false);
 });
 
 test("policy: refuses any bind mount, the docker socket most of all", async t => {
   const bind = await mutate(t, b => { b.HostConfig.Mounts = [{ Type: "bind", Source: "/", Target: "/host" }]; return b; });
-  assert.equal(allowCreate(bind).ok, false);
+  assert.equal(allowCreate(bind, CONFIG).ok, false);
   const sock = await mutate(t, b => { b.HostConfig.Mounts = [{ ...b.HostConfig.Mounts[0], Type: "bind", Source: "/var/run/docker.sock" }]; return b; });
-  assert.equal(allowCreate(sock).ok, false);
+  assert.equal(allowCreate(sock, CONFIG).ok, false);
   const extra = await mutate(t, b => { b.HostConfig.Mounts.push({ Type: "bind", Source: "/etc", Target: "/etc" }); return b; });
-  assert.equal(allowCreate(extra).ok, false, "a second, extra mount is refused even if the first is fine");
+  assert.equal(allowCreate(extra, CONFIG).ok, false, "a second, extra mount is refused even if the first is fine");
+});
+
+test("policy: Source must be the derived name, not any volume the labels happen to also name", async t => {
+  // The real hole this closes: an existing volume's own labels are ignored by Docker once it
+  // already exists, so naming one directly (vyred's own home, or another agent's) would mount it
+  // regardless of what this body's Labels or VolumeOptions.Labels claim.
+  const other = await mutate(t, b => { b.HostConfig.Mounts[0].Source = "vyre-home"; return b; });
+  assert.equal(allowCreate(other, CONFIG).ok, false, "vyred's own home volume, named directly");
+  const pax = await mutate(t, b => { b.HostConfig.Mounts[0].Source = "run.vyre.computers-home-pax"; return b; });
+  assert.equal(allowCreate(pax, CONFIG).ok, false, "another agent's home volume, named directly");
 });
 
 test("policy: refuses a capability, a device, a non-read-only root, or an unknown field", async t => {
-  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.CapDrop = []; return b; })).ok, false);
-  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Devices = ["/dev/kvm"]; return b; })).ok, false);
-  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.ReadonlyRootfs = false; return b; })).ok, false);
-  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Sysctls = { "net.ipv4.ip_forward": "1" }; return b; })).ok, false, "an unknown HostConfig key");
-  assert.equal(allowCreate(await mutate(t, b => { b.Cmd = ["sh"]; return b; })).ok, false, "an unknown top-level key");
-  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Tmpfs["/etc"] = "mode=1777"; return b; })).ok, false, "a tmpfs path outside the allowed three");
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.CapDrop = []; return b; }), CONFIG).ok, false);
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Devices = ["/dev/kvm"]; return b; }), CONFIG).ok, false);
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.ReadonlyRootfs = false; return b; }), CONFIG).ok, false);
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Sysctls = { "net.ipv4.ip_forward": "1" }; return b; }), CONFIG).ok, false, "an unknown HostConfig key");
+  assert.equal(allowCreate(await mutate(t, b => { b.Cmd = ["sh"]; return b; }), CONFIG).ok, false, "an unknown top-level key");
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Tmpfs["/etc"] = "mode=1777"; return b; }), CONFIG).ok, false, "a tmpfs path outside the allowed three");
+});
+
+test("policy: Image must be exactly the box's configured image", async t => {
+  const body = await realBody(t);
+  assert.equal(allowCreate(body, { ...CONFIG, image: "vyre/computer:9.9" }).ok, false);
+  const own = await mutate(t, b => { b.Image = "attacker/whatever:latest"; return b; });
+  assert.equal(allowCreate(own, CONFIG).ok, false, "a direct caller's own image");
 });
 
 test("policy: refuses a mount that is a volume but not the agent's home, and one missing the label pair", async t => {
-  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Mounts[0].Target = "/"; return b; })).ok, false);
-  assert.equal(allowCreate(await mutate(t, b => { delete b.HostConfig.Mounts[0].VolumeOptions.Labels["run.vyre.computers.managed"]; return b; })).ok, false);
+  assert.equal(allowCreate(await mutate(t, b => { b.HostConfig.Mounts[0].Target = "/"; return b; }), CONFIG).ok, false);
+  assert.equal(allowCreate(await mutate(t, b => { delete b.HostConfig.Mounts[0].VolumeOptions.Labels["run.vyre.computers.managed"]; return b; }), CONFIG).ok, false);
 });
 
 test("policy: exec and the other container ops never reach vyred's own container, docker-api's, or a random one", async t => {
@@ -113,9 +145,15 @@ test("policy: exec's cmd must be a list of strings when given at all", async t =
   assert.equal(allowExec(body.Labels, [1, 2]).ok, false);
 });
 
-test("policy: isComputerLabels ties the managed and computer keys to the same prefix", () => {
-  assert.equal(isComputerLabels({ "run.vyre": "1", "a.managed": "true", "b.computer": "kit" }), false, "mismatched prefixes");
+test("policy: computerLabels ties the managed and computer keys to the same prefix, and names the agent", () => {
+  assert.equal(computerLabels({ "run.vyre": "1", "a.managed": "true", "b.computer": "kit" }), null, "mismatched prefixes");
+  assert.deepEqual(computerLabels({ "run.vyre": "1", "vyre.managed": "true", "vyre.computer": "kit" }), { prefix: "vyre", agent: "kit" });
+  assert.equal(computerLabels({ "vyre.managed": "true", "vyre.computer": "kit" }), null, "missing the fixed run.vyre marker");
+  assert.equal(computerLabels(null), null);
   assert.equal(isComputerLabels({ "run.vyre": "1", "vyre.managed": "true", "vyre.computer": "kit" }), true);
-  assert.equal(isComputerLabels({ "vyre.managed": "true", "vyre.computer": "kit" }), false, "missing the fixed run.vyre marker");
-  assert.equal(isComputerLabels(null), false);
+});
+
+test("policy: allowCreate needs the box's own network and image, and never trusts the request for either", () => {
+  assert.throws(() => allowCreate({}, {}), /computers\.network|computers\.image/);
+  assert.throws(() => allowCreate({}, undefined));
 });
