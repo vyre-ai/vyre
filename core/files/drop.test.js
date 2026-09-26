@@ -93,7 +93,8 @@ function work(home) {
 }
 
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
-const until = async (fn, ms = 3000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) return false; await new Promise(r => setTimeout(r, 20)); } return true; };
+// Generous: the fake tailscale is a node script, started once for status and once for file get, and that is slow on a loaded machine.
+const until = async (fn, ms = 15_000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) return false; await new Promise(r => setTimeout(r, 20)); } return true; };
 
 test("drop: unavailable() names why Taildrop cannot reach a peer, and says so for a tagged box", () => {
   assert.equal(unavailable(peer({})), null);
