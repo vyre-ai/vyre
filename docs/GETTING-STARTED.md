@@ -97,7 +97,8 @@ claude --plugin-dir "$(npm root -g)/vyre/harness"
 ## 4. The Capsule
 
 Download [vyre.run/box/Vyre-mac.zip](https://vyre.run/box/Vyre-mac.zip), unzip it, and move
-`Vyre.app` to Applications.
+`Vyre.app` to Applications before you open it. Opened from Downloads, macOS runs it from a
+temporary copy, and the permissions you grant it do not stick.
 
 The app is not signed or notarized yet, so macOS stops it the first time:
 
@@ -105,8 +106,8 @@ The app is not signed or notarized yet, so macOS stops it the first time:
 2. macOS says it cannot check the app for malicious software. Choose **Open** again.
    On recent macOS the dialog may offer only **Done**. If so, open System Settings, then
    Privacy & Security, scroll to the note about Vyre, and choose **Open Anyway**.
-3. Grant Accessibility when it asks: Control twice opens the Capsule from any app, and macOS
-   needs that permission to see the key.
+3. Grant Input Monitoring when it asks: Control twice opens the Capsule from any app, and
+   macOS needs that permission to see the key. Contacts is optional, for contact results.
 
 After the first open it starts normally. Press Control twice anywhere to open it.
 

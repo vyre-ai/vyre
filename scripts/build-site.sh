@@ -11,8 +11,8 @@
 # Writes (all generated, all gitignored):
 #   site/install.sh               what `curl -fsSL https://vyre.run/install.sh | sh` runs
 #   site/box/install-box.sh       the same file, beside the rest
-#   site/box/compose.yml, compose.chat.yml, compose.build.yml, vyre.env.example, vyre,
-#   site/box/chat/compose.yml     the stack install-box.sh lays out in /srv/vyre
+#   site/box/compose.yml, compose.build.yml, vyre.env.example, vyre
+#                                 the stack install-box.sh lays out in /srv/vyre
 #   site/box/Dockerfile, dockerignore
 #                                 how the image is built from vyre.tgz while none is published
 #   site/box/vyre.tgz             `npm pack` of --src, until the package is on npm
@@ -36,8 +36,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-for f in box/compose.yml box/compose.chat.yml box/compose.build.yml box/vyre.env.example box/vyre \
-  box/Dockerfile scripts/install-box.sh modules/chat/compose.yml package.json; do
+for f in box/compose.yml box/compose.build.yml box/vyre.env.example box/vyre \
+  box/Dockerfile scripts/install-box.sh package.json; do
   [ -f "$src/$f" ] || { echo "build-site: $src has no $f (point --src at a checkout with box/ in it)" >&2; exit 1; }
 done
 
@@ -48,13 +48,12 @@ if [ -z "$zip" ] && [ -f "$out/Vyre-mac.zip" ]; then
   cp "$out/Vyre-mac.zip" "$keep"
 fi
 rm -rf "$out"
-mkdir -p "$out/chat"
+mkdir -p "$out"
 
-cp "$src/box/compose.yml" "$src/box/compose.chat.yml" "$src/box/compose.build.yml" \
+cp "$src/box/compose.yml" "$src/box/compose.build.yml" \
   "$src/box/vyre.env.example" "$src/box/vyre" "$src/box/Dockerfile" "$out/"
 # Served without the leading dot: some hosts refuse dotfiles.
 [ -f "$src/.dockerignore" ] && cp "$src/.dockerignore" "$out/dockerignore"
-cp "$src/modules/chat/compose.yml" "$out/chat/compose.yml"
 cp "$src/scripts/install-box.sh" "$out/install-box.sh"
 cp "$src/scripts/install-box.sh" "$here/site/install.sh"
 

@@ -128,7 +128,7 @@ step "site/box"
 box=$repo/site/box
 [ -f "$box/SHA256SUMS" ] || fail "no site/box/SHA256SUMS; run scripts/build-site.sh first"
 (cd "$box" && sum -c --quiet SHA256SUMS) || fail "site/box does not match its SHA256SUMS"
-for f in install-box.sh vyre compose.yml compose.chat.yml compose.build.yml vyre.env.example chat/compose.yml Dockerfile vyre.tgz VERSION; do
+for f in install-box.sh vyre compose.yml compose.build.yml vyre.env.example Dockerfile vyre.tgz VERSION; do
   grep -q "  $f\$" "$box/SHA256SUMS" || fail "SHA256SUMS does not list $f"
 done
 [ "$(cat "$box/VERSION")" = "$version" ] || fail "site/box is $(cat "$box/VERSION"), this checkout is $version"
@@ -158,6 +158,8 @@ if [ "$LIVE" = 1 ]; then
   [ "$code" = 404 ] || fail "$base answers a missing file with $code, not 404"
   code=$(curl -s -o /dev/null -w '%{http_code}' "$base/start")
   [ "$code" = 200 ] || fail "$base/start answers $code"
+  code=$(curl -s -o "$work/box-alias" -w '%{http_code}' "$base/box")
+  { [ "$code" = 200 ] && cmp -s "$work/box-alias" "$box/install-box.sh"; } || fail "$base/box is not install-box.sh ($code)"
   ok "every file is served byte for byte; install.sh, /start and 404 are right"
 fi
 
