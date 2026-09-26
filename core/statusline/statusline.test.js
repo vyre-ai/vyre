@@ -52,7 +52,7 @@ FAKES[3][1].push("agents.poke");
 
 test("statusline: with nothing else running the line is just vyre", async t => {
   const { reg, file } = await world(t);
-  assert.deepEqual((await reg.call("statusline.line", {})).data, { line: "vyre" });
+  assert.deepEqual((await reg.call("statusline.line", {}, "cli")).data, { line: "vyre" });
   assert.deepEqual(fs.readFileSync(file, "utf8").split("\n"), [String(process.pid), "vyre", ""]);
 });
 
@@ -87,5 +87,5 @@ test("statusline: a failing tool drops only its own part", async t => {
     ["agents", ["agents.list"], `export default { async start(ctx) { ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "assistant", doing: "working" }] }); return {}; } };`],
   ];
   const { reg } = await world(t, broken, "box");
-  assert.equal((await reg.call("statusline.line", {})).data.line, "vyre · juno working");
+  assert.equal((await reg.call("statusline.line", {}, "cli")).data.line, "vyre · juno working");
 });
