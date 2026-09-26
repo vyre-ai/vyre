@@ -69,7 +69,7 @@ async function list(args) {
 // ------------------------------------------------------------ put
 
 async function put(args) {
-  const f = flags(args, { string: ["kind", "description", "url", "username"], list: ["host", "field"], boolean: ["totp"] });
+  const f = flags(args, { string: ["kind", "description", "url", "username"], list: ["host", "field"], boolean: ["totp", "allow-body"] });
   if (f._.length !== 1) {
     if (f._.length === 0) return oops("vyre vault put <name> [--kind k] [--description d] [--url u] [--host h ...]");
     return oops("values are never taken on the command line, where shell history and your agents would see them. " +
@@ -115,6 +115,7 @@ async function put(args) {
   if (f.description) input.description = f.description;
   if (f.url) input.url = f.url;
   if (hosts.length) input.hosts = hosts;
+  if (f["allow-body"]) input.relay = { body: true };
   const r = await call("vault.put", input);
   for (const k of Object.keys(fields)) fields[k] = "";
   if (r.error) return fail(r);
@@ -149,11 +150,13 @@ async function revoke(args) {
 async function pending() {
   const r = await call("vault.pending");
   if (r.error) return fail(r);
-  const { grants = [], passes = [] } = r.data;
-  if (!grants.length && !passes.length) { out(dim("  nothing waiting for approval")); return 0; }
+  const { grants = [], passes = [], people = [], accepts = [] } = r.data;
+  if (!grants.length && !passes.length && !people.length && !accepts.length) { out(dim("  nothing waiting for approval")); return 0; }
   out("");
   for (const g of grants) out(`  ${beacon(g.id)}  grant ${bold(g.name)} to ${grantText(g)}`);
   for (const p of passes) out(`  ${beacon(p.id)}  ${p.mode || "relayed"} pass for ${bold(p.holder)}: ${(p.items || []).join(", ")}${p.expires ? dim(" · until " + day(p.expires)) : ""}`);
+  for (const p of people) out(`  ${beacon(p.id)}  trust the card for ${bold(p.name)} ${dim("· fingerprint " + (p.fingerprint || "unreadable"))}`);
+  for (const a of accepts) out(`  ${beacon(a.id)}  accept a ${a.mode || ""} pass from ${bold(a.owner)}: ${(a.items || []).join(", ")}`);
   out(dim(`\n  vyre vault approve <id>\n`));
   return 0;
 }
@@ -164,7 +167,8 @@ async function approve(args) {
   const r = await call("vault.approve", { id });
   if (r.error) return fail(r);
   const a = r.data.approved || {};
-  out(`  ${signal("approved")} ${a.holder ? `pass for ${bold(a.holder)}` : `${bold(a.name || id)}${a.module ? " to " + grantText(a) : ""}`}`);
+  const what = a.holder ? `pass for ${bold(a.holder)}` : a.owner ? `pass from ${bold(a.owner)}: ${(a.items || []).join(", ")}` : a.fingerprint ? `card for ${bold(a.name)} ${dim("· " + a.fingerprint)}` : `${bold(a.name || id)}${a.module ? " to " + grantText(a) : ""}`;
+  out(`  ${signal("approved")} ${what}`);
   if (r.data.ticket) ticket(r.data.ticket, a.holder);
   return 0;
 }
@@ -271,9 +275,72 @@ async function audit(args) {
 async function card() {
   const r = await call("vault.identity");
   if (r.error) return fail(r);
-  out(`\n  ${bold(r.data.name)} ${dim(r.data.relay ? "· relay " + r.data.relay : "· no relay address yet")}\n`);
+  out(`\n  ${bold(r.data.name)} ${dim(r.data.relay ? "· relay " + r.data.relay : "· no relay address yet")}`);
+  if (r.data.fingerprint) out(`  ${dim("fingerprint")} ${r.data.fingerprint}\n`);
   out(r.data.card);
   out(dim(`\n  send this card to whoever will share with you; it carries no secret\n`));
+  return 0;
+}
+
+// ------------------------------------------------------------ people
+
+async function people(args) {
+  const [sub, ...rest] = args;
+  if (sub === undefined || sub === "list") {
+    const r = await call("vault.people");
+    if (r.error) return fail(r);
+    if (!r.data.people.length) { out(dim("  no one yet · vyre vault people add <card>")); return 0; }
+    out("");
+    for (const p of r.data.people) {
+      const st = p.blocked ? beacon(p.changed ? "key changed" : "unverified v1 card") : p.verified ? signal("verified") : dim("pinned");
+      out(`  ${bold(p.name)}  ${p.fingerprint}  ${st}`);
+    }
+    out("");
+    return 0;
+  }
+  if (sub === "add") {
+    let f;
+    try { f = flags(rest, { string: ["name"] }); } catch (e) { return oops(e.message); }
+    if (f._.length !== 1) return oops("vyre vault people add <card> [--name n]");
+    const r = await call("vault.person.add", { card: f._[0], ...(f.name ? { name: f.name } : {}) });
+    if (r.error) return fail(r);
+    if (r.data.pending) { out(`  ${beacon("waiting for approval")} ${dim(`· vyre vault approve ${r.data.pending.id}`)}`); return 0; }
+    const p = r.data.person;
+    if (r.data.changed) out(`  ${beacon("key changed")} ${bold(p.name)} ${dim("· new fingerprint " + p.fingerprint)}\n  ${dim(`no new pass reaches them until you compare fingerprints and run vyre vault people verify ${p.name} <fingerprint>`)}`);
+    else out(`  ${signal(r.data.pinned ? "pinned" : "unchanged")} ${bold(p.name)} ${dim("· fingerprint " + p.fingerprint)}`);
+    return 0;
+  }
+  if (sub === "verify") {
+    const [name, ...fp] = rest;
+    if (!name || !fp.length) return oops("vyre vault people verify <name> <fingerprint>");
+    const r = await call("vault.people.verify", { name, fingerprint: fp.join(" ") });
+    if (r.error) return fail(r);
+    out(`  ${signal("verified")} ${bold(r.data.person.name)} ${dim("· " + r.data.person.fingerprint)}`);
+    return 0;
+  }
+  return oops(`vyre vault people ${sub}: list, add or verify`);
+}
+
+async function fingerprintCmd(args) {
+  if (args.length > 1) return oops("vyre vault fingerprint [person]");
+  const r = await call("vault.fingerprint", args[0] ? { with: args[0] } : {});
+  if (r.error) return fail(r);
+  out(`  ${dim("yours ")} ${r.data.fingerprint}`);
+  if (r.data.person) {
+    out(`  ${dim("theirs")} ${r.data.person.fingerprint} ${dim("· " + r.data.person.name + (r.data.person.verified ? ", verified" : ""))}`);
+    out(`\n  ${bold(r.data.words.join(" "))}\n  ${dim("read these to each other; they match on both screens only if neither key was swapped")}`);
+  }
+  return 0;
+}
+
+async function kit() {
+  const r = await call("vault.kit");
+  if (r.error) return fail(r);
+  out(`  ${signal("recovery kit")} ${dim("· one load, gone by " + new Date(r.data.expires).toLocaleTimeString())}`);
+  out(`  ${r.data.url}`);
+  out(dim("  print it, write your password on it by hand, keep it somewhere safe"));
+  // Opened for a person at a terminal only; a script or a test gets the address and nothing else.
+  if (process.platform === "darwin" && process.stdout.isTTY && !process.env.VYRE_NO_OPEN) spawn("open", [r.data.url], { stdio: "ignore", detached: true }).unref();
   return 0;
 }
 
@@ -289,13 +356,15 @@ async function pass(args) {
   const [sub, ...rest] = args;
   if (sub === "create") {
     let f;
-    try { f = flags(rest, { string: ["card", "expires", "note"], list: ["host"], boolean: ["sealed"] }); } catch (e) { return oops(e.message); }
+    try { f = flags(rest, { string: ["card", "expires", "note"], list: ["host", "method", "path"], boolean: ["sealed"] }); } catch (e) { return oops(e.message); }
     const [holder, ...items] = f._;
     if (!holder || !items.length) return oops("vyre vault pass create <holder> <item...> [--sealed] [--card c] [--host h ...] [--expires 30d] [--note n]");
     /** @type {Record<string, any>} */
     const input = { holder, items, mode: f.sealed ? "sealed" : "relayed" };
     if (f.card) input.card = f.card;
     if (f.host.length) input.hosts = f.host;
+    if (f.method.length) input.methods = f.method;
+    if (f.path.length) input.paths = f.path;
     if (f.expires) input.expires = f.expires;
     if (f.note) input.note = f.note;
     const r = await call("vault.pass.create", input);
@@ -334,6 +403,7 @@ async function pass(args) {
     if (rest.length !== 1) return oops("vyre vault pass accept <ticket>");
     const r = await call("vault.pass.accept", { ticket: rest[0] });
     if (r.error) return fail(r);
+    if (r.data.pending) { out(`  ${beacon("waiting for approval")} ${dim(`· vyre vault approve ${r.data.pending.id}`)}`); return 0; }
     const h = r.data.held;
     out(`  ${signal("accepted")} ${h.mode} pass from ${bold(h.owner)}: ${h.items.join(", ")}`);
     return 0;
@@ -490,7 +560,7 @@ async function lock() {
 
 const HELP = [
   ["list [filter]", "names, kinds and grants; never values"],
-  ["put <name> [--kind k] [--description d] [--url u] [--host h ...]", "prompts for the value without echo"],
+  ["put <name> [--kind k] [--description d] [--url u] [--host h ...] [--allow-body]", "prompts for the value without echo"],
   ["    [--username u] [--totp] [--field F ...]", "kinds: " + KINDS.join(", ")],
   ["grant <name> <module> [--watcher w]", "let a module use an item"],
   ["revoke <name> <module> [--watcher w]", "take it back"],
@@ -503,7 +573,10 @@ const HELP = [
   ["audit [name] [--limit n]", "who used what, and when"],
   ["delete <name>", "remove an item and its grants"],
   ["card", "this Vyre's card, to share"],
-  ["pass create <holder> <item...> [--sealed] [--card c] [--host h ...] [--expires 30d] [--note n]", "share without handing over"],
+  ["people [add <card> [--name n] | verify <name> <fingerprint>]", "who you share with; a changed key blocks new passes until verified"],
+  ["fingerprint [person]", "yours, and the safety words you and they should both see"],
+  ["kit", "print a recovery kit: a one-time page on this machine"],
+  ["pass create <holder> <item...> [--sealed] [--card c] [--host h ...] [--method M ...] [--path /p ...] [--expires 30d] [--note n]", "share without handing over"],
   ["pass list | pass revoke <id> | pass accept <ticket>", ""],
   ["relay <item> <url> [--header 'Name: {{vault}}'] [--data d]", "use an item relayed to you; the value is added on its owner's box"],
   ["offboard <person>", "revoke everything they hold, list what to rotate"],
@@ -521,7 +594,7 @@ function help() {
 }
 
 const SUBS = {
-  list, ls: list, put, delete: remove, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, pass, offboard, unlock, lock, help,
+  list, ls: list, put, delete: remove, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, pass, offboard, unlock, lock, help,
 };
 
 export default {
