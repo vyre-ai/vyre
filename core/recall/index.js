@@ -16,6 +16,8 @@
 //   vectors    false to never load the model
 //   download   false to never fetch the model weights (then they must already be in `models`)
 //   models     where the weights live (default <VYRE_HOME>/models)
+//   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
+//              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
 import os from "node:os";
 import path from "node:path";
@@ -57,7 +59,7 @@ export default {
     const folders = readable(ctx.config.transcripts || []);
     // Every vector in memory for retrieval by meaning; dropped whenever a pass writes, rebuilt on
     // the next hybrid search.
-    const dense = new Dense(db);
+    const dense = new Dense(db, { maxChunks: opts.maxChunks });
     const indexer = new Indexer(db, {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       log: ctx.log,
