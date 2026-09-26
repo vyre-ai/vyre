@@ -327,6 +327,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   changed key blocks new passes until a person verifies it. `vyre vault people`, `fingerprint`
   and `kit` (a one-time printable recovery page with a QR code, from a small encoder in plain
   JS). The kit needs the account Secret Key, which lands with the key hierarchy.
+- Vault CLI (ADR 0006 section 6): `vyre vault get|read|add|edit|rm|inject|share|ssh|git-credential`
+  and `run --env-file`, `--json` on every command (exit 3 presence, 4 locked); tools
+  `vault.item`, `vault.resolve`, `vault.render`, `vault.edit`, `vault.git`, `vault.ssh.*`; an
+  ssh-agent for the new `ssh-key` kind (`vault.ssh.socket`); `bin/git-credential-vyre`. Presence
+  is declared on value tools but not enforced until ADR 0004 merges.
 
 #### Watchers
 

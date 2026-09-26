@@ -23,6 +23,7 @@ import * as account from "./tools/account.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
+import { register as registerCli } from "./tools/cli.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -59,6 +60,9 @@ export default {
 
     /** `needs` is the tool's presence declaration; left out, the tool needs no person. */
     const tool = (name, callers, description, input, run, needs) => ctx.tool(name, { description, input, callers, run, ...(needs ? { presence: needs } : {}) });
+
+    // item, resolve, render, edit, the git helper and the ssh agent (tools/cli.js).
+    const cli = await registerCli({ ctx, vault });
 
     // The pairing code comes with the address the extension must use, so a person has both.
     for (const t of FILL_TOOLS) tool(t.name, t.callers, t.description, t.input, async (input, { caller }) => {
@@ -112,7 +116,7 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str }), input => vault.list(input));
+      obj({ filter: str, kind: str, host: str }), input => cli.list(vault.list(input), input));
 
     tool("vault.delete", PEOPLE, "Delete an item and its grants.",
       obj({ name: str }, ["name"]), (input, { caller }) => vault.remove(input, caller),
@@ -223,8 +227,10 @@ export default {
     const kits = shareTools.register({ ctx, vault, tool });
 
     return {
+      ssh: cli.ssh,
       async stop() {
         await kits.stop();
+        await cli.stop();
         vault.lock();
         if (listener) await listener.close();
         if (fillListener) await fillListener.close();

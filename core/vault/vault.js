@@ -98,12 +98,13 @@ const STATE = "state.json";
 const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
 const locked = message => Object.assign(new Error(message), { code: "locked" });
 
-export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set"];
+export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set", "ssh-key"];
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MODULE = /^[a-z][a-z0-9-]{1,40}$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$/;
 /** The field a kind hands over when nobody names one. env-set has none: name the variable. */
-const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null };
+// ssh-key has none either: its private half is used by vyred's ssh agent and never handed out.
+const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null, "ssh-key": null };
 const MAX_VALUE = 64 * 1024;
 const IDENTITY = "identity";
 /** The device identity is sealed in the agent vault at a fixed version: it is written once, or by a restore. */
@@ -694,6 +695,7 @@ export class Vault {
     }
     const r = this.row(name);
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }
+    if (r.kind === "ssh-key") { this.audit("release", name, who, false, "ssh key"); throw new Error(`${name} is an ssh key; it signs through the vault's ssh agent and is never handed out`); }
     const f = await this.fields(r);
     const want = field || DEFAULT_FIELD[r.kind];
     if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is an env-set; name the field you want`); }
@@ -709,6 +711,7 @@ export class Vault {
     for (const it of items) {
       const r = this.row(it.name);
       if (!r) { this.audit("inject", it.name, caller, false, "no such item"); throw new Error(`no item named ${it.name}`); }
+      if (r.kind === "ssh-key") throw new Error(`${it.name} is an ssh key; it signs through the vault's ssh agent and is never handed out`);
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {

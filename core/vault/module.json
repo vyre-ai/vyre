@@ -45,7 +45,18 @@
       "vault.person.add",
       "vault.people.verify",
       "vault.fingerprint",
-      "vault.kit"
+      "vault.kit",
+      "vault.item",
+      "vault.resolve",
+      "vault.render",
+      "vault.edit",
+      "vault.git",
+      "vault.ssh.keys",
+      "vault.ssh.generate",
+      "vault.ssh.add",
+      "vault.ssh.approvals",
+      "vault.ssh.approve",
+      "vault.ssh.forget"
     ]
   },
   "watches": {
@@ -72,7 +83,8 @@
       "vault.person-verified",
       "vault.kit-printed",
       "person.requested",
-      "pass.accept-requested"
+      "pass.accept-requested",
+      "vault.ssh-approved"
     ]
   },
   "shows": {
