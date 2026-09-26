@@ -30,7 +30,7 @@ Claude Code itself:
   Vyre steps aside and uses theirs.
 - **Not a hosted service.** Vyre AI runs one thing: the name directory for `<you>.vyre.run`. It
   holds no user data.
-- **Not an IDE or a chat app.** It uses Claude Code for coding and Mattermost for chat.
+- **Not an IDE.** It uses Claude Code for coding. Chat is Vyre's own surface, part of the Deck.
 
 ### Install and onboarding
 
@@ -126,7 +126,7 @@ vyre/
     capsule/               the Capsule                             (workstream: capsule)
     hands-mac/             computer use on macOS                   (workstream: capsule)
   deck/                    the web app, served by vyred             (workstream: deck)
-  modules/                 first-party optional modules (hands-desktop, hands-chrome, chat)
+  modules/                 first-party optional modules (hands-desktop, hands-chrome)
   docs/                    this spec, the module guide, ADRs, workstream notes
   test/                    cross-module tests; unit tests sit beside their code
   CHANGELOG.md
@@ -449,7 +449,7 @@ The Harness also ships:
 | Capsule | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
 | Deck | The web app at `<you>.vyre.run`: Now, Projects, Memory, Agents, Vault, Settings | `deck/` |
 | Glass | An agent's screen, live, with take-over | `deck/` + `core/computers` |
-| Chat | A better interface over real sessions: Mattermost on your box, a thread per session, driving the same Claude Code sessions as the terminal | `modules/chat` |
+| Chat | A better interface over real sessions: a thread per session, mirroring the terminal, driving the same Claude Code sessions | `deck/chat` |
 | Phone | Now, approvals, drafts, Glass, Ask | later; a Deck view first |
 
 Every surface talks to vyred's API. None reads the store directly.
@@ -525,7 +525,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M6** | Switchboard and Deck | Headless threads streamed to the Deck; Now and Projects working. |
 | **M7** | Capsule | Ported from the current Mac app onto vyred's API. |
 | **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
-| **M9** | Chat, Gate, phone | Mattermost wired to threads; the Gate holding sends; the phone view. |
+| **M9** | Chat, Gate, phone | Vyre Chat wired to threads; the Gate holding sends; the phone view. |
 
 ---
 
@@ -546,7 +546,7 @@ through `ctx` or the API, never by importing its files.
 | deck | `deck/` | the API only | M6 |
 | capsule | `local/capsule/`, `local/hands-mac/` | the API only | M7 |
 | computers | `core/computers/`, `modules/hands-desktop/`, `modules/hands-chrome/` | switchboard | M8 |
-| gate + chat | `core/gate/`, `modules/chat/` | switchboard, vault | M9 |
+| gate + chat | `core/gate/`, `deck/chat/` | switchboard, vault, deck | M9 |
 
 How to start them, and the order (wave 1 now, wave 2 after the switchboard and vault merge), is
 in `docs/work/LAUNCH.md`.
