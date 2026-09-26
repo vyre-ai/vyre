@@ -1,6 +1,6 @@
-// The Deck's service worker: it makes the Deck installable on a phone and lets the shell open
-// when the box is briefly out of reach. Network first, always; the cache is only a fallback for
-// the Deck's own files.
+// The Deck's service worker: it makes the Deck installable on a phone, opens it at once from its
+// own cache (the Deck's files, refreshed behind each use), and lets it open when the box is out of
+// reach. Tool calls are the network's, always, but for the two offline reads below.
 //
 // The one changed invariant (2026-09-27, gate-chat's ask for Chat's offline read, narrowed and
 // approved by the lead — see docs/work/deck.md): threads.get and projects.list, and only those
@@ -13,7 +13,7 @@
 // with postMessage({type: "vyre:clear-offline"}) — there is no sign-out in Vyre yet, but this is
 // ready for whatever that turns out to be.
 
-const CACHE = "vyre-deck-2";
+const CACHE = "vyre-deck-3";
 const OFFLINE_CACHE = "vyre-deck-offline-1";
 const OFFLINE_TOOLS = new Set(["threads.get", "projects.list"]);
 const OFFLINE_MAX = 20;                    // distinct calls kept, oldest evicted first
@@ -24,7 +24,7 @@ const OFFLINE_MAX_AGE_MS = 7 * 86_400_000; // a week
 // the first time it is fetched (the fetch handler below), so the last views the user opened are
 // there too. deck/test/sw.test.js checks every path here exists.
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
-  "/css/deck.css", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
+  "/css/deck.css", "/fonts/instrument-sans-latin.woff2", "/fonts/jetbrains-mono-latin.woff2", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
   "/js/pwa.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js",
   "/views/now.js", "/css/views/now.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
   "/views/find.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
@@ -127,16 +127,18 @@ self.addEventListener("fetch", e => {
     return;
   }
   if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/") || url.pathname.startsWith("/onboard")) return;
+  // The Deck's own files: from the cache at once, and fetched behind it so the next launch has
+  // whatever changed (stale-while-revalidate). A phone on the tailnet would otherwise wait a round
+  // trip per module on every tab it opens. Every page address is the one shell, index.html.
   e.respondWith((async () => {
-    try {
-      const res = await fetch(e.request);
-      if (res.ok) (await caches.open(CACHE)).put(e.request, res.clone());
+    const cache = await caches.open(CACHE);
+    const key = e.request.mode === "navigate" ? "/" : e.request;
+    const hit = await cache.match(key);
+    const fresh = fetch(e.request).then(res => {
+      if (res.ok && res.type === "basic") cache.put(key, res.clone());
       return res;
-    } catch {
-      const hit = await caches.match(e.request);
-      if (hit) return hit;
-      if (e.request.mode === "navigate") return (await caches.match("/")) || Response.error();
-      return Response.error();
-    }
+    });
+    if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }
+    try { return await fresh; } catch { return Response.error(); }
   })());
 });

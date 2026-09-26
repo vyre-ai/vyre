@@ -257,7 +257,7 @@ export default {
 
     const APPLIES = "applies to computers started after the change: a stopped computer is made again with it on its next start (its home stays); a running or frozen one keeps its old setting until computers.stop";
 
-    tool("computers.egress.status", "Whether computers' Chrome sends the listed sites through the user's Mac (config glass.egress), the sites, and whether the egress sidecar answers right now.",
+    tool("computers.egress.status", "Whether computers' Chrome sends the listed sites through the user's Mac (config glass.egress), the sites, whether the egress sidecar answers right now, and whether its gate lets listed sites through (only while the Mac is in use as the exit node).",
       obj({}), async () => {
         const raw = egressCfg() || {};
         const via = egress.proxy();
@@ -265,8 +265,10 @@ export default {
         let out;
         try { out = { ...egress.setting(raw), proxy: via, applies: APPLIES }; }
         catch (e) { out = { enabled: raw.enabled === true, sites: Array.isArray(raw.sites) ? raw.sites : [], proxy: via, applies: APPLIES, problem: /** @type {Error} */ (e).message }; }
-        const p = await egress.probe(via);
-        return { ...out, sidecar: p.answers ? { answers: true } : { answers: false, why: p.why } };
+        const [p, g] = await Promise.all([egress.probe(via), egress.gateStatus()]);
+        // sidecar: whether egress:1055 accepts a connection; gate: whether it would let a listed
+        // site through right now (only while the Mac is in use as the exit node), and why not.
+        return { ...out, sidecar: p.answers ? { answers: true } : { answers: false, why: p.why }, gate: g };
       });
 
     tool("computers.egress.set", "Turn the Mac egress on or off, or replace its site list (hostnames, optionally *.hostname). The owner's to change, never an agent's; it applies to computers started afterwards.",

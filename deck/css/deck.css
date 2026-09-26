@@ -1,6 +1,12 @@
 /* The Deck's one stylesheet. Values come verbatim from docs/design/TOKENS.md; no colour here is new.
    Dark is the default. Paper is the light theme, chosen in Settings (data-theme="paper"). */
 
+/* The two typefaces, from the box (deck/fonts): text draws at once in a fallback and swaps in. */
+@font-face { font-family: 'Instrument Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url(/fonts/instrument-sans-latin.woff2) format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 500; font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin.woff2) format('woff2'); }
+
 :root {
   --graphite: #0E0D0C; --carbon: #161513; --raised: #1E1C1A; --rule: #2B2926; --rule-strong: #3A3733;
   --ash: #8C877D; --stone: #B3AEA4; --bone: #F1EEE6;
@@ -168,7 +174,11 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .pin-a:hover, .pin-a[aria-current="page"] { background: var(--hover); color: var(--text); }
 .pin-a .sq { width: 6px; height: 6px; border: 1px solid var(--label); border-radius: 1px; flex-shrink: 0; }
 .rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding: 12px 10px 0; border-top: 1px solid var(--rule); }
-.view { flex-grow: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior-y: contain; }
+.view { flex-grow: 1; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+/* One page per address, kept while you go elsewhere (js/app.js); each scrolls on its own, so a
+   kept page comes back where it was. */
+.page { position: absolute; inset: 0; overflow: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+.page.away { visibility: hidden; content-visibility: hidden; pointer-events: none; }
 .tabbar { display: none; }
 
 /* The box is not answering: one line above the view, never over it (js/pwa.js). */
@@ -187,7 +197,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
   /* --tabbar-total is the bar with the home indicator under it: the safe area stands in for the
      bar's own 18px of bottom padding when it is taller. */
-  .view { padding-bottom: calc(var(--tabbar-total) + 8px); }
+  .page { padding-bottom: calc(var(--tabbar-total) + 8px); }
   .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: var(--tabbar-total);
     padding: 8px calc(8px + env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
     background: var(--bg); border-top: 1px solid var(--rule); z-index: 30; }

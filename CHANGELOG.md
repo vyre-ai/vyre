@@ -125,6 +125,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   replaces an earlier candidate while no address serves.
 - The address step says up front that it can take about a minute, and the line in progress shows
   its elapsed seconds. Starting Claude's and Tailscale's sign-in say they take a few seconds.
+#### The phone app switches tabs in one frame
+
+- Pages stay mounted: leaving a screen hides it (laid out, inert) instead of tearing it down, so
+  going back shows it as it was, scrolled where it was, still following its events. Up to eight
+  are kept; Glass and the Vault never are. A view can ask to refresh on a revisit (ctx.onShow).
+- On a phone the five tabs are made while it is idle after launch, so the first tap on each is a
+  revisit. Tapping the tab you are on scrolls it to the top.
+- A Chat session opens from what the list already knew, reads only its last 60 turns (Show
+  earlier reads more), and Back returns to the list as it was. The Chat list draws the last one
+  this phone saw at once, then the box's.
+- The fonts are served from the box (deck/fonts, OFL), not Google, and the service worker answers
+  the Deck's own files from its cache and refreshes them behind (stale-while-revalidate).
+- The first screen no longer waits on onboard.status.
+- Measured on the test box, iPhone size, CPU 4x slower, 60 ms to the box: a tab switch 40 to 90 ms
+  (was 150 to 400), a revisit about 30 ms (was up to 190), Back in Chat about 20 ms, opening a
+  session 100 to 250 ms. `deck/test/pwa-perf.js` and `pwa-perf.test.js` (runs where CDP is set)
+  fail over 100 ms.
+- The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
+  tailnet node does not (queuesFor in core/switchboard).
+#### The phone's design
+
+- docs/design/phone.md sets the phone app's design for the PWA and the native apps: no tab bar,
+  three pages (Now, Chats, Agents) swiped sideways and the floating Capsule for ask, find and run,
+  with native-feeling screens (grouped cards, sentence-case buttons, standard sheets). Needs you is
+  a list whose rows swipe to approve or deny and open a detail sheet with Open session. Colour
+  roles use the Deck's names (deck/css/deck.css). Native approvals are a device-key signature
+  after Face ID (ADR 0018), the PWA's a passkey; both are the same box-checked presence proof.
+  Docs only; no code changes.
 
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
@@ -198,6 +226,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   watching thaws it.
 - `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
   required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+#### Glass egress: fail closed, keys that survive restarts
+
+- The egress sidecar no longer sends a listed site out from the box when the Mac stops offering
+  its exit node or its route is unapproved (tailscaled then dials directly, and the site saw the
+  datacenter's address). A gate, `core/computers/egressgate.js` in the vyre image, now answers as
+  `egress:1055`: it reads each SOCKS5 CONNECT and relays it to the sidecar only while the
+  sidecar's tailscaled status shows the exit node in use (BackendState Running, one peer with
+  ExitNode, Online and ExitNodeOption, and ExitNodeStatus online when present). Otherwise it
+  answers "connection not allowed by ruleset" and never dials the site. The status is read on
+  demand, kept 2 s, with no timer while idle; each change of reason is logged once. Node
+  built-ins only; `read_only`, `cap_drop: ALL`, uid 1000.
+- `box/compose.egress.yml`: the tailscaled sidecar is now `egress-node` (SOCKS5 on :1056, on a new
+  internal network `vyre-egress` shared only with the gate, off the computers network); its
+  socket is shared read-only with the gate through the `egress-sock` volume. The key is an OAuth
+  client secret (`tskey-client-...?ephemeral=true&preauthorized=true`) or a reusable ephemeral
+  key, always with `--advertise-tags=tag:vyre-egress`; a single-use key failed the first restart.
+- `computers.egress.status` also returns `gate`, the gate's verdict and reason (GET /status on
+  egress:1057).
 
 #### Connectors (ADR 0016)
 
