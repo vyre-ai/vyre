@@ -25,6 +25,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   answering turn emits its last message as the thread's `thread.text` and `thread.finished`, so the
   Capsule shows the reply like any other. A model's send (caller `mcp*`) is still refused.
   `vyre threads send` prints "queued". `core/switchboard`, `core/harness`, `core/cli/commands/threads.js`.
+- Opening over a full-screen app, behind `VYRE_CAPSULE_STAY=1` until checked: the panel joins every
+  Space again before each show, stays above full-screen windows, and becomes key without the app
+  activating, so macOS does not switch to the desktop Space. Off by default, where the app still
+  activates so typing reaches the panel over a normal app. `local/capsule/lib/present.js`;
+  `scripts/capsule-spaces/run.js` checks it against a throwaway full-screen window and runs only
+  with `VYRE_FULLSCREEN_OK=1`.
 
 #### The Capsule is Spotlight's size
 
