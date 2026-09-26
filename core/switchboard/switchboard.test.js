@@ -385,6 +385,11 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   try { assert.match((await tool("threads.list", {}, "mcp:agent:juno")).error.message, /no thread of that agent is running with this key/); }
   finally { if (was === undefined) delete process.env.VYRE_AGENT_KEY; else process.env.VYRE_AGENT_KEY = was; }
   assert.ok(!JSON.stringify(launches()).includes("VYRE_AGENT_KEY"));
+  // From inside scout's thread, its key under a name that is not an agent: a visible 403, not "the user".
+  for (const as of ["local", "cli", "deck"]) {
+    const forged = (await tool("agents.ask", { agent: "scout", text: `forge ${as} threads.list` })).data.text;
+    assert.match(forged, /^403 .*carries an agent's key, so it must name that agent/, as);
+  }
 
   assert.equal((await tool("agents.threads", { agent: "scout" })).data.length, 1);
   const stopped = (await tool("agents.stop", { agent: "scout" })).data;
@@ -651,4 +656,34 @@ test("learned skills: the account's and the project's folders load as plugins; l
   const own = plugin(path.join(root, "job-skills"));
   await d.registry.call("threads.launch", { cwd: work, prompt: "distil", plugin: false, tools: "none", once: true, plugins: [own] }, "module:learn");
   assert.deepEqual(dirsOf((await until(() => launches()[3], "the job")).argv), [own]);
+
+  // An agent's own folder loads into its threads only.
+  const scoutDir = plugin(path.join(root, "learned", "agents", "scout"));
+  await tool("agents.create", { name: "scout", projects: ["harlow"] });
+  await tool("agents.ask", { agent: "scout", text: "hi" });
+  assert.deepEqual(dirsOf((await until(() => launches()[4], "scout's launch")).argv).slice(1), [account, harlow, scoutDir]);
+});
+
+test("agents: the assistant's brief says how to watch and drive threads for the user; an agent's does not", async () => {
+  const { preamble } = await import("../agents/index.js");
+  const brief = preamble({ name: "juno", kind: "assistant", projects: "*" });
+  assert.match(brief, /threads_watch with \{thread, notify: "capsule", note: "<a short label>"\}/);
+  assert.match(brief, /call threads_send, then set that watch/);
+  assert.match(brief, /Do not poll threads_get/);
+  assert.doesNotMatch(preamble({ name: "scout", kind: "agent", projects: ["harlow"] }), /threads_watch/);
+});
+
+test("agents.delete: a person removes a stopped agent and its spend; never the assistant, a running one, or by a model", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  await tool("agents.create", { name: "probe", projects: [] });
+  await tool("agents.ask", { agent: "probe", text: "hi" });
+  assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /has 1 running thread; stop it first: vyre agents stop probe/);
+  assert.equal((await tool("agents.delete", { agent: "probe" }, "mcp")).error.code, "denied", "a model never deletes an agent");
+  assert.match((await tool("agents.delete", { agent: "juno" })).error.message, /is the assistant/);
+  await tool("agents.stop", { agent: "probe" });
+  assert.deepEqual((await tool("agents.delete", { agent: "probe" }, "deck")).data, { agent: "probe", deleted: true });
+  assert.deepEqual((await tool("agents.list", {})).data.map(a => a.name), ["juno"]);
+  assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
+  assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
 });

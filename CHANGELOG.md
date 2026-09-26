@@ -271,6 +271,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- The assistant's brief says how to act for the user on threads: `threads_watch {thread, notify:
+  "capsule", note}` to watch one, `threads_send` and then a watch to drive one, and no polling,
+  since the Capsule reports the watch when it fires.
 - Usage metering: every turn is a row (`threads_turns`: thread, agent, auth, cost, duration,
   input/output/cache tokens), and `thread.finished` carries `tokens`. `agents.usage {agent?, since?}`
   returns, per agent, `{agent, kind, auth, turns, threads, duration_ms, cost_usd, api_cost_usd,
@@ -284,7 +287,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   resets_at, utilization?}`, is kept on the thread (`last_limit`), and a warning or a refusal is
   said in the thread once per status.
 - Learned skills: `<home>/learned/account/` loads into every thread with the Harness, and
-  `<home>/learned/projects/<slug>/` into that project's threads, each only if it holds
+  `<home>/learned/projects/<slug>/` into that project's threads, `<home>/learned/agents/<name>/`
+  into that agent's threads, each only if it holds
   `.claude-plugin/plugin.json`. Lean threads and jobs load none of them. `threads.launch
   {plugins: [dirs]}` adds folders explicitly, even with `plugin: false`.
 - `agents.list` rows carry `computer` again; without it core/computers refused every agent a
@@ -328,6 +332,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `threads.answer` declares `presence: { summary }` for security's presence proof (ADR 0004); the
   summary reads like "Allow Write to /work/notes.md: write notes.md (thread Intake)". The loader
   ignores the key until presence lands.
+- `agents.delete {agent}` -> `{agent, deleted}` (CLI `vyre agents delete <name>`), for people's
+  surfaces only. It removes the record and its spend, and refuses the assistant or an agent with a
+  running thread. Transcripts and events stay.
+- vyred refuses (403) a request that carries `x-vyre-agent-key` but names no agent, so a thread's
+  Bash forging "local" or "cli" with its own key is refused visibly, not taken as the user.
 - `callerKind` (and the vault's rules) drop the agent part: `mcp:agent:kit` is an `mcp` caller to
   every allowlist, so an agent's `vault.grant` waits as pending like any model's.
 - Tests: the vault's per-agent stub is module `roster`, not `agents`; Memory's graph test and the

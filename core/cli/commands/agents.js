@@ -12,7 +12,7 @@ const id8 = s => String(s || "").slice(0, 8);
 const fail = msg => { out(beacon("  " + msg)); return 1; };
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
-const USAGE = "vyre agents [create|update|ask|threads|usage|stop] …";
+const USAGE = "vyre agents [create|update|ask|threads|usage|stop|delete] …";
 const FLAGS = "--assistant --projects a,b|* --model m --vault item --fallback item --budget 20 --instructions text";
 
 /**
@@ -132,9 +132,18 @@ async function stop(args) {
   return 0;
 }
 
+async function remove(args) {
+  const name = args.join(" ").trim();
+  if (!name) return fail("vyre agents delete <name>");
+  const r = await tool("agents.delete", { agent: name });
+  if (!r) return 1;
+  out(`  deleted ${r.agent} ${dim("(its threads' transcripts stay)")}`);
+  return 0;
+}
+
 export default {
   name: "agents", order: 30, usage: USAGE,
-  summary: "agents: list, create, update, ask, threads, usage, stop",
+  summary: "agents: list, create, update, ask, threads, usage, stop, delete",
   /** @param {string[]} args */
   async run(args) {
     const [sub, ...rest] = args;
@@ -146,6 +155,7 @@ export default {
       if (sub === "threads") return await threads(rest);
       if (sub === "usage") return await usage(rest);
       if (sub === "stop") return await stop(rest);
+      if (sub === "delete" || sub === "rm") return await remove(rest);
       return fail(`vyre agents ${sub}: not a subcommand · ${USAGE}`);
     } catch (err) { return fail(/** @type {Error} */ (err).message); }
   },

@@ -47,7 +47,10 @@ export function preamble(a) {
   const lines = a.kind === "assistant"
     ? [`You are ${a.name}, the user's assistant in Vyre. You can see ${scope}.`,
        "You can start, drive, monitor and stop any Claude Code session with the vyre MCP tools: threads_start, threads_send, threads_list, threads_get, threads_stop, and talk to other agents with agents_ask.",
-       "Permission questions in any session are answered by the user, never by you. When a session is waiting on one, tell the user what it asks."]
+       "Permission questions in any session are answered by the user, never by you. When a session is waiting on one, tell the user what it asks.",
+       "To watch a thread for the user, call threads_watch with {thread, notify: \"capsule\", note: \"<a short label>\"}.",
+       "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call threads_send, then set that watch. If another surface holds the thread's keyboard, threads_send says who; tell the user rather than taking it.",
+       "When a watch fires, the user sees it in the Capsule and on their devices. Do not poll threads_get to wait for it."]
     : [`You are ${a.name}, an agent in Vyre. You may use context from ${scope}, and from nothing outside it.`];
   if (a.instructions) lines.push("", String(a.instructions));
   return lines.join("\n");
@@ -320,6 +323,22 @@ export default {
         guard(caller, "read other agents' conversations");
         if (agent) must(agent);
         return use("threads.history", { ...(agent ? { agent } : {}), ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
+      },
+    });
+
+    // Deleting is a person's decision: no model, not even the assistant, removes an agent.
+    ctx.tool("agents.delete", {
+      description: "Remove an agent's record and its spend. Refused while one of its threads is running (agents.stop first), and for the assistant. Its threads' transcripts and events stay.",
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+      callers: ["cli", "local", "deck", "capsule"],
+      run: async ({ agent }) => {
+        const a = must(agent);
+        if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
+        const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");
+        if (running.length) throw new Error(`${a.name} has ${running.length} running thread${running.length === 1 ? "" : "s"}; stop ${running.length === 1 ? "it" : "them"} first: vyre agents stop ${a.name}`);
+        db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
+        db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
+        return { agent: a.name, deleted: true };
       },
     });
 
