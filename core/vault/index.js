@@ -11,7 +11,11 @@
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
 import { Vault, MIGRATIONS, KINDS } from "./vault.js";
+import fs from "node:fs";
+import path from "node:path";
 import { serve } from "./relay.js";
+import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
+import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
 
@@ -29,12 +33,44 @@ export default {
     const opts = (ctx.config && ctx.config.vault) || {};
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), onRelay: env => vault.onRelay(env) });
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), onRelay: (env, meta) => vault.onRelay(env, meta) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
 
+    // Autofill: a listener only browser extensions (and the Capsule's helper) talk to, after
+    // pairing and unlock. vault.fill is a route there, never a registry tool, so no agent has it.
+    const fill = new Fill({ vault, verifyVaultPassphrase: p => vault.checkPassphrase(p) });
+    let fillListener = null;
+    if (opts.fill && (opts.fill.port !== undefined || opts.fill.host)) {
+      fillListener = await serveFill({ host: opts.fill.host || "127.0.0.1", port: Number(opts.fill.port || 0), fill });
+      ctx.log(`vault fill listening on ${fillListener.url}`);
+    }
+
     const tool = (name, callers, description, input, run) => ctx.tool(name, { description, input, callers, run });
+
+    // The pairing code comes with the address the extension must use, so a person has both.
+    for (const t of FILL_TOOLS) tool(t.name, t.callers, t.description, t.input, async (input, { caller }) => {
+      const r = await fill[t.method](input, caller);
+      return t.method === "code" ? { ...r, fill: fillListener ? fillListener.url : null } : r;
+    });
+
+    // Backups are sealed to their own passphrase, so they are safe in any cloud drive. The
+    // passphrase is a secret, so only people (cli, local) may call these.
+    tool("vault.backup", PEOPLE, "Write a backup of the whole vault, sealed to a passphrase of its own.",
+      obj({ file: str, passphrase: str }, ["file", "passphrase"]), async ({ file, passphrase }, { caller }) => {
+        const p = path.resolve(file);
+        const blob = await backup(vault, passphrase);
+        fs.writeFileSync(p + ".tmp", blob + "\n", { mode: 0o600 });
+        fs.renameSync(p + ".tmp", p);
+        const info = inspect(blob);
+        vault.audit("backup", null, caller, true, `${info.items} items to ${path.basename(p)}`);
+        return { file: p, items: info.items, at: info.at };
+      });
+
+    tool("vault.restore", PEOPLE, "Restore a backup. merge adds what is missing; replace needs an empty vault.",
+      obj({ file: str, passphrase: str, mode: { type: "string", enum: ["merge", "replace"] } }, ["file", "passphrase"]),
+      ({ file, passphrase, mode }, { caller }) => restore(vault, fs.readFileSync(path.resolve(file), "utf8").trim(), passphrase, { mode, who: caller }));
 
     // Modules may put too (onboarding stores the Claude credential this way), but only new items
     // or items they made themselves, and they may grant only what they put: neither reveals a
@@ -135,6 +171,7 @@ export default {
       async stop() {
         vault.lock();
         if (listener) await listener.close();
+        if (fillListener) await fillListener.close();
       },
     };
   },

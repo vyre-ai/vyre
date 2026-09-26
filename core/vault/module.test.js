@@ -10,11 +10,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempKeychain, onSearchList } from "./testing.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -170,14 +171,7 @@ test("vault: under tests, the keychain keystore refuses the real login keychain"
 });
 
 test("vault: the keychain keystore, in a temporary keychain, survives a restart", { skip: process.platform !== "darwin" }, async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-kc-"));
-  const kc = path.join(dir, "test.keychain-db");
-  const pw = crypto.randomBytes(12).toString("hex");
-  const searchList = () => execFileSync("security", ["list-keychains", "-d", "user"], { encoding: "utf8" });
-  const listed = searchList();
-  execFileSync("security", ["create-keychain", "-p", pw, kc]);
-  execFileSync("security", ["unlock-keychain", "-p", pw, kc]);
-  t.after(() => { try { execFileSync("security", ["delete-keychain", kc]); } catch {} fs.rmSync(dir, { recursive: true, force: true }); });
+  const kc = await tempKeychain(t);
 
   const value = fake("kc");
   const first = await boot(t, { keystore: "keychain", keychain: kc });
@@ -190,7 +184,7 @@ test("vault: the keychain keystore, in a temporary keychain, survives a restart"
   t.after(() => again.d.stop());
   const used = await again.as("cli")("probe.use", { name: "api-token" });
   assert.equal(used.data?.sha, sha(value), JSON.stringify(used.error));
-  assert.equal(searchList(), listed, "the user's keychain search list changed");
+  assert.equal(await onSearchList(kc), false, "the test keychain joined the user's search list");
 });
 
 /** Every file under a folder, as raw bytes. */
@@ -327,4 +321,47 @@ test("vault: a per-agent module fetches dynamic names, still only with a grant p
   assert.match((await cli("roster.fetch", { name: "juno-setup-token" })).data.error, /not granted to roster/);
   await cli("vault.grant", { name: "juno-setup-token", module: "roster" });
   assert.deepEqual((await cli("roster.fetch", { name: "juno-setup-token" })).data, { length: token.length });
+});
+
+test("vault: behind tailscale serve, a relayed pass answers only its holder's Tailscale login", async t => {
+  const token = fake("token");
+  const api = http.createServer((req, res) => { res.end(JSON.stringify({ ok: req.headers.authorization === `Bearer ${token}` })); });
+  await new Promise(r => api.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => api.close());
+  const apiOrigin = `http://127.0.0.1:${/** @type {any} */ (api.address()).port}`;
+
+  // A stand-in for tailscale serve: it proxies to the relay listener and sets the identity
+  // header from whoever is calling, which here is whatever `as` says.
+  let as = /** @type {string|null} */ ("mate@example.com");
+  const free = await new Promise(r => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => r(p)); }); });
+  const serve = http.createServer((req, res) => {
+    const headers = { ...req.headers };
+    delete headers["tailscale-user-login"];
+    if (as) headers["tailscale-user-login"] = as;
+    const up = http.request({ host: "127.0.0.1", port: free, path: req.url, method: req.method, headers }, r => { res.writeHead(r.statusCode || 502, r.headers); r.pipe(res); });
+    req.pipe(up);
+  });
+  await new Promise(r => serve.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => serve.close());
+  const serveUrl = `http://127.0.0.1:${/** @type {any} */ (serve.address()).port}`;
+
+  const owner = await boot(t, { keystore: "file", relay: { host: "127.0.0.1", port: free, url: serveUrl, identity: "tailscale" } });
+  t.after(() => owner.d.stop());
+  const mate = await boot(t, { keystore: "file", login: "mate@example.com" });
+  t.after(() => mate.d.stop());
+  const o = owner.as("cli"), m = mate.as("cli");
+
+  await o("vault.put", { name: "api-token", kind: "api-key", value: token, hosts: [apiOrigin] });
+  const card = (await m("vault.identity")).data.card;
+  const { ticket } = (await o("vault.pass.create", { holder: "teammate", card, items: ["api-token"] })).data;
+  await m("vault.pass.accept", { ticket });
+  const use = () => m("vault.relay", { item: "api-token", request: { url: `${apiOrigin}/`, headers: { authorization: "Bearer {{vault}}" } } });
+
+  assert.equal(JSON.parse((await use()).data.body).ok, true);
+  as = "someone-else@example.com";
+  assert.match((await use()).error.message, /another Tailscale user/);
+  as = null;
+  assert.match((await use()).error.message, /only through tailscale serve/);
+  const trail = (await o("vault.audit", { name: "api-token" })).data.entries;
+  assert.ok(trail.some(e => e.action === "relay" && e.ok && /as mate@example\.com/.test(e.why)));
 });

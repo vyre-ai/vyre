@@ -201,3 +201,65 @@ test("vault cli: a relayed pass between two vyreds, revoked at once; offboarding
     }
   }
 });
+
+test("vault cli: autofill through a paired extension, and a backup restored into another vyred", async t => {
+  const owner = home(t, { name: "owner-box", vault: { keystore: "file", fill: { host: "127.0.0.1", port: 0 } } });
+  const spare = home(t, { name: "spare-box", vault: { keystore: "file" } });
+  assert.equal((await vyre(owner, ["up"])).code, 0);
+  assert.equal((await vyre(spare, ["up"])).code, 0);
+  const password = fake("pw");
+  const token = fake("token");
+  await vyre(owner, ["vault", "put", "example-mail", "--kind", "login", "--username", "alex@example.com", "--url", "https://mail.example.com"], password);
+  await vyre(owner, ["vault", "put", "api-token"], token);
+  assert.equal((await vyre(owner, ["vault", "unlock-passphrase"], "a long unlock phrase\n")).code, 0);
+
+  // The extension's side, as HTTP from an extension origin.
+  const paired = await vyre(owner, ["vault", "pair", "--name", "laptop chrome"]);
+  const code = /pairing code\s+(\S+)/.exec(paired.out)?.[1];
+  const fillUrl = /fill address\s+(\S+)/.exec(paired.out)?.[1];
+  assert.ok(code && fillUrl, paired.out);
+  const ext = { "content-type": "application/json", origin: "chrome-extension://abcdefghijklmnop" };
+  const post = async (route, body, headers = {}) => {
+    const r = await fetch(`${fillUrl}/v1/fill/${route}`, { method: "POST", headers: { ...ext, ...headers }, body: JSON.stringify(body) });
+    return { status: r.status, body: await r.json() };
+  };
+  const dev = await post("pair", { code: code.replace("-", ""), name: "laptop chrome" });
+  assert.equal(dev.status, 200, JSON.stringify(dev.body));
+  const auth = { authorization: `Bearer ${dev.body.data.token}` };
+  const page = await fetch(`${fillUrl}/v1/fill/match`, { method: "POST", headers: { ...auth, "content-type": "application/json", origin: "https://mail.example.com" }, body: "{}" });
+  assert.equal(page.status, 403, "a web page must not reach the fill listener");
+  assert.equal((await post("fill", { name: "example-mail", url: "https://mail.example.com/" }, auth)).status, 401, "no session, no fill");
+  const session = await post("unlock", { passphrase: "a long unlock phrase" }, auth);
+  assert.equal(session.status, 200, JSON.stringify(session.body));
+  const s = { ...auth, "x-vyre-session": session.body.data.session };
+  assert.deepEqual((await post("match", { url: "https://mail.example.com/inbox" }, auth)).body.data.logins.map(l => l.name), ["example-mail"]);
+  const filled = await post("fill", { name: "example-mail", url: "https://mail.example.com/login" }, s);
+  assert.equal(filled.body.data.password, password);
+  assert.equal(filled.body.data.username, "alex@example.com");
+  assert.equal((await post("fill", { name: "example-mail", url: "https://mail.example.com.evil.test/" }, s)).status, 403);
+  const devices = await vyre(owner, ["vault", "devices"]);
+  assert.match(devices.out, /laptop chrome\s+unlocked/);
+  await vyre(owner, ["vault", "devices", "revoke", dev.body.data.device]);
+  assert.notEqual((await post("fill", { name: "example-mail", url: "https://mail.example.com/login" }, s)).status, 200, "a revoked device fills nothing");
+  const audit = (await vyre(owner, ["vault", "audit", "example-mail"])).out;
+  assert.ok(!audit.includes(password) && !audit.includes(dev.body.data.token));
+
+  // Backup, then restore into a vyred with a different master key.
+  const file = path.join(owner, "fixture.vyrebackup");
+  const short = await vyre(owner, ["vault", "backup", file], "too short\n");
+  assert.equal(short.code, 1);
+  const b = await vyre(owner, ["vault", "backup", file], "a long backup phrase\n");
+  assert.equal(b.code, 0, b.all);
+  assert.match(b.out, /backed up 2 items/);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  const blob = fs.readFileSync(file);
+  assert.ok(!blob.includes(Buffer.from(password)) && !blob.includes(Buffer.from(token)));
+  const wrong = await vyre(spare, ["vault", "restore", file], "not the phrase\n");
+  assert.equal(wrong.code, 1);
+  assert.match(wrong.all, /does not open this backup/);
+  const r = await vyre(spare, ["vault", "restore", file], "a long backup phrase\n");
+  assert.equal(r.code, 0, r.all);
+  assert.match(r.out, /restored 2 items/);
+  const hashed = await vyre(spare, ["vault", "run", "api-token", "--", process.execPath, "-e", "console.log(require('crypto').createHash('sha256').update(process.env.API_TOKEN).digest('hex'))"]);
+  assert.equal(hashed.out.trim(), sha(token));
+});
