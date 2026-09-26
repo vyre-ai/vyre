@@ -51,6 +51,12 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
     ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
+- LANDED: chat's recall.watch on work/chat 10604b9. Final shapes: recall.watch {session, from?, watch?}
+  -> {watch:"w_<hex>", session, from|null, busy}; renew by passing watch (renewed:true); expires 3 min
+  unrenewed, 30 min idle; not_found. recall.unwatch {watch} -> {watch, ended:true}. session.turn
+  (thread = session id) {session, id, seq (transcript LINE), turn?, role, text, tool?, at, replay?}:
+  dedupe on id (text turn id = recall seq as string, tool turn "tool:<id>"; recall.thread items now
+  carry id and at). session.state {session, busy} only on change. Callers include capsule.
 - chat: `recall.watch {session, from?, watch?}` (renew by id; expires 3 min after last renew,
   30 min idle, recall.unwatch), `session.turn` {session, id, seq, role, text, tool?, at},
   `session.state` {session, busy}; system.info.assistant.name (work/chat 45557bf). Being built.
