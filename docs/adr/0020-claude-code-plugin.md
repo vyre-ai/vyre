@@ -40,14 +40,15 @@ Users run:
 `mcp/run.js`. Each asks `harness/lib/vyre.js` where Vyre is, in this order: `VYRE_PACKAGE`; the
 folder the Harness sits in, when it is inside the package (the `--plugin-dir` case); the `vyre`
 on `PATH`, followed through npm's symlink. When a package is found and Vyre's home exists, the
-launcher imports that package's own `hook.js` or `server.js`, so the code that runs always
+launcher imports (never spawns) that package's own `hook.js` or `server.js`, so the code that runs always
 matches the vyred it talks to, and nothing about today's hooks changes. The launcher uses only
 node built-ins and a few stat calls.
 
 **Without Vyre, one line and then silence.** With no package (or a package whose `vyre up`
 never ran), the SessionStart hook of a fresh session (source `startup`, not resume, clear or
-compact) prints `{"systemMessage": ...}` with the one-line install, `npm install -g vyre && vyre up`,
-or "run `vyre up`". Every other hook exits 0 with no output in about 20 ms. The MCP server
+compact) prints `{"systemMessage": ...}` with one line: "Set it up: https://vyre.run/start", the page that covers
+both a Mac and a server (the `npm install -g vyre && vyre up` form joins it behind `ON_NPM` in
+`harness/lib/vyre.js` once the package is on npm), or "run `vyre up`". Every other hook exits 0 with no output in about 20 ms. The MCP server
 answers `initialize` with the same line in its instructions and lists no tools, so Claude Code
 shows it connected, not failed, and `/vyre` can tell the user. Nothing is written to disk; no
 `~/.vyre` is made.

@@ -11,7 +11,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `harness/hooks/run.js`, `harness/mcp/run.js`, `harness/lib/vyre.js`: `/plugin install` copies only
   `harness/`, so hooks and the MCP server start from launchers that find a Vyre package
   (`VYRE_PACKAGE`, the package they sit in, or `vyre` on PATH) and run its own `hook.js` or
-  `server.js`. With no Vyre, a fresh session gets one line on how to install it, every other hook
+  `server.js`. With no Vyre, a fresh session gets one line pointing at https://vyre.run/start, every other hook
   exits 0 silently in about 20 ms, and the MCP server connects with no tools.
 - `/vyre` gains `ask <agent> <text>`, `send <session> <text>` and `statusline`.
 - `core/statusline`: a module that keeps `<home>/statusline` (pid and line, such as

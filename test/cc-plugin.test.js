@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { weakens } from "../core/learn/checks.js";
-import { findPackage, locate, INSTALL } from "../harness/lib/vyre.js";
+import { findPackage, locate, START } from "../harness/lib/vyre.js";
 import { tempHome } from "./helpers.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -98,7 +98,7 @@ test("no Vyre: a fresh session hears the install line once; every other hook is 
   const e = { ...env, VYRE_HOME: home };
   const first = await hook(cache, "brief", { session_id: "s1", cwd: "/tmp", source: "startup" }, e);
   assert.equal(first.code, 0);
-  assert.equal(JSON.parse(first.out).systemMessage, `The Vyre plugin is on, but Vyre is not installed. Install it with: ${INSTALL}`);
+  assert.equal(JSON.parse(first.out).systemMessage, `The Vyre plugin is on, but Vyre is not installed. Set it up: ${START}`);
   for (const source of ["resume", "clear", "compact"]) assert.deepEqual((await hook(cache, "brief", { session_id: "s1", source }, e)).out, "", source);
   for (const piece of ["enrich", "rules", "learn", "fail", "stop", "nonsense"]) {
     const r = await hook(cache, piece, { session_id: "s1", cwd: "/tmp", prompt: "hi", tool_name: "Read", tool_input: { file_path: "/tmp/a" } }, e);
@@ -147,9 +147,17 @@ test("no Vyre: the MCP server connects with no tools and says how to install", a
     [INIT, { jsonrpc: "2.0", method: "notifications/initialized" }, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
       { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "recall_search", arguments: {} } }], 3);
   assert.equal(replies.get(1).result.serverInfo.name, "vyre");
-  assert.ok(replies.get(1).result.instructions.includes(INSTALL));
+  assert.ok(replies.get(1).result.instructions.includes(START));
   assert.deepEqual(replies.get(2).result.tools, []);
   assert.equal(replies.get(3).error.code, -32601);
+});
+
+test("no Vyre, inside the MCP hub's child: the fallback server refuses every request", async t => {
+  const { cache, env } = install(t);
+  const replies = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: path.join(path.dirname(cache), "none"), VYRE_HUB_CHILD: "1" },
+    [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }], 2);
+  assert.equal(replies.get(1).error.code, -32000);
+  assert.equal(replies.get(2).error.code, -32000);
 });
 
 test("learning: running the launcher by hand is a hook run by hand", () => {

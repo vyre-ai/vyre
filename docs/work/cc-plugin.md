@@ -20,7 +20,8 @@ Before publishing, a checkout works the same way: `claude plugin marketplace add
 - With Vyre installed and `vyre up` done: full features, the same hooks and tools as the threads
   Vyre starts itself.
 - With no Vyre: the first line of each new session says `The Vyre plugin is on, but Vyre is not
-  installed. Install it with: npm install -g vyre && vyre up`. Nothing else happens.
+  installed. Set it up: https://vyre.run/start`. When vyre is on npm, flip `ON_NPM` in
+  `harness/lib/vyre.js` to add `(or: npm install -g vyre && vyre up)`. Nothing else happens.
 - Status line, separately, in a terminal: `vyre statusline install` (asks first; `--chain` keeps
   a status line you already have). `vyre up` on a Mac offers it once. `vyre statusline uninstall`
   puts things back.
@@ -55,22 +56,23 @@ Perf:
 
 ## Doing
 
-- Nothing in progress. Waiting on the lead's demo.
+- Nothing in progress. Queued to merge after work/connectors.
 
 ## Next
 
 - Once `vyre-ai/vyre` is public: install from GitHub in a temp config and confirm the cache copy
   finds the npm-installed `vyre` on PATH.
-- A screenshot of the status line in a real interactive session (needs a logged-in temp config;
-  the lead's call).
+- When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 
 ## Needs from others
 
 - ci: publish `vyre-ai/vyre` with `.claude-plugin/marketplace.json` at the root. Keep
   `harness/.claude-plugin/plugin.json`'s version equal to `package.json` on release (a test checks).
-- connectors: asked whether a `vyre mcp` subcommand is coming; the plugin runs
-  `harness/mcp/run.js`, which hands over to `harness/mcp/server.js`. If `vyre mcp` lands, point
-  `run.js` at it.
+- connectors (settled): `vyre mcp` exists on work/connectors and imports `harness/mcp/server.js`.
+  `mcp/run.js` does the same (import, never spawn, so Claude Code stays the server's parent and
+  its session key is found), passes the env through, writes only JSON-RPC, and its no-Vyre
+  fallback refuses every request with -32000 under `VYRE_HUB_CHILD`. Nothing to change when
+  work/connectors merges: its server.js changes arrive through the same import.
 
 ## Changed contracts
 

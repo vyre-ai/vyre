@@ -12,7 +12,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const INSTALL = "npm install -g vyre && vyre up";
+/** The page that covers every way to set Vyre up: a Mac, a server, or both. */
+export const START = "https://vyre.run/start";
+/** Flip to true once vyre is on npm: the line then also gives the npm command. */
+export const ON_NPM = false;
+export const NPM = "npm install -g vyre && vyre up";
 
 /** Is `dir` a Vyre package (the npm package or a checkout of the repo)? @param {string} dir */
 function isPackage(dir) {
@@ -66,5 +70,5 @@ export function locate(pluginRoot, env = process.env) {
 export function hint(state) {
   return state === "setup"
     ? "Vyre is installed but not set up on this machine. Run `vyre up` to start it."
-    : `The Vyre plugin is on, but Vyre is not installed. Install it with: ${INSTALL}`;
+    : `The Vyre plugin is on, but Vyre is not installed. Set it up: ${START}${ON_NPM ? ` (or: ${NPM})` : ""}`;
 }

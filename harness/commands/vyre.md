@@ -36,5 +36,5 @@ The user ran `/vyre $ARGUMENTS`.
   line under it. Do not run it for them and do not edit their settings.json.
 
 If the `vyre` MCP server has no tools at all, Vyre is not running here: its instructions say
-whether it is not installed (`npm install -g vyre && vyre up`) or only stopped (`vyre up` starts
+whether it is not installed (https://vyre.run/start) or only stopped (`vyre up` starts
 it). Say that in one line and stop. If just one tool is missing, that module is not running.
