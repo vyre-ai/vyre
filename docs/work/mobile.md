@@ -51,6 +51,10 @@ Small changes outside the scope, each through the owner's contract and listed be
 - apps/RELEASE.md: the owner's steps for real phones, TestFlight and Play.
 
 ## Doing
+- The phone redesign, Direction B (docs/design/phone.md on work/phone-design, f72456f), on both
+  apps in the spec's section 14 order: shell (pages, header, floating Capsule), Now's Needs you
+  with swipe, the detail sheet with Open session, the chat timeline, Find, Agents. One commit
+  per step, CI green each time; simulator and emulator screenshots after each.
 - iOS: runs in the simulator against the test world (6dc0d1a); next, move it to the PWA's
   structure as Android did (e76224b).
 - Priority (lead, 27 Sep): the PWA (team pwa) ships first; native follows on the same API and
@@ -82,8 +86,10 @@ How to run the phone against the test world (Mac, one emulator or simulator at a
 - lead and user: the push relay for store builds. Options and a recommendation are in the ADR
   0018 addendum (a relay inside the name directory). Until then push works with the owner's own
   APNs/FCM keys in the Vault.
-- phone-design: docs/design/phone.md. Visual and layout work on both apps is on hold until it
-  lands (lead, 27 Sep). Function work continues.
+- phone-design: the native apps approve with the device key, not a platform passkey (a store
+  app cannot assert passkeys for every owner's box domain). Asked to amend phone.md sections 4-6.
+- Open session anchor (phone.md section 15): threads.asks and gate.held rows need the transcript
+  event or tool_use id. Until then Chat scrolls to the first item at or after `at`.
 - planner (ADR 0025, work/planner): push kind "planner" with actions done/snooze and events
   planner.fired/acked. If the apps ring alarms locally, dedupe on the firing id and ack with
   planner.done/snooze {firing}. Nothing needed yet.
