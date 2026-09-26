@@ -34,7 +34,7 @@ public final class CapsuleModel: ObservableObject {
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
-    @Published public var target: VyreCandidate? { didSet { if target != oldValue { search() } } }
+    @Published public var target: VyreCandidate? { didSet { if target != oldValue { targetChanged(); search() } } }
     public private(set) var catalog = VyreCatalog.empty
     /// What extensions add (ExtensionHost.load): rows, named commands, and side panels.
     var extensionProviders: [ResultProvider] = []
@@ -51,6 +51,14 @@ public final class CapsuleModel: ObservableObject {
     let home: String
     /// The threads the Capsule holds, released and stopped on hide (Agent/Keeper.swift).
     lazy var keeper = Keeper(vyred: vyred)
+    /// The conversation with the agent in the chip (Agent/Direct.swift).
+    public lazy var direct: Direct = {
+        let d = Direct(vyred: vyred)
+        d.changed = { [weak self] in self?.objectWillChange.send() }
+        d.projectName = { [weak self] s in self?.catalog.projectName(s) ?? s }
+        d.onError = { [weak self] why in self?.line = why }
+        return d
+    }()
     /// Each agent's threads, for where @agent sends (Agent/Destinations.swift).
     lazy var routes = RouteCache()
     /// What waits on the user and the card that answers it (Agent/Desk.swift).
@@ -93,6 +101,7 @@ public final class CapsuleModel: ObservableObject {
             guard vyred.isUp else { return }
             self.catalog = await CatalogLoader.load(vyred)
             if Route.mention(self.text).completing != nil { self.search() }
+            self.targetChanged()
             self.desk.follow()
             await self.desk.load()
         }
@@ -106,6 +115,7 @@ public final class CapsuleModel: ObservableObject {
         vyred.follower.setShown(false)
         keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
         desk.hidden()
+        direct.close()
         token += 1
         confirming = nil
     }

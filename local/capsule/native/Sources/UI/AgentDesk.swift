@@ -170,9 +170,11 @@ struct WaitingHint: View {
     static func hintShown(_ m: CapsuleModel) -> Bool {
         m.desk.mode == .none && m.text.isEmpty && m.target == nil && m.asked == nil && !m.desk.waiting.isEmpty
     }
+    /// The conversation with the agent in the chip, while nothing else has the space.
+    static func directShown(_ m: CapsuleModel) -> Bool { m.desk.mode == .none && m.direct.dm != nil && m.asked == nil }
     static func height(_ m: CapsuleModel) -> CGFloat {
         switch m.desk.mode {
-        case .none: return hintShown(m) ? 1 + WaitingHint.height : 0
+        case .none: return (hintShown(m) ? 1 + WaitingHint.height : 0) + (directShown(m) ? DirectView.height(m.direct) : 0)
         case .list: return 1 + WaitingList.height(m.desk)
         case .card: return m.desk.open.map { 1 + HeldCardView.height(m.desk, $0) } ?? 0
         }
@@ -180,7 +182,9 @@ struct WaitingHint: View {
 
     @ViewBuilder static func view(_ m: CapsuleModel) -> some View {
         switch m.desk.mode {
-        case .none: if hintShown(m) { Rule(); WaitingHint(desk: m.desk) }
+        case .none:
+            if directShown(m) { Rule(); DirectView(direct: m.direct, desk: m.desk) }
+            else if hintShown(m) { Rule(); WaitingHint(desk: m.desk) }
         case .list: Rule(); WaitingList(desk: m.desk)
         case .card: if let w = m.desk.open { Rule(); HeldCardView(desk: m.desk, w: w) }
         }

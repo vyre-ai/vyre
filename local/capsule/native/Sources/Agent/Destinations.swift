@@ -87,6 +87,8 @@ extension CapsuleModel {
         case .recall: return .said("Nothing to send to: there is no assistant on this vyred yet. Memory has answered what it can.")
         case .assistant, .agent:
             let a = d.agent ?? ""
+            // With the conversation open, the words go into it and the reply streams there.
+            if let open = direct.agent, open == a || (d.kind == .assistant && catalog.assistant?.name == open) { return await direct.send(words) }
             return await send(words, to: VyreCandidate(kind: .agent, id: a, label: a))
         case .thread:
             guard let t = d.thread else { return .failed("That thread has no id.") }
@@ -103,6 +105,11 @@ extension CapsuleModel {
         if target != nil { return true }
         if asked != nil, reply.map({ !$0.thread.isEmpty }) == true { return true }
         return Route.intent(q.text, topKind: top?.kind, topScore: top?.score ?? 0) == .ask && Route.asksQuestion(q.text)
+    }
+
+    /// The chip changed: @agent opens the conversation with it; anything else closes it.
+    func targetChanged() {
+        if let t = target, t.kind == .agent, vyred.isUp { direct.open(t.id, catalog: catalog) } else { direct.close() }
     }
 
     // MARK: the answer's own actions
