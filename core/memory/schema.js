@@ -109,4 +109,77 @@ export const MIGRATIONS = [
   CREATE TABLE memory_meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL);
   INSERT INTO memory_meta (k, v) VALUES ('graph_version', 0);
   `,
+  `
+  -- Rooms (docs/adr/0007-intelligence.md, decision 1). A room is a project (its folders and the
+  -- threads picked into it) or 'unfiled'. Every derived row says which room it belongs to; '*'
+  -- is the main graph. A room's rows are computed from its own sessions and lessons only.
+  CREATE TABLE memory_rooms (
+    slug TEXT PRIMARY KEY, name TEXT NOT NULL,
+    folders TEXT NOT NULL,           -- JSON list of folders
+    threads TEXT NOT NULL            -- JSON list of picked session ids
+  );
+
+  -- What one room knows of a node: this room's kind, role, counts and dates, never another's.
+  CREATE TABLE memory_room_nodes (
+    room TEXT NOT NULL, id TEXT NOT NULL,
+    kind TEXT NOT NULL, key TEXT NOT NULL, label TEXT NOT NULL, role TEXT,
+    sessions INTEGER NOT NULL DEFAULT 0, mentions INTEGER NOT NULL DEFAULT 0,
+    first_seen INTEGER, last_seen INTEGER,
+    PRIMARY KEY (room, id)
+  ) WITHOUT ROWID;
+
+  -- Edges gain their room, the newest supporting turn over all evidence (seen, for decay at read
+  -- time), a conflict mark, where the belief came from (extract, taught, user) and the rule that
+  -- produced it (for counting corrections per rule).
+  ALTER TABLE memory_edges ADD COLUMN room TEXT NOT NULL DEFAULT '*';
+  ALTER TABLE memory_edges ADD COLUMN seen INTEGER;
+  ALTER TABLE memory_edges ADD COLUMN conflict INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE memory_edges ADD COLUMN origin TEXT NOT NULL DEFAULT 'extract';
+  ALTER TABLE memory_edges ADD COLUMN rule TEXT;
+  DROP INDEX memory_edges_key;
+  CREATE UNIQUE INDEX memory_edges_key ON memory_edges (room, src, rel, dst, valid_from);
+  CREATE INDEX memory_edges_room ON memory_edges (room, src, rel);
+
+  -- Short forms per room: every claimant is kept, and the one in view wins at read time.
+  DROP TABLE memory_shortforms;
+  CREATE TABLE memory_shortforms (
+    room TEXT NOT NULL, node TEXT NOT NULL, form TEXT NOT NULL, precision REAL NOT NULL, sessions INTEGER NOT NULL, at INTEGER NOT NULL,
+    PRIMARY KEY (room, node, form)
+  );
+
+  -- What the user said about a fact (decision 4): wrong, ended, replace, confirm, add, and the
+  -- merge and split of nodes. Applied in derive after the votes, so they are never derived away.
+  -- scope is '*' or a room's slug. undone is set by memory.uncorrect; the row stays for history.
+  CREATE TABLE memory_corrections (
+    id INTEGER PRIMARY KEY,
+    action TEXT NOT NULL,
+    src TEXT NOT NULL, rel TEXT, dst TEXT,
+    object TEXT,                     -- replace: the new object's node id
+    at INTEGER,                      -- ended, replace: when it stopped being true
+    scope TEXT NOT NULL DEFAULT '*',
+    note TEXT, who TEXT,
+    created INTEGER NOT NULL,
+    undone INTEGER
+  );
+
+  -- Every existing home derives once more, so its rows get rooms.
+  INSERT INTO memory_meta (k, v) VALUES ('rederive', 1);
+  `,
+  `
+  -- Extraction learned titles, clients, deadlines and middle initials, and reads user turns
+  -- apart from Claude's. Turns already read have none of that, so every home reads them again
+  -- once, in the background, the way a first pass does.
+  INSERT INTO memory_meta (k, v) VALUES ('reread', 1);
+  `,
+  `
+  -- One organisation written several ways ("Keel & Ash", "Keel & Ash Architects") is one node
+  -- when the spellings share a domain: the longest spelling names it and the others are kept
+  -- here, per room, so a prompt that uses them still finds it.
+  CREATE TABLE memory_aliases (
+    room TEXT NOT NULL, node TEXT NOT NULL, alias TEXT NOT NULL,
+    PRIMARY KEY (room, node, alias)
+  ) WITHOUT ROWID;
+  CREATE INDEX memory_aliases_alias ON memory_aliases (room, alias);
+  INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('rederive', 1);
+  `,
 ];

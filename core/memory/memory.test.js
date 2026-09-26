@@ -28,7 +28,8 @@ function world(t, { sessions = SESSIONS, me = ME, recall = true } = {}) {
   t.after(() => db.close());
   if (recall) seedRecall(db, sessions);
   const curator = new Curator(db, { me });
-  const graph = new Graph(db, curator);
+  // The fixtures are dated, so the clock that ages them is too.
+  const graph = new Graph(db, curator, { now: () => T0 + 20 * DAY });
   return { db, curator, graph, add: list => seedRecall(db, list) };
 }
 
@@ -42,12 +43,13 @@ const S = (turns, { start = T0 + 10 * DAY, dir = "misc", name } = {}) => ({
 const fid = (a, rel, b) => `${a}|${rel}|${b}`;
 const DANA = "name:Dana Reyes", HARLOW = "name:Harlow Legal", SAM = "name:Sam Okafor", NORTHWIND = "name:Northwind Bakery";
 
-const open_ = (db, src, rel) => db.prepare("SELECT dst, valid_from, valid_to FROM memory_edges WHERE src = ? AND rel = ? AND valid_to IS NULL").all(src, rel);
+const open_ = (db, src, rel, room = "*") => db.prepare("SELECT dst, valid_from, valid_to FROM memory_edges WHERE room = ? AND src = ? AND rel = ? AND valid_to IS NULL").all(room, src, rel);
 const dump = db => ({
   nodes: db.prepare("SELECT id, kind, role, sessions, mentions, first_seen, last_seen FROM memory_nodes ORDER BY id").all(),
-  edges: db.prepare("SELECT src, rel, dst, weight, valid_from, valid_to, confidence FROM memory_edges ORDER BY src, rel, dst, valid_from").all(),
-  evidence: db.prepare("SELECT e.src, e.rel, e.dst, v.session, v.seq FROM memory_evidence v JOIN memory_edges e ON e.id = v.edge ORDER BY 1, 2, 3, 4, 5").all(),
-  forms: db.prepare("SELECT node, form, precision, sessions FROM memory_shortforms ORDER BY node, form").all(),
+  rooms: db.prepare("SELECT room, id, kind, role, sessions, mentions, first_seen, last_seen FROM memory_room_nodes ORDER BY room, id").all(),
+  edges: db.prepare("SELECT room, src, rel, dst, weight, valid_from, valid_to, confidence, seen, conflict, origin, rule FROM memory_edges ORDER BY room, src, rel, dst, valid_from").all(),
+  evidence: db.prepare("SELECT e.room, e.src, e.rel, e.dst, v.session, v.seq FROM memory_evidence v JOIN memory_edges e ON e.id = v.edge ORDER BY 1, 2, 3, 4, 5, 6").all(),
+  forms: db.prepare("SELECT room, node, form, precision, sessions FROM memory_shortforms ORDER BY room, node, form").all(),
 });
 
 // ------------------------------------------------------------------ extract
@@ -68,10 +70,11 @@ test("memory: extract finds addresses, domains, repos, names and the phrasings t
   // Code is full of dotted names that are not domains, and example domains are nobody's.
   assert.deepEqual(ids("db.run(ctx.store) then intake.tsx and user@example.com"), []);
   const cue = extract("Dana Reyes, the office manager at Harlow Legal, and Sam Okafor (sam@northwindbakery.com) called").cues;
-  assert.deepEqual(cue, [
+  assert.deepEqual(cue.sort((x, y) => x.rel.localeCompare(y.rel)), [
     { rel: "email_of", a: SAM, b: "email:sam@northwindbakery.com" },
+    { rel: "has_title", a: DANA, b: "title:office manager" },
     { rel: "works_at", a: DANA, b: HARLOW },
-  ].sort((x, y) => x.rel.localeCompare(y.rel)));
+  ]);
 });
 
 test("memory: a capital at the start of a sentence, a heading or a tool is not a name", () => {
@@ -117,7 +120,7 @@ test("memory: against the corpus, people link to their organisations, domains an
 test("memory: \"Harlow\" is learned as a short form by measuring it, and a vaguer one is refused", async t => {
   const { db, curator } = world(t);
   await curator.curate();
-  const form = f => db.prepare("SELECT node, precision, sessions FROM memory_shortforms WHERE form = ?").get(f);
+  const form = f => db.prepare("SELECT node, precision, sessions FROM memory_shortforms WHERE room = '*' AND form = ?").get(f);
   assert.equal(form("harlow")?.node, HARLOW);
   assert.equal(form("harlow")?.precision, 1, "every session saying Harlow is about the firm, through its name, domain or address");
   assert.equal(form("northwind")?.node, NORTHWIND);
@@ -157,7 +160,8 @@ test("memory: the way people talk, \"the Harlow team\", finds Harlow Legal", asy
 
 test("memory: one firm written several ways is measured as one, so its short form still works", async t => {
   // Each spelling alone covers too few of the sessions saying "Harlow" to clear the bar; they
-  // share a domain, so together they are one firm and cover all of them.
+  // share a domain, so together they are one firm, one node named by the longest spelling, and
+  // cover all of them.
   const { db, curator, graph } = world(t, { sessions: [
     S(["we sent the Harlow draft to Harlow Legal for review"]),
     S(["the Harlow invoice went to Harlow Legal Group this week"]),
@@ -167,10 +171,10 @@ test("memory: one firm written several ways is measured as one, so its short for
     S(["the Harlow team wrote from dana@harlowlegal.com again"]),
   ] });
   await curator.curate();
-  const measured = db.prepare("SELECT node, precision FROM memory_shortforms WHERE form = 'harlow' ORDER BY precision DESC").all();
-  assert.equal(measured.length, 3, JSON.stringify(measured));
-  assert.equal(measured[0].precision, 1, "the firm as a whole is what every one of these sessions is about");
-  assert.ok(measured.slice(1).every(m => m.precision < 0.6), "a lesser spelling must not also win the form");
+  const measured = db.prepare("SELECT node, precision FROM memory_shortforms WHERE room = '*' AND form = 'harlow' ORDER BY precision DESC").all();
+  assert.deepEqual(measured.map(m => [m.node, m.precision]), [["name:Harlow Legal Partners", 1]], "the firm as a whole is what every one of these sessions is about");
+  const aliases = db.prepare("SELECT alias FROM memory_aliases WHERE room = '*' AND node = 'name:Harlow Legal Partners' ORDER BY alias").all().map(r => r.alias);
+  assert.deepEqual(aliases, ["Harlow Legal", "Harlow Legal Group"]);
   const r = graph.relevant({ text: "email the Harlow team about the implementation plan" });
   assert.ok(r.length > 0 && r.every(f => f.text.includes("Harlow Legal")), r.map(f => f.text).join("\n"));
 });
@@ -246,7 +250,7 @@ test("memory: a move is bi-temporal: the old employer's edge closes where the ne
     { start: T0 + (20 + i) * DAY }));
   add(later);
   await curator.curate();
-  const all = db.prepare("SELECT dst, valid_from, valid_to FROM memory_edges WHERE src = ? AND rel = 'works_at' ORDER BY valid_from").all(DANA);
+  const all = db.prepare("SELECT dst, valid_from, valid_to FROM memory_edges WHERE room = '*' AND src = ? AND rel = 'works_at' ORDER BY valid_from").all(DANA);
   assert.equal(all.length, 2, JSON.stringify(all));
   const [was, now] = all;
   assert.equal(was.dst, HARLOW);
@@ -289,7 +293,7 @@ test("memory: sessions with no start time do not grow the graph on re-run", asyn
   db.prepare("UPDATE recall_sessions SET started = 0 WHERE id = ?").run(broken[1].id);
   await curator.curate();
   const a = dump(db);
-  const froms = db.prepare("SELECT valid_from FROM memory_edges WHERE dst IN (?, ?)").all("session:" + broken[0].id, "session:" + broken[1].id);
+  const froms = db.prepare("SELECT valid_from FROM memory_edges WHERE room = '*' AND dst IN (?, ?)").all("session:" + broken[0].id, "session:" + broken[1].id);
   assert.ok(froms.length >= 2 && froms.every(r => r.valid_from === 0), "an unknown start must be 0, never the clock");
   await curator.curate({ force: true }); await curator.curate({ force: true });
   assert.deepEqual(dump(db), a);
@@ -343,7 +347,7 @@ test("memory: with no Recall tables there is nothing to curate, and nothing fail
   assert.deepEqual(graph.relevant({ text: "Harlow Legal" }), []);
   assert.deepEqual(graph.facts({}), { about: null, facts: [] });
   assert.equal(graph.stats().recall, false);
-  assert.deepEqual(graph.why({ fact: "anything" }), { fact: null, turns: [], taught: [], gone: 0 });
+  assert.deepEqual(graph.why({ fact: "anything" }), { fact: null, turns: [], taught: [], corrections: [], gone: 0 });
 });
 
 // ------------------------------------------------------------------ relevant, facts, steering

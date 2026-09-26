@@ -1,4 +1,642 @@
 {
+  "memory.graph": {
+    "$by": "project_cwds",
+    "cases": {
+      "*": {
+        "updated": 1790000000000,
+        "scope": "main",
+        "rooms": [
+          {
+            "id": "project:harlow-legal",
+            "kind": "project",
+            "label": "Harlow Legal",
+            "slug": "harlow-legal",
+            "folders": [
+              "/Users/alex/Work/harlow-site"
+            ],
+            "nodes": 7,
+            "facts": 5
+          },
+          {
+            "id": "project:northwind-bakery",
+            "kind": "project",
+            "label": "Northwind Bakery",
+            "slug": "northwind-bakery",
+            "folders": [
+              "/Users/alex/Work/northwind"
+            ],
+            "nodes": 3,
+            "facts": 2
+          },
+          {
+            "id": "shared",
+            "kind": "shared",
+            "label": "Shared",
+            "slug": null,
+            "folders": [],
+            "nodes": 1,
+            "facts": 1
+          },
+          {
+            "id": "unfiled",
+            "kind": "unfiled",
+            "label": "No project",
+            "slug": null,
+            "folders": [],
+            "nodes": 1,
+            "facts": 0
+          }
+        ],
+        "nodes": [
+          {
+            "id": "name:Dana Reyes",
+            "kind": "person",
+            "label": "Dana Reyes",
+            "weight": 6,
+            "pinned": true,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Theo Grant",
+            "kind": "person",
+            "label": "Theo Grant",
+            "weight": 3,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Harlow Legal",
+            "kind": "org",
+            "label": "Harlow Legal",
+            "weight": 8,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "email:dana@harlowlegal.com",
+            "kind": "email",
+            "label": "dana@harlowlegal.com",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "domain:harlowlegal.com",
+            "kind": "domain",
+            "label": "harlowlegal.com",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "repo:harlow/site",
+            "kind": "repo",
+            "label": "harlow/site",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Sam Okafor",
+            "kind": "person",
+            "label": "Sam Okafor",
+            "weight": 4,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:northwind-bakery",
+            "rooms": [
+              "project:northwind-bakery"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Northwind Bakery",
+            "kind": "org",
+            "label": "Northwind Bakery",
+            "weight": 5,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:northwind-bakery",
+            "rooms": [
+              "project:northwind-bakery"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "email:billing@northwindbakery.com",
+            "kind": "email",
+            "label": "billing@northwindbakery.com",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:northwind-bakery",
+            "rooms": [
+              "project:northwind-bakery"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Priya Anand",
+            "kind": "person",
+            "label": "Priya Anand",
+            "weight": 2,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "shared",
+            "rooms": [
+              "project:harlow-legal",
+              "project:northwind-bakery"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Keel & Ash Architects",
+            "kind": "org",
+            "label": "Keel & Ash Architects",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "unfiled",
+            "rooms": [],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "session:22222222-bbbb-4000-8000-000000000001",
+            "kind": "thread",
+            "label": "Call notes 12 Sep",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "session:22222222-bbbb-4000-8000-000000000002",
+            "kind": "thread",
+            "label": "Intake form rebuild",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "session:22222222-bbbb-4000-8000-000000000003",
+            "kind": "thread",
+            "label": "Northwind invoices",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:northwind-bakery",
+            "rooms": [
+              "project:northwind-bakery"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "session:22222222-bbbb-4000-8000-000000000004",
+            "kind": "thread",
+            "label": "Weekly planning",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "unfiled",
+            "rooms": [],
+            "last": "$ago:3h"
+          }
+        ],
+        "edges": [
+          {
+            "id": "name:Dana Reyes|works_at|name:Harlow Legal",
+            "src": "name:Dana Reyes",
+            "rel": "works_at",
+            "dst": "name:Harlow Legal",
+            "confidence": 1,
+            "since": "$ago:3h",
+            "until": null,
+            "learned": "$ago:3h",
+            "taught": false
+          },
+          {
+            "id": "name:Theo Grant|works_at|name:Harlow Legal",
+            "src": "name:Theo Grant",
+            "rel": "works_at",
+            "dst": "name:Harlow Legal",
+            "confidence": 0.9,
+            "since": "$ago:2h",
+            "until": null,
+            "learned": "$ago:2h",
+            "taught": false
+          },
+          {
+            "id": "name:Dana Reyes|has_email|email:dana@harlowlegal.com",
+            "src": "name:Dana Reyes",
+            "rel": "has_email",
+            "dst": "email:dana@harlowlegal.com",
+            "confidence": 0.95,
+            "since": "$ago:20d",
+            "until": null,
+            "learned": "$ago:20d",
+            "taught": false
+          },
+          {
+            "id": "name:Harlow Legal|has_domain|domain:harlowlegal.com",
+            "src": "name:Harlow Legal",
+            "rel": "has_domain",
+            "dst": "domain:harlowlegal.com",
+            "confidence": 0.9,
+            "since": "$ago:20d",
+            "until": null,
+            "learned": "$ago:20d",
+            "taught": false
+          },
+          {
+            "id": "repo:harlow/site|owned_by|name:Harlow Legal",
+            "src": "repo:harlow/site",
+            "rel": "owned_by",
+            "dst": "name:Harlow Legal",
+            "confidence": 0.8,
+            "since": "$ago:6d",
+            "until": null,
+            "learned": "$ago:6d",
+            "taught": false
+          },
+          {
+            "id": "name:Sam Okafor|works_at|name:Northwind Bakery",
+            "src": "name:Sam Okafor",
+            "rel": "works_at",
+            "dst": "name:Northwind Bakery",
+            "confidence": 1,
+            "since": "$ago:9d",
+            "until": null,
+            "learned": "$ago:9d",
+            "taught": false
+          },
+          {
+            "id": "name:Sam Okafor|has_email|email:billing@northwindbakery.com",
+            "src": "name:Sam Okafor",
+            "rel": "has_email",
+            "dst": "email:billing@northwindbakery.com",
+            "confidence": 0.85,
+            "since": "$ago:9d",
+            "until": null,
+            "learned": "$ago:9d",
+            "taught": false
+          },
+          {
+            "id": "name:Priya Anand|works_at|name:Keel & Ash Architects",
+            "src": "name:Priya Anand",
+            "rel": "works_at",
+            "dst": "name:Keel & Ash Architects",
+            "confidence": 0.75,
+            "since": "$ago:4d",
+            "until": null,
+            "learned": "$ago:4d",
+            "taught": false
+          },
+          {
+            "id": "name:Dana Reyes|mentioned_in|session:22222222-bbbb-4000-8000-000000000001",
+            "src": "name:Dana Reyes",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000001",
+            "confidence": 1,
+            "since": "$ago:3h",
+            "until": null,
+            "learned": "$ago:3h",
+            "taught": false
+          },
+          {
+            "id": "name:Dana Reyes|mentioned_in|session:22222222-bbbb-4000-8000-000000000002",
+            "src": "name:Dana Reyes",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000002",
+            "confidence": 1,
+            "since": "$ago:20d",
+            "until": null,
+            "learned": "$ago:20d",
+            "taught": false
+          },
+          {
+            "id": "name:Theo Grant|mentioned_in|session:22222222-bbbb-4000-8000-000000000001",
+            "src": "name:Theo Grant",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000001",
+            "confidence": 1,
+            "since": "$ago:2h",
+            "until": null,
+            "learned": "$ago:2h",
+            "taught": false
+          },
+          {
+            "id": "name:Sam Okafor|mentioned_in|session:22222222-bbbb-4000-8000-000000000003",
+            "src": "name:Sam Okafor",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000003",
+            "confidence": 1,
+            "since": "$ago:9d",
+            "until": null,
+            "learned": "$ago:9d",
+            "taught": false
+          },
+          {
+            "id": "name:Keel & Ash Architects|mentioned_in|session:22222222-bbbb-4000-8000-000000000004",
+            "src": "name:Keel & Ash Architects",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000004",
+            "confidence": 1,
+            "since": "$ago:4d",
+            "until": null,
+            "learned": "$ago:4d",
+            "taught": false
+          }
+        ],
+        "counts": {
+          "nodes": 212,
+          "facts": 8,
+          "drawn": 15
+        },
+        "truncated": true
+      },
+      "/Users/alex/Work/harlow-site": {
+        "updated": 1790000000000,
+        "scope": "project",
+        "rooms": [
+          {
+            "id": "project:harlow-legal",
+            "kind": "project",
+            "label": "Harlow Legal",
+            "slug": "harlow-legal",
+            "folders": [
+              "/Users/alex/Work/harlow-site"
+            ],
+            "nodes": 7,
+            "facts": 5
+          }
+        ],
+        "nodes": [
+          {
+            "id": "name:Dana Reyes",
+            "kind": "person",
+            "label": "Dana Reyes",
+            "weight": 6,
+            "pinned": true,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Theo Grant",
+            "kind": "person",
+            "label": "Theo Grant",
+            "weight": 3,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "name:Harlow Legal",
+            "kind": "org",
+            "label": "Harlow Legal",
+            "weight": 8,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "email:dana@harlowlegal.com",
+            "kind": "email",
+            "label": "dana@harlowlegal.com",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "domain:harlowlegal.com",
+            "kind": "domain",
+            "label": "harlowlegal.com",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "repo:harlow/site",
+            "kind": "repo",
+            "label": "harlow/site",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "session:22222222-bbbb-4000-8000-000000000001",
+            "kind": "thread",
+            "label": "Call notes 12 Sep",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          },
+          {
+            "id": "session:22222222-bbbb-4000-8000-000000000002",
+            "kind": "thread",
+            "label": "Intake form rebuild",
+            "weight": 1,
+            "pinned": false,
+            "muted": false,
+            "role": null,
+            "room": "project:harlow-legal",
+            "rooms": [
+              "project:harlow-legal"
+            ],
+            "last": "$ago:3h"
+          }
+        ],
+        "edges": [
+          {
+            "id": "name:Dana Reyes|works_at|name:Harlow Legal",
+            "src": "name:Dana Reyes",
+            "rel": "works_at",
+            "dst": "name:Harlow Legal",
+            "confidence": 1,
+            "since": "$ago:3h",
+            "until": null,
+            "learned": "$ago:3h",
+            "taught": false
+          },
+          {
+            "id": "name:Theo Grant|works_at|name:Harlow Legal",
+            "src": "name:Theo Grant",
+            "rel": "works_at",
+            "dst": "name:Harlow Legal",
+            "confidence": 0.9,
+            "since": "$ago:2h",
+            "until": null,
+            "learned": "$ago:2h",
+            "taught": false
+          },
+          {
+            "id": "name:Dana Reyes|has_email|email:dana@harlowlegal.com",
+            "src": "name:Dana Reyes",
+            "rel": "has_email",
+            "dst": "email:dana@harlowlegal.com",
+            "confidence": 0.95,
+            "since": "$ago:20d",
+            "until": null,
+            "learned": "$ago:20d",
+            "taught": false
+          },
+          {
+            "id": "name:Harlow Legal|has_domain|domain:harlowlegal.com",
+            "src": "name:Harlow Legal",
+            "rel": "has_domain",
+            "dst": "domain:harlowlegal.com",
+            "confidence": 0.9,
+            "since": "$ago:20d",
+            "until": null,
+            "learned": "$ago:20d",
+            "taught": false
+          },
+          {
+            "id": "repo:harlow/site|owned_by|name:Harlow Legal",
+            "src": "repo:harlow/site",
+            "rel": "owned_by",
+            "dst": "name:Harlow Legal",
+            "confidence": 0.8,
+            "since": "$ago:6d",
+            "until": null,
+            "learned": "$ago:6d",
+            "taught": false
+          },
+          {
+            "id": "name:Dana Reyes|mentioned_in|session:22222222-bbbb-4000-8000-000000000001",
+            "src": "name:Dana Reyes",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000001",
+            "confidence": 1,
+            "since": "$ago:3h",
+            "until": null,
+            "learned": "$ago:3h",
+            "taught": false
+          },
+          {
+            "id": "name:Dana Reyes|mentioned_in|session:22222222-bbbb-4000-8000-000000000002",
+            "src": "name:Dana Reyes",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000002",
+            "confidence": 1,
+            "since": "$ago:20d",
+            "until": null,
+            "learned": "$ago:20d",
+            "taught": false
+          },
+          {
+            "id": "name:Theo Grant|mentioned_in|session:22222222-bbbb-4000-8000-000000000001",
+            "src": "name:Theo Grant",
+            "rel": "mentioned_in",
+            "dst": "session:22222222-bbbb-4000-8000-000000000001",
+            "confidence": 1,
+            "since": "$ago:2h",
+            "until": null,
+            "learned": "$ago:2h",
+            "taught": false
+          }
+        ],
+        "counts": {
+          "nodes": 7,
+          "facts": 5,
+          "drawn": 9
+        },
+        "truncated": false
+      }
+    }
+  },
   "memory.facts": {
     "$by": "about",
     "cases": {
@@ -29,7 +667,7 @@
             "source": "Call notes 12 Sep",
             "ref": {
               "session": "22222222-bbbb-4000-8000-000000000001",
-              "seq": 1,
+              "seq": 4,
               "name": "Call notes 12 Sep"
             },
             "evidence": 3,
@@ -59,7 +697,7 @@
             "source": "Call notes 12 Sep",
             "ref": {
               "session": "22222222-bbbb-4000-8000-000000000001",
-              "seq": 1,
+              "seq": 7,
               "name": "Call notes 12 Sep"
             },
             "evidence": 2,
@@ -85,11 +723,71 @@
             "since": "$ago:20d",
             "until": null,
             "seen": "$ago:20d",
-            "age": "20 days",
+            "age": "3 weeks",
             "source": "Intake form rebuild",
             "ref": {
               "session": "22222222-bbbb-4000-8000-000000000002",
-              "seq": 1,
+              "seq": 12,
+              "name": "Intake form rebuild"
+            },
+            "evidence": 2,
+            "taught": []
+          },
+          {
+            "id": "name:Harlow Legal|has_domain|domain:harlowlegal.com",
+            "text": "Harlow Legal's domain is harlowlegal.com",
+            "subject": {
+              "id": "name:Harlow Legal",
+              "label": "Harlow Legal",
+              "kind": "org",
+              "role": null
+            },
+            "rel": "has_domain",
+            "object": {
+              "id": "domain:harlowlegal.com",
+              "label": "harlowlegal.com",
+              "kind": "domain",
+              "role": null
+            },
+            "confidence": 0.9,
+            "since": "$ago:20d",
+            "until": null,
+            "seen": "$ago:20d",
+            "age": "3 weeks",
+            "source": "Intake form rebuild",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000002",
+              "seq": 3,
+              "name": "Intake form rebuild"
+            },
+            "evidence": 2,
+            "taught": []
+          },
+          {
+            "id": "repo:harlow/site|owned_by|name:Harlow Legal",
+            "text": "harlow/site is Harlow Legal's",
+            "subject": {
+              "id": "repo:harlow/site",
+              "label": "harlow/site",
+              "kind": "repo",
+              "role": null
+            },
+            "rel": "owned_by",
+            "object": {
+              "id": "name:Harlow Legal",
+              "label": "Harlow Legal",
+              "kind": "org",
+              "role": null
+            },
+            "confidence": 0.8,
+            "since": "$ago:6d",
+            "until": null,
+            "seen": "$ago:6d",
+            "age": "6 days",
+            "source": "Intake form rebuild",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000002",
+              "seq": 18,
               "name": "Intake form rebuild"
             },
             "evidence": 2,
@@ -119,10 +817,70 @@
             "source": "Northwind invoices",
             "ref": {
               "session": "22222222-bbbb-4000-8000-000000000003",
-              "seq": 1,
+              "seq": 2,
               "name": "Northwind invoices"
             },
             "evidence": 3,
+            "taught": []
+          },
+          {
+            "id": "name:Sam Okafor|has_email|email:billing@northwindbakery.com",
+            "text": "Sam Okafor's email is billing@northwindbakery.com",
+            "subject": {
+              "id": "name:Sam Okafor",
+              "label": "Sam Okafor",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "has_email",
+            "object": {
+              "id": "email:billing@northwindbakery.com",
+              "label": "billing@northwindbakery.com",
+              "kind": "email",
+              "role": null
+            },
+            "confidence": 0.85,
+            "since": "$ago:9d",
+            "until": null,
+            "seen": "$ago:9d",
+            "age": "9 days",
+            "source": "Northwind invoices",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000003",
+              "seq": 5,
+              "name": "Northwind invoices"
+            },
+            "evidence": 2,
+            "taught": []
+          },
+          {
+            "id": "name:Priya Anand|works_at|name:Keel & Ash Architects",
+            "text": "Priya Anand works at Keel & Ash Architects",
+            "subject": {
+              "id": "name:Priya Anand",
+              "label": "Priya Anand",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "works_at",
+            "object": {
+              "id": "name:Keel & Ash Architects",
+              "label": "Keel & Ash Architects",
+              "kind": "org",
+              "role": null
+            },
+            "confidence": 0.75,
+            "since": "$ago:4d",
+            "until": null,
+            "seen": "$ago:4d",
+            "age": "4 days",
+            "source": "Weekly planning",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000004",
+              "seq": 9,
+              "name": "Weekly planning"
+            },
+            "evidence": 1,
             "taught": []
           }
         ]
@@ -138,7 +896,7 @@
           "first": "$ago:20d",
           "last": "$ago:3h",
           "age": "3 hours",
-          "pinned": false,
+          "pinned": true,
           "muted": false
         },
         "facts": [
@@ -166,7 +924,7 @@
             "source": "Call notes 12 Sep",
             "ref": {
               "session": "22222222-bbbb-4000-8000-000000000001",
-              "seq": 1,
+              "seq": 4,
               "name": "Call notes 12 Sep"
             },
             "evidence": 3,
@@ -192,11 +950,11 @@
             "since": "$ago:20d",
             "until": null,
             "seen": "$ago:20d",
-            "age": "20 days",
+            "age": "3 weeks",
             "source": "Intake form rebuild",
             "ref": {
               "session": "22222222-bbbb-4000-8000-000000000002",
-              "seq": 1,
+              "seq": 12,
               "name": "Intake form rebuild"
             },
             "evidence": 2,
@@ -231,7 +989,7 @@
       "source": "Call notes 12 Sep",
       "ref": {
         "session": "22222222-bbbb-4000-8000-000000000001",
-        "seq": 1,
+        "seq": 4,
         "name": "Call notes 12 Sep"
       },
       "evidence": 3,
@@ -240,7 +998,7 @@
     "turns": [
       {
         "session": "22222222-bbbb-4000-8000-000000000001",
-        "seq": 1,
+        "seq": 4,
         "name": "Call notes 12 Sep",
         "role": "user",
         "ts": "$ago:3h",
@@ -249,7 +1007,7 @@
       },
       {
         "session": "22222222-bbbb-4000-8000-000000000002",
-        "seq": 2,
+        "seq": 12,
         "name": "Intake form rebuild",
         "role": "assistant",
         "ts": "$ago:20d",
@@ -262,11 +1020,11 @@
   },
   "memory.stats": {
     "recall": true,
-    "sessions": 3,
-    "nodes": 6,
-    "edges": 8,
-    "facts": 4,
-    "evidence": 10
+    "sessions": 4,
+    "nodes": 212,
+    "edges": 640,
+    "facts": 9,
+    "evidence": 31
   },
   "memory.pin": {
     "node": "name:Dana Reyes",
@@ -279,5 +1037,15 @@
     "label": "Dana Reyes",
     "scope": "*",
     "mode": "mute"
+  },
+  "memory.correct": {
+    "id": 41,
+    "fact": "name:Dana Reyes|works_at|name:Harlow Legal",
+    "action": "replace",
+    "scope": "*"
+  },
+  "memory.uncorrect": {
+    "id": 41,
+    "undone": true
   }
 }

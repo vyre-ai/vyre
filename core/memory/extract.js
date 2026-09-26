@@ -10,7 +10,7 @@
 import { OPENERS, HEADINGS, TOOL_WORDS, RESERVED_DOMAINS, TLDS, registrable } from "./lexicon.js";
 
 /** @typedef {{ id: string, kind: "name"|"email"|"domain"|"repo", key: string, initial: boolean }} Thing */
-/** @typedef {{ rel: "email_of"|"works_at", a: string, b: string }} Cue */
+/** @typedef {{ rel: "email_of"|"works_at"|"has_title"|"client_of"|"deadline"|"prefers"|"decided", a: string, b: string }} Cue */
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 const URL_HOST = /\bhttps?:\/\/([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
@@ -38,6 +38,26 @@ function initialAt(text, i) {
 }
 
 const trimDot = s => s.replace(/[.,;:]+$/, "");
+
+// A middle initial between two words: "Dana M. Reyes" is Dana Reyes.
+const INITIAL = new RegExp(`\\b(${WORD})[ \\t]+[A-Z]\\.[ \\t]+(${WORD})\\b`, "g");
+// An appositive title: "Dana Reyes, the office manager at Harlow Legal".
+const TITLE = /^,\s+(?:the\s+|our\s+|their\s+|an?\s+)?((?:[a-z]+\s+){0,2}[a-z]+)\s+(?:at|from|of)\s+(?:the\s+)?$/;
+/** Words that make an appositive a clause, not a title: "Dana Reyes, who works at ...". */
+const NOT_TITLE = new Set(["works", "worked", "working", "based", "now", "currently", "also", "still", "here", "there", "who", "which", "that", "is", "was", "and", "or", "but"]);
+const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+const DAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday";
+const DATE = `\\d{4}-\\d{2}-\\d{2}|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${MONTHS})\\b|(?:${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?\\b|(?:${DAYS})\\b`;
+// "is due 18 September", "launches on 2 October", "ships by Friday", "the deadline is Oct 2".
+const DEADLINE = new RegExp(`\\b(?:is due|are due|due|deadline is|deadline|launches|ships|goes live)\\s+(?:on\\s+|by\\s+)?(${DATE})`, "gi");
+const PREFERS = /\b([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)?)\s+prefers\s+([^.;!?\n]{2,60})/g;
+const DECIDED = /\bwe\s+(?:decided|agreed)\s+to\s+([^.;!?\n]{3,160})/gi;
+/** The last capitalised word before a point in a sentence, as a reference to resolve later. */
+function lastCapital(text, at) {
+  const from = Math.max(0, ...[".", "!", "?", "\n"].map(c => text.lastIndexOf(c, at - 1) + 1));
+  const words = [...text.slice(from, at).matchAll(/\b[A-Z][a-z]+\b/g)].map(m => m[0]).filter(w => !OPENERS.has(w.toLowerCase()) && !HEADINGS.has(w.toLowerCase()));
+  return words.length ? "ref:" + words[words.length - 1].toLowerCase() : null;
+}
 
 /**
  * The names in a text, with where each starts and ends. Openers and days are stripped from
@@ -70,11 +90,14 @@ function names(text) {
 }
 
 /**
- * Everything one turn contributes, in the order found. Same text, same answer.
+ * Everything one turn contributes, in the order found. Same text, same answer. Phrasings only
+ * the user's own words can make true (a client, a deadline, a preference, a decision) are read
+ * from user turns only.
  * @param {unknown} input
+ * @param {{ user?: boolean }} [opts]
  * @returns {{ things: Thing[], cues: Cue[] }}
  */
-export function extract(input) {
+export function extract(input, { user = false } = {}) {
   const text = typeof input === "string" ? input : "";
   /** @type {Thing[]} */
   const things = [];
@@ -105,6 +128,14 @@ export function extract(input) {
   }
 
   const found = names(text);
+  // "Dana M. Reyes": the run breaks at the initial, so it is read on its own, without it.
+  for (const m of text.matchAll(INITIAL)) {
+    const at = /** @type {number} */ (m.index);
+    const first = m[1].toLowerCase(), last = m[2].toLowerCase();
+    if (OPENERS.has(first) || HEADINGS.has(first) || HEADINGS.has(last) || TOOL_WORDS.has(first) || TOOL_WORDS.has(last)) continue;
+    found.push({ key: `${m[1]} ${m[2]}`, start: at, end: at + m[0].length, initial: initialAt(text, at) });
+  }
+  found.sort((a, b) => a.start - b.start);
   for (const n of found) things.push({ id: "name:" + n.key, kind: "name", key: n.key, initial: n.initial });
 
   // How they relate, from the few phrasings that say it outright. Everything else about who
@@ -125,7 +156,29 @@ export function extract(input) {
       if (/^\s+(?:at|from)\s+(?:the\s+)?$/.test(between) || /^,\s+(?:[a-z]+\s+){1,4}(?:at|from)\s+(?:the\s+)?$/.test(between)) {
         cues.push({ rel: "works_at", a: "name:" + found[i].key, b: "name:" + found[j].key });
       }
+      const title = j === i + 1 ? TITLE.exec(between) : null;
+      if (title && !title[1].split(/\s+/).some(w => NOT_TITLE.has(w) || OPENERS.has(w))) cues.push({ rel: "has_title", a: "name:" + found[i].key, b: "title:" + title[1] });
     }
   }
+  if (!user) return { things, cues };
+  // The user's own words: "Northwind Bakery is a new client", "our new client Keel & Ash".
+  for (const n of found) {
+    const after = text.slice(n.end, n.end + 40), before = text.slice(Math.max(0, n.start - 40), n.start);
+    if (/^\s+(?:is|are)\s+(?:now\s+)?(?:a|an|our|my)\s+(?:new\s+)?client\b/i.test(after) || /\b(?:our|my)\s+(?:new\s+)?client,?\s+$/i.test(before)) {
+      cues.push({ rel: "client_of", a: "name:" + n.key, b: "me:you" });
+    }
+  }
+  for (const m of text.matchAll(DEADLINE)) {
+    const at = /** @type {number} */ (m.index);
+    const sentence = Math.max(0, ...[".", "!", "?", "\n"].map(c => text.lastIndexOf(c, at - 1) + 1));
+    const named = found.filter(n => n.start >= sentence && n.end <= at).pop();
+    const a = named ? "name:" + named.key : lastCapital(text, at);
+    if (a) cues.push({ rel: "deadline", a, b: "when:" + m[1].toLowerCase().replace(/\s+/g, " ") });
+  }
+  for (const m of text.matchAll(PREFERS)) {
+    const n = found.find(x => x.start === m.index);
+    cues.push({ rel: "prefers", a: n ? "name:" + n.key : "ref:" + m[1].toLowerCase(), b: "pref:" + trimDot(m[2].trim().toLowerCase()).slice(0, 160) });
+  }
+  for (const m of text.matchAll(DECIDED)) cues.push({ rel: "decided", a: "me:you", b: "decision:" + trimDot(m[1].trim()).toLowerCase().slice(0, 160) });
   return { things, cues };
 }

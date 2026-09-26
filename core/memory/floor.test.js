@@ -17,6 +17,8 @@ import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
 
 const W = `${HOME}/Work`;
+/** The fixtures are dated, so the clock that ages them is too. */
+const NOW = Date.parse("2026-10-01T09:00:00Z");
 const NORTHWIND = [`${W}/northwind`], HARLOW = [`${W}/harlow-site`, `${W}/harlow-intake`];
 const PROJECTS = [
   { slug: "harlow", name: "Harlow Legal", folders: HARLOW },
@@ -34,7 +36,7 @@ async function world(t, sessions = [...SESSIONS, CROSSOVER]) {
   seedRecall(db, sessions);
   const curator = new Curator(db, { me: { domains: ["riverastudio.com"] } });
   await curator.curate();
-  return { db, curator, graph: new Graph(db, curator), add: list => seedRecall(db, list) };
+  return { db, curator, graph: new Graph(db, curator, { now: () => NOW }), add: list => seedRecall(db, list) };
 }
 const plan = (g, input = {}) => floorPlan(g, { projects: PROJECTS, ...input });
 const byLabel = (p, label) => p.nodes.find(n => n.label === label);

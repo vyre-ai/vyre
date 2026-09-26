@@ -1,12 +1,28 @@
 /* Memory. Board: DeckMemory. Gold (Recall) marks the facts; Signal only the selected node's ring. */
 
 .mem { height: 100%; display: flex; min-height: 0; }
+.mem-col { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .mem-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .mem-grow { flex-grow: 1; }
 
 .mem-head { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 32px; border-bottom: 1px solid var(--rule); }
-.mem-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+/* Memory and Lessons: two tabs set as the page's title. */
+.mem-tabs { display: flex; align-items: center; gap: 4px; margin-left: -8px; }
+.mem-tab { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border: none; border-radius: var(--r-2);
+  background: none; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; color: var(--label); cursor: pointer; }
+.mem-tab:hover { color: var(--text-2); }
+.mem-tab[aria-selected="true"] { color: var(--text); }
+.mem-beacon { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--beacon-wash); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.mem-controls { display: flex; align-items: center; gap: 12px; }
+.mem-controls[hidden] { display: none; }
 .mem-counts { white-space: nowrap; }
+.mem-crumbs { flex-shrink: 0; padding: 12px 32px 0; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.mem-crumbs[hidden] { display: none; }
+.mem-crumbs ol { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 0; padding: 0; list-style: none; }
+.mem-crumbs li + li::before { content: "/"; margin-right: 8px; color: var(--label); }
+.mem-crumbs [aria-current] { color: var(--text); }
 .mem-today { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border: 1px solid var(--rule-strong);
   border-radius: 15px; background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; white-space: nowrap; }
 .mem-today:hover { background: var(--hover); }
@@ -31,6 +47,13 @@
 .mm-room-count { font-family: var(--mono); font-size: 11px; fill: var(--label); }
 .mm-edge { stroke: var(--rule-strong); stroke-width: 1; }
 .mm-edge.today { stroke: var(--recall); stroke-width: 1.5; }
+.mm-edge.thread { stroke: var(--rule); }
+.mm-edge.across { fill: none; stroke-dasharray: 4 4; }
+.mm-edge.closed { stroke-dasharray: 2 4; opacity: 0.6; }
+.mm-factdot.closed .mm-fact { fill: none; stroke: var(--recall); stroke-width: 1.2; }
+.mm-node.muted { opacity: 0.45; }
+.mm-person.pinned { stroke: var(--text); stroke-width: 2; }
+.mm-room.quiet { stroke-dasharray: 3 5; }
 .mm-fact { fill: var(--recall); }
 .mm-person { fill: var(--panel); stroke: var(--text-2); stroke-width: 1.5; }
 .mm-thing { fill: var(--bg); stroke: var(--label); stroke-width: 1.2; }
@@ -41,6 +64,7 @@
 .mm-thing-text, .mm-fact-text { font-size: 12px; fill: var(--text-2); }
 .mm-fact-text.on { font-size: 13px; font-weight: 500; fill: var(--text); }
 .mm-hit { fill: transparent; }
+.mm-factdot:hover .mm-fact { r: 6px; }
 .mm-node { cursor: pointer; outline: none; }
 .mm-node:hover .mm-fact-text, .mm-node:hover .mm-thing-text { fill: var(--text); }
 .mm-node:hover .mm-person { stroke: var(--text); }
@@ -48,6 +72,8 @@
 
 .mem-foot { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 32px 16px; }
 .mem-foot:empty { display: none; }
+.mem-foot-l { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mem-trunc { margin: 0; }
 .mem-legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--label); }
 .mem-leg { display: inline-flex; align-items: center; gap: 8px; }
 .mem-zoom { display: flex; gap: 2px; padding: 2px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-2); flex-shrink: 0; }
@@ -55,19 +81,52 @@
 
 /* List */
 .mem-list { display: flex; flex-direction: column; }
-.mem-lrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px) 140px 90px 56px; gap: 16px; align-items: center;
+.mem-lrow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 200px) 76px 48px 104px; gap: 16px; align-items: center;
   min-height: 48px; padding: 6px 8px; border-bottom: 1px solid var(--rule); cursor: pointer; }
-.mem-lrow:hover, .mem-lrow.on { background: var(--hover); }
+.mem-row:hover, .mem-row.on { background: var(--hover); }
+.mem-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .mem-lhead { min-height: 36px; cursor: default; }
 .mem-lhead:hover { background: transparent; }
 .mem-c-text { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.mem-ltext { border: none; background: none; padding: 0; text-align: left; font-size: 14px; line-height: 20px; color: var(--text); cursor: pointer; min-width: 0; }
+.mem-ltext { font-size: 14px; line-height: 20px; color: var(--text); min-width: 0; }
+.mem-row.closed .mem-ltext { color: var(--text-2); text-decoration: line-through; text-decoration-color: var(--label); }
 .mem-c-src { min-width: 0; display: flex; }
-.mem-src { color: var(--text-2); }
+.mem-src { min-width: 0; }
 .mem-c-age, .mem-c-conf { text-align: right; }
 .mem-c-age { display: flex; justify-content: flex-end; }
+.mem-c-act { display: flex; justify-content: flex-end; gap: 2px; opacity: 0; }
+.mem-row:hover .mem-c-act, .mem-row:focus-within .mem-c-act, .mem-row.on .mem-c-act { opacity: 1; }
+.mem-c-act .ibtn { width: 30px; height: 30px; }
+.mem-c-act .ibtn[aria-pressed="true"] { opacity: 1; color: var(--text); }
 .mem-sort { border: none; background: none; padding: 0; cursor: pointer; }
 .mem-sort:hover { color: var(--text); }
+.mem-row-cx, .mem-row-done { padding: 12px 8px; border-bottom: 1px solid var(--rule); cursor: default; }
+.mem-row-cx:hover, .mem-row-done:hover { background: transparent; }
+
+/* Gold is for what came from memory: a fact's source thread, and the user's own correction. */
+.recall-link { color: var(--recall-ink); text-decoration-color: color-mix(in srgb, var(--recall) 40%, transparent); }
+.recall-link:hover { text-decoration-color: currentColor; }
+.mem-gold { color: var(--recall-ink); }
+
+/* Correct: the object becomes a field in its own sentence. */
+.mem-cx { display: flex; flex-direction: column; gap: 10px; }
+.mem-cx-text { display: flex; align-items: baseline; gap: 12px; margin: 0; font-size: 14px; line-height: 22px; color: var(--text); }
+.mem-cx-text .dot { transform: translateY(-1px); }
+.mem-cx-in { display: inline-block; width: auto; max-width: 100%; font-size: inherit; line-height: inherit; color: var(--recall-ink);
+  border-bottom-color: var(--rule-strong); }
+.mem-cx-act { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-left: 20px; }
+.mem-cx-kbd { height: 18px; margin-left: 4px; border-color: var(--rule); }
+.mem-cx.in-side .mem-cx-act { padding-left: 0; }
+.mem-cx-done { display: flex; flex-direction: column; gap: 8px; }
+.mem-cx-old, .mem-cx-new { display: flex; align-items: baseline; gap: 12px; font-size: 14px; line-height: 20px; }
+.mem-cx-old { color: var(--text-2); }
+.mem-cx-old-text { text-decoration-color: var(--label); }
+.mem-cx-new-text { color: var(--text); }
+.mem-cx-meta { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--label); }
+.mem-dot-closed { border: 1px solid var(--label); background: transparent; }
+.mem-cx-undo { padding-left: 20px; font-size: 13px; }
+.mem-side-cx:not(:empty) { margin-top: 14px; padding: 12px; border: 1px solid var(--rule); border-radius: var(--r-2); }
+.mem-side-cx .mem-cx-undo, .mem-side-cx .mem-cx-act { padding-left: 20px; }
 
 /* Detail panel */
 .mem-side { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid var(--rule); background: var(--panel);
@@ -102,36 +161,41 @@
 .mem-fact-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 0; border: none; border-bottom: 1px solid var(--rule);
   background: none; text-align: left; font-size: 13px; line-height: 18px; color: var(--text); cursor: pointer; }
 .mem-fact-btn:hover { color: var(--text); background: var(--hover); }
-.mem-forget { align-self: flex-start; margin-top: 24px; padding: 0; }
+.mem-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.mem-keys .kbd { height: 18px; }
+.mem-conf { color: var(--text); }
 
 @media (max-width: 1100px) {
-  .mem-lrow { grid-template-columns: minmax(0, 1fr) minmax(0, 180px) 80px 52px; }
-  .mem-c-proj { display: none; }
+  .mem-lrow { grid-template-columns: minmax(0, 1fr) minmax(0, 160px) 64px 44px 96px; gap: 12px; }
+  .mem-today { display: none; }
 }
 
 /* Phone: the list only; the panel is a full-screen sheet with a way back. */
 @media (max-width: 760px) {
-  .mem-head { height: auto; flex-wrap: wrap; gap: 10px 12px; padding: 16px 16px 12px; }
-  .mem-title { font-size: 28px; line-height: 34px; letter-spacing: -0.02em; }
-  .mem-head .seg { display: none; }
+  .mem-head { height: auto; flex-wrap: wrap; gap: 10px 12px; padding: 14px 16px 12px; }
+  .mem-tab { font-size: 26px; line-height: 32px; letter-spacing: -0.02em; height: 40px; }
+  .mem-tabs { order: 1; }
   .mem-head .mem-grow { display: none; }
   .mem-counts { order: 2; margin-left: auto; }
-  .mem-title { order: 1; }
-  .mem-today { order: 3; }
-  .mem-pick { order: 4; }
-  .mem-select { max-width: 180px; }
+  .mem-controls { order: 3; flex-basis: 100%; gap: 8px; }
+  .mem-controls .seg { display: none; }
+  .mem-today { display: inline-flex; }
+  .mem-select { max-width: 200px; }
+  .mem-crumbs { padding: 8px 16px 0; }
   .mem-foot { display: none; }
   .mem-pad { padding: 4px 16px 24px; }
   .mem-lrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 12px 0; }
   .mem-lhead { display: none; }
-  .mem-lrow:hover { background: transparent; }
+  .mem-row:hover { background: transparent; }
   .mem-c-text { flex-basis: 100%; align-items: flex-start; }
   .mem-c-text .dot { margin-top: 6px; }
   .mem-ltext { font-size: 15px; line-height: 22px; }
-  .mem-c-src { padding-left: 20px; max-width: calc(100% - 90px); }
-  .mem-c-proj { display: none; }
+  .mem-c-src { padding-left: 20px; max-width: calc(100% - 110px); }
   .mem-c-age { display: block; text-align: left; }
-  .mem-c-conf { display: none; }
+  .mem-c-conf { display: block; text-align: left; }
+  .mem-c-act { display: none; }
+  .mem-row-cx, .mem-row-done { padding: 12px 0; }
+  .mem-cx-act { padding-left: 0; }
   .mem-side { position: fixed; inset: 0; z-index: 40; width: auto; border-left: none; background: var(--bg); padding: 0 16px 24px; }
   .mem-phone-top { display: flex; align-items: center; height: 52px; margin: 0 -8px; }
   .mem-back { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px; border: none; background: none; color: var(--text-2);
@@ -139,4 +203,5 @@
   .mem-back-i { display: inline-flex; transform: scaleX(-1); }
   .mem-close { display: none; }
   .mem-side-h { font-size: 24px; line-height: 30px; }
+  .mem-keys { display: none; }
 }

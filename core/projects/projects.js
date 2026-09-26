@@ -317,7 +317,8 @@ export class Projects {
     let facts = [];
     // Only the project's own folders: a hub session picked into it ran somewhere shared, and
     // asking for that folder's facts would bring the other projects' memory in with it.
-    const r = await this.call("memory.facts", { project_cwds: p.workspaces, limit: 10 });
+    // The project's room by slug: its folders alone could name a project that holds this one.
+    const r = await this.call("memory.facts", { room: p.slug, project_cwds: p.workspaces, limit: 10 });
     if (!r.error) facts = Array.isArray(r.data) ? r.data : Array.isArray(r.data?.facts) ? r.data.facts : [];
     const text = compose({ project: p, threads, facts });
     return { project: p.slug, candidates: [], text };
@@ -336,8 +337,10 @@ export class Projects {
         if (how.has("picked")) picked++; else folder++;
         last = Math.max(last, sessions.get(id)?.last || 0);
       }
+      // picks: the picked session ids themselves (subagents folded to their parent), for Memory's
+      // rooms. threads and picked stay counts: the CLI and the Deck print them.
       return { slug: p.slug, name: p.name, org: p.org, home: p.home, workspaces: p.workspaces, people: p.people,
-        watchers: p.watchers, threads: picked + folder, picked, folder, last };
+        watchers: p.watchers, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
     });
     out.sort((a, b) => b.last - a.last || a.name.localeCompare(b.name));
     const problems = this.all.filter(p => p.error).map(p => ({ home: p.home, error: p.error }));

@@ -62,7 +62,7 @@ export const ORG_WORDS = words(`
   clinic dental health medical hospital pharmacy care wellness fitness gym spa salon
   academy school university college institute foundation trust fund capital ventures bank
   church club society council association union cooperative collective store shop supply
-  press publishing records films pictures productions games
+  press publishing records films pictures productions games architects architecture
 `);
 
 /**

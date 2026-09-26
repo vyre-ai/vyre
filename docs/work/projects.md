@@ -115,6 +115,13 @@ Start vyred if needed with `ensureUp()` from `core/cli/daemonctl.js`.
   that case the brief is NOT passed as `--append-system-prompt`; the SessionStart hook adds it.
   Without the plugin, the flag carries the brief as before. `projects.list` returns
   `{projects: [...], problems: [{home, error}]}`.
+- `projects.list` rows add `picks: [session id]`: the threads picked into the project, subagent
+  ids folded to the parent, each once. `threads` (picked plus by folder) and `picked` stay counts,
+  so the CLI and the Deck read them as before. Memory makes picked threads members of the
+  project's room from `picks`. Measured on 2,000 sessions and 30 projects with 60 picks each:
+  building `picks` costs 0.05 ms of a 16 ms list, and the answer grows from 9.6 KB to 80 KB
+  (about 39 bytes a pick). A separate batch call would cost 1.2 ms plus a second round trip for
+  Memory, which already calls `projects.list`, so the ids ride on the list.
 - `projects.remove-threads` returns `{removed, stillByFolder}`, because folder membership
   cannot be removed.
 - Events carry `{project, thread}` with `where.project` and `where.thread` set:

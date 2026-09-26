@@ -1208,6 +1208,140 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- Picked threads are room members in a live vyred: room sync reads `picks` from `projects.list`
+  (below), so a thread picked into a project counts in its room under the anchor rule. The eval
+  world now uses the real list shape and checks every pick lands in its room; leakage stays 0.
+- `memory.facts {thread, room?, limit?}` (default 50, at most 200): the facts whose evidence
+  includes a turn of that thread, oldest first, each with `refs: [{seq}]` for the turns in that
+  thread and `taught` as before. Main graph without a room (owner surfaces only), a room's rows
+  with one; agents only in their granted rooms. `mentioned_in` rows and muted nodes are left
+  out. For gate-chat's Chat view.
+- Presence: `memory.correct`, `memory.merge` and `memory.split` declare `presence: { summary }`,
+  one plain line under 400 characters with control characters stripped, e.g. `Correct: "Dana
+  Reyes works at Harlow Legal" -> "Bramble Dental" (everywhere)`. The owner allowlist and the
+  agent refusal stay; the tools also refuse any non-owner caller themselves.
+- Refusals throw with `code: "denied"` (access to a room or the main graph, an agent's grants,
+  corrections), which vyred on main passes through as the tool error's code.
+- `tailnet:<login>` callers read as the owner: `memory.graph`, `facts`, `why`, `stats` and
+  `corrections` (which drops its `callers` list and checks in the tool, since the registry
+  compares the whole caller string). Never `correct`, `uncorrect`, `merge` or `split`, and not
+  `relevant`.
+- Scope fixes from review (ADR 0007, decisions 1 and 4). A correction for everywhere applies in a
+  room only to what that room's own sessions derive: wrong, ended and confirm touch rows the room
+  has; add and replace only when the room keeps the subject, with an object it keeps or a value
+  the correction names (a title, a date). A correction's note reads only in the scope it was made
+  in (`fact().correction.note`, `memory.why` corrections). Before, every room got every
+  correction for everywhere, nodes included.
+- Nested projects: a folder belongs to the most specific project that holds it, for rooms,
+  `graph.view`, the floor plan and lessons scoped to folders. Agents are checked by project slug,
+  so an agent granted `~/Work` is not granted a project at `~/Work/northwind`, and a project with
+  no folders (only picked threads) is read by slug. A room Memory has not read yet falls back to
+  the folders passed with it.
+- A caller that names no agent and no room reads the main graph (`memory.facts`, `relevant`,
+  `why`, `stats`) only from `deck`, `cli`, `local`, `capsule` or a module; anyone else passes
+  `room` or `project_cwds`. The Harness's Enrich and the project brief now send `room: <slug>`.
+- Correct, merge, split, uncorrect and corrections refuse any caller naming an agent, `deck
+  agent:kit` included (the registry reads that as `deck`).
+- `memory.correct` resolves the new object exactly: a node id, an exact label, an address or a
+  domain; anything else is a new node of the kind the relation holds (`title:`, `date:`, `pref:`,
+  `decision:`, `note:`, `name:`). "North" no longer becomes Northwind Bakery.
+- `memory.correct` answers at once with `pending: true` and derives behind the answer;
+  `memory.curated` marks completion. `wait: true` (the CLI) answers after, with the facts.
+- Conflicts between rooms skip confirmed facts as well as the user's own, so derive never closes
+  a confirmed fact.
+- Lessons are indexed once per derive: 8,000 lessons about one organisation derived in 5.7s,
+  now 0.25s.
+- Deck Memory sends `room: <slug>` on every `memory.graph`, `memory.facts` and `memory.why`
+  call (the last one included), never the project's folders.
+- Eval: the gold file gains `corrections` (made with `memory.correct` before measuring) and leak
+  cases for them. Old code leaks 12 facts on it; leakage is 0.
+
+- One identity per domain: organisation spellings that share a domain ("Keel & Ash", "Keel & Ash
+  Architects") fold into one node before anything is counted, named by the longest proper
+  spelling. The others are kept in the new `memory_aliases` table (per room), so a prompt or
+  `memory.resolve` using them still finds the node. Spellings a user correction or a lesson
+  names, and a room's split copies, are left alone. The migration asks every home to derive once.
+  `memory.relevant` also drops a fact whose text repeats a higher one.
+- Eval: the Harlow deadline (18 September) is closed at the eval's clock, as the ADR closes a
+  deadline two days after its date. The gold says so, and the eval now fails a closed fact that
+  `memory.relevant` offers (`closed.offered`, target 0). A second run with
+  `config.memory.relations` on reports `prefers` and `decided` as optional relations with
+  precision, recall and whether they clear the 0.8 bar. `relevant` timing warms up and takes the
+  best p95 of three rounds, so heavy machine load no longer fails the 5 ms bound.
+
+- Resolution (decision 2): an address matches a person across sessions when exactly one kept
+  person has its local part and works at its domain (0.75); a word-like TLD or a trailing
+  organisation word in a domain spells the organisation (`harlow.law` is Harlow Law,
+  `keelasharchitects.com` is Keel & Ash); two names written with one address, sharing a first
+  or last word, are one person; `Dana M. Reyes` is Dana Reyes. `architects` and `architecture`
+  join the generic organisation words.
+- New relations, each derived per room from the room's own turns: `has_title` (the appositive,
+  one per person), `client_of` (the user's own words, "X is a new client", "our new client X";
+  taught ones too), `repo_for` (a repo named after an organisation, together in 2+ sessions) and
+  `deadline` ("due / launches / ships (on / by) <date>", read against the turn's own time,
+  closed at read time two days after its date). `prefers` and `decided` are read only with
+  `config.memory.relations.{prefers, decided}`, off by default. Client, deadline, preference and
+  decision phrasings count only in user turns; code talk ("the API client", "ship it Friday")
+  makes none. Titles, dates, preferences and decisions are value nodes a prompt never matches.
+- Migration 5 re-reads every turn once (in the background), because extraction changed.
+- The derive's write is one transaction per room with a yield between. Measured on 4,350
+  fictional sessions (9,300 turns), best of four: cold derive 820 to 908ms, worst block 57 to
+  104ms; an unchanged re-derive 146 to 286ms, worst block 14 to 67ms; `memory.relevant` p95
+  under 1ms. On the eval world `relevant` p50 0.08ms, p95 0.17ms.
+
+- The user corrects a fact (decision 4). `memory.correct {fact | subject, rel, object; action;
+  object?; at?; note?; room?}` with `wrong` (never true, dropped from every vote in scope),
+  `ended` (closed at `at`; older evidence never reopens it, newer opens a new row), `replace`
+  (ended, plus a row sourced `user`, confidence 1, shown as "your correction"), `confirm`
+  (confidence 1, no decay, never closed by derive) and `add`. Corrections are rows
+  (`memory_corrections`), applied in derive after the votes, so no pass derives them away;
+  `memory.corrections` lists them and `memory.uncorrect` undoes one. A newer transcript that
+  disagrees with the user marks a conflict and changes nothing.
+- `memory.merge {node, into}` makes two nodes one; `memory.split {node, room}` makes the one a
+  project's sessions name someone else (two different people with one name, both labelled the
+  same), and `memory.split {node, other}` keeps two nodes apart (it undoes a merge).
+- Correct, merge and split are owner callers only (`deck`, `cli`, `local`, `capsule`): a session
+  or an agent gets `denied`. Events: `memory.corrected {id, action, rel, scope, prior_source,
+  prior_rule, prior_confidence}` with no labels, node ids, addresses, notes or session ids;
+  `memory.merged {id, scope}`; `memory.split {id, scope}`. Facts carry `origin` and
+  `correction`; `memory.why` returns `corrections`.
+- CLI: `vyre memory correct|corrections|uncorrect|merge|split|pin|mute`, and `--project <slug>` on
+  `vyre memory` and `vyre why`. Stale facts print "last said 10 months ago"; conflicts are marked.
+- Reads compile each SQL statement once and cache a room's sessions, so `memory.relevant` p50 on
+  the eval world went from 0.21 to 0.16ms.
+
+- Rooms (ADR 0007, decision 1). A room is a project (its folders plus the threads picked into
+  it) or `unfiled`. The curator derives every room from its own sessions and lessons with the
+  same rules, and writes rows with `room = '<slug>'`; `'*'` rows are the main graph. Deleting
+  every other room's sessions leaves a room's rows identical (tested). A session in several
+  rooms counts in room R only for things R has from a session of its own or a lesson, so a
+  shared planning thread cannot carry one client into another's room. A room keeps its own
+  node counts, dates, roles and short forms (`memory_room_nodes`, `memory_shortforms.room`).
+- Short forms keep every claimant; a read picks the most precise one in view, so "Summit" means
+  Summit Dental in one project and Summit Roofing in another. A short form followed by another
+  capitalised word is part of a different name and is not matched.
+- Hub rule: an org is a hub of the main graph when it is in at least `max(3, rooms/2)` rooms, or
+  anywhere past the session share when no project is named for it. One taught as `client_of` is
+  never a hub, so the user's main client is no longer the thing Memory hides.
+- When two rooms' `works_at` winners differ and were seen within 90 days of each other, the
+  `'*'` row is marked `conflict`; further apart, the newer holds in `'*'` and the older is closed
+  there and stays open in its room. Facts and floor-plan edges carry `conflict`.
+- `memory.facts`, `relevant`, `why` and `graph` take `room` (a slug or `"unfiled"`, alias
+  `project`). Folders one project owns read its room; other folders keep the strict folder view.
+  The unfiled room is for the user and agents granted every project. The Harness's Enrich hook
+  reads `room: "unfiled"` outside every project instead of the session's folder.
+- Memory stores the rooms (`memory_rooms`) from `projects.list` on its first pass and after
+  `project.created`, `project.changed`, `thread.picked` and `thread.unpicked`. Picked threads are
+  read when `projects.list` gives their ids (`threads` as a list); today it gives counts.
+- Decay at read time (decision 3). `memory_edges.seen` is the newest supporting turn over all
+  evidence, not the capped six; derive still never reads the clock. `fresh = max(floor, 0.5 ^
+  (days / half-life))`: identity 365 days (floor 0.4), `works_at` 180 (0.25), `mentioned_in` 30
+  (0.1); what the user said or confirmed does not decay. `memory.relevant` multiplies its score
+  by `fresh` and leaves out facts under 0.35 unless pinned; `memory.facts` lists them with
+  `stale: true`, `fresh` and `seen_age` ("10 months"). Silence never closes an edge.
+- Migration 4 adds `room`, `seen`, `conflict`, `origin` and `rule` to `memory_edges` (the unique
+  key gains `room`) and a `rederive` flag, so every existing home derives once more.
+
 - `memory.graph {project_cwds?, around?, depth?, limit?, since?, agent?}`: the graph as a floor
   plan for the Deck. One room per project (from `projects.list`), a Shared room for the people
   and organisations several projects have, and a No project room; entity, thread and fact nodes;
@@ -1279,8 +1413,36 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   which is what the Enrich hook and the projects brief print; the exact turn is in `ref`.
 - Measured on a copy of a real 103k-turn index: first pass 6.7s, a pass with nothing new 5ms,
   one new turn 1.2s in the background; `memory.relevant` p50 0.06ms, p95 1.4ms.
+- Deck Memory on `memory.graph` (ADR 0007, decision 13): one call with the `since` cursor
+  instead of a `memory.facts` call per project. A `memory.curated` whose `updated` is what is
+  drawn does nothing; while the tab is hidden it only marks the view dirty, and the one fetch
+  waits for `visibilitychange` (no timers, SPEC principle 8). Scope select (Everything or one
+  project), rooms and room counts from `graph.rooms`, a truncated footer with Around (depth 1)
+  and a breadcrumb back.
+- Facts list with gold provenance: the source thread links to the exact turn (`?seq=N`), with
+  age and confidence in mono. Inline pin and mute act on the fact's subject and say so. Correct
+  turns the fact's object into a field in its own sentence: Cmd+Enter saves (`memory.correct`
+  `replace`), "No longer true" (`ended`), "Wrong" (`wrong`), Esc cancels; the closed fact then
+  shows muted above the new one, sourced "You, just now", with Undo (`memory.uncorrect`). A
+  missing `memory.correct` says so in a status line. "Forget this fact" (it muted the whole
+  person) is gone.
+- Lessons tab at `/memory?tab=lessons`: Proposed (a Beacon count on the tab), Active, Retired
+  (folded) and Proposed skills when `learn.skills` exists. Rows show the rule, level, check,
+  scope in words, `applied · caught · broken`, the `learn.stats` verdict and a link to the source
+  turn. Accept, Edit (rule and when, through `learn.edit`), Retire, Relax; a `presence_required`
+  answer shows how to confirm (the passkey, else the terminal command or the Capsule), in a
+  sheet on a phone. `lesson.*` events repaint only the row they name.
+- Keyboard: Up and Down move through the list (roving tabindex), Enter opens, Esc closes; in the
+  panel P pins, M mutes, C corrects, ignored while typing. Phone: the list, and sheets.
+- `deck/fixtures/learn.json` now has core/learn's shape (integer ids, `scope` as `"all"` or
+  `{project}` or `{agent}`, `check` objects, `source: {kind, session, seq}`); `memory.json` gains
+  `memory.graph`. `deck/test/memory.test.js` covers the cursor, links, lesson words and both
+  fixtures' shapes.
 
 #### Projects
+
+- `projects.list` rows add `picks`: the picked thread ids, subagents folded to the parent.
+  `threads` and `picked` stay counts. 0.05 ms of a 16 ms list at 1,800 picks.
 
 - Integration on main: `vyre resume` and `vyre start` load the Harness with `--plugin-dir` and
   leave the brief to its SessionStart hook, so Claude reads it once. `VYRE_PROJECT` tells the

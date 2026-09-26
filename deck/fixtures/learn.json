@@ -1,18 +1,349 @@
 {
-  "learn.lessons": [
-    { "id": "l-client-main", "rule": "Ask before pushing to a client's main branch.", "scope": "all", "when": "git push to main or master",
-      "level": "ask", "check": true, "applied": 14, "broken": 1,
-      "source": { "kind": "correction", "thread": "t-kit-hero", "at": "$ago:9d" }, "learned_at": "$ago:9d" },
-    { "id": "l-changelog", "rule": "Update the changelog when writing code.", "scope": "all", "when": "a turn that edits code",
-      "level": "block", "check": true, "applied": 31, "broken": 3,
-      "source": { "kind": "remember", "thread": "t-juno-intake-summary", "at": "$ago:21d" }, "learned_at": "$ago:21d" },
-    { "id": "l-harlow-tone", "rule": "Sign Harlow Legal emails as Alex, never as the studio.", "scope": "project", "target": "harlow-legal",
-      "when": "drafting an email to Harlow Legal", "level": "remind", "check": false, "applied": 6, "broken": 0,
-      "source": { "kind": "draft-edit", "thread": "t-juno-intake-summary", "at": "$ago:3d" }, "learned_at": "$ago:3d" },
-    { "id": "l-pax-friday", "rule": "Post the invoice total in the Northwind Bakery thread, not by email.", "scope": "agent", "target": "pax",
-      "when": "the Friday total", "level": "ask", "check": false, "applied": 4, "broken": 2,
-      "source": { "kind": "denied", "thread": "t-pax-invoices", "at": "$ago:2d" }, "learned_at": "$ago:12d" }
+  "learn.lessons": {
+    "$by": "status",
+    "cases": {
+      "*": [
+        {
+          "id": 7,
+          "scope": "all",
+          "when": "always",
+          "rule": "Never use em dashes in anything you write.",
+          "check": {
+            "kind": "text",
+            "pattern": "\\u2014",
+            "label": "an em dash"
+          },
+          "level": "remind",
+          "status": "proposed",
+          "source": {
+            "kind": "prompt",
+            "session": "22222222-bbbb-4000-8000-000000000001",
+            "seq": 9,
+            "text": "please never use em dashes in anything you write"
+          },
+          "applied": 0,
+          "caught": 0,
+          "broken": 0,
+          "created": "$ago:40m",
+          "updated": "$ago:40m"
+        },
+        {
+          "id": 8,
+          "scope": {
+            "project": "northwind-bakery"
+          },
+          "when": "a shell command runs npm",
+          "rule": "Use pnpm, not npm, in the Northwind repo.",
+          "check": {
+            "kind": "tool",
+            "command": "\\bnpm\\b",
+            "instead": "pnpm",
+            "label": "npm"
+          },
+          "level": "ask",
+          "status": "proposed",
+          "source": {
+            "kind": "denied",
+            "session": "22222222-bbbb-4000-8000-000000000003",
+            "seq": 14
+          },
+          "applied": 0,
+          "caught": 0,
+          "broken": 0,
+          "created": "$ago:2h",
+          "updated": "$ago:2h"
+        },
+        {
+          "id": 3,
+          "scope": "all",
+          "when": "a turn that edits code",
+          "rule": "Update CHANGELOG.md whenever you change code.",
+          "check": {
+            "kind": "touched",
+            "require": "CHANGELOG.md",
+            "when": "\\.(js|ts)$",
+            "label": "CHANGELOG.md changed when code did"
+          },
+          "level": "block",
+          "status": "active",
+          "source": {
+            "kind": "remember",
+            "session": "22222222-bbbb-4000-8000-000000000002",
+            "seq": 3,
+            "text": "update CHANGELOG.md whenever you change code"
+          },
+          "applied": 14,
+          "caught": 3,
+          "broken": 1,
+          "created": "$ago:21d",
+          "updated": "$ago:21d"
+        },
+        {
+          "id": 4,
+          "scope": {
+            "project": "harlow-legal"
+          },
+          "when": "drafting an email to Harlow Legal",
+          "rule": "Sign Harlow Legal emails as Alex, never as the studio.",
+          "check": null,
+          "level": "remind",
+          "status": "active",
+          "source": {
+            "kind": "edited",
+            "session": "22222222-bbbb-4000-8000-000000000002",
+            "seq": 21
+          },
+          "applied": 6,
+          "caught": 0,
+          "broken": 0,
+          "created": "$ago:9d",
+          "updated": "$ago:9d"
+        },
+        {
+          "id": 5,
+          "scope": {
+            "agent": "kit"
+          },
+          "when": "git commit",
+          "rule": "Run the tests before git commit.",
+          "check": {
+            "kind": "before",
+            "command": "\\bgit\\s+commit\\b",
+            "first": "test",
+            "label": "tests ran before git commit"
+          },
+          "level": "ask",
+          "status": "active",
+          "source": {
+            "kind": "prompt",
+            "session": "22222222-bbbb-4000-8000-000000000003",
+            "seq": 30,
+            "text": "run the tests before you commit, every time"
+          },
+          "applied": 22,
+          "caught": 5,
+          "broken": 2,
+          "created": "$ago:30d",
+          "updated": "$ago:30d"
+        },
+        {
+          "id": 2,
+          "scope": "all",
+          "when": "the Friday total",
+          "rule": "Post the Friday total in the thread, not by email.",
+          "check": null,
+          "level": "remind",
+          "status": "retired",
+          "source": {
+            "kind": "prompt",
+            "session": "22222222-bbbb-4000-8000-000000000003",
+            "seq": 2
+          },
+          "applied": 4,
+          "caught": 0,
+          "broken": 2,
+          "created": "$ago:60d",
+          "updated": "$ago:60d"
+        }
+      ],
+      "proposed": [
+        {
+          "id": 7,
+          "scope": "all",
+          "when": "always",
+          "rule": "Never use em dashes in anything you write.",
+          "check": {
+            "kind": "text",
+            "pattern": "\\u2014",
+            "label": "an em dash"
+          },
+          "level": "remind",
+          "status": "proposed",
+          "source": {
+            "kind": "prompt",
+            "session": "22222222-bbbb-4000-8000-000000000001",
+            "seq": 9,
+            "text": "please never use em dashes in anything you write"
+          },
+          "applied": 0,
+          "caught": 0,
+          "broken": 0,
+          "created": "$ago:40m",
+          "updated": "$ago:40m"
+        },
+        {
+          "id": 8,
+          "scope": {
+            "project": "northwind-bakery"
+          },
+          "when": "a shell command runs npm",
+          "rule": "Use pnpm, not npm, in the Northwind repo.",
+          "check": {
+            "kind": "tool",
+            "command": "\\bnpm\\b",
+            "instead": "pnpm",
+            "label": "npm"
+          },
+          "level": "ask",
+          "status": "proposed",
+          "source": {
+            "kind": "denied",
+            "session": "22222222-bbbb-4000-8000-000000000003",
+            "seq": 14
+          },
+          "applied": 0,
+          "caught": 0,
+          "broken": 0,
+          "created": "$ago:2h",
+          "updated": "$ago:2h"
+        }
+      ],
+      "active": [
+        {
+          "id": 3,
+          "scope": "all",
+          "when": "a turn that edits code",
+          "rule": "Update CHANGELOG.md whenever you change code.",
+          "check": {
+            "kind": "touched",
+            "require": "CHANGELOG.md",
+            "when": "\\.(js|ts)$",
+            "label": "CHANGELOG.md changed when code did"
+          },
+          "level": "block",
+          "status": "active",
+          "source": {
+            "kind": "remember",
+            "session": "22222222-bbbb-4000-8000-000000000002",
+            "seq": 3,
+            "text": "update CHANGELOG.md whenever you change code"
+          },
+          "applied": 14,
+          "caught": 3,
+          "broken": 1,
+          "created": "$ago:21d",
+          "updated": "$ago:21d"
+        },
+        {
+          "id": 4,
+          "scope": {
+            "project": "harlow-legal"
+          },
+          "when": "drafting an email to Harlow Legal",
+          "rule": "Sign Harlow Legal emails as Alex, never as the studio.",
+          "check": null,
+          "level": "remind",
+          "status": "active",
+          "source": {
+            "kind": "edited",
+            "session": "22222222-bbbb-4000-8000-000000000002",
+            "seq": 21
+          },
+          "applied": 6,
+          "caught": 0,
+          "broken": 0,
+          "created": "$ago:9d",
+          "updated": "$ago:9d"
+        },
+        {
+          "id": 5,
+          "scope": {
+            "agent": "kit"
+          },
+          "when": "git commit",
+          "rule": "Run the tests before git commit.",
+          "check": {
+            "kind": "before",
+            "command": "\\bgit\\s+commit\\b",
+            "first": "test",
+            "label": "tests ran before git commit"
+          },
+          "level": "ask",
+          "status": "active",
+          "source": {
+            "kind": "prompt",
+            "session": "22222222-bbbb-4000-8000-000000000003",
+            "seq": 30,
+            "text": "run the tests before you commit, every time"
+          },
+          "applied": 22,
+          "caught": 5,
+          "broken": 2,
+          "created": "$ago:30d",
+          "updated": "$ago:30d"
+        }
+      ],
+      "retired": [
+        {
+          "id": 2,
+          "scope": "all",
+          "when": "the Friday total",
+          "rule": "Post the Friday total in the thread, not by email.",
+          "check": null,
+          "level": "remind",
+          "status": "retired",
+          "source": {
+            "kind": "prompt",
+            "session": "22222222-bbbb-4000-8000-000000000003",
+            "seq": 2
+          },
+          "applied": 4,
+          "caught": 0,
+          "broken": 2,
+          "created": "$ago:60d",
+          "updated": "$ago:60d"
+        }
+      ]
+    }
+  },
+  "learn.stats": {
+    "lessons": [
+      {
+        "id": 3,
+        "verdict": "working",
+        "before": 4.2,
+        "after": 0.8,
+        "turns": 180
+      },
+      {
+        "id": 4,
+        "verdict": "measuring",
+        "turns": 31
+      },
+      {
+        "id": 5,
+        "verdict": "not working",
+        "before": 1.1,
+        "after": 1.4,
+        "turns": 96
+      }
+    ]
+  },
+  "learn.skills": [
+    {
+      "id": 1,
+      "name": "learned-release-notes",
+      "status": "proposed",
+      "description": "Use when cutting a release: bump the version, write the notes from the changelog, tag, push the tag.",
+      "steps": [
+        "npm version",
+        "edit CHANGELOG.md",
+        "git tag",
+        "git push --tags"
+      ],
+      "sessions": 3
+    }
   ],
-  "learn.edit": { "ok": true },
-  "learn.retire": { "ok": true }
+  "learn.accept": {
+    "ok": true
+  },
+  "learn.edit": {
+    "ok": true
+  },
+  "learn.retire": {
+    "ok": true
+  },
+  "learn.relax": {
+    "ok": true
+  }
 }
