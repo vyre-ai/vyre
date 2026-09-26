@@ -183,6 +183,20 @@ test("computers: take-over through the lease, chatting that does not pause, and 
   assert.match((await s.cli("computers.takeover", { agent: "kit", surface: "cli" })).error.message, /person's screen/);
 });
 
+test("computers: an agent cannot claim a surface, so it cannot end someone else's take-over", async t => {
+  const s = await boot(t);
+  await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
+  // kit's own hands, refused mid-take-over, try to give the keyboard back to itself.
+  const gone = await s.kit("computers.giveback", { surface: "glass:laptop" });
+  assert.match(gone.error.message, /is an agent, not a person's screen/);
+  assert.equal(s.h.keyboard.canType("kit", "glass:laptop"), true, "the take-over is still held");
+  // Same for taking over in the first place, and for watching as a surface it is not.
+  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  assert.match((await s.kit("computers.watch", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  // The real surface can still give it back.
+  assert.deepEqual((await s.cli("computers.giveback", { agent: "kit", surface: "glass:laptop" })).data, { agent: "kit", handed_back: true });
+});
+
 test("computers: watch hands out a one-use ticket that expires", async t => {
   const s = await boot(t);
   const w = (await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" })).data;
