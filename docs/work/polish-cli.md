@@ -38,9 +38,14 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- The interactive `vyre` screen (core/cli/screen/): the rest of the brief.
+- The interactive `vyre` screen (core/cli/screen/) is built and tested (screen.test.js,
+  screen-live.test.js). Idle perf on the test box, in a pty at 120x40, 60 s after start: screen 0.06 s
+  CPU (0.1%), RSS 67 MB; vyred 0.09 s, RSS 74 MB. No poll faster than 60 s (link status); the
+  rest is event-driven with a 250 ms debounce.
 
 ## Next
+
+- Wait for the lead's review of the screen; polish from feedback. Keep main merged in.
 
 ## Needs from others
 
