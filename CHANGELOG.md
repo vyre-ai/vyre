@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A box built from vyre.tgz ships the files in it, not stale ones
+
+- npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
+  and mtime match what it synced before, so an image built from a new vyre.tgz could keep old
+  files. The installer's unpack and `vyre update`'s refresh now touch the unpacked tree before
+  the build (`scripts/install-box.sh`, `box/vyre`). The test tarball is packed with 1985 mtimes,
+  as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
+  Found by box-deploy.
+
 #### Making or changing an agent needs a person
 
 - `agents.create` and `agents.update` set an agent's credentials, budget and scope, and nothing
