@@ -10,7 +10,7 @@
 import { h, put, add, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
-import { clock } from "../js/fmt.js";
+import { clock, since } from "../js/fmt.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
@@ -171,6 +171,17 @@ export function mountSession(container, opts) {
     return wrap;
   }
 
+  // Matches the Capsule's shape for a memory source (capsule teammate, 2026-09-27): the name,
+  // then "<age> · <confidence>%" in mono 11 Ash, once intelligence's memory.thread carries them.
+  function sourceChip(s) {
+    if (typeof s === "string") return h("span", { class: "source" }, icon("file", 12), s);
+    const name = s.name || s.title || "";
+    const bits = [];
+    if (s.at) bits.push(since(s.at) + " ago");
+    if (s.confidence != null) bits.push(Math.round(s.confidence <= 1 ? s.confidence * 100 : s.confidence) + "%");
+    return h("span", { class: "source" }, icon("file", 12), h("span", null, name), bits.length ? h("span", { class: "source-meta" }, bits.join(" · ")) : null);
+  }
+
   async function fetchMemory() {
     const r = await attempt("memory.thread", { thread });
     if (r.error || !r.data || !r.data.length) return;
@@ -179,7 +190,7 @@ export function mountSession(container, opts) {
       timeline.append(h("div", { class: "memory-fact" },
         h("h3", { class: "lbl" }, "From memory"),
         h("div", { class: "fact" }, f.text || f.fact || String(f)),
-        sources.length ? h("div", { class: "sources" }, sources.map(s => h("span", { class: "source" }, icon("file", 12), typeof s === "string" ? s : (s.name || s.title || "")))) : null,
+        sources.length ? h("div", { class: "sources" }, sources.map(sourceChip)) : null,
       ));
     }
   }
