@@ -13,7 +13,7 @@ import { call, request } from "../daemon/client.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 
@@ -181,7 +181,7 @@ test("correct: tools are for the owner's surfaces, and the event carries no name
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ me: { domains: ["riverastudio.com"] } }));
   const db = open(path.join(root, "vyre.db")); seedRecall(db); db.close();
-  const d = await start({ root, log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   await call("memory.curate", {}, { root });
   const r = await call("memory.correct", { fact: WORKS, action: "replace", object: "Northwind Bakery", at: "2026-09-10", note: "she moved in September", wait: true }, { root });
@@ -219,7 +219,7 @@ test("correct: the CLI corrects, lists, undoes, merges and splits, with --projec
   const root = fs.realpathSync(tempHome(t));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ me: { domains: ["riverastudio.com"] } }));
   const db = open(path.join(root, "vyre.db")); seedRecall(db); db.close();
-  const d = await start({ root, log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   await call("memory.curate", {}, { root });
   const bin = fileURLToPath(new URL("../../bin/vyre", import.meta.url));
