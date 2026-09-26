@@ -503,6 +503,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- Picked threads are room members in a live vyred: room sync reads `picks` from `projects.list`
+  (below), so a thread picked into a project counts in its room under the anchor rule. The eval
+  world now uses the real list shape and checks every pick lands in its room; leakage stays 0.
+- `memory.facts {thread, room?, limit?}` (default 50, at most 200): the facts whose evidence
+  includes a turn of that thread, oldest first, each with `refs: [{seq}]` for the turns in that
+  thread and `taught` as before. Main graph without a room (owner surfaces only), a room's rows
+  with one; agents only in their granted rooms. `mentioned_in` rows and muted nodes are left
+  out. For gate-chat's Chat view.
+- Presence: `memory.correct`, `memory.merge` and `memory.split` declare `presence: { summary }`,
+  one plain line under 400 characters with control characters stripped, e.g. `Correct: "Dana
+  Reyes works at Harlow Legal" -> "Bramble Dental" (everywhere)`. The owner allowlist and the
+  agent refusal stay; the tools also refuse any non-owner caller themselves.
+- Refusals throw with `code: "denied"` (access to a room or the main graph, an agent's grants,
+  corrections), which vyred on main passes through as the tool error's code.
+- `tailnet:<login>` callers read as the owner: `memory.graph`, `facts`, `why`, `stats` and
+  `corrections` (which drops its `callers` list and checks in the tool, since the registry
+  compares the whole caller string). Never `correct`, `uncorrect`, `merge` or `split`, and not
+  `relevant`.
 - Scope fixes from review (ADR 0007, decisions 1 and 4). A correction for everywhere applies in a
   room only to what that room's own sessions derive: wrong, ended and confirm touch rows the room
   has; add and replace only when the room keeps the subject, with an object it keeps or a value
@@ -717,6 +735,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   fixtures' shapes.
 
 #### Projects
+
+- `projects.list` rows add `picks`: the picked thread ids, subagents folded to the parent.
+  `threads` and `picked` stay counts. 0.05 ms of a 16 ms list at 1,800 picks.
 
 - Integration on main: `vyre resume` and `vyre start` load the Harness with `--plugin-dir` and
   leave the brief to its SessionStart hook, so Claude reads it once. `VYRE_PROJECT` tells the

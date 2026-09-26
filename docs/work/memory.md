@@ -97,6 +97,11 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   derive; `memory.correct` does not wait for the derive unless `wait: true`; the Deck sends
   `room`. Eval with the gold corrections: leakage 0, every precision and recall 1, Enrich P@3
   0.986.
+- Picked threads are room members live: `projects.list` carries `picks` and room sync reads
+  it; the eval world uses the real list shape and checks each pick is in its room (leakage 0).
+- `memory.facts {thread, room?}` with `refs: [{seq}]` for gate-chat's Chat view; presence
+  summaries on `correct`, `merge`, `split`; refusals coded `denied`; `tailnet:<login>` reads as
+  the owner (`core/memory/access.test.js`).
 
 ## Doing
 
@@ -127,6 +132,30 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   measures short forms with rowid-only `MATCH` queries.
 
 ## Changed contracts
+- `memory.facts {thread, room?, limit?}` returns `{ thread, room: slug|"*", facts }`: facts whose
+  evidence includes a turn of that thread (session id, exact: a subagent's turns are its own
+  session), ordered by their first such turn, each a normal fact plus `refs: [{seq}]` (that
+  thread's turns, ascending). `limit` defaults to 50, at most 200. `thread` cannot be combined
+  with `about` or `project_cwds`. Without `room` it reads the main graph, so only owner surfaces,
+  `tailnet:` callers, modules and all-projects agents get it; with `room`, the usual room rules.
+  Evidence is kept for at most 6 turns a fact, so a fact said in many threads may not list this
+  one. `mentioned_in` rows and facts about muted nodes are left out.
+- `memory.correct`, `memory.merge`, `memory.split` carry `presence: { summary(input) -> string }`
+  (one line, under 400 characters, no control characters, never throws). Forms: `Correct: "<fact>"
+  -> "<new>" (everywhere|in <room>)`, `... is wrong`, `... ended <at>`, `Confirm: "<fact>"`,
+  `Add: "<fact>"`, `Merge: "<a>" into "<b>" (everywhere)`, `Split: "<a>" (in <room>) is someone
+  else`, `Split: "<a>" and "<b>" are two (everywhere)`.
+- Refusals are thrown with `code: "denied"`: the main graph without a scope, an agent outside
+  its grants or naming another agent, the unfiled room for a scoped agent, corrections from an
+  agent or a non-owner. On a registry that passes codes through (main, b27e6ff) callers see
+  `error.code === "denied"`; others still see `failed` with the same message.
+- `tailnet:<login>` (set by vyred's tailnet listener) is the owner for `memory.graph`, `facts`,
+  `why`, `stats` and `corrections`. `memory.corrections` has no `callers` list any more and checks
+  owner surfaces and tailnet callers in the tool. `correct`, `uncorrect`, `merge` and `split` keep
+  their `callers` list and also refuse any non-owner caller in the tool. `memory.relevant` is
+  unchanged: tailnet callers pass a room.
+- Rooms read `picks` (ids) from `projects.list`; a `threads` list of ids is still read for callers
+  that pass rooms directly. Counts are ignored.
 - `memory.facts`, `memory.relevant`, `memory.why`, `memory.graph` take `room` (a project slug or
   `"unfiled"`; `project` is an alias). Folders one project owns read that project's room. The
   unfiled room is refused to agents not granted every project.

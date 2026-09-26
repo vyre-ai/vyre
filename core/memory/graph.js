@@ -34,6 +34,8 @@ const PHRASE = {
   prefers: (a, b) => `${a} prefers ${b}`,
   decided: (a, b) => a === "you" ? `you decided to ${b}` : `${a} decided to ${b}`,
 };
+/** A fact as a sentence, from its two ends' labels. */
+export const say = (rel, a, b) => (PHRASE[rel] || ((x, y) => `${x} ${words(String(rel))} ${y}`))(a, b);
 /** Values at the far end of a relation, not things a prompt names: never matched as phrases. */
 export const VALUES = new Set(["title", "date", "pref", "decision", "me"]);
 const words = rel => rel.replace(/_/g, " ");
@@ -461,6 +463,39 @@ export class Graph {
       }
     }
     return { about: null, facts: out };
+  }
+
+  /**
+   * Facts one thread supports: every fact whose evidence includes a turn of that thread, each
+   * with refs, the thread's turns it came up in (oldest first), for showing facts beside the
+   * turns of a chat. A room reads that room's rows; none reads the main graph's. Evidence is
+   * kept for up to six turns a fact, so a fact said in many threads may not list this one.
+   * Where-it-came-up rows (mentioned_in) are not facts about anything and are left out, as are
+   * facts about a muted node.
+   * @param {{ thread: string, room?: string, limit?: number }} input
+   */
+  threadFacts({ thread, room, limit = 50 }) {
+    const id = String(thread || "").trim();
+    if (!id) throw new Error("which thread? give its session id");
+    const sc = room && room !== "*" ? this.view([], room) : null;
+    const f = this.focus(sc ? sc.cwds : []);
+    /** @type {Map<number, number[]>} */
+    const seqs = new Map();
+    for (const r of this.sql(`SELECT v.edge, v.seq FROM memory_evidence v JOIN memory_edges e ON e.id = v.edge
+        WHERE v.session = ? AND e.room = ? AND e.rel != ? ORDER BY v.seq, v.edge`).all(id, sc?.room || "*", WHERE)) {
+      const k = Number(r.edge);
+      if (!seqs.has(k)) seqs.set(k, []);
+      /** @type {number[]} */ (seqs.get(k)).push(Number(r.seq));
+    }
+    const edge = this.sql("SELECT * FROM memory_edges WHERE id = ?");
+    const facts = [];
+    for (const [k, list] of seqs) {
+      if (facts.length >= limit) break;
+      const e = edge.get(k);
+      if (!e || f.mute.has(String(e.src)) || f.mute.has(String(e.dst))) continue;
+      facts.push({ ...this.fact(e, sc), refs: list.map(seq => ({ seq })) });
+    }
+    return { thread: id, room: sc?.room || "*", facts };
   }
 
   // ------------------------------------------------------------------ relevant

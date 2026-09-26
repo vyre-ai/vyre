@@ -199,9 +199,11 @@ test("correct: tools are for the owner's surfaces, and the event carries no name
   for (const caller of ["mcp", "mcp:agent:kit", "harness", "deck agent:kit", "cli:agent:kit"]) {
     for (const [tool, input] of [["memory.correct", { fact: WORKS, action: "wrong" }], ["memory.merge", { node: "Dana Reyes", into: "Sam Okafor" }],
       ["memory.split", { node: "Dana Reyes", other: "Sam Okafor" }], ["memory.uncorrect", { id: 1 }], ["memory.corrections", {}]]) {
-      // The registry refuses other kinds; memory refuses an owner surface that names an agent.
+      // The registry refuses other kinds; memory refuses an owner surface that names an agent,
+      // and any caller that is not the user's for corrections (a registry that passes tool
+      // error codes through reports those as denied too).
       const e = (await d.registry.call(tool, input, caller)).error;
-      assert.ok(e && (e.code === "denied" || /agent/.test(e.message)), `${tool} from ${caller}: ${JSON.stringify(e)}`);
+      assert.ok(e && (e.code === "denied" || /agent|own surfaces/.test(e.message)), `${tool} from ${caller}: ${JSON.stringify(e)}`);
     }
   }
   const undo = await call("memory.uncorrect", { id: r.data.correction.id }, { root });
