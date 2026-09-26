@@ -2,6 +2,7 @@
 // bytes: the two small stream pieces every provider shares, a Range header and a byte counter.
 
 import { Transform } from "node:stream";
+import { KEY_SNIFF, isKeyBytes } from "./guard.js";
 
 /**
  * One byte range from a Range header against a file of `total` bytes. Null means "send it
@@ -36,4 +37,36 @@ export function counter(max) {
   });
   /** @type {any} */ (t).bytes = 0;
   return /** @type {Transform & { bytes: number }} */ (t);
+}
+
+/**
+ * A pass-through that holds the first bytes of an upload until it can tell whether they are a
+ * private key, and fails the stream if they are: Glass does not carry keys onto a computer an
+ * agent works in, whatever the file is called.
+ */
+export function keySniff() {
+  /** @type {Buffer[]} */
+  let held = [];
+  let size = 0, cleared = false;
+  const check = () => {
+    const head = Buffer.concat(held);
+    if (isKeyBytes(head)) return Object.assign(new Error("that file is a private key; Glass does not move keys"), { code: "denied" });
+    cleared = true;
+    return head;
+  };
+  return new Transform({
+    transform(chunk, _enc, done) {
+      if (cleared) return done(null, chunk);
+      held.push(chunk); size += chunk.length;
+      if (size < KEY_SNIFF) return done();
+      const r = check();
+      held = [];
+      if (r instanceof Error) done(r); else done(null, r);
+    },
+    flush(done) {
+      if (cleared) return done();
+      const r = check();
+      if (r instanceof Error) done(r); else done(null, r);
+    },
+  });
 }

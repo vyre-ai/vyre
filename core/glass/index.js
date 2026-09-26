@@ -22,7 +22,7 @@ import path from "node:path";
 import { BoxProvider } from "./providers/box.js";
 import { ComputerProvider } from "./providers/computer.js";
 import { Tickets, register } from "./streams.js";
-import { checkRel, checkName, MAX_PREVIEW, DEFAULT_UPLOAD_MB } from "./guard.js";
+import { checkRel, checkName, MAX_PREVIEW, DEFAULT_UPLOAD_MB, KEY_SNIFF, isKeyBytes } from "./guard.js";
 import { INLINE, isText, mimeOf } from "./mime.js";
 
 export const MIGRATIONS = [
@@ -94,6 +94,15 @@ export default {
       if (agent) return new ComputerProvider(agent, ctx.call);
       if (!box) throw new Error("the box has no folders open to Glass; set glass.roots in config");
       return box;
+    };
+
+    /** Refuse a file whose first bytes are a private key, whatever its name (as link does). */
+    const notAKey = async (p, rel, st) => {
+      if (!(Number(st.size) > 0)) return;
+      const r = await p.read(rel, `bytes=0-${KEY_SNIFF - 1}`);
+      const chunks = [];
+      for await (const c of r.stream) chunks.push(c);
+      if (isKeyBytes(Buffer.concat(chunks))) throw Object.assign(new Error(`"${rel}" is a private key; Glass does not open keys`), { code: "denied" });
     };
 
     /** A person's surface, from someone allowed to name one. */
@@ -248,6 +257,7 @@ export default {
         const p = filesFor(i.target, caller);
         const st = await p.stat(i.path);
         if (st.kind !== "file") throw new Error(`"${i.path}" is not a file`);
+        await notAKey(p, i.path, st);
         const mime = mimeOf(st.name);
         if (INLINE.has(mime)) {
           const ticket = tickets.issue({ op: "raw", target: i.target, path: i.path, size: Number(st.size) || 0, overwrite: false, caller: String(caller), name: st.name });
@@ -270,8 +280,10 @@ export default {
 
     tool("glass.files.download", "A one-use path (60 s) to download a file from a target.",
       obj({ ...target, path: str }, ["target", "path"]), async (i, { caller }) => {
-        const st = await filesFor(i.target, caller).stat(i.path);
+        const p = filesFor(i.target, caller);
+        const st = await p.stat(i.path);
         if (st.kind !== "file") throw new Error(`"${i.path}" is not a file`);
+        await notAKey(p, i.path, st);
         const ticket = tickets.issue({ op: "raw", target: i.target, path: i.path, size: Number(st.size) || 0, overwrite: false, caller: String(caller), name: st.name });
         return { path: `/v1/glass/raw?ticket=${ticket}`, name: st.name, size: Number(st.size) || 0 };
       });

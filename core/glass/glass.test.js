@@ -431,6 +431,22 @@ test("glass: an agent reaches only its own computer's files, never the box or an
   assert.match((await s.kit("glass.files.download", { target: "box", path: "files/docs/readme.md" })).error.message, /only its own computer/);
 });
 
+test("glass: a private key is refused by its content, whatever its name, on the way out and on the way in", async t => {
+  const s = await boot(t);
+  const pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----\n";
+  fs.writeFileSync(path.join(s.files, "docs", "notes.txt"), pem);
+  for (const tool of ["glass.files.preview", "glass.files.download"]) {
+    assert.match((await s.deck(tool, { target: "box", path: "files/docs/notes.txt" })).error.message, /private key/, tool);
+  }
+  const u = await s.deck("glass.files.upload", { target: "box", dir: "files/docs", name: "harmless.txt", size: Buffer.byteLength(pem) });
+  const r = await fetchRaw(s.base + u.data.path, { method: "PUT", body: pem });
+  assert.equal(r.status, 403);
+  assert.equal(fs.existsSync(path.join(s.files, "docs", "harmless.txt")), false);
+  assert.deepEqual(fs.readdirSync(path.join(s.files, "docs")).filter(n => n.startsWith(".vyre-upload-")), [], "no temp file left behind");
+  const ok = await s.deck("glass.files.upload", { target: "box", dir: "files/docs", name: "tiny.txt", size: 2 });
+  assert.equal((await fetchRaw(s.base + ok.data.path, { method: "PUT", body: "hi" })).status, 200, "a file shorter than the sniff window still lands");
+});
+
 test("glass: without computers.helper, an agent's files say what is missing", async t => {
   const s = await boot(t, { helper: false });
   assert.equal((await s.deck("glass.files.list", { target: "computer:kit" })).error.message, "files on an agent's computer need computers.helper");

@@ -66,6 +66,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `/v1/glass/raw` and `/v1/glass/put` (one use, 60 s, size-bound), served `nosniff` with a
   sandboxing CSP; only raster images and PDFs are shown inline. An agent reaches only its own
   computer's files through Glass.
+- A file whose first 512 bytes are a PEM, OpenSSH or PuTTY private key is refused whatever its
+  name: no preview, no download, and an upload of one stops before it lands (the test link's
+  files module applies).
 - `ctx.route(name, fn)`: a raw HTTP route at `/v1/<module>/<name>`, the same shape link uses.
 - `deck/glass`: Screen, Files and a disabled Terminal tab, the take-over bar, Sign in privately,
   a phone layout with touch gestures, drag and drop upload, and drag-out download. noVNC 1.7.0 is
