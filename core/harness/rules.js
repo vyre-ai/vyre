@@ -155,6 +155,10 @@ function shellRoutes(command, { vyreHome, cwd, userHome }) {
     if (rootish) return deny1("A container with the host's root, devices or docker socket is root on this machine. Ask the user to run it.");
   }
   if ((SOCKET_CLIENT.test(flat) || w.some(x => /^-[a-zA-Z]*U/.test(x))) && /docker\.sock|containerd\.sock|podman\.sock/.test(flat)) return ask1("The container engine's socket is root on this machine.");
+  // On the box, the Engine's API proxy for agents' computers passes any create body it is given:
+  // only vyred's computers module may use it, and it builds every body itself (ADR 0009).
+  if (/\bdocker-api\b|:237[56]\b/.test(flat)) return deny1("That is the Docker API the computers module uses. It is root on the box, so only vyred talks to it.");
+  if (/\bDOCKER_HOST=|\s-H\s+(tcp|unix|ssh):\/\//.test(flat) && docker >= 0) return ask1("This points docker at another engine. Vyre asks, since an engine is root where it runs.");
 
   // Raw clients on a unix socket: vyred's is refused; one Vyre cannot read is asked about.
   const nc = w.some(x => /^(nc|ncat|netcat)$/.test(path.basename(x))) && w.some(x => /^-[a-zA-Z]*U/.test(x));
