@@ -60,6 +60,17 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 4. The Accessibility adapter, WhatsApp flagship (contact search, preview, presence, send).
 5. A generic "any app" adapter.
 
+### Slack (slice 3) design, agreed with connectors
+- Slack sends are `gated` actions: apps.act runs them (no presence), calls
+  `mcp.call {server, tool, arguments}`, and returns `{ held, preview }`. The surface then calls
+  `gate.approve {id}` as the person: that is the one proof, and the hub releases the approved
+  arguments once. The Deck's Gate shows the same item. apps.send (presence, session) is for AX
+  sends only (WhatsApp), where no Gate exists.
+- The Slack server is picked by the person in settings (stored by name); a default is suggested
+  by matching tool names (slack_post_message, slack_list_channels, slack_get_users, or
+  conversations_add_message, channels_list). Tests use core/mcp/testing/fake-mcp.js with
+  FAKE_MCP_LOG to prove nothing arrives before approval and exactly one call after.
+
 ## Done
 - ADR 0022 claimed in docs/work/README.md.
 - Slice 1, T1 and T2: the `apps` module (local/apps): env.js (injectable exec, osa with argv
