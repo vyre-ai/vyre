@@ -194,6 +194,25 @@ end to end — worth a real device test before this ships.
   link) alongside the existing `#section`.
 - `js/icons.js` gained a `bell` glyph.
 
+## Done (Security, 2026-09-27)
+- `js/api.js` gained presence proof (ADR 0004): `call(name, input, {presence: true})` (and
+  `attempt`'s third arg) runs the WebAuthn dance — POST /v1/presence/challenge, a passkey prompt,
+  the tool call carrying the signed proof as `x-vyre-presence` — before the real call, for a
+  human-only action (a Gate approval, a Glass take-over). Lifted from `deck/glass/presence.js`
+  (glass's ask; it was written to be moved) since Gate approvals will want the same proof; keeps
+  "only api.js calls fetch" intact. `canProve()` is exported for a view to check WebAuthn support
+  first. `callWithCode(name, input, code)` is the enrollment-only sibling: a one-time code from
+  `vyre presence code` stands in for a passkey that doesn't exist yet.
+- Settings → Security: add a passkey. The first one needs that one-time code; `navigator.
+  credentials.create` runs client-side (a random challenge — the code is what actually
+  authenticates the enrollment call, not WebAuthn's own challenge matching, since there is no
+  passkey yet to sign it against), then `presence.enroll {kind:"passkey", name, public_key,
+  alg, rp_id, credential_id}` via `callWithCode`.
+- Verified against a real vyred: the section renders and a submit attempt fails cleanly on
+  WebAuthn's own error (this environment has no real hostname or authenticator) rather than
+  crashing. Not verified end to end (a real ts.net/vyre.run origin and an actual authenticator
+  are needed for that) — worth a real device test before relying on it.
+
 ## Done (continued)
 - `agents.history` turned out to already be a real tool by the time I checked (switchboard added
   it alongside `agents.usage`) — Ask's past-exchange log, which already read the right field names
