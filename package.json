@@ -1,0 +1,16 @@
+{
+  "name": "vyre",
+  "version": "0.0.1",
+  "description": "Agents with their own computers, on your own box. Runs Claude Code on a machine you own and adds structure, memory, a vault and a private address.",
+  "type": "module",
+  "bin": { "vyre": "bin/vyre" },
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\""
+  },
+  "files": ["bin", "core", "harness", "local", "deck", "modules", "docs", "LICENSE", "README.md"],
+  "homepage": "https://vyre.run",
+  "repository": { "type": "git", "url": "https://github.com/vyre-ai/vyre" },
+  "license": "Apache-2.0",
+  "keywords": ["claude-code", "agents", "tailscale", "self-hosted", "vault", "memory"]
+}

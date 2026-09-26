@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+// The `vyre` command. Kept tiny: the work is in core/cli.
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 22 || (major === 22 && minor < 5)) {
+  console.error(`  Vyre needs Node 22.5 or newer; this is ${process.version}.`);
+  process.exit(1);
+}
+const { main } = await import("../core/cli/index.js");
+process.exitCode = await main(process.argv.slice(2));

@@ -1,0 +1,31 @@
+// @ts-check
+// client — how anything on this machine talks to vyred: the CLI, the Harness hooks, the Capsule.
+
+import http from "node:http";
+import * as config from "../config/index.js";
+
+/**
+ * One request to vyred over its socket. Resolves to the parsed { data } or { error } body, or to
+ * { error: { code: "unreachable" } } when vyred is not running, so callers can degrade instead
+ * of throwing. The Harness hooks rely on that: no vyred means Claude Code behaves as if Vyre
+ * were not installed.
+ */
+export function request(method, path, payload, { root = config.home(), caller = "cli", timeout = 10_000 } = {}) {
+  const socketPath = config.paths(root).socket;
+  return new Promise(resolve => {
+    const data = payload === undefined ? undefined : JSON.stringify(payload);
+    const req = http.request({ socketPath, path, method, timeout,
+      headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
+      let raw = "";
+      res.setEncoding("utf8");
+      res.on("data", c => { raw += c; });
+      res.on("end", () => { try { resolve(JSON.parse(raw)); } catch { resolve({ error: { code: "bad_response", message: raw.slice(0, 200) } }); } });
+    });
+    req.on("error", () => resolve({ error: { code: "unreachable", message: "vyred is not running" } }));
+    req.on("timeout", () => { req.destroy(); resolve({ error: { code: "timeout", message: `vyred did not answer within ${timeout}ms` } }); });
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+export const call = (tool, input = {}, opts) => request("POST", "/v1/tools/" + encodeURIComponent(tool), input, opts);
