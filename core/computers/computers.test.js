@@ -119,7 +119,7 @@ test("computers: an agent's hands get their own computer; only the assistant may
 test("computers: endpoint checks out and thaws; may-act touches", async t => {
   const s = await boot(t);
   const e = await s.module("computers.endpoint", { agent: "kit", thread: s.kitThread });
-  assert.equal(e.data.cdp, "http://fake-kit:9223");
+  assert.equal(e.data.cdp, undefined, "Chrome's raw address is never handed out; only computerd's authenticated proxy is");
   assert.equal(e.data.helper.url, "http://fake-kit:7000");
   assert.equal(typeof e.data.helper.token, "string");
   assert.equal((await s.cli("computers.get", { agent: "kit" })).data.thread, s.kitThread);

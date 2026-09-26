@@ -8,12 +8,17 @@
 // and reused for navigate, click, type, screenshot and evaluate; it reconnects only when the
 // socket actually drops.
 //
-// This talks to the container's Chrome directly over its debugging port (never through Glass,
-// never through a person's browser): `computers.endpoint` hands back `cdp: "http://host:port"`,
-// this resolves that to a WebSocket debugger URL with one HTTP call to `/json/version`, then
-// keeps that one socket for every command against every tab. Flattened auto-attach means one
-// browser-level connection reaches every target with a `sessionId`, so a second tab never needs
-// a second socket.
+// Chrome's own debugging port is never reachable directly (it is loopback-only inside the
+// container): this goes through computerd's authenticated `/cdp/...` proxy instead, the same
+// helper `computers.endpoint` hands hands-desktop its token for. `cdpUrl` is computerd's own
+// `helper.url` with `/cdp` on it; `/json/version` is fetched with the bearer token, and the
+// `webSocketDebuggerUrl` computerd hands back already points back through that same proxy, so
+// connecting it needs only the token appended as `?token=` — a plain WebSocket cannot carry a
+// header, which is the one thing computerd's usual `Authorization: Bearer` check cannot ask of
+// it. One connection is kept per agent's computer and reused for navigate, click, type,
+// screenshot and evaluate; it reconnects only when the socket actually drops. Flattened
+// auto-attach means one browser-level connection reaches every target with a `sessionId`, so a
+// second tab never needs a second socket.
 
 const CALL_TIMEOUT = 30_000;
 const CONNECT_TIMEOUT = 10_000;
@@ -29,12 +34,13 @@ export class CdpError extends Error {
 
 /**
  * One WebSocket to a Chrome instance's browser endpoint, reused across calls.
- * @param {{ cdpUrl: string, fetch?: typeof fetch, WebSocket?: typeof WebSocket, onEvent?: (m: any) => void }} o
+ * @param {{ cdpUrl: string, token?: string, fetch?: typeof fetch, WebSocket?: typeof WebSocket, onEvent?: (m: any) => void }} o
  */
 export class Cdp {
   constructor(o) {
     this.base = String(o.cdpUrl || "").replace(/\/+$/, "");
     if (!/^https?:\/\//.test(this.base)) throw new CdpError("no CDP address: the computer's endpoint did not say where Chrome answers");
+    this.token = o.token ? String(o.token) : "";
     this.fetchImpl = o.fetch || fetch;
     this.WS = o.WebSocket || WebSocket;
     /** @type {Array<(m: any) => void>} every listener sees every event; waitFor adds one of its own. */
@@ -72,17 +78,26 @@ export class Cdp {
     return this.connecting;
   }
 
+  /** Never let the token reach a thrown message: it would otherwise land wherever an error does. */
+  scrub(s) { return this.token ? String(s).split(this.token).join("[token]") : String(s); }
+
   async _connect() {
     /** @type {Response} */
     let res;
-    try { res = await this.fetchImpl(this.base + "/json/version", { signal: AbortSignal.timeout(CONNECT_TIMEOUT) }); }
-    catch (e) { throw new CdpError(`could not reach Chrome at ${this.base}: ${/** @type {Error} */ (e).message}`); }
+    try {
+      res = await this.fetchImpl(this.base + "/json/version",
+        { signal: AbortSignal.timeout(CONNECT_TIMEOUT), headers: this.token ? { authorization: `Bearer ${this.token}` } : {} });
+    } catch (e) { throw new CdpError(this.scrub(`could not reach Chrome at ${this.base}: ${/** @type {Error} */ (e).message}`)); }
+    if (res.status === 401 || res.status === 403) throw new CdpError(`Chrome at ${this.base} refused /json/version: the helper token was not accepted (HTTP ${res.status}). The computer may have been recreated; ask computers.endpoint again.`);
     if (!res.ok) throw new CdpError(`Chrome at ${this.base} answered /json/version with HTTP ${res.status}`);
     const info = await res.json();
     const wsUrl = info && info.webSocketDebuggerUrl;
     if (!wsUrl) throw new CdpError(`Chrome at ${this.base} did not offer a WebSocket debugger URL`);
+    // A plain WebSocket cannot carry an Authorization header, so the token rides the URL instead,
+    // for computerd's WS-upgrade proxy alone to read: never logged, never in an error past here.
+    const authed = this.token ? wsUrl + (wsUrl.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(this.token) : wsUrl;
 
-    const ws = new this.WS(wsUrl);
+    const ws = new this.WS(authed);
     await new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new CdpError(`Chrome at ${this.base} did not finish the WebSocket handshake in time`)), CONNECT_TIMEOUT);
       ws.addEventListener("open", () => { clearTimeout(t); resolve(undefined); }, { once: true });
@@ -183,13 +198,15 @@ export class CdpPool {
     this.byAgent = new Map();
   }
 
-  /** @param {string} agent @param {string} cdpUrl */
-  async get(agent, cdpUrl) {
+  /** @param {string} agent @param {string} cdpUrl @param {string} [token] */
+  async get(agent, cdpUrl, token) {
     let c = this.byAgent.get(agent);
-    if (c && c.base !== String(cdpUrl).replace(/\/+$/, "")) { await c.close(); c = undefined; }
+    // A recreated computer gets a fresh helper token as well as a fresh address (pool.js's
+    // ensure()); either changing means the old connection is talking to a dead computer.
+    if (c && (c.base !== String(cdpUrl).replace(/\/+$/, "") || c.token !== String(token || ""))) { await c.close(); c = undefined; }
     if (c && c.ws && c.ws.readyState === this.WS.OPEN) return c;
     if (!c) {
-      c = new Cdp({ cdpUrl, WebSocket: this.WS, fetch: this.fetchImpl, onEvent: m => this.onEvent(agent, m) });
+      c = new Cdp({ cdpUrl, token, WebSocket: this.WS, fetch: this.fetchImpl, onEvent: m => this.onEvent(agent, m) });
       this.byAgent.set(agent, c);
     }
     await c.connect();
