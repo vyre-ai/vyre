@@ -128,7 +128,16 @@ export class Indexer {
     }
   }
 
-  /** Turns that have no vector yet, most recent sessions first: that is what gets searched. */
+  /**
+   * Turns that have no vector yet, most recent sessions first: that is what gets searched.
+   *
+   * Tried and rejected: embedding assistant turns only (docs/SPEC.md 7.3 measured dense search
+   * over assistant turns). It raised real-corpus hybrid MRR from 0.544 to 0.61, but it regressed
+   * the fixture/fictional labelled set (0.845 to 0.667): its "blind visitors" case is answered by
+   * a USER turn (the audit request itself), and a role-only cut throws that kind of case away
+   * along with the short, noisy real-corpus user turns that were actually the problem. See
+   * docs/work/recall.md for the numbers and the dense_weight retune that replaced this.
+   */
   pending() {
     return /** @type {{ rid: number }[]} */ (this.db.prepare(`
       SELECT t.rowid AS rid FROM recall_turns t JOIN recall_sessions s ON s.id = t.session
