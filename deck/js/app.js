@@ -30,7 +30,8 @@ const ROUTES = [
   ["/agents/:name", "agents"],
   ["/agents/:name/glass", "glass"],
   ["/chat", "chat"],
-  ["/chat/:id", "chat"],
+  ["/chat/:project", "chat"],
+  ["/chat/:project/:thread", "chat"],
   ["/vault", "vault"],
   ["/vault/:place", "vault"],
   ["/vault/:place/:name", "vault"],
@@ -42,6 +43,7 @@ const PLACES = [
   { href: "/projects", label: "Projects", icon: "projects", view: "projects" },
   { href: "/memory", label: "Memory", icon: "memory", view: "memory" },
   { href: "/agents", label: "Agents", icon: "agents", view: "agents" },
+  { href: "/chat", label: "Chat", icon: "chat", view: "chat" },
   { href: "/vault", label: "Vault", icon: "vault", view: "vault" },
   { href: "/settings", label: "Settings", icon: "settings", view: "settings" },
 ];
