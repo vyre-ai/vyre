@@ -19,6 +19,7 @@ private func world(_ v: FakeVyred) {
     v.tool("threads.send") { _ in ["sent": true, "thread": "th1"] }
 }
 
+/// The app holds the wiring for its life; a test must too (AgentRows holds it weakly).
 @MainActor private func wired(_ v: FakeVyred) -> (CapsuleModel, AgentWiring) {
     let home = vyScratch("wiring-\(UUID().uuidString.prefix(6))")
     let vy = VyredClient(socket: v.socket)
@@ -63,7 +64,7 @@ let agentWiringSuite = Suite("agent wiring") { t in
         let v = FakeVyred(); v.start(); defer { v.stop() }
         world(v)
         let got: ([String: Any]?, Int)? = t.wait {
-            let (m, _) = await MainActor.run { () -> (CapsuleModel, AgentWiring) in let x = wired(v); x.0.willShow(front: nil); return x }
+            let (m, w) = await MainActor.run { () -> (CapsuleModel, AgentWiring) in let x = wired(v); x.0.willShow(front: nil); return x }
             _ = await until { !m.catalog.threads.isEmpty }
             await MainActor.run { m.text = "tell the harlow intake thread to run the tests" }
             if !(await until { m.flat.contains { $0.kind == "drive" } }) {
@@ -73,7 +74,7 @@ let agentWiringSuite = Suite("agent wiring") { t in
             }
             await MainActor.run { m.selected = m.flat.firstIndex { $0.kind == "drive" } ?? 0; m.run() }
             _ = await until { !v.callsOf("threads.watch").isEmpty }
-            await MainActor.run { m.didHide() }
+            await MainActor.run { m.didHide(); withExtendedLifetime(w) {} }
             return (v.callsOf("threads.send").first, v.callsOf("threads.watch").count)
         }
         t.eq(VJ.s(got?.0?["text"]), "run the tests")
@@ -85,7 +86,7 @@ let agentWiringSuite = Suite("agent wiring") { t in
         let v = FakeVyred(); v.start(); defer { v.stop() }
         world(v)
         let got: (String?, String?, Int)? = t.wait {
-            let (m, _) = await MainActor.run { () -> (CapsuleModel, AgentWiring) in let x = wired(v); x.0.willShow(front: nil); return x }
+            let (m, w) = await MainActor.run { () -> (CapsuleModel, AgentWiring) in let x = wired(v); x.0.willShow(front: nil); return x }
             _ = await until { m.catalog.box != nil }
             await MainActor.run { m.text = "glass" }
             _ = await until { m.flat.contains { $0.kind == "glass" } }
@@ -98,7 +99,7 @@ let agentWiringSuite = Suite("agent wiring") { t in
                 defer { m.actionMenu.close() }
                 return m.actionMenu.index
             }
-            await MainActor.run { m.didHide() }
+            await MainActor.run { m.didHide(); withExtendedLifetime(w) {} }
             return (row, box, menu)
         }
         t.eq(got?.0, "Open Glass · kit")
