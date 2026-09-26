@@ -4,6 +4,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Glass and agents' computers, live (work/glass-live)
+
+- Giving an agent a computer from the Deck works. `agents.update` names its agent by `name` or
+  `agent` (every other agents tool uses `agent`); the Deck sent `agent` and got "input.name is
+  required". The Deck now sends `name`.
+- Glass's screen connects over the tailnet. The tailnet HTTPS listener had no upgrade handler,
+  so Node passed every WebSocket to the request router, which answered 404. Modules that open a
+  listener get vyred's stream router as `ctx.upgrader(policy)`, and the names listener applies
+  its owner, host and Origin rules to upgrades, with the same caller classes as requests (owner,
+  guest, agent node).
+- A computer that dies on boot fails the checkout with its exit code and the `docker logs` line
+  to read, instead of being marked running; a checkout waits (up to `computers.bootMs`, 30 s)
+  for the screen port to answer. A computer that died while idle freezes to `stopped` rather
+  than staying `running` with "could not freeze ... container is not running".
+- New `computers.restart {agent}` (a new container on the same home volume, so files and
+  Chrome sign-ins stay; fresh passwords; the checkout survives) and `computers.limits {agent,
+  cpus, memory_gb}` (whole cores 1 to 16, whole GB 1 to 64; a person's or the assistant's to set,
+  never an agent's own; applied at the next restart). `computers.get` also returns `screens`,
+  `cpus` and `memory_gb`. The Deck already called both tools, which did not exist.
+- The Deck's computer panel reads what `computers.get` returns (it was drawn from fixture fields
+  no tool had: name, host, disk, network, rules). Glass's title state follows the computer as
+  watching thaws it.
+- `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
+  required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+
 #### Connectors (ADR 0016)
 
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
