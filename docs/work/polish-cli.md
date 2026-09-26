@@ -38,17 +38,15 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- The interactive `vyre` screen (core/cli/screen/) is built and tested (screen.test.js,
-  screen-live.test.js). Idle perf on the test box, in a pty at 120x40, 60 s after start: screen 0.06 s
-  CPU (0.1%), RSS 67 MB; vyred 0.09 s, RSS 74 MB. No poll faster than 60 s (link status); the
-  rest is event-driven with a 250 ms debounce.
+- Stress-drive memory: the 30 min run had 0 functional failures but an RSS slope of 2.85 MB/10 min
+  (80 -> 88.5 MB in the first 15 min, then flat; the 98 MB last sample was the log read-back).
+  Post-run samples are now excluded and /v1/health carries memory; a 20 min rerun on the test
+  box (~/vyre-ci/stress-polish2.json) will say whether the JS heap grows or a native cache fills.
 
 ## Next
 
-- `vyre doctor` done (tests core/cli/commands/doctor.test.js). Stress run in progress on the
-  test box (report ~/vyre-ci/stress-polish.json there); fix what it finds.
-
-- Wait for the lead's review of the screen; polish from feedback. Keep main merged in.
+- Read the rerun; fix a heap leak if there is one, or document the cache warmup.
+- capsule-now to call capsule.report from the app (asked); then doctor's Capsule line is real.
 
 ## Needs from others
 
@@ -56,6 +54,12 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- link (owner: link/tailnet): link.find and link.pair refuse `not_real_home` on a temp home
+  (config/dialogs.js realBoxAllowed).
+- recall: the model runs in embed-worker.js via spawnEmbedder; recall.status gains `progress`;
+  config recall.duty, recall.lowBattery. perf-check --first-run.
+- daemon: /v1/health gains `memory`.
 
 - presence (owner: presence): `presence.keys` rows gain `rp_id`.
 - tailnet: `core/cli/tailnet.js` `status(env, {timeout})`, parse adds `magicDNS`, `certDomains`.
