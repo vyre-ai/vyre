@@ -49,13 +49,15 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `<you>.vyre.run` form; pass Tailscale identity headers to the listener if it can.
 - watchers: use `ctx.vault.fetch(name, { watcher })` from the runtime (manifest
   `needs.vault: ["per-watcher"]`); grants are `vault.grant {name, module: "watchers", watcher}`.
-- switchboard: agents' `auth.vault` items (setup token, API key) come through
-  `ctx.vault.fetch(name)` with a grant to the `switchboard` module.
+- switchboard: agents' `auth.vault` items (setup token, API key) come through the `agents`
+  module's `ctx.vault.fetch(name)` (manifest `needs.vault: ["per-agent"]`), with a grant per item
+  to `agents`.
 - gate (M9): take over adding credentials at the boundary; the relay listener becomes its client.
 
 ## Changed contracts
 
 - `ctx.vault.fetch(name, { field?, watcher? })`: the second argument is new and optional.
+  `needs.vault` may say "per-agent" as well as "per-watcher".
 - `vault.release {name, field?, watcher?}` (internal) returns `{ value }`. It requires an active
   grant for exactly the calling module (and watcher); the manifest declaration alone is not
   enough.

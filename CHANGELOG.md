@@ -42,7 +42,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   - vyred no longer trusts a `module:` caller claimed over HTTP, which let anything on the socket
     call internal tools such as `vault.release`.
   - A tool may declare `callers`; other callers are refused and do not see it in `/v1/tools`.
-  - `ctx.vault.fetch(name, { field, watcher })`.
+  - `ctx.vault.fetch(name, { field, watcher })`, and `needs.vault: ["per-agent"]` alongside
+    "per-watcher", for the agents module, whose item names differ per agent.
   - The daemon client no longer pools connections: the first call after a vyred restart failed
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.

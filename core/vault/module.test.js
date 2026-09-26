@@ -310,3 +310,21 @@ test("vault: a module may put its own items and grant them, and nothing else", a
   assert.equal((await again.as("mcp")("vault.put", { name: "z", value: "y" })).error.code, "denied");
   assert.match((await cli("vault.put", { name: "q", value: "y", grants: ["probe"] })).error.message, /people use vault.grant/);
 });
+
+test("vault: a per-agent module fetches dynamic names, still only with a grant per item", async t => {
+  const { root, d } = await boot(t);
+  writeModule(path.join(root, "modules"), "agents", { does: { tools: ["agents.probe"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) {
+    ctx.tool("agents.probe", { input: { type: "object", properties: { name: { type: "string" } } },
+      run: async ({ name }) => { try { const v = await ctx.vault.fetch(name); return { length: v.length }; } catch (e) { return { error: e.message }; } } });
+    return { async stop() {} };
+  } };`);
+  await d.stop();
+  const again = await boot(t, { keystore: "file" }, { keep: root });
+  t.after(() => again.d.stop());
+  const cli = again.as("cli");
+  const token = fake("setup");
+  await cli("vault.put", { name: "juno-setup-token", value: token });
+  assert.match((await cli("agents.probe", { name: "juno-setup-token" })).data.error, /not granted to agents/);
+  await cli("vault.grant", { name: "juno-setup-token", module: "agents" });
+  assert.deepEqual((await cli("agents.probe", { name: "juno-setup-token" })).data, { length: token.length });
+});
