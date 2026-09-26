@@ -43,7 +43,8 @@ fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
   } },
 }, null, 2));
 
-const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness") };
+// VYRE_NO_DIALOGS: a world never raises Touch ID, a notification or an app on the user's screen.
+const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness") };
 const vyre = (/** @type {string[]} */ args) => spawnSync(process.execPath, [BIN, ...args], { env, encoding: "utf8" });
 
 const { socketPath } = await import("../../core/config/index.js");
