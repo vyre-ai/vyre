@@ -5,11 +5,16 @@
 // skill, and this runs it. Projects, the vault and Memory are used through ctx and are not listed
 // under requires, so the runtime starts without them: a watcher that needs a vault item fails its
 // run with "the vault is not running", and filed items wait for Memory rather than being lost.
+// Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
 import { Runtime, MIGRATIONS } from "./runtime.js";
 
-/** How often vyred looks for due watchers. Cron is minute-grained, so this is plenty. */
-const TICK_MS = 15_000;
+/**
+ * How often vyred looks for due watchers. Cron is minute-grained, so a tick faster than that
+ * finds nothing new; docs/SPEC.md section 2, principle 8 caps idle polling at once a minute, so
+ * this sits right at that floor rather than four times past it.
+ */
+const TICK_MS = 60_000;
 
 const str = { type: "string" };
 const named = { type: "object", required: ["name"], properties: { name: str } };
@@ -21,8 +26,7 @@ export default {
     const rt = new Runtime({
       db: ctx.store.db, dir: ctx.paths.watchers,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
-      call: ctx.call, // The vault grants items per watcher, so every fetch says which watcher is asking.
-      fetch: (name, watcher) => ctx.vault.fetch(name, { watcher }),
+      call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
       log: ctx.log,
     });

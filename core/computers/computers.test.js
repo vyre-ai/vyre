@@ -1,68 +1,42 @@
 // @ts-check
-// The computers module in a real vyred, in process: the fake driver, and stand-ins for the
-// agents and threads modules written with writeModule (the real ones live on the switchboard's
-// branch and are only ever reached through ctx.call). The clock is the pool's own now(), moved by
-// the test; the real sweep timer is off (sweepMs 0).
+// The computers module in a real vyred, in process: the fake driver, and the real agents and
+// switchboard (module name "threads") modules, both core now and no longer fakeable under their
+// own names (core/modules/index.js: "the first found wins"). kit's thread is a real thread,
+// launched through threads.launch with the fake `claude` at core/switchboard/testing/fake-claude.js
+// standing in for the real binary, so threads.lease has an actual row to hold a lease on. The
+// clock is the pool's own now(), moved by the test; the real sweep timer is off (sweepMs 0).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome } from "../../test/helpers.js";
 import { FakeDriver } from "./driver/fake.js";
 
-const AGENTS_SRC = `
-const AGENTS = [
-  { name: "juno", kind: "assistant", computer: false },
-  { name: "kit", kind: "agent", computer: true },
-  { name: "pax", kind: "agent", computer: true },
-];
-export default { async start(ctx) {
-  ctx.tool("agents.list", { input: { type: "object" }, run: async () => AGENTS });
-  ctx.tool("agents.threads", { input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-    run: async ({ agent }) => (agent === "kit" ? [{ id: "th-kit" }] : []) });
-  return { async stop() {} };
-} };`;
-
-// The switchboard's lease, as far as computers can see it: lease, release, and lease.changed
-// with the thread in the event's thread column.
-const THREADS_SRC = `
-export default { async start(ctx) {
-  const held = new Map();
-  const obj = { type: "object", required: ["thread"], properties: { thread: { type: "string" }, surface: { type: "string" } } };
-  ctx.tool("threads.lease", { input: obj, run: async ({ thread, surface }, { caller }) => {
-    const s = surface || caller, previous = held.get(thread) || null;
-    held.set(thread, s);
-    if (previous !== s) ctx.events.emit("lease.changed", { holder: s, previous }, { thread });
-    return { thread, holder: s, previous };
-  } });
-  ctx.tool("threads.release", { input: obj, run: async ({ thread, surface }, { caller }) => {
-    const s = surface || caller;
-    if (held.get(thread) !== s) return { thread, released: false, holder: held.get(thread) || null };
-    held.delete(thread);
-    ctx.events.emit("lease.changed", { holder: null, previous: s }, { thread });
-    return { thread, released: true, holder: null };
-  } });
-  return { async stop() {} };
-} };`;
+const FAKE_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
+fs.chmodSync(FAKE_CLAUDE, 0o755);
 
 /**
- * A vyred with the computers module on the fake driver.
+ * A vyred with the computers module on the fake driver, plus real agents "juno" (the assistant),
+ * "kit" and "pax" (both computer: true), with a real thread launched for kit.
  * @param {any} t
- * @param {{ computers?: any, agents?: boolean, threads?: boolean, root?: string }} [o]
+ * @param {{ computers?: any, agents?: boolean, root?: string }} [o]
  */
 async function boot(t, o = {}) {
   const root = o.root || tempHome(t);
   if (!o.root) {
     t.after(() => FakeDriver.forget(root));
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box",
-      computers: o.computers === undefined ? { driver: "fake", sweepMs: 0, waitMs: 100 } : o.computers }));
-    const mods = path.join(root, "modules");
-    if (o.agents !== false) writeModule(mods, "agents", { does: { tools: ["agents.list", "agents.threads"] } }, AGENTS_SRC);
-    if (o.threads !== false) writeModule(mods, "threads", { does: { tools: ["threads.lease", "threads.release"] }, watches: { emits: ["lease.changed"] } }, THREADS_SRC);
+      computers: o.computers === undefined ? { driver: "fake", sweepMs: 0, waitMs: 100 } : o.computers,
+      modules: { disable: o.agents === false ? ["agents"] : [] } }));
   }
+  const prevEnv = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
+  process.env.VYRE_CLAUDE_BIN = FAKE_CLAUDE;
+  delete process.env.FAKE_CLAUDE_LOG;
+  t.after(() => { for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   /** @type {string[]} */
   const logs = [];
   const d = await start({ root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
@@ -74,13 +48,31 @@ async function boot(t, o = {}) {
   const h = mod.handle;
   const clock = { t: 1_000 };
   h.pool.now = () => clock.t;
+  let kitThread = o.root ? o.kitThread : null;
+  if (o.agents !== false && !o.root) {
+    const agentsMod = d.registry.modules.get("agents");
+    assert.equal(agentsMod?.state, "running", `agents did not start: ${agentsMod?.error}`);
+    for (const [name, kind] of [["juno", "assistant"], ["kit", "agent"], ["pax", "agent"]]) {
+      const r = await d.registry.call("agents.create", { name, kind, projects: kind === "assistant" ? undefined : [], computer: kind === "agent" }, "local");
+      if (r.error) throw new Error(`agents.create ${name}: ${r.error.message}`);
+    }
+    const work = fs.mkdtempSync(path.join(root, "kit-work-"));
+    const launched = await d.registry.call("threads.launch", { agent: "kit", agent_kind: "agent", cwd: work }, "module:computers-test");
+    if (launched.error) throw new Error(`threads.launch for kit: ${launched.error.message}`);
+    kitThread = launched.data.id;
+  }
   /** Every result a test saw, for the secret scan. */
   const results = [];
   const as = (caller) => async (tool, input = {}) => { const r = await call(tool, input, { root, caller }); results.push(r); return r; };
+  // "mcp:agent:kit" claims over HTTP now need the switchboard's own vouch (x-vyre-agent-key
+  // matching a live thread) — that HTTP-layer check is the switchboard's own, tested there.
+  // What this file tests is computers.index.js's own caller-based resolve(), so an agent's
+  // hands call straight through the registry, the way a module reaches another module's tools.
+  const asAgent = (agent) => async (tool, input = {}) => { const r = await d.registry.call(tool, input, `mcp:agent:${agent}`); results.push(r); return r; };
   /** A module's call: the only way to reach the internal tools. */
   const mod_ = async (tool, input = {}) => { const r = await d.registry.call(tool, input, "module:hands-chrome"); results.push(r); return r; };
-  return { root, d, h, clock, logs, results, stop, cli: as("cli"), kit: as("mcp:agent:kit"), juno: as("mcp:agent:juno"), module: mod_,
-    events: () => d.events.since(0, { limit: 1000 }).filter(e => e.type.startsWith("computer.")) };
+  return { root, d, h, clock, logs, results, stop, cli: as("cli"), kit: asAgent("kit"), juno: asAgent("juno"), module: mod_,
+    kitThread, events: () => d.events.since(0, { limit: 1000 }).filter(e => e.type.startsWith("computer.")) };
 }
 
 test("computers: the manifest loads on the box with its tools and the glass stream declared", async t => {
@@ -126,11 +118,11 @@ test("computers: an agent's hands get their own computer; only the assistant may
 
 test("computers: endpoint checks out and thaws; may-act touches", async t => {
   const s = await boot(t);
-  const e = await s.module("computers.endpoint", { agent: "kit", thread: "th-kit" });
+  const e = await s.module("computers.endpoint", { agent: "kit", thread: s.kitThread });
   assert.equal(e.data.cdp, "http://fake-kit:9223");
   assert.equal(e.data.helper.url, "http://fake-kit:7000");
   assert.equal(typeof e.data.helper.token, "string");
-  assert.equal((await s.cli("computers.get", { agent: "kit" })).data.thread, "th-kit");
+  assert.equal((await s.cli("computers.get", { agent: "kit" })).data.thread, s.kitThread);
   s.clock.t += 50_000;
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit", tool: "chrome.click" })).data, { ok: true });
   s.clock.t += 50_000; await s.h.sweep();
@@ -158,18 +150,18 @@ test("computers: pause refuses the hands, resume lets them act", async t => {
 test("computers: take-over through the lease, chatting that does not pause, and the lease ending it", async t => {
   const s = await boot(t);
   // The user chats with kit from the Deck: the lease moves, kit keeps working.
-  await s.d.registry.call("threads.lease", { thread: "th-kit", surface: "deck:laptop" }, "local");
+  await s.d.registry.call("threads.lease", { thread: s.kitThread, surface: "deck:laptop" }, "local");
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit", tool: "chrome.click" })).data, { ok: true });
   // Now they take over from Glass.
   const r = await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
-  assert.deepEqual(r.data, { agent: "kit", surface: "glass:laptop", thread: "th-kit", previous: "deck:laptop" });
+  assert.deepEqual(r.data, { agent: "kit", surface: "glass:laptop", thread: s.kitThread, previous: "deck:laptop" });
   const no = (await s.module("computers.may-act", { agent: "kit", tool: "chrome.click" })).data;
   assert.equal(no.ok, false);
   assert.equal(no.holder, "glass:laptop");
   assert.equal(s.h.keyboard.canType("kit", "glass:laptop"), true);
   assert.equal((await s.cli("computers.get", { agent: "kit" })).data.takeover, "glass:laptop");
   // They pick up the phone: the take-over moves with the lease.
-  await s.d.registry.call("threads.lease", { thread: "th-kit", surface: "phone:pocket" }, "local");
+  await s.d.registry.call("threads.lease", { thread: s.kitThread, surface: "phone:pocket" }, "local");
   assert.equal(s.h.keyboard.canType("kit", "phone:pocket"), true);
   assert.equal((await s.module("computers.may-act", { agent: "kit" })).data.holder, "phone:pocket");
   // The phone gives back.
@@ -177,7 +169,7 @@ test("computers: take-over through the lease, chatting that does not pause, and 
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit" })).data, { ok: true });
   // Taken over again, and the lease released from elsewhere ends it.
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
-  await s.d.registry.call("threads.release", { thread: "th-kit", surface: "glass:laptop" }, "local");
+  await s.d.registry.call("threads.release", { thread: s.kitThread, surface: "glass:laptop" }, "local");
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit" })).data, { ok: true });
   // And once more, left to expire.
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
@@ -187,8 +179,22 @@ test("computers: take-over through the lease, chatting that does not pause, and 
   assert.deepEqual(back, ["gave back", "lease released", "lease expired"]);
   const over = s.events().filter(e => e.type === "computer.taken-over");
   assert.deepEqual(over.map(e => e.payload.surface), ["glass:laptop", "phone:pocket", "glass:laptop", "glass:laptop"]);
-  assert.ok(over.every(e => e.thread === "th-kit"), "take-over events should carry the thread");
+  assert.ok(over.every(e => e.thread === s.kitThread), "take-over events should carry the thread");
   assert.match((await s.cli("computers.takeover", { agent: "kit", surface: "cli" })).error.message, /person's screen/);
+});
+
+test("computers: an agent cannot claim a surface, so it cannot end someone else's take-over", async t => {
+  const s = await boot(t);
+  await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
+  // kit's own hands, refused mid-take-over, try to give the keyboard back to itself.
+  const gone = await s.kit("computers.giveback", { surface: "glass:laptop" });
+  assert.match(gone.error.message, /is an agent, not a person's screen/);
+  assert.equal(s.h.keyboard.canType("kit", "glass:laptop"), true, "the take-over is still held");
+  // Same for taking over in the first place, and for watching as a surface it is not.
+  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  assert.match((await s.kit("computers.watch", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  // The real surface can still give it back.
+  assert.deepEqual((await s.cli("computers.giveback", { agent: "kit", surface: "glass:laptop" })).data, { agent: "kit", handed_back: true });
 });
 
 test("computers: watch hands out a one-use ticket that expires", async t => {
@@ -253,7 +259,7 @@ test("computers: no password or token ever reaches a tool result, an event or a 
   const collect = () => { for (const r of s.h.pool.rows()) { secrets.add(String(r.vnc_password)); secrets.add(String(r.helper_token)); } };
   collect();
   await s.cli("computers.list");
-  await s.kit("computers.checkout", { thread: "th-kit", why: "open a page" }); collect();
+  await s.kit("computers.checkout", { thread: s.kitThread, why: "open a page" }); collect();
   await s.cli("computers.get", { agent: "kit" });
   await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" });
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });

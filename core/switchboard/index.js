@@ -21,6 +21,7 @@ import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
 import { register as registerClaim } from "./claim.js";
+import { Sessions, SESSIONS_MIGRATION } from "./sessions.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +40,7 @@ export const MIGRATIONS = [
    );
    CREATE INDEX threads_asks_open ON threads_asks (state, at);
    CREATE TABLE threads_leases (thread TEXT PRIMARY KEY, surface TEXT NOT NULL, since INTEGER NOT NULL, beat INTEGER NOT NULL);`,
+  SESSIONS_MIGRATION,
 ];
 
 /** Partial text is sent at most this often per thread: 20 a second, not one event per token. */
@@ -58,6 +60,18 @@ const LIVE = ["starting", "working", "waiting", "idle"];
 export function pluginDir() {
   const dir = process.env.VYRE_HARNESS_DIR || path.resolve(HERE, "..", "..", "harness");
   return fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json")) ? dir : null;
+}
+
+/**
+ * What a person approves when they answer an ask: the decision, the tool, where it goes, and the thread.
+ * @param {Switchboard} sb @param {{ ask: string, decision: string }} i
+ */
+export function answerSummary(sb, i) {
+  const a = /** @type {any} */ (sb.asks.get(i.ask));
+  if (!a) return `${i.decision} permission question ${i.ask}`;
+  const t = sb.record(a.thread);
+  const where = a.destination ? ` to ${a.destination}` : "";
+  return `${i.decision === "allow" ? "Allow" : "Deny"} ${a.tool}${where}${a.summary ? `: ${a.summary}` : ""} (thread ${t && t.name ? t.name : String(a.thread).slice(0, 8)})`;
 }
 
 /**
@@ -83,6 +97,9 @@ export class Switchboard {
     this.bin = deps.bin || process.env.VYRE_CLAUDE_BIN || "claude";
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
+    /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
+    this.sessions = new Sessions(deps.db, { children: () => [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean),
+      ...(deps.isClaude ? { isClaude: deps.isClaude } : {}) });
   }
 
   /** Delete a thread's partial text up to a finished turn, after the grace. */
@@ -427,7 +444,7 @@ export default {
       if (agent && sb.kindOf(agent) !== "assistant") throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
     const surfaceOf = (input, caller) => String(input.surface || caller || "vyre");
-    const tool = (name, description, input, run, callers) => ctx.tool(name, { description, input, run, callers });
+    const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str } },
@@ -463,7 +480,10 @@ export default {
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
-      ["cli", "local", "module", "deck", "capsule"]);
+      ["cli", "local", "module", "deck", "capsule"],
+      // And a person must be there right now (presence proof, ADR 0004): the summary is what they
+      // read in the Touch ID dialog or at the terminal before the answer goes through.
+      { presence: { summary: i => answerSummary(sb, i) } });
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
@@ -477,12 +497,17 @@ export default {
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" } } },
       run: async i => sb.launch(i),
     });
-    // For vyred only: is this caller the agent it names? See the route in core/daemon.
+    // For vyred only: is this caller the agent it names ({agent, key}), or in the session it names
+    // ({session, key})? See the route in core/daemon.
     ctx.tool("threads.vouch", {
-      description: "The live thread of this agent that holds this key, or null.", internal: true,
-      input: { type: "object", required: ["agent", "key"], properties: { agent: str, key: str } },
-      run: async i => ({ thread: sb.vouch(i.agent, i.key) }),
+      description: "The live thread of this agent, or this bound session, that holds this key; or null.", internal: true,
+      input: { type: "object", required: ["key"], properties: { agent: str, session: str, key: str } },
+      run: async i => ({ thread: i.agent ? sb.vouch(i.agent, i.key) : i.session ? sb.sessions.vouch(i.session, i.key) : null }),
     });
+    // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
+    tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",
+      { type: "object", required: ["session", "pid"], properties: { session: str, pid: { type: "integer" } } },
+      async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     return { async stop() { await sb.stopAll(); } };

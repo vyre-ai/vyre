@@ -101,13 +101,26 @@ export class DockerDriver {
     return c;
   }
 
-  /** @param {import("./index.js").CreateSpec} spec */
+  /**
+   * @param {import("./index.js").CreateSpec} spec
+   *
+   * Hardening (docs/adr/0004-container-hardening.md): the restricted proxy (box's
+   * docker-socket-proxy) filters which Engine *endpoints* are reachable, not the *bodies* of the
+   * requests it lets through. A create body could still ask for Privileged, a docker.sock bind,
+   * host network or PID, extra capabilities or host devices, and the proxy would forward every
+   * one of them. So none of those is ever read from `spec`, or from anything else — they are
+   * hard-coded off here, the one place a create body is built.
+   */
   async create(spec) {
     const agent = String(spec.agent);
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(agent)) throw new Error(`"${agent}" is not an agent name`);
+    if (String(spec.network || this.network || "") === "host") throw new Error("a computer never runs on the host network");
     const size = spec.size || SIZE;
     // Our labels win over anything passed in, so a computer is always recognisably ours.
-    const labels = { ...(spec.labels || {}), [this.managedLabel]: "true", [this.computerLabel]: agent };
+    // run.vyre=1 is a fixed marker the box's compose stack filters on, independent of whatever
+    // computers.labelPrefix is configured to (the box also expects that set to
+    // "run.vyre.computers" so the prefix-based labels below read run.vyre.computers.computer=…).
+    const labels = { ...(spec.labels || {}), [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" };
     const network = spec.network || this.network;
     const body = {
       Image: spec.image,
@@ -118,17 +131,40 @@ export class DockerDriver {
       ExposedPorts: { [`${PORTS.vnc}/tcp`]: {}, [`${PORTS.cdp}/tcp`]: {}, [`${PORTS.helper}/tcp`]: {} },
       HostConfig: {
         ...(network ? { NetworkMode: network } : {}),
+        // Never host PID: an agent's computer must never see the box's own processes.
+        PidMode: "container",
         NanoCpus: Math.round((spec.cpus || 2) * 1e9),
         Memory: Math.round((spec.memoryMb || 3072) * 1024 * 1024),
         PortBindings: {},
         PublishAllPorts: false,
+        // Never privileged, never a capability beyond the default runtime set. The image runs
+        // Xvnc, Chrome (--no-sandbox, already unprivileged), AT-SPI and xdotool as a normal user
+        // and needs no capability at all; a box that finds otherwise adds exactly the one it
+        // needs through computers.capAdd rather than this file growing a list. Privileged is not
+        // a field CreateSpec has, and never will be: there is no parameter that can turn it on.
+        Privileged: false,
         CapDrop: ["ALL"],
         ...(this.capAdd.length ? { CapAdd: this.capAdd } : {}),
+        // No host devices: an agent's computer has no business touching /dev on the box.
+        Devices: [],
         SecurityOpt: ["no-new-privileges"],
+        // No custom seccomp: Docker applies its own default profile (already deny-by-default for
+        // the syscalls that matter here, e.g. mount, ptrace, the kernel keyring) whenever
+        // SecurityOpt carries no seccomp= entry. A hand-written profile risks silently breaking
+        // Xvnc/xdotool/AT-SPI in ways that can't be diagnosed without a real container to run it
+        // against, which this workstream does not have yet; the default is the safer choice
+        // until there is one to test a tighter profile with.
+        // Read-only root: only the agent's own home volume and the tmpfs mounts below are
+        // writable. Xvnc's socket and lock live under /tmp (the X11 display), the session bus
+        // dbus-launch starts needs /tmp and /run, and nothing outside /home/agent (the Chrome
+        // profile, .vnc, .fluxbox, the log files entrypoint.sh writes) needs to persist or write
+        // anywhere else.
+        ReadonlyRootfs: true,
+        Tmpfs: { "/tmp": "mode=1777,exec", "/run": "mode=0755", "/var/run": "mode=0755" },
         // Chrome keeps its renderers' shared memory in /dev/shm; Docker's 64 MB default crashes tabs.
         ShmSize: 1024 * 1024 * 1024,
         Mounts: [{ Type: "volume", Source: spec.volume, Target: "/home/agent",
-          VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent } } }],
+          VolumeOptions: { Labels: { [this.managedLabel]: "true", [this.computerLabel]: agent, "run.vyre": "1" } } }],
         RestartPolicy: { Name: "no" },
       },
     };

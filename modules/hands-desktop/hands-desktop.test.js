@@ -10,24 +10,19 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import { fileURLToPath } from "node:url";
 import { start } from "../../core/daemon/index.js";
 import { call } from "../../core/daemon/client.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
 
-const AGENTS_SRC = `
-const AGENTS = [
-  { name: "juno", kind: "assistant", computer: false },
-  { name: "kit", kind: "agent", computer: true },
-];
-export default { async start(ctx) {
-  ctx.tool("agents.list", { input: { type: "object" }, run: async () => AGENTS });
-  ctx.tool("agents.threads", { input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-    run: async ({ agent }) => (agent === "kit" ? [{ id: "th-kit" }] : []) });
-  return { async stop() {} };
-} };`;
-
-// The switchboard's lease, exactly as core/computers/computers.test.js stands it in.
+// agents and threads are core modules now (core/agents, core/switchboard) and win any
+// same-named fake under core/modules/index.js's "first found wins" rule, so real agents are made
+// through agents.create in boot() below. computers.endpoint's checkout is given a real thread id
+// (launched with the fake `claude` at core/switchboard/testing/fake-claude.js), since the
+// take-over test below leases that thread for real.
+const FAKE_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "core", "switchboard", "testing", "fake-claude.js");
+fs.chmodSync(FAKE_CLAUDE, 0o755);
 const THREADS_SRC = `
 export default { async start(ctx) {
   const held = new Map();
@@ -119,10 +114,10 @@ async function boot(t) {
     role: "box",
     computers: { driver: "fake", sweepMs: 0, waitMs: 100, local: { host: "127.0.0.1", ports: { helper: port, cdp: port, vnc: port } } },
   }));
-  const mods = path.join(root, "modules");
-  writeModule(mods, "agents", { does: { tools: ["agents.list", "agents.threads"] } }, AGENTS_SRC);
-  writeModule(mods, "threads", { does: { tools: ["threads.lease", "threads.release"] }, watches: { emits: ["lease.changed"] } }, THREADS_SRC);
-
+  const prevEnv = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
+  process.env.VYRE_CLAUDE_BIN = FAKE_CLAUDE;
+  delete process.env.FAKE_CLAUDE_LOG;
+  t.after(() => { for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   /** @type {string[]} */
   const logs = [];
   const d = await start({ root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
@@ -132,19 +127,32 @@ async function boot(t) {
   assert.equal(d.registry.modules.get("computers")?.state, "running", `computers did not start: ${d.registry.modules.get("computers")?.error}`);
   assert.equal(d.registry.modules.get("hands-desktop")?.state, "running", `hands-desktop did not start: ${d.registry.modules.get("hands-desktop")?.error}`);
 
+  for (const [name, kind] of [["juno", "assistant"], ["kit", "agent"]]) {
+    const r = await d.registry.call("agents.create", { name, kind, projects: kind === "assistant" ? undefined : [], computer: kind === "agent" }, "local");
+    if (r.error) throw new Error(`agents.create ${name}: ${r.error.message}`);
+  }
+  const work = fs.mkdtempSync(path.join(root, "kit-work-"));
+  const launched = await d.registry.call("threads.launch", { agent: "kit", agent_kind: "agent", cwd: work }, "module:test");
+  if (launched.error) throw new Error(`threads.launch for kit: ${launched.error.message}`);
+  const kitThread = launched.data.id;
+
   // The pool made a helper token for "kit" the first time it was asked; learn it and teach the
   // fake server to accept it, exactly as computerd would trust the token vyred baked into its env.
   // computers.endpoint is internal (module callers only), so this reaches it the way hands-desktop
   // itself does, through the registry directly rather than the HTTP surface.
-  const first = await d.registry.call("computers.endpoint", { agent: "kit", thread: "th-kit" }, "module:test");
+  const first = await d.registry.call("computers.endpoint", { agent: "kit", thread: kitThread }, "module:test");
   assert.equal(first.error, undefined, JSON.stringify(first));
   fake.setToken(first.data.helper.token);
 
   /** Every result a test saw, for the secret scan. */
   const results = [];
   const as = caller => async (tool, input = {}) => { const r = await call(tool, input, { root, caller }); results.push(r); return r; };
-  return { root, d, fake, port, token: first.data.helper.token, results, stop,
-    cli: as("cli"), kit: as("mcp:agent:kit"),
+  // "mcp:agent:*" claims over HTTP now need the switchboard's own vouch key from a live thread
+  // (core/daemon/index.js); what this file tests is hands-desktop's own caller resolution, so an
+  // agent's hands call straight through the registry, as a module would.
+  const asAgent = agent => async (tool, input = {}) => { const r = await d.registry.call(tool, input, `mcp:agent:${agent}`); results.push(r); return r; };
+  return { root, d, fake, port, token: first.data.helper.token, results, stop, kitThread,
+    cli: as("cli"), kit: asAgent("kit"),
     desktopEvents: () => d.events.since(0, { limit: 1000 }).filter(e => e.type === "desktop.acted") };
 }
 
@@ -186,7 +194,7 @@ test("hands-desktop: act presses a uniquely-named control and verifies the windo
   assert.match(tied.data.why, /2 controls are named/);
   assert.equal(s.fake.acted.length, 0, "an ambiguous target must never reach a click");
 
-  const r = await s.kit("hands-desktop.act", { agent: "kit", thread: "th-kit", name: "Filename", role: "entry", action: "set-text", value: "report.txt" });
+  const r = await s.kit("hands-desktop.act", { agent: "kit", thread: s.kitThread, name: "Filename", role: "entry", action: "set-text", value: "report.txt" });
   assert.equal(r.error, undefined);
   assert.equal(r.data.ok, true);
   assert.equal(s.fake.state.nodes.find(n => n.path === "/3").value, "report.txt");
@@ -197,7 +205,7 @@ test("hands-desktop: act presses a uniquely-named control and verifies the windo
   assert.equal(events[0].payload.ok, false);
   assert.equal(events[1].payload.agent, "kit");
   assert.equal(events[1].payload.ok, true);
-  assert.equal(events[1].thread, "th-kit");
+  assert.equal(events[1].thread, s.kitThread);
 });
 
 test("hands-desktop: a consequential control is refused before any click reaches computerd", async t => {
@@ -217,7 +225,7 @@ test("hands-desktop: a consequential control is refused before any click reaches
 
 test("hands-desktop: a take-over refuses the act (reads still work), and never touches computerd for the click", async t => {
   const s = await boot(t);
-  const to = await call("computers.takeover", { agent: "kit", surface: "glass:laptop" }, { root: s.root, caller: "mcp:agent:juno" });
+  const to = await s.d.registry.call("computers.takeover", { agent: "kit", surface: "glass:laptop" }, "mcp:agent:juno");
   assert.equal(to.error, undefined);
 
   // Reads still work through a take-over: ADR 0003, "an agent looks at its screen ... never
@@ -244,7 +252,7 @@ test("hands-desktop: a stale helper token surfaces a readable error, not a leake
 
 test("hands-desktop: only the assistant may act on another agent's computer", async t => {
   const s = await boot(t);
-  const r = await call("hands-desktop.tree", { agent: "kit" }, { root: s.root, caller: "mcp:agent:pax" });
+  const r = await s.d.registry.call("hands-desktop.tree", { agent: "kit" }, "mcp:agent:pax");
   assert.ok(r.error);
   assert.match(r.error.message, /could not reach|no such tool|pax/i);
 });

@@ -64,7 +64,8 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
   const cli = as("cli"), local = as("local");
   // juno's MCP server calls as "mcp:agent:juno" with its thread's key, which only the Switchboard
   // hands out and vyred checks; the test cannot hold it, so juno's own calls go in-process.
-  const juno = (tool, input = {}) => d.registry.call(tool, input, "mcp:agent:juno");
+  // vyred then tells each tool the thread it verified, which is juno's own (`sess`, below).
+  const juno = (tool, input = {}) => d.registry.call(tool, input, "mcp:agent:juno", { thread: sess, agent: "juno" });
   const running = d.registry.status().filter(m => m.state === "running").map(m => m.name);
   for (const m of ["vault", "gate", "harness", "chat", "threads", "agents", "projects"]) assert.ok(running.includes(m), `${m} is running`);
   for (const m of ["recall", "memory", "learn"]) assert.ok(!running.includes(m), `${m} is off`);
@@ -99,7 +100,7 @@ test("gate + chat: a held email is revised and sent from Mattermost with a crede
 
   // 4. It asks the Gate instead: held, and posted in the session's thread with Send and Discard.
   const draft = { subject: "Re: Intake form rebuild", cc: ["ops@example.com"], body: "Hi Dana, the new intake form is on staging. Could we do a call on Thursday? Alex" };
-  const held = await juno("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: draft, why: "Dana asked for an update", thread: sess, project: "harlow-legal" });
+  const held = await juno("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: draft, why: "Dana asked for an update" });
   assert.equal(held.data.state, "held", JSON.stringify(held));
   const id = held.data.id;
   await sync();

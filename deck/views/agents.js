@@ -48,7 +48,7 @@ const nameOf = (names, slug) => names.get(slug) || slug;
 
 /** "Working in Launch site · Hero copy pass" pieces for an agent. */
 function doing(a, w) {
-  if (a.state !== "working" || !a.thread) return null;
+  if (a.status !== "working" || !a.thread) return null;
   const t = w.threads.get(a.thread);
   const project = t?.project || null;
   const label = [project ? nameOf(w.names, project) : null, t?.name || a.thread].filter(Boolean).join(" · ");
@@ -77,7 +77,7 @@ async function list(ctx) {
   let listErr = null;
 
   const draw = () => {
-    const headRow = head("Every agent", h("span", { class: "lbl" }, listErr ? "" : `${all.filter(a => a.state === "working").length} working`));
+    const headRow = head("Every agent", h("span", { class: "lbl" }, listErr ? "" : `${all.filter(a => a.status === "working").length} working`));
     /** @type {HTMLElement} */ (headRow.firstChild).id = "ag-list-h";
     if (listErr) {
       put(sub, "Agents are kept by the switchboard.");
@@ -253,14 +253,14 @@ async function board(ctx, agentName) {
       : d ? h("div", { class: "ab-status" }, h("span", { class: "ag-dot on", "aria-hidden": "true" }), "Working in ", link(d.href, { class: "link" }, d.label),
         h("span", { class: "faint" }, `${d.started ? ` for ${since(d.started)}.` : "."}${heldText}`))
       : h("div", { class: "ab-status" }, h("span", { class: "ag-dot", "aria-hidden": "true" }), h("span", { class: "faint" }, `Idle. Nothing is running.${heldText}`));
-    const pause = h("button", { type: "button", class: "btn", disabled: stub || a.state !== "working",
-      title: stub ? why(listErr) : a.state !== "working" ? `${nm} is not running anything.` : false,
+    const pause = h("button", { type: "button", class: "btn", disabled: stub || a.status !== "working",
+      title: stub ? why(listErr) : a.status !== "working" ? `${nm} is not running anything.` : false,
       onclick: async () => {
         /** @type {HTMLButtonElement} */ (pause).disabled = true;
         const s = await attempt("agents.stop", { agent: nm });
         if (!ctx.alive()) return;
         if (s.error) { put(pauseStatus, why(s.error)); /** @type {HTMLButtonElement} */ (pause).disabled = false; return; }
-        a.state = "idle";
+        a.status = "idle";
         drawHead();
         put(pauseStatus, `Paused. ${nm} stopped its thread.`);
       } }, `Pause ${nm}`);
@@ -284,7 +284,7 @@ async function board(ctx, agentName) {
     const [r2, w2] = await Promise.all([attempt("agents.list"), world()]);
     if (!ctx.alive()) return;
     const fresh = (Array.isArray(r2.data) ? r2.data : r2.data?.agents || []).find(x => x.name === nm);
-    if (fresh) a.state = fresh.state, a.thread = fresh.thread;
+    if (fresh) a.status = fresh.status, a.thread = fresh.thread;
     w.threads = w2.threads;
     drawHead();
   }, 300); };

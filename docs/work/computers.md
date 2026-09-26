@@ -131,31 +131,52 @@ published on the host; vyred reaches them over the internal network.
   computerd route table; never `docker build`'d, since there is no Linux Docker host in this
   worktree.
 
+- The docker driver is hardened against a privileged or host-mounted container (`driver/docker.js`,
+  `docs/adr/0004-container-hardening.md`): the restricted proxy only filters endpoints, not
+  request bodies, so Privileged, host devices, host network/PID and extra capabilities are never
+  read from anywhere, `CapDrop` is always `ALL`, the root filesystem is read-only with tmpfs for
+  the paths `entrypoint.sh` actually writes, and every container and volume carries a fixed
+  `run.vyre=1` label alongside the existing `labelPrefix` pair. Tested that a create body never
+  carries any of the dangerous fields, including a scan for a `docker.sock` bind. Not yet proven
+  against a real Engine — the read-only-root/tmpfs split is the first thing to check once a
+  container actually boots on the box.
+- Rebuilt `computers.test.js`, `hands-chrome`'s and `hands-desktop`'s tests on the real
+  `core/agents` and `core/switchboard` modules that landed on `main`: the module loader's
+  first-found-wins rule means a same-named test fake is now silently ignored, so the old
+  `writeModule("agents", ...)` / `writeModule("threads", ...)` stand-ins were dead weight after
+  the merge. Tests call the real `agents.create`; the take-over tests that exercise
+  `threads.lease` launch a real thread through switchboard's `testing/fake-claude.js`, per the
+  pattern in `core/switchboard/switchboard.test.js`. Also fixed a real (non-test) bug found along
+  the way: `agents.list`'s shaped rows dropped the `computer` field, so `pool.js`'s `allowed()`
+  refused every real agent regardless of its record — one line in `core/agents/index.js`, outside
+  this workstream's folders, flagged to switchboard.
+
 ## Doing
-- Nothing in parallel right now; waiting on switchboard, deck and the box (below).
+- Glass review (from the `glass` workstream) found real gaps to fix on this side: backpressure on
+  the Xvnc→browser relay, a server-side keepalive replacing the "renew every 30s" take-over
+  contract, RFB close codes, always dropping `SetDesktopSize`/`xvp` regardless of what the client
+  asked for, a per-computer viewer cap, and `entrypoint.sh` hardening (clipboard/cut-text off,
+  stale Chrome singleton locks, password manager off). Also building `computers.shield {agent, on}`
+  and `computers.helper {agent}` as new internal tools for glass's sign-in mode. Not started yet
+  this pass — next up.
 
 ## Next
-- Once switchboard confirms the lease shapes: point `keyboard.js`'s tests at the real
-  `threads.lease` contract instead of the stub, if it differs.
-- Once deck confirms the `deck/glass/` path: the watch/take-over/phone views (vendoring noVNC,
-  or writing straight against `ws.js`'s framing and `computers.watch`'s ticket, whichever deck
-  prefers).
-- Real container runs on the box once the lead says it is ready and names the label prefix. That
-  first run is also the first real validation of the Dockerfile, entrypoint.sh and computerd:
-  expect to find things (AT-SPI's session bus timing, Xvnc's `-SecurityTypes` flag name, whether
-  `chromium --remote-debugging-address=127.0.0.1` actually stays loopback-only under whatever the
-  box's network policy is) that inspection alone could not catch.
+- The glass review fixes above.
+- Real container runs on the box: the stack is up (`/srv/vyre`, compose project `vyre`, label
+  prefix `run.vyre.computers`) and a restricted Docker proxy is reachable at
+  `tcp://docker-api:2375` over an internal network only vyred can reach (per box, 26 Sep). Next
+  concrete step: ask box how to point this worktree's tooling at it and run one real container —
+  first real validation of the Dockerfile, entrypoint.sh, computerd and the hardening above.
 
 ## Needs from others
-- switchboard: confirm `threads.lease` / `threads.release` / `lease.changed` shapes, how to read a
-  thread's live holder, and how to find an agent's current thread (asked 26 Sep, resurfaced same
-  day after a restart). `keyboard.js`'s take-over logic is built and tested against this contract
-  as we understand it from the design doc; it's a stub until switchboard confirms it matches.
-- deck: `deck/glass/` as the Glass folder, a route to mount it, and `connect-src 'self'` covering
-  same-origin `wss:` (asked 26 Sep, resurfaced same day). Nothing written into `deck/` yet,
-  pending that answer.
-- box: the Compose service for the restricted Docker proxy, the internal network, and vyred joined
-  to it.
+- security: `computers.takeover`/`computers.giveback` only check the *named* surface matches the
+  take-over record, never that the caller *is* that surface — an agent (or anything else) can pass
+  any surface string and end a person's take-over mid-action. Asked security to gate both behind
+  whatever HUMAN_ONLY / caller-identity enforcement already exists (asked 26 Sep, unanswered).
+- box: label prefix confirmation — docker.js now sends a fixed `run.vyre: "1"` label on top of the
+  existing `labelPrefix`-based pair, and expects the box's compose config to set
+  `computers.labelPrefix` to `run.vyre.computers` so the prefix-based labels read
+  `run.vyre.computers.computer=<agent>`; flagged for box to confirm that reading is right.
 - gate: the container's egress. Until the Gate exists the network is internal plus whatever the box
   allows; consequential clicks (send, pay, delete) are refused by the hands, not held.
 
@@ -163,3 +184,6 @@ published on the host; vyred reaches them over the internal network.
 - `ctx.upgrade(name, handler)` in `core/modules` and the WebSocket upgrade path
   `/v1/streams/<module>/...` in `core/daemon`: landed on main before this resumed. Glass is its
   first real consumer.
+- `threads.lease`/`threads.release`/`lease.changed`/`agents.list`/`agents.threads`: confirmed
+  against the real, merged switchboard and agents modules (26 Sep) — `keyboard.js` needed no
+  changes, only the tests did.

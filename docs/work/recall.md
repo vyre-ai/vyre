@@ -71,17 +71,47 @@ tests in `the prototype's bin/test/t-recall-append.cjs`, `t-session-names.cjs` a
   57MB, built in 1.05s in the background. Hybrid through the socket p50 41ms, p95 60ms, first
   query 83ms; keyword p50 13ms. Dense scan alone 19ms.
 
+- Eval harness: `recall.eval` and `vyre recall eval <file>` (a5c7e60). Runs a labelled set
+  (question, answer turns) three ways — keyword, dense, hybrid — and reports MRR@10 and
+  recall@10, plus the dense floor checked from both sides. `test/fixtures/recall-eval.json` is
+  a fictional set on the fixture corpus (14 questions, 23 answer turns), fictional set numbers:
+  keyword MRR 0.667/recall 0.714, dense 0.643/0.571, hybrid 0.845/0.821; floor 0.277, best
+  nonsense 0.186 (clean margin).
+
+- Dense index appends new vectors in place instead of rebuilding (ede58f1); a rewrite still
+  rebuilds. Verified by a dedicated test (`dense.builds` stays at 1 across appends, moves to 2
+  only after a rewrite).
+
+- Real-corpus eval, 26 Sep 2026, temp VYRE_HOME, 743 sessions / 24,557 turns / 38,583 dense
+  chunks. Labelled set built from the real index with exactly one `claude -p --model haiku`
+  call (150 passages in one prompt, run in `/tmp/vyre-lab` with its own temp `VYRE_HOME`; kept
+  outside the repo at `/private/tmp/claude-501/vyre-recall-eval/labelled.json`): 97 questions,
+  30 nonsense probes.
+  - keyword: MRR 0.572, recall@10 0.866
+  - dense: MRR 0.327, recall@10 0.515
+  - hybrid: MRR 0.544, recall@10 0.856 (current defaults: floor 0.445, dense_weight 0.25)
+  - floor 0.445 at 38,583 chunks: 38/97 answers score below it (meaning alone can't reach them;
+    keyword and hybrid still do). Weakest answer decile 0.325.
+  - nonsense: 1 of 30 probes cleared the floor (top score 0.494 against floor 0.445); 25/30
+    returned some keyword hit (expected: loose OR-of-words matching common words), 0 reached
+    the top of a hybrid result in a way that mattered in a manual spot check.
+  - dense_weight sweep at floor 0.445 (hybrid MRR / recall@10): 0.15 → 0.560/0.876, 0.25
+    (shipped) → 0.544/0.856, 0.5 → 0.510/0.845, 1 → 0.485/0.763. Lower weight scored best on
+    this one labelled batch; not switched on a single run's numbers.
+  - floor sweep at dense_weight 0.25 (answers below floor / nonsense over floor): 0.40 → 30/97,
+    5/30; 0.444 → 38/97, 1/30; 0.48 → 47/97, 1/30; 0.50 → 51/97, 0/30 clean.
+
 ## Doing
 - Nothing in progress.
 
 ## Next
-- Measure MRR again on the real corpus. There is no eval harness in the prototype folder (the
-  0.195 against 0.142 figure is only quoted in SPEC.md), so one needs writing: labelled queries
-  with a known answer turn, keyword against hybrid.
-- The dense index is rebuilt whole after any pass that wrote turns. Appending the new vectors
-  in place would save a 1 to 6 second background rebuild per active pass.
-- The floor was fitted on two corpora and the margin at 37k chunks is a few hundredths. Worth
-  re-checking with labelled queries once an eval harness exists.
+- The floor margin does not fully hold anymore: at the current cap (0.45) and this corpus size,
+  1 of 30 nonsense probes scored above the floor. Raising the floor to 0.5 (above the current
+  hardcoded cap) makes the nonsense set clean but pushes 51/97 real answers below it instead of
+  38 — those answers stay findable through keyword, since the floor only gates the dense-only
+  reach, but the margin the design doc counted on ("a few hundredths") is gone at this size with
+  a 30-probe nonsense set (the 15-probe run that fit the cap saw none clear it). Worth deciding
+  whether to raise the cap, weight nonsense more heavily than nulls in the fit, or accept it.
 - A grown transcript is still read in full. Reading only the bytes after the last indexed size
   would make passes over one very large live session cheaper.
 - `recall_turns` has no index on `session` (FTS5 UNINDEXED), so `recall.thread` and the append
