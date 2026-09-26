@@ -71,7 +71,9 @@ fun FindScreen() {
 
     val agentList = agents.v.value.orEmpty()
     val names = agentList.mapNotNull { it.str("name") }
+    // The assistant is who plain words go to; it is named by Speaker's rule ("claude" never shows).
     val assistant = agentList.firstOrNull { it.str("kind") == "assistant" }?.str("name")
+    val assistantLabel = sh.vyre.app.data.Speaker.assistant(agentList)
     val sessions = threads.v.value.orEmpty()
     val route = Router.route(q, names)
     val mention = Router.mentionPrefix(q)
@@ -92,7 +94,8 @@ fun FindScreen() {
             launch { val r = runCatching { app.client.call("recall.search", input("q" to searchText, "limit" to 20, "per_session" to 1)).arr.toList() }; found = found.copy(recall = r) }
             launch { val r = runCatching { app.client.call("files.search", input("q" to searchText, "limit" to 20)).at("results").arr.toList() }; found = found.copy(files = r) }
             launch {
-                // memory.relevant over the tailnet needs a room for the main graph (CONTRACT.md 4.2); memory.facts about the words is the fallback.
+                // memory.relevant first: newer boxes take it from the tailnet without a room. An older
+                // box refuses it (CONTRACT.md 4.2), so memory.facts about the words is the fallback.
                 val r = runCatching { app.client.call("memory.relevant", input("text" to searchText, "limit" to 5)).arr.toList() }
                     .recoverCatching { app.client.call("memory.facts", input("about" to searchText, "limit" to 5)).at("facts").arr.toList() }
                 found = found.copy(memory = r)
@@ -154,7 +157,7 @@ fun FindScreen() {
 
     val hint = when (val r = route) {
         is Route.Agent -> if (r.text.isEmpty()) "Enter opens @${r.agent}." else "Enter asks @${r.agent}."
-        is Route.Assistant -> if (assistant != null) "Enter asks $assistant, the assistant." else "No assistant on this box."
+        is Route.Assistant -> if (assistant != null) "Enter asks $assistantLabel, the assistant." else "No assistant on this box."
         is Route.Drive -> targets.firstOrNull()?.let { "Enter types into ${label(it)}, then watches it." } ?: "No session matches \"${r.target}\" yet."
         is Route.Watch -> targets.firstOrNull()?.let { "Enter watches ${label(it)}." } ?: "No session matches \"${r.target}\" yet."
         Route.Empty -> null

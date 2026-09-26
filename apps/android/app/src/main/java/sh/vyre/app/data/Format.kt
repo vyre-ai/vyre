@@ -23,3 +23,13 @@ fun bytes(n: Long?): String {
 }
 
 fun money(usd: Double?): String = if (usd == null) "" else if (usd < 0.01) "under 1 cent" else String.format("$%.2f", usd)
+
+/**
+ * The avatar's letters: the first letters of the owner's first and last words (system.info
+ * `owner.name`, "Alex Rivera" is AR), or the box host's first letter when the box has no name.
+ */
+fun initials(owner: String?, host: String?): String {
+    val words = owner?.trim()?.split(Regex("\\s+"))?.filter { w -> w.firstOrNull()?.isLetterOrDigit() == true }.orEmpty()
+    if (words.isNotEmpty()) return (words.first().take(1) + (if (words.size > 1) words.last().take(1) else "")).uppercase()
+    return host?.trim()?.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "V"
+}

@@ -122,7 +122,7 @@ fun BrandBar(right: String? = null, action: (@Composable () -> Unit)? = null) {
     }
 }
 
-/** The avatar at the right of Now's head: a round tile with the owner's initial; it opens Settings. */
+/** The avatar at the right of Now's head: a round tile with the owner's initials; it opens Settings. */
 @Composable
 fun Avatar(initial: String, onClick: () -> Unit) {
     val c = V.c
@@ -132,7 +132,7 @@ fun Avatar(initial: String, onClick: () -> Unit) {
     ) {
         Box(Modifier.size(32.dp).background(c.raised, androidx.compose.foundation.shape.CircleShape)
             .border(1.dp, c.ruleStrong, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
-            Text(initial.take(1).uppercase().ifEmpty { "V" }, style = Type.button, color = c.text)
+            Text(initial.take(2).uppercase().ifEmpty { "V" }, style = Type.button.copy(letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified), color = c.text)
         }
     }
 }

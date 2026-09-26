@@ -6,6 +6,16 @@ import sh.vyre.app.api.double
 import sh.vyre.app.api.long
 import sh.vyre.app.api.str
 
+/**
+ * Who a line is by, as the transcript labels it (Speaker's rule): the user's messages "you", an
+ * agent's by its name, replies by the thread's agent or the assistant. Null for lines with no speaker.
+ */
+fun speakerOf(l: Line, threadAgent: String?, assistant: String): String? = when (l) {
+    is Line.User -> Speaker.sender(l.surface, assistant)
+    is Line.Assistant -> Speaker.reply(threadAgent, assistant)
+    else -> null
+}
+
 /** A line of the terminal, mirrored. */
 sealed class Line {
     abstract val key: String

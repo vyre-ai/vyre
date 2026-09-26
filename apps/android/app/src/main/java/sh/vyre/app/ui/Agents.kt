@@ -54,7 +54,7 @@ fun AgentsScreen() {
         loadState(load.v, list.isEmpty(), "No agents on this box yet.")
         items(list, key = { "a" + it.str("name") }) { a ->
             val doing = a.str("doing")
-            Row2(a.str("name").orEmpty(), dots(if (a.str("kind") == "assistant") "assistant" else null, doing, a.str("model")),
+            Row2(a.str("name").orEmpty(), dots(if (a.str("kind") == "assistant") "assistant" else null, doing, sh.vyre.app.data.Speaker.model(a.str("model"))),
                 subColor = if (doing == "waiting on your answer") V.c.beacon else null,
                 leading = { Dot(when (doing) { "working", "starting" -> V.c.focus; "waiting on your answer" -> V.c.beaconDot; else -> V.c.label }) },
                 onClick = { nav("agent/" + android.net.Uri.encode(a.str("name").orEmpty())) })
@@ -83,7 +83,7 @@ fun AgentScreen(name: String, back: String, onBack: () -> Unit) {
     Page(top = { BackBar(back, onBack) }) {
         item {
             Text(name, style = Type.h2, color = c.text)
-            Text(dots(a.str("kind"), a.str("doing"), a.str("model"), a.str("auth")), style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
+            Text(dots(a.str("kind"), a.str("doing"), sh.vyre.app.data.Speaker.model(a.str("model")), a.str("auth")), style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
             if (agent.v.error != null) Quiet(agent.v.error!!.plain(), "failed")
             val projects = a.strings("projects")
             val scopeLine = if (projects == listOf("*")) "Every project" else projects.joinToString(", ").ifEmpty { null }

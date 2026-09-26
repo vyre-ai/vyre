@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import sh.vyre.app.api.ApiError
 import sh.vyre.app.api.arr
+import sh.vyre.app.api.at
 import sh.vyre.app.api.input
 import sh.vyre.app.api.plain
 import sh.vyre.app.api.str
@@ -71,16 +72,18 @@ fun NowScreen() {
     val d = load.v.value
     val address by app.prefs.address.collectAsState()
     val host = address?.substringAfter("://")?.trimEnd('/')
+    // The owner's name for the avatar (system.info, owner.name); a box without it gives the host's letter.
+    val owner = rememberLoad("owner") { runCatching { app.client.call("system.info").at("owner").str("name") }.getOrNull() }
     val agentOf = d?.threads?.associate { it.str("id") to it.str("agent") }.orEmpty()
     val working = d?.threads?.filter { it.str("status") in setOf("working", "starting", "waiting") }.orEmpty()
     val needs = (d?.held?.size ?: 0) + (d?.asks?.size ?: 0)
 
-    Page(top = { BrandBar(host) { Avatar(host.orEmpty()) { nav("settings") } } }) {
+    Page(top = { BrandBar(host) { Avatar(sh.vyre.app.data.initials(owner.v.value, host)) { nav("settings") } } }) {
         item {
             Text(if (d == null) " " else needsLine(needs), style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s))
             val assistant = d?.agents?.firstOrNull { it.str("kind") == "assistant" }
             if (assistant != null) Text(buildAnnotatedString {
-                withStyle(SpanStyle(color = V.c.label)) { append(assistant.str("name").orEmpty() + " · ") }
+                withStyle(SpanStyle(color = V.c.label)) { append(sh.vyre.app.data.Speaker.assistant(d.agents) + " · ") }
                 append(assistant.str("doing").orEmpty())
             }, style = Type.monoSmall, color = V.c.secondary, modifier = Modifier.padding(top = 4.dp))
             if (offline) Quiet("Showing what this phone kept. Can't reach the box.", "offline")

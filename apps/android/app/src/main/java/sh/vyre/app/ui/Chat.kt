@@ -62,6 +62,8 @@ import sh.vyre.app.api.str
 import sh.vyre.app.api.flatten
 import sh.vyre.app.data.Line
 import sh.vyre.app.data.Transcript
+import sh.vyre.app.data.Speaker
+import sh.vyre.app.data.speakerOf
 import sh.vyre.app.data.ago
 import sh.vyre.app.data.money
 import sh.vyre.app.design.ButtonKind
@@ -183,6 +185,13 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    // Reply labels: the assistant's name from agents.list or system.info, else "Vyre" (Speaker).
+    val assistant = rememberLoad("assistant-name") {
+        val agents = runCatching { app.client.call("agents.list").arr.toList() }.getOrDefault(emptyList())
+        val info = if (agents.any { it.str("kind") == "assistant" }) null else runCatching { app.client.call("system.info") }.getOrNull()
+        Speaker.assistant(agents, info)
+    }
+    val assistantName = assistant.v.value ?: Speaker.FALLBACK
 
     suspend fun reload() {
         try {
@@ -238,12 +247,12 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
                     VButton("Stop", kind = ButtonKind.Quiet, onClick = { scope.launch { runCatching { app.client.call("threads.stop", input("thread" to id)) }; reload() } })
             }
             Text(record.str("name") ?: "Session", style = Type.h3, color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Label(listOfNotNull(record.str("agent"), status, record.str("model")).joinToString(" · "), Modifier.padding(top = 2.dp, bottom = Space.s))
+            Label(dots(Speaker.reply(record.str("agent"), assistantName), status, Speaker.model(record.str("model"))), Modifier.padding(top = 2.dp, bottom = Space.s))
             Hairline()
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.gutter, vertical = Space.m), verticalArrangement = Arrangement.spacedBy(Space.m)) {
             if (error != null && lines.isEmpty()) item { Quiet(error!!, "failed") }
-            items(lines, key = { it.key }) { l -> LineView(l) }
+            items(lines, key = { it.key }) { l -> LineView(l, speakerOf(l, record.str("agent"), assistantName)) }
             item { Spacer(Modifier.size(1.dp)) }
         }
         Column(Modifier.padding(horizontal = Space.gutter, vertical = Space.s)) {
@@ -273,14 +282,17 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
 }
 
 @Composable
-fun LineView(l: Line) {
+fun LineView(l: Line, who: String?) {
     val c = V.c
     when (l) {
         is Line.User -> Column(Modifier.fillMaxWidth()) {
-            Label(listOfNotNull(if (l.surface == null || l.surface == "android") "You" else "You · ${l.surface}", ago(l.at).takeIf { it.isNotEmpty() }).joinToString(" · "))
+            Label(dots(who ?: Speaker.YOU, ago(l.at)))
             Text(l.text, style = Type.body, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
         }
-        is Line.Assistant -> Md(l.text.ifEmpty { "…" })
+        is Line.Assistant -> Column(Modifier.fillMaxWidth()) {
+            if (who != null) Label(who, Modifier.padding(bottom = 4.dp))
+            Md(l.text.ifEmpty { "…" })
+        }
         is Line.Notice -> Text(l.text, style = Type.small, color = c.label)
         is Line.Tools -> ToolBlock(l)
         is Line.Ask -> AskItem(JsonObject(mapOf("id" to kotlinx.serialization.json.JsonPrimitive(l.ask), "summary" to kotlinx.serialization.json.JsonPrimitive(l.summary),
