@@ -23,8 +23,8 @@ Egress fixes from the e2e run (27 Sep 2026):
 - Fail closed in every case: `core/computers/egressgate.js`, a SOCKS5 gate in front of the
   sidecar that refuses (REP 0x02) unless the sidecar's tailscaled shows the Mac in use as the exit
   node; `computers.egress.status` shows its verdict as `gate`. A key that survives restarts: OAuth
-  client secret or reusable ephemeral key, with `--advertise-tags=tag:vyre-egress` (see the
-  commit log on work/tailnet for the hash). Test box: 63 of 63 on
+  client secret or reusable ephemeral key, with `--advertise-tags=tag:vyre-egress` (62ebce3).
+  Test box: 63 of 63 on
   `core/computers/egressgate.test.js core/computers/egress.test.js core/computers/computers.test.js
   core/computers/pool.test.js test/hygiene.test.js` (the gate's own file 12 of 12), and
   `docker compose -f box/compose.yml -f box/compose.egress.yml --profile computers config` passes
