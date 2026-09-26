@@ -69,7 +69,9 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
 ## Doing
-- Nothing running (world and Chrome stopped). Waiting on the lead and the user's live try.
+- Pushed work/pwa; integrator told the tip is ready. 1cd5346: Create your assistant offers a computer.
+- Waiting for the user to pair his Mac, then: check the phone PWA against his real box, read-only,
+  with the Mac's sessions showing (federation), and fix what looks off.
 
 ## Next
 - Settings > Setup rows could rerun a step in place (polish-cli's suggestion) instead of naming
