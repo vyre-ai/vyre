@@ -215,11 +215,29 @@ export class Dense {
 
   /**
    * The turns closest to a query vector, best chunk per turn, best first.
+   *
+   * `floor` is an absolute cutoff, same as before. `z`, when given, adds a PER-QUERY cutoff on
+   * top of it: mean + z * stddev of this query's own dot products across the scanned corpus,
+   * so nonsense is judged against how spread out ITS scores are, not a constant fitted once at
+   * one corpus size. A real question usually has one or a few outlier turns pulling its top
+   * score well past its own noise floor; nonsense has no such outlier, so its top score sits
+   * close to its own mean. See floorFor's doc comment and docs/work/recall.md for the numbers
+   * this was tuned against. The stats are attached to the returned array (non-enumerable, so it
+   * still serializes and iterates as a plain hit list) for callers that want to inspect them.
+   *
+   * `userWeight` scales a user-role turn's score before ranking (1 = no change). It is a soft
+   * de-emphasis, not an exclusion: the vector is still in the index and can still win if nothing
+   * else is close, which a hard "assistant only" index (tried and reverted, docs/work/recall.md)
+   * could not do without also losing the case where the ONLY near turn is what someone asked in
+   * their own words. Real-corpus user turns are disproportionately short commands and pasted
+   * errors that add noise to the meaning pool without being answers themselves; down-weighting
+   * them recovered most of dense retrieval's real-corpus quality that exclusion did, without the
+   * fictional set's regression (see docs/work/recall.md for both numbers).
    * @param {Float32Array} qv  unit length
-   * @param {{ k?: number, floor?: number, role?: string, keep?: (cwd: string|null) => boolean }} [opts]
-   * @returns {Promise<DenseHit[]>}
+   * @param {{ k?: number, floor?: number, z?: number, role?: string, keep?: (cwd: string|null) => boolean, userWeight?: number }} [opts]
+   * @returns {Promise<DenseHit[] & { stats?: { mean: number, std: number, n: number, effectiveFloor: number } }>}
    */
-  async search(qv, { k = 200, floor = 0, role, keep } = {}) {
+  async search(qv, { k = 200, floor = 0, z, role, keep, userWeight = 1 } = {}) {
     const x = this.index && this.index.gen === this.generation() ? this.index : await this.build();
     const want = role === "user" ? 1 : role === "assistant" ? 2 : 0;
     /** @type {Map<number, boolean>} */
@@ -227,6 +245,7 @@ export class Dense {
     /** @type {Map<number, DenseHit>} */
     const best = new Map();
     const v = x.vecs;
+    let sum = 0, sumSq = 0, n = 0;
     for (let i = 0; i < x.n; i++) {
       if (want && x.role[i] !== want) continue;
       if (keep) {
@@ -237,11 +256,19 @@ export class Dense {
       let dot = 0;
       const base = i * DIM;
       for (let d = 0; d < DIM; d++) dot += v[base + d] * qv[d];
-      if (dot < floor) continue;
+      if (userWeight !== 1 && x.role[i] === 1) dot *= userWeight;
+      sum += dot; sumSq += dot * dot; n++;
       const prev = best.get(x.rid[i]);
       if (!prev || dot > prev.score) best.set(x.rid[i], { rid: x.rid[i], session: x.sessions[x.sess[i]], seq: x.seq[i], score: dot, off: x.off[i] });
     }
-    return [...best.values()].sort((a, b) => b.score - a.score).slice(0, k);
+    const mean = n ? sum / n : 0;
+    const variance = n ? Math.max(sumSq / n - mean * mean, 0) : 0;
+    const std = Math.sqrt(variance);
+    const effectiveFloor = z !== undefined ? Math.max(floor, mean + z * std) : floor;
+    const out = /** @type {DenseHit[] & { stats?: any }} */ (
+      [...best.values()].filter(h => h.score >= effectiveFloor).sort((a, b) => b.score - a.score).slice(0, k));
+    Object.defineProperty(out, "stats", { value: { mean, std, n, effectiveFloor }, enumerable: false });
+    return out;
   }
 }
 

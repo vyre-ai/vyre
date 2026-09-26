@@ -90,19 +90,61 @@ function match(db, expr, { role, cwds, limit }) {
 export function floorFor(/** @type {number} */ n) {
   return Math.min(0.45, Math.max(0.25, 0.10 + 0.075 * Math.sqrt(2 * Math.log(Math.max(2, n)))));
 }
+/**
+ * A second, PER-QUERY floor on top of floorFor's fixed one: mean + z * stddev of this query's
+ * own dot products (see dense.js `search`). Left off (undefined) by default: on the real
+ * labelled set it could not clear the best English-sounding nonsense probes without also
+ * burying real answers (docs/work/recall.md has the sweep), so agreement gating (below) and
+ * `USER_WEIGHT` carry the real fix and this stays a knob for the eval harness to keep testing.
+ */
+export const Z = undefined;
 /** How many turns meaning may add to the pool. */
 export const DENSE_K = 200;
-/** The reciprocal-rank constant: the usual 60, so the top few of each list stay close. */
-const RRF = 60;
 /**
- * How much a dense rank counts against a keyword rank. Swept on 97 real questions with known
- * answers (one turn each, paraphrased by a model from sampled turns) against a 38,583-chunk
- * real corpus, at the shipped floor: hybrid MRR/recall@10 were 0.560/0.876 at 0.15, 0.544/0.856
- * at 0.25, 0.510/0.845 at 0.5, and 0.485/0.763 at 1 (equal weight). Keyword alone scored
- * 0.572/0.866, dense alone 0.327/0.515. Lower weight scored a little higher on this one batch;
- * 0.25 is kept rather than chased down to 0.15 on a single run's numbers. See docs/work/recall.md.
+ * The reciprocal-rank constant. The earlier rank-fusion-k sweep (docs/work/recall.md) tested
+ * only the assistant-only variant at dense_weight 0.05-0.08, where 60 held up; re-swept on the
+ * SHIPPED all-role index at dense_weight 0.2-0.3 it does not: rrf_k pushes a keyword rank down
+ * faster than a dense rank at the SAME rrf_k when dense_weight < 1, so at 60 a candidate ranked
+ * ~5th by keyword but 1st by dense could already outscore the true top keyword answer sitting
+ * alone at rank 0 (score 0.8 vs 0.94 at k=60, worked out in the sweep) — the exact shape of the
+ * "kw wins" failures a differential pass over real queries turned up (recall.md). A smaller k
+ * sharpens the top of BOTH lists relative to their tails, so a lone strong keyword match is no
+ * longer outrun by a weaker one riding dense agreement. Swept 5/8/10/12/20/30/45 x dense_weight
+ * 0.15-0.35 on the real corpus, cross-checked against the fictional set every time: rrf_k 10 at
+ * dense_weight 0.25 (unchanged) was the best point found — real hybrid MRR 0.549 -> 0.597,
+ * recall 0.887 -> 0.897, fictional hybrid MRR/recall unchanged at 0.881/0.821 (no regression),
+ * nonsense false-positive rate unchanged at 1/30 (the floor is untouched by rrf_k). This is the
+ * first change in this pass that clears keyword's own MRR (0.572) outright. See recall.md.
+ */
+export const RRF = 10;
+/**
+ * How much a dense rank counts against a keyword rank. Re-swept after agreement gating (above)
+ * changed what floor-only exclusion is for: on the real labelled set, at USER_WEIGHT 1, hybrid
+ * MRR/recall@10 were 0.58/0.866 at 0.05, 0.57/0.876 at 0.1, 0.549/0.887 at 0.25 (kept), against
+ * keyword's 0.572/0.866. Lower weights get closer to (0.05: past) keyword's MRR on the real
+ * corpus, but every weight under 0.25 also drops the FICTIONAL set's hybrid MRR from 0.881 to
+ * 0.81 (still above the pre-this-branch 0.845, but a real step down from 0.25's own 0.881) —
+ * apparently a rank-ordering threshold in that small a corpus, not a smooth tradeoff. Kept at
+ * 0.25 because the fictional set is the one measurement here that must not regress; re-checked
+ * against the retuned rrf_k (10) above and still the best point. See docs/work/recall.md.
  */
 export const DENSE_WEIGHT = 0.25;
+/**
+ * How much a USER turn's dense score counts, before ranking (1 = unchanged). Tried at 0.5 to
+ * de-emphasise the real corpus's short commands and pasted errors (3,903 user turns next to
+ * 20,654 assistant ones, sharing the same 384-dim space): it recovered most of an outright
+ * "assistant only" index's real-corpus gain without excluding user turns outright, BUT a weight
+ * strong enough to matter (0.5-0.7) also sinks the fictional set's one dense-only case ("blind
+ * visitors" is answered entirely by a USER turn, no assistant turn stands in for it, and its
+ * fake-embedder score has too little margin over the fixture's tiny-corpus floor to survive a
+ * 30-50% cut) below the floor entirely: `recall: meaning alone finds a turn that shares no word
+ * with the question` fails at any weight under about 0.82, at which point it is not doing
+ * anything on the real corpus either. Left at 1 (off) for that reason; DENSE_WEIGHT and the
+ * agreement-gated floor above already clear keyword on the real corpus without it. Kept as an
+ * eval-harness knob in case a future labelled set, or a length-based rather than role-based
+ * version of the same idea, makes it safe. See docs/work/recall.md.
+ */
+export const USER_WEIGHT = 1;
 
 /**
  * Search. Hybrid when there are vectors and an embedder, keyword otherwise; every way the
@@ -133,19 +175,28 @@ export async function search(db, query, embedder = null, dense = null) {
   const pool = new Map();
   [...strict, ...loose].forEach(c => { if (!pool.has(c.rid)) { c.krank = pool.size; pool.set(c.rid, c); } });
 
-  // Meaning, when there is something to compare against.
+  // Meaning, when there is something to compare against. The floor only guards the DENSE-ONLY
+  // reach: a candidate keyword already vouches for is admitted at whatever rank meaning ranked
+  // it, because keyword sharing an actual word with the question is already evidence enough;
+  // the floor exists for the case meaning is the ONLY reason a turn is in the pool at all.
   let used = false;
   if (embedder && dense && query.hybrid !== false) {
     try {
       const qv = await embedder.embed(q);
       const cwds = opts.cwds.map(c => String(c).replace(/\/+$/, "")).filter(Boolean);
       const keep = cwds.length ? (/** @type {string|null} */ cwd) => !!cwd && cwds.some(c => cwd === c || cwd.startsWith(c + "/")) : undefined;
-      const near = await dense.search(qv, { k: DENSE_K, floor: query.floor ?? floorFor(await dense.size()), role: opts.role, keep });
+      const floor = query.floor ?? floorFor(await dense.size());
+      const z = query.z ?? Z;
+      // Unfiltered by the floor: agreement with keyword is itself a way past it, decided below.
+      const near = await dense.search(qv, { k: DENSE_K, floor: -1, role: opts.role, keep, userWeight: query.user_weight ?? USER_WEIGHT });
+      const effectiveFloor = z !== undefined && near.stats ? Math.max(floor, near.stats.mean + z * near.stats.std) : floor;
       used = (dense.stats()?.chunks || 0) > 0;
       const fetch = db.prepare(`SELECT t.rowid AS rid, t.session, t.seq, t.role, t.ts, t.text, s.name, s.title, s.cwd
         FROM recall_turns t JOIN recall_sessions s ON s.id = t.session WHERE t.rowid = ?`);
       near.forEach((h, i) => {
         let c = pool.get(h.rid);
+        const corroborated = Boolean(c);
+        if (!corroborated && h.score < effectiveFloor) return;   // meaning alone, and not close enough
         if (!c) {
           c = /** @type {any} */ (fetch.get(h.rid));
           // The snapshot may be older than the table: a rowid reused for another turn is skipped.
@@ -160,12 +211,13 @@ export async function search(db, query, embedder = null, dense = null) {
   }
   if (!pool.size) return { hits: [], hybrid: used };
 
-  // floor and dense_weight are knobs for the eval harness, not part of the tool's input.
+  // floor, dense_weight and rrf_k are knobs for the eval harness, not part of the tool's input.
   const dw = query.dense_weight ?? DENSE_WEIGHT;
-  const top = (1 + dw) / (RRF + 1);
+  const rrfK = query.rrf_k ?? RRF;
+  const top = (1 + dw) / (rrfK + 1);
   for (const c of pool.values()) {
-    const r = (c.krank !== undefined ? 1 / (RRF + 1 + c.krank) : 0) + (c.drank !== undefined ? dw / (RRF + 1 + c.drank) : 0);
-    c.score = used ? r / top : r * (RRF + 1);
+    const r = (c.krank !== undefined ? 1 / (rrfK + 1 + c.krank) : 0) + (c.drank !== undefined ? dw / (rrfK + 1 + c.drank) : 0);
+    c.score = used ? r / top : r * (rrfK + 1);
   }
 
   const perSession = new Map();
