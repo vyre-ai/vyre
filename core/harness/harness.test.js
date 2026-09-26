@@ -32,6 +32,11 @@ test("rules: a tool that sends as the user asks first and names where it is goin
   assert.equal(rules({ tool: "Bash", input: { command: "git push" }, home: HOME }).decision, null, "the floor is about messages, not code");
 });
 
+test("formatMemory: reads Memory's own item shape, where source is an object", () => {
+  const t = formatMemory([{ id: "a|works_at|b", text: "Dana Reyes works at Harlow Legal", confidence: 0.9, age: "3 weeks", source: { session: "s1", seq: 0, name: "Harlow site rebuild" } }]);
+  assert.match(t, /\(from Harlow site rebuild, 3 weeks, confidence 0\.90\)/);
+});
+
 test("formatMemory: marks memory as memory, with source and age; empty for nothing", () => {
   assert.equal(formatMemory([]), "");
   const t = formatMemory([{ text: "Dana Reyes works at Harlow Legal", source: "Harlow site rebuild", age: "3 weeks", confidence: 0.9 }]);

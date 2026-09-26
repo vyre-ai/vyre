@@ -118,7 +118,9 @@ export function formatMemory(facts) {
   for (const f of facts.slice(0, 5)) {
     const text = String(f.text ?? f.fact ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
     if (!text) continue;
-    const bits = [f.source && `from ${String(f.source).slice(0, 60)}`, f.age && String(f.age), typeof f.confidence === "number" && `confidence ${f.confidence.toFixed(2)}`].filter(Boolean);
+    // Memory gives source as { session, seq, name }; a plain string is accepted too.
+    const src = f.source && typeof f.source === "object" ? f.source.name || f.source.session : f.source;
+    const bits = [src && `from ${String(src).slice(0, 60)}`, f.age && String(f.age), typeof f.confidence === "number" && `confidence ${f.confidence.toFixed(2)}`].filter(Boolean);
     lines.push(`- ${text}${bits.length ? ` (${bits.join(", ")})` : ""}`);
   }
   if (!lines.length) return "";
