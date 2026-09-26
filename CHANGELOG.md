@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box's Deck can approve, seal and delete again
+
+- On a box the Deck is only served at the tailnet address, where calls are `tailnet:<owner>`.
+  Every tool whose callers list named `deck` refused that with 403: approving or discarding a held
+  item, push settings, deleting an agent, sealing a Vault item. `callerAllowed` in core/modules
+  lets the owner's tailnet caller use what the Deck may; agent nodes and guests still may not.
+- Settings shows the address the box is served at (a ts.net name) instead of `<name>.vyre.run`.
+- `agents.list` carries each agent's instructions, so the agent page shows and edits its job.
+- scripts/e2e-headscale: a private-tailnet harness that walks onboarding, the passkey, the Deck
+  and Mac pairing without a Tailscale account.
+
 #### The Capsule is Spotlight's size
 
 - The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it

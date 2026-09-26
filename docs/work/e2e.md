@@ -71,34 +71,82 @@ the tailnet and asked it to pair.
 | 7 | One VYRE_HOME reached by two paths runs two vyreds on one store, and the pidfile names the wrong one | polish-cli |
 | 8 | The Capsule's Electron userData is always ~/Library/Application Support/Vyre, even with a temp VYRE_HOME, so dev and test runs write into the user's real Capsule data | capsule-pro |
 | 9 | A second box on one server needs workarounds: compose.yml fixes the project name, network names (vyre, vyre-computers, vyre-docker-api), the 7300 host port, and compose.build.yml the vyre:local tag. The installer writes /usr/local/bin/vyre. This run used a pre-written .env (COMPOSE_PROJECT_NAME=vyre-e2e) and a compose.e2e.yml override | box/install; only matters for testing beside a live box |
-| 10 | Passkey, Deck, Chat, Agents, Vault and Mac pairing cannot be checked without a real tailnet login (by design, ADR 0002). Checking them needs a tagged, ephemeral auth key for a throwaway node | lead (a decision) |
+| 10 | Passkey, Deck, Chat, Agents, Vault and Mac pairing cannot be checked without a real tailnet login | done on a private headscale tailnet, 27 Sep (below) |
 | 11 | local/capsule changed since the live Capsule zip (2e795b8 vs 16613ae), so the next release.sh rebuilds and uploads Vyre-mac.zip | lead, at release |
 
-## Doing (27 Sep, headscale run)
+| 12 | The box's Deck is called as `tailnet:<owner>`, and every tool whose callers list names `deck` refused it with 403: gate.get/approve/reject (held items could not be approved from the Deck or a phone), push.devices/settings, agents.delete, vault.update (Seal it did nothing) | fixed, 1a7dd2c (`callerAllowed` in core/modules) |
+| 13 | Settings showed `<name>.vyre.run` as the address of a box served at its ts.net name | fixed, 1a7dd2c |
+| 14 | agents.list left out `instructions`, so every agent page said "No instructions yet" and Edit opened empty (saving would erase the job) | fixed, 580122c |
+| 15 | No Deck screen shows `link.pending` or approves a Mac, yet `vyre up`, `vyre link` and `vyre link approve` on the box all say "approve it in the Deck". And link.pair.approve refuses the Mac's own node ("a Mac cannot approve its own pairing"), so the Deck in the Mac's browser cannot approve even through the API. Today a Mac pairs only from another device (a phone) by calling the API by hand | deck/link (a decision, see Needs) |
+| 16 | Vault: after a refused vault.update the editor closes and says nothing; the Deck calls `vault.usage`, which main does not have (404) | vault-deck |
+| 17 | Onboarding: revisiting "Your address" after it serves says "Not reserved yet" until Get your address is pressed again; reopening /onboard without a token (a new browser) shows step 1 empty with Continue disabled and no hint to run `vyre up --print-link` | polish-surfaces |
+| 18 | With Claude skipped, the end screen says "juno is ready when you are" while Agents says "No assistant yet. Onboarding makes one." (none is made without a Claude sign-in) | polish-surfaces |
 
-A private tailnet on the test box: /srv/vyre-e2e (compose project vyre-e2e, label run.vyre.e2e) runs
-headscale 0.26.1, the box (image vyre-e2e:local built from this branch), a stand-in Mac node
-(alex-mac: tailscale + headless Chrome + a role-local vyred) and a phone node (alex-phone). A
-throwaway CA; its cert is trusted only in the e2e Chrome profile's NSS db and in the Mac vyred
-(NODE_EXTRA_CA_CERTS). A test-only shim (VYRE_TAILSCALE_BIN) answers `tailscale cert` from that CA
-and adds CertDomains, since headscale has neither. Scripts there: run1.sh (up to the link),
-run2.sh <link> (onboarding to the Deck), drive.mjs (CDP driver on 127.0.0.1:19300).
+## Headscale run (27 Sep): everything after Tailscale
 
-Works end to end: loopback onboarding, Tailscale sign-in (the page shows headscale's link from
-AuthURL), ts.net address, first passkey at the address (virtual authenticator), Deck pages, a
-Vault item sealed with passkey presence, `vyre up` on the Mac finding the box (link.find).
+A private tailnet on the test server, torn down afterwards. Harness and how to rerun it:
+scripts/e2e-headscale/README.md. headscale 0.29.4; the box from this branch (vyre-e2e:local); a
+stand-in Mac node (tailscale, headless Chrome and a role-local vyred in one namespace) and a phone
+node. A throwaway CA trusted only in the e2e Chrome profile and the Mac vyred. The one shim:
+`tailscale cert` and CertDomains, which headscale lacks.
 
-Fixed here: 1a7dd2c, the box's Deck (caller tailnet:<owner>) was refused by every tool whose
-callers list names deck: gate.get/approve/reject, push.*, agents.delete, vault.update.
+Works end to end, on a clean box with the fixed image (onboarding 75 s):
 
-Next: pair the Mac (approve from the phone node with a synced passkey), tailnet first-run checks,
-tear down (`docker compose --profile mac --profile phone down -v`, rm -rf /srv/vyre-e2e, docker
-rmi vyre-e2e:local).
+| step | result |
+|---|---|
+| loopback onboarding, Claude skipped | fine |
+| Tailscale Connect | the page shows the sign-in link from AuthURL; signing in (registering the node as alex) moves it to done, `vyre.tail0000.ts.net at 100.64.0.2` |
+| address | ts.net fallback, certificate, serving; owner alex@example.com from the node's login |
+| Switch to the address | lands on /onboard/passkey over TLS, caller identified by whois |
+| first passkey | made (virtual authenticator), rpId vyre.tail0000.ts.net |
+| history, devices, Open Vyre | the Deck, "On your tailnet" |
+| Now, Projects, Memory, Agents, Chat, Vault, Settings | load, no console errors after the fixes |
+| Vault | Add item, Seal it, "Confirm it's you", Use passkey: item sealed, history `tailnet:alex@example.com` |
+| Agents | New agent kit with a job; the page shows the job. Talk to kit: "kit cannot start: claude-setup-token is not granted" (no Claude account here) |
+| Mac `vyre up` | finds the box (link.find: cert SAN, /v1/health, whois pin), asks to pair, prints a code |
+| approve in the Mac's own browser | refused: a Mac cannot approve its own pairing (snag 15) |
+| approve on the phone node (passkey synced from the Mac) | approved; the Mac says `linked to alex`; `link.call vault.list` from the Mac returns northwind-mail |
+
+What only a real Tailscale account can prove: the login.tailscale.com sign-in page and its link
+(`up()` only matches login.tailscale.com, so a headscale run relies on AuthURL); `tailscale cert`
+and the "Turn on HTTPS" step; MagicDNS resolving the box's name on a real Mac; Touch ID or a
+synced iCloud passkey instead of the virtual authenticator; Claude-backed Chat and agents; the
+Capsule on macOS.
+
+### Tailnet "verify on first real run" checks (tailscale 1.102.5)
+
+| check | result |
+|---|---|
+| Health: ping line | direct: `pong from vyre (100.64.0.2) via 172.21.0.4:36876 in 1ms`. DERP and peer-relay lines not reachable here (no peer relays in headscale) |
+| Taildrop: `file get --verbose` | `wrote order sheet.txt as /tmp/inbox/order sheet (1).txt (19 bytes)`; with `--wait --loop` each line is prefixed by `waiting for file...` with no newline. parseWrote reads both |
+| Taildrop: TaildropTarget | 1 for the owner's untagged box; 9 for a tagged box, `NoFileSharingReason` empty, and `file cp` says "peer is owned by a different user" |
+| Taildrop: grant form for a tagged box | not checkable: headscale refuses any tailscale.com capability in grants |
+| Grants in whois CapMap | top-level `CapMap`, e.g. `{"vyre.run/cap/vault": [{"items": [...]}], "vyre.run/cap/guest": [{"tools": ["threads.get"]}]}`, for an untagged and a tagged destination. parseWhois matches. Shared-in nodes: not in headscale |
+| Node attributes in Self.CapMap | `drive:share` and `drive:access` appear as keys with value null (drive.js uses hasOwnProperty, so fine). `funnel` is refused by headscale |
+| Taildrive | `tailscale drive share` works; WebDAV at 100.100.100.100:8080 lists `/<tailnet>/`, where the segment is CurrentTailnet.Name (drive.js agrees). Reading a share needs the tailscale.com/cap/drive grant: not checkable |
+| Tailscale SSH | the peer carries `sshHostKeys`; `ssh root@<magicdns name>` in BatchMode gets in with no key. Check mode prints the sign-in URL on stderr and holds, as box add expects |
+| Funnel | `--bg`, `--https`, `--set-path` exist; `funnel status --json` is `{}`; without HTTPS both on and off say "Funnel not available; HTTPS must be enabled" |
+| Egress: compose config | `docker compose config` on compose.yml plus compose.egress.yml passes |
+| Egress: containerboot | runs with read_only, cap_drop ALL and the tmpfs list; tailscaled gets `--state=mem:`; SOCKS5 on :1055 |
+| Egress: through the Mac | yes: 2 MB through SOCKS5 shows on the Mac's tailscale0 |
+| Egress: Mac off the tailnet | fails closed (curl exit 97) |
+| **Egress: Mac stops offering the exit node, or its route is unapproved** | **goes out directly, silently**: 200, 0 bytes on the Mac. The site sees the datacenter address. tailnet should refuse SOCKS while the exit node is not offered (ExitNodeOption false), e.g. in the planned authenticating front |
+| **Egress: restart with a single-use key** | "authkey already used"; the sidecar never comes back. A reusable ephemeral key (or the planned OAuth client) survives restarts |
+| Egress: Chrome with a data: PAC | the computer image's Chromium honours it: a listed site goes through the Mac, others direct, and the listed site fails when egress is down. chromedp/headless-shell ignores every PAC (data: or http), so never test PAC with it |
+| Agent nodes | not built yet (waits on the image change) |
 
 ## Needs from others
 
-- The lead: whether to use a throwaway tailnet node for the checks after Tailscale (snag 10).
+- deck and link (lead decides): a Deck card for `link.pending` with the code and Approve/Deny
+  behind presence (snag 15), and whether the Mac's own browser may approve its own pairing once a
+  passkey proves presence. Without one of these, a user with only a Mac cannot pair it.
+- tailnet: the two egress findings above (direct fallback when the exit node is not offered;
+  single-use key and restarts).
+- vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
 
-None.
+- core/modules: `callerAllowed(callers, caller)`. A `tailnet:<login>` caller (the names listener
+  admits only the owner) may use any tool whose callers list names `deck`; `tailnet:agent:*` and
+  `tailnet-guest:*` may not. The registry and vault.update use it.
+- agents.list: each entry now carries `instructions`.
