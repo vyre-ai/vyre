@@ -14,6 +14,9 @@ struct CapsuleView: View {
     var body: some View {
         VStack(spacing: 0) {
             bar
+            // What waits on the user, when its list or a card is open, or the hint under an empty box.
+            AgentLayout.view(model)
+            if !AgentLayout.deskShown(model) {
             if model.asked != nil { Rule(); answer }
             if model.showsMemory, let m = model.memory { Rule(); MemoryBox(memory: m) }
             if !model.groups.isEmpty || side != nil {
@@ -26,6 +29,7 @@ struct CapsuleView: View {
                     }
                 }
                 .frame(height: max(resultsHeight, side == nil ? 0 : CapsuleLayout.sideMin))
+            }
             }
             if let line = model.line, !line.isEmpty { Rule(); lineView(line) }
         }

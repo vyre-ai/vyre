@@ -113,7 +113,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func height() -> CGFloat {
-        var h = Theme.barHeight
+        var h = Theme.barHeight + AgentLayout.height(model)
+        if AgentLayout.deskShown(model) { return h + ((model.line ?? "").isEmpty ? 0 : 31) }
         if model.asked != nil {
             h += 1 + 12 + 30 + 22 + 12
             if let m = model.askedMemory { h += MemoryBox.height(m) + 4 }
@@ -151,7 +152,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         // A click in another app closes the Capsule, as Spotlight does.
         clickAway = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hide() }
+            // Not while a reply streams or a card is open: the user is reading or editing (pinned).
+            MainActor.assumeIsolated { if self?.model.pinned == true { return }; self?.hide() }
         }
     }
 
@@ -175,6 +177,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func key(_ e: NSEvent) -> Bool {
+        // The waiting list and its cards take their keys first (Agent/PanelKeys.swift).
+        if agentKey(e) { return true }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         // Chords with Option or Control are the extensions' (Option-Return talks). The Capsule's own
         // keys use Command and Shift only, so they win a clash by never reaching here.
@@ -209,7 +213,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         // Losing key to another app's window is the user moving on.
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.panel.isVisible, !self.panel.isKeyWindow, NSApp.keyWindow == nil else { return }
+            guard let self, self.panel.isVisible, !self.panel.isKeyWindow, NSApp.keyWindow == nil, !self.model.pinned else { return }
             self.hide()
         }
     }

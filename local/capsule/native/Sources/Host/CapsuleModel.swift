@@ -51,6 +51,14 @@ public final class CapsuleModel: ObservableObject {
     let home: String
     /// The threads the Capsule holds, released and stopped on hide (Agent/Keeper.swift).
     lazy var keeper = Keeper(vyred: vyred)
+    /// What waits on the user and the card that answers it (Agent/Desk.swift).
+    public lazy var desk: Desk = {
+        let d = Desk(vyred: vyred)
+        d.changed = { [weak self] in self?.objectWillChange.send() }
+        d.who = { [weak self] t in self?.catalog.who(t) }
+        d.projectName = { [weak self] s in self?.catalog.projectName(s) ?? s }
+        return d
+    }()
     private var token = 0
     private var partial: [String: [ResultItem]] = [:]
     private var replySub: VyredSubscription?
@@ -83,6 +91,8 @@ public final class CapsuleModel: ObservableObject {
             guard vyred.isUp else { return }
             self.catalog = await CatalogLoader.load(vyred)
             if Route.mention(self.text).completing != nil { self.search() }
+            self.desk.follow()
+            await self.desk.load()
         }
         if !text.isEmpty { search() }
     }
@@ -93,6 +103,7 @@ public final class CapsuleModel: ObservableObject {
         frecency.flush()
         vyred.follower.setShown(false)
         keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
+        desk.hidden()
         token += 1
         confirming = nil
     }
