@@ -81,7 +81,6 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
     ExposedPorts: { "5900/tcp": {}, "7000/tcp": {} },
     HostConfig: {
       NetworkMode: "vyre-computers",
-      PidMode: "container",
       NanoCpus: 2_000_000_000,
       Memory: 3072 * 1024 * 1024,
       PortBindings: {},
@@ -105,7 +104,8 @@ test("docker: never privileged, never a host mount, never host network or PID, a
   await d.create(spec);
   const body = e.seen[0].body;
   assert.equal(body.HostConfig.Privileged, false);
-  assert.equal(body.HostConfig.PidMode, "container");
+  assert.notEqual(body.HostConfig.PidMode, "host");
+  assert.equal(body.HostConfig.PidMode, undefined, "isolated is the default; there is no other container to share with");
   assert.notEqual(body.HostConfig.NetworkMode, "host");
   assert.deepEqual(body.HostConfig.CapDrop, ["ALL"]);
   assert.deepEqual(body.HostConfig.Devices, []);

@@ -131,8 +131,11 @@ export class DockerDriver {
       ExposedPorts: { [`${PORTS.vnc}/tcp`]: {}, [`${PORTS.helper}/tcp`]: {} },
       HostConfig: {
         ...(network ? { NetworkMode: network } : {}),
-        // Never host PID: an agent's computer must never see the box's own processes.
-        PidMode: "container",
+        // Never host PID: an agent's computer must never see the box's own processes. Docker has
+        // no "isolated, but explicit about it" value — "container" without a target is invalid,
+        // and there is no other container to share with — so the isolated default (omitting the
+        // field entirely) is what it takes; the guard above already refuses `spec.network ===
+        // "host"`, and PidMode has no equivalent input to refuse in the first place.
         NanoCpus: Math.round((spec.cpus || 2) * 1e9),
         Memory: Math.round((spec.memoryMb || 3072) * 1024 * 1024),
         PortBindings: {},
