@@ -53,7 +53,10 @@ version=$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$rep
 
 if [ "$TESTS" = 1 ]; then
   step "suite"
-  (cd "$repo" && npm test >"$work/test.log" 2>&1) || { tail -n 40 "$work/test.log"; fail "npm test (log above)"; }
+  # npm test's own command, with a per-test timeout, so a test that hangs fails with its name
+  # instead of holding the release open (a daemon test once hung for 20 minutes under load).
+  cmd=$(node -e 'process.stdout.write(require(process.argv[1]).scripts.test.replace(/^node --test /, "node --test --test-timeout=180000 "))' "$repo/package.json")
+  (cd "$repo" && sh -c "$cmd" >"$work/test.log" 2>&1) || { grep -B2 -A12 -E '^✖|failing tests' "$work/test.log" | tail -n 60; fail "the suite (log above)"; }
   ok "$(grep -E '^[^ ]+ (tests|pass|fail) ' "$work/test.log" | tr '\n' ' ')"
 fi
 
