@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI on GitHub's free runners
+
+- Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the
+  apps on their own Mac. `node.yml`: the suite and the perf gate on Node 22 and 24 (ubuntu).
+  `capsule-mac.yml`: the Swift helpers, the native Capsule's tests and app once they land, and the
+  Mac-only Node tests (macos). `ios.yml`: xcodegen, then build and unit tests on a simulator.
+  `android.yml`: gradle build and unit tests on JDK 17. The app workflows skip while their folder
+  is absent. Each uploads what it built (Capsule zips, the iOS simulator app, the debug APK), and
+  every workflow can also be run by hand (workflow_dispatch). Replaces `test.yml`, which ran the
+  whole suite on two macOS runners without installing dependencies. `.github/workflows/`, README
+  badges.
+- Docs and comments call the test server "the test box", the prototype's folder "the
+  prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
+  comments only).
+
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
 - Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
