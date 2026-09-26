@@ -12,11 +12,6 @@ import { renderNav } from "./nav.js";
 import { mountSession } from "./session.js";
 import { threadHref, projectHref } from "./lib/routes.js";
 
-// Registered once per page load, not once per visit to /chat: harmless to call again (the
-// browser no-ops a duplicate registration at the same scope), and cheap insurance since a view
-// module can be entered straight from a deep link with nothing else having registered it yet.
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/chat/sw.js").catch(() => {});
-
 /** @param {any} ctx */
 export default async function chat(ctx) {
   const project = ctx.params.project && ctx.params.project !== "_" ? ctx.params.project : null;
