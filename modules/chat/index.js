@@ -12,8 +12,10 @@
 //
 // config.json:
 //   "chat": { "url": "http://mattermost:8065", "team": "vyre", "owner": "alex",
-//             "listen": { "host": "0.0.0.0", "port": 8766 }, "callback": "http://vyred:8766", "poll_ms": 2000,
+//             "listen": { "host": "vyred", "port": 8766 }, "callback": "http://vyred:8766", "poll_ms": 2000,
 //             "deck": "https://alex.vyre.run" }   (optional: held posts get an Edit in Deck link)
+// listen.host must be a name on the compose network (vyred), never 0.0.0.0: that would also bind
+// the listener on tailscale0. Default with no config is 127.0.0.1, which Mattermost cannot reach.
 // Vault: chat-bot-token (the bot's access token) and chat-slash-token (the /vyre command's
 // token), both granted to chat. See SETUP.md.
 
