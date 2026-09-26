@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyWaiting, fromHeld, reply, applyReply, replyText } from "./state.js";
+import { applyWaiting, fromHeld, reply, applyReply, replyText, cancel } from "./state.js";
 
 const ev = (id, type, payload, extra = {}) => ({ id, at: 1000 * id, type, source: "x", project: null, thread: null, payload, ...extra });
 
@@ -59,4 +59,17 @@ test("state: a withdrawn question is an ask.answered with decision cancelled", (
   const w = applyWaiting([], ev(1, "ask.raised", { ask: "a1", tool: "Write", summary: "Write /w/a.txt", destination: "/w/a.txt", reason: null, holder: null }, { thread: "t1" }));
   assert.equal(w[0].sub, "to /w/a.txt");
   assert.deepEqual(applyWaiting(w, ev(2, "ask.answered", { ask: "a1", decision: "cancelled", by: "thread stopped" }, { thread: "t1" })), []);
+});
+
+test("state: a finished turn carries its cost and time, and Stop ends the reply for good", () => {
+  let r = reply("t1");
+  assert.deepEqual([r.cost, r.ms], [null, null]);
+  r = applyReply(r, ev(1, "thread.finished", { ok: true, cost_usd: 0.0021, duration_ms: 900 }, { thread: "t1" }));
+  r = applyReply(r, ev(2, "thread.finished", { ok: true, cost_usd: 0.001, duration_ms: 400 }, { thread: "t1" }));
+  assert.deepEqual([r.cost?.toFixed(4), r.ms], ["0.0031", 400], "costs add up over the reply's turns");
+  let c = cancel(reply("t2"));
+  assert.deepEqual([c.finished, c.ok, c.error], [true, false, "stopped"]);
+  c = applyReply(c, ev(3, "thread.text", { message: "m", delta: "late" }, { thread: "t2" }));
+  c = applyReply(c, ev(4, "thread.stopped", { reason: "stopped" }, { thread: "t2" }));
+  assert.deepEqual([replyText(c), c.error], ["", "stopped"], "nothing after Stop changes it");
 });

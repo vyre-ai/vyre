@@ -35,6 +35,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
   with 200.
 
+#### Link follow-ups
+
+- The tailnet peer that box's listener establishes now reaches the tool. `handler(policy)`
+  forwards the fourth argument `{ node, stableId, login }`, and the router passes it to
+  `registry.call` as `meta.peer`. The box can now tie a pairing and a link key to the Mac's node,
+  and it lets the owner approve a pairing from another of their devices. A `peer` in tool input
+  is still only input.
+- A test drives pairing through the real names listener, with whois simulated. The Mac's node
+  starts the request. Approving from that node is refused, and approving from the phone works.
+  Only the Mac's node collects the key, and the key is refused from any other node.
+- `link.find` on the Mac lists online tailnet peers that answer as a Vyre box. For each one it
+  reads the name on the peer's certificate, because the box answers at `<you>.vyre.run` and
+  checks Host. It pins the connection to that peer's stable ID. `vyre up` can offer pairing from
+  this list.
+- Files: the key rule is narrower. A Keynote document is a folder named `*.key`, and the old rule
+  hid every one. Now only regular files named `*.key` or `*.pem` are refused, plus any file
+  whose first bytes are a private key (PEM, OpenSSH or PuTTY), whatever it is called.
+
 #### Link and files
 
 - `core/link` (module `link`, both roles) makes the Mac and the box one system. The Mac's vyred
@@ -106,6 +124,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- `agents.list` rows carry `computer` again; without it core/computers refused every agent a
+  computer. Found by the computers workstream, which made the same one-line fix on its branch.
+- Lean threads: `threads.start {lean: true}` runs with no Vyre plugin, `--tools ""`,
+  `--strict-mcp-config` and `--setting-sources ""`. Checked on Claude Code 2.1.283 with haiku:
+  "What is 2+2?" cost $0.013 (6.5k tokens of Claude Code's own system prompt), where the
+  Capsule measured $0.027 with the plugin. Not `--bare`, which skips keychain reads and with
+  them a subscription's login.
+- Jobs: internal `threads.launch` takes `plugin: false`, `tools: "none"`, `settings: false` and
+  `once: true`. A one-shot thread stops after its first `thread.finished`, with
+  `thread.stopped {reason: "done"}`. These options are kept on the thread (`threads_runs.opts`),
+  so a resume runs the same way.
+- `ask.answered` carries `tool` and `summary`, so an approval or a denial can teach Learning.
+- `threads.watch {thread, until?: finished|asks|either, notify?, note?}` -> `{watch, fired}` and
+  `threads.unwatch {watch}`. Exactly once, `thread.watched {watch, reason: finished|asked|stopped,
+  notify, note, by, summary?}` is emitted. A stop always fires it, and a thread already stopped
+  fires at once. Watches are rows (`threads_watches`), so they survive a vyred restart.
+- `agents.history {agent?, limit?, before?}`: past exchanges with an agent, or with every agent,
+  newest last: `[{id, at, agent, thread, project, surface, text, answer}]`. `text` is what was
+  sent and `answer` the done replies before the next send. `before` takes an exchange's `id`.
+  Built by the internal `threads.history` from stored `thread.sent` and done `thread.text`
+  events. Guarded like `agents.threads`. This is the shape the Deck's ask view reads.
+- Adopt: `threads.send` to a session the Switchboard did not start (a terminal `claude`) finds its
+  transcript, makes its record (cwd and name from the transcript, `stopped_reason: "adopted"`) and
+  resumes it headless with the lease. Before resuming any thread that is not running here, it
+  refuses with `{sent: false, open_elsewhere: true, note}` if the session is open elsewhere: bound
+  to a running claude that is not ours, named by a running claude's arguments (`--resume <id>`),
+  or its transcript written in the last 30 seconds by anything but our own child
+  (`core/switchboard/adopt.js`).
 - Tools learn the verified thread: `registry.call(tool, input, caller, via)` and
   `run(input, { caller, thread?, agent? })`. vyred sets both for an agent caller whose key it
   vouched. For any other session, the SessionStart hook calls `threads.bind {session, pid}` for
@@ -438,7 +484,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and deletes are safe to repeat). Keychain tests share `core/vault/testing.js`: a keychain with a
   unique name per test, taken off the user's search list under a machine-wide lock, never a
   rewrite of the whole list, and cleanup registered first. Ten parallel runs pass together.
-- Autofill (`docs/adr/0001-autofill.md`): a fill listener (`vault.fill: {host, port}` in
+- Autofill (`docs/adr/0010-vault-autofill.md`): a fill listener (`vault.fill: {host, port}` in
   config) that only paired browser extensions reach. Pairing is a one-time code from `vyre vault
   pair`; nothing is filled until the person unlocks with their unlock passphrase (or the vault
   passphrase, or later Touch ID through the Capsule), sessions end after 10 idle minutes, and a
@@ -516,6 +562,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Result rows look native: each has its real picture (a 24 px box that never moves when the
+  icon lands), its name, where it is, and its kind or the key that takes it, with the selected
+  row in Signal. Vyre's own kinds (agents, the assistant, projects, threads, memory in Recall gold,
+  the vault, box files, held items in Beacon, quick answers) are drawn as one set of glyphs.
+- A question shows "Ask Claude", the assistant and "deeper" as the top rows, each naming its
+  destination. Enter streams the answer in place, rendered from markdown (built node by node,
+  never as HTML), with Copy, a one-press deeper retry, the model, cost and time, and what memory
+  said in gold. Esc stops a streaming answer; the next Esc closes. Follow-ups go to the same
+  thread. Enter pressed before the destination for the new words is worked out shows it and
+  sends nothing.
+- Files rank a little below the same match on an app or a pane, and at most four show beside
+  other results. Icons from the first build were drawn a quarter size; the cache moved to
+  `icons-2`.
+- Real icons, fetched by `bin/local` in batches off the main thread: app bundle icons,
+  system type icons or QuickLook thumbnails for files, each settings pane's own icon (resolved
+  from its extension bundle), and contact photos when Contacts is already allowed. `lib/icons.js`
+  keeps them as 64 px PNGs in a bounded cache (1500 files, 24 MB, least recently used first),
+  keyed by path and mtime.
+- Questions get answers in place: a bare query that reads as a question offers Claude (a fast
+  model, haiku) or the assistant, whichever fits: the assistant first when it names the user's own
+  projects, threads, agents or people. A deeper option runs sonnet. A quick answer is a headless
+  thread started in `<vyred home>/capsule/ask`; follow-ups go to the same thread, `cancel()` stops
+  it, and the reply carries its model, cost and what memory said.
 - `vyre capsule` opens an installed Vyre.app (/Applications or ~/Applications) when there is no
   dist build of this source, and leaves it on its own bundled helpers. Packaged apps declare
   `NSContactsUsageDescription`, without which macOS refuses the Contacts ask silently.

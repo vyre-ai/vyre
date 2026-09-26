@@ -177,7 +177,7 @@ export default {
       run: async (_, { caller }) => {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model,
+        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, computer: a.computer,
           auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) })));
       },
     });
@@ -269,6 +269,16 @@ export default {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
       run: async ({ agent }, { caller }) => { guard(caller, "read other agents"); must(agent); return use("threads.list", { agent }); },
+    });
+
+    ctx.tool("agents.history", {
+      description: "Past conversations with an agent (or every agent): what was asked, the answer, when, and the thread, newest last. before: an exchange id, for the page before it.",
+      input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer" } } },
+      run: async ({ agent, limit, before }, { caller }) => {
+        guard(caller, "read other agents' conversations");
+        if (agent) must(agent);
+        return use("threads.history", { ...(agent ? { agent } : {}), ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
+      },
     });
 
     ctx.tool("agents.stop", {

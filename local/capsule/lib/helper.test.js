@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { LocalHelper, NOT_BUILT, toResults, toDefineResult, firstSentence } from "./helper.js";
+import { iconFile } from "./icons.js";
 
 const FAKE = `
 const mode = process.env.FAKE_MODE || "ok";
@@ -28,6 +29,7 @@ process.stdin.on("data", d => {
     if (req.op === "status") say({ status: "notDetermined" });
     else if (req.op === "define" && req.q === "slow") setTimeout(() => say({ word: "slow", definition: "late" }), 500);
     else if (req.op === "define") say({ word: req.q, definition: "def of " + req.q });
+    else if (req.op === "icons") setTimeout(() => say({ icons: Object.fromEntries(req.items.map(i => [i.key, req.dir + "/" + i.key + ".png"])), size: req.size }), 400);
     else if (req.op === "contacts") say({ contacts: [{ id: "A1", name: "Ann Lee", org: "", emails: ["ann@example.com"], phones: [] }].slice(0, req.limit) });
   }
 });
@@ -67,6 +69,16 @@ test("helper: a slow answer times out as { error }, and the late line is dropped
   assert.deepEqual(await h.define("slow"), { error: "timeout" });
   await new Promise(r => setTimeout(r, 350));         // the late answer arrives and is ignored
   assert.deepEqual(await h.define("ok"), { word: "ok", definition: "def of ok" });
+});
+
+test("helper: icons waits longer than a lookup and passes the batch through", async t => {
+  const { bin, fakeSpawn } = fake(t);
+  const h = new LocalHelper(bin, { spawn: fakeSpawn, timeoutMs: 300 });
+  t.after(() => h.close());
+  await h.status();
+  const a = await h.icons([{ key: "k1", kind: "app", path: "/A.app" }], { dir: "/cache" });
+  assert.deepEqual(a, { icons: { k1: "/cache/k1.png" }, size: 64 }, "400 ms is inside the icons timeout");
+  assert.deepEqual(await h.icons([{ key: "k2", kind: "app" }], { dir: "/cache", timeoutMs: 100 }), { error: "timeout" });
 });
 
 test("helper: a crash answers { error } and the next call after the backoff restarts it", async t => {
@@ -143,4 +155,16 @@ test("helper: the real binary defines a word and reports Contacts status", { ski
   assert.ok(d.definition.length <= 610);
   assert.equal((await h.define("qzxqzxq")).definition, null);
   assert.deepEqual(await h.status(), once);
+});
+
+test("helper: the real binary names icon files as icons.js does", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-local-icons-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const h = new LocalHelper(REAL);
+  t.after(() => h.close());
+  const key = "app:/System/Applications/Calculator.app@1";
+  let a = await h.icons([{ key, kind: "app", path: "/System/Applications/Calculator.app" }, { key: "nope", kind: "file", path: "/nonexistent" }], { dir });
+  if (a.error === "timeout") a = await h.icons([{ key, kind: "app", path: "/System/Applications/Calculator.app" }, { key: "nope", kind: "file", path: "/nonexistent" }], { dir });
+  assert.equal(a.icons[key], path.join(dir, iconFile(key)));
+  assert.equal(a.icons.nope, null);
 });

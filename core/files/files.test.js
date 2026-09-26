@@ -395,3 +395,28 @@ test("files: a pull stops when the file changes underneath it, or is over the li
   put(big, "x".repeat(2000));
   await refused(q.local, "files.fetch", { path: big, source: "box" }, /more than the 1000 byte limit/);
 });
+
+test("files: a Keynote package named *.key is reachable; key files are refused by name or by content", async t => {
+  const { work, vyreHome } = workspace(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
+  // Keynote saves a document as a folder named *.key.
+  put(path.join(work, "talks", "Budget.key", "Index.zip"), "zip");
+  put(path.join(work, "talks", "Budget.key", "preview.jpg"), "jpg");
+  const pkg = await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key") });
+  assert.equal(pkg.data.dir, true);
+  assert.ok(!(await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key", "Index.zip") })).error);
+  // A private key is a key whatever it is called.
+  put(path.join(work, "notes", "server.key"), "budget\n");
+  // Put together at run time, so the source itself never looks like it carries a key.
+  const pk = kind => `-----BEGIN ${kind} ${"PRIVATE"} KEY-----`;
+  put(path.join(work, "notes", "budget-deploy.txt"), `${pk("OPENSSH")}\nnot a real key\n`);
+  put(path.join(work, "notes", "budget-tls"), `${pk("EC")}\nnot a real key\n`);
+  for (const p of ["server.key", "budget-deploy.txt", "budget-tls"]) {
+    await refused(reg, "files.stat", { path: path.join(work, "notes", p) });
+    await refused(reg, "files.preview", { path: path.join(work, "notes", p) });
+    await refused(reg, "files.fetch", { path: path.join(work, "notes", p) });
+  }
+  const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.name);
+  assert.ok(found.includes("Budget.key"));
+  assert.ok(!found.some(n => ["server.key", "budget-deploy.txt", "budget-tls"].includes(n)), found.join());
+});
