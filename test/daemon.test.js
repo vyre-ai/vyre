@@ -319,6 +319,8 @@ test("daemon: vyred checks presence, so a forged caller cannot run a human-only 
 
 test("daemon: the presence challenge route refuses what it cannot start", async t => {
   const root = tempHome(t);
+  // A terminal code is for a Mac (a box takes passkeys only), and Linux defaults to the box.
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const sock = d.paths.socket;

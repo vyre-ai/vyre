@@ -416,7 +416,7 @@ export class Devices {
   /** Sync in a moment (after a local write, or a poke). */
   soon() {
     if (!this.group()) return;
-    setTimeout(() => { this.sync({}, "vault").catch(e => this.vault.log(`vault device sync: ${/** @type {Error} */ (e).message}`)); }, 200).unref();
+    this.vault.later(() => this.sync({}, "vault").catch(e => this.vault.log(`vault device sync: ${/** @type {Error} */ (e).message}`)), 200);
   }
 
   /** Pull on start, after each local item change, and every ten minutes at most. */

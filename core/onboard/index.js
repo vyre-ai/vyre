@@ -14,6 +14,7 @@ import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
+import { lockStatus } from "../names/tailscale.js";
 
 export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -34,6 +35,15 @@ const CREDENTIAL_READERS = ["agents"];
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
+/**
+ * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
+ * `lock init` or `lock sign`. The init line names the Mac's key (which only the Mac can show) and
+ * this box's, and asks for disablement secrets: two for the person, one for Tailscale support.
+ */
+export function lockCommands(boxKey) {
+  return { mac: "tailscale lock", init: `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${boxKey || "<box key>"}` };
+}
+
 /** An agent's name from a display name: "Juno Two" becomes "juno-two". */
 export const slug = s => {
   const v = String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^[^a-z]+|-+$/g, "").slice(0, 31).replace(/-+$/, "");
@@ -244,9 +254,13 @@ export default {
     });
 
     ctx.tool("onboard.tailscale", {
-      description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link.",
-      input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect"] } }),
+      description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on.",
+      input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock"] } }),
       run: async ({ action = "status" }, { caller }) => {
+        if (action === "lock") {
+          const l = await lockStatus();
+          return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) };
+        }
         if (action === "connect") {
           const s = await stepOf("tailscale", caller);
           if (s.state === "done" || !s.installed || !s.operator.ok) return link(s);
