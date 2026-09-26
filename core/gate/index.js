@@ -71,21 +71,21 @@ export default {
     ctx.tool("gate.get", {
       description: "One item in full: the draft, what was finally sent, and what the user changed.",
       input: obj({ id: str }, ["id"]),
-      callers: ["cli", "local", "module"],
+      callers: ["cli", "local", "module", "deck", "capsule"],
       run: input => gate.get(input),
     });
 
     ctx.tool("gate.approve", {
       description: "The user approves a held item, optionally with edits (the fields that changed, `to` included). It is sent now, with the credential added at the boundary.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id"]),
-      callers: ["cli", "local", "module"],
+      callers: ["cli", "local", "module", "deck", "capsule"],
       run: (input, { caller }) => { const c = person(caller); return gate.approve({ ...input, by: input.by || c }); },
     });
 
     ctx.tool("gate.reject", {
       description: "The user discards a held item. Nothing is sent.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
-      callers: ["cli", "local", "module"],
+      callers: ["cli", "local", "module", "deck", "capsule"],
       run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
     });
 
