@@ -88,10 +88,11 @@ export const itemsFor = (items, type) => items.filter(i => (ITEM_KINDS[type] || 
 /**
  * One row per tool for the mode picker: the tools mcp.test listed (read or held, from the hub's
  * own classification) and the ones the person turned off, which the hub no longer lists.
- * @param {{ tool: string, outward: boolean }[]} tools @param {Record<string, string>} mode
+ * A tool that sends can be Held or Off, never Read (the hub refuses it), so its Read is disabled.
+ * @param {{ tool: string, outward: boolean, sends?: boolean }[]} tools @param {Record<string, string>} mode
  */
 export function toolModes(tools, mode = {}) {
-  const out = tools.map(t => ({ tool: t.tool, mode: mode[t.tool] || (t.outward ? "write" : "read"), set: Boolean(mode[t.tool]) }));
+  const out = tools.map(t => ({ tool: t.tool, mode: mode[t.tool] || (t.outward ? "write" : "read"), set: Boolean(mode[t.tool]), sends: Boolean(t.sends) }));
   for (const [tool, m] of Object.entries(mode)) if (m === "off" && !out.some(t => t.tool === tool)) out.push({ tool, mode: "off", set: true });
   return out.sort((a, b) => a.tool.localeCompare(b.tool));
 }
@@ -264,7 +265,8 @@ export async function drawConnections(el, ctx, deps = {}) {
 
   function modeSeg(s, r) {
     return h("div", { class: "seg", role: "group", "aria-label": `Mode for ${r.tool}` },
-      MODE_WORDS.map(([m, word]) => h("button", { type: "button", "aria-pressed": String(r.mode === m), "data-mode": m, onclick: async () => {
+      MODE_WORDS.map(([m, word]) => h("button", { type: "button", "aria-pressed": String(r.mode === m), "data-mode": m,
+        ...(m === "read" && r.sends ? { disabled: true, title: "It sends as you, so it is always held" } : {}), onclick: async () => {
         if (r.mode === m) return;
         const mode = { ...s.policy.mode, [r.tool]: m };
         const x = await attempt("mcp.update", { name: s.name, tools: { ...s.policy, mode } });
@@ -582,7 +584,7 @@ export async function drawConnections(el, ctx, deps = {}) {
 /** mcp.test → what the panel draws. */
 export function pickTest(d) {
   return { ok: d?.ok === true, ms: num(d?.ms) ?? 0, error: str(d?.error),
-    tools: (Array.isArray(d?.tools) ? d.tools : []).filter(t => t && typeof t.tool === "string").map(t => ({ tool: t.tool, outward: t.outward !== false })),
+    tools: (Array.isArray(d?.tools) ? d.tools : []).filter(t => t && typeof t.tool === "string").map(t => ({ tool: t.tool, outward: t.outward !== false, sends: t.sends === true })),
     stderr: strs(d?.stderr).slice(-8) };
 }
 

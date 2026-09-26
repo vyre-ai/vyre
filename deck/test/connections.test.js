@@ -146,12 +146,15 @@ test("Test lists the tools, which are held, and sets a mode with mcp.update", as
   assert.deepEqual(api.of("mcp.test").map(c => c.input), [{ name: "tracker" }]);
   const panel = $(server(el, "tracker"), "[data-test=ok]");
   assert.ok(panel);
-  assert.match(text(panel), /7 tools/);
+  assert.match(text(panel), /8 tools/);
   const pressed = tool => $(panel, `[data-tool=${tool}] button[aria-pressed=true]`).getAttribute("data-mode");
   assert.equal(pressed("create_issue"), "write", "set to write by the person");
   assert.equal(pressed("update_issue"), "write", "outward by the hub's reading: held");
   assert.equal(pressed("list_issues"), "read");
   assert.equal(pressed("archive_board"), "off", "an off tool the hub no longer lists is still shown");
+  assert.equal($(panel, "[data-tool=comment_on_issue] button[data-mode=read]").disabled, true, "a tool that sends is never Read");
+  assert.equal($(panel, "[data-tool=comment_on_issue] button[data-mode=off]").disabled, false);
+  assert.equal($(panel, "[data-tool=list_issues] button[data-mode=read]").disabled, false);
 
   await $(panel, "[data-tool=delete_issue] button[data-mode=off]").click();
   assert.deepEqual(api.of("mcp.update").map(c => c.input), [{ name: "tracker",

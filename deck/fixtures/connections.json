@@ -15,6 +15,7 @@
   ],
   "mcp.test": { "$by": "name", "cases": {
     "tracker": { "ok": true, "ms": 412, "tools": [
+      { "name": "tracker__comment_on_issue", "tool": "comment_on_issue", "outward": true, "sends": true },
       { "name": "tracker__create_issue", "tool": "create_issue", "outward": true },
       { "name": "tracker__delete_issue", "tool": "delete_issue", "outward": true },
       { "name": "tracker__get_issue", "tool": "get_issue", "outward": false },

@@ -20,6 +20,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   without presence it shows the exact `vyre vault grant` line instead. The page only ever holds
   item names, copies only the fields it draws, runs no timer, and redraws on `mcp.*` and
   `google.*` events. Remove asks first. `google.test` calls Google, so it runs only on Test.
+  A tool that sends shows Read disabled, since the hub always holds it; `mcp.test` marks such
+  tools with `sends`.
 - The harness rules no longer ask, and `gate.route` no longer denies an agent, about
   `google_mail_send` in Vyre's own MCP server (`mcp__vyre__` and `mcp__plugin_vyre_vyre__`): the
   google module always holds a send at the Gate, so asking first only added a second prompt for

@@ -531,7 +531,7 @@ export class Hub {
       const c = classify(t, pol.mode && pol.mode[tool], names.get(tool));
       if (c.off) continue;
       out.push({ name: /** @type {string} */ (names.get(tool)), server: r.name, tool, description: cut(String(t.description || ""), 2000),
-        input: isObj(t.inputSchema) ? t.inputSchema : { type: "object" }, outward: c.outward, kind: c.kind, annotations: t.annotations });
+        input: isObj(t.inputSchema) ? t.inputSchema : { type: "object" }, outward: c.outward, kind: c.kind, sends: sends(tool), annotations: t.annotations });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
