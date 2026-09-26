@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
@@ -144,6 +145,31 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
     const r = await get(p);
     assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
   }
+});
+
+test("daemon: a real directory under deck/ with no index.html of its own still gets the shell", async t => {
+  // A view's own folder (deck/chat/, holding JS modules a view imports, not a page) is a real
+  // directory. Before this fix, a bare request for it 404'd instead of falling back to the one
+  // shell every client route shares, the way a path that is not a file at all already did.
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "deck");
+  const probe = path.join(dir, "_daemon-test-no-index");
+  fs.mkdirSync(probe, { recursive: true });
+  fs.writeFileSync(path.join(probe, "module.js"), "// not a page");
+  t.after(() => fs.rmSync(probe, { recursive: true, force: true }));
+
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
+
+  const shell = fs.readFileSync(path.join(dir, "index.html"), "utf8");
+  const r = await get("/_daemon-test-no-index");
+  assert.equal(r.status, 200);
+  assert.equal(r.body, shell);
+  // A real file in that directory is still served as itself, not the shell.
+  const mod = await get("/_daemon-test-no-index/module.js");
+  assert.equal(mod.status, 200);
+  assert.equal(mod.body, "// not a page");
 });
 
 test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", async t => {

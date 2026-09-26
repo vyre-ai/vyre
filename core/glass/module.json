@@ -1,0 +1,18 @@
+{
+  "name": "glass",
+  "version": "0.1.0",
+  "roles": ["box"],
+  "requires": [],
+  "does": { "tools": [
+    "glass.targets", "glass.open", "glass.close", "glass.take", "glass.release",
+    "glass.files.list", "glass.files.stat", "glass.files.preview", "glass.files.download",
+    "glass.files.upload", "glass.files.move", "glass.files.mkdir", "glass.files.trash"
+  ] },
+  "watches": { "emits": [
+    "glass.opened", "glass.closed", "glass.taken", "glass.released",
+    "file.uploaded", "file.moved", "file.trashed", "file.created"
+  ] },
+  "shows": { "deck": ["route:/glass/:target"], "capsule": ["open-glass"], "cli": ["glass"] },
+  "needs": {},
+  "teaches": {}
+}

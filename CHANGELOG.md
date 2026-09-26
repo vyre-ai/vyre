@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Link and the real Tailscale
+
+- `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or
+  `tailscale` on the PATH) for whois and status. A test that ran `vyre up` on a Mac could
+  therefore query the user's real Tailscale. The link now uses `VYRE_TAILSCALE_BIN` when it is
+  set. Under `node --test` it never uses the real binary unless a test opts in with
+  `VYRE_TEST_REAL_TAILSCALE=1`. Without one, whois answers "unknown peer" and the peer list is
+  empty. A test fails if the real app is resolved during tests.
+
 #### Release
 
 - `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
@@ -33,11 +42,35 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
 - `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,
   zip, and a signature check after unzipping; the build output is deleted afterwards.
-  `release-check --perf` runs perf-check too (opt-in: it fails on a loaded machine).
+  `release-check` runs perf-check after the suite (`--skip-perf` to leave it out).
 - `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
   `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
   finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
   with 200.
+
+#### Glass
+
+- ADR 0005: Glass is a module and a set of Deck views on top of computers. RFB over a WebSocket
+  stays the stream (ADR 0003). A hidden tab disconnects, so a background Deck runs no timer.
+- `core/glass` (module `glass`, role box). Tools: `glass.targets`, `open`, `close`, `take`,
+  `release`, and `glass.files.list`, `stat`, `preview`, `download`, `upload`, `move`, `mkdir`,
+  `trash`. Events: `glass.opened`, `closed`, `taken`, `released`, `file.uploaded`, `moved`,
+  `trashed`, `created`, carrying paths and sizes, never content.
+- `glass.take` and `glass.release` declare presence. `take {private: true}` is the private
+  sign-in: it raises the computers shield, and undoes the take-over when the shield is missing.
+  Hand-back leaves a note in the agent's thread (who, how long, the person's note), never what
+  was typed.
+- Files: one guard for every path. Paths are relative, no `..`, no NUL, symlinks must stay
+  inside the root, and secret places (`.vyre`, `.ssh`, `.env*`, keys, Chrome's cookie and
+  login stores) are refused and hidden at any depth. Bytes move only on ticketed
+  `/v1/glass/raw` and `/v1/glass/put` (one use, 60 s, size-bound), served `nosniff` with a
+  sandboxing CSP; only raster images and PDFs are shown inline. An agent reaches only its own
+  computer's files through Glass.
+- `ctx.route(name, fn)`: a raw HTTP route at `/v1/<module>/<name>`, the same shape link uses.
+- `deck/glass`: Screen, Files and a disabled Terminal tab, the take-over bar, Sign in privately,
+  a phone layout with touch gestures, drag and drop upload, and drag-out download. noVNC 1.7.0 is
+  vendored under `deck/glass/vendor/novnc` (MPL 2.0, as separate files); Glass needs an RFB client
+  in the browser and noVNC is the maintained one.
 
 #### Link heartbeat
 
@@ -96,6 +129,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   can serve a raw route on the socket at `/v1/<module>/<name>` (`ctx.route`), which is what a
   stream needs. vyred's stop now closes those connections too.
 - `vyre link`: status, `pair <address>`, `approve <code>`, `deny <id>`, `unpair`.
+
+#### Push
+
+- `core/push` (module `push`, ADR 0011): Web Push to the Deck and the Capsule for `ask.raised`,
+  `gate.held`, `thread.watched` and `lesson.proposed`. The payload is `{kind, title, path, tag, at}`:
+  a fixed title and a Deck path holding only an id, never content. Tools, for people's surfaces
+  only (`cli`, `local`, `deck`, `capsule`): `push.key` -> `{public_key}`, `push.subscribe
+  {subscription, label?}` -> `{device}`, `push.unsubscribe {device|endpoint}`, `push.devices`
+  (never the endpoint), `push.settings {quiet?: {start, end, timezone?}|null, kinds?}`,
+  `push.test {device?}`.
+- VAPID (RFC 8292) and aes128gcm (RFC 8291) use node:crypto only, with no dependency. They match
+  RFC 8291 Appendix A byte for byte. The VAPID private key is made on first use and kept in the
+  Vault as `push-vapid`, granted to `push`. Endpoints must be https on a known push service host.
+  A 404 or 410, or a passed `expirationTime`, drops the device.
 
 #### Switchboard
 

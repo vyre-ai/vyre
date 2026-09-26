@@ -96,10 +96,26 @@ Vyre"). Verified against a rewritten `deck/fixtures/onboard.json`, not yet again
 branch (not merged into this worktree).
 
 Shell hooks landed for the four carve-outs: `deck/chat/` mounts via `deck/views/chat.js` (same
-"not here yet" pattern as Glass) routed at `/chat`, `/chat/:project`, `/chat/:project/:thread` plus
-a rail entry (gate-chat asked where; settled); `/vault/:place` and `/vault/:place/:name` routed;
-`ctx.rail(el)` lets a view fill the rail's lower group. `js/api.js`'s module-name map said `learn`
+"not here yet" pattern as Glass) routed at `/chat`, `/chat/thread/:thread` (a thread with no
+project — added once gate-chat hit the ambiguity: `/chat/:project` and a hypothetical flat
+`/chat/:thread` are both two segments and the router picks by segment count, not content, so they
+can't coexist; `/chat/thread/:thread` is a third, unambiguous, literal-prefixed pattern, listed
+before `/chat/:project/:thread` since match() takes the first same-length pattern that fits),
+`/chat/:project`, `/chat/:project/:thread`, plus a rail entry; `/vault/:place` and
+`/vault/:place/:name` routed; `/glass/:name` alongside `/agents/:name/glass`; `ctx.rail(el)` lets
+a view fill the rail's lower group; `js/api.js` gained `ApiError.detail` (the whole error body,
+not just code/message) and `upload()` (a ticketed-PUT-with-progress, lifted from glass's
+`transfer.js`, which was written to be moved here). `js/api.js`'s module-name map said `learn`
 was named "learning"; it's `learn`.
+
+**Gotcha for the next carve-out that gets its own real subfolder** (gate-chat hit this): vyred's
+`serveDeck()` falls back to the root `deck/index.html` shell only when a path matches no file at
+all. A view folder that is a real directory (`deck/chat/`, `deck/glass/`, …) makes a bare
+`/chat`-style path resolve to that folder's own `index.html` if one exists, or 404 if it doesn't
+— the root shell never gets a chance. gate-chat's fix: keep a byte-identical copy of
+`deck/index.html` inside `deck/chat/` (harmless duplication; `js/app.js` reads `location.pathname`
+itself regardless of which file served it). Any of vault/memory/glass doing the same thing should
+do the same fix if they see a 404 on their own section's bare route.
 
 Now made a real home (2026-09-27): the assistant's name and what it's doing (`agents.list`'s
 `doing`), Recent projects, and an offline read of the last state (`localStorage`, counts and a

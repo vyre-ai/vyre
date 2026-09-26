@@ -19,6 +19,8 @@ import { Pool, MIGRATIONS, NO_DRIVER } from "./pool.js";
 import { Keyboard, isSurface } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
+import { Shield } from "./shield.js";
+import { helper, tellComputerd } from "./helper.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -44,6 +46,7 @@ export default {
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg });
     const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log });
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on) => tellComputerd(pool, agent, on) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -101,7 +104,7 @@ export default {
     };
 
     const surfaceOf = input => {
-      if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device> or phone:<device>`);
+      if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
       return String(input.surface);
     };
 
@@ -197,14 +200,24 @@ export default {
         return pool.endpoint(agent);
       }, { internal: true });
 
-    tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard.",
-      obj({ agent: str, tool: str }), async (i, { caller }) => keyboard.mayAct(await resolve(i, caller), i.tool), { internal: true });
+    tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
+      obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        return shield.mayAct(agent, i.read === true, () => keyboard.mayAct(agent, i.tool));
+      }, { internal: true });
+
+    tool("computers.helper", "Where computerd answers, and its token. Thaws and touches without taking a screen.",
+      obj({ agent: str }), async (i, { caller }) => helper(pool, await resolve(i, caller)), { internal: true });
+
+    tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
+      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true), { internal: true });
 
     return {
-      pool, keyboard, driver, sweep,
+      pool, keyboard, shield, driver, sweep,
       async stop() {
         if (timer) clearInterval(timer);
         keyboard.stop();
+        shield.stop();
         pool.wake();
         if (glass && typeof glass.stop === "function") { try { await glass.stop(); } catch {} }
       },
