@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
+import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -163,9 +164,9 @@ export class Presence {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events?: any, log?: (m: string) => void, platform?: string,
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
-   *           touchid?: any, webauthn?: any, now?: () => number }} opts
+   *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now }) {
+  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env }) {
     this.db = db;
     this.role = role;
     this.network = network;
@@ -176,6 +177,9 @@ export class Presence {
     this.writeTty = write || writeTty;
     this.statTty = statTty || (f => fs.statSync(f));
     this.touchidImpl = touchid;
+    // The real helper shows a system dialog, so it never runs under tests (core/config/dialogs.js).
+    // An injected stand-in shows nothing, so it always may.
+    this.noDialogs = touchid === undefined && !dialogsAllowed(env);
     this.webauthnImpl = webauthn;
     this.now = now || Date.now;
     migrate(db, "presence", MIGRATIONS);
@@ -219,7 +223,7 @@ export class Presence {
   /** The methods this machine can take a proof by right now. */
   async methods() {
     const out = [];
-    if (this.platform === "darwin") {
+    if (this.platform === "darwin" && !this.noDialogs) {
       // The helper is built on first use, which can take a while. A refusal should not wait on
       // that: until it answers, Touch ID is not offered, and the build carries on behind.
       const t = await this.touchid();
@@ -310,6 +314,10 @@ export class Presence {
 
     if (method === "touchid") {
       if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
+      if (this.noDialogs) {
+        this.emit("presence.refused", { tool, method, caller });
+        return { ok: /** @type {false} */ (false), code: NO_DIALOG, message: "Touch ID shows no dialog under tests", methods: await this.methods() };
+      }
       // Checked and taken before any await, so two calls at once cannot both open a dialog.
       if (this.dialogOpen) return refuse("a Touch ID dialog is already open");
       if (this.now() < this.coolUntil) return refuse(`Touch ID was cancelled; try again in ${Math.ceil((this.coolUntil - this.now()) / 1000)}s`);

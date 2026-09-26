@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### No Touch ID prompt, or anything else on screen, under tests
+
+- A test run raised a real Touch ID dialog ("Relax Vyre lesson 1") on the user's screen: presence's
+  Touch ID helper had no test gate. The rule the vault's helpers used now lives in
+  `core/config/dialogs.js` (`dialogsAllowed`: never under `node --test` unless `VYRE_TEST_DIALOGS=1`,
+  never with `VYRE_NO_DIALOGS=1`). A vyred or CLI a test spawns inherits `NODE_TEST_CONTEXT`.
+- Presence never offers or tries the real Touch ID then, and refuses a `touchid` proof with code
+  `no_dialog` (403 on the socket; the CLI does not retry it). `authenticate()` in
+  `core/presence/touchid` refuses before the helper runs, and `swiftHelper()` runs only `--check`.
+  A stand-in injected by a test still runs.
+- The same gate on every other thing that reaches the screen: the browser (`vyre up`, `vyre box add`
+  and the recovery kit, unless `VYRE_OPEN_BIN` names a fake), `vyre capsule`, the Capsule's
+  autostart in vyred, the Capsule's own `/usr/bin/open` (a copy of the rule in
+  `local/capsule/lib/dialogs.js`, since the packaged app carries no `core`), the hands-mac
+  Accessibility helper, and `security` on the login keychain (a test keychain file still works).
+
 #### Presence: a person proves they are there (ADR 0004)
 
 - A model could approve its own held email. The caller is only a header on a socket the user

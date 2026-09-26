@@ -321,3 +321,18 @@ test("presence: a session proves reveal, copy and TOTP for a while, on one devic
   assert.ok(p.closeSession(s3.session));
   assert.equal((await p.verify({ ...reveal, proof: { method: "session", id: s3.session, secret: s3.secret } })).ok, false, "closed");
 });
+
+test("presence: under tests the real Touch ID is never offered or tried; the refusal says no_dialog", async t => {
+  // touchid left undefined is the real helper, which shows a system dialog.
+  const { p } = setup(t, { platform: "darwin", touchid: undefined });
+  assert.ok(!(await p.methods()).includes("touchid"));
+  const r = await p.verify({ ...APPROVE, caller: "cli", proof: { method: "touchid" } });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, "no_dialog");
+  assert.equal(p.touchidImpl, undefined, "the helper module was not even loaded");
+  // A stand-in shows nothing, so tests that inject one still reach it.
+  let asked = 0;
+  const { p: faked } = setup(t, { platform: "darwin", touchid: { available: async () => true, authenticate: async () => { asked++; return { ok: true }; } } });
+  assert.equal((await faked.verify({ ...APPROVE, caller: "cli", proof: { method: "touchid" } })).ok, true);
+  assert.equal(asked, 1);
+});
