@@ -17,6 +17,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { start } from "../daemon/index.js";
+import { HUMAN_ONLY } from "../presence/index.js";
 import { call, request } from "../daemon/client.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { fakeComputerd } from "./providers/fake.js";
@@ -534,4 +535,12 @@ test("glass: runs in vyred beside the real computers module, and serves raw byte
   assert.deepEqual(raw, { status: 200, body: "hi there", type: "application/octet-stream" });
   const again = await request("GET", dl.data.path, undefined, { root });
   assert.equal(again.error.code, "bad_ticket");
+});
+
+test("glass: taking the keyboard needs presence, handing it back does not", async t => {
+  const s = await boot(t);
+  assert.ok(s.registry.tools.get("glass.take").presence, "take asks for a passkey");
+  assert.ok(!s.registry.tools.get("glass.release").presence && !HUMAN_ONLY.has("glass.release"), "hand back never does");
+  assert.equal((await s.deck("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error, undefined);
+  assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
 });
