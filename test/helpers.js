@@ -14,8 +14,14 @@ export function tempHome(t) {
   if (path.resolve(dir) === path.resolve(real)) throw new Error("a test tried to use the real ~/.vyre");
   const prev = process.env.VYRE_HOME;
   process.env.VYRE_HOME = dir;
+  // No test reaches the user's real Tailscale: unless a test set its own fake, point the binary at
+  // a path that does not exist, which every caller treats as "no tailnet". Child processes a test
+  // spawns inherit it.
+  const prevTs = process.env.VYRE_TAILSCALE_BIN;
+  if (!prevTs) process.env.VYRE_TAILSCALE_BIN = path.join(dir, "no-tailscale");
   t.after(async () => {
     if (prev === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = prev;
+    if (prevTs === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prevTs;
     // A test that ran `vyre up` in a child process may still have that vyred running: after-hooks
     // run in the order they were added, so this cleanup runs before the test's own `vyre down`.
     // Deleting the home under a live vyred orphaned it (fourteen of them, found running). So stop
