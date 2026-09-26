@@ -58,7 +58,7 @@ export default {
         : null;
       listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
         onRelay: async (env, meta) => vault.onRelay(env, byWhois ? { ...meta, login: await byWhois(meta.remoteAddress) } : meta),
-        onSync: env => vault.shared.onSync(env) });
+        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
@@ -247,6 +247,8 @@ export default {
 
     const kits = shareTools.register({ ctx, vault, tool });
     vaultsTools.register({ vault, tool });
+    // Pull from homes on start, after each local write, on a poke, and every ten minutes at most.
+    if (!vault.guarded) vault.devices.start();
 
     const surfaces = registerSurfaces({ ctx, vault });
 
@@ -256,6 +258,7 @@ export default {
       ssh: cli.ssh,
       async stop() {
         await kits.stop();
+        vault.devices.stop();
         await cli.stop();
         vault.lock();
         await surfaces.stop();

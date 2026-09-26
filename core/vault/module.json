@@ -76,7 +76,11 @@
       "vault.members.role",
       "vault.members.remove",
       "vault.vaults.rotate",
-      "vault.move"
+      "vault.move",
+      "vault.device.join",
+      "vault.device.approve",
+      "vault.device.list",
+      "vault.device.sync"
     ]
   },
   "watches": {
@@ -110,7 +114,8 @@
       "vault.member-added",
       "vault.member-removed",
       "vault.key-rotated",
-      "vault.sync-conflicted"
+      "vault.sync-conflicted",
+      "vault.device-joined"
     ]
   },
   "shows": {

@@ -273,6 +273,14 @@ export class Shared {
     let me;
     try { await this.vault.key(); me = await this.me(); } catch { return deny(503, "locked", "this vault is locked"); }
     const v = env && typeof env.vault === "string" ? /** @type {any} */ (this.db.prepare("SELECT * FROM vault_shared WHERE id = ?").get(env.vault)) : null;
+    // A poke from a vault's home: something changed there, so pull soon.
+    if (v && env.op === "poke" && !this.isHome(v, me) && v.role !== "removed") {
+      if (env.from !== v.owner_sign) return deny(403, "denied", "only the vault's home pokes");
+      const why = relay.checkSync(env, { audience: this.vault.relayUrl || "", seen: this.vault.share.nonces });
+      if (why) return deny(403, "denied", why);
+      this.soon(v.id);
+      return { status: 200, body: { data: { ok: true } } };
+    }
     if (!v || !this.isHome(v, me)) { this.vault.share.auditUnknown(env && env.vault, null, "no such shared vault"); return deny(404, "not_found", "no such shared vault here"); }
     let m;
     try { m = this.manifest(v.id); } catch { return deny(500, "internal", "this vault's manifest does not verify"); }
@@ -295,6 +303,7 @@ export class Shared {
       if (env.op === "push") {
         const out = await this.acceptRecord(v.id, body.record, me);
         this.materialize(v.id);
+        this.poke(v, me, member.sign);
         this.vault.audit("sync", null, `member:${member.name}`, true, `push ${body.record && body.record.name} rev ${out.rev}`);
         return { status: 200, body: { data: out } };
       }
@@ -302,6 +311,7 @@ export class Shared {
         if (!ADMIN.has(member.role)) return deny(403, "denied", "only an admin may change who is in this vault");
         await this.applyAdmin(v.id, body, me);
         this.materialize(v.id);
+        this.poke(v, me, member.sign);
         this.vault.audit("sync", null, `member:${member.name}`, true, `manifest ${body.manifest && body.manifest.seq}`);
         return { status: 200, body: { data: { seq: body.manifest.seq } } };
       }
@@ -416,9 +426,31 @@ export class Shared {
     }
   }
 
+  /**
+   * Tell members something changed, so they pull. A member is reached at the relay address on
+   * the card pinned for their key; members without one pull on start or every ten minutes.
+   */
+  poke(v, me, except = null) {
+    let m;
+    try { m = this.manifest(v.id); } catch { return; }
+    for (const x of m.members) {
+      if (x.sign === me.sign || x.sign === except) continue;
+      const p = /** @type {any} */ (this.db.prepare("SELECT relay FROM vault_people WHERE sign = ? AND relay IS NOT NULL AND relay != ''").get(x.sign));
+      if (!p || !relay.secureTarget(p.relay)) continue;
+      const env = relay.syncEnvelope({ vault: v.id, op: "poke", body: {}, from: me.sign, privDer: me.id.sign.private, aud: p.relay });
+      Promise.resolve(this.post(p.relay, env)).catch(() => {});
+    }
+  }
+
+  /** Pull one vault (or all) in a moment. */
+  soon(id = null) {
+    const t = setTimeout(() => { this.sync(id ? { vault: id } : {}, "vault").catch(e => this.vault.log(`vault shared sync: ${/** @type {Error} */ (e).message}`)); }, 200);
+    t.unref();
+  }
+
   /** An admin change: applied here at the home, or sent to it. */
   async submitAdmin(v, bundle, me) {
-    if (this.isHome(v, me)) { await this.applyAdmin(v.id, bundle, me); this.materialize(v.id); return; }
+    if (this.isHome(v, me)) { await this.applyAdmin(v.id, bundle, me); this.materialize(v.id); this.poke(v, me); return; }
     const r = await this.call(v, "admin", bundle);
     if (r.error) throw err(`${v.name}'s home refused the change: ${r.error.message}`, r.error.code);
     await this.sync({ vault: v.id });
@@ -649,7 +681,7 @@ export class Shared {
   }
 
   async acceptLocal(v, rec, me) {
-    try { const out = await this.acceptRecord(v.id, rec, me); this.materialize(v.id); return { data: out }; }
+    try { const out = await this.acceptRecord(v.id, rec, me); this.materialize(v.id); this.poke(v, me); return { data: out }; }
     catch (e) { const x = /** @type {any} */ (e); return { error: { code: x.code || "bad_request", message: x.message, latest: x.latest } }; }
   }
 
