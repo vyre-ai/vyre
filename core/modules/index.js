@@ -170,6 +170,13 @@ export class Registry {
         },
         on: (pattern, fn) => events.on(pattern, fn),
         since: (id, opts) => events.since(id, opts),
+        // Delete this module's own redundant events (see Events.prune): only types it declares
+        // under watches.emits, and only rows it emitted itself.
+        prune: (type, opts = {}) => {
+          const allowed = (m.watches && m.watches.emits) || [];
+          if (!allowed.includes(type)) throw new Error(`${m.name} pruned ${type}, which its manifest does not declare under watches.emits`);
+          return events.prune({ ...opts, type, source: m.name });
+        },
       },
       // Vault items, one at a time, only those the manifest declares under needs.vault. The value
       // comes from the vault module's internal vault.release tool, which only modules can call,

@@ -33,6 +33,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Each item needs a grant to module `agents` (`vyre vault grant <item> agents`). Without one,
   `agents.ask` fails with `<agent> cannot start: <item> is not granted to agents · vyre vault
   grant <item> agents`. The switchboard tests put and grant items in the real vault.
+- `threads.answer` declares `callers: ["cli", "local", "module", "deck", "capsule"]`, so the loader
+  refuses `mcp` and `mcp:agent:<name>` with `denied` and leaves it out of their `/v1/tools`.
+- A turn's partial text (`thread.text` with `delta`) is deleted from the event log 60 seconds after
+  its `thread.finished` (`VYRE_TEXT_PRUNE_MS`); the `done` text stays. Modules get
+  `ctx.events.prune(type, { before, thread, has })` for their own event types only.
 - CLI: `vyre threads start|send|watch|lease|release|asks|answer|stop` (other `vyre threads`
   arguments still search the catalogue) and `vyre agents [create|update|ask|threads|stop]`.
 - Verified with real Claude Code on haiku: a thread started from the CLI streamed to two curl SSE

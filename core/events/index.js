@@ -66,6 +66,24 @@ export class Events {
     return () => this.listeners.get(pattern)?.delete(fn);
   }
 
+  /**
+   * Delete events that another event has made redundant, such as a turn's partial text once its
+   * whole text is stored. The log is otherwise append-only; this is the one exception, and it is
+   * narrow: one type, at or before one id, optionally one source and thread, optionally only rows
+   * whose payload has a given top-level key. Returns how many rows went.
+   * @param {{ type: string, before: number, source?: string, thread?: string, has?: string }} o
+   */
+  prune({ type, before, source, thread, has }) {
+    if (!NAME.test(String(type))) throw new Error(`event type "${type}" must look like noun.past-verb`);
+    if (!Number.isInteger(before)) throw new Error("prune needs an event id to stop at");
+    if (has !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(has)) throw new Error(`"${has}" is not a payload key`);
+    const where = ["type = ?", "id <= ?"], args = [type, before];
+    if (source !== undefined) { where.push("source = ?"); args.push(source); }
+    if (thread !== undefined) { where.push("thread = ?"); args.push(thread); }
+    if (has !== undefined) { where.push("json_extract(payload, ?) IS NOT NULL"); args.push("$." + has); }
+    return Number(this.db.prepare(`DELETE FROM events WHERE ${where.join(" AND ")}`).run(...args).changes);
+  }
+
   /** Events after a cursor, oldest first. How a surface catches up after being away. */
   since(id = 0, { type = null, project = null, limit = 200 } = {}) {
     const rows = this.db.prepare(`SELECT * FROM events WHERE id > ?
