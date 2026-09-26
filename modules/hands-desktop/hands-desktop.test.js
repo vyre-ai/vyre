@@ -13,7 +13,7 @@ import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { start } from "../../core/daemon/index.js";
 import { call } from "../../core/daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
 
 // agents and threads are core modules now (core/agents, core/switchboard) and win any
@@ -120,7 +120,7 @@ async function boot(t) {
   t.after(() => { for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   /** @type {string[]} */
   const logs = [];
-  const d = await start({ root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ presence: present, root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
   let stopped = false;
   const stop = async () => { if (!stopped) { stopped = true; await d.stop(); } };
   t.after(stop);

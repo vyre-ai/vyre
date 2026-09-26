@@ -14,7 +14,7 @@ import { start } from "../core/daemon/index.js";
 import { request } from "../core/daemon/client.js";
 import { seams as linkSeams } from "../core/link/index.js";
 import { seams as fileSeams } from "../core/files/index.js";
-import { tempHome, writeModule } from "./helpers.js";
+import { tempHome, writeModule, present } from "./helpers.js";
 
 const OWNER = "owner@example.com";
 const MAC = { login: OWNER, node: "test-mac", stableId: "nMAC" };
@@ -82,9 +82,9 @@ async function pair(t, { approve = true } = {}) {
     if (server) await new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); });
     if (box) await box.stop();
   });
-  box = await start({ root: boxRoot, log: () => {} });
+  box = await start({ presence: present, root: boxRoot, log: () => {} });
   server = await tailnet(box, net);
-  mac = await start({ root: macRoot, log: () => {} });
+  mac = await start({ presence: present, root: macRoot, log: () => {} });
   const address = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   net.address = address;
   for (const [n, d] of [["box", box], ["mac", mac]]) {
@@ -275,7 +275,7 @@ test("link: a listener's tailnet peer reaches the tool through vyred's router, n
       globalThis.__peerprobePort = server.address().port;
       return { async stop() { server.closeAllConnections(); await new Promise(r => server.close(r)); } };
     } };`);
-  const d = await start({ root, log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   const port = /** @type {any} */ (globalThis).__peerprobePort;
   const r = await fetch(`http://127.0.0.1:${port}/v1/tools/peerprobe.who`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ peer: "forged" }) });
@@ -292,7 +292,7 @@ test("link: pairing through the real names listener binds to the Mac's node and 
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { tailscale: true, owner: "alex@example.com", port: 0 }, modules: { disable: ["names", "onboard"] } }));
-  const box = await start({ root, log: () => {} });
+  const box = await start({ presence: present, root, log: () => {} });
   t.after(() => box.stop());
   // The names service, built on this vyred's real router, with whois simulated. Only the
   // WireGuard source address says who is calling; the headers below are ignored.
