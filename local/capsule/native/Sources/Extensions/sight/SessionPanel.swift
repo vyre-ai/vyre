@@ -12,7 +12,9 @@ import SwiftUI
 
 /// One session the panel can show.
 struct PanelSession: Equatable, Identifiable {
-    enum Kind: Equatable { case assistant(String), thread }
+    /// A terminal session is one vyred does not run (a Claude Code session in a terminal): its
+    /// history comes from the recall index, and words to it go through threads.send, which queues.
+    enum Kind: Equatable { case assistant(String), thread, terminal }
     var id: String
     var label: String
     var kind: Kind
@@ -21,10 +23,16 @@ struct PanelSession: Equatable, Identifiable {
     var status: String?
 
     var isAssistant: Bool { if case .assistant = kind { return true }; return false }
+    var isTerminal: Bool { kind == .terminal }
     var agent: String { if case .assistant(let a) = kind { return a }; return label }
 
-    /// The assistant from agents.list, then the switchboard's threads from threads.list, newest first.
-    static func load(agents: Any?, threads: Any?) -> [PanelSession] {
+    /// A session active this recently that vyred does not run is live in a terminal (the same
+    /// rule the Capsule's `@` uses to put live terminal sessions first).
+    static let liveWindowMs: Double = 15 * 60_000
+
+    /// The assistant from agents.list, then live terminal sessions from projects.catalog (the
+    /// source `@` reads), then the switchboard's threads from threads.list, newest first.
+    static func load(agents: Any?, threads: Any?, catalog: Any? = nil, now: Double = vyNowMs()) -> [PanelSession] {
         var out: [PanelSession] = []
         let agentRows = (agents as? [[String: Any]]) ?? ((agents as? [String: Any])?["agents"] as? [[String: Any]]) ?? []
         if let a = agentRows.first(where: { VJ.str($0["kind"]) == "assistant" }) {
@@ -32,14 +40,23 @@ struct PanelSession: Equatable, Identifiable {
             out.append(PanelSession(id: "agent:\(name)", label: name, kind: .assistant(name), thread: VJ.nonEmpty(a["thread"]),
                                     status: VJ.nonEmpty(a["doing"]) ?? VJ.nonEmpty(a["status"])))
         }
-        let assistantThread = out.first?.thread
+        func folder(_ x: [String: Any]) -> String? { VJ.str(x["cwd"]).flatMap { $0.split(separator: "/").last.map(String.init) } }
+        var seen = Set(out.compactMap(\.thread))
+        var run: [PanelSession] = []
         for x in (threads as? [[String: Any]]) ?? [] {
             let id = VJ.s(x["id"])
-            guard !id.isEmpty, id != assistantThread else { continue }
-            let label = VJ.nonEmpty(x["name"]) ?? VJ.str(x["cwd"]).flatMap { $0.split(separator: "/").last.map(String.init) } ?? String(id.prefix(8))
-            out.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"])))
+            guard !id.isEmpty, seen.insert(id).inserted else { continue }
+            let label = VJ.nonEmpty(x["name"]) ?? folder(x) ?? String(id.prefix(8))
+            run.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"])))
         }
-        return out
+        let recent = ((catalog as? [String: Any])?["sessions"] as? [[String: Any]]) ?? []
+        for x in recent {
+            let id = VJ.s(x["id"])
+            guard !id.isEmpty, let last = VJ.num(x["last"]), now - last < liveWindowMs, seen.insert(id).inserted else { continue }
+            let label = VJ.nonEmpty(x["label"]) ?? VJ.nonEmpty(x["name"]) ?? VJ.nonEmpty(x["title"]) ?? folder(x) ?? String(id.prefix(8))
+            out.append(PanelSession(id: "terminal:\(id)", label: label, kind: .terminal, thread: id, status: "live in terminal"))
+        }
+        return out + run
     }
 }
 
@@ -71,8 +88,16 @@ final class SessionPanelModel: ObservableObject {
     @Published var dm: Dm = VyState.dm("")
     @Published var draft = ""
     @Published var line: String?
+    /// A quiet note under the tabs, such as where a terminal session's history came from.
+    @Published var note: String?
     @Published var talking = false
     @Published var sending = false
+    /// Screen context for the words in the box, shown as a chip above it until removed or sent.
+    @Published var chip: ScreenChip?
+    /// The user removed the chip; it stays away until the box is sent or emptied.
+    @Published var chipRemoved = false
+    var attacher: ScreenAttacher?
+    private var chipTask: Task<Void, Never>?
 
     private let vyred: VyredLink
     private var sub: VyredSubscription?
@@ -112,10 +137,14 @@ final class SessionPanelModel: ObservableObject {
         if next != dm { dm = next }
     }
 
+    nonisolated static let lagNote = "History from the index, may be a few seconds behind"
+
     /// Show a session: its history once, then its events.
     func show(_ s: PanelSession) async {
         shown = s
         line = nil
+        note = nil
+        if s.isTerminal { await showIndexed(s); return }
         var d = VyState.dm(s.agent, thread: s.thread, limit: 60)
         d.loading = s.thread != nil
         dm = d
@@ -135,6 +164,72 @@ final class SessionPanelModel: ObservableObject {
         dm = x
     }
 
+    /// A terminal session vyred does not run: its newest turns from the recall index (which lags by
+    /// the index pass), then whatever thread events vyred sees for it, such as queued words.
+    func showIndexed(_ s: PanelSession) async {
+        let id = s.thread ?? ""
+        var d = VyState.dm(s.label, thread: id, limit: 60)
+        d.loading = true
+        dm = d
+        loading = true
+        buffered = []
+        note = Self.lagNote
+        // The session's turn count first, so the second read starts at its newest turns.
+        let head = await vyred.call("recall.thread", ["session": id, "limit": 1], presence: false)
+        guard shown == s else { return }
+        let count = VJ.int(((head.data as? [String: Any])?["session"] as? [String: Any])?["turns"]) ?? 0
+        let r = head.error == nil
+            ? await vyred.call("recall.thread", ["session": id, "from": max(0, count - 60), "limit": 60], presence: false)
+            : head
+        guard shown == s else { return }
+        loading = false
+        var x = VyState.dm(s.label, thread: id, limit: 60)
+        if r.error != nil {
+            note = "Not in the index yet; new words show here as they come"
+        } else {
+            let turns = ((r.data as? [String: Any])?["turns"] as? [[String: Any]]) ?? []
+            x.messages = turns.compactMap { t in
+                let text = VJ.s(t["text"])
+                guard !text.isEmpty else { return nil }
+                let user = VJ.s(t["role"]) == "user"
+                return DmMessage(id: "r\(VJ.int(t["seq"]) ?? 0)", role: user ? .user : .agent, text: text,
+                                 at: VJ.num(t["ts"]) ?? 0, surface: user ? "terminal" : nil, done: user ? nil : true)
+            }
+        }
+        for e in buffered { x = VyState.applyDm(x, e) }
+        buffered = []
+        x.loading = false
+        dm = x
+    }
+
+    /// The words changed: work out the chip again after a short pause in typing.
+    func draftChanged() {
+        chipTask?.cancel()
+        chipTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            await self?.refreshChip()
+        }
+    }
+
+    /// The chip for the words in the box now. An empty box forgets the screen, so the next words
+    /// read it fresh.
+    func refreshChip() async {
+        let words = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let a = attacher else { chip = nil; return }
+        if words.isEmpty { chip = nil; chipRemoved = false; a.reset(); return }
+        if chipRemoved { return }
+        let c = await a.attachment(for: words)
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines) == words, !chipRemoved { chip = c }
+    }
+
+    /// Take the chip off this message (its x, or Command-Backspace with the caret at the start).
+    func removeChip() {
+        guard chip != nil else { return }
+        chip = nil
+        chipRemoved = true
+    }
+
     /// Send the box's words to the shown session.
     func send() async {
         let words = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -145,11 +240,16 @@ final class SessionPanelModel: ObservableObject {
         line = nil
         sending = true
         dm = VyState.dmPending(dm, key, words, vyNowMs())
+        // The screen goes only with a chip the user saw and left in place.
+        let text = words + (chipRemoved ? "" : chip?.body ?? "")
+        chipTask?.cancel()
+        chip = nil; chipRemoved = false
+        attacher?.reset()
         let r: VyredResult
         if s.isAssistant {
-            r = await vyred.call("agents.ask", ["agent": s.agent, "text": words, "surface": "capsule", "wait": false], presence: false)
+            r = await vyred.call("agents.ask", ["agent": s.agent, "text": text, "surface": "capsule", "wait": false], presence: false)
         } else {
-            r = await vyred.call("threads.send", ["thread": s.thread ?? "", "text": words, "surface": "capsule"], presence: false)
+            r = await vyred.call("threads.send", ["thread": s.thread ?? "", "text": text, "surface": "capsule"], presence: false)
         }
         sending = false
         let d = (r.data as? [String: Any]) ?? [:]
@@ -197,9 +297,14 @@ struct SessionPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             tabs
+            if let n = model.note {
+                Text(n).font(Theme.label).foregroundColor(Theme.ash).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 6)
+            }
             Divider().overlay(Theme.rule)
             conversation
             Divider().overlay(Theme.rule)
+            if let c = model.chip { chipView(c) }
             prompt
             status
         }
@@ -214,7 +319,7 @@ struct SessionPanelView: View {
                     ForEach(model.sessions) { s in
                         Button { Task { await model.show(s) } } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: s.isAssistant ? "sparkle" : "terminal").font(.system(size: 10))
+                                Image(systemName: s.isAssistant ? "sparkle" : s.isTerminal ? "apple.terminal" : "terminal").font(.system(size: 10))
                                 Text(s.label).font(Theme.subtitle).lineLimit(1)
                             }
                             .padding(.horizontal, 9).padding(.vertical, 5)
@@ -272,6 +377,29 @@ struct SessionPanelView: View {
         }
     }
 
+    private func chipView(_ c: ScreenChip) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "text.viewfinder").font(.system(size: 10)).foregroundColor(Theme.recall)
+            Text(c.chip).font(Theme.label).foregroundColor(Theme.stone).lineLimit(1).truncationMode(.middle)
+            Button { model.removeChip() } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).foregroundColor(Theme.ash)
+            }
+            .buttonStyle(.plain).help("Send without your screen (Command-Backspace at the start of the box)")
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Capsule().fill(Theme.raised))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.top, 8)
+    }
+
+    /// True when the box's caret sits at the very start, so Command-Backspace has nothing of the
+    /// words to delete and removes the chip instead.
+    private func caretAtStart() -> Bool {
+        guard let tv = NSApp.keyWindow?.firstResponder as? NSTextView else { return model.draft.isEmpty }
+        let r = tv.selectedRange()
+        return r.location == 0 && r.length == 0
+    }
+
     private var prompt: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField(model.talking ? "Listening" : "Message \(model.shown?.label ?? "the session")", text: $model.draft, axis: .vertical)
@@ -286,6 +414,12 @@ struct SessionPanelView: View {
                     model.onTalk()
                     return .handled
                 }
+                .onKeyPress(.delete, phases: .down) { press in
+                    guard press.modifiers.contains(.command), model.chip != nil, caretAtStart() else { return .ignored }
+                    model.removeChip()
+                    return .handled
+                }
+                .onChange(of: model.draft) { _, _ in model.draftChanged() }
             Button { model.onTalk() } label: {
                 Image(systemName: model.talking ? "mic.fill" : "mic").font(.system(size: 13))
                     .foregroundColor(model.talking ? Theme.signal : Theme.stone)

@@ -4,7 +4,7 @@
   "description": "Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": ["hands.observe", "hands.act", "hands.commit", "hands.stop"] },
+  "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.stop"] },
   "watches": { "emits": ["hands.acted", "hands.stopped", "hands.resumed"] },
   "shows": {},
   "needs": {},

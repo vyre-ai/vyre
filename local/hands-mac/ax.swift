@@ -586,6 +586,11 @@ if cmd == "act" {
         guard let k = req["key"] as? String, let code = keys[k.lowercased()] else {
             fail("bad_request", "key must be one of " + keys.keys.sorted().joined(separator: ", "))
         }
+        // A key posted to a pid goes to its key window, and an app in the background has none, so
+        // the key would vanish while the act looked sent. Hands never raise an app themselves.
+        if !running.isActive {
+            fail("needs_front", "\(appName) is in the background, and a key only reaches the app in front. Nothing was done; press the control instead (for example the Send button)")
+        }
         var flags: CGEventFlags = []
         for m in (req["modifiers"] as? [String]) ?? [] {
             switch m.lowercased() {

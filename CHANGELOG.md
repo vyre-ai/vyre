@@ -152,6 +152,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - voice: `vyre voice` gives push-to-talk from the terminal (Enter to talk, words shown live,
   `--send <thread>`), `vyre voice key` saves the speech key through the vault as a person without
   echoing it, and `vyre voice status` prints the provider, key and online state.
+- hands: `hands.find {app|pid, window, role, name, near, limit}` and a `match` filter on
+  `hands.observe` pick controls by role, label and nearness from up to 500 read, without walking
+  the whole list. `settleMs` is clamped to 5000. A key to an app in the background is refused
+  with `needs_front` (held or committed) instead of vanishing; hands never raise an app.
+- capsule-sight: screen context on an Ask. Words that point at the screen ("summarize this",
+  "what's this error", "reply to this", "translate to French") or a selection in the app in front
+  get the app, window, URL, selection and a trimmed excerpt of the visible text attached, shown
+  first as a chip "with your screen: <app> · <window>" that its x or Command-Backspace at the start
+  of the box removes. Blind places get no chip, password fields leave their value out, and
+  token-looking URL queries are dropped. Live in the session panel's prompt; the Capsule's box
+  gets it through `SightExtension.screenAttachment(for:)` once capsule-pro's send path asks.
+- capsule-sight: the session panel slides in ease-out and out ease-in; its tabs and the "Side
+  view: <name>" rows follow session starts and stops (host.commandsChanged, no polling); live
+  terminal sessions get a tab with their history from the recall index, marked as possibly a few
+  seconds behind, and a prompt that queues through threads.send.
 - capsule-sight: the session panel. "Side view" slides the Capsule's own window in at the left
   29% of the display with the assistant (or "Side view: <name>" for any session): tabs, the
   conversation live from its events, a prompt that sends, the mic (Option-Return) and a status

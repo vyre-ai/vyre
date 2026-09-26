@@ -38,9 +38,11 @@ private final class FakeWindow: SessionWindow {
     var isOpen = false
     var frame: NSRect = .zero
     var moves: [(NSRect, TimeInterval)] = []
+    var curves: [SessionWindowCurve] = []
     var shows = 0
     func show(_ content: AnyView, frame: NSRect) { shows += 1; isOpen = true; self.frame = frame }
     func setFrame(_ frame: NSRect, duration: TimeInterval) { moves.append((frame, duration)); self.frame = frame }
+    func setFrame(_ frame: NSRect, duration: TimeInterval, curve: SessionWindowCurve) { curves.append(curve); setFrame(frame, duration: duration) }
     func close() { isOpen = false }
 }
 
@@ -50,6 +52,7 @@ private final class PanelHost: CapsuleHost {
     var front: FrontApp? = nil
     var isShown = true
     var said: [String] = []
+    var changed = 0
     let window = FakeWindow()
     init(_ link: VyredLink) { vyred = link }
     func permission(_ p: Permission) -> PermissionState { .notAsked }
@@ -62,6 +65,16 @@ private final class PanelHost: CapsuleHost {
     func notify(title: String, body: String) {}
     func log(_ message: String) {}
     func sessionWindow(owner: String) -> SessionWindow { window }
+    func commandsChanged() { changed += 1 }
+}
+
+/// The threads.list answer, changed by a test while the extension reads it.
+private final class Names: @unchecked Sendable {
+    private let lock = NSLock()
+    private var rows: [[String: String]]
+    init(_ rows: [[String: String]]) { self.rows = rows }
+    var list: [[String: String]] { lock.withLock { rows } }
+    func add(_ row: [String: String]) { lock.withLock { rows.append(row) } }
 }
 
 private let VISIBLE = NSRect(x: 0, y: 80, width: 1800, height: 1057)
@@ -137,7 +150,7 @@ let sessionPanelSuite = Suite("session panel") { t in
         t.eq(r?[2], "moves [\"0 0.25\"]", "shown past the edge, then one 0.25 s slide to x 0")
         t.eq(r?[3], "hidden true")
         t.eq(r?[4], "msgs [\"When does Northwind Bakery open?\", \"At seven.\"]")
-        t.eq(r?[5], "live 1")
+        t.eq(r?[5], "live 3", "its thread, plus session starts and stops for the tabs")
         t.eq(r?[6], "after [\"When does Northwind Bakery open?\", \"At seven.\", \"And on Sunday?\", \"Nine on Sundays.\"] busy true")
         t.eq(r?[7], "rows [\"Side view: Harlow Legal\"]")
         let open = link.calls("sideview.open").first ?? [:]
@@ -191,11 +204,11 @@ let sessionPanelSuite = Suite("session panel") { t in
             _ = await ext.openPanel(nil, glass: false)
             let out = await ext.closeSideView()
             ext.capsuleDidHide()
-            return ["\(out)", "open \(host.window.isOpen)", "last \(Int(host.window.moves.last?.0.minX ?? 0))",
+            return ["\(out)", "open \(host.window.isOpen)", "last \(Int(host.window.moves.last?.0.minX ?? 0)) \(host.window.curves.map { $0 == .easeOut ? "out" : $0 == .easeIn ? "in" : "other" })",
                     "hidden \(ext.runsHidden == nil ? "nil" : "set")", "live \(link.live)"]
         }
         t.eq(r?[0], "\(ActionOutcome.close("Put 1 window back"))")
-        t.eq(r?[1], "open false"); t.eq(r?[2], "last -522"); t.eq(r?[3], "hidden nil"); t.eq(r?[4], "live 0")
+        t.eq(r?[1], "open false"); t.eq(r?[2], "last -522 [\"out\", \"in\"]"); t.eq(r?[3], "hidden nil"); t.eq(r?[4], "live 0")
         t.eq(link.calls("sideview.close").count, 1)
     }
 
@@ -212,5 +225,118 @@ let sessionPanelSuite = Suite("session panel") { t in
         }
         t.eq(r?[0], "\(ActionOutcome.failed("juno is on the left; Chrome could not be fitted: Chrome did not show a window in time"))")
         t.eq(r?[1], "\(ActionOutcome.failed("No session to show yet: make your assistant in Vyre, or start a session"))")
+    }
+
+    t.test("sessions: live terminal sessions from the catalog after the assistant, stale ones and switchboard duplicates left out") {
+        let now: Double = 1_700_000_000_000
+        let catalog: [String: Any] = ["sessions": [
+            ["id": "s-live", "label": "northwind menu", "cwd": "/work/northwind", "last": now - 60_000],
+            ["id": "s-old", "label": "last week", "last": now - 3_600_000],
+            ["id": "t2", "label": "Harlow Legal", "last": now - 1000],
+            ["id": "s-cwd", "cwd": "/work/harlow-legal", "last": now - 5000],
+        ]]
+        let s = PanelSession.load(agents: [["name": "juno", "kind": "assistant", "thread": "t1"]],
+                                  threads: [["id": "t1"], ["id": "t2", "name": "Harlow Legal"]], catalog: catalog, now: now)
+        t.eq(s.map(\.label), ["juno", "northwind menu", "harlow-legal", "Harlow Legal"])
+        t.ok(s[1].isTerminal); t.eq(s[1].thread, "s-live"); t.eq(s[1].id, "terminal:s-live")
+        t.ok(!s[3].isTerminal, "a session the switchboard runs stays a thread tab")
+    }
+
+    t.test("terminal tab: newest turns from the index, marked as lagging, words still go through threads.send") {
+        let link = world()
+        let now = vyNowMs()
+        link.answer("projects.catalog") { _ in .success(["sessions": [["id": "s-live", "label": "northwind menu", "last": now - 1000]]]) }
+        link.answer("recall.thread") { input in
+            let from = input["from"] as? Int ?? 0
+            let all: [[String: Any]] = (0..<70).map { i in ["seq": i, "role": i % 2 == 0 ? "user" : "assistant", "ts": 1_700_000_000_000 + Double(i), "text": "turn \(i)"] }
+            let limit = input["limit"] as? Int ?? 200
+            return .success(["session": ["id": "s-live", "turns": 70], "turns": Array(all[min(from, 70)..<min(from + limit, 70)])])
+        }
+        let r = t.wait { @MainActor () -> [String] in
+            let (_, ext) = panelExt(link)
+            _ = await ext.openPanel(nil, glass: false)
+            let tab = ext.panel.sessions.first { $0.isTerminal }!
+            await ext.panel.show(tab)
+            var got = ["note \(ext.panel.note ?? "nil")", "count \(ext.panel.dm.messages.count)",
+                       "first \(ext.panel.dm.messages.first?.text ?? "") \(ext.panel.dm.messages.first?.role == .user)",
+                       "last \(ext.panel.dm.messages.last?.text ?? "")"]
+            ext.panel.draft = "add rye to the northwind menu"
+            await ext.panel.send()
+            got.append(ext.panel.line ?? "no line")
+            // Back on the assistant, the lag note goes.
+            await ext.panel.show(ext.panel.sessions[0])
+            got.append("note \(ext.panel.note ?? "nil")")
+            return got
+        }
+        t.eq(r?[0], "note \(SessionPanelModel.lagNote)")
+        t.eq(r?[1], "count 60")
+        t.eq(r?[2], "first turn 10 true")
+        t.eq(r?[3], "last turn 69")
+        t.ok((r?[4] ?? "").contains("busy in your terminal"), r?[4] ?? "")
+        t.eq(r?[5], "note nil")
+        let reads = link.calls("recall.thread")
+        t.eq(reads.count, 2); t.eq(reads[0]["limit"] as? Int, 1); t.eq(reads[1]["from"] as? Int, 10)
+        t.eq(link.calls("threads.send").first?["thread"] as? String, "s-live")
+    }
+
+    t.test("terminal tab: a session not indexed yet says so, with no error") {
+        let link = world()
+        link.answer("recall.thread") { _ in .failure(code: "failed", message: "no session s-new") }
+        let r = t.wait { @MainActor () -> [String] in
+            let (_, ext) = panelExt(link)
+            _ = await ext.openPanel(nil, glass: false)
+            await ext.panel.show(PanelSession(id: "terminal:s-new", label: "kit", kind: .terminal, thread: "s-new"))
+            return [ext.panel.note ?? "nil", ext.panel.line ?? "nil", "\(ext.panel.dm.messages.count) \(ext.panel.dm.loading)"]
+        }
+        t.eq(r?[0], "Not in the index yet; new words show here as they come"); t.eq(r?[1], "nil"); t.eq(r?[2], "0 false")
+    }
+
+    t.test("rows: a session starting or stopping re-reads the list and tells the Capsule once per change; hide stops following") {
+        let link = world()
+        let names = Names([["id": "t1", "name": "juno"], ["id": "t2", "name": "Harlow Legal"]])
+        link.answer("threads.list") { _ in .success(names.list) }
+        let r = t.wait { @MainActor () -> [String] in
+            let (host, ext) = panelExt(link)
+            ext.capsuleWillShow(front: nil)
+            await ext.sessionsSettled()
+            var got = ["first \(host.changed) \(ext.commands.map(\.title).filter { $0.hasPrefix("Side view:") })", "following \(ext.followingSessions)"]
+            names.add(["id": "t3", "name": "kit"])
+            link.emit(ev(20, "thread.started", "t3", [:]))
+            await ext.sessionsSettled()
+            got.append("started \(host.changed) \(ext.commands.map(\.title).filter { $0.hasPrefix("Side view:") })")
+            link.emit(ev(21, "thread.stopped", "t1", [:]))
+            await ext.sessionsSettled()
+            got.append("same list \(host.changed)")
+            ext.capsuleDidHide()
+            got.append("hidden following \(ext.followingSessions) live \(link.live)")
+            return got
+        }
+        t.eq(r?[0], "first 1 [\"Side view: Harlow Legal\"]")
+        t.eq(r?[1], "following true")
+        t.eq(r?[2], "started 2 [\"Side view: Harlow Legal\", \"Side view: kit\"]")
+        t.eq(r?[3], "same list 2")
+        t.eq(r?[4], "hidden following false live 0")
+    }
+
+    t.test("rows: with the panel open, hiding the Capsule keeps following and the tabs follow the list") {
+        let link = world()
+        let names = Names([["id": "t1", "name": "juno"], ["id": "t2", "name": "Harlow Legal"]])
+        link.answer("threads.list") { _ in .success(names.list) }
+        let r = t.wait { @MainActor () -> [String] in
+            let (host, ext) = panelExt(link)
+            ext.capsuleWillShow(front: nil)
+            _ = await ext.openPanel(nil, glass: false)
+            host.isShown = false
+            ext.capsuleDidHide()
+            names.add(["id": "t4", "name": "Northwind Bakery"])
+            link.emit(ev(30, "thread.started", "t4", [:]))
+            await ext.sessionsSettled()
+            var got = ["following \(ext.followingSessions) tabs \(ext.panel.sessions.map(\.label))"]
+            _ = await ext.closeSideView()
+            got.append("after close \(ext.followingSessions)")
+            return got
+        }
+        t.eq(r?[0], "following true tabs [\"juno\", \"Harlow Legal\", \"Northwind Bakery\"]")
+        t.eq(r?[1], "after close false")
     }
 }

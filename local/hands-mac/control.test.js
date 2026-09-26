@@ -352,3 +352,86 @@ test("act: pinned to the observed pid and bundle, and a helper that finds anothe
   assert.equal(req.bundle, "com.apple.MobileSMS");
   assert.equal(req.app, undefined, "the act went by name, not by the pinned pid");
 });
+
+// ---------------------------------------------------------------- find, settle, background
+
+/** A chat app with more controls than the default cap: the rows past 120 must still be findable. */
+const chats = () => {
+  const elements = [];
+  for (let i = 0; i < 150; i++) elements.push({ path: `/0/r${i}`, role: "AXRow", name: i === 140 ? "juno" : `chat ${i}`, enabled: true, frame: { x: 0, y: i * 40, w: 300, h: 40 } });
+  elements.push({ path: "/0/s", role: "AXTextField", name: "Search", identifier: "chat-search", value: "juno", enabled: true, frame: { x: 0, y: -40, w: 300, h: 30 } });
+  elements.push({ path: "/0/c", role: "AXTextArea", name: "Compose message", enabled: true, frame: { x: 320, y: 900, w: 600, h: 40 } });
+  elements.push({ path: "/0/b", role: "AXButton", name: "Send", enabled: true, frame: { x: 930, y: 900, w: 40, h: 40 } });
+  elements.push({ path: "/0/b2", role: "AXButton", name: "Send voice note", enabled: true, frame: { x: 0, y: 2000, w: 40, h: 40 } });
+  return { app: "WhatsApp", bundle: "net.whatsapp.WhatsApp", window: "WhatsApp", front: false, elements };
+};
+
+test("find: match reads past the default cap, filters by role and label, and orders by near", async () => {
+  const f = fakeApp(chats());
+  const h = new Hands({ run: f.run, sleep: nosleep });
+  const row = await h.observe({ app: "net.whatsapp.WhatsApp", match: { role: "Row", name: "JUNO" } });
+  assert.deepEqual(row.elements.map(e => e.selector.name), ["juno"]);
+  assert.equal(f.calls.at(-1).limit, 500, "a filtered observe reads up to 500 controls");
+  assert.equal(row.front, false);
+  // Label or identifier, never the value: the search field's value "juno" does not make it a match.
+  assert.deepEqual((await h.observe({ match: { name: "chat-search" } })).elements.map(e => e.selector.path), ["/0/s"]);
+  assert.equal((await h.observe({ match: { role: "AXTextField", name: "juno" } })).elements.length, 0);
+  // near: the Send beside the composer comes before the voice note button.
+  const send = await h.observe({ match: { role: "AXButton", name: "send", near: "Compose message" } });
+  assert.deepEqual(send.elements.map(e => e.selector.name), ["Send", "Send voice note"]);
+  // limit caps the matches and truncated says so.
+  const some = await h.observe({ match: { role: "AXRow", limit: 5 } });
+  assert.equal(some.elements.length, 5);
+  assert.equal(some.truncated, true);
+});
+
+test("find: hands.find through the Registry returns only the matches, and the floor still blinds", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const f = fakeApp(chats());
+  const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: nosleep } } });
+  await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
+  const r = await reg.call("hands.find", { app: "net.whatsapp.WhatsApp", role: "AXTextArea" }, "module");
+  assert.ifError(r.error);
+  assert.deepEqual(r.data.elements.map(e => e.selector.name), ["Compose message"]);
+  assert.equal(r.data.texts, undefined);
+  f.state.bundle = "com.1password.1password"; f.state.app = "1Password";
+  const b = await reg.call("hands.find", { role: "AXTextArea" }, "module");
+  assert.ok(b.data.blind);
+  assert.deepEqual(b.data.elements, []);
+});
+
+test("settle: settleMs is clamped to 5000, and the default stays 1500", async () => {
+  const waited = async (/** @type {number | undefined} */ settleMs) => {
+    let slept = 0;
+    const f = fakeApp(composer(), () => ({ acted: true }));
+    await new Hands({ run: f.run, sleep: async ms => { slept += ms; } }).act({ selector: { role: "AXButton", name: "Attach" }, kind: "press", ...(settleMs === undefined ? {} : { settleMs }) });
+    return slept;
+  };
+  assert.equal(await waited(undefined), 1500);
+  assert.equal(await waited(4000), 4000);
+  assert.equal(await waited(60000), 5000);
+  assert.equal(await waited(-5), 0);
+});
+
+test("background: press, set and type act without raising; a key is refused with needs_front, held or committed", async () => {
+  const f = fakeApp(composer({ front: false }), (req, s) => { if (req.kind === "set" || req.kind === "type") s.elements[0].value = req.value; else s.texts = ["pressed"]; return { acted: true }; });
+  const h = new Hands({ run: f.run, sleep: nosleep });
+  assert.equal((await h.act({ selector: { role: "AXButton", name: "Attach" }, kind: "press" })).verified, true);
+  assert.equal((await h.act({ selector: { role: "AXTextArea", name: "Message" }, kind: "set", value: "see you at seven" })).verified, true);
+  // Return in a chat would be held; in the background it is refused first, so no proof is asked for a key that cannot land.
+  await assert.rejects(h.act({ selector: { role: "AXTextArea", name: "Message" }, kind: "key", key: "return" }), code("needs_front"));
+  await assert.rejects(h.act({ selector: { role: "AXTextArea", name: "Message" }, kind: "key", key: "return" }, { commit: true }), code("needs_front"));
+  assert.equal(f.calls.filter(c => c.cmd === "act" && c.kind === "key").length, 0, "a key was posted to an app in the background");
+  // Nothing in any request asks the helper to raise or activate the app.
+  assert.equal(f.calls.some(c => c.action === "AXRaise" || c.activate), false);
+  // In front, the same key is allowed (held, because Return in a chat sends).
+  f.state.front = true;
+  assert.equal((await h.act({ selector: { role: "AXTextArea", name: "Message" }, kind: "key", key: "return" })).held, true);
+});
+
+test("background: the fake helper refuses a key to an app in the background, as the real one does", async () => {
+  const f = fakeApp(composer({ front: false }));
+  await assert.rejects(f.run({ cmd: "act", pid: 4242, path: "/0/0", role: "AXTextArea", kind: "key", key: "tab" }), code("needs_front"));
+});
