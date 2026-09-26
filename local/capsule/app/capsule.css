@@ -179,3 +179,14 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .md .link { text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 2px; }
 .replyacts { display: flex; gap: 8px; padding: 8px 16px 10px 44px; }
 .replyacts .btn { height: 28px; padding: 0 10px; }
+/* A direct message: the thread as a conversation, newest at the bottom. */
+.dm { max-height: 320px; overflow: auto; padding: 6px 16px 12px 44px; display: flex; flex-direction: column; gap: 12px; user-select: text; }
+.dm .msg { display: flex; flex-direction: column; gap: 3px; }
+.dm .msg .lbl { font-size: 10px; }
+.dm .msg.agent .lbl { color: var(--signal); }
+.dm .msg .x { font-size: 14px; line-height: 21px; color: var(--bone); }
+.dm .msg.user .x { color: var(--stone); white-space: pre-wrap; }
+.dm .msg.pending { opacity: 0.6; }
+.dm .x.empty { font-size: 13px; color: var(--ash); }
+.dm .caret { display: inline-block; width: 2px; height: 16px; background: var(--signal); vertical-align: -2px; margin-left: 1px; }
+.dm .tools { padding: 0; }

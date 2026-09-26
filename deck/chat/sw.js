@@ -5,15 +5,20 @@
 // those must reach vyred or fail visibly, never appear to work from a stale cache.
 
 const CACHE = "vyre-chat-v1";
-const SHELL = ["/chat/", "/chat/app.js", "/chat/nav.js", "/chat/session.js", "/chat/composer.js",
-  "/chat/gate-item.js", "/chat/ask-item.js", "/chat/chat.css", "/chat/manifest.webmanifest",
-  "/chat/lib/markdown.js", "/chat/lib/highlight.js", "/chat/lib/diff.js",
-  "/css/deck.css", "/js/api.js", "/js/dom.js", "/js/fmt.js", "/js/icons.js"];
+// Chat is a view inside the one Deck shell now (deck/views/chat.js imports chat/index.js), so the
+// shell itself — index.html, js/app.js and deck.css — is cached too: without it a cold offline
+// start has nothing to boot from, even though those files are not this workstream's to version.
+const SHELL = ["/", "/index.html", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/fmt.js", "/js/icons.js", "/js/needs.js",
+  "/css/deck.css", "/css/views/chat.css", "/views/chat.js",
+  "/chat/index.js", "/chat/nav.js", "/chat/session.js", "/chat/composer.js", "/chat/gate-item.js", "/chat/ask-item.js",
+  "/chat/chat.css", "/chat/lib/markdown.js", "/chat/lib/highlight.js", "/chat/lib/diff.js", "/chat/lib/routes.js"];
 
 const READ_ONLY = ["threads.get", "threads.list", "threads.asks", "projects.list", "projects.threads", "gate.held", "gate.get"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // Not addAll: one missing file (a view not merged everywhere yet) would abort caching every
+  // other one. Each file is best-effort instead.
+  e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => fetch(u).then(r => r.ok && c.put(u, r)).catch(() => {})))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {

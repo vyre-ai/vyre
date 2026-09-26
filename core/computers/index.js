@@ -19,6 +19,8 @@ import { Pool, MIGRATIONS, NO_DRIVER } from "./pool.js";
 import { Keyboard, isSurface } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
+import { Shield } from "./shield.js";
+import { helper, tellComputerd } from "./helper.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -44,6 +46,7 @@ export default {
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg });
     const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log });
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on) => tellComputerd(pool, agent, on) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -197,38 +200,24 @@ export default {
         return pool.endpoint(agent);
       }, { internal: true });
 
-    tool("computers.may-act", "May the agent's hands act now? Refused while paused, taken over or shielded, with who has the keyboard.",
-      obj({ agent: str, tool: str }), async (i, { caller }) => keyboard.mayAct(await resolve(i, caller), i.tool), { internal: true });
-
-    tool("computers.helper", "computerd's URL and token for the agent's computer, without taking a screen: for a sign-in or a file browse that only needs computerd, not the hands' own slot. Thaws a frozen computer.",
-      obj({ agent: str }), async (i, { caller }) => {
+    tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
+      obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
         const agent = await resolve(i, caller);
-        await pool.thaw(agent);
-        return pool.endpoint(agent).helper;
+        return shield.mayAct(agent, i.read === true, () => keyboard.mayAct(agent, i.tool));
       }, { internal: true });
 
-    tool("computers.shield", "Shield or unshield the agent's hands for a person signing in: while on, every read and action is refused, not just consequential ones, whatever pause or take-over say. Best-effort tells computerd too, as defense in depth.",
-      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => {
-        const agent = await resolve(i, caller);
-        const r = pool.shield(agent, Boolean(i.on));
-        // Best-effort: computerd's own 423s are defense in depth, not the source of truth (that
-        // is pool.isShielded, checked by every may-act call). A container that is not running,
-        // or a computerd that does not answer, never blocks the shield taking effect in vyred.
-        try {
-          const h = pool.endpoint(agent).helper;
-          await fetch(`${h.url}/shield`, {
-            method: "POST", headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
-            body: JSON.stringify({ on: Boolean(i.on) }), signal: AbortSignal.timeout(3000),
-          });
-        } catch (e) { ctx.log(`could not tell ${agent}'s computerd about the shield: ${/** @type {Error} */ (e).message}`); }
-        return r;
-      }, { internal: true });
+    tool("computers.helper", "Where computerd answers, and its token. Thaws and touches without taking a screen.",
+      obj({ agent: str }), async (i, { caller }) => helper(pool, await resolve(i, caller)), { internal: true });
+
+    tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
+      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true), { internal: true });
 
     return {
-      pool, keyboard, driver, sweep,
+      pool, keyboard, shield, driver, sweep,
       async stop() {
         if (timer) clearInterval(timer);
         keyboard.stop();
+        shield.stop();
         pool.wake();
         if (glass && typeof glass.stop === "function") { try { await glass.stop(); } catch {} }
       },

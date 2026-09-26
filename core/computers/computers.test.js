@@ -165,14 +165,13 @@ test("computers: shield refuses every read and action, over pause and take-over 
   const s = await boot(t);
   assert.equal((await s.cli("computers.shield", { agent: "kit", on: true })).error.code, "no_such_tool", "computers.shield is internal");
   const on = await s.module("computers.shield", { agent: "kit", on: true });
-  assert.deepEqual(on.data, { agent: "kit", shielded: true });
+  assert.deepEqual(on.data, { agent: "kit", shielded: true, computerd: false });
   const no = (await s.module("computers.may-act", { agent: "kit", tool: "hands-desktop.read" })).data;
   assert.equal(no.ok, false);
-  assert.equal(no.shielded, true);
-  assert.match(no.why, /shielded while a person signs in/);
+  assert.match(no.why, /signing in/);
   assert.ok(s.events().some(e => e.type === "computer.shielded" && e.payload.agent === "kit"));
   const off = await s.module("computers.shield", { agent: "kit", on: false });
-  assert.deepEqual(off.data, { agent: "kit", shielded: false });
+  assert.deepEqual(off.data, { agent: "kit", shielded: false, computerd: false });
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit", tool: "hands-desktop.read" })).data, { ok: true });
   assert.ok(s.events().some(e => e.type === "computer.unshielded" && e.payload.agent === "kit"));
 });

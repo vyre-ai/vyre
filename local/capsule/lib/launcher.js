@@ -19,6 +19,8 @@ import * as local from "./local.js";
 import * as route from "./route.js";
 import { evaluate } from "./calc.js";
 import { toResults, toDefineResult } from "./helper.js";
+import { watchWords } from "./watch.js";
+import * as glass from "./glass.js";
 
 /** @typedef {route.Result} Result */
 
@@ -35,6 +37,8 @@ export function defineWord(text) {
 /** Could this be someone's name: letters, at most three words, no digits. */
 const personish = t => /^[\p{L}][\p{L}'.-]*(\s[\p{L}][\p{L}'.-]*){0,2}$/u.test(t) && t.length >= 3;
 
+const CLIPS = /^(clipboard|clips?|paste)\b/i;
+
 const GRANT = /** @type {Result} */ ({ kind: "grant", id: "grant:contacts", label: "Show contacts here",
   sub: "macOS asks once. They stay on this Mac.", target: "", score: 0.2 });
 
@@ -43,7 +47,9 @@ export class Launcher {
    * @param {{ apps?: local.Apps, helper?: any, frecency?: local.Frecency|null, files?: typeof local.files,
    *   open?: typeof local.open, run?: typeof execFile, copy?: (text: string) => void }} [deps]
    */
-  constructor({ apps = new local.Apps(), helper = null, frecency = null, files = local.files, open = local.open, run = execFile, copy = () => {} } = {}) {
+  constructor({ apps = new local.Apps(), helper = null, frecency = null, files = local.files, open = local.open, run = execFile, copy = () => {}, clips = null } = {}) {
+    /** @type {any} clipboard history (lib/clips.js), or null */
+    this.clips = clips;
     this.apps = apps;
     this.helper = helper;
     this.frecency = frecency;
@@ -55,6 +61,8 @@ export class Launcher {
     this.contactsStatus = null;
     /** @type {AbortController|null} */
     this.pending = null;
+    /** @type {string|null} the paired box, as the last catalog said; Glass opens only there */
+    this.box = null;
   }
 
   /** Warm what the first keystroke needs: the app list, and whether contacts may be read. */
@@ -83,8 +91,31 @@ export class Launcher {
     const word = defineWord(q);
     const [people, def] = await Promise.all([this.people(q), word && this.helper ? this.helper.define(word) : null]);
     extra.push(...people);
+    // "tell the intake thread to run the tests": the row names the thread and the words, so what
+    // is sent and where is on screen before Enter (floor rule 2). It is sent as the user, and
+    // watched, so the answer comes back here.
+    const drive = /^(?:tell|ask)\s+(?:the\s+)?(.+?)(?:\s+thread)?\s+to\s+(.+)$/i.exec(q);
+    if (drive && cat) for (const t of (cat.threads || [])) {
+      const m = local.match(drive[1], t.label || "");
+      if (m >= 0.5) extra.push({ kind: "drive", id: "drive:" + t.id, label: `Tell ${t.label}: ${drive[2]}`, sub: "sent as you, then watched", target: t.id,
+        text: drive[2], thread: t.label, score: 1.85 + m / 10 });
+    }
+    // "watch the intake thread": a row per thread it could mean, to be told when it is done.
+    const target = watchWords(q);
+    if (target && cat) for (const t of (cat.threads || [])) {
+      const m = local.match(target, t.label || "");
+      if (m >= 0.5) extra.push({ kind: "watch", id: "watch:" + t.id, label: `Watch ${t.label}`, sub: "tell me when it is done or asks", target: t.id, score: 1.8 + m / 10 });
+    }
+    if (this.clips) {
+      const found = this.clips.search(q, 6);
+      extra.push(...found);
+      // Listing the history ("clip", "clipboard", "paste"): the way to forget it all is right there.
+      if (CLIPS.test(q)) extra.push({ kind: "clipclear", id: "clipclear", label: "Clear clipboard history", sub: found.length ? `${this.clips.list().length} items, on this Mac only` : "nothing kept", target: "", score: 0.01 });
+    }
     const d = def && !def.error ? toDefineResult(def) : null;
     if (d) extra.push({ ...d, last: 0, score: 1.5 });
+    this.box = cat ? glass.origin(/** @type {glass.Catalog} */ (cat).box) : null;
+    extra.push(...glass.results(q, cat));
     const local_ = [...this.apps.search(q, 6, this.boost), ...local.settings(q, 4, this.boost)];
     let results = route.rank(q, { local: local_, extra, cat, boost: this.boost });
     // The contacts offer is for a query that found nothing better; "wifi" does not need it.
@@ -134,12 +165,19 @@ export class Launcher {
       if (a && a.error === "asking") return { ok: true, note: "macOS is asking. Answer its dialog, then type again." };
       return { error: "Contacts are off for Vyre. Turn them on in System Settings, Privacy & Security, Contacts." };
     }
+    if (r.kind === "clip") {
+      if (!this.clips) return { error: "no clipboard history here" };
+      const c = await this.clips.pick(r.id);
+      return "error" in c ? { error: c.error } : { ok: true, note: c.note, close: true };
+    }
+    if (r.kind === "clipclear") { this.clips?.clear(); return { ok: true, note: "Clipboard history cleared." }; }
     this.frecency?.pick(r.id, query);
     if (r.kind === "calc") { this.copy(String(r.copy ?? r.label)); return { ok: true, note: `Copied ${r.copy ?? r.label}`, close: true }; }
     if (r.kind === "app" || r.kind === "file" || r.kind === "folder" || r.kind === "setting") {
       const o = await this.openFn(/** @type {any} */ (r));
       return "error" in o ? { error: o.error } : { ok: true, close: true };
     }
+    if (r.kind === "glass") return glass.open(this.box, String(/** @type {glass.Result} */ (r).glass || ""), this.run);
     if (r.kind === "contact" || r.kind === "define") {
       const url = String(r.target || "");
       // Only the two schemes this file makes, with nothing that could read as a flag.

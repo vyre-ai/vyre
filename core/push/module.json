@@ -1,0 +1,11 @@
+{
+  "name": "push",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["push.key", "push.subscribe", "push.unsubscribe", "push.devices", "push.settings", "push.test"] },
+  "watches": { "emits": [] },
+  "shows": { "deck": ["settings:notifications"], "capsule": [], "cli": [] },
+  "needs": { "vault": ["push-vapid"] },
+  "teaches": {}
+}

@@ -1,1 +1,4 @@
-/* Vyre Chat (deck/chat/) owns its own styling; this stub keeps the auto-load slot from 404ing loudly until it lands. */
+/* Vyre Chat's real styling lives in deck/chat/chat.css (that workstream's own folder); this is
+   just the auto-loaded slot js/app.js's router fetches for every view (style() in js/app.js),
+   pointed at it so the rules actually reach the page. */
+@import url("/chat/chat.css");

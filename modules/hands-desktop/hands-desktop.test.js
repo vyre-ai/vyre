@@ -243,18 +243,18 @@ test("hands-desktop: a take-over refuses the act (reads still work), and never t
 test("hands-desktop: shield refuses reads too, unlike an ordinary take-over", async t => {
   const s = await boot(t);
   const on = await s.d.registry.call("computers.shield", { agent: "kit", on: true }, "module:test");
-  assert.deepEqual(on.data, { agent: "kit", shielded: true });
+  assert.deepEqual(on.data, { agent: "kit", shielded: true, computerd: false });
 
   const tree = await s.kit("hands-desktop.tree", { agent: "kit" });
-  assert.match(tree.error.message, /shielded while a person signs in/);
+  assert.match(tree.error.message, /signing in/);
   const apps = await s.kit("hands-desktop.apps", { agent: "kit" });
-  assert.match(apps.error.message, /shielded while a person signs in/);
+  assert.match(apps.error.message, /signing in/);
   const shot = await s.kit("hands-desktop.screenshot", { agent: "kit" });
-  assert.match(shot.error.message, /shielded while a person signs in/);
+  assert.match(shot.error.message, /signing in/);
   assert.equal(s.fake.acted.length, 0, "a shielded read must never reach computerd");
 
   const off = await s.d.registry.call("computers.shield", { agent: "kit", on: false }, "module:test");
-  assert.deepEqual(off.data, { agent: "kit", shielded: false });
+  assert.deepEqual(off.data, { agent: "kit", shielded: false, computerd: false });
   assert.equal((await s.kit("hands-desktop.tree", { agent: "kit" })).error, undefined, "reads work again once unshielded");
 });
 

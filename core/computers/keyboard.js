@@ -166,9 +166,8 @@ export class Keyboard extends EventEmitter {
    */
   mayAct(agent, tool) {
     const what = tool ? String(tool) : "that";
-    // Shield is the strictest gate: it refuses reads too, not just actions, and it overrides
-    // pause and take-over both, because a person is signing in right now.
-    if (this.pool.isShielded(agent)) return { ok: false, why: `${agent} is shielded while a person signs in; ${what} waits until computers.shield turns it off`, shielded: true };
+    // The shield (core/computers/shield.js) sits in front of this and is checked before it is
+    // ever called, so this has nothing to say about it.
     if (this.pool.isPaused(agent)) return { ok: false, why: `${agent} is paused; resume it before its hands can do ${what}` };
     const h = this.holder(agent);
     if (h) return { ok: false, why: `${h} has the keyboard of ${agent}'s computer; ${what} waits until it is handed back`, holder: h };
