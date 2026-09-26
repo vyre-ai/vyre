@@ -157,6 +157,8 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
       type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) }) });
   }
   if (req.method === "GET" && url.pathname === "/v1/events/stream") return stream(req, res, url, events, streams);
+  const own = registry.routes.get(url.pathname);
+  if (own) return own(req, res, { caller, url });
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }

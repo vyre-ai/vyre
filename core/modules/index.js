@@ -124,6 +124,8 @@ export class Registry {
     this.modules = new Map();
     /** @type {Map<string, { module: string, handler: Function }>} WebSocket paths, keyed "<module>/<name>". */
     this.upgrades = new Map();
+    /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
+    this.routes = new Map();
   }
 
   /** Start every discovered module that is enabled for this machine's role. */
@@ -165,6 +167,7 @@ export class Registry {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
+      for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) this.routes.delete(k);
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
     }
   }
@@ -229,6 +232,14 @@ export class Registry {
       // cannot carry: Glass streams a screen this way. The name must be declared under
       // shows.streams. The handler gets the raw upgrade (req, socket, head) and the caller, and
       // owns the socket from then on, including closing it when the module stops.
+      // A raw HTTP route on vyred's socket at /v1/<module>/<name>, for what a tool cannot carry:
+      // a stream. The route sees the caller the router established; it never reads one itself.
+      route: (name, fn) => {
+        if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`route ${name} must be lowercase letters, digits and dashes`);
+        const at = `/v1/${m.name}/${name}`;
+        if (this.routes.has(at)) throw new Error(`route ${at} is already registered`);
+        this.routes.set(at, fn);
+      },
       upgrade: (name, handler) => {
         const declared = (m.shows && m.shows.streams) || [];
         if (!declared.includes(name)) throw new Error(`${m.name} registered stream ${name}, which its manifest does not declare under shows.streams`);
