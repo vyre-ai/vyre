@@ -65,6 +65,10 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   `gate.get {id}` for draft and final; a character taken out everywhere is proposed at remind.
   No change on gate's side.
 
+- Flaky offline test fixed: the offline turn ordered edits and commands by `Date.now()`, and a
+  test run in the same millisecond as the edit before it did not count. Now a counter per session
+  file; a frozen-clock test covers it. Not suite interference: it failed alone too.
+
 ## Doing
 - Nothing; waiting for review.
 
@@ -74,7 +78,9 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
    in Claude Code's own prompt (hooks do not see those).
 3. Seq is Learning's own turn count per session, not the transcript seq; line them up once
    Recall exposes it.
-4. Offline, project-scoped lessons do not apply; the snapshot could carry each project's folders.
+4. Online, `learn.check` still orders commands against `harness.touched` by millisecond
+   timestamps from two modules; a shared sequence (or Recall's seq) would remove the tie.
+5. Offline, project-scoped lessons do not apply; the snapshot could carry each project's folders.
 
 ## Needs from others
 - gate-chat: keep `gate.released {id, edited, thread, agent}` and `gate.get {id} -> {draft, final, diff}`

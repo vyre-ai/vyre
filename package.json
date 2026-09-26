@@ -10,7 +10,10 @@
     "node": ">=22.5"
   },
   "scripts": {
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\""
+    "pretest": "node test/tmp-guard.mjs before",
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\"",
+    "posttest": "node test/tmp-guard.mjs after",
+    "perf-check": "node scripts/perf-check"
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^4.3.0"
@@ -22,9 +25,24 @@
     "local",
     "deck",
     "modules",
-    "docs",
+    "box",
+    "docs/SPEC.md",
+    "docs/MODULES.md",
+    "docs/INSTALL.md",
+    "docs/GETTING-STARTED.md",
+    "docs/adr",
+    "CHANGELOG.md",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "!**/*.test.js",
+    "!**/fixtures/**",
+    "!deck/test/**",
+    "!**/node_modules/**",
+    "!local/capsule/dist/**",
+    "!local/capsule/bin/**",
+    "!**/.DS_Store",
+    "!**/testing.js",
+    "!**/testing/**"
   ],
   "homepage": "https://vyre.run",
   "repository": {

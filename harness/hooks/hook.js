@@ -12,7 +12,8 @@
 import { call } from "../../core/daemon/client.js";
 import { rules } from "../../core/harness/rules.js";
 import { offlineTool, offlineTouched, offlineStop } from "../../core/learn/offline.js";
-import { home } from "../../core/config/index.js";
+import { home, paths } from "../../core/config/index.js";
+import { writeKey } from "../../core/switchboard/sessions.js";
 
 const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", stop: "Stop" };
 const piece = /** @type {keyof typeof EVENT} */ (process.argv[2]);
@@ -46,6 +47,13 @@ async function main() {
     const headless = Boolean(process.env.VYRE_THREAD) && process.env.VYRE_THREAD === h.session_id;
     const r = await call("harness.brief", { ...base, ...scope, source: h.source, headless, ...(project ? { project } : {}) }, opts);
     if (r.data && r.data.text) answer(EVENT.brief, { additionalContext: r.data.text });
+    // Bind this session to its claude process (this hook's parent, as the MCP server's is), so the
+    // MCP server can say which session its calls come from. Every SessionStart: /clear changes the id.
+    if (h.session_id && !down(r)) {
+      const pid = process.ppid;
+      const b = await call("threads.bind", { session: h.session_id, pid }, opts);
+      if (b.data && b.data.key) try { writeKey(paths(home()).sessions, pid, b.data); } catch {}
+    }
   } else if (piece === "enrich") {
     const r = await call("harness.enrich", { ...base, ...scope, prompt: String(h.prompt || "") }, opts);
     if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });

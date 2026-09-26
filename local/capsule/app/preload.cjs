@@ -41,4 +41,7 @@ contextBridge.exposeInMainWorld("vyre", {
   // The user asked for the Capsule (double-Control, the menu bar, `vyre capsule`). Only this
   // may put the caret in the box; nothing that merely arrives from an agent does.
   onOpen: fn => ipcRenderer.on("capsule:open", (_e, d) => fn(d)),
+  // Wake-latency instrumentation (SPEC.md 2.8): fired once the renderer has actually repainted
+  // after onOpen(), so main can time gesture-to-paint rather than gesture-to-IPC-arrival.
+  paintPing: () => ipcRenderer.send("capsule:paintping"),
 });

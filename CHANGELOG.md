@@ -4,6 +4,99 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Release
+
+- `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
+  modules, box) plus SPEC, MODULES, INSTALL, GETTING-STARTED and the ADRs. It leaves out tests,
+  fixtures, `testing` helpers, design boards, working notes and Capsule build output: 186 files,
+  about 570 KB packed. The embedder stays an optional dependency. npm -g still installs it
+  (about 480 MB), because npm ignores `--omit=optional` for a global package's own optional deps.
+- `scripts/build-site.sh --src <checkout> [--mac-zip <zip>]` puts what the box installer downloads
+  under `site/box/`: the compose files, the host wrapper, the Dockerfile, `install-box.sh`,
+  `vyre.tgz` (npm pack, until the package is on npm), `Vyre-mac.zip`, `VERSION` and `SHA256SUMS`.
+  It also copies the installer to `site/install.sh`. All generated and gitignored. The Capsule
+  zip (about 120 MB) is over Pages' 25 MiB file limit. It goes to the R2 bucket `vyre-downloads`
+  (`dl.vyre.run`) under a key named by its hash, and the generated `site/_redirects` sends
+  `/box/Vyre-mac.zip` there. Before zipping, the whole Vyre.app is ad-hoc signed
+  (`codesign --force --deep -s -`). Packager signs only the Electron binary, which fails
+  `codesign --verify`, and a downloaded app in that state is refused as damaged.
+- `scripts/release-check.sh [--skip-tests] [--claude] [--live]`: the suite, then the pack and what
+  the tarball may and may not hold. Then a global install into a temp prefix, and `vyre up`,
+  `status`, `modules`, `call` and `down` in a temp HOME. Then the Harness MCP server from the
+  installed folder, and with `--claude` a real `claude -p --plugin-dir` call. Then `site/box`
+  against its checksums, and with `--live` the bytes vyre.run actually serves.
+- `vyre up` on a Mac (role `local`) now finishes the Mac's setup once the box answers. If the
+  Mac is not paired, it starts pairing and prints the `vyre link approve <code>` line to run on
+  the box, or shows the code of a pairing already waiting. Then it opens the Capsule
+  (`vyre capsule`), or points at the Vyre-mac.zip download when no Capsule is installed.
+  `--no-capsule` skips the Capsule.
+  With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
+- `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,
+  zip, and a signature check after unzipping; the build output is deleted afterwards.
+  `release-check --perf` runs perf-check too (opt-in: it fails on a loaded machine).
+- `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
+  `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
+  finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
+  with 200.
+
+#### Link heartbeat
+
+- The Mac's link heartbeat ran every 30 seconds on every Mac, paired or not, which broke the
+  60-second floor for recurring timers (principle 8, `scripts/perf-check`). It now starts only
+  once the Mac is paired, runs once a minute, and stops on unpair or when the box forgets the
+  Mac. Recovery does not depend on it, because a failed call only pauses retries.
+
+#### Link follow-ups
+
+- The tailnet peer that box's listener establishes now reaches the tool. `handler(policy)`
+  forwards the fourth argument `{ node, stableId, login }`, and the router passes it to
+  `registry.call` as `meta.peer`. The box can now tie a pairing and a link key to the Mac's node,
+  and it lets the owner approve a pairing from another of their devices. A `peer` in tool input
+  is still only input.
+- A test drives pairing through the real names listener, with whois simulated. The Mac's node
+  starts the request. Approving from that node is refused, and approving from the phone works.
+  Only the Mac's node collects the key, and the key is refused from any other node.
+- `link.find` on the Mac lists online tailnet peers that answer as a Vyre box. For each one it
+  reads the name on the peer's certificate, because the box answers at `<you>.vyre.run` and
+  checks Host. It pins the connection to that peer's stable ID. `vyre up` can offer pairing from
+  this list.
+- Files: the key rule is narrower. A Keynote document is a folder named `*.key`, and the old rule
+  hid every one. Now only regular files named `*.key` or `*.pem` are refused, plus any file
+  whose first bytes are a private key (PEM, OpenSSH or PuTTY), whatever it is called.
+
+#### Link and files
+
+- `core/link` (module `link`, both roles) makes the Mac and the box one system. The Mac's vyred
+  pairs with the box once. The Mac asks for pairing and shows a six-digit code. The owner types
+  that code on the box (`vyre link approve 123-456`), or approves from another of their devices.
+  A process on the box never sees the code, and the Mac cannot approve its own request, so
+  pairing needs the owner at both ends. Codes are kept only in memory, as HMACs under a key made
+  at start. Five wrong codes cancel every request.
+- The Mac pins the box's Tailscale node when it pairs, and checks every connection's peer with
+  its own `tailscale whois` before it writes a byte. A changed DNS record cannot send the Mac to
+  another node. The box identifies the Mac by whois too (ADR 0002), so no header is trusted in
+  either direction.
+- `ctx.remote(tool, input)` lets a Mac module call a box tool. It resolves like `ctx.call`, or to
+  `box_unreachable` or `no_link`. Once the box is known to be down, calls fail fast and retry
+  with a growing pause, so the Mac keeps working on its own (floor rule 9). Events `link.lost`
+  and `link.connected` say when that changes.
+- `GET /v1/link/events` on the Mac's socket proxies the box's event stream, each event tagged
+  `source: "box"`, so the Capsule sees box threads as they stream. It says `link.down` while the
+  box is away instead of hanging.
+- `core/files` (module `files`, both roles): `files.search`, `files.stat`, `files.preview` and
+  `files.fetch`. The Mac searches with Spotlight. The box searches file names and, with
+  ripgrep, contents, under `files.roots` only (default `/work`). A Mac search merges both
+  machines, tags each result with its source, and does not wait more than four seconds for the
+  box. Every path goes through realpath and must stay inside a root. Vyre's home, the vault,
+  credential folders, secret-looking files and dotfiles (apart from a short harmless list) are
+  never served or listed. `files.fetch` pulls a box file to the Mac in 1 MiB chunks, and fails
+  if the file changes on the way.
+- Core: `registry.call` takes a fourth `meta` argument, which reaches `run` beside the caller.
+  A network listener uses it to pass the tailnet peer, and it never enters tool input. Modules
+  can serve a raw route on the socket at `/v1/<module>/<name>` (`ctx.route`), which is what a
+  stream needs. vyred's stop now closes those connections too.
+- `vyre link`: status, `pair <address>`, `approve <code>`, `deny <id>`, `unpair`.
+
 #### Switchboard
 
 - `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
@@ -42,6 +135,63 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- Usage metering: every turn is a row (`threads_turns`: thread, agent, auth, cost, duration,
+  input/output/cache tokens), and `thread.finished` carries `tokens`. `agents.usage {agent?, since?}`
+  returns, per agent, `{agent, kind, auth, turns, threads, duration_ms, cost_usd, api_cost_usd,
+  tokens: {input, output, cache_read, cache_write}, by_auth: {<auth>: {turns, duration_ms,
+  cost_usd}}, budget_usd, spent_usd, left_usd, limit, last_at}`. With no agent, a row with `agent:
+  null` covers threads no agent ran. The CLI is `vyre agents usage [name]`.
+- Budgets are enforced turn by turn for API-key agents. At 80% the thread gets a notice, and at 100%
+  it stops with `thread.stopped {reason: "budget"}` and a note naming the command that raises it.
+  New internal tools `threads.notice` and `threads.halt` carry both.
+- The subscription's rate limit: every `rate_limit_event` becomes `thread.limit {status, kind,
+  resets_at, utilization?}`, is kept on the thread (`last_limit`), and a warning or a refusal is
+  said in the thread once per status.
+- Learned skills: `<home>/learned/account/` loads into every thread with the Harness, and
+  `<home>/learned/projects/<slug>/` into that project's threads, each only if it holds
+  `.claude-plugin/plugin.json`. Lean threads and jobs load none of them. `threads.launch
+  {plugins: [dirs]}` adds folders explicitly, even with `plugin: false`.
+- `agents.list` rows carry `computer` again; without it core/computers refused every agent a
+  computer. Found by the computers workstream, which made the same one-line fix on its branch.
+- Lean threads: `threads.start {lean: true}` runs with no Vyre plugin, `--tools ""`,
+  `--strict-mcp-config` and `--setting-sources ""`. Checked on Claude Code 2.1.283 with haiku:
+  "What is 2+2?" cost $0.013 (6.5k tokens of Claude Code's own system prompt), where the
+  Capsule measured $0.027 with the plugin. Not `--bare`, which skips keychain reads and with
+  them a subscription's login.
+- Jobs: internal `threads.launch` takes `plugin: false`, `tools: "none"`, `settings: false` and
+  `once: true`. A one-shot thread stops after its first `thread.finished`, with
+  `thread.stopped {reason: "done"}`. These options are kept on the thread (`threads_runs.opts`),
+  so a resume runs the same way.
+- `ask.answered` carries `tool` and `summary`, so an approval or a denial can teach Learning.
+- `threads.watch {thread, until?: finished|asks|either, notify?, note?}` -> `{watch, fired}` and
+  `threads.unwatch {watch}`. Exactly once, `thread.watched {watch, reason: finished|asked|stopped,
+  notify, note, by, summary?}` is emitted. A stop always fires it, and a thread already stopped
+  fires at once. Watches are rows (`threads_watches`), so they survive a vyred restart.
+- `agents.history {agent?, limit?, before?}`: past exchanges with an agent, or with every agent,
+  newest last: `[{id, at, agent, thread, project, surface, text, answer}]`. `text` is what was
+  sent and `answer` the done replies before the next send. `before` takes an exchange's `id`.
+  Built by the internal `threads.history` from stored `thread.sent` and done `thread.text`
+  events. Guarded like `agents.threads`. This is the shape the Deck's ask view reads.
+- Adopt: `threads.send` to a session the Switchboard did not start (a terminal `claude`) finds its
+  transcript, makes its record (cwd and name from the transcript, `stopped_reason: "adopted"`) and
+  resumes it headless with the lease. Before resuming any thread that is not running here, it
+  refuses with `{sent: false, open_elsewhere: true, note}` if the session is open elsewhere: bound
+  to a running claude that is not ours, named by a running claude's arguments (`--resume <id>`),
+  or its transcript written in the last 30 seconds by anything but our own child
+  (`core/switchboard/adopt.js`).
+- Tools learn the verified thread: `registry.call(tool, input, caller, via)` and
+  `run(input, { caller, thread?, agent? })`. vyred sets both for an agent caller whose key it
+  vouched. For any other session, the SessionStart hook calls `threads.bind {session, pid}` for
+  its claude process (its parent, as the MCP server's is) and writes the key to
+  `<home>/sessions/<pid>.json` (0600). The MCP server sends `x-vyre-session` and
+  `x-vyre-session-key` from that file on every call. vyred refuses a claim whose key does not match
+  or whose process is gone. A session binds only from a running `claude` (or a live headless
+  child), and a session bound to one live process cannot be taken by another.
+- `gate.request` files a held item under the verified thread, and its project when the
+  Switchboard knows it. From a model, a different `thread` in the input is refused.
+- `threads.answer` declares `presence: { summary }` for security's presence proof (ADR 0004); the
+  summary reads like "Allow Write to /work/notes.md: write notes.md (thread Intake)". The loader
+  ignores the key until presence lands.
 - `callerKind` (and the vault's rules) drop the agent part: `mcp:agent:kit` is an `mcp` caller to
   every allowlist, so an agent's `vault.grant` waits as pending like any model's.
 - Tests: the vault's per-agent stub is module `roster`, not `agents`; Memory's graph test and the
@@ -61,6 +211,94 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `{headless, holder, status}`. When the thread is live, the brief opens with a warning naming the
   holder and `vyre threads stop <id8>`, and the internal `threads.contend` emits
   `thread.contended {thread, session, holder}`. The session still starts: the hook never blocks.
+
+### M5 · the box (2026-09-26)
+
+#### Box
+
+- Onboarding per ADR 0008: `onboard.name {action:"reserve"}` claims the vyre.run name only with
+  a zone token (`CLOUDFLARE_VYRE_TOKEN` or vault `cloudflare-vyre-token`) or `network.domain`,
+  else serves the ts.net name; the result says `via` ("vyre.run", "ts.net" or "domain"). HTTPS
+  off in the tailnet blocks the step with `code: "https_off"` and `adminUrl`; reserve again
+  retries. `onboard.you` saves `onboard.person` (one line, up to 60) without `names.check`, and a
+  name that passes `checkName` becomes the default `name`. Status adds `person`. On a box with
+  no sessions, history says they arrive with the Mac. `names.status` adds `zone`.
+
+- Shared core, kept small: `ctx.handler(policy)` gives a module that opens its own listener
+  vyred's router, with the caller the module established and limits on which tools, paths and
+  event types it can reach. The router never takes a caller from a listener's headers.
+  `config.save(patch, root, live)` writes config.json atomically at 0600 and updates the loaded
+  config every module shares. `paths()` gains `certs`, `names`, `models` and `env`. `/v1/health`
+  reports `supervisor` ("systemd" or null), so `vyre up` knows who restarts vyred.
+- `core/names`, the parts that reach the outside world, each with a fake-server test:
+  - an RFC 8555 ACME client for DNS-01 (ES256 JWS, nonce retry, and TXT records always cleared);
+  - a hand-rolled PKCS#10 CSR;
+  - a Cloudflare client that refuses any name outside the configured zone, because the user's
+    token may cover other zones;
+  - a 0600 certificate store.
+
+  None of these add a dependency. Exercised live once: records under `_vyre-test.vyre.run` were
+  created, updated in place and deleted (0 left), and a Let's Encrypt staging account was
+  created. Staging refused the `_vyre-test` order with `rejectedIdentifier`, as expected for an
+  underscore label, so issuance itself still needs a real name.
+- The `names` module (role box). vyred serves the Deck on the box's tailnet addresses with its
+  own certificate. It identifies each connection by `tailscale whois` of its source address and
+  serves only `network.owner`, from a node that is not the box itself and is not tagged. Headers
+  are never trusted (ADR 0002). Tools:
+  - `names.status`, `names.check`, `names.claim` (A record, then DNS-01 certificate, then serve,
+    in the background);
+  - `names.fallback` (ts.net with `tailscale cert`), `names.release`, `names.connect`
+    (`tailscale up`), `names.owner`;
+  - the internal `names.claim-code`, a one-time link for a tagged box.
+
+  Renewal runs daily at 30 days left. Under systemd the listener takes fd 3 from the socket unit.
+  Exercised on a Mac against real Tailscale (read-only): the listener bound only the two tailnet
+  addresses, loopback could not reach it, and a request from the box itself with forged
+  `Tailscale-User-Login` and `x-vyre-caller` headers got 403. Real `whois` passed the owner's
+  other devices and refused a node of another login.
+- The `onboard` module (role box): the six steps of spec section 1.
+  - Tools: `onboard.status`, `onboard.name`, `onboard.claude` (the token goes to the vault and
+    never comes back), `onboard.tailscale`, `onboard.history`, `onboard.skip` and
+    `onboard.finish`, plus the socket-only `onboard.link`.
+  - Before the owner is seen on the tailnet, a loopback listener on 127.0.0.1:7300 serves only
+    `/onboard/...`, those tools (plus `projects.catalog`, `projects.create` and
+    `recall.status`) and `onboard.*` events.
+  - Everything sits behind a one-time token that becomes an HttpOnly, SameSite=Strict cookie.
+    The token is hashed, single use, and expires after an hour.
+  - The listener checks for a loopback Host (against DNS rebinding) and a JSON body with a
+    loopback Origin. It closes when the owner first reaches the tailnet address.
+- Installing on a box: `scripts/install-box.sh` sits behind
+  `curl -fsSL https://vyre.run/install.sh | sh`. It asks before installing Node, Tailscale or
+  Claude Code, and prints every change with `--dry-run`.
+  - `core/names/system.js` plans the systemd units and the Tailscale operator setting, and
+    `apply` changes nothing unless asked. `vyre.socket` binds port 443 on `tailscale0` and
+    `vyre.service` runs as the owner's own account, never root (docs/INSTALL.md).
+  - `core/names/backup.js` backs up config, a consistent store copy, vault, watchers, modules
+    and certificates, and restores them with traversal checks.
+  - No Linux box was used: the Linux paths are proven by unit tests and a dry run against stub
+    binaries.
+- `vyre up` moved to `core/cli/commands/up.js` and grew. It starts vyred, or restarts it when
+  it runs an older version or the wrong role; under systemd it lets `Restart=always` bring the
+  new code up. Then it prints:
+  - on a box: the onboarding link, plus the `ssh -N -L` line over SSH, or the address once
+    set up;
+  - on a Mac: the box it connects to.
+
+  `--box` makes a Mac the box, and `--connect <addr>` points a Mac at one. Also new:
+  `vyre up --system` / `vyre uninstall --system` (with `--dry-run`), `vyre name`, `vyre owner`,
+  `vyre backup`, `vyre restore` and `vyre daemon`.
+- Security fixes from a review of the listeners:
+  - The tailnet listener refused no cross-site POST. A page the owner visited could have made
+    their browser call any tool as the owner. Every POST there must now be JSON with this
+    box's own `Origin`, and `Host` must be the box's.
+  - `x-vyre-caller` on the socket could claim `module:*` (past the internal-tool gate, so
+    `vault.release`) or `tailnet:*`. Only plain labels pass now, and anything else becomes
+    `local`.
+  - The onboarding session was a cookie, which browsers share with every port on 127.0.0.1.
+    It is now a header the page holds in memory.
+  - The box's own addresses are read before the first connection under systemd too, and whois
+    naming this node is refused.
+  - `onboard.link` allows only terminal callers.
 
 #### Gate
 
@@ -134,6 +372,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   message.
 - Fix: a command run in the same millisecond as a file change counted as after it, so a test
   run could clear a commit it did not follow. Commands now count only when strictly later.
+- Fix: offline, "strictly later" by the clock dropped a test run made in the same millisecond as
+  the edit before it, so a commit after fresh tests was denied (the flaky "tests from before the
+  last change" test: 358 of 2000 probe runs, 15 of 60 file runs, alone or in the suite). The
+  offline state now orders edits and commands by a counter it keeps (`n`), not by `Date.now()`;
+  a state file from before the counter starts over rather than letting its timestamp outrank it.
+  The online check still compares the Harness's timestamps with Learning's.
 - Lessons are checked with vyred down, as the floor is. Learning keeps the accepted lessons in
   `<home>/lessons.json` (mode 0600), rewritten on every change. When vyred does not answer,
   `hook.js` runs the tool and Stop checks in-process from it (`core/learn/offline.js`), keeping
@@ -186,6 +430,42 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the Deck, so thread text cannot become markup), and one API client. Tools that other streams
   have not merged answer from `deck/fixtures/*.json`, only with `?fixtures=1` and only when the
   live tool is missing; otherwise the view names the module that is not running.
+- The shell and **Now**: header with the address, search over every turn (Recall, with ⌘K and
+  arrow keys), the needs-you pill; the rail with pinned or recent projects and the machine it runs
+  on; a bottom tab bar under 760 px. Now shows drafts held at the Gate and open asks in Beacon with
+  their actions, running threads, and what memory learned today in gold with pin and mute. When
+  nothing runs it lists the latest sessions, so Now is never empty. Views load one at a time from
+  `deck/views/`, each with its own stylesheet.
+- The Deck installs as an app on a phone: a manifest, the app icon, and a service worker that
+  caches only the Deck's own files, network first, and never an API response.
+- **Projects**: every project with pins, a new-project form, and the project board: threads
+  (recorded sessions from Recall merged with live switchboard threads), the brief, and the thread
+  itself, with tool lines, recalled memory in gold, held calls in Beacon with their answers, and a
+  composer that takes the keyboard lease first and goes read-only when another screen holds it.
+  The files pane lists what a thread touched; file contents have no API yet, and it says so.
+- **Memory**: a map of each project's facts drawn as inline SVG, a list, and a fact panel with
+  its source turns quoted from the threads they came from, pin, mute and forget (mute everywhere,
+  with undo). Everything on it came from memory, so it is the one view where gold is the norm.
+- **Agents**: the assistant and every agent, a new-agent form that picks credentials by Vault
+  item name only, and the agent page: its job, what wakes it (watchers with on/off switches), its
+  model and effort, a way to talk to it (`agents.ask`), and its computer with the pool screen and
+  limits. Each part says which module is not running when it is missing.
+- **Vault**: items by name, who holds each, what used it today, passes to and from other
+  people's Vyre, and offboarding. No value is ever shown: values only go in, through password
+  inputs that are read once and cleared before the call is sent, and the view keeps only the named
+  fields it draws from every response.
+- **Settings**: every onboarding step with its state and a way to finish it, the assistant,
+  Claude Code and network status, history and memory with re-index and rebuild, lessons from
+  Learning with edit and retire, the modules vyred runs, dark or paper, and this machine.
+- **Phone views**, checked at 360 and 390 px: one held item full screen (`/needs/:id`), either a
+  question with what it changes and Allow once / Always in this project / Deny, or a draft held
+  at the Gate with its recipient, subject, the words that came from memory numbered against their
+  sources, and Send / Edit / Discard fixed above the tab bar. **Ask** (`/ask`) talks to the
+  assistant or any agent with @-chips, and shows an answer that came from memory as memory, with
+  its sources and the time it took, and an "Ask a model" to go further. Every view fits 360 px
+  without sideways scrolling.
+- `/agents/:name/glass` loads Glass from `deck/glass/`, which the computers workstream builds, and
+  says plainly that it is not here until then.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
@@ -231,7 +511,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and deletes are safe to repeat). Keychain tests share `core/vault/testing.js`: a keychain with a
   unique name per test, taken off the user's search list under a machine-wide lock, never a
   rewrite of the whole list, and cleanup registered first. Ten parallel runs pass together.
-- Autofill (`docs/adr/0001-autofill.md`): a fill listener (`vault.fill: {host, port}` in
+- Autofill (`docs/adr/0010-vault-autofill.md`): a fill listener (`vault.fill: {host, port}` in
   config) that only paired browser extensions reach. Pairing is a one-time code from `vyre vault
   pair`; nothing is filled until the person unlocks with their unlock passphrase (or the vault
   passphrase, or later Touch ID through the Capsule), sessions end after 10 idle minutes, and a
@@ -287,6 +567,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Webhooks: a watcher with schedule `webhook` gets `POST /v1/watchers/<name>/hook` with a token
   made at create, checked in constant time; the JSON body reaches `watch` as `hook`. Calls that
   arrive mid-run are queued, not dropped.
+- On the real vault: every fetch names the watcher, so the vault releases only against a grant
+  for that one watcher; a grant to one watcher is not a grant to another listing the same item
+  (tested). `vault.fetch(name, { field })` inside a watcher picks a field (a login's username,
+  an env set's key), passed through as `ctx.vault.fetch(name, { watcher, field })`.
 - `vyre watchers [test|create|pause|resume|logs|items] [name]`.
 - Shared core, kept minimal: the registry gains `hook: true` tools (reachable only as caller
   `hook` through vyred's new `POST /v1/<module>/<name>/hook` route, never listed or offered to
@@ -295,7 +579,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   it now loads before Claude asks questions, beats `/loop`, calls `watchers_list` for the folder
   instead of guessing `~/.vyre` (one session wrote there), calls the MCP tools directly rather
   than from a shell, never runs `watch.js` with plain `node`, fetches in parallel, logs what it
-  read, and does not widen a filter to manufacture items.
+  read, and does not widen a filter to manufacture items. When a watcher needs a vault item, it
+  gives the user the exact `vyre vault grant <item> watchers --watcher <name>` before the dry run,
+  since a grant can only come from a person.
+  A grant Claude asks for through `vault_grant` stays pending until a person runs
+  `vyre vault approve <id>` (listed by `vyre vault pending`); the skill says so. It also warns that
+  a ranked list such as a front page has no id cursor: skipping ids below the highest seen drops
+  older stories that climb onto it, which Haiku wrote in a real session.
 
 #### Capsule
 
@@ -531,6 +821,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   moves. Without that, a stale snapshot scored a (session, seq) that now held different text.
 - `recall.status` and `vyre status` say "downloading the search model (23 MB, once)" while the
   first download runs.
+- An eval harness: `recall.eval` and `vyre recall eval <file>`. It runs a labelled set (each
+  question with the turns that answer it) three ways, keyword, dense and hybrid, and reports
+  MRR@10 and recall@10. It also checks the dense floor from both sides: nonsense that clears it,
+  and answers that fall under it. `test/fixtures/recall-eval.json` is a fictional set on the
+  fixture corpus. A set built from someone's own sessions stays outside the repo.
+- New vectors are appended to the dense index in place. Rebuilding it after every pass that
+  wrote anything cost a full read of every vector, one to six seconds, every few minutes for an
+  active session. Only a rewrite, which deletes turns, still rebuilds.
 - Dependency: `@huggingface/transformers`, optional, because it is the only way to run the
   embedding model locally from Node; without it search is full-text and says so.
 

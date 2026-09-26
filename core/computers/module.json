@@ -1,0 +1,22 @@
+{
+  "name": "computers",
+  "version": "0.1.0",
+  "roles": ["box"],
+  "requires": [],
+  "does": {
+    "tools": [
+      "computers.list", "computers.get", "computers.checkout", "computers.release", "computers.stop",
+      "computers.pause", "computers.resume", "computers.takeover", "computers.giveback", "computers.watch",
+      "computers.endpoint", "computers.may-act"
+    ]
+  },
+  "watches": {
+    "emits": [
+      "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
+      "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back"
+    ]
+  },
+  "shows": { "streams": ["glass"], "cli": ["computers"], "deck": ["panel:glass"] },
+  "needs": {},
+  "teaches": {}
+}

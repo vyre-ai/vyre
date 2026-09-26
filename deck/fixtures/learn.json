@@ -1,0 +1,18 @@
+{
+  "learn.lessons": [
+    { "id": "l-client-main", "rule": "Ask before pushing to a client's main branch.", "scope": "all", "when": "git push to main or master",
+      "level": "ask", "check": true, "applied": 14, "broken": 1,
+      "source": { "kind": "correction", "thread": "t-kit-hero", "at": "$ago:9d" }, "learned_at": "$ago:9d" },
+    { "id": "l-changelog", "rule": "Update the changelog when writing code.", "scope": "all", "when": "a turn that edits code",
+      "level": "block", "check": true, "applied": 31, "broken": 3,
+      "source": { "kind": "remember", "thread": "t-juno-intake-summary", "at": "$ago:21d" }, "learned_at": "$ago:21d" },
+    { "id": "l-harlow-tone", "rule": "Sign Harlow Legal emails as Alex, never as the studio.", "scope": "project", "target": "harlow-legal",
+      "when": "drafting an email to Harlow Legal", "level": "remind", "check": false, "applied": 6, "broken": 0,
+      "source": { "kind": "draft-edit", "thread": "t-juno-intake-summary", "at": "$ago:3d" }, "learned_at": "$ago:3d" },
+    { "id": "l-pax-friday", "rule": "Post the invoice total in the Northwind Bakery thread, not by email.", "scope": "agent", "target": "pax",
+      "when": "the Friday total", "level": "ask", "check": false, "applied": 4, "broken": 2,
+      "source": { "kind": "denied", "thread": "t-pax-invoices", "at": "$ago:2d" }, "learned_at": "$ago:12d" }
+  ],
+  "learn.edit": { "ok": true },
+  "learn.retire": { "ok": true }
+}

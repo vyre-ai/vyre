@@ -1,0 +1,12 @@
+{
+  "name": "files",
+  "version": "0.1.0",
+  "description": "Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["files.search", "files.stat", "files.preview", "files.fetch"] },
+  "watches": { "emits": [] },
+  "shows": { "deck": [], "capsule": [], "cli": ["files"] },
+  "needs": {},
+  "teaches": {}
+}

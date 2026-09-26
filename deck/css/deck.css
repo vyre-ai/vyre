@@ -149,6 +149,8 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .rail-a:hover, .rail-a[aria-current="page"] { background: var(--hover); color: var(--text); }
 .rail-a .count { margin-left: auto; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--beacon-ink); }
 .rail-pins { display: flex; flex-direction: column; gap: 2px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--rule); }
+/* A view's own rail content (ctx.rail), e.g. Vault's places. Empty and invisible until filled. */
+.rail-lower:not(:empty) { display: flex; flex-direction: column; gap: 2px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule); }
 .pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
   text-decoration: none; font-size: 13px; line-height: 18px; }
 .pin-a:hover, .pin-a[aria-current="page"] { background: var(--hover); color: var(--text); }
@@ -173,3 +175,17 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 }
 @media (min-width: 761px) { .phone-head { display: none; } }
 @media (max-width: 1100px) { .address { display: none; } }
+
+/* Held content edited in place (js/editable.js): text until focused, then a subtle underline.
+   No box, no Edit button. The focus ring is the underline itself, in Signal. */
+.ed { display: grid; }
+.ed-row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 0;
+  border-bottom: 1px solid var(--rule); }
+.ed-row.ed-body { grid-template-columns: minmax(0, 1fr); border-bottom: 0; padding-top: 14px; }
+.ed-row.ed-body .ed-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ed-in { display: block; width: 100%; min-width: 0; margin: 0; padding: 0 0 2px; border: 0; border-bottom: 1px solid transparent;
+  border-radius: 0; background: transparent; color: var(--text); font: inherit; resize: none; overflow: hidden; }
+.ed-in.ed-mono { font-family: var(--mono); font-size: 13px; line-height: 20px; }
+.ed-in:hover { border-bottom-color: var(--rule); }
+.ed-in:focus, .ed-in:focus-visible { outline: none; border-bottom-color: var(--focus); }
+.ed-dirty .ed-lbl::after { content: " ·"; color: var(--text-2); }

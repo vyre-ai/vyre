@@ -114,7 +114,8 @@ export const callerKind = caller => {
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
-   *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }> }} deps
+   *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
+   *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -122,6 +123,10 @@ export class Registry {
     this.tools = new Map();
     /** @type {Map<string, { manifest: any, dir: string, state: string, error?: string, handle?: any }>} */
     this.modules = new Map();
+    /** @type {Map<string, { module: string, handler: Function }>} WebSocket paths, keyed "<module>/<name>". */
+    this.upgrades = new Map();
+    /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
+    this.routes = new Map();
   }
 
   /** Start every discovered module that is enabled for this machine's role. */
@@ -162,6 +167,7 @@ export class Registry {
     } catch (e) {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
+      for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
     }
   }
@@ -222,6 +228,34 @@ export class Registry {
       // Another module's tool, through the same path as every caller: input checked, rules run.
       // This is the only way one module uses another; never import its files.
       call: (tool, input) => this.call(tool, input, `module:${m.name}`),
+      // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
+      // cannot carry: Glass streams a screen this way. The name must be declared under
+      // shows.streams. The handler gets the raw upgrade (req, socket, head) and the caller, and
+      // owns the socket from then on, including closing it when the module stops.
+      upgrade: (name, handler) => {
+        const declared = (m.shows && m.shows.streams) || [];
+        if (!declared.includes(name)) throw new Error(`${m.name} registered stream ${name}, which its manifest does not declare under shows.streams`);
+        if (typeof handler !== "function") throw new Error(`stream ${name} needs a handler`);
+        this.upgrades.set(`${m.name}/${name}`, { module: m.name, handler });
+      },
+      // vyred's router, for a module that opens a listener of its own (names, onboard). The module
+      // establishes the caller; the policy limits what that listener can reach. See ADR 0002.
+      handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
+      // A tool on the user's box, from a module on the Mac: the link module carries it over the
+      // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
+      // box cannot be reached, so a caller can fall back to what this machine has.
+      remote: async (tool, input = {}) => {
+        const r = await this.call("link.remote", { tool, input }, `module:${m.name}`);
+        return r.error && r.error.code === "no_such_tool" ? { error: { code: "no_link", message: "this machine is not linked to a box" } } : r.data && r.data.result ? r.data.result : r;
+      },
+      // A raw HTTP route on vyred's socket at /v1/<module>/<name>, for what a tool cannot carry:
+      // a stream. The route sees the caller the router established; it never reads one itself.
+      route: (name, fn) => {
+        if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`route ${name} must be lowercase letters, digits and dashes`);
+        const at = `/v1/${m.name}/${name}`;
+        if (this.routes.has(at)) throw new Error(`route ${at} is already registered`);
+        this.routes.set(at, fn);
+      },
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -242,7 +276,14 @@ export class Registry {
    * Run a tool. Every call goes through the rules before it runs, whoever made it: Claude through
    * MCP, a surface through HTTP, or the CLI. That is the point of having one path.
    */
-  async call(tool, input = {}, caller = "unknown") {
+  /**
+   * @param {string} tool @param {any} [input] @param {string} [caller]
+   * @param {{ thread?: string, agent?: string, peer?: any }} [meta] what vyred verified about the
+   *   caller: the live thread (session id) it is calling from, the agent it is, and the tailnet
+   *   node a network listener established. A tool gets these beside the caller; a claim in the
+   *   input is not verified and must not be treated as if it were.
+   */
+  async call(tool, input = {}, caller = "unknown", meta = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -255,7 +296,7 @@ export class Registry {
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await def.run(input, { caller }) }; }
+    try { return { data: await def.run(input, { ...meta, caller }) }; }
     catch (e) { return { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
   }
 

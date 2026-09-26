@@ -16,12 +16,15 @@
 //   vectors    false to never load the model
 //   download   false to never fetch the model weights (then they must already be in `models`)
 //   models     where the weights live (default <VYRE_HOME>/models)
+//   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
+//              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
 import os from "node:os";
 import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
+import { evaluate } from "./eval.js";
 import { load as loadModel, cached } from "./embed.js";
 import { Dense } from "./dense.js";
 
@@ -55,12 +58,15 @@ export default {
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
     const folders = readable(ctx.config.transcripts || []);
-    // Every vector in memory for retrieval by meaning; dropped whenever a pass writes, rebuilt on
-    // the next hybrid search.
-    const dense = new Dense(db);
+    // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
+    // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
+    const dense = new Dense(db, { maxChunks: opts.maxChunks });
     const indexer = new Indexer(db, {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       log: ctx.log,
+      // Each new vector goes straight into the dense index, so a pass never forces a rebuild.
+      // A rewrite moves the generation, and the index rebuilds itself on the next search.
+      onVector: item => dense.add(item),
     });
 
     let stopped = false;
@@ -79,7 +85,6 @@ export default {
         running = true;
         try {
           const s = await indexer.run(folders, { stopped: isStopped });
-          if (s.turns || s.reindexed) dense.invalidate();
           return s;
         }
         finally { running = false; vectorLoop(); }
@@ -104,6 +109,13 @@ export default {
       if (!vec.on) return Promise.resolve(null);
       if (vec.embedder) return Promise.resolve(vec.embedder);
       if (!vec.loading) {
+        // Under `node --test`, never fetch or load the real model unless a test asks for it by
+        // naming a models folder: otherwise every test that starts vyred downloads 23 MB into its
+        // temp home, which the home's cleanup then races.
+        if (process.env.NODE_TEST_CONTEXT && !injected && !opts.models) {
+          vec.on = false; vec.why = "not loaded under tests";
+          return Promise.resolve(null);
+        }
         const models = opts.models || path.join(ctx.paths.root, "models");
         // The one network call Recall ever makes, once. Said out loud, so a first `vyre status`
         // explains the wait instead of looking stuck.
@@ -131,7 +143,6 @@ export default {
             const e = await embedder();
             if (!e || stopped) break;
             const r = await indexer.vectorize(e, { stopped: isStopped });
-            if (r.turns) dense.invalidate();
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
           // Build the dense index now, in the background, so the first search does not pay for it.
@@ -189,6 +200,18 @@ export default {
       },
     });
 
+    ctx.tool("recall.eval", {
+      description: "Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.",
+      input: { type: "object", required: ["queries"], properties: {
+        queries: { type: "array", items: { type: "object", required: ["q", "answers"], properties: { q: { type: "string" }, answers: { type: "array" } } } },
+        nonsense: stringArray, k: { type: "integer" } } },
+      run: async input => {
+        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+        const e = any ? await embedder() : null;
+        return evaluate(db, input, { embedder: e, dense, k: input.k || 10 });
+      },
+    });
+
     // After start returns, so vyred's startup never waits on a pass.
     const first = setTimeout(() => { pass().catch(() => {}); }, 0);
     const timer = every > 0 ? setInterval(() => { if (!running) pass().catch(() => {}); }, every * 60_000) : null;
@@ -201,6 +224,8 @@ export default {
         if (timer) clearInterval(timer);
         await chain;
         await vec.done;
+        // A model load in flight writes into the home; let it settle before the home can go.
+        if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]);
       },
     };
   },
