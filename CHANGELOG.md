@@ -19,6 +19,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- `core/memory`: the graph and the curator, the only writer of `memory_*` tables. It reads
+  Recall's tables and never runs a model. Each turn is read once by `(session, seq)` into
+  observations; the graph (people, organisations, addresses, domains, repos, who works where,
+  learned short forms) is derived from those and written as a difference, so a second pass
+  over the same turns changes nothing.
+- Edge `valid_from` is `NOT NULL`, 0 meaning atemporal. A NULL inside the unique key is what let
+  the prototype append a copy of every edge on each run.
+- `works_at` is voted by focus (a session's share of its organisation mentions), plus explicit
+  phrasings ("Sam Okafor at Northwind Bakery") and addresses at an organisation's domain. Tools,
+  hubs and the user's own organisation (from `config.me`) get no vote, because each of them
+  outvoted real clients in the prototype. A move closes the old edge where the new one starts.
+- Short forms ("Harlow" for Harlow Legal) are learned by measuring their precision over Recall's
+  full-text index, and used only at 0.6 or above.
+- Tools: `memory.facts`, `memory.relevant` (for the M2 Enrich hook), `memory.why`, `memory.pin`,
+  `memory.mute`, `memory.curate`, `memory.stats`. Emits `memory.curated`; listens to
+  `session.indexed` and drops a rewritten session's observations before reading it again.
+- Curation runs in the background on start and shortly after each `session.indexed`, yielding
+  to the event loop. With no Recall tables the module starts and answers with nothing.
+- `vyre memory [about]` and `vyre why <fact>`, in the Recall gold.
+- Measured on a copy of a real 103k-turn index: first pass 6.7s, a pass with nothing new 5ms,
+  one new turn 1.2s in the background; `memory.relevant` p50 0.06ms, p95 1.4ms.
+
 #### Projects
 
 ### M0 · the skeleton (2026-09-26)
