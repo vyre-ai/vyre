@@ -773,3 +773,16 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
   assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
   assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
 });
+
+test("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "kit", projects: [] });
+  const r = await tool("agents.update", { agent: "kit", computer: true }, "deck");
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.equal(r.data.computer, true);
+  assert.equal(r.data.name, "kit", "agent is not stored as a field");
+  assert.equal((await tool("agents.update", { name: "kit", computer: false })).data.computer, false, "name still works");
+  assert.match((await tool("agents.update", { name: "kit", agent: "juno", computer: true })).error.message, /different agents/);
+  assert.match((await tool("agents.update", { computer: true })).error.message, /say which agent/);
+  assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
+});

@@ -133,6 +133,7 @@ export class Registry {
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
    *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
    *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any,
+   *           upgrader?: (policy: any) => (req: any, socket: any, head: any, caller: string) => void,
    *           presence?: import("../presence/index.js").Presence }} deps
    */
   constructor(deps) {
@@ -260,6 +261,9 @@ export class Registry {
       // vyred's router, for a module that opens a listener of its own (names, onboard). The module
       // establishes the caller; the policy limits what that listener can reach. See ADR 0002.
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
+      // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
+      // a module's listener cannot carry a stream, and Glass over the tailnet never connected.
+      upgrader: policy => { if (!this.deps.upgrader) throw new Error("this vyred has no stream router to hand out"); return this.deps.upgrader(policy); },
       // A tool on the user's box, from a module on the Mac: the link module carries it over the
       // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
       // box cannot be reached, so a caller can fall back to what this machine has.

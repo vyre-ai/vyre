@@ -76,9 +76,26 @@ async function startLocked(opts, root, p, release) {
   // limiting what it may reach. The router never reads a caller from their headers.
   const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
+  // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
+  // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
+  // server.close() would wait on a Glass viewer forever. The socket below and every listener a
+  // module opens (the tailnet's, through ctx.upgrader) dispatch here, each with the caller it
+  // established.
+  const upgraded = new Set();
+  const upgrade = (req, socket, head, caller) => {
+    const url = new URL(req.url || "/", "http://vyred");
+    const m = /^\/v1\/streams\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(url.pathname);
+    const u = m && registry.upgrades.get(`${m[1]}/${m[2]}`);
+    if (!u) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
+    upgraded.add(socket);
+    socket.on("close", () => upgraded.delete(socket));
+    try { u.handler(req, socket, head, { caller, url }); }
+    catch (e) { log(`stream ${m[1]}/${m[2]} failed: ${/** @type {Error} */ (e).message}`); socket.destroy(); }
+  };
+  const upgrader = () => (req, socket, head, caller) => upgrade(req, socket, head, caller);
   // Every call passes the floor's rules (SPEC 5.3), whoever makes it; a test may pass its own.
   const rules = opts.rules || registryRules({ home: root });
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, presence });
+  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
@@ -92,20 +109,7 @@ async function startLocked(opts, root, p, release) {
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
-  // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
-  // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
-  // server.close() would wait on a Glass viewer forever.
-  const upgraded = new Set();
-  server.on("upgrade", (req, socket, head) => {
-    const url = new URL(req.url || "/", "http://vyred");
-    const m = /^\/v1\/streams\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(url.pathname);
-    const u = m && registry.upgrades.get(`${m[1]}/${m[2]}`);
-    if (!u) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
-    upgraded.add(socket);
-    socket.on("close", () => upgraded.delete(socket));
-    try { u.handler(req, socket, head, { caller: socketCaller(req), url }); }
-    catch (e) { log(`stream ${m[1]}/${m[2]} failed: ${/** @type {Error} */ (e).message}`); socket.destroy(); }
-  });
+  server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
   fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
