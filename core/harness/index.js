@@ -44,11 +44,29 @@ export default {
     /** The project a folder is in, if Projects is running and knows one. */
     const projectOf = async cwd => (cwd ? ask("projects.of", { cwd }) : null);
 
+    /**
+     * A session that is not our own headless child, whose id is a live headless thread here: a
+     * terminal `claude --resume` of a conversation vyred is running (floor rule 4). Two processes
+     * would append to one transcript. The warning is all this does; the session still starts,
+     * because a hook that stops people working gets turned off. No switchboard, no warning.
+     * @param {string} session
+     */
+    const secondWriter = async session => {
+      const c = await ask("threads.claimed", { session });
+      if (!c || !c.headless) return "";
+      await ask("threads.contend", { session });
+      return `Warning from Vyre: this conversation is also running headless under Vyre right now (holder: ${c.holder || "none"}). ` +
+        `Two processes writing one transcript lose work. Stop the headless one with \`vyre threads stop ${session.slice(0, 8)}\` ` +
+        `before going on here, or leave this session and keep working there. Tell the user this before anything else.`;
+    };
+
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
-      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" } } },
-      run: async ({ cwd, session, source, project, projects }) => {
+      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
+      run: async ({ cwd, session, source, project, projects, headless }) => {
         if (session) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
+        const warning = session && !headless ? await secondWriter(session) : "";
+        const withWarning = (/** @type {string} */ t) => [warning, t].filter(Boolean).join("\n\n");
         // Projects decides which project this is: from the folder first, then from the session's
         // single pick. A session picked into several projects gets no brief rather than a guess.
         const brief = await ask("projects.context", project ? { project, session } : { cwd, session });
@@ -58,8 +76,8 @@ export default {
         const lessons = await ask("learn.check", { stage: "brief", cwd, session });
         const lessonText = lessons && lessons.text ? lessons.text : "";
         // An agent outside its projects gets no brief, only the lessons.
-        if (!inScope(projects, slug)) return { text: lessonText, project: null };
-        return { text: [text, lessonText].filter(Boolean).join("\n\n"), project: slug };
+        if (!inScope(projects, slug)) return { text: withWarning(lessonText), project: null };
+        return { text: withWarning([text, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 

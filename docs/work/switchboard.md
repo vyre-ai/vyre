@@ -74,11 +74,9 @@ with real Claude Code, not only a fake.
 - Nothing. Waiting on review.
 
 ## Next
-1. A terminal `claude --resume <id>` on a thread that is headless right now: warn from the Harness SessionStart
-   (the prototype's claim.cjs). Two processes on one transcript is the real two-writer risk.
-2. Prune `thread.text` deltas from the event log after a turn ends. Only the `done` text needs to stay.
-3. Scope for `recall.thread` and `memory.*` over MCP, which is not done yet (see Needs).
-4. Have onboarding create the assistant and grant its items to `agents`.
+1. Prune `thread.text` deltas from the event log after a turn ends. Only the `done` text needs to stay.
+2. Scope for `recall.thread` and `memory.*` over MCP, which is not done yet (see Needs).
+3. Have onboarding create the assistant and grant its items to `agents`.
 
 ## Needs from others
 - vault (contract final on work/vault): grants are per item and per module, via `vyre vault grant <item> agents`.
@@ -97,11 +95,16 @@ with real Claude Code, not only a fake.
   alongside harness's `{session,cwd,source}` for every session. Consumers must stay idempotent.
 - `harness.brief` / `harness.enrich` take an optional `projects` ("*" or a comma list).
 - MCP server caller: `mcp:agent:<name>` inside an agent's thread, otherwise `mcp`.
+- Internal `threads.claimed {session}` -> `{headless, holder, status}`: true when the id is a live headless thread in
+  this vyred; holder is the lease surface, else `agent:<name>`, else null. Internal `threads.contend {session}` emits
+  `thread.contended {thread, session, holder}` only if the thread is still live (`core/switchboard/claim.js`).
+- `harness.brief` takes an optional `headless` boolean (the hook sets it from `VYRE_THREAD === session_id`). When
+  false and the session is a live headless thread, the brief text starts with the two-writer warning.
 
 ## Shared files touched (minimal)
 - `harness/mcp/server.js`: the caller identity, the tool filter for non-assistant agents, recall scope, and a 600s timeout for agents.ask.
-- `harness/hooks/hook.js`: passes `VYRE_PROJECTS` to brief and enrich.
-- `core/harness/index.js` (+ test): scope check in brief and enrich.
+- `harness/hooks/hook.js`: passes `VYRE_PROJECTS` to brief and enrich, and `headless` to brief.
+- `core/harness/index.js` (+ test): scope check in brief and enrich; the second-writer warning in brief.
 - `core/cli/commands/home.test.js`, `test/projects-cli.test.js`: they asserted that agents did not exist yet.
 
 ## Assumptions
