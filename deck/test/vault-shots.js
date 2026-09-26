@@ -42,7 +42,7 @@ fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
   name: "alex-box", roots: [], transcripts: [], recall: { vectors: false, download: false },
   vault: { keystore: "file", relay: { host: "127.0.0.1", port: 0 }, deck: { reveal: true }, breach: "off" },
 }));
-const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness") };
+const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness") };
 const daemon = spawn(process.execPath, [path.join(REPO, "core", "daemon", "main.js")], { env, stdio: ["ignore", "ignore", "inherit"] });
 const { socketPath } = await import("../../core/config/index.js");
 const { call } = await import("../../core/daemon/client.js");

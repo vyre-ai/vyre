@@ -90,12 +90,17 @@ export default {
 
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
-      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" } } },
-      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects }, { caller } = {}) => {
+      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
+        interactive: { type: "boolean" } } },
+      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects, interactive }, { caller } = {}) => {
         const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
-        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent }) : null;
+        // interactive: the hook saw a person's Claude Code (a terminal, no -p); only then may a
+        // plain yes or no answer a lesson. An agent's thread never is.
+        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: interactive === true && !agent }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
+        // A lesson broken last turn opens this one, ahead of memory.
+        const first = Boolean(learned && Array.isArray(learned.broke) && learned.broke.length);
         if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: lessons };
         const project = await projectOf(cwd);
         // An agent outside its projects gets no memory at all, not memory from elsewhere.
@@ -109,14 +114,15 @@ export default {
           : folders ? { project_cwds: folders } : { room: "unfiled" };
         const facts = await ask("memory.relevant", { text: prompt, ...where, limit: 5 });
         const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
-        return { text: [memory, lessons].filter(Boolean).join("\n\n") };
+        return { text: (first ? [lessons, memory] : [memory, lessons]).filter(Boolean).join("\n\n") };
       },
     });
 
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
-      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" } } },
-      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named }, { caller } = {}) => {
+      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
+        plugin_root: { type: "string" } } },
+      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller } = {}) => {
         const agent = agentOf(named, caller);
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
         let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
@@ -128,7 +134,9 @@ export default {
         }
         // The floor first; a lesson can only add a hold, never lift one.
         if (!verdict.decision) {
-          const l = await ask("learn.check", { stage: "tool", session, prompt_id, cwd, agent, tool_name, tool_input: tool_input || {} });
+          // plugin_root: where Claude Code loaded the Harness from, whose hooks Learning guards.
+          const l = await ask("learn.check", { stage: "tool", session, prompt_id, cwd, agent, tool_name, tool_input: tool_input || {}, ...(tool_use_id ? { tool_use_id } : {}),
+            ...(plugin_root ? { plugin_root } : {}) });
           if (l && l.decision) verdict = { decision: l.decision, reason: l.reason, lesson: l.lesson };
         }
         if (verdict.decision) ctx.events.emit("tool.held", { session: session || null, tool: tool_name, decision: verdict.decision, rule: verdict.rule ?? null, lesson: verdict.lesson ?? null });
@@ -138,16 +146,26 @@ export default {
 
     const touch = db.prepare("INSERT INTO harness_files (session, path, tool, at) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET at = excluded.at");
     ctx.tool("harness.learn", {
-      description: "PostToolUse: record which files a tool changed, so every change is visible (security floor rule 5).",
-      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" } } },
-      run: async ({ tool_name, tool_input, cwd, session }) => {
+      description: "PostToolUse and PostToolUseFailure: record which files a tool changed, so every change is visible (security floor rule 5), and tell Learning what became of the call (ok false: it failed).",
+      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" },
+        tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" } } },
+      run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }) => {
         const key = WRITERS[/** @type {keyof typeof WRITERS} */ (tool_name)];
         const raw = key && tool_input ? tool_input[key] : null;
-        if (!raw || typeof raw !== "string") return { recorded: 0 };
-        const file = path.resolve(cwd || os.homedir(), raw);
-        touch.run(session || "", file, tool_name, Date.now());
-        ctx.events.emit("file.touched", { session: session || null, path: file, tool: tool_name });
-        return { recorded: 1 };
+        const file = raw && typeof raw === "string" ? path.resolve(cwd || os.homedir(), raw.startsWith("~/") ? path.join(os.homedir(), raw.slice(2)) : raw) : null;
+        let recorded = 0;
+        if (file && ok !== false) {
+          touch.run(session || "", file, tool_name, Date.now());
+          ctx.events.emit("file.touched", { session: session || null, path: file, tool: tool_name });
+          recorded = 1;
+        }
+        // Learning hashes what Claude wrote and counts failed and fixed commands. Only the head of
+        // an error is passed on, and Learning keeps none of it.
+        if (session && (key || tool_name === "Bash")) {
+          await ask("learn.observe", { session, tool_name, ok: ok !== false, ...(tool_use_id ? { tool_use_id } : {}), ...(file ? { path: file } : {}),
+            ...(typeof error_head === "string" ? { error_head: error_head.slice(0, 200) } : {}), ...(interrupted ? { interrupted: true } : {}) });
+        }
+        return { recorded };
       },
     });
 
@@ -160,7 +178,8 @@ export default {
 
     ctx.tool("harness.stop", {
       description: "Stop: the lessons' output checks, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
-      input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" } } },
+      input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },
+        headless: { type: "boolean" } } },
       run: async ({ session, ...turn }, { caller } = {}) => {
         const agent = agentOf(turn.agent, caller);
         const check = session ? await ask("learn.check", { stage: "stop", session, ...turn, ...(agent ? { agent } : {}) }) : null;
@@ -173,6 +192,34 @@ export default {
     return { async stop() {} };
   },
 };
+
+/** Flags that make a claude process headless: its prompt comes from stdin or an argument, not a person. */
+const HEADLESS_FLAGS = new Set(["-p", "--print", "--output-format", "--input-format"]);
+
+/**
+ * Is this `ps -o tty=,args=` line an interactive Claude Code, one a person types into? It is a
+ * `claude` (as threads.bind knows one: by the name it was started as), has a controlling
+ * terminal, and has none of -p, --print, --output-format, --input-format (also as
+ * --flag=value, or -p among joined short flags such as -cp). Anything unreadable is not.
+ * ps prints arguments unquoted, so a prompt given as an argument may add words: those can only
+ * make the answer no, never yes.
+ * @param {string} line
+ */
+export function interactiveFrom(line) {
+  const m = /^\s*(\S+)\s+(.+?)\s*$/.exec(String(line || "").split("\n")[0]);
+  if (!m) return false;
+  const [, tty, args] = m;
+  if (/^(\?+|-|none)$/i.test(tty)) return false;
+  const argv = args.split(/\s+/);
+  if (argv[0].split("/").pop() !== "claude") return false;
+  for (const a of argv.slice(1)) {
+    if (a === "--") break;
+    const flag = a.split("=")[0];
+    if (HEADLESS_FLAGS.has(flag)) return false;
+    if (/^-[A-Za-z]{2,}$/.test(a) && a.includes("p")) return false;
+  }
+  return true;
+}
 
 /**
  * Memory for a prompt, as Claude will read it. Each line says it is memory, where it came from

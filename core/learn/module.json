@@ -1,11 +1,13 @@
 {
   "name": "learn",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["learn.lessons", "learn.add", "learn.accept", "learn.edit", "learn.retire", "learn.signal", "learn.check"] },
-  "watches": { "emits": ["lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired"] },
-  "shows": { "deck": [], "capsule": [], "cli": ["learn"] },
+  "does": { "tools": ["learn.lessons", "learn.add", "learn.accept", "learn.edit", "learn.relax", "learn.retire", "learn.signal", "learn.check",
+    "learn.observe", "learn.signals", "learn.stats", "learn.skills", "learn.skill-install", "learn.skill-retire", "learn.skill-dismiss"] },
+  "watches": { "emits": ["lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired", "lesson.tampered",
+    "lesson.dormant", "lesson.allowed", "skill.proposed", "skill.installed", "skill.retired", "distill.finished"] },
+  "shows": { "deck": ["panel:memory/lessons"], "capsule": ["waiting:lesson.proposed"], "cli": ["learn"] },
   "needs": {},
-  "teaches": {}
+  "teaches": { "memory": ["preference"] }
 }

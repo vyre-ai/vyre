@@ -1,20 +1,9 @@
 // @ts-check
-// dialogs: whether vyred may raise a system dialog (Touch ID, a keychain access prompt, an
-// Automation prompt) on this Mac. Never under tests, and never when a script that runs a real
-// vyred unattended says so. A dialog nobody is there to answer is at best a stuck process and
-// at worst a click-through by whoever sits down next.
-//
-//   - VYRE_NO_DIALOGS=1: never, in or out of tests.
-//   - under node --test (NODE_TEST_CONTEXT): never, unless VYRE_TEST_DIALOGS=1 (a person at the
-//     machine running one test on purpose).
-//   - otherwise: yes.
+// dialogs: the vault's own gate on its Swift helpers. Whether a dialog may show at all is
+// core/config/dialogs.js, shared with presence, the CLI and the Capsule.
 
-/** @param {NodeJS.ProcessEnv} [env] */
-export function dialogsAllowed(env = process.env) {
-  if (env.VYRE_NO_DIALOGS === "1") return false;
-  if (env.NODE_TEST_CONTEXT && env.VYRE_TEST_DIALOGS !== "1") return false;
-  return true;
-}
+export { dialogsAllowed } from "../../config/dialogs.js";
+import { dialogsAllowed } from "../../config/dialogs.js";
 
 export const NO_DIALOGS = "dialogs are off under tests";
 

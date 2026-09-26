@@ -39,7 +39,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV = !app.isPackaged;
 const DRIVEN = DEV && Boolean(process.env.VYRE_CAPSULE_DRIVE);
 const BIN = process.env.VYRE_CAPSULE_BIN || (DEV ? path.join(HERE, "..", "bin") : path.join(process.resourcesPath, "bin"));
-const WIDTH = 560;
+const WIDTH = 680;   // Spotlight's width: the Capsule takes its place
 /** Room around the Capsule for the shadow the page draws; the window itself is transparent. */
 const MARGIN = { x: 24, top: 8, bottom: 40 };
 
