@@ -30,6 +30,7 @@ const ROUTES = [
   ["/agents/:name", "agents"],
   ["/agents/:name/glass", "glass"],
   ["/vault", "vault"],
+  ["/vault/:place", "vault"],
   ["/settings", "settings"],
   ["/ask", "ask"],
 ];
@@ -110,8 +111,13 @@ needs.watch(drawNeeds);
 function pinned() {
   try { return JSON.parse(localStorage.getItem("vyre.pins") || "[]"); } catch { return []; }
 }
+// A view may take the rail's lower group while it is open (the Vault's places): it dispatches
+// deck:rail with the nodes, and the router gives the group back to the pins on the next route.
+let railOwned = false;
+window.addEventListener("deck:rail", e => { railOwned = true; put(pins, /** @type {CustomEvent} */ (e).detail); });
 async function drawRail() {
   const r = await attempt("projects.list");
+  if (railOwned) return;
   info.projects = r.data?.projects || [];
   const pins_ = pinned();
   const chosen = pins_.length ? pins_.map(s => info.projects.find(p => p.slug === s)).filter(Boolean)
@@ -199,6 +205,7 @@ async function route() {
     a.setAttribute("aria-current", v === name || (name === "needs" && v === "now") ? "page" : "false");
     if (a.getAttribute("aria-current") === "false") a.removeAttribute("aria-current");
   }
+  railOwned = false;
   drawRail();
   view.scrollTop = 0;
   put(view);
