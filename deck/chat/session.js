@@ -10,7 +10,7 @@
 import { h, put, add, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
-import { clock, since } from "../js/fmt.js";
+import { clock } from "../js/fmt.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
@@ -27,6 +27,12 @@ export function mountSession(container, opts) {
   const rows = new Map();
   /** @type {string[]} tool row keys, oldest first — only the last 6 stay in the timeline (Capsule shape) */
   const toolKeys = [];
+  /** @type {Map<number, HTMLElement>} turn number (1-indexed, counted on thread.finished) -> the
+   * timeline element to insert that turn's memory facts after (intelligence's `refs[].seq`) */
+  const turnMarkers = new Map();
+  /** @type {Set<string>} memory fact ids already rendered, so a memory.curated refetch only adds new ones */
+  const shownFacts = new Set();
+  let turnSeq = 0;
   let lastMessageEl = null, lastMessageId = null;
   const timeline = h("div", { class: "thread-view" });
   const head = h("div", { class: "session-head" });
@@ -129,6 +135,10 @@ export function mountSession(container, opts) {
       const cur = lastMessageEl && lastMessageEl.querySelector(".msg-cursor");
       if (cur) cur.remove();
       if (!p.ok || p.error) timeline.append(h("div", { class: "turn-foot" }, h("span", { class: "err" }, "turn failed: " + (p.error || p.stop_reason || "error"))));
+      // intelligence's memory.facts refs a turn by its 1-indexed number (record.current.turns
+      // counts the same way); mark where this turn ended so a fact for it lands right after.
+      turnSeq++;
+      turnMarkers.set(turnSeq, timeline.lastElementChild);
       return;
     }
     if (e.type === "thread.stopped") { timeline.append(h("div", { class: "turn-foot" }, icon("terminal", 12), "session stopped" + (p.reason ? ": " + p.reason : ""))); return; }
@@ -171,29 +181,42 @@ export function mountSession(container, opts) {
     return wrap;
   }
 
-  // Matches the Capsule's shape for a memory source (capsule teammate, 2026-09-27): the name,
-  // then "<age> · <confidence>%" in mono 11 Ash. confidence is 0 to 1 (capsule: same as
-  // memory.relevant sends it, Math.round(c * 100)); the >1 branch stays only in case
-  // memory.thread (still unconfirmed with intelligence) turns out to differ.
-  function sourceChip(s) {
-    if (typeof s === "string") return h("span", { class: "source" }, icon("file", 12), s);
-    const name = s.name || s.title || "";
+  // A gold fact, intelligence's real shape (memory.facts): {id, text, subject, rel, object,
+  // confidence, age, stale, source, refs: [{seq}], taught?: [{module, kind}]}. Source meta
+  // matches the Capsule's: "<age> · <confidence>%" in mono 11 Ash after the name (confidence is
+  // 0 to 1, capsule confirmed, same as memory.relevant). Lessons are a different system and are
+  // never rendered gold; only what memory.facts returns is.
+  function factCard(f) {
     const bits = [];
-    if (s.at) bits.push(since(s.at) + " ago");
-    if (s.confidence != null) bits.push(Math.round(s.confidence > 1 ? s.confidence : s.confidence * 100) + "%");
-    return h("span", { class: "source" }, icon("file", 12), h("span", null, name), bits.length ? h("span", { class: "source-meta" }, bits.join(" · ")) : null);
+    if (f.age) bits.push(String(f.age));
+    if (f.confidence != null) bits.push(Math.round(f.confidence > 1 ? f.confidence : f.confidence * 100) + "%");
+    return h("div", { class: "memory-fact" + (f.stale ? " stale" : "") },
+      h("h3", { class: "lbl" }, "From memory"),
+      h("div", { class: "fact" }, f.text || [f.subject, f.rel, f.object].filter(Boolean).join(" ")),
+      f.source ? h("div", { class: "sources" },
+        h("span", { class: "source" }, icon("file", 12), h("span", null, typeof f.source === "string" ? f.source : (f.source.name || f.source.title || "")),
+          bits.length ? h("span", { class: "source-meta" }, bits.join(" · ")) : null)) : null,
+    );
+  }
+
+  /** Where in the timeline a fact belongs: right after the latest turn its refs mention. Accepts
+   * either shape seen so far: `refs: [{seq}]` (intelligence's message) or a single `ref: {seq}`
+   * (deck/fixtures/memory.json, the tool's existing about-scoped shape). */
+  function insertFact(f) {
+    const refs = f.refs || (f.ref ? [f.ref] : []);
+    const maxSeq = refs.reduce((m, r) => Math.max(m, r.seq || 0), 0);
+    const marker = maxSeq ? turnMarkers.get(maxSeq) : null;
+    const el = factCard(f);
+    if (marker && marker.parentNode === timeline) marker.after(el); else timeline.append(el);
   }
 
   async function fetchMemory() {
-    const r = await attempt("memory.thread", { thread });
-    if (r.error || !r.data || !r.data.length) return;
-    for (const f of r.data) {
-      const sources = f.sources || (f.source ? [f.source] : []);
-      timeline.append(h("div", { class: "memory-fact" },
-        h("h3", { class: "lbl" }, "From memory"),
-        h("div", { class: "fact" }, f.text || f.fact || String(f)),
-        sources.length ? h("div", { class: "sources" }, sources.map(sourceChip)) : null,
-      ));
+    const r = await attempt("memory.facts", { thread, ...(record.current?.project ? { room: record.current.project } : {}), limit: 50 });
+    if (r.error || !r.data || !r.data.facts) return;
+    for (const f of r.data.facts) {
+      if (shownFacts.has(f.id)) continue;
+      shownFacts.add(f.id);
+      insertFact(f);
     }
   }
 
@@ -208,6 +231,9 @@ export function mountSession(container, opts) {
     on("gate.released", e => { if (e.thread === thread) applyEvent(e, true); }),
     on("gate.rejected", e => { if (e.thread === thread) applyEvent(e, true); }),
     on("lease.changed", e => { if (e.thread === thread) applyEvent(e, true); }),
+    // memory.curated {nodes, edges, ms, updated} carries no thread (intelligence): it only says
+    // the graph changed, so refetch this open thread and let fetchMemory's id-dedup filter it.
+    on("memory.curated", () => fetchMemory()),
   ];
   return () => { for (const off of offs) off(); };
 }
