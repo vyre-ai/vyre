@@ -268,9 +268,8 @@ async function link(r, env) {
 
 /**
  * Step 7: remember the box, start this Mac's vyred, pair, and print the ending. Pairing shows a
- * code on the Mac for the box's owner to approve (ADR 0008 section 7). Here the person has just
- * proved they own the server by reaching it over SSH, so the Mac approves its own code there,
- * as `vyre link approve` on the box, and nobody types it.
+ * code on the Mac for the box's owner to approve with the passkey onboarding enrolled (ADR 0008
+ * section 7). SSH cannot approve it: anything run in the box's container could do the same.
  */
 async function finish(r, target, s, t, env, tool = call) {
   config.save({ box: { ssh: target }, network: { box: s.address || undefined } });
@@ -282,25 +281,21 @@ async function finish(r, target, s, t, env, tool = call) {
   }
   const up = await ensureUp();
   if (!up.ok) out(beacon("  this Mac's vyred did not start: ") + dim(String(up.log)));
-  else await pairOver(r, s.address, env, tool);
+  else await pairOver(s.address, tool);
   if (s.owner && t.login && s.owner !== t.login) out(beacon(`  the box serves ${s.owner}, and this Mac is signed in to Tailscale as ${t.login}.`) + " Sign this Mac in to Tailscale as the box's owner, then run vyre up.");
   printEnding({ address: s.address, assistant: s.assistant });
   return 0;
 }
 
 /** Pair this Mac with the box, approving the code on the box over the SSH connection. */
-async function pairOver(r, address, env, tool) {
+async function pairOver(address, tool) {
   const st = await tool("link.status");
   if (st.error && st.error.code === "no_such_tool") { out(dim("  pairing is not in this version yet; this Mac will pair when it is")); return; }
   if (st.data && st.data.linked) return;
   const p = await tool("link.pair", { box: address });
   if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
-  // On a box with no passkey yet, approving proves presence with a code vyred writes to this
-  // terminal, so it runs with one (-t). With a passkey enrolled it needs the Deck instead.
-  const a = await r.run(vyre(["link", "approve", String(p.data.code)], env), { tty: Boolean(process.stdin.isTTY) });
-  if (a.code === 0) out(`  ${signal("paired")} ${dim("· this Mac and your box work as one")}`);
-  // Once the box has a passkey, approving needs a person on a device (the presence floor), not SSH.
-  else out(beacon("  pairing is waiting for approval: ") + `approve "${os.hostname()}" in the Deck on your phone ${dim(`(code ${p.data.code})`)}`);
+  out(`  Approve this Mac in your Deck: it asks for your passkey and names this Mac (${os.hostname()}). Code: ${signal(p.data.code)}`);
+  out(dim("  vyre link shows when it is done."));
 }
 
 /**

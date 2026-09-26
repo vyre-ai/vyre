@@ -193,7 +193,7 @@ test("box add: a box already set up skips install and the browser, and finishes"
   assert.equal(config.load().network.box, ADDRESS);
 });
 
-test("box add: the Mac's pairing code is approved on the box over SSH, so nobody types it", async t => {
+test("box add: a finished box pairs this Mac and asks for the approval in the Deck, never over SSH", async t => {
   const r = rig(t);
   fs.mkdirSync(r.stack, { recursive: true });
   fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
@@ -208,10 +208,10 @@ test("box add: the Mac's pairing code is approved on the box over SSH, so nobody
   const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
   assert.equal(code, 0, text);
   assert.deepEqual(asked, ["link.status", "link.pair"]);
-  assert.match(r.read("vyre.log"), /^link approve 123-456$/m);
+  assert.doesNotMatch(r.read("vyre.log"), /link approve/, "anything in the box's container could approve over SSH");
   assert.doesNotMatch(r.read("vyre.log"), /^up /m, "a finished box needs no link, tunnel or browser");
   assert.equal(r.read("opened"), "");
-  assert.match(text, /paired/);
+  assert.match(text, /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
 });
 
 test("box add: onboarding finished without an address reopens the browser, says what is left, and pairs nothing", async t => {

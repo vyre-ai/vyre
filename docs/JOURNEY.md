@@ -63,8 +63,8 @@ One step a screen. Any step can be skipped and finished later in Settings.
 ## 4. Done
 
 Your assistant says hello on the last screen. Press **Open Vyre**. Back in the terminal, Vyre
-pairs your Mac with the box; the first time, it shows a short code for you to type back, which
-proves it is you at the keyboard. Then it ends with:
+asks you to approve your Mac in the Deck with the passkey you just made, and shows a code to
+check it is the same Mac. Then it ends with:
 
 ```
   Vyre is ready.

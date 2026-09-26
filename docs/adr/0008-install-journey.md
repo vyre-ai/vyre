@@ -73,8 +73,8 @@ The glue this ADR adds. Run on the Mac; everything on the server happens through
    printing one line per step as it completes. Ctrl-C leaves the box as it is; running `vyre box
    add` again resumes from where it stands, because every step is worked out from the box.
 7. **Finish on the Mac.** When the address serves, close the tunnel, save `network.box` and
-   `box.ssh` (`user@host`, for `vyre box update|backup|move|remove`), pair and approve the code
-   over SSH (section 7), and print the ending. A box that already finished onboarding goes
+   `box.ssh` (`user@host`, for `vyre box update|backup|move|remove`), start pairing and ask for
+   the approval in the Deck (section 7), and print the ending. A box that already finished onboarding goes
    straight here, so running `vyre box add` again is how a person resumes.
 
 Door B joins the same journey at step 5: its `vyre up` prints the link, and when the person later
@@ -186,11 +186,11 @@ connection learns the box's node; everything after is pinned to it, and the appr
 box is what makes the pin trustworthy. Approval comes from the box itself (`vyre link approve
 <code>`) or from another of the owner's devices in the Deck, never from the Mac asking.
 
-- **Door A approves over SSH on a fresh box.** `vyre box add` has just reached the server over
-  SSH, which proves the person owns it. After `link.pair` returns the code it runs `vyre link
-  approve <code>` over `ssh -t`; with no passkey enrolled yet, vyred proves presence with a code
-  it writes to that terminal, which the person types back (ADR 0004). Once the box has a
-  passkey, approval needs the Deck, and `box add` says so.
+- **Approval is in the Deck, with a passkey.** Onboarding ends by enrolling the owner's first
+  passkey (box, `onboard.finish` returns a one-time `passkeyUrl`). Both doors then start pairing
+  and ask the person to approve the Mac in the Deck, which names it. SSH is never used to
+  approve: whatever the host wrapper could pass into the box's container, a process already in
+  that container (Claude's sessions run there) could pass too.
 - **Door B shows the code.** `vyre up` on the Mac finds the box (`link.find`: online peers of the
   same tailnet that answer as a box, pinned to the peer's node), starts pairing, and asks for the
   approval in the Deck, where the passkey is. `vyre link approve` on the server is only for a box
