@@ -78,6 +78,13 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Events: `vault.device-paired`, `vault.device-revoked`, `vault.filled`, `vault.restored`.
 - Tool definitions may carry `callers: ["cli", "local", "mcp", "module"]`. Other callers get
   `denied`, and `GET /v1/tools` lists only what the requesting caller may use.
+- Tool definitions carry `presence: { summary(input), skip? }` on every value-out or
+  access-giving vault tool (list in `core/vault/presence.test.js`). `skip` is a proposal to
+  security: `({ input, caller }) => boolean`, used for totp sessions and for mcp grant and
+  pass.create, which only wait as pending.
+- Fill listener: `/pair` needs an extension Origin (403 `origin_required`); a Host outside
+  loopback and config `vault.fill.names` gets 421 `host_refused`.
+- `vault.generate {name}` from mcp refuses an existing name.
 - vyred treats an HTTP `x-vyre-caller: module:*` header as `local`.
 - Events: `vault.item-added`, `vault.item-changed`, `vault.item-deleted`, `vault.granted`,
   `vault.revoked`, `vault.released` (`{name, module}` or `{name, pass, holder}`),

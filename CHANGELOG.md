@@ -298,6 +298,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   - The daemon client no longer pools connections: the first call after a vyred restart failed
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
+- ADR 0006 step 1: every tool that hands out, writes, moves or unlocks a value declares
+  `presence` with a summary naming items and destinations, never a value (put, delete, import,
+  grant, approve, inject, totp, backup, restore, pass.create, pass.accept, offboard, unlock,
+  unlock-passphrase, device.code, device.unlock). The registry on main ignores the field until
+  ADR 0004 merges, so this is a declaration only for now. The fill listener refuses `/pair`
+  without an extension Origin and any Host that is not loopback or `vault.fill.names` (DNS
+  rebinding). `vault.generate` from Claude only creates new names.
 
 #### Watchers
 

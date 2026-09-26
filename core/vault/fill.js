@@ -434,13 +434,29 @@ async function readJson(req) {
   catch { throw new HttpError(400, "bad_input", "request body is not JSON"); }
 }
 
+/** Loopback names a Host header may carry whatever the listener is bound to. */
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1"]);
+
+/** The host part of a Host header, lower case, without port or IPv6 brackets. */
+export function hostName(h) {
+  const s = String(h ?? "").trim().toLowerCase();
+  if (!s) return "";
+  if (s.startsWith("[")) { const end = s.indexOf("]"); return end > 0 ? s.slice(1, end) : ""; }
+  return s.replace(/:\d*$/, "");
+}
+
 /**
  * Start the fill listener. Routes under /v1/fill/; anything else is 404. A request whose Origin
- * is present and is not a browser extension is refused before its body is read.
- * @param {{ host?: string, port?: number, fill: Fill }} o
+ * is present and is not a browser extension is refused before its body is read, and so is one
+ * whose Host is not loopback or a configured name: a page on a domain that re-resolves to
+ * 127.0.0.1 (DNS rebinding) sends its own name as Host, and is refused on that.
+ * @param {{ host?: string, port?: number, fill: Fill, names?: string[] }} o names: extra host
+ *   names people reach this listener by (a Tailscale name, say); loopback is always allowed.
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function serveFill({ host = "127.0.0.1", port = 0, fill }) {
+export async function serveFill({ host = "127.0.0.1", port = 0, fill, names = [] }) {
+  const allowedHosts = new Set([...LOOPBACK, ...names.map(n => hostName(n)).filter(Boolean)]);
+  if (host && !["0.0.0.0", "::"].includes(host)) allowedHosts.add(hostName(host.includes(":") && !host.startsWith("[") ? `[${host}]` : host));
   const server = http.createServer(async (req, res) => {
     /** @type {Record<string, string>} */
     const cors = {};
@@ -449,6 +465,7 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill }) {
       res.end(JSON.stringify(body));
     };
     try {
+      if (!allowedHosts.has(hostName(req.headers.host))) return reply(421, { error: { code: "host_refused", message: "the fill listener answers only on its own address" } });
       const o = req.headers.origin;
       if (o !== undefined) {
         if (!EXTENSION_ORIGIN.test(String(o))) return reply(403, { error: { code: "origin_refused", message: "the fill listener answers the Vyre extension only" } });
@@ -466,6 +483,9 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill }) {
       if (!Object.hasOwn(ROUTES, name)) return reply(404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       if (req.method === "OPTIONS") { res.writeHead(204, { ...cors, "content-length": "0" }); return res.end(); }
       if (req.method !== ROUTES[name]) return reply(405, { error: { code: "method", message: `${name} takes ${ROUTES[name]}` } });
+      // Pairing is the extension's first step and nothing else makes it. Without an Origin, the
+      // caller is a script (an agent with curl), which would otherwise pair itself with a code.
+      if (name === "pair" && o === undefined) return reply(403, { error: { code: "origin_required", message: "pairing is done from the Vyre extension" } });
       const body = req.method === "POST" ? await readJson(req) : {};
       const out = await fill.handle(`${req.method} ${name}`, body, /** @type {any} */ (req.headers));
       reply(out.status || 200, out.body ?? {});
@@ -493,17 +513,22 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 /**
  * Tools for index.js to register. `callers: null` means every caller, as in index.js. Each run
  * is `(input, { caller }) => fill[method](input, caller)`. There is deliberately no fill tool.
- * @type {{ name: string, callers: string[]|null, description: string, input: any, method: "code"|"devices"|"revokeDevice"|"unlockDevice"|"setUnlockPassphrase" }[]}
+ * `presence(fill, input)` is the words a person sees before proving presence (ADR 0006,
+ * section 3): what is being unlocked or paired, never a code, token or passphrase.
+ * @type {{ name: string, callers: string[]|null, description: string, input: any, method: "code"|"devices"|"revokeDevice"|"unlockDevice"|"setUnlockPassphrase", presence?: (fill: Fill, input: any) => string }[]}
  */
 export const FILL_TOOLS = [
   { name: "vault.device.code", callers: ["cli", "local"], method: "code", input: obj({ name: str }),
+    presence: (f, i) => `Pair a new browser${i && i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill`,
     description: "A one-time code (8 characters, 5 minutes) to pair a browser extension with this vault." },
   { name: "vault.devices", callers: null, method: "devices", input: obj({}),
     description: "Browsers paired for autofill, when each was last seen and how many sessions it has open." },
   { name: "vault.device.revoke", callers: null, method: "revokeDevice", input: obj({ id: str }, ["id"]),
     description: "Unpair a browser: its token and every session it holds stop working now." },
   { name: "vault.device.unlock", callers: ["cli", "local"], method: "unlockDevice", input: obj({ device: str }, ["device"]),
+    presence: (f, i) => `Unlock autofill in ${f.deviceById(i && i.device)?.name || "a paired browser"} for up to 12 hours`,
     description: "Open an autofill session for a paired browser without a passphrase, after Touch ID. Returns no token." },
   { name: "vault.unlock-passphrase", callers: ["cli", "local"], method: "setUnlockPassphrase", input: obj({ passphrase: str }, ["passphrase"]),
+    presence: () => "Set the passphrase that unlocks autofill in paired browsers",
     description: "Set the passphrase a paired browser types to unlock autofill. Changing it ends every session." },
 ];
