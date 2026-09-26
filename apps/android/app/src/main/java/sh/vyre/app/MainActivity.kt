@@ -29,7 +29,8 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         val app = vyre
         app.client.prover = Prover { tool, input, reason -> app.key.sign(this, tool, input, reason) }
-        pending.value = intent
+        // A recreated activity (after process death) must not replay the link it was first opened with.
+        if (savedInstanceState == null) pending.value = intent
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 app.prefs.keyId.collect { id -> if (id != null && app.prefs.address.value != null) app.stream.start() else app.stream.stop() }

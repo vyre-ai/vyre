@@ -99,23 +99,22 @@ private fun Main(activity: MainActivity) {
     val back: () -> Unit = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
     BackHandler(enabled = stack.isNotEmpty()) { back() }
 
-    // Links: a push opens its item on Now (needs) or Chat (a thread); settings under More.
+    // Any route, from a link, a push or a button in another tab: switch to the tab it belongs to
+    // (Links.tabOf) and put it on top of that tab's list, so back lands on the list.
+    val go: (String) -> Unit = { r ->
+        val t = Tab.entries.firstOrNull { it.name.equals(Links.tabOf(r), true) } ?: Tab.Now
+        tab = t
+        stacks.getValue(t).apply { clear(); if (!r.startsWith("tab/")) add(r) }
+    }
+
+    // Links: a push's path (/needs/<id>, /threads/<id>) or vyre:// opens its item.
     val pending by activity.pending.collectAsState()
     LaunchedEffect(pending) {
         val i = pending ?: return@LaunchedEffect
         if (i.data?.host == "enrolled") return@LaunchedEffect
         activity.pending.value = null
         if (sh.vyre.app.BuildConfig.DEBUG) i.getStringExtra(EXTRA_TAB)?.let { t -> Tab.entries.firstOrNull { it.name.equals(t, true) }?.let { tab = it } }
-        val r = linkOf(i) ?: return@LaunchedEffect
-        val (t, route) = when {
-            r.startsWith("tab/") -> (Tab.entries.firstOrNull { it.name.equals(r.removePrefix("tab/"), true) } ?: Tab.Now) to null
-            r.startsWith("needs/") -> Tab.Now to r
-            r.startsWith("thread/") -> Tab.Chat to r
-            r == "settings" -> Tab.Now to r
-            else -> Tab.Now to null
-        }
-        tab = t
-        stacks.getValue(t).apply { clear(); if (route != null) add(route) }
+        linkOf(i)?.let { go(it) }
     }
 
     // The needs badge on Now: held items plus open asks, re-read when either changes.
@@ -156,7 +155,7 @@ private fun Main(activity: MainActivity) {
         }
     }
 
-    CompositionLocalProvider(LocalNav provides nav) {
+    CompositionLocalProvider(LocalNav provides nav, LocalGo provides go) {
         Column(Modifier.fillMaxSize().background(V.c.ground)) {
             Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(pullToFind)) {
                 val top = stack.lastOrNull()

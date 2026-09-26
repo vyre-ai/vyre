@@ -32,6 +32,21 @@ object Links {
     }
 
     /**
+     * The tab a route opens on: a held item or an ask on Now, a session on Chat (the exact session,
+     * pushed over the Chat list, so back lands on the list), Settings under Now's avatar.
+     */
+    fun tabOf(route: String): String = when {
+        route.startsWith("tab/") -> route.removePrefix("tab/")
+        route.startsWith("thread/") -> "chat"
+        route.startsWith("project/") -> "projects"
+        route.startsWith("agent/") -> "agents"
+        else -> "now"
+    }
+
+    /** The route into one Chat session, or null when the id is not one. */
+    fun session(thread: String?): String? = thread?.takeIf { ID.matches(it) }?.let { "thread/$it" }
+
+    /**
      * A box address as the app stores it: `https://<host>[:port]`, no path. A bare name gets
      * https. Plain http is kept only when typed (the debug test world). Null when it is not one.
      */

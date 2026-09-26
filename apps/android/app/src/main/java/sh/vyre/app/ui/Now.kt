@@ -40,6 +40,8 @@ import sh.vyre.app.design.SectionHead
 import sh.vyre.app.design.Space
 import sh.vyre.app.design.Type
 import sh.vyre.app.design.V
+import sh.vyre.app.design.VButton
+import sh.vyre.app.design.ButtonKind
 
 /** What Now shows: held items, open asks, running sessions, the assistant. */
 data class NowData(val held: List<JsonElement>, val asks: List<JsonElement>, val threads: List<JsonElement>, val agents: List<JsonElement>, val note: String?)
@@ -77,6 +79,10 @@ fun NowScreen() {
     val agentOf = d?.threads?.associate { it.str("id") to it.str("agent") }.orEmpty()
     val working = d?.threads?.filter { it.str("status") in setOf("working", "starting", "waiting") }.orEmpty()
     val needs = (d?.held?.size ?: 0) + (d?.asks?.size ?: 0)
+    // Swipes decide (Direction B): right approves or allows, left discards or denies, each through
+    // the device proof; a send first shows its final words (Decider, floor rule 1).
+    val decide = rememberDecider { load.refresh() }
+    ConfirmDialog(decide)
 
     Page(top = { BrandBar(host) { Avatar(sh.vyre.app.data.initials(owner.v.value, host)) { nav("settings") } } }) {
         item {
@@ -88,18 +94,14 @@ fun NowScreen() {
             }, style = Type.monoSmall, color = V.c.secondary, modifier = Modifier.padding(top = 4.dp))
             if (offline) Quiet("Showing what this phone kept. Can't reach the box.", "offline")
             d?.note?.let { Quiet(it) }
+            DecideNote(decide)
         }
         loadState(load.v, empty = false, emptyText = "")
         if (d != null && needs > 0) {
             item { SectionHead("Needs you · $needs", color = V.c.beacon) }
             items(d.held, key = { "h" + it.str("id") }) { h ->
                 val id = h.str("id") ?: return@items
-                Swipe(onRight = { nav("needs/$id") }, rightLabel = "Open", onLeft = {
-                    scope.launch {
-                        try { app.client.callProved("gate.reject", input("id" to id), Held.reason(h, "Discard")); load.refresh() }
-                        catch (e: ApiError.Cancelled) { } catch (e: Exception) { }
-                    }
-                }, leftLabel = "Discard") {
+                Swipe(onRight = { decide.approve(id) }, rightLabel = Held.action(h.str("kind")), onLeft = { decide.reject(h) }, leftLabel = "Discard") {
                     NeedCard("Held at the Gate", listOfNotNull(h.str("agent"), ago(h.str("at")?.toLongOrNull())).joinToString(" · "),
                         title = { Text(Held.title(h), style = Type.bodyStrong, color = V.c.text) },
                         sub = listOfNotNull(h.str("summary").takeIf { h.str("kind") == "send" }, h.str("project")).joinToString(" · ")
@@ -110,16 +112,7 @@ fun NowScreen() {
             items(d.asks, key = { "a" + it.str("id") }) { a ->
                 val id = a.str("id") ?: return@items
                 val summary = a.str("summary").orEmpty()
-                val answer = { decision: String ->
-                    scope.launch {
-                        try {
-                            app.client.callProved("threads.answer", input("ask" to id, "decision" to decision, "surface" to "android"), (if (decision == "allow") "Allow: " else "Deny: ") + summary)
-                            load.refresh()
-                        } catch (e: Exception) { }
-                    }
-                    Unit
-                }
-                Swipe(onRight = { answer("allow") }, rightLabel = "Allow", onLeft = { answer("deny") }, leftLabel = "Deny") {
+                Swipe(onRight = { decide.answer(a, "allow") }, rightLabel = "Allow", onLeft = { decide.answer(a, "deny") }, leftLabel = "Deny") {
                     NeedCard("Permission", listOfNotNull(agentOf[a.str("thread")], ago(a.str("at")?.toLongOrNull())).joinToString(" · "),
                         title = {
                             Text(buildAnnotatedString {
@@ -177,6 +170,9 @@ fun NeedsScreen(id: String, onBack: () -> Unit) {
         val asks = runCatching { app.client.call("threads.asks").arr.toList() }.getOrDefault(emptyList())
         asks.firstOrNull { it.str("id") == id }
     }
+    // The held item's brief, for its thread (gate.held carries it; the item view reads gate.get itself).
+    val brief = rememberLoad("brief", id) { runCatching { app.client.call("gate.held").arr.firstOrNull { it.str("id") == id } }.getOrNull() }
+    val go = LocalGo.current
     Page(top = { BackBar("Now", onBack) { androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) { sh.vyre.app.design.Dot(V.c.beaconDot); androidx.compose.foundation.layout.Spacer(Modifier.padding(horizontal = 4.dp)); Label("Needs you", color = V.c.beacon) } } }) {
         item {
             val ask = load.v.value
@@ -184,6 +180,11 @@ fun NeedsScreen(id: String, onBack: () -> Unit) {
                 load.v.loading && ask == null -> Quiet("Loading")
                 ask != null -> AskItem(ask, null, onDone = onBack)
                 else -> HeldItem(id, onDone = { onBack() })
+            }
+            // Into the exact Chat session this came from: the Chat tab, that thread on top of its list.
+            val thread = ask?.str("thread") ?: brief.v.value?.str("thread")
+            sh.vyre.app.data.Links.session(thread)?.let { route ->
+                VButton("Open session", onClick = { go(route) }, kind = ButtonKind.Quiet, modifier = Modifier.padding(top = Space.m))
             }
         }
     }

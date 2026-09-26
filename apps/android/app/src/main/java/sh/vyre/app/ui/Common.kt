@@ -68,6 +68,8 @@ val LocalApp = staticCompositionLocalOf<VyreApp> { error("no app") }
 val LocalActivity = staticCompositionLocalOf<MainActivity> { error("no activity") }
 /** Navigate to a route string ("thread/<id>", "needs/<id>", ...). */
 val LocalNav = staticCompositionLocalOf<(String) -> Unit> { {} }
+/** Open a route on the tab it belongs to (a session on Chat from Now's "Open session"), as a link would. */
+val LocalGo = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 /** A read from the box: loading, its value, or what went wrong. */
 class Load<T>(val value: T?, val error: Throwable?, val loading: Boolean)

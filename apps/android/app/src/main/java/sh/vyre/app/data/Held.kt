@@ -66,12 +66,34 @@ object Held {
     /** "Send" for a held email, "Approve" for a spend or delete (deck/js/needs.js). */
     fun action(kind: String?) = if (kind == "send") "Send" else "Approve"
 
-    /** What the fingerprint sheet says: the item's summary, with where it goes. */
+    /**
+     * What the fingerprint sheet says (ADR 0004: the destination and the start of the final
+     * content): "Send to dana@harlowlegal.com: Invoice for March. Hi Dana, ...". At most 120 characters.
+     */
     fun reason(item: JsonElement?, verb: String): String {
         val to = item.strings("to").joinToString(", ")
-        val s = item.str("summary").orEmpty()
-        return "$verb: " + listOf(s, to.takeIf { it.isNotEmpty() }?.let { "to $it" }).filterNotNull().filter { it.isNotEmpty() }.joinToString(" ")
+        val c = content(item)
+        val words = listOfNotNull(c.str("subject") ?: item.str("summary"), c.str("body")?.replace(Regex("\\s+"), " ")?.trim())
+            .filter { it.isNotEmpty() }.distinct().joinToString(". ")
+        val head = if (to.isNotEmpty()) "$verb to $to" else verb
+        val out = if (words.isEmpty()) head else "$head: $words"
+        return if (out.length <= 120) out else out.take(119).trimEnd() + "\u2026"
     }
+
+    /**
+     * The final words, whole, as the person reads them before a swipe sends (floor rules 1 and 2):
+     * where it goes first, then every field of `final ?? draft`. What gate.approve sends with no
+     * `edited` is exactly this.
+     */
+    fun finalWords(item: JsonElement?): List<HeldField> = fields(item)
+
+    /**
+     * A fingerprint of what was shown: destination and final content, canonical. The app reads the
+     * item again after the proof and sends only if this is unchanged, so a revision that lands
+     * while the person reads is never sent unseen.
+     */
+    fun shown(item: JsonElement?): String = sh.vyre.app.api.Canonical.encode(JsonObject(mapOf(
+        "to" to JsonArray(item.strings("to").map(::JsonPrimitive)), "content" to content(item), "state" to JsonPrimitive(item.str("state") ?: "held"))))
 
     /** The heading a held item reads as: "Email to Dana Reyes", "POST api.example.com". */
     fun title(brief: JsonElement?): String {

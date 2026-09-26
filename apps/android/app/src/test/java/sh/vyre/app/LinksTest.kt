@@ -38,4 +38,21 @@ class LinksTest {
         assertNull(Links.address("vyre"))
         assertNull(Links.address(""))
     }
+
+    @Test fun sessionsOpenOnChatFromEveryDoor() {
+        // A push path, a vyre:// link and an in-app "Open session" all land on the same route and tab.
+        val id = "3f2a9c1e-5b7d-4e21-9a0c-1d2e3f4a5b6c"
+        val fromPush = Links.route("/threads/$id")
+        val fromLink = Links.route("vyre://threads/$id")
+        val inApp = Links.session(id)
+        assertEquals("thread/$id", fromPush)
+        assertEquals(fromPush, fromLink)
+        assertEquals(fromPush, inApp)
+        assertEquals("chat", Links.tabOf(fromPush!!))
+        assertEquals("now", Links.tabOf(Links.route("/needs/abc")!!))
+        assertEquals("now", Links.tabOf("settings"))
+        assertEquals("find", Links.tabOf("tab/find"))
+        assertNull(Links.session("../x"))
+        assertNull(Links.session(null))
+    }
 }
