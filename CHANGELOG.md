@@ -50,6 +50,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Recall
 
+- The embedding package is now installed on main (the user approved the one-time download of the
+  23 MB model from Hugging Face; nothing about the user is sent). `package-lock.json` is committed
+  so installs resolve the same versions.
+
 - `core/transcripts`: the one adapter that reads Claude Code transcript files. It lists
   sessions and subagents (`<parent>/agent-<id>`), and when one session id has two files (a
   resume from another folder, an archive copy) the fullest wins, so they cannot take turns
