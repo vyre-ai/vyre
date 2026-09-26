@@ -65,7 +65,9 @@ export default [
       }
       for (const h of r.data) {
         out(`\n  ${bold(h.name || h.title || "(untitled)")}`);
-        out(dim(`    ${h.session.slice(0, 8)} · ${ago(h.ts)} · ${h.role} · ${h.cwd || "?"}`));
+        // The full id, because that is what --resume takes; a subagent resumes through its parent.
+        const [id, agent] = h.session.split("/");
+        out(dim(`    ${id}${agent ? " (subagent)" : ""} · ${ago(h.ts)} · ${h.role} · ${h.cwd || "?"}`));
         // What came from the index is shown in the memory colour: it is a quote, not a model's words.
         out(`    ${h.snippet.slice(0, 200).replace(/«([^»]*)»/g, (_, w) => gold(w))}`);
       }
