@@ -97,7 +97,8 @@ passed deadline or the user does.
 | `add` | a new user fact |
 
 Corrections are rows (`memory_corrections`), applied in derive after the votes, and undoable
-(`memory.uncorrect`). Newer transcripts that disagree with a user row raise a conflict for the
+(`memory.uncorrect`). `memory.correct` answers at once with `pending: true` and `memory.curated`
+marks the derive done; the CLI waits for it. Newer transcripts that disagree with a user row raise a conflict for the
 Deck; they never change it. Correct, merge and split are **owner callers only** (`deck`, `cli`,
 `local`, `capsule`); a session never writes Memory, and inside a turn Claude proposes a correction
 as a lesson instead.
@@ -195,8 +196,9 @@ a candidate on its own shape. A job drafts the SKILL.md (frontmatter `name: lear
 Installing a skill is presence-only: it is instructions every future session follows. The user
 sees the whole body; its hash is kept and drift is reported. Where it goes:
 
-- account: `<home>/learned/`, a plugin of its own (`.claude-plugin/plugin.json`, `skills/`),
-  loaded by Switchboard threads as a second `--plugin-dir` and registered by `vyre harness install`;
+- account: `<home>/learned/account/`, a plugin of its own (`.claude-plugin/plugin.json`,
+  `skills/`), loaded by Switchboard threads as a second `--plugin-dir` and registered by
+  `vyre harness install`;
 - project (default for project-scoped): `<project home>/.claude/skills/learned-<name>/`, Claude
   Code's own project scope, or with `--private` under `<home>/learned/projects/<slug>/`;
 - agent: `<home>/learned/agents/<name>/`.
@@ -212,7 +214,8 @@ retiring or weakening one needs presence (ADR 0004).
 - **Accept by reply.** When a proposal was told to a thread, Learning remembers the proposal and
   the thread. The user's next prompt arrives through the UserPromptSubmit hook, which Claude Code
   fills from what the user typed. A plain yes ("yes", "keep it", "yes, keep lesson 7") accepts it
-  inside Learning, with no tool call; a no declines it. The CLI (`vyre learn accept`), the Capsule
+  inside Learning, with no tool call; a no declines it. The answer may be its own first
+  sentence with a request after it ("Yes, keep it. Now write the intro."). The CLI (`vyre learn accept`), the Capsule
   (signed click) and the Deck (passkey) accept with presence as the floor list says.
   `learn.accept` stays on the presence list; accept by reply is not a tool, so there is nothing
   for a model to call. A model that forges a hook call to accept can only make rules stricter,
@@ -242,7 +245,8 @@ Memory `module.json`: `does` adds `memory.correct`, `memory.corrections`, `memor
 
 Learn `module.json`: `requires` names what it calls (`projects`, `harness`; `gate` and `threads`
 are optional and degrade); `does` adds `learn.relax`, `learn.signals`, `learn.stats`,
-`learn.skills`, `learn.skill_install`, `learn.skill_retire`, internal `learn.observe`; `watches`
+`learn.skills`, `learn.skill-install`, `learn.skill-retire`, `learn.skill-dismiss`, internal
+`learn.observe` (the loader refuses underscores in tool names); `watches`
 adds `lesson.dormant`, `skill.proposed`, `skill.installed`, `skill.retired`, `distill.finished`;
 `shows` `{deck: ["panel:memory/lessons"], capsule: ["waiting:lesson.proposed"], cli: ["learn"]}`;
 `teaches` `{memory: ["preference"]}` (an accepted "use pnpm not npm" teaches the user prefers pnpm,
@@ -278,7 +282,9 @@ CLI: `vyre memory [about] [--project <slug>]`, `vyre memory correct|pin|mute|mer
   at most hourly.
 - Other teams:
   - `security`: accept by reply is a deliberate path around the `learn.accept` tool, add
-    `learn.relax` and `learn.skill_install` to the floor list.
+    `learn.relax`, `learn.skill-install` and `learn.skill-retire` to the floor list, and enforce
+  `presence` in the registry. Until then Learning refuses `local` callers for these tools and the
+  CLI asks the user to type the lesson id at a real terminal (the model's Bash has none).
   - `switchboard`: `threads.launch` with `plugin: false`, `tools: "none"` and one-shot, a second
     plugin dir, and `tool` in `ask.answered`.
   - `deck`: the presence flow in `api.js`, the `learn` module name, turn links with `?seq=`, and
