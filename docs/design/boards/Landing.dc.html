@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>vyre.run landing</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .lbl { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+    .h1 { margin: 0; font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em; color: #F1EEE6; text-wrap: balance; }
+    .h2 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; color: #F1EEE6; text-wrap: balance; }
+    .body { margin: 0; font-size: 15px; line-height: 22px; color: #B3AEA4; text-wrap: pretty; }
+    .lead { margin: 0; font-size: 18px; line-height: 28px; color: #B3AEA4; text-wrap: pretty; }
+    .nav a { font-size: 13px; line-height: 18px; color: #B3AEA4; text-decoration: none; }
+    .nav a:hover { color: #F1EEE6; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .btn { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; border-radius: 6px; padding: 12px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+    .btn-signal { color: #0E0D0C; background: #C6F36B; border: 1px solid #C6F36B; }
+    .btn-signal:hover { background: #D4F88A; border-color: #D4F88A; }
+    .btn-line { color: #F1EEE6; background: transparent; border: 1px solid #3A3733; }
+    .btn-line:hover { background: #1E1C1A; }
+    .tab { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; color: #B3AEA4; background: transparent; border: none; border-right: 1px solid #2B2926; padding: 0 18px; height: 48px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .tab:hover { background: #1E1C1A; }
+    .name-in { font: inherit; color: #F1EEE6; background: transparent; border: none; border-bottom: 1px solid #3A3733; padding: 0; margin: 0; letter-spacing: inherit; text-align: left; }
+    .name-in::placeholder { color: #B3AEA4; }
+    .row-link { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0; border-bottom: 1px solid #2B2926; color: #F1EEE6; text-decoration: none; font-size: 15px; line-height: 22px; }
+    .row-link:hover { color: #C6F36B; }
+    .kbd { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; padding: 2px 6px; border-radius: 4px; border: 1px solid #3A3733; color: #B3AEA4; }
+    .kc { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; line-height: 18px; font-weight: 500; min-width: 24px; box-sizing: border-box; padding: 2px 6px; border-radius: 4px; border: 1px solid #3A3733; background: #161513; color: #F1EEE6; text-align: center; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06); }
+    .keycap { width: 64px; height: 64px; box-sizing: border-box; border-radius: 6px; border: 1px solid #3A3733; background: #161513; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 12px 24px -12px rgba(0,0,0,0.55); display: flex; flex-direction: column; justify-content: space-between; padding: 7px 9px; }
+    .cap { background: #161513; border: 1px solid #3A3733; border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); }
+    .cbtn { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 32px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
+    .cbtn-ghost { background: transparent; color: #F1EEE6; border: 1px solid #3A3733; }
+    .cbtn-primary { background: #C6F36B; color: #0E0D0C; border: 1px solid #C6F36B; }
+    .state-row { width: 100%; min-height: 52px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 6px 14px; background: transparent; border: none; border-top: 1px solid #2B2926; color: #B3AEA4; font-family: inherit; font-size: 15px; line-height: 22px; text-align: left; cursor: pointer; }
+    .state-row:hover { background: #1E1C1A; }
+    .state-row.on { background: rgba(198,243,107,0.12); color: #F1EEE6; }
+    .state-row.on .lbl { color: #C6F36B; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 4200px; overflow: hidden; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
+
+  <!-- NAV -->
+  <nav class="nav" aria-label="Main" style="height: 72px; flex-shrink: 0; box-sizing: border-box; padding: 0 72px; display: flex; align-items: center; justify-content: space-between; gap: 32px; border-bottom: 1px solid #2B2926;">
+    <a href="#top" aria-label="Vyre home" style="display: flex; align-items: center; gap: 12px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+    <div style="display: flex; align-items: center; gap: 32px;">
+      <a href="#glass">Glass</a>
+      <a href="#capsule">Capsule</a>
+      <a href="#memory">Memory</a>
+      <a href="#harness">Harness</a>
+      <a href="#fits">How it fits</a>
+      <div style="width: 1px; height: 18px; background: #2B2926;"></div>
+      <a href="#docs">Docs</a>
+      <a href="https://github.com/vyre-ai" style="display: flex; align-items: center; gap: 6px;">GitHub
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a href="LandingCapsuleDemo.dc.html" aria-label="Open the Capsule demo, or press Control twice" style="display: flex; align-items: center; gap: 4px;"><span class="kc">⌃</span><span class="kc">⌃</span></a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header id="top" style="height: 740px; flex-shrink: 0; box-sizing: border-box; padding: 80px 72px 0 72px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+    <div class="lbl">Open source &#183; Built on Claude Code</div>
+    <h1 style="margin: 24px 0 0 0; font-size: 72px; line-height: 76px; font-weight: 600; letter-spacing: -0.035em; color: #F1EEE6;">Your agent has its own computer.</h1>
+    <p class="lead" style="margin-top: 20px; max-width: 700px;">Vyre runs Claude Code agents on your box and your Mac, over your own Tailscale network. Each agent gets a desktop, Chrome and a terminal. You watch, approve, or take the wheel.</p>
+
+    <!-- the install -->
+    <div style="margin-top: 44px; width: 1040px; box-sizing: border-box; background: #161513; border: 1px solid #3A3733; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); text-align: left; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 30px 32px 30px 40px;">
+        <div class="mono" style="display: flex; align-items: baseline; gap: 24px; font-size: 60px; line-height: 68px; font-weight: 500; letter-spacing: -0.03em; white-space: nowrap;">
+          <span style="color: #8C877D;">$</span>
+          <span>npm install -g <span style="color: #C6F36B;">vyre</span></span>
+        </div>
+        <button class="btn btn-signal" type="button" onClick="{{ copyTop }}" aria-label="Copy install command">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          {{ topLabel }}
+        </button>
+      </div>
+      <div class="mono" style="border-top: 1px solid #2B2926; padding: 20px 40px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 22px; color: #B3AEA4;">
+        <div style="display: flex; gap: 16px;"><span style="width: 150px; color: #8C877D;">installed</span><span>vyre@[VERSION]</span></div>
+        <div style="display: flex; gap: 16px;"><span style="width: 150px; color: #8C877D;">tailnet</span><span>joined, as this Mac</span></div>
+        <div style="display: flex; gap: 16px;"><span style="width: 150px; color: #8C877D;">name</span><span>reserved in the Vyre name directory</span></div>
+      </div>
+      <div style="border-top: 1px solid #2B2926; padding: 22px 40px 26px 40px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+        <div class="mono" style="display: flex; align-items: baseline; gap: 16px; font-size: 30px; line-height: 40px; font-weight: 500; letter-spacing: -0.02em;">
+          <span style="font-size: 15px; line-height: 22px; letter-spacing: 0; color: #8C877D; width: 150px;">up at</span>
+          <span style="display: flex; align-items: baseline;">
+            <input id="yourname" class="name-in" type="text" value="{{ nameVal }}" onChange="{{ onName }}" placeholder="yourname" size="{{ nameSize }}" autocomplete="off" spellcheck="false" aria-describedby="yourname-hint">
+            <span>.vyre.run</span>
+          </span>
+        </div>
+        <label for="yourname" id="yourname-hint" class="lbl" style="cursor: text;">Type your name</label>
+      </div>
+    </div>
+    <div style="margin-top: 20px; display: flex; align-items: center; gap: 10px; font-size: 15px; line-height: 22px; color: #B3AEA4;">
+      <span>Then press</span>
+      <a href="LandingCapsuleDemo.dc.html" aria-label="Control Control: open the Capsule demo" style="display: flex; gap: 4px; text-decoration: none;"><span class="kc">⌃</span><span class="kc">⌃</span></a>
+      <span>anywhere on your Mac for the Capsule, or run <span class="mono" style="color: #F1EEE6;">vyre</span> in any terminal.</span>
+    </div>
+  </header>
+
+  <!-- THE TAILNET: everything inside this line lives at the private address -->
+  <div style="position: relative; flex-shrink: 0; height: 2906px; margin: 0 36px; box-sizing: border-box; border: 1px solid #3A3733; border-radius: 14px; padding: 0 35px; display: flex; flex-direction: column;">
+    <div style="position: absolute; top: -12px; left: 0; right: 0; display: flex; justify-content: center;">
+      <div class="mono" style="background: #0E0D0C; padding: 2px 16px; display: flex; align-items: center; gap: 12px; font-size: 13px; line-height: 20px; color: #F1EEE6;">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5" rx="1" stroke="#B3AEA4" stroke-width="1.2"/><path d="M4 5.5V4A2 2 0 0 1 8 4V5.5" stroke="#B3AEA4" stroke-width="1.2"/></svg>
+        <span>{{ host }}</span>
+        <span style="color: #8C877D;">Only your tailnet can open this address. Everything inside this line runs there.</span>
+      </div>
+    </div>
+
+    <!-- GLASS -->
+    <section id="glass" aria-labelledby="glass-h" style="height: 790px; flex-shrink: 0; box-sizing: border-box; padding-top: 56px; display: flex; flex-direction: column; gap: 40px;">
+      <div style="display: grid; grid-template-columns: 7fr 5fr; gap: 72px; align-items: end;">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="lbl">Glass</div>
+          <h2 id="glass-h" class="h1">Watch it work. Take the wheel when you want it.</h2>
+        </div>
+        <p class="body">Every agent gets its own desktop, Chrome and terminal on your box. Glass shows that computer live, from your Mac or your phone. Take over, and you have control. Hand it back when you&#39;re done.</p>
+      </div>
+
+      <!-- Glass window -->
+      <div style="height: 560px; box-sizing: border-box; background: #161513; border: 1px solid #2B2926; border-radius: 14px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden;">
+        <div style="height: 48px; flex-shrink: 0; display: flex; align-items: stretch; justify-content: space-between; border-bottom: 1px solid #2B2926;">
+          <div style="display: flex;">
+            <button class="tab" type="button" aria-current="true" style="color: #F1EEE6; background: #1E1C1A;"><span style="width: 7px; height: 7px; border-radius: 4px; background: #F1EEE6;"></span>juno<span style="color: #8C877D;">live</span></button>
+            <button class="tab" type="button"><span style="width: 7px; height: 7px; border-radius: 4px; background: #8C877D;"></span>kit<span style="color: #8C877D;">working</span></button>
+            <button class="tab" type="button"><span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>pax<span style="color: #FF7A59;">needs you</span></button>
+          </div>
+          <div class="mono" style="display: flex; align-items: center; padding: 0 20px; font-size: 12px; line-height: 16px; color: #8C877D;">{{ host }}/glass/juno</div>
+        </div>
+
+        <div style="flex-grow: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px;">
+          <!-- juno's desktop -->
+          <div style="position: relative; background: #0E0D0C; overflow: hidden;">
+            <div class="lbl" style="position: absolute; left: 24px; bottom: 18px;">juno&#39;s desktop &#183; 1 of 1 display</div>
+
+            <!-- Chrome -->
+            <div style="position: absolute; left: 32px; top: 24px; width: 600px; height: 360px; background: #161513; border: 1px solid #3A3733; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55); overflow: hidden; display: flex; flex-direction: column;">
+              <div style="height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid #2B2926;">
+                <div class="lbl" style="font-size: 10px;">Chrome</div>
+                <div class="mono" style="flex-grow: 1; height: 22px; display: flex; align-items: center; padding: 0 10px; background: #0E0D0C; border-radius: 4px; font-size: 11px; line-height: 14px; color: #B3AEA4;">courts.harlow.example/case-search?q=HL-2291</div>
+              </div>
+              <div style="flex-grow: 1; background: #F4F1EA; color: #141311; padding: 18px 24px; display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="font-size: 11px; line-height: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: #6B665D;">Harlow County Court</div>
+                  <div style="font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em;">Case search</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <div class="mono" style="flex-grow: 1; height: 34px; box-sizing: border-box; display: flex; align-items: center; padding: 0 12px; border: 1px solid #C9C3B7; border-radius: 6px; background: #FBFAF6; font-size: 13px;">HL-2291</div>
+                  <div style="height: 34px; display: flex; align-items: center; padding: 0 16px; border-radius: 6px; background: #141311; color: #F4F1EA; font-size: 13px; font-weight: 500;">Search</div>
+                </div>
+                <div style="display: flex; flex-direction: column; font-size: 13px; line-height: 18px;">
+                  <div style="display: grid; grid-template-columns: 90px 1fr 90px 110px; gap: 12px; padding: 8px 10px; border-bottom: 1px solid #DCD7CC; color: #6B665D; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;"><span>Case</span><span>Title</span><span>Event</span><span>Date</span></div>
+                  <div style="display: grid; grid-template-columns: 90px 1fr 90px 110px; gap: 12px; padding: 9px 10px; border: 1px solid #C9C3B7; border-radius: 4px; background: #FBFAF6;"><span class="mono">HL-2291</span><span>Estate of M. Reyes</span><span>Hearing</span><span>14 Oct, 9:30</span></div>
+                  <div style="display: grid; grid-template-columns: 90px 1fr 90px 110px; gap: 12px; padding: 9px 10px; border-bottom: 1px solid #DCD7CC; color: #4A463F;"><span class="mono">HL-2291</span><span>Estate of M. Reyes</span><span>Filing</span><span>2 Oct</span></div>
+                  <div style="display: grid; grid-template-columns: 90px 1fr 90px 110px; gap: 12px; padding: 9px 10px; color: #4A463F;"><span class="mono">HL-2291</span><span>Estate of M. Reyes</span><span>Notice</span><span>19 Sep</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- terminal -->
+            <div style="position: absolute; left: 380px; top: 248px; width: 540px; height: 190px; background: #161513; border: 1px solid #3A3733; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55); overflow: hidden; display: flex; flex-direction: column;">
+              <div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2B2926;">
+                <div class="lbl" style="font-size: 10px;">Terminal</div>
+                <div class="mono" style="font-size: 11px; line-height: 14px; color: #8C877D;">~/harlow-legal</div>
+              </div>
+              <div class="mono" style="padding: 10px 14px; display: flex; flex-direction: column; gap: 0; font-size: 12px; line-height: 20px; color: #B3AEA4;">
+                <div><span style="color: #8C877D;">$</span> <span style="color: #F1EEE6;">claude</span></div>
+                <div style="color: #F1EEE6;">&gt; add the next HL-2291 hearing to Dana&#39;s calendar</div>
+                <div style="display: flex; gap: 8px; margin: 2px 0; padding: 2px 8px; border-radius: 4px; background: rgba(235,199,107,0.10); color: #EBC76B;"><span>recalled</span><span>Dana wants hearings as invites, not email</span></div>
+                <div><span style="color: #8C877D;">&#183;</span> Chrome: opened case search</div>
+                <div><span style="color: #8C877D;">&#183;</span> searched HL-2291, 3 results</div>
+                <div style="display: flex; align-items: center; gap: 6px; color: #F1EEE6;"><span style="color: #8C877D;">&#183;</span> reading row 1<span style="width: 7px; height: 14px; background: #F1EEE6;"></span></div>
+              </div>
+            </div>
+            <!-- juno's cursor -->
+            <div style="position: absolute; left: 470px; top: 216px; display: flex; align-items: flex-start; gap: 4px;">
+              <svg width="16" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true"><path d="M1.5 1.5V16L5.4 12.4L8.2 18.4L10.6 17.3L7.8 11.4H13L1.5 1.5Z" fill="#F1EEE6" stroke="#0E0D0C" stroke-width="1.3" stroke-linejoin="round"/></svg>
+              <div class="mono" style="margin-top: 14px; padding: 2px 6px; border-radius: 4px; background: #F1EEE6; color: #0E0D0C; font-size: 11px; line-height: 14px; font-weight: 500;">juno</div>
+            </div>
+
+          </div>
+
+          <!-- activity -->
+          <div style="border-left: 1px solid #2B2926; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div class="lbl">juno &#183; Harlow Legal</div>
+              <div style="font-size: 17px; line-height: 24px; font-weight: 600; color: #F1EEE6;">Add the next HL-2291 hearing to Dana&#39;s calendar</div>
+            </div>
+            <div style="display: flex; flex-direction: column; font-size: 13px; line-height: 18px;">
+              <div style="display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid #2B2926;"><span class="mono" style="width: 40px; color: #8C877D;">10:02</span><span style="color: #B3AEA4;">Opened Chrome</span></div>
+              <div style="display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid #2B2926;"><span class="mono" style="width: 40px; color: #8C877D;">10:03</span><span style="color: #B3AEA4;">Searched the case number</span></div>
+              <div style="display: flex; gap: 14px; padding: 10px 0; border-top: 1px solid #2B2926; border-bottom: 1px solid #2B2926;"><span class="mono" style="width: 40px; color: #F1EEE6;">now</span><span style="color: #F1EEE6;">Reading the hearing row</span></div>
+            </div>
+            <div style="padding: 14px; border-radius: 6px; background: rgba(235,199,107,0.10); display: flex; flex-direction: column; gap: 6px;">
+              <div class="lbl" style="color: #EBC76B;">Recalled</div>
+              <div style="font-size: 13px; line-height: 18px; color: #EBC76B;">Dana wants hearings as calendar invites, not email. From your notes, 3 March.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="height: 64px; flex-shrink: 0; box-sizing: border-box; border-top: 1px solid #2B2926; padding: 0 16px 0 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+          <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; line-height: 18px; color: #B3AEA4;">
+            <span style="width: 7px; height: 7px; border-radius: 4px; background: #F1EEE6;"></span>
+            <span><span style="color: #F1EEE6;">Live.</span> You&#39;re watching juno work.</span>
+          </div>
+          <button class="btn btn-signal" type="button">Take over</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAPSULE -->
+    <section id="capsule" aria-labelledby="capsule-h" style="height: 656px; flex-shrink: 0; box-sizing: border-box; padding-top: 56px; border-top: 1px solid #2B2926; display: grid; grid-template-columns: 5fr 7fr; gap: 72px; align-items: start;">
+      <div style="display: flex; flex-direction: column;">
+        <div class="lbl">Capsule &#183; on your Mac</div>
+        <div aria-hidden="true" style="margin-top: 16px; display: flex; gap: 12px;">
+          <div class="keycap"><span class="mono" style="font-size: 11px; line-height: 14px; color: #8C877D; text-align: right;">control</span><span class="mono" style="font-size: 24px; line-height: 26px; color: #F1EEE6;">⌃</span></div>
+          <div class="keycap"><span class="mono" style="font-size: 11px; line-height: 14px; color: #8C877D; text-align: right;">control</span><span class="mono" style="font-size: 24px; line-height: 26px; color: #F1EEE6;">⌃</span></div>
+        </div>
+        <h2 id="capsule-h" class="h1" style="margin-top: 24px;">Press Control twice.</h2>
+        <p class="body" style="margin-top: 16px;">The Capsule opens over whatever you&#39;re doing, a call or a doc, as one command bar. Type or speak to any agent with @, see where it goes before you send, and clear what&#39;s waiting on you. It never talks back out loud, and it&#39;s gone when you&#39;re done.</p>
+        <div role="group" aria-label="Capsule states" style="margin-top: 24px; display: flex; flex-direction: column; border-bottom: 1px solid #2B2926;">
+          <sc-for list="{{ capStates }}" as="st" hint-placeholder-count="4">
+            <button type="button" class="state-row {{ st.on }}" onClick="{{ st.pick }}" aria-pressed="{{ st.pressed }}"><span class="lbl" style="width: 72px; flex-shrink: 0;">{{ st.name }}</span><span>{{ st.line }}</span></button>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- a real desktop moment: a call, with the Capsule over it -->
+      <div style="position: relative; height: 544px; border-radius: 14px; border: 1px solid #2B2926; background: #0E0D0C; overflow: hidden;">
+        <div style="height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: #161513; border-bottom: 1px solid #2B2926; font-size: 12px; line-height: 16px; color: #B3AEA4;">
+          <span style="color: #F1EEE6; font-weight: 600;">Calls</span><span>File</span><span>View</span><span>Window</span>
+          <span style="flex-grow: 1;"></span>
+          <span style="display: flex; color: #F1EEE6;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#FF7A59"/></svg></span>
+          <span class="mono" style="font-size: 11px;">Thu 14:40</span>
+        </div>
+        <div style="position: absolute; left: 16px; right: 16px; top: 44px; bottom: 16px; border-radius: 10px; border: 1px solid #2B2926; background: #161513; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="height: 28px; flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; font-size: 11px; color: #8C877D; border-bottom: 1px solid #2B2926;">Harlow Legal weekly &#183; 23:14</div>
+          <div style="flex-grow: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px;">
+            <div style="position: relative; border-radius: 6px; background: #1E1C1A; display: flex; align-items: center; justify-content: center;">
+              <span style="width: 72px; height: 72px; border-radius: 36px; background: #2B2926; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; color: #B3AEA4;">DR</span>
+              <span style="position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #B3AEA4;">Dana Reyes</span>
+            </div>
+            <div style="position: relative; border-radius: 6px; background: #1E1C1A; display: flex; align-items: center; justify-content: center;">
+              <span style="width: 72px; height: 72px; border-radius: 36px; background: #2B2926; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; color: #B3AEA4;">AR</span>
+              <span style="position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #B3AEA4;">Alex Rivera (you)</span>
+            </div>
+          </div>
+        </div>
+        <div style="position: absolute; left: 77px; top: 72px; width: 560px;">
+        <div class="cap">
+          <sc-if value="{{ isTyping }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; min-width: 0; font-size: 16px; line-height: 22px; color: #F1EEE6; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden;"><span class="mono" style="font-size: 13px; padding: 2px 6px; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; color: #F1EEE6;">@kit</span><span>the Harlow deck needs the Q3 numbers</span><span style="display: inline-block; width: 2px; height: 20px; background: #C6F36B;"></span></div><span class="kbd">⏎</span></div>
+            <div style="border-top: 1px solid #2B2926; padding: 6px;">
+              <div style="display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 6px; background: rgba(198,243,107,0.12);">
+                <span class="lbl" style="width: 76px; color: #C6F36B;">Sends to</span>
+                <span style="font-size: 14px; line-height: 18px; color: #F1EEE6;">kit</span>
+                <span style="color: #8C877D;">&#183;</span>
+                <span style="font-size: 14px; line-height: 18px; color: #F1EEE6;">Harlow Legal</span>
+                <span style="color: #8C877D;">&#8250;</span>
+                <span style="font-size: 14px; line-height: 18px; color: #F1EEE6; font-weight: 500;">Q3 report</span>
+                <span style="flex-grow: 1;"></span>
+                <span class="mono" style="font-size: 11px; color: #B3AEA4;">thread &#183; 4 days</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; padding: 10px;">
+                <span class="lbl" style="width: 76px;">Or</span>
+                <span style="font-size: 14px; line-height: 18px; color: #B3AEA4;">kit &#183; Harlow Legal &#8250; new thread</span>
+              </div>
+              <div style="padding: 2px 10px 8px 98px; font-size: 12px; line-height: 16px; color: #8C877D;">&#8220;Harlow deck&#8221; matched Q3 report, where kit keeps the deck.</div>
+            </div>
+            <div class="mono" style="height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #8C877D;"><span>⏎ send</span><span>&#8595; other destination</span><span>esc close</span></div>
+          </sc-if>
+          <sc-if value="{{ isRecall }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; min-width: 0; font-size: 16px; line-height: 22px; color: #F1EEE6; white-space: nowrap; overflow: hidden;">what target cost per lead did Dana give us?</div><span class="mono" style="font-size: 11px; color: #8C877D;">9 ms</span></div>
+            <div style="border-top: 1px solid #2B2926; background: rgba(235,199,107,0.10); padding: 16px 16px 14px 44px; display: flex; flex-direction: column; gap: 8px;">
+              <span class="lbl" style="color: #EBC76B;">From memory &#183; no model used</span>
+              <div style="font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em; color: #EBC76B;">$180 per signed lead</div>
+              <div style="font-size: 13px; line-height: 19px; color: #B3AEA4;">Down from $220 in July. Dana set it on the 12 Sep call, and kit is auditing ads against it today.</div>
+            </div>
+            <div style="border-top: 1px solid #2B2926; padding: 6px; display: flex; flex-direction: column;">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: #1E1C1A;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#EBC76B" stroke-width="1.5" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/></svg>
+                <span style="font-size: 13px; color: #F1EEE6;">Call notes 12 Sep</span><span style="font-size: 12px; color: #8C877D;">Harlow Legal &#183; &#8220;hold them to 180 a signed lead&#8221;</span>
+              </div>
+            </div>
+            <div class="mono" style="height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #8C877D;"><span>⏎ open source</span><span>⇥ ask juno instead</span><span>esc close</span></div>
+          </sc-if>
+          <sc-if value="{{ isHeld }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg>
+              <span style="font-size: 15px; line-height: 20px; color: #F1EEE6; flex-grow: 1;">juno drafted a reply to Dana</span>
+              <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: rgba(255,122,89,0.12); color: #FF7A59; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></span>HELD FOR YOU</span>
+            </div>
+            <div style="border-top: 1px solid #2B2926; padding: 12px 16px 14px 44px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; font-size: 12px; line-height: 16px;">
+                <span style="color: #8C877D;">To</span><span class="mono" style="font-size: 12px; color: #B3AEA4;">Dana Reyes &lt;dana@harlow.example&gt;</span>
+                <span style="color: #8C877D;">Subject</span><span style="color: #B3AEA4;">Re: Q3 report</span>
+              </div>
+              <div style="font-size: 14px; line-height: 21px; color: #F1EEE6; padding-top: 10px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 4px;"><span>Hi Dana,</span><span>The Q3 numbers are in the deck now, slide 6. Signed leads came in at $171 each, under your $180 target.</span><span>Alex</span></div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px 12px 44px; border-top: 1px solid #2B2926;">
+              <button type="button" class="cbtn cbtn-primary">Send <span style="font-size: 11px; letter-spacing: 0;">⌘⏎</span></button>
+              <button type="button" class="cbtn cbtn-ghost">Edit</button>
+              <button type="button" class="cbtn cbtn-ghost" style="color: #B3AEA4;">Discard</button>
+              <span style="flex-grow: 1;"></span>
+              <span style="font-size: 12px; color: #8C877D;">Rule: email to a client waits for you</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isWaiting }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; font-size: 16px; line-height: 22px; color: #8C877D;">Ask, or @agent</div><span class="kbd" style="color: #F1EEE6; border-color: #8C877D;">&#8593;</span></div>
+            <div style="border-top: 1px solid #2B2926; padding: 12px 16px 4px 16px; display: flex; align-items: center; justify-content: space-between;">
+              <span class="lbl" style="color: #FF7A59;">Waiting on you &#183; 2</span>
+              <span style="font-size: 12px; color: #8C877D;">oldest first</span>
+            </div>
+            <div style="padding: 4px 6px 6px 6px; display: flex; flex-direction: column;">
+              <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px;">
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">pax wants to email 14 clients the new intake form</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#183; held by rule: bulk email over 10</span></span>
+                <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">18 min</span>
+              </div>
+              <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px; background: rgba(198,243,107,0.12);">
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">juno drafted a reply to Dana Reyes</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#8250; Q3 report &#183; email to a client</span></span>
+                <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">6 min</span><span class="kbd" style="color: #F1EEE6;">⏎</span>
+              </div>
+            </div>
+            <div class="mono" style="height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #8C877D;"><span>&#8593;&#8595; move</span><span>⏎ review</span><span>A allow</span><span>esc close</span></div>
+          </sc-if>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEMORY -->
+    <section id="memory" aria-labelledby="memory-h" style="height: 440px; flex-shrink: 0; box-sizing: border-box; padding-top: 56px; border-top: 1px solid #2B2926; display: grid; grid-template-columns: 5fr 7fr; gap: 72px; align-items: start;">
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="lbl" style="color: #EBC76B;">Memory</div>
+        <h2 id="memory-h" class="h1">Gold means it came from your memory.</h2>
+        <p class="body">When Vyre recalls something you told it, a note, a thread, a decision, it shows in gold with its source. Anything not in gold was written by the model. You never have to guess which is which.</p>
+        <div style="margin-top: 8px; display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid #2B2926;"><span style="width: 24px; height: 10px; border-radius: 2px; background: #EBC76B;"></span><span style="font-size: 13px; line-height: 18px; color: #F1EEE6;">Recalled. No model was used.</span></div>
+          <div style="display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid #2B2926; border-bottom: 1px solid #2B2926;"><span style="width: 24px; height: 10px; border-radius: 2px; background: #F1EEE6;"></span><span style="font-size: 13px; line-height: 18px; color: #F1EEE6;">Written by the model.</span></div>
+        </div>
+      </div>
+
+      <div style="background: #161513; border: 1px solid #2B2926; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid #2B2926;">
+          <div class="lbl">Harlow Legal &#183; thread</div>
+          <div class="mono" style="font-size: 12px; line-height: 16px; color: #8C877D;">kit</div>
+        </div>
+        <div style="padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+          <div style="align-self: flex-end; max-width: 440px; padding: 12px 16px; border-radius: 10px; background: #1E1C1A; font-size: 15px; line-height: 22px; color: #F1EEE6;">When does Dana want the drafts, and in what format?</div>
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="padding: 16px 18px; border-radius: 6px; background: rgba(235,199,107,0.10); display: flex; flex-direction: column; gap: 8px;">
+              <div class="lbl" style="color: #EBC76B;">Recalled &#183; your call notes with Dana Reyes, 3 March &#183; no model used</div>
+              <div style="font-size: 17px; line-height: 26px; color: #EBC76B;">Friday before noon. PDFs, named by matter number, sent to Dana directly, not to the front desk.</div>
+            </div>
+            <p style="margin: 0; font-size: 15px; line-height: 22px; color: #F1EEE6;">Two of the three drafts are ready. I&#39;ll export them as <span class="mono" style="font-size: 13px;">HL-2291-engagement.pdf</span> and <span class="mono" style="font-size: 13px;">HL-2291-schedule.pdf</span> and hold the third for your review.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HARNESS -->
+    <section id="harness" aria-labelledby="harness-h" style="height: 530px; flex-shrink: 0; box-sizing: border-box; padding-top: 56px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 32px;">
+      <div style="display: grid; grid-template-columns: 7fr 5fr; gap: 72px; align-items: end;">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="lbl">Harness</div>
+          <h2 id="harness-h" class="h1">A rule stopped this before it ran.</h2>
+        </div>
+        <p class="body">The Harness wraps every Claude Code session. It briefs the session when it starts, checks your rules before any tool runs, and learns from the edits you make to its work.</p>
+      </div>
+
+      <div class="mono" style="background: #161513; border: 1px solid #2B2926; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); display: flex; flex-direction: column; font-size: 13px; line-height: 20px;">
+        <div class="lbl" style="padding: 16px 24px 0 24px;">kit &#183; Claude Code session &#183; Harlow Legal</div>
+
+        <div style="display: grid; grid-template-columns: 200px 64px minmax(0, 1fr); align-items: start; padding: 16px 24px; border-bottom: 1px solid #2B2926;">
+          <div class="lbl" style="padding-top: 3px;">At start</div>
+          <div style="color: #8C877D;">09:14</div>
+          <div style="color: #B3AEA4;"><span style="color: #F1EEE6;">brief loaded</span>  Harlow Legal, 12 rules, 3 open threads, Dana&#39;s preferences</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 200px 64px minmax(0, 1fr); align-items: start; padding: 16px 24px 8px 24px;">
+          <div class="lbl" style="padding-top: 3px;">Before every tool</div>
+          <div style="color: #8C877D;">09:31</div>
+          <div style="display: flex; justify-content: space-between; gap: 16px; color: #B3AEA4;"><span><span style="color: #F1EEE6;">Edit</span>  drafts/engagement.md</span><span style="color: #8C877D;">rules checked &#183; ran</span></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 200px 64px minmax(0, 1fr); align-items: start; padding: 8px 24px 16px 24px; border-bottom: 1px solid #2B2926;">
+          <div></div>
+          <div style="color: #FF7A59;">09:32</div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; gap: 16px;"><span><span style="color: #F1EEE6;">Bash</span>  <span style="color: #F1EEE6;">rm -rf exports/2025</span></span><span style="color: #FF7A59;">held &#183; not run</span></div>
+            <div style="padding: 16px 18px; border-radius: 6px; background: rgba(255,122,89,0.12); display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div class="lbl" style="color: #FF7A59;">Needs you</div>
+                <div style="font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 17px; line-height: 24px; color: #F1EEE6;">This deletes 214 files. I stopped before running it.</div>
+                <div style="font-size: 12px; line-height: 16px; color: #B3AEA4;">rule  ask before deleting anything under exports/</div>
+              </div>
+              <div style="display: flex; gap: 8px; flex-shrink: 0;">
+                <button class="btn btn-line" type="button">Don&#39;t run</button>
+                <button class="btn btn-line" type="button">Run once</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 200px 64px minmax(0, 1fr); align-items: start; padding: 16px 24px;">
+          <div class="lbl" style="padding-top: 3px;">After your edit</div>
+          <div style="color: #8C877D;">09:48</div>
+          <div style="color: #B3AEA4;">You changed <span style="color: #F1EEE6;">&#8220;Dear Ms. Reyes&#8221;</span> to <span style="color: #F1EEE6;">&#8220;Dana,&#8221;</span> in 3 drafts.  <span style="color: #F1EEE6;">learned</span>  address Dana by first name</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT FITS -->
+    <section id="fits" aria-labelledby="fits-h" style="height: 490px; flex-shrink: 0; box-sizing: border-box; padding-top: 56px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 28px;">
+      <div style="display: grid; grid-template-columns: 7fr 5fr; gap: 72px; align-items: end;">
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="lbl">How it fits</div>
+          <h2 id="fits-h" class="h1">Your box. Your Mac. Your tailnet.</h2>
+        </div>
+        <p class="body">Vyre runs on hardware you own, joined by your Tailscale network. The line around this part of the page is that network. Nothing inside it is on the public internet.</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) 72px minmax(0, 1fr) 72px minmax(0, 1fr); align-items: stretch;">
+        <div style="background: #161513; border: 1px solid #2B2926; border-radius: 10px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="lbl">Your box</div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+            <div class="mono" style="padding: 10px 12px; border: 1px solid #3A3733; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; color: #F1EEE6;">juno<span style="font-size: 11px; line-height: 14px; color: #8C877D;">live</span></div>
+            <div class="mono" style="padding: 10px 12px; border: 1px solid #3A3733; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; color: #F1EEE6;">kit<span style="font-size: 11px; line-height: 14px; color: #8C877D;">working</span></div>
+            <div class="mono" style="padding: 10px 12px; border: 1px solid #3A3733; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; color: #F1EEE6;">pax<span style="font-size: 11px; line-height: 14px; color: #FF7A59;">needs you</span></div>
+          </div>
+          <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Each agent has its own desktop, Chrome and terminal. Memory and the Harness run here too.</div>
+        </div>
+        <div style="display: flex; align-items: center;"><div style="height: 1px; flex-grow: 1; background: #3A3733;"></div></div>
+        <div style="background: #161513; border: 1px solid #2B2926; border-radius: 10px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="lbl">Your Mac</div>
+          <div class="mono" style="font-size: 20px; line-height: 28px; color: #F1EEE6;"><span style="color: #8C877D;">$</span> vyre</div>
+          <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Any terminal opens your projects and threads. Control twice opens the Capsule over any app.</div>
+        </div>
+        <div style="display: flex; align-items: center;"><div style="height: 1px; flex-grow: 1; background: #3A3733;"></div></div>
+        <div style="background: #161513; border: 1px solid #2B2926; border-radius: 10px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="lbl">Your phone</div>
+          <div style="font-size: 20px; line-height: 28px; font-weight: 600; color: #F1EEE6;">Approvals and Glass</div>
+          <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Held tool calls reach you wherever you are.</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid #2B2926;">
+        <div style="padding: 20px 32px 0 0; border-right: 1px solid #2B2926; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 17px; line-height: 24px; font-weight: 600; color: #F1EEE6;">Only your devices can open <span class="mono" style="font-weight: 500;">{{ host }}</span>.</div>
+          <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">The address resolves inside your tailnet. From anywhere else it returns nothing.</div>
+        </div>
+        <div style="padding: 20px 0 0 32px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 17px; line-height: 24px; font-weight: 600; color: #F1EEE6;">Nobody can see anyone else&#39;s anything.</div>
+          <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Your agents, threads and memory stay on your box and your Mac.</div>
+        </div>
+      </div>
+    </section>
+
+    <div style="position: absolute; bottom: -12px; left: 0; right: 0; display: flex; justify-content: center;">
+      <div class="lbl" style="background: #0E0D0C; padding: 5px 16px;">End of your tailnet</div>
+    </div>
+  </div>
+
+  <!-- outside the line: the only thing Vyre AI keeps -->
+  <div style="height: 72px; flex-shrink: 0; box-sizing: border-box; padding: 0 72px; display: flex; justify-content: flex-end;">
+    <div style="display: flex; align-items: flex-start; gap: 16px; margin-right: 120px;">
+      <div style="width: 1px; height: 44px; background: #3A3733;"></div>
+      <div style="padding-top: 24px; display: flex; flex-direction: column; gap: 4px;">
+        <div class="lbl">Outside the line &#183; Vyre AI</div>
+        <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Keeps the name directory, so <span class="mono" style="color: #F1EEE6;">{{ name }}</span> finds your tailnet. No user data.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLOSING: the three things to remember, then open source -->
+  <section id="docs" aria-labelledby="end-h" style="height: 330px; flex-shrink: 0; box-sizing: border-box; padding: 40px 72px 0 72px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+    <h2 id="end-h" class="h1">One command, then your own address.</h2>
+    <div style="margin-top: 24px; width: 760px; box-sizing: border-box; background: #161513; border: 1px solid #3A3733; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); padding: 24px 24px 24px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+      <div class="mono" style="display: flex; align-items: baseline; gap: 18px; font-size: 40px; line-height: 48px; font-weight: 500; letter-spacing: -0.03em; white-space: nowrap;">
+        <span style="color: #8C877D;">$</span>
+        <span>npm install -g <span style="color: #C6F36B;">vyre</span></span>
+      </div>
+      <button class="btn btn-signal" type="button" onClick="{{ copyEnd }}" aria-label="Copy install command">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        {{ endLabel }}
+      </button>
+    </div>
+    <div class="mono" style="margin-top: 20px; display: flex; align-items: center; gap: 10px; font-size: 13px; line-height: 20px; color: #B3AEA4;">
+      <span>up at <span style="color: #F1EEE6;">{{ host }}</span></span>
+      <span style="color: #8C877D;">&#183;</span>
+      <span style="display: flex; gap: 4px;"><span class="kc" style="font-size: 11px; line-height: 14px;">⌃</span><span class="kc" style="font-size: 11px; line-height: 14px;">⌃</span></span>
+      <span>on your Mac</span>
+      <span style="color: #8C877D;">&#183;</span>
+      <span><span style="color: #F1EEE6;">vyre</span> in any terminal</span>
+    </div>
+    <div style="margin-top: 32px; align-self: stretch; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #2B2926; border-bottom: 1px solid #2B2926; text-align: left;">
+      <div style="padding: 16px 20px 16px 0; font-size: 13px; line-height: 18px; color: #F1EEE6;">Open source under Apache 2.0. Read every line.</div>
+      <a class="row-link mono" href="https://github.com/vyre-ai" style="padding: 16px 20px; border-bottom: none; border-left: 1px solid #2B2926; font-size: 13px; line-height: 18px;"><span>github.com/vyre-ai</span><svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      <a class="row-link" href="#docs" style="padding: 16px 20px; border-bottom: none; border-left: 1px solid #2B2926; font-size: 13px; line-height: 18px;"><span>Docs <span class="mono" style="color: #8C877D;">[DOCS URL]</span></span><svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      <div style="padding: 16px 0 16px 20px; border-left: 1px solid #2B2926; font-size: 13px; line-height: 18px; color: #B3AEA4;">Needs Claude Code, Tailscale, Node <span class="mono" style="color: #8C877D;">[VERSION]</span></div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer style="flex-grow: 1; box-sizing: border-box; margin: 0 72px; border-top: 1px solid #2B2926; display: flex; align-items: center; justify-content: space-between; gap: 32px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div style="width: 1px; height: 18px; background: #3A3733; margin-left: 4px;"></div>
+      <div class="lbl" style="margin-left: 4px;">Vyre Agent &#183; Vyre Platform &#183; Vyre AI</div>
+    </div>
+    <div class="nav" style="display: flex; gap: 28px;">
+      <a href="https://github.com/vyre-ai">GitHub</a>
+      <a href="#docs">Docs</a>
+      <a href="#top">vyre.run</a>
+    </div>
+  </footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":4200}}'>class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const raw = String(s.name || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20);
+    const name = raw || 'yourname';
+    const cap = s.cap || 'typing';
+    const CAP_STATES = [
+      { id: 'typing', name: 'Typing', line: 'Ask any agent with @. The destination shows before you send.' },
+      { id: 'recall', name: 'Recall', line: 'Answers from your memory, in gold. No model ran.' },
+      { id: 'held', name: 'Held', line: 'A draft waits for your yes, right over the call.' },
+      { id: 'waiting', name: 'Waiting', line: 'Press up in an empty Capsule to see what needs you.' }
+    ];
+    const copy = (k) => () => {
+      try { navigator.clipboard.writeText('npm install -g vyre'); } catch (e) {}
+      this.setState({ copied: k });
+    };
+    return {
+      nameVal: raw,
+      nameSize: Math.max(name.length, 2),
+      name: name,
+      host: name + '.vyre.run',
+      onName: (e) => this.setState({ name: e.target.value }),
+      copyTop: copy('top'),
+      copyEnd: copy('end'),
+      topLabel: s.copied === 'top' ? 'Copied' : 'Copy',
+      endLabel: s.copied === 'end' ? 'Copied' : 'Copy',
+      isTyping: cap === 'typing',
+      isRecall: cap === 'recall',
+      isHeld: cap === 'held',
+      isWaiting: cap === 'waiting',
+      capStates: CAP_STATES.map((x) => ({
+        name: x.name,
+        line: x.line,
+        on: x.id === cap ? 'on' : '',
+        pressed: x.id === cap,
+        pick: () => this.setState({ cap: x.id })
+      }))
+    };
+  }
+}</script>
+</body>
+</html>

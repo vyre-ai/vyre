@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Glass, you have control</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .sans { font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .btn { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 36px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
+    .btn:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .btn-ghost { background: transparent; color: #F1EEE6; border: 1px solid #3A3733; }
+    .btn-ghost:hover { background: #1E1C1A; }
+    .btn-primary { background: #C6F36B; color: #0E0D0C; border: 1px solid #C6F36B; }
+    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
+    .kbd { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; padding: 1px 5px; border-radius: 4px; border: 1px solid #3A3733; color: #B3AEA4; letter-spacing: 0; }
+    .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 12px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 18px; }
+    .rail-a:hover { background: #1E1C1A; color: #F1EEE6; }
+    .rail-sub { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 12px 0 40px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
+    .log-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 9px 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px; color: #B3AEA4; }
+    .log-t { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 18px; color: #8C877D; }
+    .tick { position: absolute; top: 14px; width: 1px; height: 12px; background: #8C877D; }
+    .site-nav { font-size: 12px; line-height: 16px; color: #4A463F; padding: 7px 10px; border-radius: 4px; }
+    .td { padding: 8px 10px; border-bottom: 1px solid #DCD7CC; font-size: 12px; line-height: 16px; color: #141311; white-space: nowrap; }
+    .th { padding: 8px 10px; border-bottom: 1px solid #C9C3B7; font-size: 11px; line-height: 14px; color: #6B665D; font-weight: 500; text-align: left; white-space: nowrap; }
+    .num { text-align: right; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; }
+    .cb { width: 12px; height: 12px; border: 1px solid #C9C3B7; border-radius: 3px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+    .cb-on { background: #141311; border-color: #141311; }
+  </style>
+</helmet>
+<div class="sans" style="width: 1600px; height: 1000px; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Top bar -->
+  <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 24px; padding: 0 16px 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
+    <a href="#" aria-label="vyre home" style="display: flex; align-items: center; gap: 8px; width: 180px; text-decoration: none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+    <div class="mono" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-size: 12px; line-height: 16px; color: #B3AEA4;">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>
+      <span>alex.vyre.run<span style="color: #8C877D;">/glass/</span><span style="color: #F1EEE6;">kit</span></span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <label style="display: flex; align-items: center; gap: 10px; width: 320px; height: 30px; padding: 0 8px 0 12px; border: 1px solid #3A3733; border-radius: 6px; box-sizing: border-box; color: #8C877D; font-size: 13px;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+      <input type="text" placeholder="Search threads, memory, agents" aria-label="Search" style="flex-grow: 1; min-width: 0; background: transparent; border: 0; color: #F1EEE6; font: inherit; font-size: 13px; outline: none;">
+      <span class="kbd">⌘K</span>
+    </label>
+    <a href="#" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: rgba(255,122,89,0.12); color: #FF7A59; text-decoration: none; font-size: 13px; line-height: 16px; font-weight: 500;">
+      <span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>2 need you
+    </a>
+    <button type="button" aria-label="Alex Rivera" class="mono" style="width: 30px; height: 30px; border-radius: 15px; background: #1E1C1A; border: 1px solid #3A3733; color: #F1EEE6; font-size: 11px; font-weight: 500; cursor: pointer; padding: 0;">AR</button>
+  </header>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+    <!-- Left rail -->
+    <nav aria-label="Main" style="width: 216px; flex-shrink: 0; border-right: 1px solid #2B2926; padding: 16px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px;">
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/></svg>Now</a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h4l1.5 1.5H14V13H2z"/></svg>Projects</a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l6 3.2-6 3.2-6-3.2z"/><path d="M2 8.4l6 3.2 6-3.2"/><path d="M2 11.2l6 3.2 6-3.2"/></svg>Memory</a>
+      <a class="rail-a" href="#" style="color: #F1EEE6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1"/><path d="M5.5 14h5M8 11v3"/></svg>Agents</a>
+      <a class="rail-sub" href="#"><span>juno</span><span class="mono" style="font-size: 11px; color: #8C877D;">idle</span></a>
+      <a class="rail-sub" href="#" aria-current="page" style="background: rgba(198,243,107,0.12); color: #F1EEE6;"><span>kit</span><span class="mono" style="font-size: 11px; color: #C6F36B;">you</span></a>
+      <a class="rail-sub" href="#"><span>pax</span><span class="mono" style="font-size: 11px; color: #8C877D;">working</span></a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>Vault</a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.6" fill="#0E0D0C"/><circle cx="10" cy="11" r="1.6" fill="#0E0D0C"/></svg>Settings</a>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; border-top: 1px solid #2B2926;">
+        <div class="lbl">alex-box · online</div>
+        <div style="font-size: 12px; line-height: 16px; color: #8C877D;">Only your tailnet can open this address.</div>
+      </div>
+    </nav>
+
+    <!-- Main -->
+    <main style="flex-grow: 1; min-width: 0; padding: 20px 24px 20px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px;">
+
+      <!-- Agent header: state has changed -->
+      <div style="display: flex; align-items: center; gap: 16px; height: 44px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <h1 style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em;">kit&#39;s computer</h1>
+            <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; border: 1px solid #C6F36B; color: #C6F36B; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;">YOU HAVE CONTROL</span>
+          </div>
+          <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">kit is paused at step 13 of the Harlow Legal <span style="color: #8C877D;">/</span> Ads audit plan <span style="color: #8C877D;">· you took over at 14:32:41</span></div>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="display: flex; align-items: center; gap: 10px; padding-right: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11" stroke-linecap="round"/></svg>
+          <span style="font-size: 13px; color: #B3AEA4;">juno&#39;s view is paused while you type</span>
+        </div>
+        <button type="button" class="btn btn-ghost">Stop kit</button>
+        <button type="button" class="btn btn-primary" style="height: 40px; padding: 0 18px;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#0E0D0C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4L2.5 7.5 6 11"/><path d="M3 7.5h7a3.5 3.5 0 0 1 0 7H8"/></svg>
+          Give back to kit
+          <span style="font-size: 11px; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(14,13,12,0.35); letter-spacing: 0;">⌃⏎</span>
+        </button>
+      </div>
+
+      <!-- Stage -->
+      <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px;">
+
+        <div style="width: 1008px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;">
+
+          <!-- The remote desktop, in your hands -->
+          <div aria-label="kit&#39;s desktop, under your control" style="position: relative; width: 1008px; height: 630px; border-radius: 14px; outline: 2px solid #C6F36B; outline-offset: 3px; border: 1px solid #3A3733; background: #161513; overflow: hidden; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);">
+
+            <div class="mono" style="height: 26px; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: #0E0D0C; border-bottom: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #B3AEA4;">
+              <span style="color: #F1EEE6;">kit@box-kit</span>
+              <span>Browser</span><span>Terminal</span><span>Files</span>
+              <span style="flex-grow: 1;"></span>
+              <span style="color: #C6F36B;">input: Alex Rivera</span>
+              <span>14:33</span>
+            </div>
+
+            <!-- Browser: sign-in page -->
+            <div style="position: absolute; left: 20px; top: 42px; width: 800px; height: 540px; border-radius: 10px; overflow: hidden; border: 1px solid #3A3733; background: #F4F1EA; display: flex; flex-direction: column;">
+              <div style="height: 34px; flex-shrink: 0; background: #1E1C1A; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid #2B2926;">
+                <div style="display: flex; gap: 6px;"><span style="width: 9px; height: 9px; border-radius: 5px; background: #3A3733;"></span><span style="width: 9px; height: 9px; border-radius: 5px; background: #3A3733;"></span><span style="width: 9px; height: 9px; border-radius: 5px; background: #3A3733;"></span></div>
+                <div class="mono" style="flex-grow: 1; height: 22px; border-radius: 4px; background: #0E0D0C; display: flex; align-items: center; padding: 0 10px; font-size: 11px; color: #B3AEA4;">accounts.example.com<span style="color: #8C877D;">/signin?continue=ads.example.com%2Fcampaigns</span></div>
+              </div>
+              <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
+                <div style="width: 340px; padding: 28px; background: #FBFAF6; border: 1px solid #DCD7CC; border-radius: 10px; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box;">
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; color: #141311;">Sign in again</div>
+                    <div style="font-size: 12px; line-height: 16px; color: #4A463F;">Your password was changed on 24 Sep. Sign in to keep managing Harlow Legal.</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="font-size: 11px; color: #4A463F; font-weight: 500;">Email</div>
+                    <div style="height: 34px; border: 1px solid #C9C3B7; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 13px; color: #141311; background: #FBFAF6;">ads@harlowlegal.com</div>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="font-size: 11px; color: #4A463F; font-weight: 500;">Password</div>
+                    <div style="height: 34px; border: 2px solid #46700C; border-radius: 6px; display: flex; align-items: center; gap: 1px; padding: 0 9px; font-size: 13px; letter-spacing: 0.2em; color: #141311; background: #FBFAF6; box-sizing: border-box;">•••••••••••<span style="display: inline-block; width: 1px; height: 16px; background: #141311; margin-left: 2px;"></span></div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #4A463F;"><div class="cb"></div>Keep me signed in on this device</div>
+                  <div style="height: 34px; border-radius: 6px; background: #141311; color: #F4F1EA; font-size: 13px; font-weight: 500; display: flex; align-items: center; justify-content: center;">Sign in</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Terminal: paused -->
+            <div class="mono" style="position: absolute; left: 604px; top: 392px; width: 386px; height: 222px; border-radius: 10px; overflow: hidden; border: 1px solid #3A3733; background: #0E0D0C; box-shadow: 0 12px 24px -12px rgba(0,0,0,0.55); display: flex; flex-direction: column;">
+              <div style="height: 26px; flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #2B2926; font-size: 11px; color: #8C877D; background: #161513;">~/work/harlow/ads-audit</div>
+              <div style="padding: 10px 12px; font-size: 11.5px; line-height: 18px; color: #8C877D; display: flex; flex-direction: column;">
+                <div>$ python flag.py --conv 0 --min-cost 500</div>
+                <div>14 terms, $9,870 spent, 0 conversions</div>
+                <div>wrote wasted-spend.md</div>
+                <div style="color: #B3AEA4;">session expired at 14:32:38, sign-in needed</div>
+                <div style="color: #F1EEE6;">[kit paused by Alex Rivera at 14:32:41]</div>
+              </div>
+            </div>
+
+            <!-- kit's cursor, parked -->
+            <div style="position: absolute; left: 836px; top: 68px; display: flex; align-items: flex-start; gap: 2px; opacity: 0.9;">
+              <svg width="16" height="20" viewBox="0 0 18 22" aria-hidden="true"><path d="M2 2l13 9.2-5.8 1 3.2 6.3-2.6 1.3-3.2-6.4L2 17.6z" fill="#161513" stroke="#8C877D" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span class="mono" style="margin-top: 14px; padding: 2px 7px; border-radius: 4px; background: #0E0D0C; color: #B3AEA4; font-size: 11px; line-height: 14px; border: 1px solid #3A3733;">kit · paused</span>
+            </div>
+
+            <!-- your cursor -->
+            <div style="position: absolute; left: 468px; top: 382px; display: flex; align-items: flex-start; gap: 2px;">
+              <svg width="18" height="22" viewBox="0 0 18 22" aria-hidden="true"><path d="M2 2l13 9.2-5.8 1 3.2 6.3-2.6 1.3-3.2-6.4L2 17.6z" fill="#C6F36B" stroke="#0E0D0C" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span class="mono" style="margin-top: 16px; padding: 2px 7px; border-radius: 4px; background: #C6F36B; color: #0E0D0C; font-size: 11px; line-height: 14px; font-weight: 500;">you</span>
+            </div>
+
+            <!-- rec off badge -->
+            <div class="mono" style="position: absolute; right: 14px; top: 38px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; background: #0E0D0C; border: 1px solid #3A3733; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; color: #F1EEE6;">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#F1EEE6" stroke-width="1.2" aria-hidden="true"><circle cx="5" cy="5" r="3.8"/><path d="M2.2 7.8l5.6-5.6"/></svg>REC OFF
+            </div>
+          </div>
+
+          <!-- Caption -->
+          <div style="display: flex; align-items: baseline; gap: 16px; padding: 0 4px;">
+            <span class="lbl" style="color: #C6F36B; width: 36px;">You</span>
+            <p style="margin: 0; font-size: 17px; line-height: 24px; color: #F1EEE6; flex-grow: 1;">You have control. Hand it back when you&#39;re done.</p>
+            <span class="mono" style="font-size: 12px; color: #8C877D; white-space: nowrap;">kit asked: the Vault login was rejected</span>
+          </div>
+
+          <!-- Timeline with an unrecorded stretch -->
+          <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid #2B2926;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <button type="button" aria-label="Playback disabled while you have control" disabled class="btn btn-ghost" style="width: 32px; height: 32px; padding: 0; justify-content: center; color: #8C877D; cursor: default;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 4v8M10 4v8"/></svg></button>
+              <div role="slider" aria-label="Recording timeline" aria-valuemin="0" aria-valuemax="35" aria-valuenow="35" tabindex="0" style="position: relative; flex-grow: 1; height: 40px;">
+                <div style="position: absolute; left: 0; right: 3%; top: 19px; height: 2px; background: #3A3733;"></div>
+                <div style="position: absolute; left: 97%; right: 0; top: 19px; height: 0; border-top: 2px dashed #C6F36B;"></div>
+                <div class="tick" style="left: 0%;"></div>
+                <div class="tick" style="left: 2%; background: #EBC76B; height: 16px; top: 12px; width: 2px;"></div>
+                <div class="tick" style="left: 9%;"></div>
+                <div class="tick" style="left: 15%;"></div>
+                <div class="tick" style="left: 24%;"></div>
+                <div class="tick" style="left: 25.5%;"></div>
+                <div class="tick" style="left: 34%;"></div>
+                <div class="tick" style="left: 35%;"></div>
+                <div class="tick" style="left: 36%;"></div>
+                <div class="tick" style="left: 77%;"></div>
+                <div class="tick" style="left: 95%;"></div>
+                <div class="mono" style="position: absolute; right: 0; bottom: 30px; padding: 4px 8px; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; font-size: 11px; line-height: 14px; color: #F1EEE6; white-space: nowrap; box-shadow: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);">from 14:32:41 · you · not recorded</div>
+                <div style="position: absolute; right: -6px; top: 14px; width: 12px; height: 12px; border-radius: 6px; background: #C6F36B; box-shadow: 0 0 0 3px #0E0D0C;"></div>
+              </div>
+              <button type="button" class="btn btn-ghost" style="height: 32px;">Live</button>
+            </div>
+            <div class="mono" style="display: flex; padding-left: 44px; padding-right: 64px; font-size: 11px; line-height: 14px; color: #8C877D;">
+              <span style="width: 9%;">13:58</span>
+              <span style="width: 15%;">pulled terms</span>
+              <span style="width: 12%;">browser</span>
+              <span style="width: 41%;">reading 1,942 rows against the CSV</span>
+              <span style="flex-grow: 1;">ticking</span>
+              <span style="color: #C6F36B;">you</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Where the password goes -->
+        <aside aria-label="Where your password goes" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #2B2926;">
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 0 12px 18px 20px; border-bottom: 1px solid #2B2926;">
+            <span class="lbl">While you type</span>
+            <h2 style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; text-wrap: pretty;">Your password goes to the page. Nowhere else.</h2>
+            <p style="margin: 0; font-size: 13px; line-height: 19px; color: #B3AEA4; text-wrap: pretty;">Your keystrokes travel from this browser over your tailnet into the sign-in field on kit&#39;s screen. kit is paused and reads none of them.</p>
+          </div>
+
+          <div style="display: flex; flex-direction: column; padding-left: 8px;">
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px 12px 12px 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px;">
+              <span style="color: #F1EEE6;">accounts.example.com</span><span class="mono" style="font-size: 12px; color: #C6F36B;">receives it</span>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px;">
+              <span style="color: #B3AEA4;">kit&#39;s thread, Ads audit</span><span class="mono" style="font-size: 12px; color: #8C877D;">never</span>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px;">
+              <span style="color: #B3AEA4;">Memory</span><span class="mono" style="font-size: 12px; color: #8C877D;">never</span>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px;">
+              <span style="color: #B3AEA4;">Screen recording</span><span class="mono" style="font-size: 12px; color: #8C877D;">off since 14:32:41</span>
+            </div>
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px;">
+              <span style="color: #B3AEA4;">Action log</span><span class="mono" style="font-size: 12px; color: #8C877D;">&quot;Alex signed in&quot;</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 18px 12px 18px 20px; border-bottom: 1px solid #2B2926;">
+            <span class="lbl">When you give back</span>
+            <p style="margin: 0; font-size: 13px; line-height: 19px; color: #B3AEA4;">Recording resumes and kit reloads Search terms, then carries on from <span style="color: #F1EEE6;">child support calculator</span>. kit keeps the signed-in session, not the password.</p>
+          </div>
+
+          <label style="display: flex; gap: 12px; padding: 16px 12px 0 20px; font-size: 13px; line-height: 19px; color: #B3AEA4; cursor: pointer;">
+            <input type="checkbox" style="margin: 3px 0 0 0; width: 14px; height: 14px; accent-color: #C6F36B; flex-shrink: 0;">
+            <span>Update Vault login <span style="color: #F1EEE6;">Harlow ads</span> with the new password. It stays encrypted on alex-box.</span>
+          </label>
+
+          <div style="flex-grow: 1;"></div>
+          <div class="mono" style="padding: 12px 12px 0 20px; border-top: 1px solid #2B2926; font-size: 12px; line-height: 18px; color: #8C877D;">⌃⏎ gives back · Esc keeps control</div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

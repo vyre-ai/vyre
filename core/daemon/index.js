@@ -53,7 +53,9 @@ export async function start(opts = {}) {
   }
 
   const started = Date.now();
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started }).catch(e => {
+  /** Open event streams, closed on stop so server.close() is not held open by them. */
+  const streams = new Set();
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
@@ -64,6 +66,7 @@ export async function start(opts = {}) {
   let stopped = false;
   const stop = async () => {
     if (stopped) return; stopped = true;
+    for (const end of streams) end();
     await new Promise(r => server.close(() => r(undefined)));
     await registry.stop();
     db.close();
@@ -86,7 +89,7 @@ async function body(req) {
   try { return JSON.parse(raw); } catch { throw new Error("request body is not JSON"); }
 }
 
-async function route(req, res, { registry, events, cfg, started }) {
+async function route(req, res, { registry, events, cfg, started, streams }) {
   const url = new URL(req.url || "/", "http://vyred");
   const caller = String(req.headers["x-vyre-caller"] || "local");
   if (req.method === "GET" && url.pathname === "/v1/health") {
@@ -106,7 +109,55 @@ async function route(req, res, { registry, events, cfg, started }) {
     return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
       type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) }) });
   }
+  if (req.method === "GET" && url.pathname === "/v1/events/stream") return stream(req, res, url, events, streams);
+  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
+}
+
+/**
+ * Live events as server-sent events: everything after `since` first (so a surface that was
+ * away catches up without a gap), then each new event as it happens. `type` filters the same way
+ * as events.on: "thread.started", "thread.*" or "*". The SSE id is the event id, so a browser's
+ * EventSource resumes from Last-Event-ID on its own.
+ */
+function stream(req, res, url, events, streams) {
+  const type = url.searchParams.get("type") || "*";
+  const lastId = Number(req.headers["last-event-id"] || url.searchParams.get("since") || 0);
+  const match = type === "*" ? () => true : type.endsWith(".*") ? e => e.type.startsWith(type.slice(0, -1)) : e => e.type === type;
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
+  const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+  let cursor = lastId;
+  // Backlog in pages, then live. Anything emitted while paging is caught by the cursor check.
+  for (;;) {
+    const page = events.since(cursor, { limit: 500 });
+    for (const e of page) { cursor = e.id; if (match(e)) write(e); }
+    if (page.length < 500) break;
+  }
+  const off = events.on(type, e => { if (e.id > cursor) { cursor = e.id; write(e); } });
+  const beat = setInterval(() => res.write(": beat\n\n"), 15_000);
+  const end = () => { off(); clearInterval(beat); streams.delete(end); res.end(); };
+  streams.add(end);
+  req.on("close", end);
+}
+
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
+  ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json" };
+
+/**
+ * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
+ * are not files get index.html, so the Deck can route on the client. Nothing outside deck/ is
+ * ever served, whatever the path says.
+ */
+function serveDeck(res, pathname) {
+  const dir = path.join(REPO, "deck");
+  let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
+  if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
+  try { if (fs.statSync(file).isDirectory()) file = path.join(file, "index.html"); } catch { file = path.join(dir, "index.html"); }
+  let buf;
+  try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } }); }
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",
+    "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" });
+  res.end(buf);
 }
 
 /** Does anything answer on this socket? */

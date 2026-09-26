@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Vyre phone, Now</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .lbl { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible, button:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .held { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: rgba(255,122,89,0.12); border-radius: 10px; }
+    .held:hover { background: rgba(255,122,89,0.16); }
+    .row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 16px; align-items: center; gap: 12px; min-height: 56px; border-bottom: 1px solid #2B2926; }
+    .row:hover { background: #161513; }
+    .tab { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 44px; color: #8C877D; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
+    .tab-on { color: #F1EEE6; }
+  </style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; padding-top: 54px; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
+
+  <header style="height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4;">alex.vyre.run</div>
+  </header>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 24px; padding: 8px 16px 0;">
+
+    <h1 style="margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em;">Two things need you.</h1>
+
+    <section aria-label="Needs you" style="display: flex; flex-direction: column; gap: 8px;">
+      <div class="lbl" style="color: #FF7A59;">Needs you · 2</div>
+
+      <a class="held" href="PhoneDraft.dc.html">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></div>
+            <div class="lbl" style="color: #FF7A59;">Held at the Gate</div>
+          </div>
+          <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4;">juno · 6 min</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="font-size: 16px; line-height: 22px; font-weight: 500;">Email to Dana Reyes</div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.5 6L15.5 12L9.5 18" stroke="#B3AEA4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Re: Intake form rebuild · Harlow Legal</div>
+      </a>
+
+      <a class="held" href="PhoneApprove.dc.html">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></div>
+            <div class="lbl" style="color: #FF7A59;">Permission</div>
+          </div>
+          <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4;">kit · 4 min</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
+            <div style="font-size: 16px; line-height: 22px; font-weight: 500; white-space: nowrap;">May I run</div>
+            <div class="mono" style="font-size: 13px; line-height: 18px; color: #F1EEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">git push origin q3-report</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.5 6L15.5 12L9.5 18" stroke="#B3AEA4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Harlow Legal / Q3 report</div>
+      </a>
+    </section>
+
+    <section aria-label="Working" style="display: flex; flex-direction: column; gap: 4px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div class="lbl">Working · 3</div>
+        <div class="lbl">Tap to watch</div>
+      </div>
+      <div style="display: flex; flex-direction: column;">
+        <a class="row" href="PhoneGlass.dc.html">
+          <svg width="56" height="35" viewBox="0 0 56 35" fill="none" aria-hidden="true"><rect x="0.5" y="0.5" width="55" height="34" rx="3.5" fill="#161513" stroke="#3A3733"/><rect x="4" y="4" width="30" height="27" rx="1.5" fill="#1E1C1A"/><path d="M9 26V19M14 26V15M19 26V21M24 26V12M29 26V17" stroke="#B3AEA4" stroke-width="2.4"/><rect x="37" y="4" width="15" height="27" rx="1.5" fill="#0E0D0C"/><path d="M39.5 9H49M39.5 13H46M39.5 17H48" stroke="#8C877D" stroke-width="1.2" stroke-linecap="round"/><path d="M26 11.5L26 17.2L27.6 15.8L28.7 18.2L29.7 17.7L28.6 15.4L30.6 15.2Z" fill="#F1EEE6"/></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+            <div style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Checking the Q3 ad spend chart</div>
+            <div class="mono" style="font-size: 12px; line-height: 16px; color: #8C877D;">kit · Harlow Legal · 14 min</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.5 6L15.5 12L9.5 18" stroke="#8C877D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="row" href="#pax">
+          <svg width="56" height="35" viewBox="0 0 56 35" fill="none" aria-hidden="true"><rect x="0.5" y="0.5" width="55" height="34" rx="3.5" fill="#161513" stroke="#3A3733"/><rect x="4" y="4" width="48" height="27" rx="1.5" fill="#1E1C1A"/><path d="M9 10H22M9 17H22M9 24H22" stroke="#8C877D" stroke-width="1.2" stroke-linecap="round"/><rect x="26" y="8" width="21" height="4" rx="1" stroke="#B3AEA4"/><rect x="26" y="15" width="21" height="4" rx="1" stroke="#B3AEA4"/><rect x="26" y="22" width="12" height="4" rx="1" stroke="#B3AEA4"/></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+            <div style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Filing 14 new intake forms</div>
+            <div class="mono" style="font-size: 12px; line-height: 16px; color: #8C877D;">pax · Northfield Dental · 3 min</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.5 6L15.5 12L9.5 18" stroke="#8C877D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="row" href="#juno">
+          <svg width="56" height="35" viewBox="0 0 56 35" fill="none" aria-hidden="true"><rect x="0.5" y="0.5" width="55" height="34" rx="3.5" fill="#161513" stroke="#3A3733"/><rect x="12" y="4" width="32" height="27" rx="1.5" fill="#1E1C1A"/><path d="M16 9H34M16 13H40M16 17H37M16 21H40M16 25H29" stroke="#B3AEA4" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+            <div style="font-size: 15px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Drafting the Launch site FAQ</div>
+            <div class="mono" style="font-size: 12px; line-height: 16px; color: #8C877D;">juno · Launch site · 22 min</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.5 6L15.5 12L9.5 18" stroke="#8C877D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <section aria-label="Learned today" style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div class="lbl" style="color: #EBC76B;">Learned today · 3</div>
+        <div class="lbl">No model used</div>
+      </div>
+      <div style="display: flex; flex-direction: column; padding: 0 16px; background: rgba(235,199,107,0.10); border-radius: 10px;">
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-bottom: 1px solid #3A3733;">
+          <div style="font-size: 15px; line-height: 22px;">Dana wants a call before any change to scope.</div>
+          <div class="mono" style="font-size: 12px; line-height: 16px; color: #EBC76B;">Harlow Legal · Intake form rebuild</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-bottom: 1px solid #3A3733;">
+          <div style="font-size: 15px; line-height: 22px;">Northfield Dental is closed on Fridays. Don't book calls then.</div>
+          <div class="mono" style="font-size: 12px; line-height: 16px; color: #EBC76B;">Northfield Dental · 3 emails</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0;">
+          <div style="font-size: 15px; line-height: 22px;">Q4 hiring is capped at two roles.</div>
+          <div class="mono" style="font-size: 12px; line-height: 16px; color: #EBC76B;">Q4 hiring · your notes, 11:02</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <nav aria-label="Tabs" style="position: absolute; left: 0; right: 0; bottom: 0; height: 83px; box-sizing: border-box; padding: 5px 8px 34px; background: #0E0D0C; border-top: 1px solid #2B2926; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0;">
+    <a class="tab tab-on" href="PhoneNow.dc.html" aria-current="page" aria-label="Now, 2 need you">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.25" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5V12L15 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Now</span>
+      <span class="mono" style="position: absolute; top: 0; left: 50%; margin-left: 6px; min-width: 16px; height: 16px; box-sizing: border-box; padding: 0 4px; border-radius: 8px; background: #FF7A59; color: #0E0D0C; font-size: 10px; line-height: 16px; font-weight: 500; letter-spacing: 0; text-align: center;">2</span>
+    </a>
+    <a class="tab" href="#projects">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.75 7.5A1.75 1.75 0 0 1 5.5 5.75H9.1L11 7.75H18.5A1.75 1.75 0 0 1 20.25 9.5V17.25A1.75 1.75 0 0 1 18.5 19H5.5A1.75 1.75 0 0 1 3.75 17.25Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <span>Projects</span>
+    </a>
+    <a class="tab" href="PhoneAsk.dc.html">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.25" y="7.75" width="17.5" height="8.5" rx="4.25" stroke="currentColor" stroke-width="1.6"/><path d="M8 12H12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span>Ask</span>
+    </a>
+    <a class="tab" href="#agents">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.75" y="4.75" width="16.5" height="11" rx="1.75" stroke="currentColor" stroke-width="1.6"/><path d="M9 19.25H15M12 15.75V19.25" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span>Agents</span>
+    </a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

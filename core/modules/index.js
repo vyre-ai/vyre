@@ -168,6 +168,29 @@ export class Registry {
         on: (pattern, fn) => events.on(pattern, fn),
         since: (id, opts) => events.since(id, opts),
       },
+      // Vault items, one at a time, only those the manifest declares under needs.vault. The value
+      // comes from the vault module's internal vault.release tool, which only modules can call,
+      // and which sees which module asked. "per-watcher" is the watcher runtime's declaration: it
+      // fetches on behalf of each watcher and must itself check that watcher's own `needs`.
+      vault: {
+        fetch: async name => {
+          const declared = (m.needs && m.needs.vault) || [];
+          if (!declared.includes(name) && !declared.includes("per-watcher")) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
+          const r = await this.call("vault.release", { name }, `module:${m.name}`);
+          if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
+          return r.data && r.data.value;
+        },
+      },
+      // Facts for the curator's queue, of the kinds declared under teaches.memory. Memory decides
+      // what to keep; a module never writes Memory's tables. Without Memory running, a no-op.
+      memory: {
+        teach: async (kind, fact) => {
+          const declared = (m.teaches && m.teaches.memory) || [];
+          if (!declared.includes(kind)) throw new Error(`${m.name} taught ${kind}, which its manifest does not declare under teaches.memory`);
+          const r = await this.call("memory.teach", { kind, fact, from: m.name }, `module:${m.name}`);
+          return !r.error;
+        },
+      },
       // Another module's tool, through the same path as every caller: input checked, rules run.
       // This is the only way one module uses another; never import its files.
       call: (tool, input) => this.call(tool, input, `module:${m.name}`),
@@ -175,7 +198,9 @@ export class Registry {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
         if (typeof def.run !== "function") throw new Error(`tool ${name} needs a run function`);
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run });
+        // internal: only other modules may call it (never Claude, the CLI or a surface), and it is
+        // left out of every listing. vault.release is the reason this exists.
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal) });
       },
     };
   }
@@ -187,12 +212,14 @@ export class Registry {
   async call(tool, input = {}, caller = "unknown") {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
     if (this.deps.rules) {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
     }
+    // The caller is passed on, so a tool like vault.release can check which module is asking.
     try { return { data: await def.run(input, { caller }) }; }
     catch (e) { return { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
   }
@@ -202,7 +229,7 @@ export class Registry {
   }
 
   listTools() {
-    return [...this.tools.entries()].map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
+    return [...this.tools.entries()].filter(([, d]) => !d.internal).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
   }
 
   async stop() {

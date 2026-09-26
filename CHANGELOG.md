@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+### Shared core for the parallel workstreams (2026-09-26)
+
+- `ctx.vault.fetch(name)`: a module gets only the vault items its manifest declares, through the
+  vault module's `vault.release`, an **internal** tool: callable only by modules, never listed,
+  invisible to Claude, the CLI and surfaces.
+- `ctx.memory.teach(kind, fact)`: only declared kinds; a no-op when Memory is not running.
+- `GET /v1/events/stream`: server-sent events with backlog replay and `Last-Event-ID` resume,
+  for the Deck, the Capsule and the Switchboard. Open streams no longer hold `stop()` open.
+- vyred serves `deck/` for every non-API path, with a strict content security policy, and never
+  a file outside `deck/`.
+- `docs/design/`: the design boards and brand tokens, so every session builds from the same design.
+
 ### M2 · the Harness (2026-09-26)
 
 - `harness/`: a Claude Code plugin. Load with `claude --plugin-dir harness`. Verified in real

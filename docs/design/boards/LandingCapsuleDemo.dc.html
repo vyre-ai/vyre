@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>vyre.run Capsule demo</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .lbl { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+    .h1 { margin: 0; font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em; color: #F1EEE6; text-wrap: balance; }
+    .h2 { margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; color: #F1EEE6; text-wrap: balance; }
+    .body { margin: 0; font-size: 15px; line-height: 22px; color: #B3AEA4; text-wrap: pretty; }
+    .lead { margin: 0; font-size: 18px; line-height: 28px; color: #B3AEA4; text-wrap: pretty; }
+    .nav a { font-size: 13px; line-height: 18px; color: #B3AEA4; text-decoration: none; }
+    .nav a:hover { color: #F1EEE6; }
+    a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .btn { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; border-radius: 6px; padding: 12px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+    .btn-signal { color: #0E0D0C; background: #C6F36B; border: 1px solid #C6F36B; }
+    .btn-signal:hover { background: #D4F88A; border-color: #D4F88A; }
+    .btn-line { color: #F1EEE6; background: transparent; border: 1px solid #3A3733; }
+    .btn-line:hover { background: #1E1C1A; }
+    .tab { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; color: #B3AEA4; background: transparent; border: none; border-right: 1px solid #2B2926; padding: 0 18px; height: 48px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .tab:hover { background: #1E1C1A; }
+    .name-in { font: inherit; color: #F1EEE6; background: transparent; border: none; border-bottom: 1px solid #3A3733; padding: 0; margin: 0; letter-spacing: inherit; text-align: left; }
+    .name-in::placeholder { color: #B3AEA4; }
+    .row-link { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0; border-bottom: 1px solid #2B2926; color: #F1EEE6; text-decoration: none; font-size: 15px; line-height: 22px; }
+    .row-link:hover { color: #C6F36B; }
+    .kbd { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; padding: 2px 6px; border-radius: 4px; border: 1px solid #3A3733; color: #B3AEA4; }
+    .kc { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; line-height: 18px; font-weight: 500; min-width: 24px; box-sizing: border-box; padding: 2px 6px; border-radius: 4px; border: 1px solid #3A3733; background: #161513; color: #F1EEE6; text-align: center; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06); }
+    .keycap { width: 64px; height: 64px; box-sizing: border-box; border-radius: 6px; border: 1px solid #3A3733; background: #161513; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 12px 24px -12px rgba(0,0,0,0.55); display: flex; flex-direction: column; justify-content: space-between; padding: 7px 9px; }
+    .cap { background: #161513; border: 1px solid #3A3733; border-radius: 10px; overflow: hidden; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); }
+    .cbtn { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 32px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
+    .cbtn-ghost { background: transparent; color: #F1EEE6; border: 1px solid #3A3733; }
+    .cbtn-primary { background: #C6F36B; color: #0E0D0C; border: 1px solid #C6F36B; }
+    .state-row { width: 100%; min-height: 52px; box-sizing: border-box; display: flex; align-items: center; gap: 16px; padding: 6px 14px; background: transparent; border: none; border-top: 1px solid #2B2926; color: #B3AEA4; font-family: inherit; font-size: 15px; line-height: 22px; text-align: left; cursor: pointer; }
+    .state-row:hover { background: #1E1C1A; }
+    .state-row.on { background: rgba(198,243,107,0.12); color: #F1EEE6; }
+    .state-row.on .lbl { color: #C6F36B; }
+    .demo-tab { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; min-height: 36px; padding: 0 14px; border-radius: 6px; border: 1px solid #3A3733; background: #161513; color: #B3AEA4; cursor: pointer; }
+    .demo-tab:hover { color: #F1EEE6; }
+    .demo-tab.on { background: rgba(198,243,107,0.12); border-color: #C6F36B; color: #C6F36B; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 900px; overflow: hidden; position: relative; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
+
+  <!-- NAV -->
+  <nav class="nav" aria-label="Main" aria-hidden="true" style="height: 72px; flex-shrink: 0; box-sizing: border-box; padding: 0 72px; display: flex; align-items: center; justify-content: space-between; gap: 32px; border-bottom: 1px solid #2B2926;">
+    <a href="#top" aria-label="Vyre home" style="display: flex; align-items: center; gap: 12px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+    <div style="display: flex; align-items: center; gap: 32px;">
+      <a href="#glass">Glass</a>
+      <a href="#capsule">Capsule</a>
+      <a href="#memory">Memory</a>
+      <a href="#harness">Harness</a>
+      <a href="#fits">How it fits</a>
+      <div style="width: 1px; height: 18px; background: #2B2926;"></div>
+      <a href="#docs">Docs</a>
+      <a href="https://github.com/vyre-ai" style="display: flex; align-items: center; gap: 6px;">GitHub
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a href="LandingCapsuleDemo.dc.html" aria-label="Open the Capsule demo, or press Control twice" style="display: flex; align-items: center; gap: 4px;"><span class="kc">⌃</span><span class="kc">⌃</span></a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header id="top" aria-hidden="true" style="height: 740px; flex-shrink: 0; box-sizing: border-box; padding: 80px 72px 0 72px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+    <div class="lbl">Open source &#183; Built on Claude Code</div>
+    <h1 style="margin: 24px 0 0 0; font-size: 72px; line-height: 76px; font-weight: 600; letter-spacing: -0.035em; color: #F1EEE6;">Your agent has its own computer.</h1>
+    <p class="lead" style="margin-top: 20px; max-width: 700px;">Vyre runs Claude Code agents on your box and your Mac, over your own Tailscale network. Each agent gets a desktop, Chrome and a terminal. You watch, approve, or take the wheel.</p>
+
+    <!-- the install -->
+    <div style="margin-top: 44px; width: 1040px; box-sizing: border-box; background: #161513; border: 1px solid #3A3733; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); text-align: left; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 30px 32px 30px 40px;">
+        <div class="mono" style="display: flex; align-items: baseline; gap: 24px; font-size: 60px; line-height: 68px; font-weight: 500; letter-spacing: -0.03em; white-space: nowrap;">
+          <span style="color: #8C877D;">$</span>
+          <span>npm install -g <span style="color: #C6F36B;">vyre</span></span>
+        </div>
+        <button class="btn btn-signal" type="button" onClick="{{ copyTop }}" aria-label="Copy install command">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          {{ topLabel }}
+        </button>
+      </div>
+      <div class="mono" style="border-top: 1px solid #2B2926; padding: 20px 40px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 22px; color: #B3AEA4;">
+        <div style="display: flex; gap: 16px;"><span style="width: 150px; color: #8C877D;">installed</span><span>vyre@[VERSION]</span></div>
+        <div style="display: flex; gap: 16px;"><span style="width: 150px; color: #8C877D;">tailnet</span><span>joined, as this Mac</span></div>
+        <div style="display: flex; gap: 16px;"><span style="width: 150px; color: #8C877D;">name</span><span>reserved in the Vyre name directory</span></div>
+      </div>
+      <div style="border-top: 1px solid #2B2926; padding: 22px 40px 26px 40px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+        <div class="mono" style="display: flex; align-items: baseline; gap: 16px; font-size: 30px; line-height: 40px; font-weight: 500; letter-spacing: -0.02em;">
+          <span style="font-size: 15px; line-height: 22px; letter-spacing: 0; color: #8C877D; width: 150px;">up at</span>
+          <span style="display: flex; align-items: baseline;">
+            <input id="yourname" class="name-in" type="text" value="{{ nameVal }}" onChange="{{ onName }}" placeholder="yourname" size="{{ nameSize }}" autocomplete="off" spellcheck="false" aria-describedby="yourname-hint">
+            <span>.vyre.run</span>
+          </span>
+        </div>
+        <label for="yourname" id="yourname-hint" class="lbl" style="cursor: text;">Type your name</label>
+      </div>
+    </div>
+    <div style="margin-top: 20px; display: flex; align-items: center; gap: 10px; font-size: 15px; line-height: 22px; color: #B3AEA4;">
+      <span>Then press</span>
+      <a href="LandingCapsuleDemo.dc.html" aria-label="Control Control: open the Capsule demo" style="display: flex; gap: 4px; text-decoration: none;"><span class="kc">⌃</span><span class="kc">⌃</span></a>
+      <span>anywhere on your Mac for the Capsule, or run <span class="mono" style="color: #F1EEE6;">vyre</span> in any terminal.</span>
+    </div>
+  </header>
+
+  <!-- the page, dimmed: the demo Capsule is open -->
+  <div role="dialog" aria-modal="true" aria-labelledby="demo-h" style="position: absolute; left: 0; top: 0; width: 1440px; height: 900px; background: rgba(14,13,12,0.86); display: flex; flex-direction: column; align-items: center; padding-top: 112px; box-sizing: border-box;">
+    <a href="Landing.dc.html" aria-label="Close the demo" style="position: absolute; top: 14px; right: 60px; width: 44px; height: 44px; border-radius: 6px; border: 1px solid #3A3733; background: #161513; color: #F1EEE6; display: flex; align-items: center; justify-content: center;">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </a>
+    <div style="width: 640px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <h2 id="demo-h" style="margin: 0; display: flex; align-items: center; gap: 10px; font-size: 17px; line-height: 24px; font-weight: 500; color: #F1EEE6;">Press <span style="display: flex; gap: 4px;"><span class="kc">⌃</span><span class="kc">⌃</span></span> anywhere on vyre.run</h2>
+        <span class="lbl">Demo &#183; sample data</span>
+      </div>
+      <div class="cap">
+          <sc-if value="{{ isTyping }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; min-width: 0; font-size: 16px; line-height: 22px; color: #F1EEE6; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden;"><span class="mono" style="font-size: 13px; padding: 2px 6px; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; color: #F1EEE6;">@kit</span><span>the Harlow deck needs the Q3 numbers</span><span style="display: inline-block; width: 2px; height: 20px; background: #C6F36B;"></span></div><span class="kbd">⏎</span></div>
+            <div style="border-top: 1px solid #2B2926; padding: 6px;">
+              <div style="display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 6px; background: rgba(198,243,107,0.12);">
+                <span class="lbl" style="width: 76px; color: #C6F36B;">Sends to</span>
+                <span style="font-size: 14px; line-height: 18px; color: #F1EEE6;">kit</span>
+                <span style="color: #8C877D;">&#183;</span>
+                <span style="font-size: 14px; line-height: 18px; color: #F1EEE6;">Harlow Legal</span>
+                <span style="color: #8C877D;">&#8250;</span>
+                <span style="font-size: 14px; line-height: 18px; color: #F1EEE6; font-weight: 500;">Q3 report</span>
+                <span style="flex-grow: 1;"></span>
+                <span class="mono" style="font-size: 11px; color: #B3AEA4;">thread &#183; 4 days</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; padding: 10px;">
+                <span class="lbl" style="width: 76px;">Or</span>
+                <span style="font-size: 14px; line-height: 18px; color: #B3AEA4;">kit &#183; Harlow Legal &#8250; new thread</span>
+              </div>
+              <div style="padding: 2px 10px 8px 98px; font-size: 12px; line-height: 16px; color: #8C877D;">&#8220;Harlow deck&#8221; matched Q3 report, where kit keeps the deck.</div>
+            </div>
+            <div class="mono" style="height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #8C877D;"><span>⏎ send</span><span>&#8595; other destination</span><span>esc close</span></div>
+          </sc-if>
+          <sc-if value="{{ isRecall }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; min-width: 0; font-size: 16px; line-height: 22px; color: #F1EEE6; white-space: nowrap; overflow: hidden;">what target cost per lead did Dana give us?</div><span class="mono" style="font-size: 11px; color: #8C877D;">9 ms</span></div>
+            <div style="border-top: 1px solid #2B2926; background: rgba(235,199,107,0.10); padding: 16px 16px 14px 44px; display: flex; flex-direction: column; gap: 8px;">
+              <span class="lbl" style="color: #EBC76B;">From memory &#183; no model used</span>
+              <div style="font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em; color: #EBC76B;">$180 per signed lead</div>
+              <div style="font-size: 13px; line-height: 19px; color: #B3AEA4;">Down from $220 in July. Dana set it on the 12 Sep call, and kit is auditing ads against it today.</div>
+            </div>
+            <div style="border-top: 1px solid #2B2926; padding: 6px; display: flex; flex-direction: column;">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: #1E1C1A;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#EBC76B" stroke-width="1.5" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/></svg>
+                <span style="font-size: 13px; color: #F1EEE6;">Call notes 12 Sep</span><span style="font-size: 12px; color: #8C877D;">Harlow Legal &#183; &#8220;hold them to 180 a signed lead&#8221;</span>
+              </div>
+            </div>
+            <div class="mono" style="height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #8C877D;"><span>⏎ open source</span><span>⇥ ask juno instead</span><span>esc close</span></div>
+          </sc-if>
+          <sc-if value="{{ isHeld }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg>
+              <span style="font-size: 15px; line-height: 20px; color: #F1EEE6; flex-grow: 1;">juno drafted a reply to Dana</span>
+              <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: rgba(255,122,89,0.12); color: #FF7A59; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></span>HELD FOR YOU</span>
+            </div>
+            <div style="border-top: 1px solid #2B2926; padding: 12px 16px 14px 44px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; font-size: 12px; line-height: 16px;">
+                <span style="color: #8C877D;">To</span><span class="mono" style="font-size: 12px; color: #B3AEA4;">Dana Reyes &lt;dana@harlow.example&gt;</span>
+                <span style="color: #8C877D;">Subject</span><span style="color: #B3AEA4;">Re: Q3 report</span>
+              </div>
+              <div style="font-size: 14px; line-height: 21px; color: #F1EEE6; padding-top: 10px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 4px;"><span>Hi Dana,</span><span>The Q3 numbers are in the deck now, slide 6. Signed leads came in at $171 each, under your $180 target.</span><span>Alex</span></div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px 12px 44px; border-top: 1px solid #2B2926;">
+              <button type="button" class="cbtn cbtn-primary">Send <span style="font-size: 11px; letter-spacing: 0;">⌘⏎</span></button>
+              <button type="button" class="cbtn cbtn-ghost">Edit</button>
+              <button type="button" class="cbtn cbtn-ghost" style="color: #B3AEA4;">Discard</button>
+              <span style="flex-grow: 1;"></span>
+              <span style="font-size: 12px; color: #8C877D;">Rule: email to a client waits for you</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isWaiting }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; font-size: 16px; line-height: 22px; color: #8C877D;">Ask, or @agent</div><span class="kbd" style="color: #F1EEE6; border-color: #8C877D;">&#8593;</span></div>
+            <div style="border-top: 1px solid #2B2926; padding: 12px 16px 4px 16px; display: flex; align-items: center; justify-content: space-between;">
+              <span class="lbl" style="color: #FF7A59;">Waiting on you &#183; 2</span>
+              <span style="font-size: 12px; color: #8C877D;">oldest first</span>
+            </div>
+            <div style="padding: 4px 6px 6px 6px; display: flex; flex-direction: column;">
+              <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px;">
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">pax wants to email 14 clients the new intake form</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#183; held by rule: bulk email over 10</span></span>
+                <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">18 min</span>
+              </div>
+              <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px; background: rgba(198,243,107,0.12);">
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">juno drafted a reply to Dana Reyes</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#8250; Q3 report &#183; email to a client</span></span>
+                <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">6 min</span><span class="kbd" style="color: #F1EEE6;">⏎</span>
+              </div>
+            </div>
+            <div class="mono" style="height: 32px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #8C877D;"><span>&#8593;&#8595; move</span><span>⏎ review</span><span>A allow</span><span>esc close</span></div>
+          </sc-if>
+        </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <div role="group" aria-label="Try the four states" style="display: flex; gap: 8px;">
+          <sc-for list="{{ capStates }}" as="st" hint-placeholder-count="4">
+            <button type="button" class="demo-tab {{ st.on }}" onClick="{{ st.pick }}" aria-pressed="{{ st.pressed }}">{{ st.name }}</button>
+          </sc-for>
+        </div>
+        <span style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Nothing leaves this page.</span>
+      </div>
+      <p style="margin: 24px 0 0 0; padding-top: 16px; border-top: 1px solid #2B2926; font-size: 15px; line-height: 22px; color: #B3AEA4; text-wrap: pretty;">On your Mac this opens over any app, a call or a doc, and it&#39;s gone when you&#39;re done. It never talks back out loud.</p>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const cap = s.cap || 'typing';
+    const CAP_STATES = [
+      { id: 'typing', name: 'Typing' },
+      { id: 'recall', name: 'Recall' },
+      { id: 'held', name: 'Held' },
+      { id: 'waiting', name: 'Waiting' }
+    ];
+    const noop = () => {};
+    return {
+      nameVal: '',
+      nameSize: 8,
+      host: 'yourname.vyre.run',
+      onName: noop,
+      copyTop: noop,
+      topLabel: 'Copy',
+      isTyping: cap === 'typing',
+      isRecall: cap === 'recall',
+      isHeld: cap === 'held',
+      isWaiting: cap === 'waiting',
+      capStates: CAP_STATES.map((x) => ({
+        name: x.name,
+        on: x.id === cap ? 'on' : '',
+        pressed: x.id === cap,
+        pick: () => this.setState({ cap: x.id })
+      }))
+    };
+  }
+}</script>
+</body>
+</html>

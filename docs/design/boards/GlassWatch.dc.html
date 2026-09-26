@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Glass, watching kit</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .sans { font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .btn { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 36px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
+    .btn:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .btn-ghost { background: transparent; color: #F1EEE6; border: 1px solid #3A3733; }
+    .btn-ghost:hover { background: #1E1C1A; }
+    .btn-primary { background: #C6F36B; color: #0E0D0C; border: 1px solid #C6F36B; }
+    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
+    .kbd { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; padding: 1px 5px; border-radius: 4px; border: 1px solid #3A3733; color: #B3AEA4; letter-spacing: 0; }
+    .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 12px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 18px; }
+    .rail-a:hover { background: #1E1C1A; color: #F1EEE6; }
+    .rail-sub { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 12px 0 40px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
+    .log-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 9px 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px; color: #B3AEA4; }
+    .log-t { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 18px; color: #8C877D; }
+    .tick { position: absolute; top: 14px; width: 1px; height: 12px; background: #8C877D; }
+    .site-nav { font-size: 12px; line-height: 16px; color: #4A463F; padding: 7px 10px; border-radius: 4px; }
+    .td { padding: 8px 10px; border-bottom: 1px solid #DCD7CC; font-size: 12px; line-height: 16px; color: #141311; white-space: nowrap; }
+    .th { padding: 8px 10px; border-bottom: 1px solid #C9C3B7; font-size: 11px; line-height: 14px; color: #6B665D; font-weight: 500; text-align: left; white-space: nowrap; }
+    .num { text-align: right; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; }
+    .cb { width: 12px; height: 12px; border: 1px solid #C9C3B7; border-radius: 3px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+    .cb-on { background: #141311; border-color: #141311; }
+  </style>
+</helmet>
+<div class="sans" style="width: 1600px; height: 1000px; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Top bar -->
+  <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 24px; padding: 0 16px 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
+    <a href="#" aria-label="vyre home" style="display: flex; align-items: center; gap: 8px; width: 180px; text-decoration: none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+    <div class="mono" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-size: 12px; line-height: 16px; color: #B3AEA4;">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>
+      <span>alex.vyre.run<span style="color: #8C877D;">/glass/</span><span style="color: #F1EEE6;">kit</span></span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <label style="display: flex; align-items: center; gap: 10px; width: 320px; height: 30px; padding: 0 8px 0 12px; border: 1px solid #3A3733; border-radius: 6px; box-sizing: border-box; color: #8C877D; font-size: 13px;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+      <input type="text" placeholder="Search threads, memory, agents" aria-label="Search" style="flex-grow: 1; min-width: 0; background: transparent; border: 0; color: #F1EEE6; font: inherit; font-size: 13px; outline: none;">
+      <span class="kbd">⌘K</span>
+    </label>
+    <a href="#" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: rgba(255,122,89,0.12); color: #FF7A59; text-decoration: none; font-size: 13px; line-height: 16px; font-weight: 500;">
+      <span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>2 need you
+    </a>
+    <button type="button" aria-label="Alex Rivera" class="mono" style="width: 30px; height: 30px; border-radius: 15px; background: #1E1C1A; border: 1px solid #3A3733; color: #F1EEE6; font-size: 11px; font-weight: 500; cursor: pointer; padding: 0;">AR</button>
+  </header>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+    <!-- Left rail -->
+    <nav aria-label="Main" style="width: 216px; flex-shrink: 0; border-right: 1px solid #2B2926; padding: 16px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px;">
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/></svg>Now</a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h4l1.5 1.5H14V13H2z"/></svg>Projects</a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l6 3.2-6 3.2-6-3.2z"/><path d="M2 8.4l6 3.2 6-3.2"/><path d="M2 11.2l6 3.2 6-3.2"/></svg>Memory</a>
+      <a class="rail-a" href="#" style="color: #F1EEE6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1"/><path d="M5.5 14h5M8 11v3"/></svg>Agents</a>
+      <a class="rail-sub" href="#"><span>juno</span><span class="mono" style="font-size: 11px; color: #8C877D;">idle</span></a>
+      <a class="rail-sub" href="#" aria-current="page" style="background: rgba(198,243,107,0.12); color: #F1EEE6;"><span>kit</span><span class="mono" style="font-size: 11px; color: #C6F36B;">glass</span></a>
+      <a class="rail-sub" href="#"><span>pax</span><span class="mono" style="font-size: 11px; color: #8C877D;">working</span></a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>Vault</a>
+      <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.6" fill="#0E0D0C"/><circle cx="10" cy="11" r="1.6" fill="#0E0D0C"/></svg>Settings</a>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; border-top: 1px solid #2B2926;">
+        <div class="lbl">alex-box · online</div>
+        <div style="font-size: 12px; line-height: 16px; color: #8C877D;">Only your tailnet can open this address.</div>
+      </div>
+    </nav>
+
+    <!-- Main -->
+    <main style="flex-grow: 1; min-width: 0; padding: 20px 24px 20px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px;">
+
+      <!-- Agent header -->
+      <div style="display: flex; align-items: center; gap: 16px; height: 44px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; align-items: baseline; gap: 10px;">
+            <h1 style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em;">kit&#39;s computer</h1>
+            <span style="font-size: 13px; color: #8C877D;">marketing</span>
+          </div>
+          <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Working in Harlow Legal <span style="color: #8C877D;">/</span> Ads audit <span style="color: #8C877D;">· 34 min · started by you from Capsule</span></div>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="display: flex; align-items: center; gap: 10px; padding-right: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>
+          <div style="display: flex;">
+            <span class="mono" title="Alex Rivera" style="width: 26px; height: 26px; border-radius: 13px; background: #1E1C1A; border: 1px solid #3A3733; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #F1EEE6;">AR</span>
+            <span class="mono" title="juno" style="width: 26px; height: 26px; border-radius: 13px; background: #161513; border: 1px solid #3A3733; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #B3AEA4; margin-left: -6px;">ju</span>
+          </div>
+          <span style="font-size: 13px; color: #B3AEA4;">You and juno are watching</span>
+        </div>
+        <button type="button" class="btn btn-ghost"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 4v8M10 4v8"/></svg>Pause kit</button>
+        <button type="button" class="btn btn-ghost">Open thread</button>
+        <button type="button" class="btn btn-primary" style="height: 40px; padding: 0 18px;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="#0E0D0C" aria-hidden="true"><path d="M3 1.5l9.5 6.2-4.3.8 2.6 4.9-1.9 1-2.6-4.9-3.3 2.9z"/></svg>
+          Take over
+          <span style="font-size: 11px; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(14,13,12,0.35); letter-spacing: 0;">T</span>
+        </button>
+      </div>
+
+      <!-- Stage -->
+      <div style="flex-grow: 1; min-height: 0; display: flex; gap: 24px;">
+
+        <!-- Stream column -->
+        <div style="width: 1008px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;">
+
+          <!-- The remote desktop -->
+          <div aria-label="Live view of kit&#39;s desktop" style="position: relative; width: 1008px; height: 630px; border-radius: 14px; border: 1px solid #3A3733; background: #161513; overflow: hidden; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);">
+
+            <!-- desktop panel -->
+            <div class="mono" style="height: 26px; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: #0E0D0C; border-bottom: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #B3AEA4;">
+              <span style="color: #F1EEE6;">kit@box-kit</span>
+              <span>Browser</span><span>Terminal</span><span>Files</span>
+              <span style="flex-grow: 1;"></span>
+              <span style="color: #8C877D;">1920 × 1200 · 24 fps</span>
+              <span>14:32</span>
+            </div>
+
+            <!-- Browser window -->
+            <div style="position: absolute; left: 20px; top: 42px; width: 800px; height: 540px; border-radius: 10px; overflow: hidden; border: 1px solid #3A3733; background: #FBFAF6; display: flex; flex-direction: column;">
+              <div style="height: 34px; flex-shrink: 0; background: #1E1C1A; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid #2B2926;">
+                <div style="display: flex; gap: 6px;"><span style="width: 9px; height: 9px; border-radius: 5px; background: #3A3733;"></span><span style="width: 9px; height: 9px; border-radius: 5px; background: #3A3733;"></span><span style="width: 9px; height: 9px; border-radius: 5px; background: #3A3733;"></span></div>
+                <div class="mono" style="flex-grow: 1; height: 22px; border-radius: 4px; background: #0E0D0C; display: flex; align-items: center; padding: 0 10px; font-size: 11px; color: #B3AEA4;">ads.example.com<span style="color: #8C877D;">/campaigns/harlow-legal/search-terms?range=90d&amp;sort=cost</span></div>
+              </div>
+              <div style="flex-grow: 1; display: flex; min-height: 0;">
+                <div style="width: 150px; flex-shrink: 0; background: #F4F1EA; border-right: 1px solid #DCD7CC; padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box;">
+                  <div style="font-size: 13px; font-weight: 600; color: #141311; padding: 0 10px 12px 10px;">Harlow Legal</div>
+                  <div class="site-nav">Overview</div>
+                  <div class="site-nav">Campaigns</div>
+                  <div class="site-nav" style="background: #FBFAF6; color: #141311; font-weight: 500; border: 1px solid #DCD7CC;">Search terms</div>
+                  <div class="site-nav">Keywords</div>
+                  <div class="site-nav">Negatives</div>
+                  <div class="site-nav">Billing</div>
+                </div>
+                <div style="flex-grow: 1; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0;">
+                  <div style="display: flex; align-items: flex-end; gap: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                      <div style="font-size: 11px; color: #6B665D;">Family law · Search</div>
+                      <div style="font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; color: #141311;">Search terms</div>
+                    </div>
+                    <div style="flex-grow: 1;"></div>
+                    <div style="font-size: 12px; color: #141311; border: 1px solid #C9C3B7; border-radius: 4px; padding: 5px 10px;">Last 90 days</div>
+                    <div style="font-size: 12px; color: #4A463F; border: 1px solid #C9C3B7; border-radius: 4px; padding: 5px 10px;">2 selected</div>
+                  </div>
+                  <table style="border-collapse: collapse; width: 100%;">
+                    <thead>
+                      <tr><th class="th" style="width: 22px;"></th><th class="th">Search term</th><th class="th num">Clicks</th><th class="th num" style="color: #141311;">Cost ↓</th><th class="th num">Conv.</th><th class="th num">Cost / conv.</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td class="td"><div class="cb"></div></td><td class="td">divorce lawyer near me</td><td class="td num">412</td><td class="td num">$3,186</td><td class="td num">21</td><td class="td num">$152</td></tr>
+                      <tr style="background: #F4F1EA;"><td class="td"><div class="cb cb-on"><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#FBFAF6" stroke-width="1.5" aria-hidden="true"><path d="M1.5 4l1.7 1.7L6.5 2.3"/></svg></div></td><td class="td">free divorce advice</td><td class="td num">388</td><td class="td num">$2,904</td><td class="td num">0</td><td class="td num" style="color: #6B665D;">none</td></tr>
+                      <tr><td class="td"><div class="cb"></div></td><td class="td">how to file for custody</td><td class="td num">251</td><td class="td num">$1,877</td><td class="td num">2</td><td class="td num">$938</td></tr>
+                      <tr style="background: #F4F1EA;"><td class="td"><div class="cb cb-on"><svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#FBFAF6" stroke-width="1.5" aria-hidden="true"><path d="M1.5 4l1.7 1.7L6.5 2.3"/></svg></div></td><td class="td">child support calculator</td><td class="td num">176</td><td class="td num">$1,311</td><td class="td num">0</td><td class="td num" style="color: #6B665D;">none</td></tr>
+                      <tr><td class="td"><div class="cb"></div></td><td class="td">family lawyer consultation</td><td class="td num">143</td><td class="td num">$1,254</td><td class="td num">9</td><td class="td num">$139</td></tr>
+                      <tr><td class="td"><div class="cb"></div></td><td class="td">uncontested divorce cost</td><td class="td num">121</td><td class="td num">$968</td><td class="td num">6</td><td class="td num">$161</td></tr>
+                      <tr><td class="td"><div class="cb"></div></td><td class="td">harlow legal</td><td class="td num">198</td><td class="td num">$402</td><td class="td num">34</td><td class="td num">$12</td></tr>
+                    </tbody>
+                  </table>
+                  <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #4A463F;">
+                    <span>Showing 7 of 1,942</span>
+                    <span style="flex-grow: 1;"></span>
+                    <span style="border: 1px solid #C9C3B7; border-radius: 4px; padding: 5px 10px; color: #141311;">Download</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Terminal window -->
+            <div class="mono" style="position: absolute; left: 604px; top: 392px; width: 386px; height: 222px; border-radius: 10px; overflow: hidden; border: 1px solid #3A3733; background: #0E0D0C; box-shadow: 0 12px 24px -12px rgba(0,0,0,0.55); display: flex; flex-direction: column;">
+              <div style="height: 26px; flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #2B2926; font-size: 11px; color: #8C877D; background: #161513;">~/work/harlow/ads-audit</div>
+              <div style="padding: 10px 12px; font-size: 11.5px; line-height: 18px; color: #B3AEA4; display: flex; flex-direction: column;">
+                <div><span style="color: #8C877D;">$</span> <span style="color: #F1EEE6;">python terms.py --since 90d</span></div>
+                <div>pulled 1,942 search terms</div>
+                <div>wrote terms-90d.csv</div>
+                <div><span style="color: #8C877D;">$</span> <span style="color: #F1EEE6;">python flag.py --conv 0 --min-cost 500</span></div>
+                <div>14 terms, $9,870 spent, 0 conversions</div>
+                <div>wrote wasted-spend.md</div>
+                <div><span style="color: #8C877D;">$</span> <span style="display: inline-block; width: 7px; height: 13px; background: #B3AEA4; vertical-align: -2px;"></span></div>
+              </div>
+            </div>
+
+            <!-- kit's cursor -->
+            <div style="position: absolute; left: 196px; top: 318px; display: flex; align-items: flex-start; gap: 2px; pointer-events: none;">
+              <svg width="18" height="22" viewBox="0 0 18 22" aria-hidden="true"><path d="M2 2l13 9.2-5.8 1 3.2 6.3-2.6 1.3-3.2-6.4L2 17.6z" fill="#0E0D0C" stroke="#F1EEE6" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span class="mono" style="margin-top: 16px; padding: 2px 7px; border-radius: 4px; background: #0E0D0C; color: #F1EEE6; font-size: 11px; line-height: 14px; font-weight: 500; border: 1px solid #3A3733;">kit</span>
+            </div>
+
+            <!-- live badge -->
+            <div class="mono" style="position: absolute; right: 14px; top: 38px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; background: #0E0D0C; border: 1px solid #2B2926; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; color: #F1EEE6;">
+              <span style="width: 6px; height: 6px; border-radius: 3px; background: #C6F36B;"></span>LIVE · REC
+            </div>
+          </div>
+
+          <!-- Caption: what kit is doing right now -->
+          <div style="display: flex; align-items: baseline; gap: 16px; padding: 0 4px;">
+            <span class="lbl" style="color: #C6F36B; width: 36px;">Now</span>
+            <p style="margin: 0; font-size: 17px; line-height: 24px; color: #F1EEE6; flex-grow: 1; text-wrap: pretty;">Ticking search terms that spent money and never converted. Two so far, $4,215 in 90 days.</p>
+            <span class="mono" style="font-size: 12px; color: #8C877D; white-space: nowrap;">step 13 of the audit plan</span>
+          </div>
+
+          <!-- Timeline -->
+          <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid #2B2926;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <button type="button" aria-label="Pause playback" class="btn btn-ghost" style="width: 32px; height: 32px; padding: 0; justify-content: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 4v8M10 4v8"/></svg></button>
+              <div role="slider" aria-label="Recording timeline" aria-valuemin="0" aria-valuemax="34" aria-valuenow="34" tabindex="0" style="position: relative; flex-grow: 1; height: 40px;">
+                <div style="position: absolute; left: 0; right: 0; top: 19px; height: 2px; background: #3A3733;"></div>
+                <div class="tick" style="left: 0%;"></div>
+                <div class="tick" style="left: 2%; background: #EBC76B; height: 16px; top: 12px; width: 2px;"></div>
+                <div class="tick" style="left: 9%;"></div>
+                <div class="tick" style="left: 15%;"></div>
+                <div class="tick" style="left: 24%;"></div>
+                <div class="tick" style="left: 25.5%;"></div>
+                <div class="tick" style="left: 34%;"></div>
+                <div class="tick" style="left: 35%;"></div>
+                <div class="tick" style="left: 36%;"></div>
+                <div class="tick" style="left: 77%;"></div>
+                <div class="tick" style="left: 98%;"></div>
+                <!-- hover preview -->
+                <div class="mono" style="position: absolute; left: 24%; bottom: 30px; transform: translateX(-50%); padding: 4px 8px; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; font-size: 11px; line-height: 14px; color: #F1EEE6; white-space: nowrap; box-shadow: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);">14:06 · opened ads.example.com</div>
+                <!-- playhead -->
+                <div style="position: absolute; right: -6px; top: 14px; width: 12px; height: 12px; border-radius: 6px; background: #C6F36B; box-shadow: 0 0 0 3px #0E0D0C;"></div>
+              </div>
+              <button type="button" class="btn btn-ghost" style="height: 32px;">Live</button>
+            </div>
+            <div class="mono" style="display: flex; gap: 0; padding-left: 44px; padding-right: 64px; font-size: 11px; line-height: 14px; color: #8C877D;">
+              <span style="width: 9%;">13:58</span>
+              <span style="width: 15%;">pulled terms</span>
+              <span style="width: 12%;">browser</span>
+              <span style="width: 41%;">reading 1,942 rows against the CSV</span>
+              <span style="flex-grow: 1;">ticking</span>
+              <span>14:32</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action log -->
+        <aside aria-label="Action log" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #2B2926; padding-left: 0;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 12px 12px 16px; border-bottom: 1px solid #2B2926;">
+            <span class="lbl">Action log</span>
+            <span class="mono" style="font-size: 11px; color: #B3AEA4;">synced to playhead</span>
+          </div>
+          <div style="display: flex; flex-direction: column; padding-left: 4px;">
+            <div class="log-row"><span class="log-t">13:58:12</span><span>Opened <span style="color: #F1EEE6;">Ads audit</span> in Harlow Legal</span></div>
+            <div class="log-row" style="background: rgba(235,199,107,0.10);"><span class="log-t" style="color: #EBC76B;">13:58:14</span><span style="color: #EBC76B;">Recalled target: $180 per signed lead. From Call notes 12 Sep, no model used.</span></div>
+            <div class="log-row"><span class="log-t">14:01:05</span><span><span class="mono" style="font-size: 12px; color: #F1EEE6;">python terms.py --since 90d</span></span></div>
+            <div class="log-row"><span class="log-t">14:03:22</span><span>Wrote terms-90d.csv, 1,942 rows</span></div>
+            <div class="log-row"><span class="log-t">14:06:10</span><span>Opened ads.example.com</span></div>
+            <div class="log-row"><span class="log-t">14:06:31</span><span>Signed in with Vault login <span style="color: #F1EEE6;">Harlow ads</span></span></div>
+            <div class="log-row"><span class="log-t">14:09:48</span><span>Campaigns › Search terms</span></div>
+            <div class="log-row"><span class="log-t">14:10:02</span><span>Range set to last 90 days, sorted by cost</span></div>
+            <div class="log-row"><span class="log-t">14:10:40</span><span><span class="mono" style="font-size: 12px; color: #F1EEE6;">python flag.py --conv 0</span> found 14 terms</span></div>
+            <div class="log-row"><span class="log-t">14:24:18</span><span>Wrote wasted-spend.md</span></div>
+            <div class="log-row"><span class="log-t">14:31:40</span><span>Ticked <span style="color: #F1EEE6;">free divorce advice</span>, $2,904, 0 conv.</span></div>
+            <div class="log-row" aria-current="step" style="background: rgba(198,243,107,0.12); color: #F1EEE6;"><span class="log-t" style="color: #C6F36B;">14:32:06</span><span>Ticking <span style="font-weight: 500;">child support calculator</span>, $1,311, 0 conv.</span></div>
+          </div>
+          <div style="flex-grow: 1;"></div>
+          <div style="padding: 12px 12px 0 16px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 6px;">
+            <span class="lbl">Next in the plan</span>
+            <span style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Add the 14 terms to wasted-spend.md with cost per term, then draft the Ads audit summary for Dana.</span>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

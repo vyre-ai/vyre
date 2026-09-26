@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>vyre CLI</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .term { margin: 0; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13px; line-height: 20px; font-weight: 400; color: #B3AEA4; white-space: pre; font-variant-ligatures: none; }
+  </style>
+</helmet>
+<div style="width: 1200px; height: 820px; box-sizing: border-box; background: #0E0D0C; padding: 20px; display: flex; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;">
+  <div style="flex-grow: 1; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #3A3733; background: #161513; overflow: hidden; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);">
+    <div style="height: 36px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 14px; border-bottom: 1px solid #2B2926;">
+      <div style="display: flex; gap: 8px; width: 120px;"><span style="width: 11px; height: 11px; border-radius: 6px; background: #3A3733;"></span><span style="width: 11px; height: 11px; border-radius: 6px; background: #3A3733;"></span><span style="width: 11px; height: 11px; border-radius: 6px; background: #3A3733;"></span></div>
+      <div style="flex-grow: 1; text-align: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; color: #8C877D;">alex@alex-box: ~</div>
+      <div style="width: 120px;"></div>
+    </div>
+    <div style="flex-grow: 1; display: grid; grid-template-columns: 460px minmax(0, 1fr); min-height: 0; background: #0E0D0C;">
+      <section aria-label="Install" style="padding: 18px 20px; border-right: 1px solid #2B2926; overflow: hidden;"><pre class="term"><span style="color: #8C877D;">~ $ </span><span style="color: #F1EEE6;">npm install -g vyre</span>
+
+<span style="color: #B3AEA4;">added 212 packages in 9s</span>
+<span style="color: #8C877D;">~ $ </span><span style="color: #F1EEE6;">vyre up</span>
+
+  <span style="color: #F1EEE6; font-weight: 500;">vyre</span><span style="color: #B3AEA4;">  setting up alex-box</span>
+
+  <span style="color: #F1EEE6;">✓</span>  <span style="color: #B3AEA4;">claude code </span><span style="color: #B3AEA4;">signed in as alex</span>
+  <span style="color: #F1EEE6;">✓</span>  <span style="color: #B3AEA4;">tailscale   </span><span style="color: #B3AEA4;">alex-box joined your tailnet</span>
+  <span style="color: #F1EEE6;">✓</span>  <span style="color: #B3AEA4;">deck        </span><span style="color: #B3AEA4;">running</span>
+  <span style="color: #F1EEE6;">✓</span>  <span style="color: #B3AEA4;">chat        </span><span style="color: #B3AEA4;">running</span>
+  <span style="color: #F1EEE6;">✓</span>  <span style="color: #B3AEA4;">glass       </span><span style="color: #B3AEA4;">3 computers ready: juno kit pax</span>
+  <span style="color: #F1EEE6;">✓</span>  <span style="color: #B3AEA4;">memory      </span><span style="color: #B3AEA4;">1,284 notes indexed</span>
+  <span style="color: #F1EEE6;">✓</span>  <span style="color: #B3AEA4;">capsule     </span><span style="color: #B3AEA4;">paired with alex-mbp</span>
+
+  <span style="color: #B3AEA4;">your address: </span><span style="color: #F1EEE6; font-weight: 500;">alex.vyre.run</span>
+  <span style="color: #8C877D;">only your tailnet can open this address.</span>
+
+<span style="color: #8C877D;">~ $ </span><span style="display: inline-block; width: 8px; height: 16px; background: #C6F36B; vertical-align: -3px;"></span></pre></section>
+      <section aria-label="vyre home and project" style="padding: 18px 20px; overflow: hidden;"><pre class="term"><span style="color: #8C877D;">~ $ </span><span style="color: #F1EEE6;">vyre</span>
+
+  <span style="color: #F1EEE6; font-weight: 500;">vyre</span>  <span style="color: #B3AEA4;">alex.vyre.run</span>                         <span style="color: #8C877D;">3 agents · </span><span style="color: #FF7A59;">2 need you</span>
+
+  <span style="color: #8C877D;">    PROJECT                  ORG                  THREADS</span>
+  <span style="color: #8C877D;"> 1  </span><span style="color: #F1EEE6;">Harlow Legal             </span><span style="color: #B3AEA4;">Harlow Legal         </span><span style="color: #B3AEA4;">      4</span>
+  <span style="color: #8C877D;"> 2  </span><span style="color: #F1EEE6;">Northfield Dental        </span><span style="color: #B3AEA4;">Northfield Dental    </span><span style="color: #B3AEA4;">      3</span>
+  <span style="color: #8C877D;"> 3  </span><span style="color: #F1EEE6;">Launch site              </span><span style="color: #B3AEA4;">Rivera Studio        </span><span style="color: #B3AEA4;">      6</span>
+  <span style="color: #8C877D;"> 4  </span><span style="color: #F1EEE6;">Q4 hiring                </span><span style="color: #B3AEA4;">Rivera Studio        </span><span style="color: #B3AEA4;">      2</span>
+
+  <span style="color: #F1EEE6;">n</span><span style="color: #8C877D;"> new project</span><span style="color: #8C877D;"> · </span><span style="color: #F1EEE6;">t</span><span style="color: #8C877D;"> all threads</span><span style="color: #8C877D;"> · </span><span style="color: #F1EEE6;">q</span><span style="color: #8C877D;"> quit</span>
+<span style="color: #C6F36B;">  › </span><span style="color: #F1EEE6;">1</span>
+
+  <span style="color: #F1EEE6; font-weight: 500;">Harlow Legal</span><span style="color: #B3AEA4;">  ·  Harlow Legal  ·  4 threads</span>
+
+  <span style="color: #8C877D;">┌─</span><span style="color: #B3AEA4;"> What a new thread here is told </span><span style="color: #8C877D;">───────────────────────────┐</span>
+  <span style="color: #8C877D;">│ </span><span style="color: #B3AEA4;">Harlow Legal is a family-law firm. The contact is          </span><span style="color: #8C877D;">│</span>
+  <span style="color: #8C877D;">│ </span><span style="color: #B3AEA4;">Dana Reyes &lt;dana@harlowlegal.com&gt;. Email to her waits      </span><span style="color: #8C877D;">│</span>
+  <span style="color: #8C877D;">│ </span><span style="color: #B3AEA4;">for Alex. Target: $180 per signed lead.                    </span><span style="color: #8C877D;">│</span>
+  <span style="color: #8C877D;">│ </span><span style="color: #B3AEA4;">Files live in ~/work/harlow.                               </span><span style="color: #8C877D;">│</span>
+  <span style="color: #8C877D;">└────────────────────────────────────────────────────────────┘</span>
+
+  <span style="color: #8C877D;"> 1  </span><span style="color: #F1EEE6;">Intake form rebuild   </span><span style="color: #B3AEA4;">  2h   </span><span style="color: #8C877D;">~/work/harlow/intake</span>
+  <span style="color: #8C877D;"> 2  </span><span style="color: #F1EEE6;">Ads audit             </span><span style="color: #B3AEA4;"> 34m   </span><span style="color: #8C877D;">~/work/harlow/ads-audit</span>
+  <span style="color: #8C877D;"> 3  </span><span style="color: #F1EEE6;">Q3 report             </span><span style="color: #B3AEA4;">  4d   </span><span style="color: #8C877D;">~/work/harlow/q3-report</span>
+  <span style="color: #8C877D;"> 4  </span><span style="color: #F1EEE6;">Call notes 12 Sep     </span><span style="color: #B3AEA4;"> 14d   </span><span style="color: #8C877D;">~/work/harlow/notes</span>
+
+  <span style="color: #F1EEE6;">&lt;number&gt;</span><span style="color: #8C877D;"> resume</span><span style="color: #8C877D;"> · </span><span style="color: #F1EEE6;">n</span><span style="color: #8C877D;"> new thread here</span><span style="color: #8C877D;"> · </span><span style="color: #F1EEE6;">a</span><span style="color: #8C877D;"> add threads</span><span style="color: #8C877D;"> · </span><span style="color: #F1EEE6;">b</span><span style="color: #8C877D;"> back</span>
+<span style="color: #C6F36B;">  › </span><span style="display: inline-block; width: 8px; height: 16px; background: #C6F36B; vertical-align: -3px;"></span></pre></section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":820}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

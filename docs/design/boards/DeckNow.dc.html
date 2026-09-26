@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Deck, Now</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px; box-sizing: border-box; border-radius: 6px; border: 1px solid #3A3733; background: transparent; color: #F1EEE6; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none; cursor: pointer; white-space: nowrap; }
+    .btn:hover { background: #1E1C1A; }
+    .btn-primary { background: #C6F36B; border-color: #C6F36B; color: #0E0D0C; }
+    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
+    .btn-ghost { border-color: transparent; color: #B3AEA4; padding: 0 10px; }
+    .ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; box-sizing: border-box; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #B3AEA4; cursor: pointer; padding: 0; }
+    .ibtn:hover { background: #1E1C1A; color: #F1EEE6; }
+    .link { color: #F1EEE6; text-decoration: underline; text-decoration-color: #3A3733; text-underline-offset: 3px; }
+    .link:hover { text-decoration-color: #F1EEE6; }
+    .kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid #3A3733; border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #8C877D; }
+    .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 20px; }
+    .rail-a:hover { background: #1E1C1A; color: #F1EEE6; }
+    .pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
+    .pin-a:hover { background: #1E1C1A; color: #F1EEE6; }
+    .sw { position: relative; width: 34px; height: 20px; border-radius: 10px; border: none; padding: 0; cursor: pointer; flex-shrink: 0; }
+    .sw-on { background: #F1EEE6; }
+    .sw-off { background: #3A3733; }
+    .sw-knob { position: absolute; top: 3px; width: 14px; height: 14px; border-radius: 7px; }
+    .sw-on .sw-knob { left: 17px; background: #0E0D0C; }
+    .sw-off .sw-knob { left: 3px; background: #8C877D; }
+    :focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+  </style>
+</helmet>
+<div style="width: 1600px; height: 1000px; overflow: hidden; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
+
+  <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid #2B2926; background: #0E0D0C;">
+    <a href="DeckNow.dc.html" aria-label="vyre home" style="width: 216px; box-sizing: border-box; height: 48px; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <div class="mono" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-size: 12px; line-height: 16px; color: #8C877D; flex-shrink: 0;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><span>alex.vyre.run<span style="color: #F1EEE6;">/now</span></span></div>
+    <label style="display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; padding: 0 8px 0 12px; box-sizing: border-box; background: #161513; border: 1px solid #2B2926; border-radius: 6px; color: #8C877D;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"/><path d="M10.3 10.3L13.5 13.5"/></svg><input type="search" placeholder="Search threads, files, people" aria-label="Search threads, files, people" style="flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px;"><span class="kbd">⌘K</span></label>
+    <div style="flex-grow: 1;"></div>
+    <a href="DeckNow.dc.html" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: rgba(255,122,89,0.12); color: #FF7A59; text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500;"><span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>2 need you</a>
+    <button type="button" aria-label="Alex Rivera, account" style="width: 28px; height: 28px; border-radius: 14px; border: 1px solid #3A3733; background: #1E1C1A; color: #F1EEE6; padding: 0; cursor: pointer; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em;">AR</button>
+  </header>
+  <div style="flex-grow: 1; min-height: 0; display: flex;">
+
+    <nav aria-label="Places" style="width: 216px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 12px 16px 12px; border-right: 1px solid #2B2926; background: #0E0D0C;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <a class="rail-a" href="DeckNow.dc.html" aria-current="page" style="background: #1E1C1A; color: #F1EEE6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg><span>Now</span><span class="mono" style="margin-left: auto; font-size: 11px; line-height: 14px; color: #FF7A59;">2</span></a><a class="rail-a" href="DeckProject.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"/></svg><span>Projects</span></a><a class="rail-a" href="DeckMemory.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4" cy="11.5" r="1.9"/><circle cx="12" cy="4.5" r="1.9"/><circle cx="12.5" cy="12" r="1.3"/><path d="M5.5 10.3l5-4.6M5.9 11.7h5.3"/></svg><span>Memory</span></a><a class="rail-a" href="DeckAgent.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3"/></svg><span>Agents</span></a><a class="rail-a" href="DeckVault.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.2"/><circle cx="8" cy="8" r="2.3"/><path d="M8 5.7V4.6M5 13.5v1M11 13.5v1"/></svg><span>Vault</span></a><a class="rail-a" href="#settings"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5H5M8 5h5.5M2.5 11H9M12 11h1.5"/><circle cx="6.5" cy="5" r="1.5"/><circle cx="10.5" cy="11" r="1.5"/></svg><span>Settings</span></a>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #2B2926;">
+        <div class="lbl" style="padding: 0 10px 8px 10px;">Pinned</div>
+        <a class="pin-a" href="DeckProject.dc.html"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Harlow Legal</a><a class="pin-a" href="#northfield"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Northfield Dental</a><a class="pin-a" href="#launch"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Launch site</a><a class="pin-a" href="#q4"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Q4 hiring</a>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 10px 0 10px; border-top: 1px solid #2B2926;">
+        <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4;">alex-box</div>
+        <div style="font-size: 12px; line-height: 16px; color: #8C877D;">On your tailnet with alex-mac</div>
+      </div>
+    </nav>
+    <main style="flex-grow: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden;">
+
+      <div style="flex-grow: 1; overflow: hidden; display: flex; justify-content: center; padding: 28px 0 0 0;">
+      <div style="width: 880px; display: flex; flex-direction: column;">
+
+        <div style="display: flex; flex-direction: column; gap: 10px; padding-left: 64px; padding-bottom: 22px;">
+          <div class="lbl">Friday 26 September · 14:20</div>
+          <h1 style="margin: 0; font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em;">Two things need you.</h1>
+          <p style="margin: 0; font-size: 15px; line-height: 22px; color: #B3AEA4;">Three threads are running on their own. Nothing else is waiting on you.</p>
+        </div>
+
+        <section aria-labelledby="needs" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 10px; padding-left: 64px;">
+            <span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>
+            <h2 id="needs" class="lbl" style="margin: 0; color: #FF7A59;">Needs you</h2>
+          </div>
+
+          <div style="display: flex;">
+            <div class="mono" style="width: 64px; flex-shrink: 0; padding-top: 2px; font-size: 12px; line-height: 16px; color: #FF7A59;">13:58</div>
+            <article style="flex-grow: 1; display: flex; flex-direction: column; background: rgba(255,122,89,0.12); border-radius: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 16px 20px 0 20px;">
+                <h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600;">juno wrote to Dana Reyes. The draft is held at the Gate.</h3>
+                <span style="font-size: 13px; line-height: 18px; color: #B3AEA4; white-space: nowrap;">Harlow Legal · Q3 report</span>
+              </div>
+              <p style="margin: 4px 0 0 0; padding: 0 20px; font-size: 14px; line-height: 20px; color: #B3AEA4;">It is juno&#39;s first email to a client this week, so I stopped before sending.</p>
+              <div style="margin: 14px 20px 0 20px; padding: 12px 0; border-top: 1px solid rgba(255,122,89,0.28); border-bottom: 1px solid rgba(255,122,89,0.28); display: flex; flex-direction: column; gap: 8px;">
+                <div class="mono" style="display: flex; gap: 20px; font-size: 12px; line-height: 16px; color: #B3AEA4;"><span><span style="color: #8C877D;">To</span> dana@harlowlegal.com</span><span><span style="color: #8C877D;">Subject</span> Q3 report, the short version</span></div>
+                <p style="margin: 0; font-size: 14px; line-height: 21px; color: #F1EEE6; max-width: 700px;">Hi Dana, the Q3 report is attached. Consult bookings rose every month this quarter, and the new intake form goes live next week. Theo has the full numbers on page 2. Alex</p>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: #EBC76B;"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #EBC76B; flex-shrink: 0;"></span>Kept to three lines: Dana prefers short weekly summaries.</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; padding: 14px 20px 16px 20px;">
+                <button type="button" class="btn btn-primary">Send as drafted</button>
+                <button type="button" class="btn">Edit draft</button>
+                <button type="button" class="btn btn-ghost">Discard</button>
+              </div>
+            </article>
+          </div>
+
+          <div style="display: flex;">
+            <div class="mono" style="width: 64px; flex-shrink: 0; padding-top: 2px; font-size: 12px; line-height: 16px; color: #FF7A59;">14:11</div>
+            <article style="flex-grow: 1; display: flex; flex-direction: column; gap: 6px; background: rgba(255,122,89,0.12); border-radius: 10px; padding: 16px 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 16px;">
+                <h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600;">May kit run <code class="mono" style="font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: 4px; background: rgba(14,13,12,0.45);">git push origin main</code>?</h3>
+                <span style="font-size: 13px; line-height: 18px; color: #B3AEA4; white-space: nowrap;">Harlow Legal · Intake form rebuild</span>
+              </div>
+              <p style="margin: 0; font-size: 14px; line-height: 20px; color: #B3AEA4;">Caught by your rule “Ask before pushing to a client&#39;s main branch”. kit finished the form change and all 6 tests pass.</p>
+              <div style="display: flex; align-items: center; gap: 8px; padding-top: 8px;">
+                <button type="button" class="btn">Allow once</button>
+                <button type="button" class="btn">Push to a branch instead</button>
+                <button type="button" class="btn btn-ghost">Deny</button>
+                <div style="flex-grow: 1;"></div>
+                <a class="link" href="DeckProject.dc.html" style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Open the thread</a>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section aria-labelledby="working" style="display: flex; flex-direction: column; margin-top: 26px; padding-left: 64px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 4px; border-bottom: 1px solid #2B2926;">
+            <h2 id="working" class="lbl" style="margin: 0; padding-bottom: 8px;">Working</h2>
+            <span class="lbl" style="padding-bottom: 8px;">3 running · 4 finished today</span>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 16px; height: 48px; border-bottom: 1px solid #2B2926;">
+            <span class="mono" aria-hidden="true" style="width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">p</span>
+            <div style="width: 44px; font-size: 14px; line-height: 20px; color: #B3AEA4;">pax</div>
+            <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+              <div style="display: flex; gap: 10px; align-items: baseline;"><a class="link" href="DeckProject.dc.html" style="font-size: 14px; line-height: 20px; text-decoration-color: transparent;">New patient intake</a><span style="font-size: 13px; line-height: 18px; color: #8C877D;">Northfield Dental</span></div>
+              <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Read(forms/new-patient-2026.pdf)  ·  9 of 14 forms</div>
+            </div>
+            <div class="mono" style="width: 56px; text-align: right; font-size: 12px; line-height: 16px; color: #8C877D;">6 min</div>
+            <a class="btn btn-ghost" href="DeckAgent.dc.html" style="height: 28px;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><path d="M1.5 5h13M5 14h6"/></svg>Watch</a>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 16px; height: 48px; border-bottom: 1px solid #2B2926;">
+            <span class="mono" aria-hidden="true" style="width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">k</span>
+            <div style="width: 44px; font-size: 14px; line-height: 20px; color: #B3AEA4;">kit</div>
+            <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+              <div style="display: flex; gap: 10px; align-items: baseline;"><a class="link" href="DeckProject.dc.html" style="font-size: 14px; line-height: 20px; text-decoration-color: transparent;">Hero copy pass</a><span style="font-size: 13px; line-height: 18px; color: #8C877D;">Launch site</span></div>
+              <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Edit(app/page.tsx)  ·  second headline option</div>
+            </div>
+            <div class="mono" style="width: 56px; text-align: right; font-size: 12px; line-height: 16px; color: #8C877D;">22 min</div>
+            <a class="btn btn-ghost" href="DeckAgent.dc.html" style="height: 28px;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><path d="M1.5 5h13M5 14h6"/></svg>Watch</a>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 16px; height: 48px; ">
+            <span class="mono" aria-hidden="true" style="width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">j</span>
+            <div style="width: 44px; font-size: 14px; line-height: 20px; color: #B3AEA4;">juno</div>
+            <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+              <div style="display: flex; gap: 10px; align-items: baseline;"><a class="link" href="DeckProject.dc.html" style="font-size: 14px; line-height: 20px; text-decoration-color: transparent;">Ops role shortlist</a><span style="font-size: 13px; line-height: 18px; color: #8C877D;">Q4 hiring</span></div>
+              <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Comparing 9 applications against the role brief</div>
+            </div>
+            <div class="mono" style="width: 56px; text-align: right; font-size: 12px; line-height: 16px; color: #8C877D;">41 min</div>
+            <a class="btn btn-ghost" href="DeckAgent.dc.html" style="height: 28px;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><path d="M1.5 5h13M5 14h6"/></svg>Watch</a>
+          </div>
+        </section>
+
+        <section aria-labelledby="learned" style="display: flex; flex-direction: column; margin-top: 24px; padding-left: 64px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 4px; border-bottom: 1px solid #2B2926;">
+            <h2 id="learned" class="lbl" style="margin: 0; padding-bottom: 8px; color: #EBC76B;">Memory learned today</h2>
+            <a href="DeckMemory.dc.html" class="lbl" style="padding-bottom: 8px; text-decoration: none; color: #B3AEA4;">Open Memory →</a>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 14px; height: 44px; border-bottom: 1px solid #2B2926;">
+            <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #EBC76B; flex-shrink: 0;"></span>
+            <div style="flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 12px;">
+              <span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">Dana prefers short weekly summaries</span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D; white-space: nowrap;">from <a class="link" href="DeckProject.dc.html" style="color: #B3AEA4;">Call notes 12 Sep</a> · Harlow Legal</span>
+            </div>
+            <button type="button" class="ibtn" aria-label="Pin: Dana prefers short weekly summaries" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/></svg></button>
+            <button type="button" class="ibtn" aria-label="Mute: Dana prefers short weekly summaries" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6v4h2.5L9 13V3L5.5 6z"/><path d="M11.5 6.5l3 3M14.5 6.5l-3 3"/></svg></button>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 14px; height: 44px; border-bottom: 1px solid #2B2926;">
+            <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #EBC76B; flex-shrink: 0;"></span>
+            <div style="flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 12px;">
+              <span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">Harlow&#39;s intake form lives in their website repo</span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D; white-space: nowrap;">from <a class="link" href="DeckProject.dc.html" style="color: #B3AEA4;">Intake form rebuild</a> · Harlow Legal</span>
+            </div>
+            <button type="button" class="ibtn" aria-label="Pin: Harlow&#39;s intake form lives in their website repo" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/></svg></button>
+            <button type="button" class="ibtn" aria-label="Mute: Harlow&#39;s intake form lives in their website repo" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6v4h2.5L9 13V3L5.5 6z"/><path d="M11.5 6.5l3 3M14.5 6.5l-3 3"/></svg></button>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 14px; height: 44px; ">
+            <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #EBC76B; flex-shrink: 0;"></span>
+            <div style="flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 12px;">
+              <span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">Q3 report due Friday</span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D; white-space: nowrap;">from <a class="link" href="DeckProject.dc.html" style="color: #B3AEA4;">Theo Grant&#39;s email</a> · Harlow Legal</span>
+            </div>
+            <button type="button" class="ibtn" aria-label="Pin: Q3 report due Friday" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/></svg></button>
+            <button type="button" class="ibtn" aria-label="Mute: Q3 report due Friday" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6v4h2.5L9 13V3L5.5 6z"/><path d="M11.5 6.5l3 3M14.5 6.5l-3 3"/></svg></button>
+          </div>
+        </section>
+
+      </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>
