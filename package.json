@@ -4,7 +4,8 @@
   "description": "Agents with their own computers, on your own box. Runs Claude Code on a machine you own and adds structure, memory, a vault and a private address.",
   "type": "module",
   "bin": {
-    "vyre": "bin/vyre"
+    "vyre": "bin/vyre",
+    "git-credential-vyre": "bin/git-credential-vyre"
   },
   "engines": {
     "node": ">=22.5"
