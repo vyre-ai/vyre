@@ -91,36 +91,51 @@ export default {
       const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
       if (said && agent && said !== agent) throw new Error(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
-      if (!who) return { all: true, agent: null, folders: [] };
+      if (!who) return { all: true, agent: null, folders: [], slugs: new Set() };
       const r = await ctx.call("agents.list", {});
       if (r.error) throw new Error(`agent ${who}: its projects cannot be checked (${r.error.code === "no_such_tool" ? "agents are not running on this machine" : r.error.message})`);
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       const a = list.find(x => x && x.name === who);
       if (!a) throw new Error(`no agent ${who}`);
-      if (a.kind === "assistant" || a.projects === "*") return { all: true, agent: who, folders: [] };
+      if (a.kind === "assistant" || a.projects === "*") return { all: true, agent: who, folders: [], slugs: new Set() };
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
-      return { all: false, agent: who, folders: (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name)).flatMap(p => p.folders) };
+      const granted = (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
+      return { all: false, agent: who, folders: granted.flatMap(p => p.folders), slugs: new Set(granted.map(p => p.slug)) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
+    /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
+    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
     /**
      * Throws unless the caller may read these folders' graph or this room (none: the main
-     * graph). The unfiled room holds whatever no project owns, so it is read like the main
-     * graph: by the user and by agents granted every project.
+     * graph). The main graph is for the user's own surfaces, modules, and the assistant or an
+     * agent granted every project (docs/adr/0007-intelligence.md, decision 1): a session that
+     * has not said who it is names its room or its project's folders. The unfiled room holds
+     * whatever no project owns, so a named agent reads it only when granted every project.
+     * An agent's grants are checked by project: a folder belongs to the most specific project
+     * that holds it, so an agent granted ~/Work is not granted a project nested inside it.
+     * @param {{ agent?: string, project_cwds?: string[], room?: string }} input
+     * @param {{ whole?: boolean }} [opts]  whole: the call reads or steers everything by design
      */
-    const guard = async ({ agent, project_cwds = [], room }, caller) => {
+    const guard = async ({ agent, project_cwds = [], room }, caller, { whole = false } = {}) => {
       const r = await reach(agent, caller);
-      if (r.all) return r;
+      const cwds = clean(project_cwds);
+      const scoped = Boolean((room && room !== "*") || cwds.length);
+      if (r.all) {
+        if (!scoped && !whole && !r.agent && !owner(caller)) throw new Error("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
+        return r;
+      }
       if (room === "unfiled") throw new Error(`the unfiled room is for the user and agents granted every project, not ${r.agent}`);
-      const known = room && room !== "*" ? curator.rooms().find(p => p.slug === room) : null;
-      if (room && room !== "*" && !known) throw new Error(`no project ${room}`);
-      const want = known ? known.folders : clean(project_cwds);
-      if (!want.length) throw new Error(`the main graph is for the assistant and agents granted every project; ask for one of ${r.agent}'s projects with project_cwds`);
-      const outside = want.filter(c => !within(c, r.folders));
+      if (!scoped) throw new Error(`the main graph is for the assistant and agents granted every project; ask for one of ${r.agent}'s projects with room or project_cwds`);
+      const sc = /** @type {{ room: string|null }} */ (graph.view(cwds, room && room !== "*" ? room : undefined));
+      if (sc.room) {
+        if (!r.slugs.has(sc.room)) throw new Error(`${r.agent} is not granted ${sc.room}`);
+        return r;
+      }
+      const outside = cwds.filter(c => !within(c, r.folders));
       if (outside.length) throw new Error(`${r.agent} is not granted ${outside.join(", ")}`);
       return r;
     };
-    /** The user's own surfaces. Only these, and a verified all-projects agent, draw the main graph. */
-    const OWNER = new Set(["deck", "cli", "local"]);
     const agentField = { agent: { type: "string" } };
     // A room by name: a project's slug, or "unfiled" for sessions in no project. project is the
     // same thing under the name the CLI's --project uses.
@@ -138,7 +153,7 @@ export default {
         // user's own surfaces (or a verified agent with every project) are given it: a session
         // that has not said who it is gets its project's graph, not everyone's.
         const main = !clean(input.project_cwds).length && (!input.room || input.room === "*" || input.room === "unfiled");
-        if (main && !r.agent && !OWNER.has(String(caller)) && !String(caller).startsWith("module:")) {
+        if (main && !r.agent && !owner(caller)) {
           throw new Error("the main graph is drawn for the Deck and the assistant; pass project_cwds for a project's graph");
         }
         const projects = await projectList();
@@ -170,7 +185,7 @@ export default {
         // Steering everywhere is steering the main graph; steering one project needs that project,
         // and the node must be one its graph contains.
         const project_cwds = scope === "*" ? [] : [scope];
-        const r = await guard({ agent, project_cwds }, caller);
+        const r = await guard({ agent, project_cwds }, caller, { whole: true });
         return graph.steer({ node, scope: scope === "*" ? "*" : clean([scope])[0], mode, off, who: r.agent ? `agent:${r.agent}` : caller || null, project_cwds: r.all ? [] : project_cwds });
       },
     });
@@ -193,6 +208,15 @@ export default {
     // ---- the user's corrections (docs/adr/0007-intelligence.md, decision 4). Owner callers only:
     // a session never writes Memory; inside a turn Claude proposes a correction as a lesson.
     const OWNERS = ["deck", "cli", "local", "capsule"];
+    /**
+     * The registry reads "deck agent:kit" as a deck caller; for the user's own tools a caller
+     * that names an agent is an agent, whatever surface carried it.
+     * @param {(input: any, extra: { caller?: string }) => Promise<any>} run
+     */
+    const ownerOnly = run => async (input, extra = {}) => {
+      if (/(?:^|[\s:])agent:/.test(String(extra.caller || ""))) throw new Error("corrections are the user's: an agent proposes one as a lesson instead");
+      return run(input, extra);
+    };
     /** The scope a correction applies in: a room's slug, or '*' for everywhere. */
     const scopeOf = input => {
       const room = roomOf(input);
@@ -216,35 +240,39 @@ export default {
     });
     ctx.tool("memory.correct", {
       callers: OWNERS,
-      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere.",
+      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads.",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
-        action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add"] }, at: {}, note: { type: "string" }, ...roomField } },
-      run: async (input, { caller } = {}) => {
+        action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
+      run: ownerOnly(async (input, { caller } = {}) => {
         const { scope, sc } = scopeOf(input);
         const t = graph.target(input, sc);
         const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who: String(caller || "") });
         corrected(c, t.row);
+        // Every room is derived again, which on a large history takes a while. The Deck does not
+        // wait: memory.curated says when the graph has it. wait: true (the CLI) waits and
+        // answers with the fact as it now reads.
+        if (!input.wait) { run({ force: true }).catch(e => ctx.log("curate failed: " + e.message)); return { correction: c, pending: true }; }
         await settle();
         return { correction: c, facts: graph.facts({ about: t.src, room: sc?.room ?? undefined, limit: 20 }).facts.filter(f => f.rel === t.rel) };
-      },
+      }),
     });
     ctx.tool("memory.corrections", {
       callers: OWNERS,
       description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones.",
       input: { type: "object", properties: { all: { type: "boolean" }, ...roomField } },
-      run: async input => curator.corrections({ scope: roomOf(input), all: Boolean(input.all) }),
+      run: ownerOnly(async input => curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
     });
     ctx.tool("memory.uncorrect", {
       callers: OWNERS,
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
-      run: async ({ id }) => { const c = curator.uncorrect(id); await settle(); return c; },
+      run: ownerOnly(async ({ id }) => { const c = curator.uncorrect(id); await settle(); return c; }),
     });
     ctx.tool("memory.merge", {
       callers: OWNERS,
       description: "Two nodes are one: everything said about the first is said about the second (into).",
       input: { type: "object", required: ["node", "into"], properties: { node: { type: "string" }, into: { type: "string" } } },
-      run: async ({ node, into }, { caller } = {}) => {
+      run: ownerOnly(async ({ node, into }, { caller } = {}) => {
         const a = graph.resolve(node), b = graph.resolve(into);
         if (!a) throw new Error(`nothing in memory matches "${node}"`);
         if (!b) throw new Error(`nothing in memory matches "${into}"`);
@@ -253,13 +281,13 @@ export default {
         ctx.events.emit("memory.merged", { id: Number(c.id), scope: "all" });
         await settle();
         return { correction: c, into: graph.facts({ about: String(b.id), limit: 20 }).about };
-      },
+      }),
     });
     ctx.tool("memory.split", {
       callers: OWNERS,
       description: "One node is two: with room or project, the one that project's sessions name is someone else (two different people with one name); with other, two nodes that were merged are kept apart.",
       input: { type: "object", required: ["node"], properties: { node: { type: "string" }, other: { type: "string" }, ...roomField } },
-      run: async (input, { caller } = {}) => {
+      run: ownerOnly(async (input, { caller } = {}) => {
         const n = graph.resolve(input.node);
         if (!n) throw new Error(`nothing in memory matches "${input.node}"`);
         const room = roomOf(input);
@@ -276,13 +304,13 @@ export default {
         ctx.events.emit("memory.split", { id: Number(c.id), scope: room && !input.other ? "project" : "all" });
         await settle();
         return { correction: c };
-      },
+      }),
     });
     ctx.tool("memory.curate", {
       description: "Read any new turns and rebuild the graph now. full: true re-reads every turn. Returns counts.",
       input: { type: "object", properties: { full: { type: "boolean" }, ...agentField } },
       run: async ({ full = false, agent }, { caller } = {}) => {
-        await guard({ agent }, caller);
+        await guard({ agent }, caller, { whole: true });
         if (running) await running.catch(() => {});
         return run({ full, force: true });
       },

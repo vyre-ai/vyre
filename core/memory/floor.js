@@ -14,6 +14,7 @@
 
 import { within } from "./teach.js";
 import { deadlineEnd } from "./graph.js";
+import { deepest } from "./curator.js";
 
 /** Roles that never get a room: tools, mail hosts and hubs are beside the work, not in it; the
  * user's own things are everywhere by definition. Same rule as memory.facts. */
@@ -54,12 +55,16 @@ export function floorPlan(g, { project_cwds = [], room, around, depth = 1, limit
     const id = String(r.id);
     let rs;
     if (sc) rs = sc.sessions.has(id) ? [rooms[0].id] : null;
-    else rs = projects.filter(p => (r.cwd && within(String(r.cwd), p.folders)) || (Array.isArray(p.threads) && p.threads.includes(id.split("/")[0]))).map(p => "project:" + p.slug);
+    else {
+      // By folder, the most specific project (projects can nest); by pick, every project that picked it.
+      const deep = r.cwd ? deepest(String(r.cwd), projects) : null;
+      rs = projects.filter(p => p === deep || (Array.isArray(p.threads) && p.threads.includes(id.split("/")[0]))).map(p => "project:" + p.slug);
+    }
     if (rs) sessions.set(id, { name: String(r.name || r.title || id.slice(0, 8)), ended: Number(r.ended) || 0, rooms: rs });
   }
   // A lesson's rooms: the projects its folders fall in. One for everywhere has no room of its own.
   const lessonRooms = cwds => sc ? (cwds.some(c => within(c, sc.cwds)) ? [rooms[0].id] : [])
-    : projects.filter(p => cwds.some(c => within(c, p.folders))).map(p => "project:" + p.slug);
+    : projects.filter(p => cwds.some(c => deepest(c, projects) === p)).map(p => "project:" + p.slug);
 
   // ---- every edge in the view, with the rooms it belongs to
   const evidence = new Map();

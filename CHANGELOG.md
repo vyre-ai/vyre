@@ -503,6 +503,36 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- Scope fixes from review (ADR 0007, decisions 1 and 4). A correction for everywhere applies in a
+  room only to what that room's own sessions derive: wrong, ended and confirm touch rows the room
+  has; add and replace only when the room keeps the subject, with an object it keeps or a value
+  the correction names (a title, a date). A correction's note reads only in the scope it was made
+  in (`fact().correction.note`, `memory.why` corrections). Before, every room got every
+  correction for everywhere, nodes included.
+- Nested projects: a folder belongs to the most specific project that holds it, for rooms,
+  `graph.view`, the floor plan and lessons scoped to folders. Agents are checked by project slug,
+  so an agent granted `~/Work` is not granted a project at `~/Work/northwind`, and a project with
+  no folders (only picked threads) is read by slug. A room Memory has not read yet falls back to
+  the folders passed with it.
+- A caller that names no agent and no room reads the main graph (`memory.facts`, `relevant`,
+  `why`, `stats`) only from `deck`, `cli`, `local`, `capsule` or a module; anyone else passes
+  `room` or `project_cwds`. The Harness's Enrich and the project brief now send `room: <slug>`.
+- Correct, merge, split, uncorrect and corrections refuse any caller naming an agent, `deck
+  agent:kit` included (the registry reads that as `deck`).
+- `memory.correct` resolves the new object exactly: a node id, an exact label, an address or a
+  domain; anything else is a new node of the kind the relation holds (`title:`, `date:`, `pref:`,
+  `decision:`, `note:`, `name:`). "North" no longer becomes Northwind Bakery.
+- `memory.correct` answers at once with `pending: true` and derives behind the answer;
+  `memory.curated` marks completion. `wait: true` (the CLI) answers after, with the facts.
+- Conflicts between rooms skip confirmed facts as well as the user's own, so derive never closes
+  a confirmed fact.
+- Lessons are indexed once per derive: 8,000 lessons about one organisation derived in 5.7s,
+  now 0.25s.
+- Deck Memory sends `room: <slug>` on every `memory.graph`, `memory.facts` and `memory.why`
+  call (the last one included), never the project's folders.
+- Eval: the gold file gains `corrections` (made with `memory.correct` before measuring) and leak
+  cases for them. Old code leaks 12 facts on it; leakage is 0.
+
 - One identity per domain: organisation spellings that share a domain ("Keel & Ash", "Keel & Ash
   Architects") fold into one node before anything is counted, named by the longest proper
   spelling. The others are kept in the new `memory_aliases` table (per room), so a prompt or

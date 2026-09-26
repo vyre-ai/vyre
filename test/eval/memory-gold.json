@@ -5,7 +5,13 @@
     "A part may be * (anything) or ~a;b (contains a or b, ignoring case). Relations decision 2 adds have no fixed object id yet, so their objects are matched by what they contain.",
     "Rooms: * is the main graph, project:<slug> a project (its folders plus picked threads), unfiled the sessions in no project.",
     "open: true means the fact must hold now; open: false means it must be there but closed (until set), and memory.relevant must never offer it. The Harlow deadline (18 September) closed on 20 September, before the evaluation's clock (26 September).",
-    "prompts.expect lists every fact that is a right answer; any of them counts as a hit."
+    "prompts.expect lists every fact that is a right answer; any of them counts as a hit.",
+    "corrections are the user's, made with memory.correct before anything is measured, each for everywhere unless it names a room. One for everywhere reaches only rooms whose own sessions know its subject, so its leak cases are in absent."
+  ],
+  "corrections": [
+    { "action": "add", "subject": "Omar Haddad", "rel": "has_title", "object": "site foreman", "note": "from the roofing contract" },
+    { "action": "add", "subject": "Dana Reyes", "rel": "works_at", "object": "Harlow Legal" },
+    { "action": "confirm", "fact": "name:Priya Anand|works_at|name:Keel & Ash Architects", "note": "she signed the contract" }
   ],
   "facts": [
     { "id": "name:Dana Reyes|works_at|name:Harlow Legal", "room": "project:harlow", "open": true },
@@ -44,6 +50,7 @@
     { "id": "repo:keelash/portfolio-site|owned_by|name:Keel & Ash Architects", "room": "project:keel-ash", "open": true },
     { "id": "name:Keel & Ash Architects|client_of|*", "room": "project:keel-ash", "open": true },
     { "id": "name:Keel & Ash Architects|deadline|~2026-10-02;2 october", "room": "project:keel-ash", "open": true },
+    { "id": "name:Omar Haddad|has_title|~site foreman", "room": "project:keel-ash", "open": true },
 
     { "id": "name:Dana Reyes|works_at|name:Bramble Dental", "room": "unfiled", "open": true },
     { "id": "name:Dana Reyes|has_email|email:dana@brambledental.com", "room": "unfiled", "open": true },
@@ -63,7 +70,8 @@
     { "id": "name:Bramble Dental|has_domain|domain:brambledental.com", "room": "*", "open": true },
     { "id": "name:Dana Reyes|has_email|email:dana@harlowlegal.com", "room": "*", "open": true },
     { "id": "name:Priya Anand|has_email|email:p.anand@keelash.studio", "room": "*", "open": true },
-    { "id": "name:Omar Haddad|has_email|email:omar@summitroofing.com", "room": "*", "open": true }
+    { "id": "name:Omar Haddad|has_email|email:omar@summitroofing.com", "room": "*", "open": true },
+    { "id": "name:Omar Haddad|has_title|~site foreman", "room": "*", "open": true }
   ],
   "absent": [
     { "id": "name:Dana Reyes|works_at|name:Bramble Dental", "room": "project:harlow", "why": "leak" },
@@ -79,6 +87,11 @@
     { "id": "name:Priya Anand|*|*", "room": "project:northwind", "why": "leak" },
     { "id": "name:Dana Reyes|works_at|name:Harlow Legal", "room": "unfiled", "why": "leak" },
     { "id": "name:Dana Reyes|has_email|email:dana@harlowlegal.com", "room": "unfiled", "why": "leak" },
+    { "id": "name:Omar Haddad|*|*", "room": "project:harlow", "why": "leak" },
+    { "id": "name:Omar Haddad|*|*", "room": "project:northwind", "why": "leak" },
+    { "id": "name:Omar Haddad|*|*", "room": "unfiled", "why": "leak" },
+    { "id": "name:Priya Anand|*|*", "room": "project:harlow", "why": "leak" },
+    { "id": "name:Priya Anand|*|*", "room": "unfiled", "why": "leak" },
 
     { "id": "name:Omar Haddad|works_at|name:Summit Dental", "room": "*", "why": "wrong" },
     { "id": "name:Omar Haddad|works_at|name:Keel & Ash Architects", "room": "project:keel-ash", "why": "wrong" },
@@ -128,7 +141,7 @@
     { "text": "When is Summit starting on the roof?", "room": "project:keel-ash", "k": 3,
       "expect": ["name:Summit Roofing|has_domain|domain:summitroofing.com", "name:Omar Haddad|works_at|name:Summit Roofing"] },
     { "text": "Credit Omar Haddad on the library page", "room": "project:keel-ash", "k": 3,
-      "expect": ["name:Omar Haddad|works_at|name:Summit Roofing", "name:Omar Haddad|has_email|email:omar@summitroofing.com"] },
+      "expect": ["name:Omar Haddad|works_at|name:Summit Roofing", "name:Omar Haddad|has_email|email:omar@summitroofing.com", "name:Omar Haddad|has_title|~site foreman"] },
     { "text": "Open a pull request on keelash/portfolio-site", "room": "project:keel-ash", "k": 3,
       "expect": ["repo:keelash/portfolio-site|owned_by|name:Keel & Ash Architects"] },
     { "text": "When does Keel & Ash Architects launch?", "room": "project:keel-ash", "k": 3,
@@ -140,7 +153,7 @@
       "expect": ["name:Bramble Dental|has_domain|domain:brambledental.com", "email:dana@brambledental.com|at_domain|domain:brambledental.com", "name:Dana Reyes|works_at|name:Bramble Dental"] },
 
     { "text": "Who is Omar Haddad?", "room": "*", "k": 3,
-      "expect": ["name:Omar Haddad|works_at|name:Summit Roofing", "name:Omar Haddad|has_email|email:omar@summitroofing.com"] },
+      "expect": ["name:Omar Haddad|works_at|name:Summit Roofing", "name:Omar Haddad|has_email|email:omar@summitroofing.com", "name:Omar Haddad|has_title|~site foreman"] },
     { "text": "What is Priya Anand's email?", "room": "*", "k": 3,
       "expect": ["name:Priya Anand|has_email|email:p.anand@keelash.studio", "name:Priya Anand|works_at|name:Keel & Ash Architects"] },
     { "text": "Send Northwind Bakery the invoice summary", "room": "*", "k": 3,

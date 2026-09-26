@@ -8,7 +8,7 @@
 
 import path from "node:path";
 import { registrable, OPENERS } from "./lexicon.js";
-import { T, UNFILED } from "./curator.js";
+import { T, UNFILED, dateOf, deepest } from "./curator.js";
 import { within, ref } from "./teach.js";
 
 /** What one lesson taught for a project counts for, against a session's mentions, when ranking a project's facts. */
@@ -37,8 +37,12 @@ const PHRASE = {
 /** Values at the far end of a relation, not things a prompt names: never matched as phrases. */
 export const VALUES = new Set(["title", "date", "pref", "decision", "me"]);
 const words = rel => rel.replace(/_/g, " ");
+/** The kind of value at the far end of a relation, for a new object the user names. */
+const KINDS = { has_title: "title", deadline: "date", prefers: "pref", decided: "decision", noted: "note" };
 
 const DAY = 86_400_000;
+/** The scope a view reads corrections in: a room's slug, '*' for the main graph, none for a folder view. */
+const here = sc => (sc ? sc.room ?? "" : "*");
 /**
  * How fast each kind of fact goes stale, read at read time (docs/adr/0007-intelligence.md,
  * decision 3): [half-life in days, floor]. Who someone is barely ages; where they work ages in
@@ -225,7 +229,7 @@ export class Graph {
     if (!best && taught.length) seen = Math.max(seen, ...taught.map(t => Number(t.at) || 0));
     // What the user said about it: the newest correction in this scope that made or kept it.
     const origin = String(e.origin || "extract");
-    const said = ["user", "confirmed"].includes(origin) ? this.sql(`SELECT id, action, created, note FROM memory_corrections WHERE undone IS NULL
+    const said = ["user", "confirmed"].includes(origin) ? this.sql(`SELECT id, action, created, note, scope FROM memory_corrections WHERE undone IS NULL
       AND src = ? AND rel = ? AND (dst = ? OR object = ?) AND scope IN ('*', ?) ORDER BY id DESC LIMIT 1`).get(e.src, e.rel, e.dst, e.dst, sc?.room || "*") : null;
     if (origin === "user" && said) seen = Number(said.created);
     const fresh = Number(freshness({ ...e, seen }, this.now()).toFixed(3));
@@ -269,7 +273,9 @@ export class Graph {
       // Two rooms believe different things and the user has not said which: the Deck asks.
       conflict: Boolean(e.conflict),
       origin,
-      correction: said ? { id: Number(said.id), action: String(said.action), age: ago(Number(said.created), this.now()), note: said.note ?? null } : null,
+      // A correction's note is read only in the scope it was made in: one for everywhere, read in
+      // a project, says what was done but not what the user wrote about it.
+      correction: said ? { id: Number(said.id), action: String(said.action), age: ago(Number(said.created), this.now()), note: String(said.scope) === here(sc) ? said.note ?? null : null } : null,
     };
   }
 
@@ -339,17 +345,32 @@ export class Graph {
    * @returns {{ cwds: string[], sessions: Set<string>, room: string|null } | null}
    */
   view(cwds, room) {
+    const clean = [...new Set((cwds || []).filter(c => typeof c === "string" && c.trim()).map(c => path.resolve(c).replace(/\/+$/, "") || "/"))];
     if (room && room !== "*") {
       if (room === UNFILED) return { cwds: [], sessions: this.curator.roomSessions(UNFILED), room: UNFILED };
       const p = this.curator.rooms().find(x => x.slug === room);
-      if (!p) throw new Error(`no project ${room}`);
-      return { cwds: p.folders, sessions: this.curator.roomSessions(p.slug), room: p.slug };
+      if (p) return { cwds: p.folders, sessions: this.curator.roomSessions(p.slug), room: p.slug };
+      // A project Memory has not read yet: its folders, when the caller gave them, still say
+      // where it is; a name alone says nothing.
+      if (!clean.length) throw new Error(`no project ${room}`);
     }
-    const clean = [...new Set((cwds || []).filter(c => typeof c === "string" && c.trim()).map(c => path.resolve(c).replace(/\/+$/, "") || "/"))];
     if (!clean.length) return null;
-    const p = this.curator.rooms().find(x => x.folders.length && clean.every(c => within(c, x.folders)));
+    const p = this.roomFor(clean);
     if (p) return { cwds: p.folders, sessions: this.curator.roomSessions(p.slug), room: p.slug };
     return { cwds: clean, sessions: this.scoped(clean), room: null };
+  }
+
+  /**
+   * The project whose folders hold every one of these, the most specific when projects nest:
+   * with acme at ~/Work and northwind at ~/Work/northwind, ~/Work/northwind is northwind's.
+   * @param {string[]} clean  resolved folders
+   */
+  roomFor(clean) {
+    // Each folder's own project; all of them must agree, or the one project holding them all.
+    const rooms = this.curator.rooms();
+    const own = clean.map(c => deepest(c, rooms));
+    if (own[0] && own.every(p => p === own[0])) return own[0];
+    return rooms.find(x => x.folders.length && clean.every(c => within(c, x.folders))) || null;
   }
 
   /** Does a lesson (its stored fact) belong in this view? One for everywhere belongs in all. */
@@ -626,7 +647,7 @@ export class Graph {
     const corrections = parts.length === 3 ? this.sql(`SELECT id, action, rel, dst, object, at, scope, note, created, undone FROM memory_corrections
       WHERE src = ? AND (rel = ? OR rel IS NULL) AND scope IN ('*', ?) ORDER BY id DESC`).all(parts[0], parts[1], sc?.room || "*")
       .filter(c => c.dst === parts[2] || c.object === parts[2])
-      .map(c => ({ id: Number(c.id), action: String(c.action), scope: String(c.scope), note: c.note ?? null, age: ago(Number(c.created), this.now()), undone: c.undone != null })) : [];
+      .map(c => ({ id: Number(c.id), action: String(c.action), scope: String(c.scope), note: String(c.scope) === here(sc) ? c.note ?? null : null, age: ago(Number(c.created), this.now()), undone: c.undone != null })) : [];
     return { fact: head, turns, taught: lessons, corrections, gone };
   }
 
@@ -647,18 +668,44 @@ export class Graph {
     if (!a || !r || !b) throw new Error("say which fact: fact, or subject, rel and object");
     if (!/^[a-z][a-z_]{1,40}$/.test(String(r))) throw new Error("rel must be snake_case, like works_at");
     const known = x => (this.node(String(x), sc) || this.resolve(String(x), sc))?.id ?? null;
-    const fresh = x => known(x) ?? ref(String(x).replace(/^name:/, ""), "object").id;
-    const src = action === "add" ? fresh(a) : known(a);
+    const src = action === "add" ? this.named(a, sc, null) : known(a);
     if (!src) throw new Error(`nothing in memory matches "${a}"`);
-    const dst = action === "add" ? fresh(b) : known(b) ?? String(b);
+    const dst = action === "add" ? this.named(b, sc, String(r)) : known(b) ?? String(b);
     const row = this.sql(`SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = ? AND dst = ? ORDER BY valid_to IS NOT NULL, valid_from DESC LIMIT 1`)
       .get(sc?.room || "*", src, r, dst) || null;
     if (!row && action !== "add") throw new Error(`memory holds no fact ${src}|${r}|${dst} here`);
     if (action === "replace") {
       if (!replacement) throw new Error("replace needs object: what is true instead");
-      replacement = fresh(replacement);
+      replacement = this.named(replacement, sc, String(r));
     }
     return { src: String(src), rel: String(r), dst: String(dst), object: replacement, row };
+  }
+
+  /**
+   * What the user typed as a fact's new end, as a node id. An existing node only by its id, its
+   * exact label, an address or a domain: never a partial match, so "North" is not Northwind
+   * Bakery. Anything else is a new node of the kind the relation holds there: a title, a date,
+   * a preference, a decision, a note, or a name.
+   * @param {string} x
+   * @param {string|null} rel  null for the subject
+   */
+  named(x, sc, rel) {
+    const v = String(x || "").replace(/\s+/g, " ").trim();
+    if (!v) throw new Error("say what it is");
+    if (this.node(v, sc)) return v;
+    const kind = rel ? KINDS[rel] : null;
+    if (kind === "date") {
+      const d = dateOf(v.replace(/^date:/, ""), this.now());
+      if (!d) throw new Error(`"${v}" is not a date memory can read, like 2026-10-02 or 2 october`);
+      return "date:" + d;
+    }
+    if (kind) return `${kind}:${v.replace(new RegExp(`^${kind}:`), "").toLowerCase().slice(0, 160)}`;
+    const r = ref(v.replace(/^name:/, ""), rel ? "object" : "subject");
+    if (r.kind === "email" || r.kind === "domain" || r.kind === "repo") return r.id;
+    const nodes = sc?.room ? "(SELECT * FROM memory_room_nodes WHERE room = ?)" : "(SELECT * FROM memory_nodes WHERE ? = '*')";
+    const hit = this.sql(`SELECT id FROM ${nodes} WHERE lower(label) = lower(?) ORDER BY sessions DESC, id LIMIT 50`).all(sc?.room || "*", v)
+      .find(n => !sc || sc.room || this.nodeIn(String(n.id), sc));
+    return hit ? String(hit.id) : r.id;
   }
 
   // ------------------------------------------------------------------ steering

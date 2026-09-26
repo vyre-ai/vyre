@@ -193,6 +193,8 @@ async function runWorld({ gold, sessions = EVAL_SESSIONS, projects = PROJECTS, m
     const t0 = process.hrtime.bigint();
     const cur = await mem.call("memory.curate", { full: true });
     const curateMs = Number(process.hrtime.bigint() - t0) / 1e6;
+    // What the user corrected, as the CLI would, before anything is measured.
+    for (const c of gold.corrections || []) await mem.call("memory.correct", { ...c, wait: true });
 
     const rooms = [...new Set([...gold.facts, ...gold.absent, ...gold.prompts, ...gold.irrelevant].map(x => x.room))];
     /** @type {Map<string, any>} */
@@ -327,7 +329,7 @@ async function runWorld({ gold, sessions = EVAL_SESSIONS, projects = PROJECTS, m
     const stats = await mem.call("memory.stats", {});
     const report = {
       corpus: { sessions: sessions.length, projects: projects.length, nodes: stats.nodes, edges: stats.edges, facts: stats.facts, curate_ms: round(curateMs), changed: cur.changed },
-      gold: { facts: gold.facts.length, absent: gold.absent.length, prompts: gold.prompts.length, irrelevant: gold.irrelevant.length },
+      gold: { facts: gold.facts.length, absent: gold.absent.length, prompts: gold.prompts.length, irrelevant: gold.irrelevant.length, corrections: (gold.corrections || []).length },
       leakage: leaks.length,
       groups: roundAll(byGroup),
       relations: roundAll(byRel),

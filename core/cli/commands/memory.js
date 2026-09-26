@@ -55,7 +55,8 @@ async function change(sub, args) {
   if (sub === "correct") {
     const [fact, action, ...obj] = rest;
     if (!fact || !ACTIONS.includes(action)) { out("  " + USAGE.correct); return 1; }
-    const input = { fact, action, ...project, ...(obj.length ? { object: obj.join(" ") } : {}),
+    // The CLI prints the fact as it now reads, so it waits for the graph to have it.
+    const input = { fact, action, wait: true, ...project, ...(obj.length ? { object: obj.join(" ") } : {}),
       ...(typeof opt.at === "string" ? { at: opt.at } : {}), ...(typeof opt.note === "string" ? { note: opt.note } : {}) };
     const r = await call("memory.correct", input);
     if (r.error) return fail(r);

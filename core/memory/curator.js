@@ -355,7 +355,10 @@ export class Curator {
       for (const r of this.db.prepare("SELECT id, cwd, parent FROM recall_sessions").all()) {
         const id = String(r.id);
         const top = r.parent ? String(r.parent) : id.includes("/") ? id.split("/")[0] : id;
-        const rs = rooms.filter(p => (r.cwd && within(String(r.cwd), p.folders)) || p.threads.includes(top) || p.threads.includes(id)).map(p => p.slug);
+        // By folder, the most specific project that holds the session's folder: with acme at
+        // ~/Work and northwind at ~/Work/northwind, a session in ~/Work/northwind is northwind's.
+        const deep = r.cwd ? deepest(String(r.cwd), rooms) : null;
+        const rs = rooms.filter(p => p === deep || p.threads.includes(top) || p.threads.includes(id)).map(p => p.slug);
         out.set(id, rs.length ? rs : [UNFILED]);
       }
     }
@@ -454,7 +457,9 @@ export class Curator {
       } catch { /* a fact that no longer checks out is ignored, not fatal */ }
     }
 
-    const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map(), alias: into.size || splits.length ? alias : null, apart };
+    // When each lesson was taught, by (module, kind, key), indexed once per derive.
+    const lessonAt = new Map(lessons.map(l => [`${l.module}\u0000${l.kind}\u0000${l.key}`, l.at]));
+    const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map(), alias: into.size || splits.length ? alias : null, apart, lessonAt };
     const bySlug = new Map();
     for (const [s, rs] of member) for (const r of rs) { if (!bySlug.has(r)) bySlug.set(r, new Set()); bySlug.get(r).add(s); }
     /** @type {Result[]} */
@@ -462,7 +467,7 @@ export class Curator {
     for (const room of [...rooms, { slug: UNFILED, name: "", folders: [], threads: [] }]) {
       const sessions = bySlug.get(room.slug) || new Set();
       // A room sees lessons for everywhere and its own; unfiled only lessons for everywhere.
-      const mine = lessons.filter(l => room.slug === UNFILED ? !l.project : !l.project || l.project.some(c => within(c, room.folders)));
+      const mine = lessons.filter(l => room.slug === UNFILED ? !l.project : !l.project || l.project.some(c => deepest(c, rooms) === room));
       if (!sessions.size && !mine.some(l => l.project)) continue;
       const multi = new Set([...sessions].filter(s => /** @type {string[]} */ (member.get(s)).length > 1));
       results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
@@ -479,7 +484,7 @@ export class Curator {
    * One scope's beliefs: a room from its own sessions and lessons, or the main graph from all.
    * The same rules everywhere; only what they are fed differs.
    * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[], said?: Correction[] }} scope
-   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string> }} common
+   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string>, lessonAt?: Map<string, number> }} common
    * @returns {Promise<Result>}
    */
   async compute(scope, common) {
@@ -558,7 +563,16 @@ export class Curator {
     const claimLessons = new Map();
     const nodeLessons = new Map();
     const clientOf = new Set();
-    const note = (map, k, l) => { if (!map.has(k)) map.set(k, []); const list = map.get(k); if (!list.some(x => x[0] === l.module && x[1] === l.kind && x[2] === l.key)) list.push([l.module, l.kind, l.key]); };
+    // Each lesson is noted once per claim or node, found by key rather than by scanning the list:
+    // a watcher can teach thousands of items about one organisation.
+    const noted = new Set();
+    const note = (map, k, l) => {
+      const id = `${k}\u0001${l.module}\u0000${l.kind}\u0000${l.key}`;
+      if (noted.has(id)) return;
+      noted.add(id);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push([l.module, l.kind, l.key]);
+    };
     for (const l of lessons) for (const c of l.claims) {
       for (const r of [c.src, c.dst]) {
         if (!r) continue;
@@ -576,11 +590,16 @@ export class Curator {
     }
     const lessonsFor = (src, rel, dst) => claimLessons.get(`${src}|${rel}|${dst}`) || [];
     /** For an edge derived from other facts: the lessons behind its ends, used only when no turn supports it. */
-    const lessonsOfEnds = (src, dst) => [...(nodeLessons.get(src) || []), ...(nodeLessons.get(dst) || [])]
-      .filter((v, i, all) => all.findIndex(w => w.join("\u0000") === v.join("\u0000")) === i);
-    // What the user added, replaced or confirmed names its things outright, like a lesson.
+    const lessonsOfEnds = (src, dst) => {
+      const seen = new Set();
+      return [...(nodeLessons.get(src) || []), ...(nodeLessons.get(dst) || [])].filter(v => { const k = v.join("\u0000"); return !seen.has(k) && Boolean(seen.add(k)); });
+    };
+    // What the user added, replaced or confirmed names its things outright, like a lesson. In a
+    // room only what was said for that room does: a correction for everywhere never brings a
+    // thing into a room that does not already know it (see userSaid).
     const said = scope.said || [];
-    for (const c of said) if (["add", "replace", "confirm"].includes(c.action)) {
+    const inRoom = scope.room !== "*";
+    for (const c of said) if (["add", "replace", "confirm"].includes(c.action) && (!inRoom || c.scope !== "*")) {
       const ends = ENDS[/** @type {keyof typeof ENDS} */ (c.rel || "")] || [null, null];
       for (const [id, k] of [[c.src, ends[0]], [c.action === "replace" ? c.object : c.dst, ends[1]]]) {
         if (!id) continue;
@@ -590,7 +609,7 @@ export class Curator {
       }
     }
     /** When a lesson says so: the newest of its lessons, for decay. */
-    const lessonSeen = list => Math.max(0, ...list.map(x => lessons.find(l => l.module === x[0] && l.kind === x[1] && l.key === x[2])?.at || 0));
+    const lessonSeen = list => { let at = 0; for (const x of list) at = Math.max(at, common.lessonAt?.get(x.join("\u0000")) || 0); return at; };
 
     // An address implies its domain. The domain's own observations are kept apart from the
     // ones it gets through addresses, so "mentioned in" stays literal.
@@ -1030,7 +1049,7 @@ export class Curator {
 
     // Facts the user called wrong here: no row keeps them, whatever evidence is left.
     const wrong = new Set(said.filter(c => c.action === "wrong").map(c => `${c.src}\u0000${c.rel}\u0000${c.dst}`));
-    const out = { room: scope.room, agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, wrong, aliases };
+    const out = { room: scope.room, agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, wrong, aliases, value, inRoom };
     if (said.length) this.userSaid(out, said, tsOf);
     return out;
   }
@@ -1047,6 +1066,18 @@ export class Curator {
     for (const c of said) {
       if (!c.rel) continue;
       const at = c.at ?? c.created;
+      // A correction for everywhere, read in a room (docs/adr/0007-intelligence.md, decision 1):
+      // wrong, ended and confirm touch only rows this room derived itself; add and replace only
+      // when the room already keeps the subject, and the new object is one it keeps or a value
+      // the correction names (a title, a date). So it never carries a thing into a room whose
+      // own sessions do not know it.
+      const wide = r.inRoom && c.scope === "*";
+      /** May the new object be written here? A value (a title, a date) is made when it may. */
+      const reach = id => {
+        if (!r.kept.has(c.src)) return false;
+        if (VALUE.test(id)) { r.value(id, c.created); return true; }
+        return r.kept.has(id);
+      };
       if (c.rel === "works_at") {
         const w = r.worksAt.get(c.src);
         if (c.action === "ended" || c.action === "replace") {
@@ -1055,12 +1086,13 @@ export class Curator {
             const ev = r.together([c.src, ...(r.emailsOf.get(c.src) || [])], r.cluster(c.dst)).filter(([s, q]) => tsOf(s, q) <= at);
             const times = ev.map(([s, q]) => tsOf(s, q)).filter(Boolean);
             const from = times.length ? Math.min(...times) : 0;
-            r.want.push({ src: c.src, rel: "works_at", dst: c.dst, weight: 1, from, to: Math.max(from, at), conf: 1, ev, lessons: [], seen: Math.max(0, ...times),
+            // Everywhere's word closes what this room's own turns said, never a row it never had.
+            if (ev.length || !wide) r.want.push({ src: c.src, rel: "works_at", dst: c.dst, weight: 1, from, to: Math.max(from, at), conf: 1, ev, lessons: [], seen: Math.max(0, ...times),
               origin: ev.length ? "extract" : "user", rule: ev.length ? "vote" : "user", conflict: 0 });
           }
         }
         const says = c.action === "replace" ? c.object : ["confirm", "add"].includes(c.action) ? c.dst : null;
-        if (says && r.kept.has(c.src) && r.kept.has(says)) {
+        if (says && r.kept.has(c.src) && r.kept.has(says) && !(wide && c.action === "confirm" && w?.org !== says)) {
           const agrees = w && w.org === says;
           // A vote for someone else, newer than what the user said, is a question for them.
           const conflict = w && !agrees && (w.seen || 0) > c.created ? 1 : 0;
@@ -1079,10 +1111,10 @@ export class Curator {
       }
       if (c.action === "confirm") {
         if (hit.length) for (const w of hit) Object.assign(w, { conf: 1, origin: "confirmed" });
-        else if (c.dst && r.kept.has(c.src) && r.kept.has(c.dst)) r.want.push({ ...userRow(c, c.dst, 0), origin: "confirmed" });
+        else if (!wide && c.dst && r.kept.has(c.src) && r.kept.has(c.dst)) r.want.push({ ...userRow(c, c.dst, 0), origin: "confirmed" });
       }
       const says = c.action === "replace" ? c.object : c.action === "add" ? c.dst : null;
-      if (says && r.kept.has(c.src) && r.kept.has(says)) {
+      if (says && reach(says)) {
         const same = r.want.find(w => k(w.src, w.rel, w.dst) === k(c.src, c.rel, says) && w.to == null);
         if (same) Object.assign(same, { conf: 1, origin: "user", rule: "user" });
         else r.want.push(userRow(c, says, c.action === "replace" ? at : 0));
@@ -1355,6 +1387,23 @@ export class Curator {
   }
 }
 
+/**
+ * The project whose folder holds this one most closely, or null. Projects can nest: a folder
+ * belongs to the deepest project folder above it, and a tie goes to the first by slug.
+ * @template {{ folders: string[] }} P
+ * @param {string} cwd
+ * @param {P[]} rooms
+ * @returns {P|null}
+ */
+export function deepest(cwd, rooms) {
+  let best = null, depth = -1;
+  for (const p of rooms) for (const f of p.folders) {
+    const base = String(f).replace(/\/+$/, "");
+    if (base.length > depth && within(cwd, [base])) { best = p; depth = base.length; }
+  }
+  return best;
+}
+
 /** The room for sessions in no project. */
 export const UNFILED = "unfiled";
 
@@ -1392,8 +1441,14 @@ export function dateOf(text, ts) {
   return d.getUTCMonth() === mi ? d.toISOString().slice(0, 10) : null;
 }
 
+/** Values at the far end of a relation: a correction for everywhere may name one in a room. */
+const VALUE = /^(title|date|note|pref|decision):/;
+
 /** What memory.correct can say, plus the merge and split of nodes. */
 export const ACTIONS = new Set(["wrong", "ended", "replace", "confirm", "add", "merge", "split"]);
+
+/** Origins derive never overrides. */
+const USER = new Set(["user", "confirmed"]);
 
 /** How long apart two rooms' beliefs may be seen and still be a question for the user, not an update. */
 const CONFLICT_MS = 90 * 86_400_000;
@@ -1410,10 +1465,11 @@ function conflicts(results) {
   const rooms = results.slice(0, -1);
   const people = new Set(rooms.flatMap(r => [...r.worksAt.keys()]));
   for (const p of people) {
-    const wins = rooms.map(r => r.worksAt.get(p)).filter(Boolean).filter(w => w.origin !== "user");
+    // What the user said or confirmed is never closed by derive, in a room or in '*'.
+    const wins = rooms.map(r => r.worksAt.get(p)).filter(Boolean).filter(w => !USER.has(w.origin));
     if (new Set(wins.map(w => w.org)).size < 2) continue;
     const s = star.worksAt.get(p);
-    if (s && s.origin === "user") continue;
+    if (s && USER.has(s.origin)) continue;
     wins.sort((a, b) => (b.seen || 0) - (a.seen || 0) || (a.org < b.org ? -1 : 1));
     const top = wins[0];
     const close = wins.some(w => w.org !== top.org && Math.abs((top.seen || 0) - (w.seen || 0)) <= CONFLICT_MS);
@@ -1447,5 +1503,5 @@ function orgStems(label) {
  * @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, to?: number|null, conf: number, ev: [string, number][], lessons?: string[][], seen?: number, conflict?: number, origin?: string, rule?: string }} Want
  * @typedef {{ org: string, conf: number, from: number, to?: number|null, weight: number, ev: [string, number][], lessons: string[][], seen: number, rule: string, origin: string, conflict: number, keep?: Set<string> }} Work
  * @typedef {{ id: number, action: string, src: string, rel: string|null, dst: string|null, object: string|null, at: number|null, scope: string, created: number }} Correction
- * @typedef {{ room: string, wrong?: Set<string>, agg: Map<string, Agg>, kept: Set<string>, kind: Map<string, string>, role: Map<string, string|null>, want: Want[], worksAt: Map<string, Work>, forms: any[], together: Function, cluster: Function, emailsOf: Map<string, string[]>, lessonsFor: Function, aliases?: Map<string, string[]> }} Result
+ * @typedef {{ room: string, wrong?: Set<string>, agg: Map<string, Agg>, kept: Set<string>, kind: Map<string, string>, role: Map<string, string|null>, want: Want[], worksAt: Map<string, Work>, forms: any[], together: Function, cluster: Function, emailsOf: Map<string, string[]>, lessonsFor: Function, aliases?: Map<string, string[]>, value: (id: string, ts?: number) => string, inRoom: boolean }} Result
  */

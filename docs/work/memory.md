@@ -89,6 +89,14 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   todos left: leakage 0, all precision and recall 1, Enrich P@3 0.986.
 - One identity per domain: org spellings sharing a domain are one node (longest proper label),
   other spellings in `memory_aliases`, matched by Enrich and resolve.
+- Review fixes (`core/memory/scope.test.js`): corrections for everywhere stay out of rooms that
+  do not know their subject, and their notes stay in their scope; nested project folders go to
+  the most specific project, and agents are checked by project slug; the main graph needs an
+  owner surface or an all-projects agent; owner tools refuse any caller naming an agent; exact
+  objects for `memory.correct`; confirmed facts never closed by conflicts; lessons indexed per
+  derive; `memory.correct` does not wait for the derive unless `wait: true`; the Deck sends
+  `room`. Eval with the gold corrections: leakage 0, every precision and recall 1, Enrich P@3
+  0.986.
 
 ## Doing
 
@@ -102,6 +110,8 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   design. Revisit if the Enrich hook misses obvious first-name references.
 
 ## Needs from others
+- deck: `deck/views/projects.js` asks `memory.facts` with the project's folders; `room: slug`
+  would read the right room for nested or folderless projects.
 - projects: picked thread ids in `projects.list` (ADR 0007, "Other teams"). Memory reads
   `threads` (or `picked`) when it is a list of ids; today both are counts, so rooms are folders
   only in a live vyred. Tests and the eval pass ids.
@@ -137,6 +147,16 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   count `prior_rule`). Facts carry `origin` (`extract`, `taught`, `user`, `confirmed`) and
   `correction: {id, action, age, note} | null`; `memory.why` returns `corrections`.
 - A split node's id is `<id>#<room slug>` with the same label, so the Deck shows two "Dana Reyes".
+- A caller that names no agent and no room gets the main graph from `memory.facts`, `relevant`,
+  `why` and `stats` only from `deck`, `cli`, `local`, `capsule` or a module. MCP sessions pass
+  `room` or `project_cwds`. The MCP server does not add either today, so an unscoped Claude call
+  gets an error that says to pass one (harness team: consider sending the session's cwd).
+- A folder belongs to the most specific project holding it. Agents are granted by project slug.
+- `memory.correct` answers `{ correction, pending: true }` at once; `wait: true` answers
+  `{ correction, facts }` after the derive. New objects are exact or new nodes of the relation's
+  kind (`title:`, `date:`, `pref:`, `decision:`, `note:`).
+- `fact().correction.note` and `memory.why` correction notes are null outside the scope the
+  correction was made in.
 - `module.json` `shows`: `{deck: ["panel:memory"], capsule: ["answer:memory.relevant"], cli: ["memory", "why"]}`.
 - New relations in facts: `has_title` (object kind `title`), `client_of` (object `me:you`, label
   "you", kind `me`), `repo_for`, `deadline` (object `date:YYYY-MM-DD`, kind `date`; `until` is set
