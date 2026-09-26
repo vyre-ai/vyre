@@ -602,6 +602,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   at start, v1 files removed only after every v2 copy verifies; once done, a v1 file is refused.
   Keys are KeyObjects and `lock()` drops them all. Backups keep format v1 and old ones restore.
 
+- Shared vaults (ADR 0006, decision 5): a team vault whose key is wrapped for each member, a
+  signed, hash-chained membership manifest, roles, and sync through the owner's relay listener
+  with merges and kept conflicts. Removing a member changes the key and flags every item they
+  could read. Offboarding covers shared vaults too. Items show up as `<vault>/<item>` and work
+  with run, grants and the Deck. Multi-device join is next.
 - Sharing, hardened (ADR 0006, findings 4, 5 and 12): pass tickets are signed by the owner and
   checked against the owner's pinned card, for this holder only, and a held pass can never be
   taken over by another owner. Old unsigned tickets are refused, and passes held from them are

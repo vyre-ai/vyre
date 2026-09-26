@@ -225,6 +225,16 @@ export function openItemV2(vk, at, sealed) {
   finally { raw.fill(0); }
 }
 
+/**
+ * Move an item's key to a new vault key (a shared vault's rotation): the item key is unwrapped
+ * under the old VK and wrapped under the new one at the new key version. The body is untouched,
+ * which is why its AAD leaves the key version out.
+ */
+export function rewrapItemKey(oldVk, newVk, oldAt, newAt, sealed) {
+  const raw = gcmOpen(oldVk, sealed.ik, ikAad(oldAt));
+  try { return { ...sealed, kv: newAt.kv, ik: gcmSeal(newVk, raw, ikAad(newAt)) }; } finally { raw.fill(0); }
+}
+
 /** The key that MACs metadata rows, from the agent vault key. */
 export const macKey = vk => keyObject(Buffer.from(crypto.hkdfSync("sha256", vk, Buffer.alloc(0), "vyre vault meta v1", 32)));
 

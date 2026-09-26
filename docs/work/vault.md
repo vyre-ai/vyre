@@ -51,6 +51,13 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - The Deck's Vault app (`deck/views/vault*.js`, `deck/vault/`), Watchtower (`health.js`), the
   opt-in breach check and `vault.update` (`tools/deck.js`). Click-through against a real vyred:
   `node deck/test/vault-shots.js <out-dir>`.
+- Shared vaults, ADR 0006 decision 5 (`shared.js`, `tools/vaults.js`): `shared:<id>` classes
+  with a VK wrapped per member (ECIES v2, purpose "vk"), a hash-chained signed membership
+  manifest verified on every load, roles, `POST /v1/sync` on the owner's relay listener (pull,
+  push with 409 on a stale parent, admin changes), field-level merge or a kept conflict
+  revision, owner receipts that peers check against the author's rights, removal with a new VK
+  and item keys re-wrapped, rotation flags, and offboarding across shared vaults. Tests:
+  `core/vault/shared.test.js`, `test/vault-shared.test.js` (three real vyreds).
 
 ## Doing
 
@@ -208,3 +215,22 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `{versions: [{ver, at, by, fields}], passwords: [{at}]}`, `vault.ssh.generate {name}`. It
   needs the "deck" caller on `vault.totp`, `grant`, `pending`, `approve`, `pass.create` and
   `offboard`, which exclude it today.
+- Shared vaults:
+  - Items appear locally as `vault_items` rows named `<vault>/<item>` with `vault =
+    "shared:<id>"`, so run, inject, grants and the Deck use them unchanged. `vault.open` gets the
+    key from `vault.shared.keyFor`, and `vault.at` gets the key version from `vault.shared.kvOf`.
+  - `vault.put` with a `<vault>/<item>` name writes to the shared vault and returns
+    `{name, vault, rev, merged?}` or `{conflict: true, current}`. `vault.delete` refuses shared
+    items (not built yet). `vault.offboard` is async and adds `vaults` to its result.
+  - New tools: `vault.vaults.create {name}`, `vault.vaults.list` (mcp visible),
+    `vault.vaults.sync {vault?}`, `vault.members.invite {vault, person, role?}` (the person must
+    be pinned and verified; returns `vyre-invite:v1:...`), `vault.members.accept {invite}`,
+    `vault.members.role`, `vault.members.remove`, `vault.vaults.rotate`, `vault.move {name, to}`.
+    Invite, accept, role, remove, rotate and move declare presence.
+  - Relay: `serve({onSync})` routes `POST /v1/sync`; `syncEnvelope` and `checkSync` sign and
+    check it (tag "vyre-sync-v1", audience, ts, nonce); `callRelay(url, env, {route})`.
+    crypto.js gains `rewrapItemKey`.
+  - Events: `vault.member-added`, `vault.member-removed`, `vault.key-rotated`,
+    `vault.sync-conflicted`. None carries a value.
+  - Not yet: multi-device join (`vault.device.join`, `vault.device.approve`), deleting shared
+    items, CLI verbs for the vault tools (use `vyre call`), and a periodic pull.
