@@ -54,12 +54,17 @@ deck/glass/                Glass views (watch, take-over, phone), vendored noVNC
 - A full pool evicts the least recently touched checkout with no viewer and no take-over; if every
   slot is watched or taken over, the checkout waits (up to 30 s) and then fails with who holds the
   screens.
+- `freeze()` only ever looks at idle checkouts, so an actively-held one whose container vanishes
+  behind vyred's back (an operator, the box) would otherwise go unnoticed indefinitely. Every
+  `verifyMs`, `checkout()`'s "already held" path asks the driver once whether the container still
+  exists; gone releases it, so the next `checkout()` rebuilds it rather than trusting a screen
+  nobody can reach. Found on the box's first real run.
 
 ### Config (`~/.vyre/config.json`)
 
 ```json
 { "computers": { "docker": "http://docker-proxy:2375", "image": "vyre/computer:0.1", "network": "vyre-computers",
-  "labelPrefix": "vyre", "screens": 2, "idleMs": 60000, "freezeMs": 15000, "cpus": 2, "memoryMb": 3072 } }
+  "labelPrefix": "vyre", "screens": 2, "idleMs": 60000, "freezeMs": 15000, "verifyMs": 30000, "cpus": 2, "memoryMb": 3072 } }
 ```
 
 The driver only touches containers carrying the label `<labelPrefix>.computer=<agent>`, whatever
@@ -191,16 +196,20 @@ unauthenticated port, which was a real hole).
     `/health` answered over its bearer token and refused a wrong one; `/cdp/json/version`
     correctly rewrote `webSocketDebuggerUrl` to point back through itself; and — the strongest
     check — a real RFB client handshake, run from `rfb.js` itself against the container's real
-    Xvnc with the password `vncpasswd.mjs` had written, completed a real VNC authentication and
-    reported the right screen size back. Cleaned up afterward (`computers.stop`, then `docker rm`
-    the container and its home volume).
-  - Found along the way, not fixed (low severity, noted for whoever hits it next):
-    `computers.checkout`'s "already held" fast path never re-verifies the container is still
-    alive — if something removes it out from under vyred (as happened once here, by hand, mid
-    debugging), `computers.get` keeps reporting `running` until the next freeze-sweep attempt
-    fails, or until `computers.stop` is called to force a re-inspect. Also: `core/agents` has no
-    delete tool at all, so a test agent made for a probe like this can only be neutralized
-    (`computer: false`), never removed.
+    Xvnc with the real password file, completed a real VNC authentication and reported the right
+    screen size back. Cleaned up afterward (`computers.stop`, then `docker rm` the container and
+    its home volume).
+  - `image/Dockerfile` was first fixed here with a hand-rolled `computerd/vncpasswd.mjs` (no
+    `vncpasswd` binary at all on bookworm's tigervnc packages) — superseded by `glass`'s own live
+    run finding the same two bugs and fixing them better: `tigervnc-tools` actually has the real
+    binary, just under a different package than expected. Reconciled onto glass's fix; the
+    hand-rolled script is gone.
+  - `computers.checkout`'s "already held" fast path never re-verified the container was still
+    alive, since `freeze()` only ever looks at idle checkouts — found here by hand, mid debugging,
+    when removing a container out from under vyred left `computers.get` reporting `running`
+    indefinitely. Fixed: see `verifyMs` above.
+  - `core/agents` has no delete tool at all, so a test agent made for a probe like this can only
+    be neutralized (`computer: false`), never removed. Flagged to switchboard, not fixed here.
 
 ## Doing
 - Nothing in parallel right now.

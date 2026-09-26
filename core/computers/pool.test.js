@@ -102,6 +102,34 @@ test("pool: touching keeps a checkout; a viewer holds it outright", async t => {
   assert.equal(pool.view("kit").screen, null);
 });
 
+test("pool: a checkout notices its container vanished, and the next one rebuilds it", async t => {
+  const { pool, driver, clock, types } = setup(t, { config: { verifyMs: 1_000 } });
+  await pool.checkout("kit");
+  const id = [...driver.containers.keys()][0];
+  // Well within verifyMs: touching alone never asks the driver anything.
+  clock.t += 500; await pool.checkout("kit");
+  assert.deepEqual(driver.calls.map(c => c.op), ["create", "start"]);
+  await driver.remove(id); // an operator, or the box, removes it out from under vyred
+  clock.t += 1_000;
+  const r = await pool.checkout("kit"); // past verifyMs: this call notices and rebuilds
+  assert.equal(pool.view("kit").state, "running");
+  assert.notEqual([...driver.containers.keys()].find(k => k !== id), undefined, "a fresh container exists");
+  assert.deepEqual(types(), ["computer.created", "computer.checked-out", "computer.released", "computer.created", "computer.checked-out"]);
+  assert.equal(r.screen, 1);
+});
+
+test("pool: a driver error while verifying is not treated as the container being gone", async t => {
+  const driver = new FakeDriver();
+  const { pool, clock } = setup(t, { driver, config: { verifyMs: 1_000 } });
+  await pool.checkout("kit");
+  const real = driver.inspect.bind(driver);
+  driver.inspect = async id => { throw new Error("proxy timed out"); };
+  clock.t += 1_000;
+  await pool.checkout("kit"); // verify() swallows the error; a held checkout is still held
+  assert.equal(pool.view("kit").screen, 1);
+  driver.inspect = real;
+});
+
 test("pool: a first viewer checks out and thaws", async t => {
   const { pool, clock } = setup(t);
   await pool.checkout("kit");
