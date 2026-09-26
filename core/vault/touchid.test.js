@@ -13,8 +13,8 @@ import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Helper } from "./mac/helper.js";
 import { writeFakes } from "./mac/fakes.js";
+import { TEST_KDF } from "./testing.js";
 
-const TEST_KDF = { kdf: "argon2id", m: 256, t: 1, p: 1 };
 const PASSWORD = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
 
 function setup(t, enclaveMode = "ok") {
