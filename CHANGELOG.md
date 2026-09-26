@@ -606,6 +606,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   which is what the Enrich hook and the projects brief print; the exact turn is in `ref`.
 - Measured on a copy of a real 103k-turn index: first pass 6.7s, a pass with nothing new 5ms,
   one new turn 1.2s in the background; `memory.relevant` p50 0.06ms, p95 1.4ms.
+- Deck Memory on `memory.graph` (ADR 0007, decision 13): one call with the `since` cursor
+  instead of a `memory.facts` call per project. A `memory.curated` whose `updated` is what is
+  drawn does nothing; while the tab is hidden it only marks the view dirty, and the one fetch
+  waits for `visibilitychange` (no timers, SPEC principle 8). Scope select (Everything or one
+  project), rooms and room counts from `graph.rooms`, a truncated footer with Around (depth 1)
+  and a breadcrumb back.
+- Facts list with gold provenance: the source thread links to the exact turn (`?seq=N`), with
+  age and confidence in mono. Inline pin and mute act on the fact's subject and say so. Correct
+  turns the fact's object into a field in its own sentence: Cmd+Enter saves (`memory.correct`
+  `replace`), "No longer true" (`ended`), "Wrong" (`wrong`), Esc cancels; the closed fact then
+  shows muted above the new one, sourced "You, just now", with Undo (`memory.uncorrect`). A
+  missing `memory.correct` says so in a status line. "Forget this fact" (it muted the whole
+  person) is gone.
+- Lessons tab at `/memory?tab=lessons`: Proposed (a Beacon count on the tab), Active, Retired
+  (folded) and Proposed skills when `learn.skills` exists. Rows show the rule, level, check,
+  scope in words, `applied · caught · broken`, the `learn.stats` verdict and a link to the source
+  turn. Accept, Edit (rule and when, through `learn.edit`), Retire, Relax; a `presence_required`
+  answer shows how to confirm (the passkey, else the terminal command or the Capsule), in a
+  sheet on a phone. `lesson.*` events repaint only the row they name.
+- Keyboard: Up and Down move through the list (roving tabindex), Enter opens, Esc closes; in the
+  panel P pins, M mutes, C corrects, ignored while typing. Phone: the list, and sheets.
+- `deck/fixtures/learn.json` now has core/learn's shape (integer ids, `scope` as `"all"` or
+  `{project}` or `{agent}`, `check` objects, `source: {kind, session, seq}`); `memory.json` gains
+  `memory.graph`. `deck/test/memory.test.js` covers the cursor, links, lesson words and both
+  fixtures' shapes.
 
 #### Projects
 
