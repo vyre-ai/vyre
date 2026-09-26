@@ -61,3 +61,31 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
   assert.equal(bad.code, 1);
   assert.match(bad.out, /no lesson 9/);
 });
+
+test("cli: learn show, scope, relax, stats, signals and skills", async t => {
+  const env = { VYRE_HOME: tempHome(t) };
+  t.after(() => run(["down"], env));
+  await run(["up"], env);
+  await run(["learn", "add", "never", "use", "em", "dashes"], env);
+  const list = await run(["learn"], env);
+  assert.match(list.out, /1 Never use em dashes\. \[block\] measuring/, "the effect column");
+  const show = await run(["learn", "show", "1"], env);
+  assert.equal(show.code, 0);
+  assert.match(show.out, /everywhere · when always/);
+  assert.match(show.out, /before \S+ · after \S+ per 100 turns/);
+  assert.equal((await run(["learn", "show", "9"], env)).code, 1);
+  assert.match((await run(["learn", "scope", "1", "agent", "kit"], env)).out, /changed lesson 1/);
+  assert.match((await run(["learn", "show", "1"], env)).out, /agent kit/);
+  assert.match((await run(["learn", "scope", "1", "all"], env)).out, /changed lesson 1/);
+  assert.equal((await run(["learn", "scope", "1", "sideways"], env)).code, 1);
+  assert.match((await run(["learn", "relax", "1", "paths", "\\.md$"], env)).out, /relaxed lesson 1/);
+  assert.match((await run(["learn", "show", "1"], env)).out, /"paths":"\\\\.md\$"/);
+  assert.match((await run(["learn", "relax", "1", "level", "ask"], env)).out, /\[ask\]/);
+  assert.equal((await run(["learn", "relax", "1", "sideways"], env)).code, 1);
+  assert.match((await run(["learn", "stats"], env)).out, /before .* per 100 turns/);
+  assert.match((await run(["learn", "signals"], env)).out, /nothing heard yet|signals/);
+  assert.match((await run(["learn", "skills"], env)).out, /no skills yet/);
+  assert.equal((await run(["learn", "skills", "show", "3"], env)).code, 1);
+  assert.equal((await run(["learn", "skills", "frob", "3"], env)).code, 1);
+  assert.equal((await run(["learn", "frob"], env)).code, 1);
+});
