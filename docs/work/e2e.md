@@ -182,9 +182,10 @@ recovery within 2 s, restart with a reusable key, Chromium data: PAC). Tear down
 
 ## Waiting on shas
 
-- baf6f30 (work/e2e tip) into main: integrator. Contains 8faaef7, a3652ab, a10fcec, b405bfc,
-  0d648df, a3e8b40, baf6f30.
-- The deploy of that main to the live box: box-deploy.
+- main d3ed622 (2aa7e21) has work/e2e up to a3e8b40, and is the deploy sha. The headscale rerun
+  runs against d3ed622. baf6f30 (agents.update narrowed) is NOT in main; the reversal under Next
+  supersedes it: next session, merge main into work/e2e first (it has the integrator's
+  rig.boxPasskey() in test/journey), then do the reversal on top.
 
 ## Test box state
 
