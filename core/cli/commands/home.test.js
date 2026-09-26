@@ -178,7 +178,7 @@ test("home (interactive): inside a project folder it is preselected; Enter opens
   assert.ok(c.argv.includes("--append-system-prompt"));
 });
 
-test("home (interactive): New session in a project starts claude in its home; an agent without the switchboard says so", async t => {
+test("home (interactive): New session in a project starts claude in its home; the agents section lists agents", async t => {
   const w = await world(t);
   const harlow = path.join(w.work, "harlow-site");
   await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow });
@@ -188,8 +188,12 @@ test("home (interactive): New session in a project starts claude in its home; an
   assert.equal(fs.realpathSync(c.cwd), fs.realpathSync(harlow));
   assert.match(c.argv[c.argv.indexOf("--append-system-prompt") + 1], /"Harlow Legal"/);
 
-  // There is no agents tool yet: the section says so, and q still quits.
+  // The switchboard's agents.list answers: none yet, then the one made; q still quits.
   const term = terminal(["q"]);
   assert.equal(await interactive(term), 0);
-  assert.match(term.screen(), /agents arrive with the switchboard/);
+  assert.match(term.screen(), /Agents\r\n    none yet/);
+  await w.d.registry.call("agents.create", { name: "juno", kind: "assistant" });
+  const again = terminal(["q"]);
+  assert.equal(await interactive(again), 0);
+  assert.match(again.screen(), /juno  not started/);
 });
