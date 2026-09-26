@@ -122,11 +122,19 @@ export class Registry {
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       if (f.problems.length) { this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error: f.problems.join("; ") }); continue; }
+      // Two modules with one name: the first found wins (Vyre's own folders come before the
+      // user's), and the other is reported, never silently dropped. A user's module named like a
+      // core one once vanished without a word, and so did every tool it offered.
+      if (this.modules.has(name)) {
+        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid",
+          error: `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored` });
+        continue;
+      }
       const roles = f.manifest.roles || ["box", "local"];
       const on = !disable.includes(name) && (roles.includes(role) || enable.includes(name));
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
-    const candidates = found.filter(f => this.modules.get(f.manifest && f.manifest.name)?.state === "pending");
+    const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
     const { ordered, problems } = order(candidates);
     for (const [n, why] of problems) Object.assign(this.modules.get(n), { state: "failed", error: why });
     for (const f of ordered) await this.startOne(f);

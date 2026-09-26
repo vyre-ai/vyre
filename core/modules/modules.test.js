@@ -147,3 +147,21 @@ test("modules: ctx.memory.teach checks the declared kinds and is a no-op without
   assert.deepEqual(await reg.call("notes.add", { kind: "note.item" }), { data: { taught: false } });
   assert.match((await reg.call("notes.add", { kind: "secret.item" })).error.message, /does not declare under teaches.memory/);
 });
+
+test("modules: a second module with a name already loaded is reported, and the first keeps running", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), b = path.join(home, "b");
+  writeModule(a, "notes", good, echo);
+  writeModule(b, "notes", { ...good, does: { tools: ["notes.other"] } }, `export default { async start(ctx) { ctx.tool("notes.other", { run: async () => 1 }); return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+  await reg.start(discover([a, b]), { role: "local" });
+  const st = reg.status();
+  assert.equal(st.find(m => m.name === "notes").state, "running");
+  const dup = st.find(m => m.name.startsWith("notes@"));
+  assert.equal(dup.state, "invalid");
+  assert.match(dup.error, /already loaded/);
+  assert.equal((await reg.call("notes.add", { text: "x" })).data.saved, "x");
+  assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
+});
