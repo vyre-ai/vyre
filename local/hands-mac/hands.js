@@ -71,6 +71,39 @@ export function present(/** @type {Element} */ e) {
 /** Where an observation says it is, in the words the floor reads. */
 const placeOf = (/** @type {any} */ s) => ({ bundle: s.bundle || null, app: s.app || null, window: s.window || null, url: s.origin || null });
 
+/** The longest an act keeps re-observing for its effect. Slow apps (Catalyst, Electron) get up to this. */
+export const SETTLE_MAX = 5000;
+/** How many controls a filtered observation reads before filtering, so a filter sees past the default cap. */
+const MATCH_READ = 500;
+
+const centre = (/** @type {any} */ f) => f ? { x: f.x + f.w / 2, y: f.y + f.h / 2 } : null;
+const lower = (/** @type {unknown} */ v) => String(v ?? "").toLowerCase();
+
+/**
+ * The controls a filter asks for, best first. role is exact (the AX prefix optional); name is a
+ * case-insensitive substring of the control's label or identifier, never of its value, which can
+ * be anything a person typed. near names another control (by selector path or label): matches are
+ * ordered by how close their centres are to its centre, and with no such control, left in order.
+ * @param {Element[]} elements
+ * @param {{ role?: string, name?: string, near?: string }} m
+ */
+export function filterControls(elements, m) {
+  const role = m.role ? (m.role.startsWith("AX") ? m.role : `AX${m.role}`) : null;
+  const name = m.name ? lower(m.name) : null;
+  let out = elements.filter(e => (!role || e.role === role) &&
+    (!name || lower(e.name).includes(name) || lower(e.identifier).includes(name)));
+  if (m.near) {
+    const n = lower(m.near);
+    const anchor = elements.find(e => e.path === m.near) || elements.find(e => lower(e.name) === n) || elements.find(e => lower(e.name).includes(n));
+    const a = anchor && centre(anchor.frame);
+    if (a) {
+      const d = (/** @type {Element} */ e) => { const c = centre(e.frame); return c ? Math.hypot(c.x - a.x, c.y - a.y) : Infinity; };
+      out = out.filter(e => e !== anchor).map((e, i) => ({ e, i, d: d(e) })).sort((p, q) => p.d - q.d || p.i - q.i).map(x => x.e);
+    }
+  }
+  return out;
+}
+
 /** Codes the helper uses for "nothing was done, and here is why". */
 const MISSES = ["moved", "disabled", "not_found", "no_window", "no_app", "not_owner", "unsupported_action"];
 
@@ -143,7 +176,10 @@ export class Hands {
     return this.run({ cmd: "snap", ...t, ...(limit ? { limit } : {}), ...(valueMax ? { valueMax } : {}) });
   }
 
-  /** @param {{ app?: string, pid?: number, window?: string, limit?: number }} input */
+  /**
+   * @param {{ app?: string, pid?: number, window?: string, limit?: number,
+   *   match?: { role?: string, name?: string, near?: string, limit?: number } }} input
+   */
   async observe(input = {}) {
     // The place first, and the floor on it, before a single value is read: a password manager's
     // contents must never reach this process at all, not just be dropped before the answer.
@@ -153,13 +189,22 @@ export class Hands {
     const off = untouchable(placeOf(w), k);
     if (off) return blind(w, off);
     // Pinned to the pid just checked, so the snap cannot land on an app that came to the front since.
-    const s = await this.snap({ pid: w.pid, ...(input.window ? { window: input.window } : {}) }, { limit: input.limit });
+    const m = input.match && typeof input.match === "object" ? input.match : null;
+    const s = await this.snap({ pid: w.pid, ...(input.window ? { window: input.window } : {}) }, { limit: m ? MATCH_READ : input.limit });
     const late = untouchable(placeOf(s), k);
     if (late) return blind(s, late);
+    let elements = s.elements || [], truncated = Boolean(s.truncated);
+    if (m) {
+      const found = filterControls(elements, m);
+      const cap = Math.max(1, Math.min(MATCH_READ, Math.floor(Number(m.limit ?? input.limit ?? 20)) || 20));
+      // truncated now means either list was cut: the tree past what was read, or the matches past cap.
+      truncated = truncated || found.length > cap;
+      elements = found.slice(0, cap);
+    }
     return {
       app: s.app, pid: s.pid, bundle: s.bundle || null, window: s.window, front: s.front,
-      elements: (s.elements || []).map(present), texts: s.texts || [],
-      truncated: Boolean(s.truncated),
+      elements: elements.map(present), texts: s.texts || [],
+      truncated,
     };
   }
 
@@ -221,6 +266,13 @@ export class Hands {
       return miss(`nothing was done: ${describe(selector)} does not offer ${input.action} (it offers ${el.actions.join(", ") || "none"})`);
     }
 
+    // A key goes to the app's key window, and an app in the background has none, so the key would
+    // be dropped while the act looked done. Hands never raise an app on their own, so this is
+    // refused before anything is held or posted, for hands.commit as much as for hands.act.
+    if (kind === "key" && before.front === false) {
+      throw new HandsError("needs_front", `${before.app || "The app"} is in the background, and a key only reaches the app in front. Nothing was done. Press the control instead (for example the Send button), or ask the person to bring ${before.app || "the app"} to the front`);
+    }
+
     // Held, not refused: sending as the person needs the person. hands.commit carries it.
     // Confirm and pick are other ways to press a control, and a Send button confirmed is sent.
     const asKind = kind === "action" && (input.action === "AXConfirm" || input.action === "AXPick") ? "press" : kind;
@@ -258,7 +310,7 @@ export class Hands {
     // at once can see the screen from before the action and report a working action as a miss;
     // poll briefly until the effect shows or the time is up.
     // A refused action gets one look, not a wait for an effect it cannot have caused.
-    const budget = acted ? Math.max(0, input.settleMs ?? 1500) : 0;
+    const budget = acted ? Math.min(SETTLE_MAX, Math.max(0, Number(input.settleMs ?? 1500) || 0)) : 0;
     let waited = 0, after = before, v = { verified: false, reason: "", target: /** @type {Element|null} */ (null) };
     do {
       const step = Math.min(250, Math.max(budget - waited, 0)) || 0;

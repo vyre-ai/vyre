@@ -28,6 +28,8 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
 ## Doing
+- hands asks from capsule-apps (WhatsApp ax adapter): hands.find + observe match, settleMs cap
+  5000, needs_front for a key to a background app. hands tests on the test box: 53 pass, 6 skip.
 - e263e22 + f7830bd: session panel in the sight extension (Capsule-owned window slides in at 29%,
   Chrome fitted by sideview.open `panel`). Combined tree 191 pass, 1 fail (capsule-pro's icon
   test); the test box: sideview 15 pass, 1 skip. Builds only against capsule-pro's UNCOMMITTED host
@@ -60,6 +62,7 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   window (the side view's left side for the assistant, animated tiling).
 
 ## Changed contracts
+- hands: new tool hands.find; hands.observe takes match; hands.act/commit can fail needs_front.
 - New CLI files only: core/cli/commands/sideview.js, core/cli/commands/voice.js (auto-discovered).
 
 ## Test windows
