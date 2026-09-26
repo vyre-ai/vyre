@@ -95,8 +95,8 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - `deck/chat/folders.js` exports `mountFolders(container, { at?, onNewSession(cwd), onTerminal(cwd) })`.
 - The session view renders `recall.transcript` blocks plus live `thread.*` events; question and
   permission cards read `threads.asks`.
-- Labels: the model's replies read "Vyre" (an agent's thread: the agent's name); the user's own
-  messages read "you". Never "claude".
+- Labels: the model's replies read the assistant's name (system.info.assistant.name, else "Vyre");
+  an agent's thread reads the agent's name; the user's own messages read "you". Never "claude".
 - Keyboard: `n` (or Cmd/Ctrl+K then "new") opens New session from anywhere in Chat; in a card,
   arrow keys move, space toggles, Enter answers, 1-9 pick an option, Esc steps back.
 
@@ -109,14 +109,47 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - 2bdb6f2 sample world: CHAT_DEMO=1 (a finished demo session, live question + permission asks),
   alex's folders beside the Vyre home (the guard hides the home), WebSocket proxy.
 - a8ca577 ADR 0024, CHANGELOG.
+- 41941b9 recall.transcript reads unindexed sessions (code not_found when no file).
+- 3e3e843 session view layout fixes (cards keep height, todo/bash/edit open by default, live fallback, chips).
+- 45557bf system.info.assistant.name (the label source; null means "Vyre").
+- 4ef2339 merged main (kept work/chat's index.js and session.js; main's changes ported after).
+- fa2e43e index.js port of pwa's speed work and federation Mac rows; keys only while ctx.shown();
+  deck/sw.js SHELL gains Chat's new modules (pwa's file, told pwa).
+- 7e21ed1 terminal "needs the box link" state (deck/chat/lib/term-link.js).
+- 8794777 the seeded demo session releases its lease.
+- Composer hint no longer says "Claude Code's commands" (f857520).
+- Slice 1 screenshots: <team-dir>/chat-shots/ (reported to main).
 
-## Doing
-- Fixes from the first screenshots: squashed tool cards, unindexed live sessions in recall.transcript.
+## Doing (stopped mid-step at the account switch; each subagent WIP-committed by path)
+- session.js: port main's session.js changes (scratchpad patch is gone; regenerate with
+  `git diff $(git merge-base 48f8a01 main) main -- deck/chat/session.js`: WINDOW/Show earlier,
+  parallel reads, OURS, federation's read-only Mac threads + machine chip, reading the known/turns/
+  source/machine opts index.js now passes), the names helper deck/chat/lib/names.js
+  (labelFor: assistant name from system.info.assistant.name, else "Vyre"; agents their names;
+  user "you"), the ?at=<ms> deep link (scroll + flash; prefer ask anchor), deck-design's card specs
+  (vyre.css at work/deck-design 62c7934).
+- recall.watch { session, from? } -> { watch, session, from }, renew by calling again with `watch`
+  (expires 3 min after last renew, 30 min idle), recall.unwatch, events session.turn {session, id,
+  seq, role, text, tool?, at} (thread field = session) and session.state {session, busy}. One
+  fs.watch per file. capsule-sight is waiting on final names + sha.
+- Phone contracts (phone-design, docs/design/phone.md section 15): (1) ask `anchor: { tool_use_id,
+  event }` on threads.asks/get and on gate.held (smallest change in core/gate); (2) threads.asks
+  { kind } filter, asks carry `agent` and `thread_name`; (3) decision "always" + scope "project"
+  writes a project-scoped allow rule via updatedPermissions (addRules, projectSettings/localSettings),
+  ask carries `always_project`. Tell pwa, mobile, phone-design the shapes when done.
 
 ## Next
-- Reshoot on testbox (CHAT_DEMO=1 node deck/test/world.js 4791; deck/test/shoot.js with
-  CHROME=/usr/local/bin/vyre-chrome), report to main, restyle with deck-design.
-- Terminal screenshot needs a presence proof in a world: not possible yet (no passkey in headless).
+- STANDING RULE (user): Vyre must not nag; the user runs on bypass permissions. term.unlock needs
+  no passkey for the owner (opening a terminal is the person's own action): drop the presence
+  requirement for the owner's own surfaces, keep guests/agents/models out. Touch ID only for
+  pairing a device, vault secrets, and sending, posting or paying outside; one Touch ID lasts
+  about 30 min. Check threads.answer's presence gating against this rule too, and ask the lead.
+- Reshoot after the ports (CHAT_DEMO=1 node deck/test/world.js 4791 from a `git archive HEAD`
+  snapshot on testbox; deck/test/shoot.js with CHROME=/usr/local/bin/vyre-chrome), including the
+  terminal once unlock needs no passkey.
+- Folder rows: names truncate ("harlow-si..."); put the path on a second line.
+- Merge tailnet's WebSocket upgrade sha when it lands, then shoot the terminal from the Deck.
+- Restyle with deck-design once the user picks a direction.
 
 ## Needs from others
 - deck-design: visual direction for the cards and the terminal; behaviour is built first.
@@ -124,7 +157,8 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 
 - box/tailnet (reported to main): the tailnet listener (core/names/service.js) and the loopback
   listener carry no WebSocket upgrades, so the terminal (and Glass) only work on vyred's socket.
-- pwa: deck/sw.js shell list needs Chat's new modules (asked).
+- pwa: deck/sw.js SHELL edited by chat in fa2e43e (pwa informed); pwa owns the file.
+- tailnet: WebSocket upgrade fix (owned by tailnet, per the lead).
 
 ## Changed contracts
 - threads.answer: `answers`, decision `always`. threads.asks / ask.raised: `kind`, `questions`,
@@ -134,4 +168,5 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - recall.transcript / transcripts.blocks: no `from` means the tail; `before`, `first`; turn blocks
   may be `open: true`; user blocks may be `command: true`; tool blocks may carry `patch`.
 - files.dirs adds `limit`, `truncated`; files.recent returns an array. files `forward()` passes arrays through.
+- system.info adds `assistant: { name }`. deck/sw.js SHELL lists Chat's new modules.
 - ask.answered adds `answers`. answerLine takes a fifth argument { answers, permissions }.
