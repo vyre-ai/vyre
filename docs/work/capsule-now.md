@@ -34,15 +34,35 @@ them, one per fix.
    thread's as usual: `thread.sent` with `queued` marks it handed over ("handed over"), then
    `thread.text` (done) and `thread.finished` arrive when the answering turn ends. No caret while
    queued. No "Send now (interrupt)": there is no interrupt path into a terminal session.
+6. **Open on the Space the user is on, full-screen apps included.** Double-Control over a terminal
+   in full screen must open the Capsule over it, never switch to the desktop Space. For the NSPanel:
+   style mask `.nonactivatingPanel` set at init (not added later: a mask changed after init is not
+   honoured by the window server for key routing); `collectionBehavior` `[.canJoinAllSpaces,
+   .fullScreenAuxiliary, .transient]`, set again before every show; level above full-screen windows
+   (`.screenSaver`, or `.popUpMenu` if that proves enough); `canBecomeKey` true. Show with
+   `orderFrontRegardless()` + `makeKey()`, and never `NSApp.activate`: activation is what switches
+   Spaces. Typing must still reach the panel over a normal app too (the Electron build activates the
+   app for that today; a true non-activating panel should not need it, so check both by hand).
+   Electron reference: `local/capsule/lib/present.js`, flag `VYRE_CAPSULE_STAY=1`.
 
 ## Done
 - 1ffb28a fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
 - 4e559d3 fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
 - 975436c feat: queued messages for sessions busy in a terminal (switchboard, harness,
   Capsule, CLI).
+- 7fab054 feat(capsule): open over a full-screen app without a Space switch, behind
+  `VYRE_CAPSULE_STAY=1`. `present()` in lib/present.js is shared by main.js and the check script;
+  unit tests in present.test.js. Default behaviour is unchanged.
 
 ## Doing
-- Nothing. Waiting for the lead to restart the user's test Capsule.
+- Full-screen fix: waiting for the lead's word that the user has stepped away, then run
+  `VYRE_FULLSCREEN_OK=1 ELECTRON_BIN=<main tree>/local/capsule/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron <team-dir>/buildlock.sh capsule-now node scripts/capsule-spaces/run.js`.
+  It prints, per variant (default, stay, stay-then-steal): stayedOnFullScreenSpace, panelKey,
+  frontApp. If "stay" stays and is key, check typing by hand over the full-screen window and over a
+  normal app; if both work, make it the default (drop the flag). If typing over a normal app fails
+  with "stay", keep activation for normal apps and use "stay" only when a full-screen app is in
+  front (that needs the hotkey helper to report it, which means a rebuild and a permission re-grant:
+  ask the lead first).
 
 ## Next
 - Esc on a queued reply only stops following; the message still goes. A `threads.unqueue` for an
@@ -50,9 +70,12 @@ them, one per fix.
 - The reply arrives whole at the turn's end (the Stop hook's `last_assistant_message`), not
   streamed: streaming from the transcript would need a file watch or polling faster than 60 s.
 - A queued message for a session that is later resumed headless is delivered at that child's Stop.
+- `threads.unqueue` (withdraw an undelivered message; the phone wants it too) and streaming the
+  reply live.
 
 ## Needs from others
-- capsule-pro: carry rules 1 to 5 into the Swift Capsule.
+- capsule-pro: carry rules 1 to 6 into the Swift Capsule.
+- lead: say when the Mac is free for the full-screen check (it takes over the display for ~15 s).
 - switchboard: a new migration (`threads_inbox`) was appended to `MIGRATIONS`; if work/switchboard
   also appends one, order them at merge.
 
@@ -72,6 +95,6 @@ them, one per fix.
 
 ## Tests
 - local/capsule/lib/bridge.test.js 29/29, state.test.js 14/14, core/switchboard 26/26,
-  core/harness 19/19, test/harness.test.js 13/13, core/cli switchboard-cli 11/11.
+  core/harness 19/19, test/harness.test.js 13/13, core/cli switchboard-cli 11/11, present 3/3.
 - Perf: nothing added polls or runs while hidden (the queue is read only inside hooks that already
   run). perf-check was not run: it measures a running Capsule and the user's is live.
