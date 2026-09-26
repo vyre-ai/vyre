@@ -24,12 +24,28 @@ Open the popup on a login page, unlock with the passphrase (or Touch ID through 
 then reopen the popup), and choose **Fill** next to a login. Only logins whose hosts include this
 page's exact origin are offered or filled.
 
+## Suggestions on pages, keyboard fill, codes and saving
+
+- **Keyboard fill.** Press Cmd+Shift+L (Ctrl+Shift+L elsewhere; change it at
+  `chrome://extensions/shortcuts`). One login for the page fills at once; several open a chooser.
+- **Suggestions on pages** (off by default). Turn on "Suggest logins on pages" in the popup and
+  allow the browser's prompt. Focusing a login field then shows a chooser under it, drawn in a
+  closed shadow root the page cannot read. It fills only on a real click (`isTrusted`), and only
+  logins whose hosts include the page's exact origin. A one-time-code box offers the code
+  (`/v1/fill/otp`). Turning it off removes the permission again.
+- **Save and update.** With suggestions on, submitting a login form holds what you typed in the
+  worker's memory for two minutes and asks "Save this login?" (or "Update the password?"). Only
+  your click saves it, through `/v1/fill/save`: a new login gets this page's origin as its only
+  host; an update keeps the replaced password in the item's sealed history (the last 5).
+
 ## What it stores
 
 - `chrome.storage.local`: the vyred address, the device id and name, and the device token. The
   token lists login names for a page and cannot reveal a value on its own.
 - `chrome.storage.session` and the worker's memory: the session token, which ends after
   10 minutes idle, 12 hours at most, on **Lock**, or when the browser closes.
+- The worker's memory only: a login typed into a page, until you save or dismiss it, for two
+  minutes at most.
 
 ## Addresses
 
