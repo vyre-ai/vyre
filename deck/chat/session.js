@@ -37,11 +37,15 @@ import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 
 /** The Deck's own surface names: a lease or a message from these is this screen's, so it reads "you". */
 const OURS = new Set(["deck", "chat"]);
+/** A long session opens at its last WINDOW turns; "Show earlier" reads the rest. */
+const WINDOW = 60;
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, recorded?: boolean, source?: string|null, machine?: string|null, onBack: () => void }} opts
+ * @param {{ thread: string, project: string|null, recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null, onBack: () => void }} opts
  * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
+ * turns: how many turns the list says it has, so a long session opens at its last WINDOW turns.
+ * known: the list had a row for it; when it had none, the transcript is read at the same time.
  * source, machine: the list's label for it; "mac" opens it read-only.
  * @returns {() => void} cleanup
  */
@@ -82,16 +86,26 @@ export function mountSession(container, opts) {
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   async function boot() {
-    const skip = opts.recorded || isMac(where);
+    // Not known to be the Switchboard's or not: ask both at once, and use the transcript only when
+    // the Switchboard has no record. One round trip instead of two from a phone. A Mac's session
+    // is only ever a transcript, which the box asks the Mac for.
+    const mac = isMac(where);
+    const skip = opts.recorded || mac;
+    let from = skip && (opts.turns || 0) > WINDOW ? opts.turns - WINDOW : 0;
+    const readT = () => attempt("recall.thread", { session: thread, from, limit: 400, ...(mac ? { source: "mac" } : {}) });
+    const pre = skip || !opts.known ? readT() : null;
     const r = skip ? { error: null } : await attempt("threads.get", { thread, since: 0, limit: 500 });
     if (skip || r.error) {
-      const t = await attempt("recall.thread", { session: thread, limit: 400, ...(isMac(where) ? { source: "mac" } : {}) });
+      let t = await (pre || readT());
+      // The list's count and the transcript's numbering disagree: read it from the start.
+      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400, ...(mac ? { source: "mac" } : {}) }); from = 0; }
       if (t.error) { timeline.replaceChildren(empty("Could not open this session.", t.error.missing ? t.error : r.error)); drawHead(); return; }
       recorded.on = true;
       recorded.session = t.data.session;
       if (isMac(t.data)) { where.source = "mac"; where.machine = t.data.machine || where.machine; readOnly(); }
       drawHead();
       timeline.replaceChildren();
+      if (from > 0) timeline.append(earlier(from));
       if (!t.data.turns.length) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
       appendTurns(t.data.turns);
       toBottom();
@@ -130,16 +144,37 @@ export function mountSession(container, opts) {
     );
   }
 
+  /** "Show earlier": the turns before `upto`, read and put above what is on screen. */
+  function earlier(/** @type {number} */ upto) {
+    const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm th-earlier" }, "Show earlier");
+    btn.addEventListener("click", async () => {
+      btn.setAttribute("disabled", "");
+      const start = Math.max(0, upto - WINDOW * 2);
+      const t = await attempt("recall.thread", { session: thread, from: start, limit: upto - start });
+      if (t.error) { btn.removeAttribute("disabled"); return; }
+      const holder = document.createDocumentFragment();
+      const keep = timeline.scrollHeight - timeline.scrollTop;
+      const saveNext = recorded.next, saveDay = lastDay;
+      const sink = { append: (/** @type {Node} */ n) => holder.append(n) };
+      lastDay = null;
+      appendTurns(t.data.turns, sink);
+      recorded.next = saveNext; lastDay = saveDay;
+      btn.replaceWith(...(start > 0 ? [earlier(start)] : []), holder);
+      timeline.scrollTop = timeline.scrollHeight - keep;
+    });
+    return btn;
+  }
+
   /** A transcript's turns, in the same shapes the live events draw. */
-  function appendTurns(turns) {
+  function appendTurns(turns, /** @type {{ append: (n: Node) => void }} */ into = timeline) {
     for (const t of turns) {
       recorded.next = Math.max(recorded.next, (t.seq ?? 0) + 1);
       if (!t.text) continue;
-      maybeDayRule(t.ts || Date.now());
-      if (t.role === "user") { timeline.append(personMsg("you", t.text, t.ts)); continue; }
+      maybeDayRule(t.ts || Date.now(), into);
+      if (t.role === "user") { into.append(personMsg("you", t.text, t.ts)); continue; }
       const el = agentMsg("claude", t.ts);
       add(/** @type {any} */ (el).querySelector(".msg-text"), renderMarkdown(t.text));
-      timeline.append(el);
+      into.append(el);
     }
   }
   /** Recall indexed this session again: read what is new. One read at a time; a second ask during one reads again after. */
@@ -176,11 +211,11 @@ export function mountSession(container, opts) {
     return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   }
   let lastDay = null;
-  function maybeDayRule(at) {
+  function maybeDayRule(at, /** @type {{ append: (n: Node) => void }} */ into = timeline) {
     const d = dayLabel(at);
     if (d === lastDay) return;
     lastDay = d;
-    timeline.append(h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" })));
+    into.append(h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" })));
   }
 
   function upsertRow(key, build) {

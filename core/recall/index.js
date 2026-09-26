@@ -19,6 +19,9 @@
 //   models     where the weights live (default <VYRE_HOME>/models)
 //   embedder   where the library that runs them is installed (default <VYRE_HOME>/embedder)
 //   npm        the npm that installs it (default the one next to node, else npm on PATH)
+//   duty       the most of the wall clock background indexing may use, per piece of work
+//              (default 0.5: as long again asleep as awake); see pace.js
+//   lowBattery pause background indexing on battery under this percent (default 30; 0 never)
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
@@ -28,7 +31,8 @@ import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
 import { evaluate } from "./eval.js";
-import { load as loadModel, cached, installed, DOWNLOAD_MB } from "./embed.js";
+import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
+import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
@@ -76,6 +80,19 @@ export default {
     let stopped = false;
     const isStopped = () => stopped;
 
+    // Background work is a trickle (pace.js): paced to `duty` of the clock, and paused on a low
+    // battery or a busy machine. Under tests it runs flat out and never pauses unless a test
+    // asks, so a loaded CI machine cannot make a test wait a minute.
+    const testing = Boolean(process.env.NODE_TEST_CONTEXT);
+    const pace = pacer({ duty: opts.duty ?? (testing ? 1 : 0.5) });
+    const g = testing && !opts.gate ? null : gate({ lowBattery: opts.lowBattery ?? 30, ...(opts.gate || {}) });
+    const paused = () => Boolean(g && g.why);
+    const paced = async (/** @type {number} */ spent) => { await pace(spent); if (g) await g.check(); };
+    /** Where the index stands, for `vyre status` and `vyre doctor`. */
+    const progress = { done: 0, total: 0 };
+    /** @type {any} */
+    let retry = null;
+
     // One pass at a time. A caller that asks while one is running gets the next pass, which
     // starts when the current one ends and skips everything that one already did.
     /** @type {Promise<any>} */
@@ -88,7 +105,7 @@ export default {
         if (stopped) return null;
         running = true;
         try {
-          const s = await indexer.run(folders, { stopped: isStopped });
+          const s = await indexer.run(folders, { stopped: isStopped, pace: paced, onProgress: (d, t) => { progress.done = d; progress.total = t; } });
           return s;
         }
         finally { running = false; vectorLoop(); }
@@ -127,8 +144,9 @@ export default {
         const mb = (installed(runtime) ? 0 : DOWNLOAD_MB.runtime) + (cached(models) ? 0 : DOWNLOAD_MB.model);
         vec.why = injected || !mb ? "loading the model" : `downloading the search model (about ${mb} MB, once); search is by keyword until then`;
         if (!injected && mb) ctx.log(vec.why);
+        // The model runs in a process of its own at the lowest priority, on one thread.
         vec.loading = (injected ? Promise.resolve({ embedder: injected })
-          : loadModel({ cacheDir: models, runtime, download: opts.download !== false, npm: opts.npm }))
+          : spawnEmbedder({ cacheDir: models, runtime, download: opts.download !== false, npm: opts.npm }))
           .then(r => {
             if (r.embedder) { vec.embedder = r.embedder; vec.why = `on (${r.embedder.model})`; return r.embedder; }
             vec.on = false; vec.why = r.why || "unavailable";
@@ -147,15 +165,20 @@ export default {
           do {
             vec.again = false;
             if (!indexer.pending().length) continue;
+            if (g && await g.check()) break;
             const e = await embedder();
             if (!e || stopped) break;
-            const r = await indexer.vectorize(e, { stopped: isStopped });
+            const r = await indexer.vectorize(e, { stopped: () => stopped || paused(), pace: paced });
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
           // Build the dense index now, in the background, so the first search does not pay for it.
           if (!stopped && !dense.stats() && db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get()) await dense.build();
         } catch (e) { vec.why = `embedding failed: ${/** @type {Error} */ (e).message}`; ctx.log(vec.why); }
-        finally { vec.busy = false; }
+        finally {
+          vec.busy = false;
+          // Paused: look again in a minute, no sooner (SPEC principle 8).
+          if (paused() && !stopped) { clearTimeout(retry); retry = setTimeout(vectorLoop, 60_000); retry.unref?.(); }
+        }
       })();
     };
 
@@ -233,6 +256,7 @@ export default {
         return {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
+          progress: { sessions: progress.total ? { done: progress.done, total: progress.total } : null, paused: g ? g.why : null, priority: "low" },
           vectors: { on: vec.on, ready: Boolean(vec.embedder), why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
       },
@@ -290,6 +314,7 @@ export default {
       async stop() {
         stopped = true;
         clearTimeout(first);
+        clearTimeout(retry);
         for (const off of offs) if (typeof off === "function") off();
         for (const t of soon.values()) clearTimeout(t);
         if (timer) clearInterval(timer);
@@ -297,6 +322,8 @@ export default {
         await vec.done;
         // A model load in flight writes into the home; let it settle before the home can go.
         if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]);
+        const e = /** @type {any} */ (vec.embedder);
+        if (e && typeof e.close === "function") e.close();
       },
     };
   },

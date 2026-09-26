@@ -1,4 +1,12 @@
-# ADR 0004 · Presence: proving a person is there before a human-only action
+---
+title: ADR 0004: Presence: proving a person is there before a human-only action
+summary: Human-only actions (approving what the Gate holds, answering permission questions, unlocking vault items) need proof that the person is present on their own device, which a model cannot give.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0004: Presence: proving a person is there before a human-only action
 
 Status: accepted, 26 Sep 2026 · Workstream: security · Spec: principles 7, sections 5, 7.5, 7.7,
 7.11, 8 and 11 (floor rules 1, 2 and 8)

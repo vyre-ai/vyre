@@ -91,7 +91,8 @@ export function privateSocketDir() {
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
- *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> } }} Config */
+ *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
+ *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } } }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {

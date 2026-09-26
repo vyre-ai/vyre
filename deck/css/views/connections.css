@@ -38,10 +38,28 @@
 
 .cn-grant { margin-top: 20px; display: flex; flex-direction: column; gap: 6px; }
 .cn-cmd { display: block; }
+.cn-v .cn-cmd, .set-v .cn-cmd { font-size: 12px; overflow-wrap: anywhere; }
+.cn-form .set-status .set-mono { overflow-wrap: anywhere; }
+
+/* Sign in with Google: the waiting panel and its paste box. */
+.cn-wait-t { font-size: 14px; line-height: 20px; color: var(--text); margin: 0; }
+.cn-wait p { margin: 0 0 8px; }
+.cn-paste { display: flex; align-items: center; gap: 8px; width: 100%; }
+.cn-paste .input { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 13px; }
+.cn-paste .btn { flex-shrink: 0; }
+
+/* A service account's admin console values, each with Copy. */
+.cn-admin { border-left: 1px solid var(--rule-strong); padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+.cn-copies { display: flex; flex-direction: column; gap: 6px; }
+.cn-copy { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; }
+.cn-copy-v { min-width: 0; height: 32px; font-size: 12px; font-family: var(--mono); color: var(--text-2); text-overflow: ellipsis; }
 
 @media (max-width: 760px) {
   .cn-meta { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .cn-k { margin-top: 6px; }
   .cn-tool { flex-wrap: wrap; }
   .cn-env-var { max-width: none; }
+  .cn-copy { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
+  .cn-copy .cn-k { grid-column: 1 / -1; }
+  .cn-paste { flex-wrap: wrap; }
 }

@@ -391,9 +391,10 @@ async function pairOver(address, tool, env = process.env) {
   for (let first = true; ; first = false) {
     const p = await tool("link.pair", { box: address });
     if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
-    out(first
-      ? `  Approve this Mac in your Deck, on this Mac or your phone: it names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(p.data.code)}`
-      : `  That code expired. The new one: ${signal(p.data.code)}`);
+    if (first) {
+      out(`\n  Approve this Mac on your phone at ${signal(address)}, or in the Deck on this Mac`);
+      out(`  The Deck there names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(p.data.code)}`);
+    } else out(`  That code expired. The new one: ${signal(p.data.code)}`);
     for (;;) {
       await sleep(every);
       const s = (await tool("link.status")).data || {};

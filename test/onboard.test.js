@@ -372,6 +372,7 @@ test("onboard: finishing makes the assistant once, on every project, signed in w
   const a = agents.find(x => x.kind === "assistant");
   assert.equal(a.name, "mira-two");
   assert.equal(a.projects, "*");
+  assert.equal(a.auth, "api-key", "an API key is the agent's API key, not read as a subscription token");
   await tool(base, session, "onboard.finish");
   assert.equal((await call("agents.list", {}, { root, caller: "cli" })).data.filter(x => x.kind === "assistant").length, 1, "finishing again makes no second assistant");
 });
