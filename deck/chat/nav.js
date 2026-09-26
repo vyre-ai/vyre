@@ -1,31 +1,29 @@
 // @ts-check
-// The rail: search, projects (each with its sessions, disclosed), "No project", agents. Pure
-// render: app.js owns the data and re-renders on every relevant event, so this file never holds
-// state across a render beyond what disclosure the user has open (kept in module scope, not
-// re-fetched, so expanding a project survives a refresh).
+// The project/session tree Chat hands to ctx.rail(): search, projects (each disclosed to its
+// sessions), "No project", agents. Pure render: index.js owns the data and calls this again on
+// every relevant event. Disclosure state (which projects/agents are expanded) lives at module
+// scope, so it survives a re-render but not a reload.
 
-import { h, empty } from "../js/dom.js";
+import { h, link } from "../js/dom.js";
 import { icon } from "../js/icons.js";
+import { threadHref, projectHref } from "./lib/routes.js";
 
-/** Which projects and agents are expanded. Survives re-renders (module-level), not reloads. */
 const open = new Set();
 
 /**
- * @param {{ projects: any[], threads: any[], route: any, go: (h: string) => void, err: any }} p
+ * @param {{ projects: any[], threads: any[], route: { project: string|null, thread: string|null }, err: any }} p
  */
-export function renderNav({ projects, threads, route, go, err }) {
-  const q = h("input", { type: "text", placeholder: "Search sessions", "aria-label": "Search", oninput: e => filter(/** @type {any} */(e.target).value) });
-  const list = h("div", { id: "nav-list" }, groups(projects, threads, route, ""));
-  q.addEventListener("input", e => { put2(list, groups(projects, threads, route, /** @type {any} */(e.target).value)); });
+export function renderNav({ projects, threads, route, err }) {
+  const list = h("div", { id: "chat-nav-list" }, groups(projects, threads, route, ""));
+  const q = h("input", { type: "text", placeholder: "Search sessions", "aria-label": "Search sessions",
+    oninput: e => { list.replaceChildren(); for (const k of [groups(projects, threads, route, /** @type {any} */ (e.target).value)].flat(Infinity)) if (k) list.append(k); } });
 
-  return h("div", { style: { display: "flex", flexDirection: "column", gap: "14px", height: "100%" } },
-    h("label", { class: "search" }, icon("search", 14), q),
+  return h("div", { style: { display: "flex", flexDirection: "column", gap: "14px" } },
+    h("label", { class: "search", style: { width: "auto" } }, icon("search", 14), q),
     err ? h("div", { class: "empty" }, "Some sessions may be missing.", h("span", { class: "code" }, err.missing ? `The ${err.module} module is not running.` : String(err.message || err))) : null,
     list,
   );
 }
-
-function put2(el, kids) { el.replaceChildren(); for (const k of [kids].flat(Infinity)) if (k != null && k !== false) el.append(k); }
 
 function groups(projects, threads, route, q) {
   const needle = q.trim().toLowerCase();
@@ -39,54 +37,44 @@ function groups(projects, threads, route, q) {
     if (t.agent) { if (!byAgent.has(t.agent)) byAgent.set(t.agent, []); byAgent.get(t.agent).push(t); }
   }
   const out = [];
-  out.push(h("div", { class: "rail-group" },
+  if (projects.length) out.push(h("div", { class: "rail-group" },
     projects.filter(p => !needle || p.name.toLowerCase().includes(needle) || byProject.get(p.slug).length)
-      .map(p => projectGroup(p, byProject.get(p.slug) || [], route, needle)),
-  ));
-  if (noProject.length || (!needle && !projects.length))
-    out.push(h("div", { class: "rail-group" }, disclose("no-project", "No project", noProject.length, () =>
-      h("div", { class: "rail-sub" }, noProject.map(t => threadLink(t, route))))));
+      .map(p => projectGroup(p, byProject.get(p.slug) || [], route))));
+  if (noProject.length) out.push(h("div", { class: "rail-group" }, disclose("no-project", "No project", noProject.length, () =>
+    h("div", { class: "rail-sub" }, noProject.map(t => threadLink(t, route))))));
   if (byAgent.size) out.push(h("div", { class: "rail-group" },
     h("div", { class: "lbl", style: { padding: "0 10px 6px" } }, "Agents"),
     [...byAgent.entries()].map(([agent, rows]) => disclose("agent:" + agent, agent, rows.length, () =>
       h("div", { class: "rail-sub" }, rows.map(t => threadLink(t, route))), rows.some(t => t.status === "running")))));
-  if (!out.some(g => g.childNodes.length)) return [h("div", { class: "empty" }, needle ? "No matches." : "Nothing yet.")];
+  if (!out.length) out.push(h("div", { class: "empty" }, needle ? "No matches." : "Nothing yet."));
   return out;
 }
 
-function projectGroup(p, rows, route, needle) {
-  const isOpen = needle ? true : open.has("p:" + p.slug) || route.project === p.slug;
-  return disclose("p:" + p.slug, p.name, rows.length, () =>
+function projectGroup(p, rows, route) {
+  const isOpen = open.has("p:" + p.slug) || route.project === p.slug;
+  const label = link(projectHref(p.slug), { class: "ellipsis", style: { flexGrow: "1" }, onclick: e => e.stopPropagation() }, p.name);
+  return disclose("p:" + p.slug, label, rows.length, () =>
     h("div", { class: "rail-sub" }, rows.length ? rows.map(t => threadLink(t, route)) : h("div", { class: "empty", style: { padding: "4px 10px" } }, "No sessions")),
-    false, isOpen, () => location.hash = `#/p/${p.slug}`);
+    false, isOpen);
 }
 
-function disclose(key, label, count, body, live = false, forceOpen, onLabel) {
-  const isOpen = forceOpen !== undefined ? forceOpen : open.has(key);
-  const btn = h("button", { class: "rail-disclose", "aria-expanded": String(isOpen), onclick: () => { if (isOpen) open.delete(key); else open.add(key); rerenderNearest(btn); } },
+function disclose(key, label, count, body, live, isOpen) {
+  const btn = h("button", { class: "rail-disclose", type: "button", "aria-expanded": String(isOpen), onclick: () => { if (isOpen) open.delete(key); else open.add(key); rerender(); } },
     icon("chevron", 11),
     live ? h("span", { class: "agent-dot live" }) : null,
-    h("span", { style: { flexGrow: "1", textAlign: "left", cursor: onLabel ? "pointer" : undefined }, onclick: onLabel ? (e => { e.stopPropagation(); onLabel(); }) : null }, label),
-    count ? h("span", { class: "code" }, String(count)) : null,
-  );
-  const wrap = h("div", null, btn, isOpen ? body() : null);
-  return wrap;
+    typeof label === "string" ? h("span", { style: { flexGrow: "1", textAlign: "left" } }, label) : label,
+    count ? h("span", { class: "code" }, String(count)) : null);
+  return h("div", null, btn, isOpen ? body() : null);
 }
 
-// A disclosure button's own container is swapped in place: replaying groups() from app.js's next
-// render is simpler than diffing, so on toggle we just ask the nearest render to happen again by
-// dispatching the same event app.js already listens for one of (cheap: nav has no independent
-// data of its own, only open-state).
-function rerenderNearest(el) {
-  window.dispatchEvent(new Event("hashchange"));
-}
+// Toggling disclosure has no data of its own to change, so the cheapest correct redraw is asking
+// the router to run this view's render again (index.js listens for the same events already).
+function rerender() { window.dispatchEvent(new Event("deck:navigate")); }
 
 function threadLink(t, route) {
-  const href = t.project ? `#/p/${t.project}/t/${t.id}` : `#/t/${t.id}`;
   const current = route.thread === t.id;
-  return h("a", { class: "rail-a", href, "aria-current": current ? "page" : null },
+  return link(threadHref(t), { class: "rail-a", "aria-current": current ? "page" : null },
     t.status === "running" ? h("span", { class: "agent-dot live" }) : h("span", { class: "agent-dot" }),
     h("span", { class: "ellipsis", style: { flexGrow: "1" } }, t.name || t.id.slice(0, 8)),
-    t.asks ? h("span", { class: "count" }, String(t.asks)) : null,
-  );
+    t.asks ? h("span", { class: "count" }, String(t.asks)) : null);
 }
