@@ -17,12 +17,10 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 import { call } from "../../daemon/client.js";
+import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, bold, signal, recall, beacon } from "../style.js";
 import { untilde } from "../../config/index.js";
-import { REPO } from "../../daemon/index.js";
-
-const HARNESS = path.join(REPO, "harness");
 
 // ------------------------------------------------------------ small helpers
 
@@ -181,20 +179,26 @@ async function openProject(ref) {
 // ------------------------------------------------------------ handing off to Claude Code
 
 /**
- * Run Claude Code here, interactively, and return its exit code. When the Vyre Harness plugin is
- * present it is loaded with --plugin-dir, and its SessionStart hook adds the brief, so the brief
- * is not also passed as --append-system-prompt (Claude would read it twice). VYRE_PROJECT tells
- * the hook which project was chosen, for a thread picked into several.
+ * The Vyre Harness plugin, when this install has one. Every thread Vyre starts loads it with
+ * --plugin-dir, so the user's own Claude Code setup is never modified. VYRE_HARNESS_DIR points
+ * elsewhere, which is how tests check both cases.
  */
-function claude(args, cwd, { project } = {}) {
-  const env = { ...process.env };
-  if (fs.existsSync(path.join(HARNESS, ".claude-plugin", "plugin.json"))) {
-    const i = args.indexOf("--append-system-prompt");
-    if (i >= 0) args = [...args.slice(0, i), ...args.slice(i + 2)];
-    args = ["--plugin-dir", HARNESS, ...args];
-    if (project) env.VYRE_PROJECT = project;
-  }
-  const r = spawnSync("claude", args, { cwd, stdio: "inherit", env });
+export function harnessDir() {
+  const dir = process.env.VYRE_HARNESS_DIR || path.join(REPO, "harness");
+  return fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json")) ? dir : null;
+}
+
+/**
+ * Run Claude Code here, interactively, and return its exit code. With the Harness loaded, its
+ * SessionStart hook adds the brief, so the brief is passed on the command line only without it:
+ * never both, or Claude reads it twice.
+ */
+function claude(args, cwd, brief, project) {
+  const plugin = harnessDir();
+  const full = plugin ? [...args, "--plugin-dir", plugin] : brief ? [...args, "--append-system-prompt", brief] : args;
+  // VYRE_PROJECT tells the Harness hook which project was chosen, for a thread picked into several.
+  const env = plugin && project ? { ...process.env, VYRE_PROJECT: project } : process.env;
+  const r = spawnSync("claude", full, { cwd, stdio: "inherit", env });
   if (r.error) return fail(/** @type {any} */ (r.error).code === "ENOENT" ? "Claude Code is not installed: no claude on PATH" : r.error.message);
   return r.status ?? 1;
 }
@@ -204,10 +208,9 @@ async function resume(t, { project, name } = {}) {
   const ctx = await call("projects.context", { ...(project ? { project } : {}), cwd: t.cwd, session: t.id });
   const brief = ctx.data?.text || "";
   const args = ["--resume", t.id];
-  if (brief) args.push("--append-system-prompt", brief);
   if (name) args.push("-n", name);
   out(dim(`  resuming ${t.label} · ${tilde(t.cwd)}${ctx.data?.project ? " · " + ctx.data.project : ""}`));
-  return claude(args, t.cwd, { project: ctx.data?.project });
+  return claude(args, t.cwd, brief, ctx.data?.project);
 }
 
 // ------------------------------------------------------------ new: make a project by picking
@@ -282,16 +285,16 @@ export default [
         showList(list);
         return 0;
       }
-      const code = await openProject(here.project);
+      const code = await openProject(here.slug);
       // A person at a terminal can go straight on; a pipe or a test just gets the screen.
       if (code || !process.stdin.isTTY || !process.stdout.isTTY) return code;
       const pr = await prompter();
       const a = await pr.ask("\n  resume which (number; n for a new thread; Enter to leave) › ");
       pr.close();
       if (!a) return 0;
-      if (a === "n") return startThread(["--project", here.project]);
-      const f = await findThread(a, here.project);
-      return f.error ? fail(f.error) : resume(f.thread, { project: here.project });
+      if (a === "n") return startThread(["--project", here.slug]);
+      const f = await findThread(a, here.slug);
+      return f.error ? fail(f.error) : resume(f.thread, { project: here.slug });
     },
   },
   {
@@ -343,12 +346,12 @@ export default [
       const { flags, pos } = parse(args);
       if (!(await up())) return 1;
       const here = await hereProject();
-      const f = await findThread(pos.join(" "), flags.project || here?.project);
+      const f = await findThread(pos.join(" "), flags.project || here?.slug);
       if (f.error) return fail(f.error);
       const t = f.thread;
       // The folder's project wins when the thread is in it; otherwise the thread's own.
-      const inHere = here && (t.projects ? t.projects.includes(here.project) : true);
-      return resume(t, { project: flags.project || (inHere ? here.project : undefined), name: flags.name });
+      const inHere = here && (t.projects ? t.projects.includes(here.slug) : true);
+      return resume(t, { project: flags.project || (inHere ? here.slug : undefined), name: flags.name });
     },
   },
   {
@@ -399,14 +402,14 @@ async function pickCmd(args, name) {
 async function startThread(args) {
   const { flags, pos } = parse(args);
   if (!(await up())) return 1;
-  const ref = flags.project || (await hereProject())?.project;
+  const ref = flags.project || (await hereProject())?.slug;
   if (!ref) return fail("this folder is in no project · vyre start --project <project> [name]");
   const ctx = await tool("projects.context", { project: ref });
   if (!ctx) return 1;
   const list = await call("projects.list", {});
   const p = list.data.projects.find(x => x.slug === ctx.project);
   const name = flags.name || pos.join(" ");
-  const cliArgs = [...(name ? ["-n", name] : []), "--append-system-prompt", ctx.text];
+  const cliArgs = name ? ["-n", name] : [];
   out(dim(`  starting a thread in ${p.name} · ${tilde(p.home)}`));
-  return claude(cliArgs, p.home, { project: ctx.project });
+  return claude(cliArgs, p.home, ctx.text, ctx.project);
 }

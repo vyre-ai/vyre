@@ -241,3 +241,25 @@ test("markers: a home reached through a symlink matches the folder as a shell re
   assert.equal(M.projectOf(fs.realpathSync(path.join(realHome, "src")), [p])?.slug, "harlow-legal");
   assert.equal(M.projectOf(path.join(root, "link", "harlow-site", "src"), [p])?.slug, "harlow-legal");
 });
+
+test("tools: projects.of answers the Harness's shape for a subfolder, and null outside", async t => {
+  const { start } = await import("../daemon/index.js");
+  const root = tempHome(t);
+  const work = path.join(root, "Work");
+  const home = path.join(work, "harlow-site"), intake = path.join(work, "harlow-intake");
+  for (const d of [home, intake]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ projectsDir: path.join(root, "projects"), roots: [work],
+    transcripts: [], modules: { disable: ["recall", "memory"] } }));
+  const d = await start({ root, log: () => {} });
+  try {
+    const made = await d.registry.call("projects.create", { name: "Harlow Legal", home, workspaces: [intake] });
+    assert.ok(made.data, JSON.stringify(made.error));
+    const of = await d.registry.call("projects.of", { cwd: path.join(home, "src", "deep") });
+    assert.equal(of.data.slug, "harlow-legal");
+    assert.equal(of.data.name, "Harlow Legal");
+    assert.deepEqual(of.data.folders, [fs.realpathSync(home), fs.realpathSync(intake)]);
+    assert.equal((await d.registry.call("projects.of", { cwd: root })).data, null);
+    const ctx = await d.registry.call("projects.context", { project: of.data.slug });
+    assert.match(ctx.data.text, /"Harlow Legal"/);
+  } finally { await d.stop(); }
+});

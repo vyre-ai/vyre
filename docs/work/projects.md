@@ -100,7 +100,13 @@ Start vyred if needed with `ensureUp()` from `core/cli/daemonctl.js`.
   resolves in this order: the named project, the project that owns cwd, then the one project
   the session was picked into. If the session was picked into several, `text` is `""` and
   `candidates` lists them. The session itself is left out of "other threads".
-- `projects.of {cwd}` returns `{project, name, home}` or null. `projects.list` returns
+- `projects.of {cwd}` returns `{slug, name, home, folders}` or null, matching subfolders.
+  `folders` is the home plus workspaces, absolute and real paths. This is the shape the Harness
+  on main uses.
+- Every Claude Code launch (`vyre resume`, `vyre start`) adds `--plugin-dir <REPO>/harness` when
+  `harness/.claude-plugin/plugin.json` exists (`VYRE_HARNESS_DIR` overrides it, for tests). In
+  that case the brief is NOT passed as `--append-system-prompt`; the SessionStart hook adds it.
+  Without the plugin, the flag carries the brief as before. `projects.list` returns
   `{projects: [...], problems: [{home, error}]}`.
 - `projects.remove-threads` returns `{removed, stillByFolder}`, because folder membership
   cannot be removed.

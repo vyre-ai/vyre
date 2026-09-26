@@ -47,9 +47,9 @@ export default {
       run: async input => P.catalog(input),
     });
     ctx.tool("projects.of", {
-      description: "The project that owns a folder, or null.",
+      description: "The project that owns a folder or any folder under it, or null. slug is what the other tools take.",
       input: { type: "object", required: ["cwd"], properties: { cwd: str } },
-      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { project: p.slug, name: p.name, home: p.home } : null; },
+      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces } : null; },
     });
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",

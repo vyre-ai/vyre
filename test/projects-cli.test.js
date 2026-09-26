@@ -14,7 +14,6 @@ import { open } from "../core/store/index.js";
 import { SESSIONS, HOME, seedRecall } from "./fixtures/corpus.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
-const HARNESS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "harness");
 const [SITE, INTAKE, , HUB] = SESSIONS.map(s => s.id);
 
 /** A seeded home, and a run() that drives bin/vyre in any folder with optional stdin. */
@@ -40,7 +39,9 @@ function world(t) {
   fs.writeFileSync(path.join(fake, "claude"), `#!${process.execPath}
 require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), project: process.env.VYRE_PROJECT || null }) + "\\n");
 `, { mode: 0o755 });
-  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", PATH: fake + path.delimiter + process.env.PATH };
+  // No Harness unless a test makes one, so these tests do not change when main's harness/ lands.
+  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", PATH: fake + path.delimiter + process.env.PATH,
+    VYRE_HARNESS_DIR: path.join(root, "no-harness") };
   function run(args, { cwd = process.cwd(), input = "" } = {}) { return new Promise(resolve => {
     const c = spawn(process.execPath, [BIN, ...args], { cwd, env });
     let o = "";
@@ -50,7 +51,7 @@ require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv:
     c.stdin.end(input);
   }); }
   const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").map(l => JSON.parse(l)) : []);
-  return { root, work, run, calls };
+  return { root, work, run, calls, env };
 }
 
 test("cli: vyre new with flags, then piped answers; the hub lands in both projects", async t => {
@@ -107,13 +108,10 @@ test("cli: vyre resume hands off to claude --resume in the thread's folder, with
   const r = await w.run(["resume", "1"], { cwd: harlow });
   assert.equal(r.code, 0, r.out);
   const [c] = w.calls();
-  // The Harness plugin loads and its SessionStart hook adds the brief, so it is not in argv too.
-  assert.deepEqual(c.argv.slice(0, 4), ["--plugin-dir", HARNESS, "--resume", HUB]);
-  assert.ok(!c.argv.includes("--append-system-prompt"), "the brief would reach Claude twice");
-  assert.equal(c.project, "harlow-legal", "the hook was not told which project was chosen");
+  assert.equal(c.argv[0], "--resume");
+  assert.equal(c.argv[1], HUB);
   assert.equal(fs.realpathSync(c.cwd), fs.realpathSync(w.work), "claude ran somewhere other than where the thread ran");
-  // What the hook will add: the chosen project's brief, without the thread being resumed.
-  const brief = JSON.parse((await w.run(["call", "projects.context", JSON.stringify({ project: "harlow-legal", session: HUB })])).out).text;
+  const brief = c.argv[c.argv.indexOf("--append-system-prompt") + 1];
   assert.match(brief, /"Harlow Legal"/);
   assert.match(brief, /Harlow site rebuild/);
   assert.doesNotMatch(brief, /Weekly planning/, "the brief listed the thread being resumed as another thread");
@@ -122,13 +120,14 @@ test("cli: vyre resume hands off to claude --resume in the thread's folder, with
   const byName = await w.run(["resume", "harlow site rebuild", "--name", "Harlow launch"]);
   assert.equal(byName.code, 0, byName.out);
   const c2 = w.calls()[1];
-  assert.equal(c2.argv[3], SITE);
+  assert.equal(c2.argv[1], SITE);
   assert.equal(fs.realpathSync(c2.cwd), fs.realpathSync(harlow));
-  assert.deepEqual(c2.argv.slice(-2), ["-n", "Harlow launch"]);
+  assert.deepEqual(c2.argv.slice(2, 4), ["-n", "Harlow launch"]);
+  assert.ok(!c2.argv.includes("--plugin-dir"), "--plugin-dir passed with no Harness installed");
 
-  // A thread in no project resumes with no project named.
+  // A thread in no project resumes without a brief.
   await w.run(["resume", "northwind invoices"]);
-  assert.equal(w.calls()[2].project, null);
+  assert.ok(!w.calls()[2].argv.includes("--append-system-prompt"));
 
   const miss = await w.run(["resume", "nothing like this"]);
   assert.equal(miss.code, 1);
@@ -142,8 +141,21 @@ test("cli: vyre start opens a new named thread in the project's home; pick and u
   const s = await w.run(["start", "intake", "copy"], { cwd: harlow });
   assert.equal(s.code, 0, s.out);
   const [c] = w.calls();
-  assert.deepEqual(c.argv, ["--plugin-dir", HARNESS, "-n", "intake copy"]);
-  assert.equal(c.project, "harlow-legal");
+  assert.deepEqual(c.argv.slice(0, 3), ["-n", "intake copy", "--append-system-prompt"]);
+
+  // With the Harness installed it is loaded, and its SessionStart hook brings the brief instead.
+  const harness = path.join(w.root, "harness");
+  fs.mkdirSync(path.join(harness, ".claude-plugin"), { recursive: true });
+  fs.writeFileSync(path.join(harness, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "vyre" }));
+  w.env.VYRE_HARNESS_DIR = harness;
+  await w.run(["start", "--project", "harlow-legal"]);
+  await w.run(["resume", "harlow site rebuild"]);
+  for (const x of w.calls().slice(1)) {
+    assert.equal(x.argv[x.argv.indexOf("--plugin-dir") + 1], harness);
+    assert.ok(!x.argv.includes("--append-system-prompt"), "the brief was passed twice: by flag and by the Harness");
+    assert.equal(x.project, "harlow-legal", "the Harness hook was not told which project was chosen");
+  }
+  w.env.VYRE_HARNESS_DIR = path.join(w.root, "no-harness");
   assert.equal(fs.realpathSync(c.cwd), fs.realpathSync(harlow));
 
   const p = await w.run(["pick", "harlow-legal", "weekly planning", INTAKE]);
