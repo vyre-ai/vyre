@@ -1,0 +1,160 @@
+// @ts-check
+// The Harness as `/plugin install vyre` puts it: a copy of harness/ alone, in a folder like Claude
+// Code's plugin cache, away from the package's core/. With Vyre on PATH it hands over to that
+// package; with no Vyre it says how to install it once and is otherwise silent.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { start } from "../core/daemon/index.js";
+import { weakens } from "../core/learn/checks.js";
+import { findPackage, locate, INSTALL } from "../harness/lib/vyre.js";
+import { tempHome } from "./helpers.js";
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PLUGIN = path.join(REPO, "harness");
+
+/** A copy of the plugin in a cache-like folder, and a bin folder that is all of PATH. */
+function install(t, { withVyre = false } = {}) {
+  const dir = tempHome(t);
+  const cache = path.join(dir, "cache", "vyre", "vyre", "0.0.1");
+  fs.cpSync(PLUGIN, cache, { recursive: true });
+  const bin = path.join(dir, "bin");
+  fs.mkdirSync(bin);
+  if (withVyre) fs.symlinkSync(path.join(REPO, "bin", "vyre"), path.join(bin, "vyre"));
+  return { cache, env: { PATH: withVyre ? `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin` : bin, CLAUDE_PLUGIN_ROOT: cache } };
+}
+
+/** Run a process with stdin and a clean env (no VYRE_PACKAGE), collect stdout and the time taken. */
+function run(args, input, env) {
+  const base = { ...process.env };
+  delete base.VYRE_PACKAGE;
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    const p = spawn(process.execPath, args, { env: { ...base, ...env } });
+    let out = "";
+    p.stdout.on("data", c => { out += c; });
+    p.on("close", code => resolve({ code, out, ms: Date.now() - t0 }));
+    p.stdin.end(input);
+  });
+}
+const hook = (cache, piece, payload, env) => run([path.join(cache, "hooks", "run.js"), piece], JSON.stringify(payload), env);
+
+/** Speak MCP to a server over stdio until `want` replies arrive. */
+async function mcp(file, env, msgs, want) {
+  const base = { ...process.env };
+  delete base.VYRE_PACKAGE;
+  const p = spawn(process.execPath, [file], { env: { ...base, ...env } });
+  const replies = new Map();
+  let buf = "";
+  const done = new Promise(resolve => p.stdout.on("data", c => {
+    buf += c;
+    for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.set(m.id, m); }
+    if (replies.size >= want) resolve(null);
+  }));
+  for (const m of msgs) p.stdin.write(JSON.stringify(m) + "\n");
+  await done;
+  p.kill();
+  return replies;
+}
+const INIT = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } } };
+
+test("marketplace: one plugin, vyre, from ./harness, at the package's version", () => {
+  const market = JSON.parse(fs.readFileSync(path.join(REPO, ".claude-plugin", "marketplace.json"), "utf8"));
+  assert.equal(market.name, "vyre");
+  assert.ok(market.owner && market.owner.name);
+  assert.equal(market.plugins.length, 1);
+  const [p] = market.plugins;
+  assert.equal(p.name, "vyre");
+  assert.equal(p.source, "./harness");
+  const manifest = JSON.parse(fs.readFileSync(path.join(REPO, p.source, ".claude-plugin", "plugin.json"), "utf8"));
+  assert.equal(manifest.name, "vyre");
+  assert.equal(manifest.version, JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")).version, "the plugin moves with the package");
+  const hooks = fs.readFileSync(path.join(PLUGIN, "hooks", "hooks.json"), "utf8");
+  assert.ok(!hooks.includes("hook.js"), "hooks start from run.js, which works from a copy");
+  assert.match(fs.readFileSync(path.join(PLUGIN, ".mcp.json"), "utf8"), /mcp\/run\.js/);
+});
+
+test("launcher: finds the package it sits in, VYRE_PACKAGE, or the vyre on PATH, else nothing", t => {
+  assert.equal(findPackage(PLUGIN, { PATH: "" }), REPO);
+  const { cache } = install(t);
+  assert.equal(findPackage(cache, { PATH: "" }), null);
+  assert.equal(findPackage(cache, { VYRE_PACKAGE: REPO }), REPO);
+  assert.equal(findPackage(cache, { VYRE_PACKAGE: cache }), null, "a folder that is not Vyre");
+  const bin = path.join(path.dirname(cache), "bin");
+  fs.mkdirSync(bin);
+  fs.symlinkSync(path.join(REPO, "bin", "vyre"), path.join(bin, "vyre"));
+  assert.equal(findPackage(cache, { PATH: bin }), REPO);
+  assert.deepEqual(locate(cache, { PATH: bin, VYRE_HOME: path.join(bin, "none") }), { state: "setup", root: REPO });
+  assert.deepEqual(locate(cache, { PATH: bin, VYRE_HOME: bin }), { state: "ready", root: REPO });
+});
+
+test("no Vyre: a fresh session hears the install line once; every other hook is silent and quick", async t => {
+  const { cache, env } = install(t);
+  const home = path.join(path.dirname(cache), "no-vyre-home");
+  const e = { ...env, VYRE_HOME: home };
+  const first = await hook(cache, "brief", { session_id: "s1", cwd: "/tmp", source: "startup" }, e);
+  assert.equal(first.code, 0);
+  assert.equal(JSON.parse(first.out).systemMessage, `The Vyre plugin is on, but Vyre is not installed. Install it with: ${INSTALL}`);
+  for (const source of ["resume", "clear", "compact"]) assert.deepEqual((await hook(cache, "brief", { session_id: "s1", source }, e)).out, "", source);
+  for (const piece of ["enrich", "rules", "learn", "fail", "stop", "nonsense"]) {
+    const r = await hook(cache, piece, { session_id: "s1", cwd: "/tmp", prompt: "hi", tool_name: "Read", tool_input: { file_path: "/tmp/a" } }, e);
+    assert.equal(r.code, 0, piece);
+    assert.equal(r.out, "", piece);
+    assert.ok(r.ms < 1000, `${piece} took ${r.ms} ms`);
+  }
+  assert.ok(!fs.existsSync(home), "nothing was created for a Vyre that is not there");
+});
+
+test("Vyre installed but never set up: the brief says to run vyre up", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const r = await hook(cache, "brief", { session_id: "s1", source: "startup" }, { ...env, VYRE_HOME: path.join(path.dirname(cache), "none") });
+  assert.match(JSON.parse(r.out).systemMessage, /not set up.*`vyre up`/);
+});
+
+test("Vyre on PATH, vyred down: the copied plugin runs the package's hooks, floor included", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const home = tempHome(t);
+  const e = { ...env, VYRE_HOME: home };
+  assert.deepEqual((await hook(cache, "brief", { session_id: "s1", source: "startup" }, e)).out, "", "a set-up Vyre that is only stopped stays quiet");
+  const held = await hook(cache, "rules", { tool_name: "Read", tool_input: { file_path: path.join(home, "vault", "x") }, cwd: "/tmp" }, e);
+  assert.equal(held.code, 0);
+  assert.equal(JSON.parse(held.out).hookSpecificOutput.permissionDecision, "deny", "the vault rule, through the launcher");
+});
+
+test("Vyre on PATH, vyred up: the copied plugin's hooks and MCP server reach it", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const e = { ...env, VYRE_HOME: root };
+  const ask = await hook(cache, "rules", { session_id: "s1", tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com" } }, e);
+  assert.equal(JSON.parse(ask.out).hookSpecificOutput.permissionDecision, "ask");
+  assert.deepEqual((await hook(cache, "learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, e)).out, "");
+  assert.equal(d.registry.deps.db.prepare("SELECT path FROM harness_files WHERE session='s1'").get().path, "/w/notes.md");
+  const replies = await mcp(path.join(cache, "mcp", "run.js"), e, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "system_echo", arguments: { text: "hello" } } }], 3);
+  assert.ok(replies.get(2).result.tools.some(x => x.name === "system_echo"));
+  assert.equal(JSON.parse(replies.get(3).result.content[0].text).text, "hello");
+});
+
+test("no Vyre: the MCP server connects with no tools and says how to install", async t => {
+  const { cache, env } = install(t);
+  const replies = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: path.join(path.dirname(cache), "none") },
+    [INIT, { jsonrpc: "2.0", method: "notifications/initialized" }, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "recall_search", arguments: {} } }], 3);
+  assert.equal(replies.get(1).result.serverInfo.name, "vyre");
+  assert.ok(replies.get(1).result.instructions.includes(INSTALL));
+  assert.deepEqual(replies.get(2).result.tools, []);
+  assert.equal(replies.get(3).error.code, -32601);
+});
+
+test("learning: running the launcher by hand is a hook run by hand", () => {
+  const home = "/h/.vyre";
+  assert.ok(weakens("Bash", { command: "echo '{}' | node ~/.claude/plugins/cache/vyre/vyre/0.0.1/hooks/run.js stop" }, { home, pluginRoot: null }));
+  assert.ok(weakens("Bash", { command: "node hooks/run.js enrich" }, { home, pluginRoot: null }));
+  assert.equal(weakens("Bash", { command: "node scripts/run.js" }, { home, pluginRoot: null }), null, "another run.js is not a hook");
+});
