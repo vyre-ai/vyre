@@ -67,7 +67,14 @@ Embedding-pipeline CPU/battery behavior needs a separate check later.
 - **switchboard**: no findings — audited, event-driven, nothing to fix.
 - **gate-chat**: chat poller numbers above; recommend raising the shipped default toward 30-60s
   and/or making it adaptive rather than a flat 2s.
-- **capsule**: hidden-state RSS ~300MB vs. 250MB budget, breakdown above.
+- **capsule**: FIXED by `capsule` on `work/capsule` (9cefc71) — running the network service and
+  GPU in the main process and keeping no spare renderer took hidden RSS from 301-324MB down to
+  212-233MB (238MB worst case with the hotkey helper), under the 250MB budget. Warm open now
+  measures 18-50ms via their own end-to-end `open:<via>` timing (gesture `at` through two
+  frames) — consistent with the 34-40ms this audit measured for the narrower show()-to-paint
+  path (eff2206's `capsule:paintping`), both comfortably under the 100ms budget. Both timing
+  mechanisms now coexist on `work/capsule`: theirs is the broader real-world measurement,
+  mine is the Electron-internal one, gated behind `VYRE_CAPSULE_TRACE_WAKE`.
 
 ## Capsule wake latency (measured)
 
@@ -88,6 +95,86 @@ compositing beyond what rAF reports. Cold-start (first show after launch) is muc
 (~721ms observed) and isn't representative of the steady-state wake the budget targets.
 - **release**: `scripts/perf-check` exists, `npm run perf-check`, ~65s runtime, exit 0/1 — ready
   to wire into `scripts/release-check.sh`.
+
+## Capsule hidden CPU with the clipboard watcher (work/capsule 654db49, merged with main)
+
+Measured a real (non-driven) Capsule launch — temp `VYRE_HOME` + temp `--user-data-dir`,
+`--hidden`, no vyred running — for 3 minutes, `ps -o time=,rss=` sampled every 15s, host load
+average 11-15. First/last-sample CPU-time deltas over the full window:
+
+| Process | CPU (3-min avg) | Verdict |
+|---|---|---|
+| `bin/local` (the clip poller, 750ms `NSPasteboard.changeCount`) | 0.016% | negligible |
+| hotkey helper | 0.000% | negligible |
+| renderer | 0.165% | within a per-process share of the 0.2% hidden budget |
+| Electron main (`Vyre Capsule`) | **0.791%** | over budget on its own |
+
+The clipboard watcher is not the cost — `bin/local`'s own CPU is a rounding error, consistent
+across every 15s interval sampled (0.00-0.01s of CPU time per interval). The real cost is the
+Electron main process itself, steady at roughly 0.5-1.2% per 15s interval throughout the
+3-minute window (not a start-up tail — same rate in the first and last third of the run), well
+over the 0.2%-hidden-combined budget by itself before the renderer's share is even added. This
+wasn't isolated further (no A/B without `clips.start()`) — reported to `capsule` as the next
+place to look, since it's their process, not the Swift poller they asked about.
+
+**Fixed** by `capsule` on `work/capsule` (5f738a7): it was the health/stream retry loop, not the
+clipboard watcher. With no vyred reachable, main retried `/v1/health` + `bridge.refresh()` every
+3s forever, and the event stream reconnected every 1.5s, regardless of hidden state. Fix backs
+both off while hidden — health retry doubles 3s to 60s, stream reconnect doubles to 30s and
+resets on open — and looks again immediately once the Capsule is shown. Re-measured (real,
+non-driven launch, temp `VYRE_HOME` + `--user-data-dir`, `--hidden`, 3 minutes each):
+
+| Condition | Main process CPU (3-min avg) |
+|---|---|
+| vyred down (before fix, 654db49) | 0.791% |
+| vyred down (after fix, 5f738a7) | 0.210% overall; converges to ~0.18% once the backoff reaches steady state (~t+90s) |
+| vyred up (after fix, 5f738a7) | 0.061% |
+
+Both now at or under the 0.2% hidden budget.
+
+## Glass audit (main, af4dc91)
+
+Verified what `glass`/`computers` described:
+- `deck/glass/watch.js`: disconnects on `visibilitychange` hidden (`conn = "hidden"`, drops the
+  RFB client but keeps the last frame), reconnects with exponential backoff (1, 2, 4... capped
+  at 30s) only while visible — confirmed at watch.js:297/340.
+- `deck/glass/takeover.js:26-33`: the held-time tick is `setInterval(draw, 1000)`, gated behind
+  `mine() && s.visible() && s.holder?.since` and torn down (`clearInterval`) every time `timer()`
+  re-runs — only ticks while this tab holds the keyboard and is visible.
+- `core/glass/`: no `setInterval`/`setTimeout` anywhere; confirmed.
+- `core/computers/glass.js`: the RFB/WebSocket relay itself never originates a ping — it only
+  echoes back `ping` control frames it receives (both instances found are `if (f.control ===
+  "ping") socket.write(...)`, reactive, not a timer). Not on main at the time of this audit — found and verified afterward on `work/glass`
+  (4045c68): `core/computers/glass.js:77-178` runs the 30s keepalive as `setInterval`, `unref()`'d,
+  cleared in `closeAll`, closing after two missed pongs and renewing the keyboard hold on pong —
+  matches the description exactly. Not an idle-budget concern regardless, since it only exists
+  per open viewer socket (active use, never idle).
+
+**One real finding, not what was described but a genuine idle-budget violation**:
+`core/computers/index.js:70-79` runs `setInterval(sweep, sweepMs)` with `sweepMs` defaulting to
+**5,000ms** — `keyboard.sweep()` + `pool.sweep()`, unconditionally, for as long as vyred runs,
+whether or not any computer is checked out. Each tick is cheap (in-memory `Map` iteration, no
+DB/network when the pool is empty), but the *interval* is 12x tighter than the "no polling
+faster than once a minute when idle" budget — the same shape as the `core/watchers` TICK_MS
+issue fixed earlier in this audit.
+
+Not fixed directly here: unlike the watchers case, this one has a real tradeoff.
+`pool.sweep()`'s job is freezing idle computers (`freezeMs` defaults to 15,000ms, `idleMs` to
+60,000ms) — a 5s sweep catches a computer at most 5s past its freeze deadline; bumping the
+interval straight to 60s would mean a computer could sit running-but-unwatched for up to ~75s
+instead of ~20s before it freezes, which is a real cost regression for exactly the SPEC bullet
+this budget is about ("heavy work... pauses... never blocks"). Flagged to `computers` with the
+numbers; suggested fix is adaptive — sweep at 5s only while the pool has something non-frozen
+to watch (an active or not-yet-frozen checkout), back off toward 60s when everything is already
+frozen or the pool is empty (the common case for most installs, since `computers` is not yet
+widely used).
+
+**Fixed** by `computers` on `work/computers` (6b07020): exactly the adaptive approach suggested
+— a self-rescheduling `setTimeout` (not `setInterval`, so each cycle can pick a fresh delay)
+that runs at `sweepMs` (5s default) while `pool.checkouts`/`pool.idle`/`keyboard.takeovers` has
+anything in it, and backs off to a new `idleSweepMs` (60s default) once everything is already
+frozen/stopped or actively watched. Verified directly (`core/computers/index.js:70-92`) and
+`node --test core/computers/*.test.js`: 73/73 pass.
 
 ## Deck audit
 
