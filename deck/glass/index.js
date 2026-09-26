@@ -11,6 +11,7 @@ import { attempt } from "../js/api.js";
 import { surfaceId, isPhone, errText, gicon } from "./util.js";
 import { mountScreen, LIFECYCLE } from "./watch.js";
 import { mountFiles } from "./files.js";
+import { healthDot } from "../js/health.js";
 
 let styled = /** @type {Promise<void> | null} */ (null);
 /** The Glass stylesheet, added once, before the first render. */
@@ -39,6 +40,9 @@ export default async function glass(ctx) {
 
   const t = await attempt("glass.targets");
   if (!ctx.alive()) return;
+  // No box, or a machine without Glass: there is no screen to watch and nothing to take over,
+  // so say where the computer would run and how to get one, and offer nothing else.
+  if (t.error?.missing) { put(ctx.root, noBox(name, box, phone, t.error.code === "offline")); return; }
   const info = (t.data || []).find((/** @type {any} */ x) => x.target === target) || null;
   const hasScreen = !box && info?.screen !== false;
   const tabs = [
@@ -65,6 +69,10 @@ export default async function glass(ctx) {
   const body = h("div", { class: "gl-body" });
   const seg = h("div", { class: "seg gl-tabs", role: "tablist", "aria-label": "Glass" });
 
+  // How the box reaches this device, as a dot beside the title (asked on open, then once a minute while shown).
+  const health = healthDot();
+  ctx.cleanup(health.stop);
+
   const back = phone
     ? link(box ? "/now" : `/agents/${encodeURIComponent(name)}`, { class: "gl-back", "aria-label": box ? "Back to Now" : `Back to ${name}` },
       gicon("left", 22), h("span", null, box ? "Now" : "Back"))
@@ -72,10 +80,10 @@ export default async function glass(ctx) {
 
   put(ctx.root, h("div", { class: "gl" + (phone ? " gl-is-phone" : "") },
     phone
-      ? h("header", { class: "gl-phead" }, back, h("div", { class: "gl-pname" }, h("span", { class: "mono" }, box ? "box" : name), h("span", { class: "gl-vr" }), status))
+      ? h("header", { class: "gl-phead" }, back, h("div", { class: "gl-pname" }, h("span", { class: "mono" }, box ? "box" : name), health.el, h("span", { class: "gl-vr" }), status))
       : h("header", { class: "gl-head" },
         h("div", { class: "gl-title" },
-          h("div", { class: "gl-title-row" }, h("h1", { class: "h3" }, title), stateEl),
+          h("div", { class: "gl-title-row" }, h("h1", { class: "h3" }, title), stateEl, health.el),
           sub ? h("div", { class: "small muted" }, sub) : h("div", { class: "small muted" }, "Only your tailnet can open this page. ",
             link(`/agents/${encodeURIComponent(name)}`, { class: "link quiet" }, `Back to ${name}`))),
         slot),
@@ -105,4 +113,21 @@ export default async function glass(ctx) {
   }
   ctx.cleanup(() => { current?.unmount(); current = null; });
   show(tab);
+}
+
+/** The page when this machine has no Glass: no box paired, or vyred did not answer. */
+function noBox(name, box, phone, offline) {
+  const back = box ? link("/now", { class: "link" }, "Back to Now") : link(`/agents/${encodeURIComponent(name)}`, { class: "link" }, `Back to ${name}`);
+  return h("div", { class: "gl" + (phone ? " gl-is-phone" : "") },
+    phone ? h("header", { class: "gl-phead" },
+      link(box ? "/now" : `/agents/${encodeURIComponent(name)}`, { class: "gl-back", "aria-label": box ? "Back to Now" : `Back to ${name}` }, gicon("left", 22), h("span", null, box ? "Now" : "Back"))) : null,
+    h("section", { class: "gl-nobox", "aria-labelledby": "gl-nobox-h" },
+      h("div", { class: "lbl" }, "Glass"),
+      h("h1", { class: "h3", id: "gl-nobox-h" }, offline ? "The box is not answering." : box ? "No box is paired yet." : `${name}'s computer runs on your box.`),
+      offline
+        ? h("p", { class: "muted" }, "Glass opens once vyred answers again. Check the box with ", h("code", { class: "code" }, "vyre status"), ".")
+        : h("p", { class: "muted" }, box ? "Pair a server and its files show here." : `No box is paired with this machine, so there is no screen to watch.`,
+          " Pair one from a terminal:"),
+      offline ? null : h("pre", { class: "gl-nobox-cmd code" }, "vyre box add you@your-server"),
+      h("p", { class: "small" }, back)));
 }

@@ -296,6 +296,11 @@ export class Registry {
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.callers && !def.callers.includes(callerKind(caller))) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+    // A guest from another tailnet is never a person proving they are here, whatever proof it
+    // carries: presence is the owner's (ADR 0014 part 8). The router already hides these tools.
+    if (String(caller).startsWith("tailnet-guest:") && (this.deps.presence ? this.deps.presence.required(tool, def) : def.presence)) {
+      return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
+    }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
     if (this.deps.rules) {

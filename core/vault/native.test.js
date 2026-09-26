@@ -7,17 +7,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fillNative, hostsOf, appsOf, appLabel } from "./native.js";
 import { Helper } from "./mac/helper.js";
 import { writeFakes } from "./mac/fakes.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const sha = v => crypto.createHash("sha256").update(v).digest("hex");
 const PW = `fixture-canary-${crypto.randomBytes(12).toString("hex")}`;
 
 function rig(t, typeMode = "ok") {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-native-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-native-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const f = writeFakes(dir, { typeMode });
   const rows = {

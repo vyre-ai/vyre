@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "vyre",
+  "owner": { "name": "Vyre AI", "url": "https://vyre.run" },
+  "description": "Vyre for Claude Code: projects, memory, the security floor and every Vyre tool.",
+  "plugins": [
+    {
+      "name": "vyre",
+      "source": "./harness",
+      "description": "Projects, memory, rules and every Vyre tool, inside Claude Code. Works without Vyre too: it then says how to install it.",
+      "category": "productivity",
+      "homepage": "https://vyre.run"
+    }
+  ]
+}

@@ -2,9 +2,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { parse, status } from "./tailnet.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const sample = {
   BackendState: "Running",
@@ -29,7 +29,7 @@ test("tailnet: parse reads login, self and peers", () => {
 
 test("tailnet: signed out and missing are said plainly", async t => {
   assert.match(String(parse({ BackendState: "NeedsLogin" }).why), /signed out/);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-tn-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-tn-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const missing = await status({ ...process.env, VYRE_TAILSCALE_BIN: path.join(dir, "nope") });
   assert.equal(missing.installed, false);

@@ -7,17 +7,19 @@
     "tools": [
       "computers.list", "computers.get", "computers.checkout", "computers.release", "computers.stop", "computers.restart", "computers.limits",
       "computers.pause", "computers.resume", "computers.takeover", "computers.giveback", "computers.watch",
-      "computers.endpoint", "computers.may-act", "computers.helper", "computers.shield"
+      "computers.endpoint", "computers.may-act", "computers.helper", "computers.shield",
+      "computers.egress.status", "computers.egress.set",
+      "computers.tailnet.status", "computers.tailnet.set", "computers.node.agent"
     ]
   },
   "watches": {
     "emits": [
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
       "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back",
-      "computer.shielded", "computer.unshielded"
+      "computer.shielded", "computer.unshielded", "computer.joined", "computer.left"
     ]
   },
   "shows": { "streams": ["glass"], "cli": ["computers"], "deck": ["panel:glass"] },
-  "needs": {},
+  "needs": { "vault": ["tailscale-agent-authkey"] },
   "teaches": {}
 }

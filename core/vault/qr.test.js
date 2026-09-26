@@ -7,11 +7,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { encode, formatBits, versionBits, rsRemainder, pickVersion, dataCapacity, penalty, functionMask, toSvg } from "./qr.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 test("format bits match the standard's table for level M", () => {
   const want = [0x5412, 0x5125, 0x5e7c, 0x5b4b, 0x45f9, 0x40ce, 0x4f97, 0x4aa0];
@@ -160,7 +160,7 @@ test("matches an independent encoder module for module at versions 1, 3, 5, 7 an
  */
 function decoder() {
   try { execFileSync("zbarimg", ["--version"], { stdio: "ignore" }); } catch { return null; }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-qr-probe-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-qr-probe-"));
   try {
     const file = path.join(dir, "p.png");
     fs.writeFileSync(file, png(encode("probe").modules));
@@ -172,7 +172,7 @@ function decoder() {
 const zbar = decoder();
 
 test("zbarimg reads every version, every mask, and a kit-shaped payload", { skip: !zbar && "no working zbarimg on this machine" }, t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-qr-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-qr-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const cases = [];
   for (let v = 1; v <= 10; v++) {

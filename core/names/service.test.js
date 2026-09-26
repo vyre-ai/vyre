@@ -5,7 +5,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import https from "node:https";
 import crypto from "node:crypto";
@@ -14,12 +13,13 @@ import * as config from "../config/index.js";
 import * as certs from "./certs.js";
 import { names, checkName } from "./service.js";
 import { tempHome } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 const skip = !hasOpenssl && "openssl is needed to make a certificate";
 
 function selfSigned(cn, days = 90) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-names-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-names-"));
   try {
     execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
       "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-subj", `/O=Test CA/CN=${cn}`, "-days", String(days)], { stdio: "ignore" });
@@ -277,5 +277,9 @@ test("names: the owner's WebSockets reach vyred's streams as the owner; nobody e
   assert.equal(await up("100.101.1.2", { host: "evil.example" }), "HTTP/1.1 421 Misdirected Request", "another host name");
   assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "someone else on the tailnet");
   assert.equal(await up("100.101.9.9", {}), "HTTP/1.1 403 Forbidden", "an address whois does not know");
-  assert.deepEqual(w.calls.filter(c => c.startsWith("stream")), ["stream tailnet:alex@example.com", "stream tailnet:alex@example.com"]);
+  // A guest's stream is a guest's, never the owner's.
+  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["glass.open"] } } };
+  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 101 Switching Protocols", "a guest listed for Glass");
+  assert.deepEqual(w.calls.filter(c => c.startsWith("stream")),
+    ["stream tailnet:alex@example.com", "stream tailnet:alex@example.com", "stream tailnet-guest:sam@example.com"]);
 });

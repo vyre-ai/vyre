@@ -3,7 +3,7 @@
 // Board: DeckAgent. Spec section 10.
 //
 // Tools: agents.list, agents.create, agents.update, agents.stop, agents.ask (switchboard),
-// watchers.list, watchers.pause (watchers), computers.get, computers.restart, computers.limits
+// watchers.list, watchers.pause, watchers.resume (watchers), computers.get, computers.restart, computers.limits
 // (computers), threads.list for thread names and times, projects.list for project names.
 // Each may be missing; each section then says which module is not running.
 
@@ -385,7 +385,8 @@ function watcherRow(x, w) {
   sw.addEventListener("click", async () => {
     const on_ = sw.getAttribute("aria-checked") !== "true";
     /** @type {HTMLButtonElement} */ (sw).disabled = true;
-    const r = await attempt("watchers.pause", on_ ? { name: x.name, off: true } : { name: x.name });
+    // On is watchers.resume, off is watchers.pause; neither takes more than the name.
+    const r = await attempt(on_ ? "watchers.resume" : "watchers.pause", { name: x.name });
     /** @type {HTMLButtonElement} */ (sw).disabled = false;
     if (r.error) { put(status, why(r.error)); return; }
     put(status);
