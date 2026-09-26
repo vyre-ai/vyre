@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### link.health answers the owner and modules only
+
+- On the box, `link.health` refuses a guest from another tailnet, an agent's own node, an agent
+  at the box, MCP and any tailnet login that is not the box's owner. The Deck, the terminal and
+  modules such as Glass ask as before.
+
 #### Glass egress: fail closed, keys that survive restarts
 
 - The egress sidecar no longer sends a listed site out from the box when the Mac stops offering

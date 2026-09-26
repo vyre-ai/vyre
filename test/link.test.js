@@ -411,6 +411,10 @@ test("link: link.health on the Mac is the box's node, and on the box the calling
   assert.equal(phone.data.latencyMs, 95);
   assert.equal(phone.data.lastHandshake, null, "never shook hands: null, not year one");
   assert.equal((await s.boxCall("link.health", { node: "nPHONE" }, "module:glass")).data.cached, true);
+  // Modules and the owner only: a guest, an agent's node, an agent at the box and another login are refused.
+  for (const caller of ["tailnet-guest:sam@harlow.example", "tailnet:agent:kit", "mcp agent:kit", "mcp", "anonymous", "tailnet:owner@example.com agent:kit"]) {
+    assert.match((await s.boxCall("link.health", { node: "nMAC" }, caller, { peer: MAC })).error.message, /owner and its modules only/, caller);
+  }
   // Nothing named and no calling node: unknown, with the reason.
   const bare = await s.boxCall("link.health");
   assert.equal(bare.data.path, "unknown");
