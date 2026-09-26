@@ -201,7 +201,7 @@ private fun Shell(activity: MainActivity) {
                     Header(pager.currentPage + pager.currentPageOffsetFraction, needs.v.value ?: 0, avatar,
                         onPage = { p -> scope.launch { pager.animateScrollToPage(p.ordinal) } },
                         onAvatar = { sheet = "settings" },
-                        onNewAgent = { toast = Toast("New agents are made on the Deck for now.") })
+                        onNewAgent = { sheet = "newagent" })
                     OfflineLine()
                     CompositionLocalProvider(LocalInShell provides true) {
                         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), beyondViewportPageCount = 1) { i ->
@@ -238,6 +238,7 @@ private fun Shell(activity: MainActivity) {
                     when (sheet) {
                         "settings" -> SettingsScreen(onBack = close)
                         "find" -> FindScreen(onClose = close)
+                        "newagent" -> NewAgentSheet(onClose = close)
                     }
                 }
             }

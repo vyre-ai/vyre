@@ -79,6 +79,15 @@ class Client(
         return call(tool, input, p.header(tool, input, reason), timeoutSec)
     }
 
+    /**
+     * A tool that may or may not need a person (agents.create and agents.update are becoming
+     * human-only): call it plainly, and on presence_required sign with the device key after the
+     * fingerprint and retry exactly once. Any other answer, or a second refusal, is thrown.
+     */
+    suspend fun callOrProve(tool: String, input: JsonObject, reason: String, timeoutSec: Long = 60): JsonElement =
+        try { call(tool, input, null, timeoutSec) }
+        catch (e: ApiError.PresenceRequired) { callProved(tool, input, reason, timeoutSec) }
+
     /** vault.reveal / vault.totp inside an open presence session, else a device proof for this item. */
     suspend fun callVault(tool: String, input: JsonObject, reason: String): JsonElement {
         val s = presenceSession?.takeIf { it.live() }

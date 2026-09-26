@@ -1,6 +1,13 @@
 package sh.vyre.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -220,5 +227,156 @@ fun FactScreen(id: String, back: String, onBack: () -> Unit) {
                 Row2(t.str("text").orEmpty(), dots(t.str("module"), t.str("kind"), t.str("age")))
             }
         }
+    }
+}
+
+// ---- New agent (the "+" on Agents; the Deck's newForm, apps/CONTRACT.md 4.1) ----
+
+/**
+ * The New agent sheet: name (the lowercase rule checked before sending), the projects it works
+ * in, its job, what it runs on (a subscription's setup token, with an optional API-key fallback
+ * and a monthly budget, or an API key with a budget), and a computer. Credentials are Vault item
+ * names picked from vault.list, never values. agents.create is becoming human-only, so a
+ * presence_required answer is signed with the device key and retried once (Client.callOrProve).
+ */
+@Composable
+fun NewAgentSheet(onClose: () -> Unit) {
+    val app = LocalApp.current
+    val nav = LocalNav.current
+    val toast = LocalToast.current
+    val scope = rememberCoroutineScope()
+    val c = V.c
+    val projects = rememberLoad("na-projects") { app.client.call("projects.list").at("projects").arr.toList() }
+    val vault = rememberLoad("na-vault") { runCatching { app.client.call("vault.list").at("items").arr.mapNotNull { it.str("name") } }.getOrDefault(emptyList()) }
+    var form by remember { mutableStateOf(sh.vyre.app.data.NewAgent()) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val slugs = projects.v.value.orEmpty().mapNotNull { it.str("slug") }
+
+    fun create() {
+        val input = form.toInput(slugs).getOrElse { status = it.message; return }
+        busy = true; status = "Creating"
+        scope.launch {
+            try {
+                val out = app.client.callOrProve("agents.create", input, "Create the agent ${form.name.trim()}")
+                val name = out.str("name") ?: form.name.trim()
+                onClose()
+                toast(Toast("Made $name."))
+                nav("agent/" + android.net.Uri.encode(name))
+            } catch (e: sh.vyre.app.api.ApiError.Cancelled) { status = null
+            } catch (e: Exception) { status = e.plain() + " The agent was not created." }
+            busy = false
+        }
+    }
+
+    Page(top = { SheetTop("New agent", onClose) }) {
+        item {
+            FormLabel("Name")
+            InputBox(form.name, { form = form.copy(name = it.lowercase()) }, "e.g. kit", mono = true, imeAction = androidx.compose.ui.text.input.ImeAction.Next,
+                keyboard = androidx.compose.ui.text.input.KeyboardType.Ascii)
+            Text("Lowercase, one word. It signs its threads with it.", style = Type.meta, color = c.label, modifier = Modifier.padding(top = 4.dp))
+        }
+        item {
+            FormLabel("Works in")
+            if (projects.v.value == null && projects.v.loading) Text("Loading", style = Type.meta, color = c.label)
+            else if (slugs.isEmpty()) Text("No projects yet. It will see none until you add some.", style = Type.meta, color = c.label)
+            for (p in projects.v.value.orEmpty()) {
+                val slug = p.str("slug") ?: continue
+                CheckRow(p.str("name") ?: slug, slug in form.projects) { on -> form = form.copy(projects = if (on) form.projects + slug else form.projects - slug) }
+            }
+        }
+        item {
+            FormLabel("Job")
+            androidx.compose.foundation.text.BasicTextField(form.job, { form = form.copy(job = it) }, textStyle = Type.input.copy(color = c.text), minLines = 3, maxLines = 8,
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(c.focus),
+                modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).background(c.hover)
+                    .border(1.dp, c.rule, androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(12.dp),
+                decorationBox = { inner -> if (form.job.isEmpty()) Text("What this agent does, and what it must ask you before doing.", style = Type.input, color = c.label); inner() })
+        }
+        item {
+            FormLabel("Runs on")
+            RadioRow("Subscription (setup token)", "Uses your plan. The token stays in the Vault.", form.subscription) { form = form.copy(subscription = true) }
+            RadioRow("API key with a budget", "Stops when the budget is spent.", !form.subscription) { form = form.copy(subscription = false) }
+            Column(Modifier.padding(start = 36.dp, top = Space.s), verticalArrangement = Arrangement.spacedBy(Space.s)) {
+                if (form.subscription) {
+                    ItemPick("Vault item", form.subItem, vault.v.value.orEmpty()) { form = form.copy(subItem = it) }
+                    CheckRow("When the subscription limit is reached, fall back to an API key", form.fallback) { form = form.copy(fallback = it) }
+                    if (form.fallback) { ItemPick("Key item", form.keyItem, vault.v.value.orEmpty()) { form = form.copy(keyItem = it) }; Budget(form.budget) { form = form.copy(budget = it) } }
+                } else {
+                    ItemPick("Vault item", form.keyItem, vault.v.value.orEmpty()) { form = form.copy(keyItem = it) }
+                    Budget(form.budget) { form = form.copy(budget = it) }
+                }
+            }
+        }
+        item {
+            FormLabel("Computer")
+            CheckRow("Give it its own computer, from the pool", form.computer) { form = form.copy(computer = it) }
+        }
+        item {
+            VButton(if (busy) "Creating" else "Create agent", onClick = { create() }, kind = ButtonKind.Primary, enabled = !busy, height = 54.dp,
+                modifier = Modifier.fillMaxWidth().padding(top = Space.xl))
+            status?.let { Text(it, style = Type.secondary, color = c.text, modifier = Modifier.padding(top = Space.s)) }
+        }
+    }
+}
+
+@Composable
+private fun FormLabel(text: String) {
+    Text(text, style = Type.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight(600)), color = V.c.label, modifier = Modifier.padding(top = Space.l, bottom = Space.s))
+}
+
+@Composable
+private fun CheckRow(text: String, on: Boolean, set: (Boolean) -> Unit) {
+    val c = V.c
+    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable(role = androidx.compose.ui.semantics.Role.Checkbox) { set(!on) }, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.material3.Checkbox(on, onCheckedChange = null, colors = androidx.compose.material3.CheckboxDefaults.colors(
+            checkedColor = c.primaryBg, checkmarkColor = c.primaryInk, uncheckedColor = c.ruleStrong))
+        Text(text, style = Type.secondary, color = c.text, modifier = Modifier.padding(start = Space.s))
+    }
+}
+
+@Composable
+private fun RadioRow(title: String, hint: String, on: Boolean, pick: () -> Unit) {
+    val c = V.c
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(role = androidx.compose.ui.semantics.Role.RadioButton, onClick = pick), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        androidx.compose.material3.RadioButton(on, onClick = null, colors = androidx.compose.material3.RadioButtonDefaults.colors(selectedColor = c.text, unselectedColor = c.ruleStrong))
+        Column(Modifier.padding(start = Space.s)) {
+            Text(title, style = Type.rowTitle, color = c.text)
+            Text(hint, style = Type.meta, color = c.label)
+        }
+    }
+}
+
+/** A Vault item by name, picked from vault.list: the phone never types a secret. */
+@Composable
+private fun ItemPick(label: String, value: String, names: List<String>, pick: (String) -> Unit) {
+    val c = V.c
+    var open by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(label, style = Type.secondary, color = c.label, modifier = Modifier.width(96.dp))
+        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .border(1.dp, c.ruleStrong, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .clickable(enabled = names.isNotEmpty(), onClickLabel = "Pick a Vault item") { open = true }.padding(horizontal = 12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(value, style = Type.commandRow, color = c.text, modifier = Modifier.weight(1f), maxLines = 1)
+                if (names.isNotEmpty()) sh.vyre.app.design.Glyph.Chevron(c.label, modifier = Modifier.padding(start = Space.s))
+            }
+            androidx.compose.material3.DropdownMenu(open, onDismissRequest = { open = false }, containerColor = c.panel) {
+                for (n in names) androidx.compose.material3.DropdownMenuItem(text = { Text(n, style = Type.commandRow, color = c.text) }, onClick = { pick(n); open = false })
+            }
+        }
+    }
+}
+
+@Composable
+private fun Budget(value: String, set: (String) -> Unit) {
+    val c = V.c
+    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Budget", style = Type.secondary, color = c.label, modifier = Modifier.width(96.dp))
+        Text("$", style = Type.secondary, color = c.label)
+        InputBox(value, { v -> set(v.filter { it.isDigit() || it == '.' }) }, "10", modifier = Modifier.width(96.dp).padding(horizontal = Space.s), mono = true,
+            imeAction = androidx.compose.ui.text.input.ImeAction.Done, keyboard = androidx.compose.ui.text.input.KeyboardType.Decimal)
+        Text("a month", style = Type.secondary, color = c.label)
     }
 }
