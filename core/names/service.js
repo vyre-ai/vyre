@@ -225,6 +225,26 @@ export function names(deps) {
     return handle(req, res, `tailnet:${who.login}`, { node: who.node, stableId: who.stableId || null, login: who.login });
   }
 
+  // WebSockets (Glass's screen, /v1/streams/...): the same owner, host and origin rules as a
+  // request, then vyred's stream router with the caller this listener established. Without an
+  // upgrade listener Node drops every upgrade, so Glass over the tailnet never connected.
+  let upgrade = null;
+  async function onUpgrade(req, socket, head) {
+    const refuse = (status, text) => { try { socket.end(`HTTP/1.1 ${status} ${text}\r\nconnection: close\r\n\r\n`); } catch {} };
+    socket.on("error", () => {});
+    const who = await identify(String(req.socket.remoteAddress || ""));
+    if (!who.ok) { ctx.log(`names: refused a stream from ${who.node || "an address"}: ${who.why}`); return refuse(403, "Forbidden"); }
+    const host = String(req.headers.host || "").toLowerCase();
+    const mine = [certName(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
+    if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) return refuse(421, "Misdirected Request");
+    // A browser sends Origin on every WebSocket, and a page on another site could open one with
+    // the owner's address: only this box's own page may.
+    const origin = req.headers.origin;
+    if (origin && String(origin).toLowerCase() !== `https://${host}`) return refuse(403, "Forbidden");
+    if (!upgrade) upgrade = ctx.upgrader({});
+    upgrade(req, socket, head, `tailnet:${who.login}`);
+  }
+
   async function serve() {
     // A ts.net name comes from Tailscale, and a freshly started vyred has not asked yet.
     if (net().via === "ts.net" && !(last && last.node)) await tailscale();
@@ -237,6 +257,7 @@ export function names(deps) {
       const s = https.createServer({ cert: c.cert, key: c.key, minVersion: "TLSv1.2" }, (req, res) => {
         onRequest(req, res).catch(e => { if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: { code: "internal", message: e.message } })); } });
       });
+      s.on("upgrade", (req, socket, head) => { onUpgrade(req, socket, head).catch(() => socket.destroy()); });
       s.keepAliveTimeout = 30_000;
       return s;
     };
@@ -279,7 +300,7 @@ export function names(deps) {
   }
 
   return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew,
-    connect: () => ts.up(), wait: () => working, onRequest };
+    connect: () => ts.up(), wait: () => working, onRequest, onUpgrade };
 }
 
 function issuerOf(pem) {

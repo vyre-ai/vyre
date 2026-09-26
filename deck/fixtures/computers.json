@@ -2,13 +2,58 @@
   "computers.get": {
     "$by": "agent",
     "cases": {
-      "kit": { "name": "kit-01", "host": "alex-box", "state": "live",
-        "screen": { "pool": 4, "index": 3, "w": 1440, "h": 900, "idle_return_min": 20 },
-        "cpu": 2, "memory_gb": 4, "disk": { "used_gb": 8.2, "total_gb": 20 }, "network": "Tailnet + public web",
-        "rules": { "count": 6, "example": "ask before git push" } },
+      "kit": {
+        "agent": "kit",
+        "state": "running",
+        "screen": 1,
+        "screens": 2,
+        "thread": null,
+        "viewers": 1,
+        "takeover": null,
+        "paused": false,
+        "size": {
+          "w": 1440,
+          "h": 900
+        },
+        "since": 1790000000000,
+        "cpus": 2,
+        "memory_gb": 3
+      },
       "*": null
     }
   },
-  "computers.restart": { "ok": true },
-  "computers.limits": { "ok": true }
+  "computers.restart": {
+    "agent": "kit",
+    "state": "running",
+    "screen": 1,
+    "screens": 2,
+    "thread": null,
+    "viewers": 0,
+    "takeover": null,
+    "paused": false,
+    "size": {
+      "w": 1440,
+      "h": 900
+    },
+    "since": 1790000000000,
+    "cpus": 2,
+    "memory_gb": 3
+  },
+  "computers.limits": {
+    "agent": "kit",
+    "state": "running",
+    "screen": 1,
+    "screens": 2,
+    "thread": null,
+    "viewers": 0,
+    "takeover": null,
+    "paused": false,
+    "size": {
+      "w": 1440,
+      "h": 900
+    },
+    "since": 1790000000000,
+    "cpus": 2,
+    "memory_gb": 3
+  }
 }
