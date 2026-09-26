@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { askPost, heldPost, editDialog, resolvedPatch, textPost, editable, MAX_POST } from "./posts.js";
+import { askPost, heldPost, heldPatch, resolvedPatch, textPost, MAX_POST } from "./posts.js";
 import { channelName, same } from "./bridge.js";
 
 const h = { hook: "http://vyred:8766", secret: "s3cr3t-hook" };
@@ -24,7 +24,7 @@ test("posts: a question has Allow and Deny, each carrying its ask id, action and
   }
 });
 
-test("posts: a held email shows the destination, then the words, with Send, Edit and Discard", () => {
+test("posts: a held email shows the destination, then the words Send will send, with Send and Discard and no Edit", () => {
   const item = { id: "g1", kind: "send", via: "mail", to: ["dana@harlowlegal.com"], summary: "Re: Intake form rebuild", agent: "juno" };
   const draft = { subject: "Re: Intake form rebuild", body: "Hi Dana,\nThe new intake form is on staging.\nAlex" };
   const p = heldPost(item, draft, { channel: "c1", root: null, ...h });
@@ -32,21 +32,28 @@ test("posts: a held email shows the destination, then the words, with Send, Edit
   const to = p.message.indexOf("To: dana@harlowlegal.com");
   const words = p.message.indexOf("> The new intake form is on staging.");
   assert.ok(to > 0 && words > to, "where it goes comes before what it says");
-  assert.match(p.message, /Nothing goes out until you press Send/);
-  assert.deepEqual(actions(p).map(x => x.id), ["send", "edit", "discard"]);
+  assert.match(p.message, /Send sends exactly what is shown here/);
+  assert.match(p.message, /\/vyre body g1 <new text>/);
+  assert.match(p.message, /\/vyre subject g1 <text>/);
+  assert.deepEqual(actions(p).map(x => x.id), ["send", "discard"], "no Deck address, no Deck link");
   assert.ok(actions(p).every(x => x.integration.context.kind === "gate" && x.integration.context.id === "g1"));
 });
 
-test("posts: the edit dialog is filled with the draft, body last, and its state carries id and secret", () => {
-  const item = { id: "g1", to: "dana@harlowlegal.com" };
-  const d = editDialog(item, { body: "Hi Dana", subject: "Re: Intake", method: "POST" }, h);
-  assert.deepEqual(d.elements.map(e => e.name), ["to", "subject", "body"]);
-  assert.equal(d.elements[0].default, "dana@harlowlegal.com");
-  assert.equal(d.elements[2].type, "textarea");
-  assert.equal(d.elements[2].default, "Hi Dana");
-  assert.deepEqual(JSON.parse(d.state), { id: "g1", s: "s3cr3t-hook" });
-  assert.equal(d.submit_label, "Send");
-  assert.deepEqual(editable(null), []);
+test("posts: with the Deck's address, Edit in Deck is a link to the held item that still carries its id", () => {
+  const item = { id: "g1", kind: "send", via: "mail", to: "dana@harlowlegal.com" };
+  const p = heldPost(item, { body: "Hi Dana" }, { channel: "c1", ...h, deck: "https://alex.vyre.run/" });
+  const deck = actions(p).find(x => x.id === "deck");
+  assert.equal(deck.name, "Edit in Deck");
+  assert.equal(deck.integration.url, "https://alex.vyre.run/now/held/g1");
+  assert.equal(deck.integration.context.id, "g1");
+  assert.equal(deck.integration.context.s, undefined, "a link never carries the hook secret");
+});
+
+test("posts: a revision's patch shows the new words and keeps the buttons", () => {
+  const item = { id: "g1", kind: "send", via: "mail", to: "dana@harlowlegal.com" };
+  const r = heldPatch(item, { body: "Hi Dana, Thursday at 3?" }, h);
+  assert.match(r.message, /> Hi Dana, Thursday at 3\?/);
+  assert.deepEqual(r.props.attachments[0].actions.map(x => x.id), ["send", "discard"]);
 });
 
 test("posts: a resolved post keeps its words and loses every button", () => {

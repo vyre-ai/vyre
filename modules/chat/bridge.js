@@ -19,7 +19,7 @@
 // otherwise ignored; a stranger's reply in a thread never reaches a session.
 
 import crypto from "node:crypto";
-import { askPost, heldPost, editDialog, resolvedPatch, textPost, cut } from "./posts.js";
+import { askPost, heldPost, heldPatch, resolvedPatch, textPost, cut } from "./posts.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE chat_channels (project TEXT PRIMARY KEY, channel_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL, since INTEGER NOT NULL);
@@ -34,7 +34,7 @@ export const MIGRATIONS = [
 const MIRRORED = {
   "thread.started": "threads", "thread.text": "threads", "thread.sent": "threads", "thread.stopped": "threads",
   "lease.changed": "threads", "ask.raised": "threads", "ask.answered": "threads",
-  "gate.held": "gate", "gate.released": "gate", "gate.failed": "gate", "gate.rejected": "gate",
+  "gate.held": "gate", "gate.revised": "gate", "gate.released": "gate", "gate.failed": "gate", "gate.rejected": "gate",
 };
 
 /** A Mattermost channel name: lowercase letters, digits, dashes; 2 to 64 characters. @param {string} s */
@@ -50,11 +50,14 @@ export function same(a, b) {
   return crypto.timingSafeEqual(h(a), h(b));
 }
 
+/** Is this surface Chat's own? @param {unknown} s */
+const ours = s => typeof s === "string" && (s === "chat" || s.startsWith("chat:"));
+
 /** How a surface reads in a sentence. @param {string|null|undefined} s */
 function surfaceLabel(s) {
   if (!s) return "nobody";
   if (s === "cli") return "the terminal";
-  if (s === "chat") return "Chat";
+  if (s === "chat" || s.startsWith("chat:")) return "Chat";
   if (s.startsWith("agent:")) return s.slice(6);
   return `the ${s}`;
 }
@@ -62,17 +65,21 @@ function surfaceLabel(s) {
 /**
  * @typedef {{ post: (p: any) => Promise<any>, patch: (id: string, p: any) => Promise<any>, postsSince: (c: string, since: number) => Promise<any[]>,
  *   channelByName: (t: string, n: string) => Promise<any>, createChannel: (c: any) => Promise<any>, addMember: (c: string, u: string) => Promise<any>,
- *   me: () => Promise<any>, team: (n: string) => Promise<any>, user: (n: string) => Promise<any>, openDialog: (d: any) => Promise<any> }} MM
+ *   me: () => Promise<any>, team: (n: string) => Promise<any>, user: (n: string) => Promise<any> }} MM
  */
 
 export class Bridge {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, mm: MM, call: (tool: string, input: any) => Promise<any>,
-   *   log: (m: string) => void, team: string, owner: string, hook: string, slashToken?: () => Promise<string>, now?: () => number }} o
+   *   log: (m: string) => void, team: string, owner: string, hook: string, deck?: string, slashToken?: () => Promise<string>, now?: () => number }} o
    */
   constructor(o) {
     this.db = o.db; this.mm = o.mm; this.call = o.call; this.log = o.log;
     this.teamName = o.team; this.ownerName = o.owner; this.hook = o.hook.replace(/\/+$/, "");
+    this.deck = o.deck ? String(o.deck).replace(/\/+$/, "") : "";
+    // The switchboard's lease names the surface and who is at it, so another surface can say
+    // "Chat (alex) has the keyboard". Anything starting with "chat" is ours.
+    this.surface = `chat:${o.owner}`;
     this.slashToken = o.slashToken || (async () => "");
     this.now = o.now || Date.now;
     /** @type {Promise<any>} */
@@ -86,7 +93,7 @@ export class Bridge {
   /** @param {string} k @param {string} v */
   setState(k, v) { this.db.prepare("INSERT OR REPLACE INTO chat_state (key, value) VALUES (?, ?)").run(k, v); return v; }
 
-  get h() { return { hook: this.hook, secret: this.secret }; }
+  get h() { return { hook: this.hook, secret: this.secret, ...(this.deck ? { deck: this.deck } : {}) }; }
 
   /** Find the bot, the team and the owner. Throws with Mattermost's reason when one is missing. */
   async connect() {
@@ -195,7 +202,7 @@ export class Bridge {
       case "thread.sent": {
         // What was typed into the session from somewhere else, so this thread reads the same as
         // the terminal. What was typed here is already here.
-        if (!thread || !p.text || p.surface === "chat") return;
+        if (!thread || !p.text || ours(p.surface)) return;
         const t = await this.ensureThread(thread, project);
         const who = p.surface && String(p.surface).startsWith("agent:") ? `**${String(p.surface).slice(6)}** asked` : `**You**, from ${surfaceLabel(p.surface)}`;
         await this.reply(t, `${who}\n> ${String(p.text).split("\n").join("\n> ")}`);
@@ -204,8 +211,8 @@ export class Bridge {
       case "lease.changed": {
         const t = thread && this.threadRow(thread);
         if (!t) return;
-        if (p.holder === "chat" && p.previous && p.previous !== "chat") await this.reply(t, `_Took the keyboard from ${surfaceLabel(p.previous)}. It is read-only there now._`);
-        else if (p.holder && p.holder !== "chat" && p.previous === "chat") await this.reply(t, `_The keyboard moved to ${surfaceLabel(p.holder)}. Type here to take it back._`);
+        if (ours(p.holder) && p.previous && !ours(p.previous)) await this.reply(t, `_Took the keyboard from ${surfaceLabel(p.previous)}. It is read-only there now._`);
+        else if (p.holder && !ours(p.holder) && ours(p.previous)) await this.reply(t, `_The keyboard moved to ${surfaceLabel(p.holder)}. Type here to take it back._`);
         return;
       }
       case "thread.stopped": {
@@ -230,12 +237,24 @@ export class Bridge {
         // The content is not in the event, by design; read it from the Gate for the post.
         const g = await this.call("gate.get", { id: p.id });
         const item = g && g.data ? { ...p, ...g.data } : p;
-        const draft = item.draft ?? item.content ?? null;
+        // The words Send will send: a revision made before this post existed, else the draft.
+        const draft = item.final ?? item.draft ?? item.content ?? null;
         let channel, root = null;
         if (thread) { const t = await this.ensureThread(thread, project); channel = t.channel_id; root = t.root_id; }
         else channel = (await this.channelFor(project)).channel_id;
         const post = await this.send(heldPost(item, draft, { channel, root, ...this.h }));
         this.item("gate", p.id, post, channel, root);
+        return;
+      }
+      case "gate.revised": {
+        // The post must show what Send will send, so a revision from any surface patches it.
+        const it = this.itemRow("gate", p.id);
+        if (!it || it.state !== "open") return;
+        const g = await this.call("gate.get", { id: p.id });
+        if (!g || !g.data) return;
+        const patch = heldPatch(g.data, g.data.final ?? g.data.draft, this.h);
+        await this.mm.patch(it.post_id, patch);
+        this.db.prepare("UPDATE chat_items SET message = ? WHERE kind = 'gate' AND item_id = ?").run(patch.message, p.id);
         return;
       }
       case "gate.released":
@@ -314,9 +333,9 @@ export class Bridge {
    * @param {any} t @param {string} text
    */
   async typeInto(t, text) {
-    const lease = await this.call("threads.lease", { thread: t.thread, surface: "chat" });
+    const lease = await this.call("threads.lease", { thread: t.thread, surface: this.surface });
     if (lease && lease.error && lease.error.code === "no_such_tool") { await this.reply(t, "_Sessions are not running on this box, so this was not sent._"); return; }
-    const r = await this.call("threads.send", { thread: t.thread, text, surface: "chat" });
+    const r = await this.call("threads.send", { thread: t.thread, text, surface: this.surface });
     if (r && r.error) await this.reply(t, `_Not sent: ${cut(r.error.message, 300)}_`);
     else if (r && r.data && r.data.sent === false) await this.reply(t, `_Not sent: ${surfaceLabel(r.data.holder)} has the keyboard._`);
   }
@@ -327,7 +346,7 @@ export class Bridge {
    */
   async start(row, prompt, root) {
     if (!root) root = (await this.send(textPost({ channel: row.channel_id, message: `**New session**\n> ${cut(prompt, 2000).split("\n").join("\n> ")}` }))).id;
-    const r = await this.call("threads.start", { ...(row.project ? { project: row.project } : {}), prompt, surface: "chat" });
+    const r = await this.call("threads.start", { ...(row.project ? { project: row.project } : {}), prompt, surface: this.surface });
     const id = r && r.data && (r.data.id || r.data.thread);
     if (!id) {
       await this.send(textPost({ channel: row.channel_id, root, message: `_Could not start a session: ${cut(r && r.error ? r.error.message : "no thread came back", 300)}_` }));
@@ -338,7 +357,7 @@ export class Bridge {
     return String(id);
   }
 
-  // ---- presses, dialogs and the slash command --------------------------------------------
+  // ---- presses and the slash command --------------------------------------------
 
   /**
    * A button press, as Mattermost posts it: {user_id, post_id, trigger_id, context}.
@@ -351,25 +370,18 @@ export class Bridge {
     const id = String(c.id || "");
     return this.enqueue(async () => {
       if (c.kind === "ask" && (c.action === "allow" || c.action === "deny")) {
-        const r = await this.call("threads.answer", { ask: id, decision: c.action, surface: "chat" });
+        const r = await this.call("threads.answer", { ask: id, decision: c.action, surface: this.surface });
         return { body: r && r.error ? { ephemeral_text: `Not answered: ${r.error.message}` } : {} };
       }
       if (c.kind === "gate" && c.action === "send") return { body: await this.approve(id) };
       if (c.kind === "gate" && c.action === "discard") return { body: await this.reject(id) };
-      if (c.kind === "gate" && c.action === "edit") {
-        const g = await this.call("gate.get", { id });
-        if (!g || g.error) return { body: { ephemeral_text: `Could not open the draft: ${g && g.error ? g.error.message : "the Gate is not running"}` } };
-        if (g.data.state && g.data.state !== "held") return { body: { ephemeral_text: `This is already ${g.data.state}.` } };
-        await this.mm.openDialog({ trigger_id: String(body.trigger_id || ""), url: this.hook + "/chat/dialog", dialog: editDialog(g.data, g.data.draft ?? g.data.content, this.h) });
-        return { body: {} };
-      }
       return { body: { ephemeral_text: "That button does nothing here." } };
     });
   }
 
-  /** @param {string} id @param {any} [edited] */
-  async approve(id, edited) {
-    const r = await this.call("gate.approve", { id, ...(edited ? { edited } : {}), by: "chat" });
+  /** @param {string} id */
+  async approve(id) {
+    const r = await this.call("gate.approve", { id, by: "chat" });
     if (!r || r.error) return { ephemeral_text: `Not sent: ${r && r.error ? r.error.message : "the Gate is not running"}` };
     if (r.data && r.data.state === "failed") return { ephemeral_text: `Sending failed: ${cut(r.data.error || "", 300)}` };
     return {};
@@ -382,32 +394,6 @@ export class Bridge {
   }
 
   /**
-   * The edit dialog's submission: {type, callback_id, state, user_id, submission, cancelled}.
-   * Submitting is approving the words as they now stand.
-   * @param {any} body @returns {Promise<{ status?: number, body: any }>}
-   */
-  async dialog(body) {
-    let st = {};
-    try { st = JSON.parse(String(body && body.state || "{}")); } catch {}
-    const s = /** @type {any} */ (st);
-    if (!same(s.s, this.secret)) return { status: 403, body: { error: "not a Vyre dialog" } };
-    if (!this.ownerId || body.user_id !== this.ownerId) return { body: { error: "Only the owner of this Vyre can send this." } };
-    if (body.cancelled) return { body: {} };
-    const sub = body.submission || {};
-    /** @type {Record<string, any>} */
-    const edited = {};
-    for (const [k, v] of Object.entries(sub)) if (k !== "to" && typeof v === "string") edited[k] = v;
-    if (typeof sub.to === "string") {
-      const list = sub.to.split(/[,;]/).map(x => x.trim()).filter(Boolean);
-      edited.to = list.length === 1 ? list[0] : list;
-    }
-    return this.enqueue(async () => {
-      const out = await this.approve(String(s.id || ""), edited);
-      return { body: out.ephemeral_text ? { error: out.ephemeral_text } : {} };
-    });
-  }
-
-  /**
    * `/vyre ...`, as Mattermost posts it (form fields: token, user_id, channel_id, text).
    * @param {Record<string, string>} form @returns {Promise<{ status?: number, body: any }>}
    */
@@ -416,8 +402,10 @@ export class Bridge {
     if (!same(form.token, want)) return { status: 401, body: { response_type: "ephemeral", text: "This slash command is not configured for this Vyre." } };
     const say = text => ({ body: { response_type: "ephemeral", text } });
     if (!this.ownerId || form.user_id !== this.ownerId) return say("Only the owner of this Vyre can use /vyre.");
-    const [verb = "", ...rest] = String(form.text || "").trim().split(/\s+/);
-    const arg = rest.join(" ").trim();
+    // verb, then an id, then the rest with its line breaks kept: `/vyre body <id>` takes a letter.
+    const m = /^(\S*)\s*([\s\S]*)$/.exec(String(form.text || "").trim()) || [];
+    const verb = m[1] || "", arg = (m[2] || "").trim();
+    const m2 = /^(\S+)\s+([\s\S]+)$/.exec(arg);
     return this.enqueue(async () => {
       if (verb === "held") {
         const r = await this.call("gate.held", {});
@@ -427,6 +415,11 @@ export class Bridge {
         return say(items.map(i => `\`${i.id}\` ${i.kind} via ${i.via} to ${Array.isArray(i.to) ? i.to.join(", ") : i.to}${i.summary ? `: ${cut(i.summary, 120)}` : ""}`).join("\n"));
       }
       if (verb === "send" && arg) { const o = await this.approve(arg); return say(o.ephemeral_text || "Sent."); }
+      if ((verb === "body" || verb === "subject") && m2) {
+        const r = await this.call("gate.revise", { id: m2[1], edited: { [verb]: m2[2].trim() }, by: "chat" });
+        if (!r || r.error) return say(`Not changed: ${r && r.error ? r.error.message : "the Gate is not running"}`);
+        return say(`Changed the ${verb}. The held post shows the new words; Send sends them.`);
+      }
       if (verb === "discard" && arg) { const o = await this.reject(arg); return say(o.ephemeral_text || "Discarded. Nothing was sent."); }
       if (verb === "new" && arg) {
         const row = /** @type {any} */ (this.db.prepare("SELECT * FROM chat_channels WHERE channel_id = ?").get(String(form.channel_id || "")))
@@ -434,7 +427,7 @@ export class Bridge {
         const id = await this.start(row, arg, null);
         return say(id ? "Started. The session has its own thread in this channel." : "Could not start a session; the reason is in the channel.");
       }
-      return say("/vyre held · /vyre send <id> · /vyre discard <id> · /vyre new <what to do>");
+      return say("/vyre held · /vyre send <id> · /vyre discard <id> · /vyre body <id> <new text> · /vyre subject <id> <text> · /vyre new <what to do>");
     });
   }
 }
