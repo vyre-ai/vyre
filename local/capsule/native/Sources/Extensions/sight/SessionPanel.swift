@@ -12,7 +12,9 @@ import SwiftUI
 
 /// One session the panel can show.
 struct PanelSession: Equatable, Identifiable {
-    enum Kind: Equatable { case assistant(String), thread }
+    /// A terminal session is one vyred does not run (a Claude Code session in a terminal): its
+    /// history comes from the recall index, and words to it go through threads.send, which queues.
+    enum Kind: Equatable { case assistant(String), thread, terminal }
     var id: String
     var label: String
     var kind: Kind
@@ -21,10 +23,16 @@ struct PanelSession: Equatable, Identifiable {
     var status: String?
 
     var isAssistant: Bool { if case .assistant = kind { return true }; return false }
+    var isTerminal: Bool { kind == .terminal }
     var agent: String { if case .assistant(let a) = kind { return a }; return label }
 
-    /// The assistant from agents.list, then the switchboard's threads from threads.list, newest first.
-    static func load(agents: Any?, threads: Any?) -> [PanelSession] {
+    /// A session active this recently that vyred does not run is live in a terminal (the same
+    /// rule the Capsule's `@` uses to put live terminal sessions first).
+    static let liveWindowMs: Double = 15 * 60_000
+
+    /// The assistant from agents.list, then live terminal sessions from projects.catalog (the
+    /// source `@` reads), then the switchboard's threads from threads.list, newest first.
+    static func load(agents: Any?, threads: Any?, catalog: Any? = nil, now: Double = vyNowMs()) -> [PanelSession] {
         var out: [PanelSession] = []
         let agentRows = (agents as? [[String: Any]]) ?? ((agents as? [String: Any])?["agents"] as? [[String: Any]]) ?? []
         if let a = agentRows.first(where: { VJ.str($0["kind"]) == "assistant" }) {
@@ -32,14 +40,23 @@ struct PanelSession: Equatable, Identifiable {
             out.append(PanelSession(id: "agent:\(name)", label: name, kind: .assistant(name), thread: VJ.nonEmpty(a["thread"]),
                                     status: VJ.nonEmpty(a["doing"]) ?? VJ.nonEmpty(a["status"])))
         }
-        let assistantThread = out.first?.thread
+        func folder(_ x: [String: Any]) -> String? { VJ.str(x["cwd"]).flatMap { $0.split(separator: "/").last.map(String.init) } }
+        var seen = Set(out.compactMap(\.thread))
+        var run: [PanelSession] = []
         for x in (threads as? [[String: Any]]) ?? [] {
             let id = VJ.s(x["id"])
-            guard !id.isEmpty, id != assistantThread else { continue }
-            let label = VJ.nonEmpty(x["name"]) ?? VJ.str(x["cwd"]).flatMap { $0.split(separator: "/").last.map(String.init) } ?? String(id.prefix(8))
-            out.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"])))
+            guard !id.isEmpty, seen.insert(id).inserted else { continue }
+            let label = VJ.nonEmpty(x["name"]) ?? folder(x) ?? String(id.prefix(8))
+            run.append(PanelSession(id: "thread:\(id)", label: label, kind: .thread, thread: id, status: VJ.nonEmpty(x["status"])))
         }
-        return out
+        let recent = ((catalog as? [String: Any])?["sessions"] as? [[String: Any]]) ?? []
+        for x in recent {
+            let id = VJ.s(x["id"])
+            guard !id.isEmpty, let last = VJ.num(x["last"]), now - last < liveWindowMs, seen.insert(id).inserted else { continue }
+            let label = VJ.nonEmpty(x["label"]) ?? VJ.nonEmpty(x["name"]) ?? VJ.nonEmpty(x["title"]) ?? folder(x) ?? String(id.prefix(8))
+            out.append(PanelSession(id: "terminal:\(id)", label: label, kind: .terminal, thread: id, status: "live in terminal"))
+        }
+        return out + run
     }
 }
 
@@ -71,6 +88,8 @@ final class SessionPanelModel: ObservableObject {
     @Published var dm: Dm = VyState.dm("")
     @Published var draft = ""
     @Published var line: String?
+    /// A quiet note under the tabs, such as where a terminal session's history came from.
+    @Published var note: String?
     @Published var talking = false
     @Published var sending = false
     /// Screen context for the words in the box, shown as a chip above it until removed or sent.
@@ -118,10 +137,14 @@ final class SessionPanelModel: ObservableObject {
         if next != dm { dm = next }
     }
 
+    nonisolated static let lagNote = "History from the index, may be a few seconds behind"
+
     /// Show a session: its history once, then its events.
     func show(_ s: PanelSession) async {
         shown = s
         line = nil
+        note = nil
+        if s.isTerminal { await showIndexed(s); return }
         var d = VyState.dm(s.agent, thread: s.thread, limit: 60)
         d.loading = s.thread != nil
         dm = d
@@ -135,6 +158,44 @@ final class SessionPanelModel: ObservableObject {
         var x = VyState.dmHistory(VyState.dm(s.agent, thread: thread, limit: 60), (r.data as? [String: Any]) ?? [:], askRow: { a in
             Waiting(source: .ask, id: VJ.s(a["id"]), title: VJ.nonEmpty(a["summary"]) ?? "A question", sub: "", at: VJ.num(a["at"]) ?? 0, quiet: false)
         })
+        for e in buffered { x = VyState.applyDm(x, e) }
+        buffered = []
+        x.loading = false
+        dm = x
+    }
+
+    /// A terminal session vyred does not run: its newest turns from the recall index (which lags by
+    /// the index pass), then whatever thread events vyred sees for it, such as queued words.
+    func showIndexed(_ s: PanelSession) async {
+        let id = s.thread ?? ""
+        var d = VyState.dm(s.label, thread: id, limit: 60)
+        d.loading = true
+        dm = d
+        loading = true
+        buffered = []
+        note = Self.lagNote
+        // The session's turn count first, so the second read starts at its newest turns.
+        let head = await vyred.call("recall.thread", ["session": id, "limit": 1], presence: false)
+        guard shown == s else { return }
+        let count = VJ.int(((head.data as? [String: Any])?["session"] as? [String: Any])?["turns"]) ?? 0
+        let r = head.error == nil
+            ? await vyred.call("recall.thread", ["session": id, "from": max(0, count - 60), "limit": 60], presence: false)
+            : head
+        guard shown == s else { return }
+        loading = false
+        var x = VyState.dm(s.label, thread: id, limit: 60)
+        if r.error != nil {
+            note = "Not in the index yet; new words show here as they come"
+        } else {
+            let turns = ((r.data as? [String: Any])?["turns"] as? [[String: Any]]) ?? []
+            x.messages = turns.compactMap { t in
+                let text = VJ.s(t["text"])
+                guard !text.isEmpty else { return nil }
+                let user = VJ.s(t["role"]) == "user"
+                return DmMessage(id: "r\(VJ.int(t["seq"]) ?? 0)", role: user ? .user : .agent, text: text,
+                                 at: VJ.num(t["ts"]) ?? 0, surface: user ? "terminal" : nil, done: user ? nil : true)
+            }
+        }
         for e in buffered { x = VyState.applyDm(x, e) }
         buffered = []
         x.loading = false
@@ -236,6 +297,10 @@ struct SessionPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             tabs
+            if let n = model.note {
+                Text(n).font(Theme.label).foregroundColor(Theme.ash).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 6)
+            }
             Divider().overlay(Theme.rule)
             conversation
             Divider().overlay(Theme.rule)
@@ -254,7 +319,7 @@ struct SessionPanelView: View {
                     ForEach(model.sessions) { s in
                         Button { Task { await model.show(s) } } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: s.isAssistant ? "sparkle" : "terminal").font(.system(size: 10))
+                                Image(systemName: s.isAssistant ? "sparkle" : s.isTerminal ? "apple.terminal" : "terminal").font(.system(size: 10))
                                 Text(s.label).font(Theme.subtitle).lineLimit(1)
                             }
                             .padding(.horizontal, 9).padding(.vertical, 5)

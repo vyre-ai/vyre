@@ -102,6 +102,9 @@ final class SightExtension: CapsuleExtension {
     private var window: SessionWindow?
     /// Sessions seen at the last show, for the "Side view: <name>" rows.
     private(set) var known: [PanelSession] = []
+    /// Following session starts and stops, so the rows (and the panel's tabs) stay current.
+    private var sessionSubs: [VyredSubscription] = []
+    private var sessionRefresh: Task<Void, Never>?
     /// Where spoken words go: the Capsule's box, or the panel's prompt.
     private var talkToPanel = false
 
@@ -122,8 +125,9 @@ final class SightExtension: CapsuleExtension {
     }
 
     func capsuleWillShow(front: FrontApp?) {
-        // Once per show, for the rows below; never on a timer.
-        Task { @MainActor in known = await loadSessions() }
+        // Once per show, for the rows below; then only when a session starts or stops. Never on a timer.
+        followSessions()
+        refreshSessions()
         // The light read, for a selection in the app in front. Nothing is sent from it.
         attacher.prime()
     }
@@ -174,6 +178,8 @@ final class SightExtension: CapsuleExtension {
 
     func capsuleDidHide() {
         attacher.reset()
+        // The panel's tabs keep following while it is open; otherwise nothing runs hidden.
+        if !panelOpen { unfollowSessions() }
         // Talk started from the panel keeps going: the panel is where its words land.
         if talkToPanel && panelOpen { return }
         stopTalk()
@@ -193,9 +199,45 @@ final class SightExtension: CapsuleExtension {
     func loadSessions() async -> [PanelSession] {
         async let a = host.vyred.has("agents.list") ? host.vyred.call("agents.list", [:], presence: false) : nil
         async let t = host.vyred.has("threads.list") ? host.vyred.call("threads.list", [:], presence: false) : nil
-        let (agents, threads) = await (a, t)
-        return PanelSession.load(agents: agents?.data, threads: threads?.data)
+        async let c = host.vyred.has("projects.catalog") ? host.vyred.call("projects.catalog", ["limit": 30, "human": true], presence: false) : nil
+        let (agents, threads, catalog) = await (a, t, c)
+        return PanelSession.load(agents: agents?.data, threads: threads?.data, catalog: catalog?.data)
     }
+
+    /// Session starts and stops, from vyred's events. A terminal session vyred does not run shows
+    /// up on the next show (the index has no event of its own).
+    func followSessions() {
+        guard sessionSubs.isEmpty else { return }
+        for pattern in ["thread.started", "thread.stopped"] {
+            sessionSubs.append(host.vyred.on(pattern) { [weak self] _ in self?.refreshSessions() })
+        }
+    }
+
+    func unfollowSessions() {
+        sessionSubs.forEach { $0.cancel() }
+        sessionSubs = []
+        sessionRefresh?.cancel(); sessionRefresh = nil
+    }
+
+    var followingSessions: Bool { !sessionSubs.isEmpty }
+
+    /// Read the sessions again and, if the list changed, tell the Capsule its rows changed and
+    /// give the panel its new tabs.
+    func refreshSessions() {
+        sessionRefresh?.cancel()
+        sessionRefresh = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let next = await loadSessions()
+            guard !Task.isCancelled else { return }
+            let changed = next.map { "\($0.id) \($0.label)" } != known.map { "\($0.id) \($0.label)" }
+            known = next
+            if panelOpen { panel.sessions = next }
+            if changed { host.commandsChanged() }
+        }
+    }
+
+    /// Waits for a refresh started by an event or a show, for tests.
+    func sessionsSettled() async { await sessionRefresh?.value }
 
     private func currentScreen() -> (visible: NSRect, primaryMaxY: CGFloat)? {
         if let screen { return screen() }
@@ -218,12 +260,13 @@ final class SightExtension: CapsuleExtension {
         window = w
         panel.sessions = sessions
         panel.start()
+        followSessions()
         if w.isOpen {
-            w.setFrame(target, duration: SideGeometry.duration)
+            w.setFrame(target, duration: SideGeometry.duration, curve: .easeOut)
         } else {
             w.show(AnyView(SessionPanelView(model: panel) { [weak self] in Task { @MainActor in _ = await self?.closeSideView() } }),
                    frame: SideGeometry.offscreen(target))
-            w.setFrame(target, duration: SideGeometry.duration)
+            w.setFrame(target, duration: SideGeometry.duration, curve: .easeOut)
         }
         let history = Task { @MainActor in await panel.show(pick) }
         if settle > .zero { try? await Task.sleep(for: settle) }
@@ -256,10 +299,11 @@ final class SightExtension: CapsuleExtension {
         if let w = window, w.isOpen {
             hadPanel = true
             if talkToPanel { stopTalk() }
-            w.setFrame(SideGeometry.offscreen(w.frame), duration: SideGeometry.duration)
+            w.setFrame(SideGeometry.offscreen(w.frame), duration: SideGeometry.duration, curve: .easeIn)
             panel.stop()
             if settle > .zero { try? await Task.sleep(for: settle) }
             w.close()
+            if !host.isShown { unfollowSessions() }
         }
         let r = await host.vyred.call("sideview.close", [:], presence: false)
         if let e = r.error { return .failed(e) }

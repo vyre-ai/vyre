@@ -24,6 +24,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   of the box removes. Blind places get no chip, password fields leave their value out, and
   token-looking URL queries are dropped. Live in the session panel's prompt; the Capsule's box
   gets it through `SightExtension.screenAttachment(for:)` once capsule-pro's send path asks.
+- capsule-sight: the session panel slides in ease-out and out ease-in; its tabs and the "Side
+  view: <name>" rows follow session starts and stops (host.commandsChanged, no polling); live
+  terminal sessions get a tab with their history from the recall index, marked as possibly a few
+  seconds behind, and a prompt that queues through threads.send.
 - capsule-sight: the session panel. "Side view" slides the Capsule's own window in at the left
   29% of the display with the assistant (or "Side view: <name>" for any session): tabs, the
   conversation live from its events, a prompt that sends, the mic (Option-Return) and a status

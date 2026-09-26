@@ -1,6 +1,6 @@
 # capsule-sight
 
-Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claimed in README.md)
+Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claimed in README.md; capsule-pro moved to 0017, so the numbers no longer clash)
 
 ## Scope
 
@@ -28,6 +28,14 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
 ## Doing
+- Adopted capsule-pro 3882f65's seams in the sight extension: the panel slides in ease-out and out
+  ease-in (SessionWindowCurve); the "Side view: <name>" rows and the panel's tabs re-read the
+  session list on thread.started / thread.stopped and call host.commandsChanged() only when it
+  changed (following stops on hide unless the panel is open); live terminal sessions (from
+  projects.catalog, active in the last 15 min, not run by the switchboard) get a tab whose
+  history is read from recall.thread and marked "History from the index, may be a few seconds
+  behind"; words to them go through threads.send, which queues. Combined tree on 3882f65:
+  208 pass, 1 fail (capsule-pro's contact-photo icon test).
 - Screen context on Ask (ScreenAttach.swift): done in the sight extension and the session panel;
   combined tree 203 pass, 1 fail (capsule-pro's icon test). Waiting on capsule-pro's host hook
   (proposed SendAttaching / SendAttachment in Kit) to show the chip in the Capsule's own box;
