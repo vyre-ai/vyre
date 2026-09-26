@@ -175,7 +175,10 @@ test("onboard: vyre update's report mints nothing, and the unused link and an op
   await d.stop();
   const d2 = await start({ root, log: () => {} });
   t.after(() => d2.stop());
-  assert.equal((await tool(`http://127.0.0.1:${port}`, session, "onboard.status")).status, 200, "the open page keeps working");
+  // fetch may hand back a keep-alive socket to the stopped vyred's listener first; a browser
+  // retries that the same way, so the first request after the restart does too.
+  const again = async f => { for (let i = 0; ; i++) { try { return await f(); } catch (e) { if (i === 2) throw e; await new Promise(r => setTimeout(r, 50)); } } };
+  assert.equal((await again(() => tool(`http://127.0.0.1:${port}`, session, "onboard.status"))).status, 200, "the open page keeps working");
   assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, true);
   assert.equal((await redeem(unused.url)).status, 302, "the link the user was sent still works");
   assert.equal((await redeem(a.url)).status, 403, "a voided one stays void");

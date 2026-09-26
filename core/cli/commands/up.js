@@ -149,8 +149,8 @@ async function run(args, deps) {
   if (flags.connect !== undefined && (flags.connect === true || !String(flags.connect).trim())) {
     return fail("no_address", "--connect needs your box's address: vyre up --connect https://vyre.<tailnet>.ts.net");
   }
-  // The first `vyre up` on this machine: no home yet. It gets the welcome, not a status line.
-  const first = !fs.existsSync(config.paths().config);
+  // The first `vyre up` on this machine: no store yet. It gets the welcome, not a status line.
+  const first = !fs.existsSync(config.paths().db);
   const cfg = config.load();
   let role = cfg.role;
   if (flags.box) role = "box";
