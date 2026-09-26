@@ -132,7 +132,7 @@ struct HeldDetailView: View {
     let draft: HeldDraft
 
     var body: some View {
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.l) {
                 VStack(alignment: .leading, spacing: Space.s) {
                     Text(draft.title).vyre(.h2).foregroundStyle(Color.bone)

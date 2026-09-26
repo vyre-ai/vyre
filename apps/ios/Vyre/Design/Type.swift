@@ -11,7 +11,7 @@ enum TypeRole: CaseIterable, Sendable {
     var size: CGFloat {
         switch self {
         case .display: 44 // 72 on desktop; a phone's display is H1 size.
-        case .h1: 34
+        case .h1: 44 // TOKENS.md H1 44/48, as the PWA and the Android app set it
         case .h2: 28
         case .h3: 20
         case .title: 16
@@ -27,7 +27,7 @@ enum TypeRole: CaseIterable, Sendable {
     var lineHeight: CGFloat {
         switch self {
         case .display: 48
-        case .h1: 40
+        case .h1: 48
         case .h2: 34
         case .h3: 26
         case .title: 22

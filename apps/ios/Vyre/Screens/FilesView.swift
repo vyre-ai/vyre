@@ -1,109 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// Files: search what the box holds (`files.search`), preview it (`files.preview`) and save a
-/// copy in chunks (`files.fetch`). Over the tailnet the phone reaches only the box: the Mac shows
-/// as a row that says so (ADR 0018 section 2, CONTRACT.md 5). Nothing here is cached.
-struct FilesView: View {
-    @Environment(AppModel.self) private var app
-    @State private var q = ""
-    @State private var results: [JSON] = []
-    @State private var sources: [JSON] = []
-    @State private var searched = false
-    @State private var loading = false
-    @State private var problem: String?
-    @State private var kind: String?
-
-    static let kinds = ["text", "code", "doc", "pdf", "image", "folder"]
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Space.l) {
-                    PageHead(eyebrow: "Files", title: "Find a file.")
-                    SearchField(text: $q, prompt: "Northwind invoice, harlow.pdf", submit: { Task { await search() } })
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Space.s) {
-                            chip(nil, "All")
-                            ForEach(FilesView.kinds, id: \.self) { chip($0, $0) }
-                        }
-                    }
-                    devices
-                    VStack(alignment: .leading, spacing: 0) {
-                        if searched || loading {
-                            SectionHead(title: "Results", note: results.isEmpty ? nil : "\(results.count)").padding(.bottom, Space.s)
-                            Hairline()
-                        }
-                        LoadState(loading: loading, problem: problem,
-                                  empty: searched && results.isEmpty ? "Nothing on the box matches \"\(q)\"." : nil)
-                        ForEach(results, id: \.self) { f in
-                            NavigationLink(value: f) {
-                                ListRow(title: f["name"].text, detail: f["path"].text,
-                                        note: [f["kind"].string, byteSize(f["size"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .padding(.horizontal, Space.gutter)
-                .padding(.bottom, Space.xxl)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .vyreGround()
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: JSON.self) { f in FilePreview(file: f) }
-        }
-        .task(id: kind) { if searched { await search() } }
-    }
-
-    private func chip(_ k: String?, _ label: String) -> some View {
-        let on = kind == k
-        return Button { kind = k } label: {
-            Text(label).vyre(.label).tracking(1.3)
-                .foregroundStyle(on ? Color.signalInk : Color.stone)
-                .padding(.horizontal, Space.m)
-                .frame(minHeight: 32)
-                .background(on ? Color.signalFill : Color.panel, in: RoundedRectangle(cornerRadius: Radius.chip))
-                .overlay { if !on { RoundedRectangle(cornerRadius: Radius.chip).strokeBorder(Color.ruleStrong, lineWidth: 1) } }
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Where files come from. The box answers; the Mac is not reachable from a phone yet.
-    private var devices: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHead(title: "Devices").padding(.bottom, Space.s)
-            Hairline()
-            let box = sources.first { $0["source"].string == "box" }
-            ListRow(title: app.address?.display ?? "The box",
-                    detail: box.map { b in b["ok"].bool == false ? (b["error"].string ?? "Did not answer.") : (b["note"].string ?? "Searched.") } ?? "The box's files, under /work.",
-                    note: box?["count"].int.map { plural($0, "match") } ?? "box",
-                    dot: box?["ok"].bool == false ? .ash : .signal, mono: true, chevron: false)
-            ListRow(title: "Mac", detail: "Reachable through the box once linking lands. Until then a phone sees only the box.",
-                    note: "not linked", dot: .ash, mono: true, chevron: false)
-        }
-    }
-
-    private func search() async {
-        let s = q.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !s.isEmpty else { return }
-        loading = true
-        defer { loading = false }
-        var input: JSON = ["q": .string(s), "limit": 100]
-        if let kind { input = input.with("kinds", JSON([kind])) }
-        do {
-            let out = try await app.call("files.search", input)
-            results = out["results"].list
-            sources = out["sources"].list
-            problem = nil
-        } catch {
-            results = []
-            problem = describe(error)
-        }
-        searched = true
-    }
-}
-
+/// A file from the box, opened from Find's Files results: `files.preview`, and a copy saved in
+/// chunks with `files.fetch`. Over the tailnet the phone reaches only the box (CONTRACT.md 5).
+/// Nothing here is cached.
 /// One file: its preview (text or an image), what it is, and a way to save a copy on the phone.
 struct FilePreview: View {
     @Environment(AppModel.self) private var app
@@ -116,7 +16,7 @@ struct FilePreview: View {
     @State private var progress: Double?
 
     var body: some View {
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.l) {
                 VStack(alignment: .leading, spacing: Space.s) {
                     Text(file["name"].text).vyre(.h2).foregroundStyle(Color.bone)

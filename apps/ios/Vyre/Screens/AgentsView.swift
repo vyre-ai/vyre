@@ -1,43 +1,54 @@
 import SwiftUI
 
-/// Agents: the assistant first, then each agent, what it is doing and what it costs
-/// (`agents.list`, `agents.usage`). The Deck's views/agents.js.
-struct AgentsView: View {
+/// Agents (a tab, as in the PWA): the assistant first, then each agent, what it is doing and what
+/// it costs (`agents.list`, `agents.usage`); each opens its page. The Deck's views/agents.js.
+struct AgentsHome: View {
     @Environment(AppModel.self) private var app
     @State private var agents: [JSON] = []
     @State private var usage: [JSON] = []
     @State private var loading = true
     @State private var problem: String?
     @State private var cached = false
+    @State private var path: [Dest] = []
+    @State private var token: UUID?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.l) {
-                PageHead(eyebrow: "Agents", title: "Who works for you", sub: cached ? "Offline. The list this phone kept." : nil)
-                VStack(alignment: .leading, spacing: 0) {
-                    Hairline()
-                    LoadState(loading: loading && agents.isEmpty, problem: agents.isEmpty ? problem : nil,
-                              empty: agents.isEmpty ? "No agents yet. The assistant appears once the box has one." : nil)
-                    ForEach(agents, id: \.self) { a in
-                        let name = a["name"].text
-                        NavigationLink(value: MoreDest.agent(name)) {
-                            ListRow(title: name,
-                                    detail: [a["kind"].string == "assistant" ? "Assistant" : nil, a["doing"].string, a["model"].string].compactMap { $0 }.joined(separator: " · "),
-                                    note: spend(name),
-                                    dot: statusDot(a["status"].string == "new" ? nil : a["status"].string))
+        NavigationStack(path: $path) {
+            PullScroll {
+                VStack(alignment: .leading, spacing: Space.l) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        BrandBar()
+                        PageHead(title: "Agents", sub: cached ? "Offline. The list this phone kept." : nil)
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                        Hairline()
+                        LoadState(loading: loading && agents.isEmpty, problem: agents.isEmpty ? problem : nil,
+                                  empty: agents.isEmpty ? "No agents yet. The assistant appears once the box has one." : nil)
+                        ForEach(agents, id: \.self) { a in
+                            let name = a["name"].text
+                            NavigationLink(value: Dest.agent(name)) {
+                                ListRow(title: name,
+                                        detail: [a["kind"].string == "assistant" ? "Assistant" : nil, a["doing"].string, a["model"].string].compactMap { $0 }.joined(separator: " · "),
+                                        note: spend(name),
+                                        dot: statusDot(a["status"].string == "new" ? nil : a["status"].string))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, Space.gutter)
+                .padding(.bottom, Space.xxl)
             }
-            .padding(.horizontal, Space.gutter)
-            .padding(.bottom, Space.xxl)
+            .vyreGround()
+            .toolbar(.hidden, for: .navigationBar)
+            .vyreDestinations()
         }
-        .refreshable { await load() }
-        .vyreGround()
-        .navigationBarTitleDisplayMode(.inline)
-        .vyreNavBar()
         .task { await load() }
+        .onAppear {
+            guard token == nil else { return }
+            let watched: Set<String> = ["thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered"]
+            token = app.hub.on { e in if watched.contains(e.type) { Task { await load() } } }
+        }
     }
 
     private func spend(_ name: String) -> String? {
@@ -77,7 +88,7 @@ struct AgentDetailView: View {
     @State private var sentThread: String?
 
     var body: some View {
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.xl) {
                 PageHead(eyebrow: agent["kind"].string == "assistant" ? "Assistant" : "Agent", title: name, sub: agent["doing"].string)
                 facts
@@ -89,7 +100,6 @@ struct AgentDetailView: View {
             .padding(.horizontal, Space.gutter)
             .padding(.bottom, Space.xxl)
         }
-        .refreshable { await load() }
         .vyreGround()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

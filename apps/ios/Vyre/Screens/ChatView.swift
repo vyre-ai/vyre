@@ -1,48 +1,39 @@
 import SwiftUI
 
-enum ChatDest: Hashable {
-    case project(slug: String, name: String)
-    case thread(String)
-}
-
-/// Chat: live threads, then projects and their sessions, then one thread mirrored with streaming,
-/// sending and the keyboard lease. The Deck's views/projects.js and deck/chat/.
+/// Chat (a tab): sessions and threads. Live ones first (running, starting, waiting), then the
+/// others from the last day; each opens the thread, mirrored with streaming, sending and the
+/// keyboard lease. The Deck's deck/chat/ and the Android ChatScreen.
 struct ChatHome: View {
     @Environment(AppModel.self) private var app
-    @State private var path: [ChatDest] = []
-    @State private var projects: [JSON] = []
+    @State private var path: [Dest] = []
+    @State private var all: [JSON] = []
     @State private var loading = true
     @State private var problem: String?
-    @State private var cached = false
+    @State private var projects: [JSON] = []
     @State private var starting = false
+    @State private var token: UUID?
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
+            PullScroll {
                 VStack(alignment: .leading, spacing: Space.xl) {
-                    HStack(alignment: .top) {
-                        PageHead(eyebrow: "Chat", title: "Sessions", sub: cached ? "Offline. The projects this phone kept." : nil)
-                        Spacer()
-                        Button { starting = true } label: { Label("New", systemImage: "plus") }
-                            .buttonStyle(.secondary)
-                            .padding(.top, Space.m)
-                            .disabled(projects.isEmpty && !app.online)
+                    VStack(alignment: .leading, spacing: 0) {
+                        BrandBar {
+                            Button { starting = true } label: { Label("New", systemImage: "plus") }
+                                .buttonStyle(.quiet)
+                                .disabled(projects.isEmpty)
+                        }
+                        PageHead(title: "Chat")
                     }
-                    liveSection
-                    projectSection
+                    section("Live", live, empty: "No session is running. Start one from a project.")
+                    section("Sessions", rest, empty: "No session in the last day.")
                 }
                 .padding(.horizontal, Space.gutter)
                 .padding(.bottom, Space.xxl)
             }
-            .refreshable { await load() }
             .vyreGround()
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: ChatDest.self) { dest in
-                switch dest {
-                case .project(let slug, let name): ProjectView(slug: slug, name: name, path: $path)
-                case .thread(let id): ThreadView(id: id)
-                }
-            }
+            .vyreDestinations()
         }
         .sheet(isPresented: $starting) {
             NewThreadSheet(projects: projects) { id in
@@ -51,6 +42,11 @@ struct ChatHome: View {
             }
         }
         .task { await load() }
+        .onAppear {
+            guard token == nil else { return }
+            let watched: Set<String> = ["thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered"]
+            token = app.hub.on { e in if watched.contains(e.type) { Task { await load() } } }
+        }
         .onChange(of: app.route, initial: true) { _, r in
             if case .thread(let id) = r {
                 path = [.thread(id)]
@@ -59,40 +55,24 @@ struct ChatHome: View {
         }
     }
 
-    private var live: [JSON] {
-        app.needs.threads.sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) }
-    }
+    private var sorted: [JSON] { all.sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) } }
+    private var live: [JSON] { sorted.filter { ["working", "starting", "waiting"].contains($0["status"].string ?? "") } }
+    private var rest: [JSON] { sorted.filter { !["working", "starting", "waiting"].contains($0["status"].string ?? "") } }
 
-    @ViewBuilder
-    private var liveSection: some View {
-        if !live.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                SectionHead(title: "Today", note: "\(live.count)").padding(.bottom, Space.s)
-                Hairline()
-                ForEach(live.prefix(12), id: \.self) { t in
-                    NavigationLink(value: ChatDest.thread(t["id"].text)) {
-                        ListRow(title: t["name"].string ?? t["id"].text,
-                                detail: [t["agent"].string, t["project"].string].compactMap { $0 }.joined(separator: " · "),
-                                note: [t["status"].string, age(t["last"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
-                                dot: statusDot(t["status"].string, asks: t["asks"].int ?? 0))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private var projectSection: some View {
+    private func section(_ title: String, _ rows: [JSON], empty: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHead(title: "Projects", note: projects.isEmpty ? nil : "\(projects.count)").padding(.bottom, Space.s)
+            SectionHead(title: title, note: "\(rows.count)").padding(.bottom, Space.s)
             Hairline()
-            LoadState(loading: loading && projects.isEmpty, problem: projects.isEmpty ? problem : nil,
-                      empty: projects.isEmpty ? "No projects yet. A project is a folder the box knows; add one with vyre projects add." : nil)
-            ForEach(projects, id: \.self) { p in
-                NavigationLink(value: ChatDest.project(slug: p["slug"].text, name: p["name"].string ?? p["slug"].text)) {
-                    ListRow(title: p["name"].string ?? p["slug"].text,
-                            detail: p["org"].string,
-                            note: [p["threads"].int.map { plural($0, "session") }, age(p["last"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+            if rows.isEmpty {
+                LoadState(loading: loading && all.isEmpty, problem: all.isEmpty ? problem : nil, empty: empty)
+            }
+            ForEach(rows, id: \.self) { t in
+                let waiting = t["status"].string == "waiting"
+                NavigationLink(value: Dest.thread(t["id"].text)) {
+                    ListRow(title: threadLabel(t),
+                            detail: [t["agent"].string, t["project"].string, waiting ? "waiting on you" : nil].compactMap { $0 }.joined(separator: " · "),
+                            note: waiting ? nil : [t["status"].string, age(t["last"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                            dot: statusDot(t["status"].string, asks: t["asks"].int ?? 0))
                 }
                 .buttonStyle(.plain)
             }
@@ -100,146 +80,23 @@ struct ChatHome: View {
     }
 
     private func load() async {
-        loading = true
         defer { loading = false }
         do {
-            let out = try await app.call("projects.list")
-            app.cache.put("projects.list", out)
-            projects = out["projects"].list.sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) }
+            all = try await app.call("threads.list", ["all": true]).list
             problem = nil
-            cached = false
         } catch {
-            if let c = app.cache.get("projects.list") {
-                projects = c["projects"].list
-                cached = true
-            }
+            all = app.needs.threads
             problem = describe(error)
         }
+        if projects.isEmpty, let p = try? await app.call("projects.list") { projects = p["projects"].list }
+        else if projects.isEmpty, let c = app.cache.get("projects.list") { projects = c["projects"].list }
     }
 }
 
-/// One project's sessions: picked and in its folders (`projects.threads`).
-struct ProjectView: View {
-    @Environment(AppModel.self) private var app
-    let slug: String
-    let name: String
-    @Binding var path: [ChatDest]
-    @State private var sessions: [JSON] = []
-    @State private var loading = true
-    @State private var problem: String?
-    @State private var starting = false
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.l) {
-                PageHead(eyebrow: "Project", title: name)
-                VStack(alignment: .leading, spacing: 0) {
-                    SectionHead(title: "Sessions", note: sessions.isEmpty ? nil : "\(sessions.count)").padding(.bottom, Space.s)
-                    Hairline()
-                    LoadState(loading: loading && sessions.isEmpty, problem: problem, empty: sessions.isEmpty ? "No sessions in this project yet." : nil)
-                    ForEach(sessions, id: \.self) { s in
-                        Button { path.append(.thread(s["id"].text)) } label: {
-                            ListRow(title: s["title"].string ?? s["name"].string ?? s["label"].string ?? s["id"].text,
-                                    detail: s["missing"].bool == true ? "This session's transcript is gone." : s["cwd"].string,
-                                    note: [s["turns"].int.map { plural($0, "turn") }, age(s["last"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(s["missing"].bool == true)
-                    }
-                }
-            }
-            .padding(.horizontal, Space.gutter)
-            .padding(.bottom, Space.xxl)
-        }
-        .refreshable { await load() }
-        .vyreGround()
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { starting = true } label: { Image(systemName: "plus") }.accessibilityLabel("New session in \(name)")
-            }
-        }
-        .vyreNavBar()
-        .sheet(isPresented: $starting) {
-            NewThreadSheet(projects: [["slug": .string(slug), "name": .string(name)]]) { id in
-                starting = false
-                if let id { path.append(.thread(id)) }
-            }
-        }
-        .task { await load() }
-    }
-
-    private func load() async {
-        loading = true
-        defer { loading = false }
-        do {
-            let out = try await app.call("projects.threads", ["project": .string(slug), "limit": 100])
-            sessions = out.list.sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) }
-            problem = nil
-        } catch { problem = describe(error) }
-    }
-}
-
-/// Start a session: a project and the first words (`threads.start {project, prompt, surface:"ios"}`).
-struct NewThreadSheet: View {
-    @Environment(AppModel.self) private var app
-    let projects: [JSON]
-    let done: (String?) -> Void
-    @State private var project = ""
-    @State private var prompt = ""
-    @State private var busy = false
-    @State private var problem: String?
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: Space.l) {
-                if projects.count > 1 {
-                    VStack(alignment: .leading, spacing: Space.s) {
-                        Engraved("Project")
-                        Picker("Project", selection: $project) {
-                            ForEach(projects, id: \.self) { p in Text(p["name"].string ?? p["slug"].text).tag(p["slug"].text) }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(Color.bone)
-                    }
-                }
-                VStack(alignment: .leading, spacing: Space.s) {
-                    Engraved("First message")
-                    TextField("", text: $prompt, prompt: Text("Draft the Northwind Bakery invoice reminder").foregroundStyle(Color.ash), axis: .vertical)
-                        .vyre(.body)
-                        .foregroundStyle(Color.bone)
-                        .lineLimit(3...8)
-                        .padding(Space.m)
-                        .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.button))
-                        .overlay { RoundedRectangle(cornerRadius: Radius.button).strokeBorder(Color.ruleStrong, lineWidth: 1) }
-                }
-                if let problem { FailedLine(text: problem) }
-                Button { Task { await start() } } label: { Text(busy ? "Starting" : "Start") }
-                    .buttonStyle(.vyre(.primary, fill: true))
-                    .disabled(busy || project.isEmpty || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Spacer()
-            }
-            .padding(Space.gutter)
-            .vyreGround()
-            .navigationTitle("New session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done(nil) } } }
-            .vyreNavBar()
-        }
-        .onAppear { if project.isEmpty { project = projects.first?["slug"].string ?? "" } }
-        .presentationDetents([.medium, .large])
-    }
-
-    private func start() async {
-        busy = true
-        defer { busy = false }
-        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        do {
-            let rec = try await app.call("threads.start", ["project": .string(project), "prompt": .string(text), "surface": "ios"])
-            await app.needs.refresh()
-            done(rec["id"].string)
-        } catch { problem = describe(error) }
-    }
+/// A session's name as people say it.
+func threadLabel(_ t: JSON) -> String {
+    if let n = t["name"].string, !n.isEmpty { return n }
+    return String(t["id"].text.prefix(8))
 }
 
 /// One thread: the transcript mirrored, live while the app is in front, and the composer.

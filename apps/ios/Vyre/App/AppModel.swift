@@ -2,30 +2,39 @@ import Observation
 import SwiftUI
 import UIKit
 
-enum Tab: String, Hashable, CaseIterable { case now, chat, capsule, files, more }
+/// The five tabs, the phone PWA's order (docs/work/pwa.md): Now, Projects, Chat, Find, Agents.
+enum Tab: String, Hashable, CaseIterable { case now, projects, chat, find, agents }
 
+/// Graphite (dark) by default, then Paper, then whatever the phone uses (TOKENS.md: dark is the default).
 enum Theme: String, CaseIterable, Identifiable {
-    case system, dark, paper
+    case dark, paper, system
     var id: String { rawValue }
     var scheme: ColorScheme? { switch self { case .system: nil; case .dark: .dark; case .paper: .light } }
-    var label: String { switch self { case .system: "Follow the system"; case .dark: "Dark"; case .paper: "Paper" } }
+    var label: String { switch self { case .system: "Like the phone"; case .dark: "Graphite"; case .paper: "Paper" } }
 }
 
 /// Where a tap on a notification (or a DEBUG launch argument) sends the app.
 enum Route: Equatable {
     case needs(String)
     case thread(String)
-    case more(String)
+    /// Settings, pushed on Now (the avatar's screen).
+    case settings
+    /// The Vault and Memory pages, pushed on Find (its Places).
+    case vault
+    case memory
 
-    /// `/needs/<id>`, `/threads/<id>`, `/settings...`: the only paths a push carries.
+    /// `/needs/<id>`, `/threads/<id>`, `/settings...`: the only paths a push carries. `/vault` and
+    /// `/memory` are links inside the app.
     init?(path: String) {
         let parts = path.split(separator: "/").map(String.init)
         guard let first = parts.first else { return nil }
         switch first {
         case "needs" where parts.count > 1: self = .needs(parts[1])
         case "threads" where parts.count > 1: self = .thread(parts[1])
+        case "vault": self = .vault
+        case "memory": self = .memory
         default:
-            if first.hasPrefix("settings") { self = .more("settings") } else { return nil }
+            if first.hasPrefix("settings") { self = .settings } else { return nil }
         }
     }
 }
@@ -62,7 +71,7 @@ final class AppModel {
     var inFront = true
 
     init() {
-        theme = Theme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .system
+        theme = Theme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .dark
         needs = NeedsStore()
         #if DEBUG
         if let t = Launch.value("-VyreTheme"), let th = Theme(rawValue: t) { theme = th }
@@ -161,9 +170,9 @@ final class AppModel {
 
     func open(_ route: Route) {
         switch route {
-        case .needs: tab = .now
+        case .needs, .settings: tab = .now
         case .thread: tab = .chat
-        case .more: tab = .more
+        case .vault, .memory: tab = .find
         }
         self.route = route
     }
@@ -178,7 +187,8 @@ final class AppModel {
 #if DEBUG
 /// DEBUG-only launch arguments for the test world and screenshots:
 /// `-VyreTestBox http://127.0.0.1:4800` skips the QR and enrolls with a code the test world mints;
-/// `-VyreTab`, `-VyreTheme`, `-VyreOpen /threads/<id>`, `-VyreMore agents|memory|vault|settings`.
+/// `-VyreTab now|projects|chat|find|agents`, `-VyreTheme dark|paper|system`,
+/// `-VyreOpen /threads/<id>|/needs/<id>|/settings|/vault|/memory`.
 enum Launch {
     static func value(_ flag: String) -> String? {
         let a = ProcessInfo.processInfo.arguments

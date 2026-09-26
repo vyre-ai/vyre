@@ -15,8 +15,10 @@ struct MemoryView: View {
     @State private var problem: String?
     @State private var token: UUID?
 
+    init(initial: String = "") { _q = State(initialValue: initial) }
+
     var body: some View {
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.l) {
                 PageHead(eyebrow: "Memory", title: about["label"].string ?? "What Vyre knows", sub: sub)
                 SearchField(text: $q, prompt: "About alex, Harlow Legal", submit: { Task { await load() } })
@@ -39,7 +41,7 @@ struct MemoryView: View {
                     LoadState(loading: loading && facts.isEmpty, problem: problem,
                               empty: facts.isEmpty ? (q.isEmpty ? "Nothing learned yet." : "Memory knows nothing about \(q).") : nil)
                     ForEach(facts, id: \.self) { f in
-                        NavigationLink(value: MoreDest.fact(f["id"].text)) { FactRow(fact: f) }.buttonStyle(.plain)
+                        NavigationLink(value: Dest.fact(f["id"].text)) { FactRow(fact: f) }.buttonStyle(.plain)
                     }
                 }
                 Text("To correct, merge or split a fact, use the Deck. A phone can read, pin and mute.")
@@ -49,7 +51,6 @@ struct MemoryView: View {
             .padding(.bottom, Space.xxl)
         }
         .scrollDismissesKeyboard(.interactively)
-        .refreshable { await load() }
         .vyreGround()
         .navigationBarTitleDisplayMode(.inline)
         .vyreNavBar()
@@ -127,7 +128,7 @@ struct FactView: View {
     @State private var line: String?
 
     var body: some View {
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.xl) {
                 let f = why["fact"]
                 VStack(alignment: .leading, spacing: Space.s) {

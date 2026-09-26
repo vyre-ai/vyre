@@ -46,9 +46,10 @@ struct RootView: View {
     }
 }
 
-/// The five tabs. A custom bar, so the Capsule sits in the centre and stands out, drawn in the
+/// The five tabs, the phone PWA's order: Now, Projects, Chat, Find, Agents. A custom bar in the
 /// boards' language (mono labels, hairline above, no fill behind content). Every tab keeps its
-/// own navigation stack alive while another is in front.
+/// own navigation stack alive while another is in front; pulling down from the top of a list
+/// opens Find.
 struct MainTabs: View {
     @Environment(AppModel.self) private var app
 
@@ -57,10 +58,10 @@ struct MainTabs: View {
         VStack(spacing: 0) {
             ZStack {
                 tab(.now) { NowView() }
+                tab(.projects) { ProjectsHome() }
                 tab(.chat) { ChatHome() }
-                tab(.capsule) { CapsuleView() }
-                tab(.files) { FilesView() }
-                tab(.more) { MoreView() }
+                tab(.find) { FindView() }
+                tab(.agents) { AgentsHome() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             if !app.online { OfflineBar() }
@@ -105,12 +106,13 @@ struct TabBar: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
-            item(.now, "Now", "clock")
+            item(.now, "Now", "bell")
+            item(.projects, "Projects", "list.bullet")
             item(.chat, "Chat", "bubble.left")
-            capsule
-            item(.files, "Files", "folder")
-            item(.more, "More", "ellipsis")
+            item(.find, "Find", "magnifyingglass")
+            item(.agents, "Agents", "person")
         }
+        .padding(.horizontal, Space.s)
         .padding(.top, Space.s)
         .padding(.bottom, Space.xs)
         .background(Color.ground.ignoresSafeArea(edges: .bottom))
@@ -123,50 +125,25 @@ struct TabBar: View {
             if selection != t { Haptics.tap() }
             selection = t
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 6) {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: icon).font(.system(size: 19, weight: .light)).frame(height: 24)
+                    Image(systemName: icon).font(.system(size: 19, weight: .light)).frame(height: 22)
                     if t == .now && badge > 0 {
-                        Text("\(badge)").font(VyreFonts.base(.label).asFont(size: 10)).foregroundStyle(Color.signalInk)
-                            .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
+                        Text(badge > 99 ? "99+" : "\(badge)").font(VyreFonts.base(.label).asFont(size: 10)).foregroundStyle(Color.signalInk)
+                            .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
                             .background(Color.beaconDot, in: Capsule())
                             .offset(x: 12, y: -6)
                     }
                 }
-                Text(label).vyre(.label).tracking(1.3)
+                // The PWA's tab labels: mono 10, +0.14em, uppercase.
+                Text(label.uppercased()).font(VyreFonts.base(.label).asFont(size: 10)).tracking(1.4).lineLimit(1)
             }
             .foregroundStyle(on ? Color.bone : Color.ash)
-            .frame(maxWidth: .infinity, minHeight: Space.target)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(t == .now && badge > 0 ? "\(label), \(badge) need you" : label)
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-
-    /// The Capsule: centre, raised, the one pill shape in the bar.
-    private var capsule: some View {
-        let on = selection == .capsule
-        return Button {
-            Haptics.tap()
-            selection = .capsule
-        } label: {
-            VStack(spacing: 3) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: Radius.window)
-                        .fill(on ? Color.signalFill : Color.panel)
-                        .overlay { RoundedRectangle(cornerRadius: Radius.window).strokeBorder(on ? Color.clear : Color.ruleStrong, lineWidth: 1) }
-                        .frame(width: 60, height: 40)
-                    Image(systemName: "magnifyingglass").font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(on ? Color.signalInk : Color.bone)
-                }
-                Text("Capsule").vyre(.label).tracking(1.3).foregroundStyle(on ? Color.bone : Color.ash)
-            }
-            .frame(maxWidth: .infinity, minHeight: Space.target)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Capsule. Ask, search, or message someone")
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }

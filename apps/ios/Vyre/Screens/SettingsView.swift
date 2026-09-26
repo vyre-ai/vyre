@@ -11,9 +11,15 @@ struct SettingsView: View {
 
     var body: some View {
         @Bindable var app = app
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.xl) {
                 PageHead(eyebrow: "Settings", title: "This phone")
+                section("Vault") {
+                    NavigationLink(value: Dest.vault) {
+                        ListRow(title: "Vault", detail: "Names on the box. A value shows only after Face ID.")
+                    }
+                    .buttonStyle(.plain)
+                }
                 section("Theme") {
                     ForEach(Theme.allCases) { t in
                         Button { app.theme = t } label: {

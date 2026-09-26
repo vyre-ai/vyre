@@ -4,14 +4,12 @@ import SwiftUI
 /// happened lately. The Deck's views/now.js and the boards' PhoneNow.
 struct NowView: View {
     @Environment(AppModel.self) private var app
-    @State private var path: [NowDest] = []
+    @State private var path: [Dest] = []
     @State private var activity: [VyreEvent] = []
     @State private var activityProblem: String?
     @State private var highlight: String?
     @State private var gone: String?
     @State private var token: UUID?
-
-    enum NowDest: Hashable { case held(String) }
 
     static let activityTypes: Set<String> = ["thread.started", "thread.finished", "thread.stopped", "gate.held", "gate.released",
                                              "gate.rejected", "gate.failed", "ask.raised", "ask.answered", "thread.watched", "memory.curated"]
@@ -19,7 +17,7 @@ struct NowView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollViewReader { proxy in
-                ScrollView {
+                PullScroll {
                     VStack(alignment: .leading, spacing: Space.xl) {
                         header
                         if let gone { FailedLine(text: gone) }
@@ -30,19 +28,12 @@ struct NowView: View {
                     .padding(.horizontal, Space.gutter)
                     .padding(.bottom, Space.xxl)
                 }
-                .refreshable { await reload() }
                 .onChange(of: highlight) { _, id in
                     if let id { withAnimation { proxy.scrollTo("ask-\(id)", anchor: .top) } }
                 }
             }
             .vyreGround()
-            .navigationDestination(for: NowDest.self) { dest in
-                switch dest {
-                case .held(let id):
-                    if let d = app.needs.held.first(where: { $0.id == id }) { HeldDetailView(draft: d) }
-                    else { GoneView(text: "This is no longer held. It was sent, discarded, or answered somewhere else.") }
-                }
-            }
+            .vyreDestinations()
             .toolbar(.hidden, for: .navigationBar)
         }
         .task { await loadActivity() }
@@ -54,10 +45,11 @@ struct NowView: View {
     // MARK: head
 
     private var header: some View {
-        HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 0) {
+            BrandBar {
+                Button { path.append(.settings) } label: { Avatar(host: app.address?.host ?? "v") }.buttonStyle(.plain)
+            }
             PageHead(eyebrow: todayLabel(), title: title, sub: sub)
-            Spacer()
-            Mark(size: 22, needsYou: app.needs.count > 0).padding(.top, Space.m)
         }
     }
 
@@ -85,7 +77,7 @@ struct NowView: View {
             VStack(alignment: .leading, spacing: Space.m) {
                 HStack(spacing: Space.s) { Dot(color: .beacon); SectionHead(title: "Needs you", note: "\(held.count + asks.count)", color: .beacon) }
                 ForEach(held) { d in
-                    NavigationLink(value: NowDest.held(d.id)) { HeldRow(draft: d) }.buttonStyle(.plain)
+                    NavigationLink(value: Dest.held(d.id)) { HeldRow(draft: d) }.buttonStyle(.plain)
                 }
                 ForEach(asks) { a in
                     AskCard(ask: a)
@@ -206,14 +198,13 @@ struct NowView: View {
         }
     }
 
-    private func reload() async {
-        async let n: Void = app.needs.refresh()
-        async let a: Void = loadActivity()
-        _ = await (n, a)
-    }
-
     /// A tap on a push, or `-VyreOpen /needs/<id>`: open the held item, or scroll to the ask.
     private func follow() {
+        if app.route == .settings {
+            path = [.settings]
+            app.route = nil
+            return
+        }
         guard case .needs(let id) = app.route else { return }
         if app.needs.held.contains(where: { $0.id == id }) {
             path = [.held(id)]

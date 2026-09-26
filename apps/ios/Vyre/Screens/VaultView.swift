@@ -13,7 +13,7 @@ struct VaultView: View {
     @State private var problem: String?
 
     var body: some View {
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.l) {
                 PageHead(eyebrow: "Vault", title: "Secrets", sub: locked ? "The vault is locked on the box. Unlock it from the Deck or the Mac." : "Names only. A value shows after Face ID, for that one item.")
                 SearchField(text: $q, prompt: "Filter by name or host")
@@ -21,7 +21,7 @@ struct VaultView: View {
                     Hairline()
                     LoadState(loading: loading && items.isEmpty, problem: problem, empty: shown.isEmpty ? (q.isEmpty ? "The vault is empty." : "Nothing matches \(q).") : nil)
                     ForEach(shown, id: \.self) { it in
-                        NavigationLink(value: MoreDest.vaultItem(it["name"].text)) {
+                        NavigationLink(value: Dest.vaultItem(it["name"].text)) {
                             ListRow(title: it["name"].text,
                                     detail: it["hosts"].strings.isEmpty ? it["description"].string : it["hosts"].strings.joined(separator: ", "),
                                     note: it["kind"].string, dot: it["stale"].bool == true ? .ash : nil, mono: true)
@@ -34,7 +34,6 @@ struct VaultView: View {
             .padding(.bottom, Space.xxl)
         }
         .scrollDismissesKeyboard(.interactively)
-        .refreshable { await load() }
         .vyreGround()
         .navigationBarTitleDisplayMode(.inline)
         .vyreNavBar()
@@ -77,7 +76,7 @@ struct VaultItemView: View {
     static let totpKey = "__totp"
 
     var body: some View {
-        ScrollView {
+        PullScroll {
             VStack(alignment: .leading, spacing: Space.xl) {
                 VStack(alignment: .leading, spacing: Space.s) {
                     Engraved(item["kind"].string ?? "Item")
