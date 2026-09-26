@@ -136,7 +136,8 @@ ok "down"
 step "site/box"
 box=$repo/site/box
 [ -f "$box/SHA256SUMS" ] || fail "no site/box/SHA256SUMS; run scripts/build-site.sh first"
-(cd "$box" && sum -c --quiet SHA256SUMS) || fail "site/box does not match its SHA256SUMS"
+# Every line but the zip's, which is served from R2 (checked with --live).
+(cd "$box" && grep -v '  Vyre-mac\.zip$' SHA256SUMS | sum -c --quiet -) || fail "site/box does not match its SHA256SUMS"
 for f in install-box.sh vyre compose.yml compose.build.yml vyre.env.example Dockerfile vyre.tgz VERSION; do
   grep -q "  $f\$" "$box/SHA256SUMS" || fail "SHA256SUMS does not list $f"
 done
@@ -151,6 +152,9 @@ grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_r
 if [ -f "$box/Vyre-mac.url" ]; then
   grep -qE '^https://dl\.vyre\.run/capsule/[0-9a-f]{16}/Vyre-mac\.zip$' "$box/Vyre-mac.url" || fail "Vyre-mac.url is $(cat "$box/Vyre-mac.url")"
   grep -qx "/box/Vyre-mac.zip $(cat "$box/Vyre-mac.url") 302" "$repo/site/_redirects" || fail "site/_redirects does not point Vyre-mac.zip at $(cat "$box/Vyre-mac.url")"
+  grep -q "^$(cut -d' ' -f1 "$box/Vyre-mac.zip.sha256")  Vyre-mac\.zip\$" "$box/SHA256SUMS" || fail "SHA256SUMS does not list Vyre-mac.zip with its checksum"
+  [ "$(tar -xzOf "$box/vyre.tgz" package/box/Vyre-mac.sha256 2>/dev/null)" = "$(cut -d' ' -f1 "$box/Vyre-mac.zip.sha256")" ] \
+    || fail "vyre.tgz's box/Vyre-mac.sha256 is not the zip's checksum"
   ok "Vyre-mac.zip redirects to $(cat "$box/Vyre-mac.url")"
 else
   printf '   note  no Capsule zip in this build (scripts/build-site.sh --mac-zip)\n'
@@ -174,8 +178,6 @@ if [ "$LIVE" = 1 ]; then
   code=$(curl -s -o "$work/box-alias" -w '%{http_code}' "$base/box")
   { [ "$code" = 200 ] && cmp -s "$work/box-alias" "$box/install-box.sh"; } || fail "$base/box is not install-box.sh ($code)"
   if [ -f "$box/Vyre-mac.url" ]; then
-    curl -fsSL "$base/box/Vyre-mac.zip" -o "$work/live/Vyre-mac.zip" || fail "cannot fetch $base/box/Vyre-mac.zip"
-    (cd "$work/live" && sum -c --quiet "$box/Vyre-mac.zip.sha256") || fail "$base/box/Vyre-mac.zip does not match Vyre-mac.zip.sha256"
     unzip -l "$work/live/Vyre-mac.zip" | grep -q 'Vyre.app/Contents/Info.plist' || fail "Vyre-mac.zip has no Vyre.app"
     (cd "$work/live" && ditto -x -k Vyre-mac.zip app 2>/dev/null && codesign --verify --deep --strict app/Vyre.app 2>/dev/null) \
       || [ "$(uname -s)" != Darwin ] || fail "Vyre.app in the zip does not pass codesign --verify (macOS would call it damaged)"

@@ -36,6 +36,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   only when `local/capsule` changed since the live zip (`Vyre-mac.source`), then builds the
   site and runs release-check. It deploys only when vyre.run serves something different, then
   checks the live site and prints a summary. Running it twice changes nothing.
+- `SHA256SUMS` lists `Vyre-mac.zip` too, though it is served from R2, for `vyre capsule install`.
+  vyre.tgz carries `box/Vyre-mac.sha256` (the zip's checksum alone), so a Mac's install can pin the
+  zip to its own version.
 - `/start` and GETTING-STARTED: "What works today" and "What's coming" replace "What is not
   finished".
 - `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,

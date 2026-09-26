@@ -21,7 +21,8 @@
 #                                 how the image is built from vyre.tgz while none is published
 #   site/box/vyre.tgz             `npm pack` of --src, until the package is on npm
 #   site/box/Vyre-mac.zip.sha256  the Capsule zip's checksum, and site/box/Vyre-mac.url its URL
-#   site/box/SHA256SUMS           sha256 of every file above, in `sha256sum -c` format
+#   site/box/SHA256SUMS           sha256 of every file above and of Vyre-mac.zip, `sha256sum -c` format
+#   <src>/box/Vyre-mac.sha256     the zip's sha256 alone, packed into vyre.tgz
 #   site/_redirects               /box to install-box.sh, and /box/Vyre-mac.zip to R2
 #
 # Deploy afterwards with:
@@ -63,10 +64,6 @@ cp "$src/box/compose.yml" "$src/box/compose.build.yml" \
 cp "$src/scripts/install-box.sh" "$out/install-box.sh"
 cp "$src/scripts/install-box.sh" "$here/site/install.sh"
 
-# npm pack writes the tarball's name on its last line of stdout.
-name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
-mv "$out/$name" "$out/vyre.tgz"
-
 if [ -n "$zip" ]; then
   hash=$(sum "$zip" | cut -d' ' -f1)
   key=capsule/$(printf '%s' "$hash" | cut -c1-16)/Vyre-mac.zip
@@ -82,12 +79,26 @@ fi
   [ -f "$out/Vyre-mac.url" ] && printf '/box/Vyre-mac.zip %s 302\n' "$(cat "$out/Vyre-mac.url")"
 } >"$here/site/_redirects"
 
+# The package carries the zip's checksum, so `vyre capsule install` can pin the zip it fetches to
+# the version installed. Written into --src before packing; gitignored there.
+if [ -f "$out/Vyre-mac.zip.sha256" ]; then cut -d' ' -f1 "$out/Vyre-mac.zip.sha256" >"$src/box/Vyre-mac.sha256"
+else rm -f "$src/box/Vyre-mac.sha256"
+fi
+# npm pack writes the tarball's name on its last line of stdout.
+name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
+mv "$out/$name" "$out/vyre.tgz"
+
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"
 
 (
   cd "$out"
-  find . -type f ! -name SHA256SUMS | sed 's|^\./||' | LC_ALL=C sort | while read -r f; do sum "$f"; done >SHA256SUMS
+  {
+    find . -type f ! -name SHA256SUMS | sed 's|^\./||' | while read -r f; do sum "$f"; done
+    # The zip is served from R2 through a redirect, not from here, but it is listed like the
+    # rest: `vyre capsule install` checks it against this file.
+    [ -f Vyre-mac.zip.sha256 ] && cat Vyre-mac.zip.sha256
+  } | LC_ALL=C sort -k2 >SHA256SUMS
 )
 
 echo "site/box:"
