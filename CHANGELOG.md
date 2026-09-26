@@ -789,6 +789,91 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   - The daemon client no longer pools connections: the first call after a vyred restart failed
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
+- ADR 0006 step 1: every tool that hands out, writes, moves or unlocks a value declares
+  `presence` with a summary naming items and destinations, never a value (put, delete, import,
+  grant, approve, inject, totp, backup, restore, pass.create, pass.accept, offboard, unlock,
+  unlock-passphrase, device.code, device.unlock). The registry on main ignores the field until
+  ADR 0004 merges, so this is a declaration only for now. The fill listener refuses `/pair`
+  without an extension Origin and any Host that is not loopback or `vault.fill.names` (DNS
+  rebinding). `vault.generate` from Claude only creates new names.
+- ADR 0006 step 2, crypto v2: each put seals a new item version under a random item key,
+  wrapped under its vault's key; the body carries `meta` (kind, url, hosts, apps, reprompt),
+  checked against vyre.db on open, and the version sits in the AAD and in a MACed row, so an
+  older file put back fails. Item, grant, pass and device rows carry an HMAC; a row that fails
+  it is ignored and audited as `tamper`. ECIES v2 binds the recipient key and a purpose and
+  refuses an all-zero shared secret; v1 tickets still open. Two vault classes: `agents` (key
+  wrapped by the keystore's device key, opens unattended) and `personal` (key wrapped under the
+  account unlock key, Argon2id or scrypt of the password XOR the Secret Key). New tools
+  `vault.account.create`, `vault.account.unlock`, `vault.account.lock`. A v1 home is re-sealed
+  at start, v1 files removed only after every v2 copy verifies; once done, a v1 file is refused.
+  Keys are KeyObjects and `lock()` drops them all. Backups keep format v1 and old ones restore.
+- Touch ID unlock of the personal vault: `mac/enclave.swift` (Secure Enclave P-256 key with
+  biometryCurrentSet; verbs create, derive, auth) wraps the account unlock key in
+  `vault/touchid.json`. Tools `vault.account.enroll-touchid`, `vault.account.status`, and
+  `vault.account.unlock {method: "touchid"}`.
+- Interim presence (`prove.js`) until the ADR 0004 registry merges: every tool that returns or
+  moves a value asks `proof.prove` first. Touch ID or the Mac password on a Mac, confirm (and
+  the tailnet owner when known) on the Deck, refused where there is no Touch ID. Reveal is on
+  for the Deck and the Capsule behind it (SPEC 11 rule 8); `vault.deck.reveal` is gone.
+- The keychain keystore writes through `mac/keychain.swift`, so only that helper is on the
+  item's access list (`security find-generic-password -w` no longer returns the key without
+  asking). Items the old path wrote are moved on first read.
+- Item history: the last 10 older sealed versions per item under `vault/history/<id>/`, and
+  `vault_history` rows (MACed) naming the changed fields, computed from per-field HMACs.
+  `vault.history {name, field?}` (names only, Claude may call it), `vault.revert {name,
+  version}` (presence), and `version` on `vault.reveal` and `vault.copy`.
+- Relay rules (`relay.body`) are sealed in the item's meta and checked on open like hosts;
+  changing them makes a new version. Items whose rules predate this are re-sealed once.
+  `vault_ssh_keys` and `vault_marks` are numbered migrations now, with MACed rows.
+- CLI: `vyre vault account create | unlock [--touchid] | lock | enroll-touchid | status`.
+  The password is a hidden prompt (twice on create); the Secret Key is printed once.
+- No test raises a system dialog: `mac/dialogs.js` refuses a real enclave `auth`/`derive`, the
+  type helper, and any keychain call without `noUI` under node --test (unless
+  VYRE_TEST_DIALOGS=1) or with VYRE_NO_DIALOGS=1. The keychain helper labels each item with
+  the build that wrote it and has an `info` op that never reads the secret; an item from a gone
+  build is refused with `vyre vault migrate-key`, the one person-run path that may prompt.
+
+- Your other devices: a new Mac or a box joins with a code and a fingerprint you compare, and an
+  approval on a device you already have. A box joins as storage: it runs agent items and keeps
+  personal ones as ciphertext it cannot open. Items sync between devices, and a change reaches
+  the others through a poke rather than polling. Shared items can be deleted. New CLI verbs:
+  `vyre vault vaults`, `members`, `move` and `device`.
+- Shared vaults (ADR 0006, decision 5): a team vault whose key is wrapped for each member, a
+  signed, hash-chained membership manifest, roles, and sync through the owner's relay listener
+  with merges and kept conflicts. Removing a member changes the key and flags every item they
+  could read. Offboarding covers shared vaults too. Items show up as `<vault>/<item>` and work
+  with run, grants and the Deck. Multi-device join is next.
+- Sharing, hardened (ADR 0006, findings 4, 5 and 12): pass tickets are signed by the owner and
+  checked against the owner's pinned card, for this holder only, and a held pass can never be
+  taken over by another owner. Old unsigned tickets are refused, and passes held from them are
+  dropped: ask the owner to issue them again. Relayed values go in headers unless the item
+  allows the body, over https except to loopback, within optional method and path allowlists;
+  replay nonces survive a restart; envelopes are bound to the owner's relay; a 500 says nothing
+  about why. Cards v2 are signed and pinned on first use, with fingerprints and safety words; a
+  changed key blocks new passes until a person verifies it. `vyre vault people`, `fingerprint`
+  and `kit` (a one-time printable recovery page with a QR code, from a small encoder in plain
+  JS). The kit needs the account Secret Key, which lands with the key hierarchy.
+- Vault CLI (ADR 0006 section 6): `vyre vault get|read|add|edit|rm|inject|share|ssh|git-credential`
+  and `run --env-file`, `--json` on every command (exit 3 presence, 4 locked); tools
+  `vault.item`, `vault.resolve`, `vault.render`, `vault.edit`, `vault.git`, `vault.ssh.*`; an
+  ssh-agent for the new `ssh-key` kind (`vault.ssh.socket`); `bin/git-credential-vyre`. Presence
+  is declared on value tools but not enforced until ADR 0004 merges.
+
+- Vault surfaces: sessions for the Deck, Capsule and extension (idle 10m, max 12h, locked on
+  sleep and screen lock), `vault.reveal`, `vault.copy` through a concealed, self-clearing
+  clipboard helper, `vault.fill.native` for the Capsule, TOTP with a session, and the extension's
+  inline chooser, keyboard fill, one-time codes and save on submit. Presence is declared on
+  each tool; until ADR 0004 merges it is not enforced, so reveal and copy from cli/local run
+  without a proof.
+- The Deck's Vault app (ADR 0006, section 6): places in the rail (a chip row below 1200px),
+  fuzzy search over names, hosts, kinds and field names, the keyboard map, the item pane with
+  concealed fields, copy with a draining 90 s toast, reveal behind `vault.caps`, TOTP ring,
+  history, add and edit per kind with an inline generator whose value is made on the box,
+  Watchtower, passes with approvals on top, the share and offboard sheets, devices, and a phone
+  layout. The passkey presence client is `deck/vault/presence.js`. New tools `vault.caps`,
+  `vault.health`, `vault.breach.check` (opt-in network call, `vault.breach: "ask"`) and
+  `vault.update` (merging put with `generate`). vyred now serves the Deck's shell for any folder
+  path, so `/vault` routes even though `deck/vault/` exists.
 
 #### Watchers
 

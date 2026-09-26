@@ -56,3 +56,36 @@ export function readSealed(dir, id) {
 export function removeSealed(dir, id) {
   fs.rmSync(itemPath(dir, id), { force: true });
 }
+
+/** Staged copies end in this, so a crash between writing a file and its row can be sorted out. */
+export const STAGED = "__next";
+
+/** Move a staged sealed file over its item, atomically. */
+export function promoteSealed(dir, id) {
+  fs.renameSync(itemPath(dir, id + STAGED), itemPath(dir, id));
+}
+
+/** Ids with a staged copy waiting. */
+export function stagedIds(dir) {
+  let names = [];
+  try { names = fs.readdirSync(path.join(dir, "items")); } catch { return []; }
+  return names.filter(n => n.endsWith(STAGED + ".json")).map(n => n.slice(0, -(STAGED.length + 5))).filter(id => ID.test(id));
+}
+
+/** Write a small JSON file in the vault folder atomically, 0600. */
+export function writeJsonFile(dir, rel, value) {
+  const file = path.join(dir, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const tmp = `${file}.tmp-${crypto.randomBytes(6).toString("hex")}`;
+  try {
+    const fd = fs.openSync(tmp, "wx", 0o600);
+    try { fs.writeFileSync(fd, JSON.stringify(value)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    fs.renameSync(tmp, file);
+  } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
+}
+
+/** Read one, or null if it is not there. */
+export function readJsonFile(dir, rel) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, rel), "utf8")); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return null; throw e; }
+}

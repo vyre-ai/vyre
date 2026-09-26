@@ -32,6 +32,37 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   (`vault.relay.identity: "tailscale"`).
 - Keychain tests that hold up under parallel runs (`testing.js`): a unique keychain per test,
   taken off the search list under a machine-wide lock, `security` retried when busy.
+- Sharing, ADR 0006 decision 5 (`share.js`, `kit.js`, `qr.js`, `tools/share.js`): signed v2
+  cards and tickets, pinned people with fingerprints and safety words, agent requests that wait
+  for a person, relay hardening (headers only unless `relay.body`, method and path allowlists,
+  nonces in vyre.db, https off loopback, audience-bound v2 envelopes, generic 500s, rate-limited
+  unknown-pass audit rows, Tailscale identity on loopback only), and the one-time recovery kit
+  page with a plain JS QR encoder. Shared vaults and multi-device join are the next wave.
+- CLI parity with `op` (ADR 0006 section 6): `get`, `read vault://item/field`, `add`, `edit`,
+  `rm`, `inject -i/-o`, `run --env-file`, `share`, `--json` everywhere; the ssh agent
+  (`ssh/`) and `git-credential-vyre` (`git.js`), tools in `tools/cli.js`, references in `refs.js`.
+
+- Surfaces (ADR 0006 decisions 2 to 4, section 6): surface sessions (`session.js`), reveal and
+  copy with the clipboard helper (`clipboard.js`, `mac/clip.swift`), lock on sleep and screen
+  lock (`watch.js`, `mac/watch.swift`), native fill for the Capsule (`native.js`,
+  `mac/type.swift`), tools in `tools/surfaces.js`; the extension's inline chooser, keyboard fill,
+  one-time codes and save on submit (`fill-save.js`, `modules/vault-extension/inline.js`).
+
+- The Deck's Vault app (`deck/views/vault*.js`, `deck/vault/`), Watchtower (`health.js`), the
+  opt-in breach check and `vault.update` (`tools/deck.js`). Click-through against a real vyred:
+  `node deck/test/vault-shots.js <out-dir>`.
+- Shared vaults, ADR 0006 decision 5 (`shared.js`, `tools/vaults.js`): `shared:<id>` classes
+  with a VK wrapped per member (ECIES v2, purpose "vk"), a hash-chained signed membership
+  manifest verified on every load, roles, `POST /v1/sync` on the owner's relay listener (pull,
+  push with 409 on a stale parent, admin changes), field-level merge or a kept conflict
+  revision, owner receipts that peers check against the author's rights, removal with a new VK
+  and item keys re-wrapped, rotation flags, and offboarding across shared vaults. Tests:
+  `core/vault/shared.test.js`, `test/vault-shared.test.js` (three real vyreds).
+- Multi-device (`devices.js`): join code plus fingerprint, approval with presence that seals the
+  account keyset to the new device (full: agent key, account record, Secret Key; storage: agent
+  key only), item sync between a person's devices over `/v1/sync` with pokes. Shared item
+  deletes as signed tombstones. CLI verbs `vaults`, `members`, `move`, `device`. Pull on start,
+  on local writes and on pokes, with a ten-minute fallback timer.
 
 ## Doing
 
@@ -78,6 +109,27 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Events: `vault.device-paired`, `vault.device-revoked`, `vault.filled`, `vault.restored`.
 - Tool definitions may carry `callers: ["cli", "local", "mcp", "module"]`. Other callers get
   `denied`, and `GET /v1/tools` lists only what the requesting caller may use.
+- Tool definitions carry `presence: { summary(input), skip? }` on every value-out or
+  access-giving vault tool (list in `core/vault/presence.test.js`). `skip` is a proposal to
+  security: `({ input, caller }) => boolean`, used for totp sessions and for mcp grant and
+  pass.create, which only wait as pending.
+- Fill listener: `/pair` needs an extension Origin (403 `origin_required`); a Host outside
+  loopback and config `vault.fill.names` gets 421 `host_refused`.
+- `vault.generate {name}` from mcp refuses an existing name.
+- Crypto v2 (`crypto.js`, `vault.js`): `vault.row(name)` returns undefined for a row whose MAC
+  fails; `vault.fields(row)` throws `code: "locked"` for a personal item while the account is
+  locked, and refuses a sealed copy whose version or meta disagrees with the row. New:
+  `vault.meta(row)`, `vault.open(row)` (`{meta, fields}`), `vault.rowOk(table, row)`,
+  `vault.sign(table, id)` (call after any direct write to a MACed table), `vault.grant` is now
+  async. `vault.list` adds `personal: "none"|"locked"|"unlocked"` and each item's `vault`.
+  `vault.put` takes `apps` and `reprompt` (cards default to true).
+- New tools: `vault.account.create {password}` (cli/local, presence; returns `{acct, secretKey,
+  moved}` once), `vault.account.unlock {password}` (cli/local, presence), `vault.account.lock`.
+  Events `vault.unlocked`, `vault.locked` (`{vault: "personal"}`). Internal `vault.secretKey()`
+  for the recovery kit.
+- Files in the vault folder: `vaults/agents.json` (agent VK wrapped by the device key),
+  `account.json` (KDF params, salt, personal VK wrapped under the AUK), `state.json` (v2 done),
+  `secret-key` (file keystores) or a keychain item under account `<acct>:sk`.
 - vyred treats an HTTP `x-vyre-caller: module:*` header as `local`.
 - Events: `vault.item-added`, `vault.item-changed`, `vault.item-deleted`, `vault.granted`,
   `vault.revoked`, `vault.released` (`{name, module}` or `{name, pass, holder}`),
@@ -89,3 +141,131 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Cards may carry `login`. With `vault.relay.identity: "tailscale"` the relay listener requires
   the `Tailscale-User-Login` header from `tailscale serve`, and a pass made from a card with a
   login answers only that login.
+- Sharing (ADR 0006, decision 5):
+  - Cards are `vyre-card:v2:` = {acct?, name, sign, box, login?, relay, devices[], sig}, signed
+    by the identity sign key. v1 cards are read but block passes until verified.
+  - Tickets are `vyre-pass:v2:` with `ownerCard`, `holderSign` and `sig` over
+    {tag: "vyre-ticket-v1", ...}. `vyre-pass:v1:` is refused with a readable message.
+    `vault_held` is keyed on (owner_sign, id). Held rows from v1 tickets are dropped by the
+    migration.
+  - Envelopes are v2: `{v: 2, aud, pass, item, request, ts, nonce, sig}`, signed over
+    {tag: "vyre-relay-v2", ...}, and `aud` must equal the owner's relay url. v1 envelopes are
+    refused, so both sides need this version.
+  - `relay.envelope({..., aud})`, `checkEnvelope(env, {holderKey, audience, seen})`,
+    `substitute(req, fields, default, {body})`, `encodeCard(card, privDer)`,
+    `encodeTicket(ticket, privDer)`; `serve({identity})` refuses "tailscale" off loopback.
+  - `vault.pass.create` takes `methods` and `paths` (prefix match). `vault.put` takes
+    `relay: {body: true}` (stored in `vault_items.relay`). `vault.pass.accept` from mcp returns
+    `{pending}`; `vault.approve` takes its id. `vault.pending` adds `people` and `accepts`.
+  - New tools: `vault.people`, `vault.person.add {card, name?}` (mcp: pending),
+    `vault.people.verify {name, fingerprint}` (cli/local, presence), `vault.fingerprint {with?}`,
+    `vault.kit` (cli/local, presence) returning `{url, expires}`. `vault.identity` adds
+    `fingerprint`.
+  - Events: `vault.card-changed`, `vault.person-verified`, `vault.kit-printed`,
+    `person.requested`, `pass.accept-requested`. `pass.accepted` names the owner as pinned here.
+  - For vault-core: `vault.kit` uses `vault.secretKey()` and the card uses `vault.accountId()`
+    when the Vault has them. `vault_items.relay` should move into the sealed meta with hosts.
+- New tools (tools/cli.js): `vault.item {name}` (all callers) returns `{item}` with `ssh?`,
+  `stale?`, `otp`; `vault.resolve {refs, destination?}` returns `{values: {ref: value}}`;
+  `vault.render {template, out, force?}` writes `out` itself and returns `{file, refs, items,
+  replaced, warnings}`; `vault.edit {name, rename?, description?, url?, fields?, removeFields?,
+  addHosts?, removeHosts?}`; `vault.git {action, request}` returns `{response, name?, why?}`;
+  `vault.ssh.keys` (all) `{socket, keys}`; `vault.ssh.generate {name, type?, comment?}` (cli,
+  local, mcp; new names only) and `vault.ssh.add {name, file}` return `{key}` (public half);
+  `vault.ssh.approvals`, `vault.ssh.approve {id}`, `vault.ssh.forget {name?, host?}` (all).
+  Resolve, render, edit, git (not erase), ssh.add and ssh.approve declare `presence`.
+- `vault.list` takes `kind` and `host`; items gain `ssh: {type, fingerprint, public}` and `stale`.
+- Kind `ssh-key` (field `private`): never released, injected, resolved or rendered.
+- Config `vault.ssh: { socket: "ssh/agent.sock" }` (relative to, and required under, the Vyre
+  home). The module's start handle exposes `ssh.setApprover(fn)` for tests and the presence
+  wiring; the default approver refuses and logs "approval needed".
+- Event `vault.ssh-approved {name, host, expires}`. Audit actions `resolve`, `render`,
+  `git-get`, `git-store`, `git-erase`, `ssh-sign`, `ssh-generate`, `ssh-add`, `ssh-approve`,
+  `ssh-forget`. Tables `vault_ssh_keys` and `vault_marks` are created IF NOT EXISTS, outside
+  the numbered migrations.
+- Surfaces: `vault.session.open {surface: deck|capsule|extension, ttl_s?}` returns
+  `{session, expires, surface}`; `vault.session.close {session}` (any caller);
+  `vault.session.status {session}` returns `{unlocked, expires, surface}`. `vault.reveal {name,
+  field?, session?}` returns `{value, concealAfter: 30}`; `vault.copy` returns `{copied,
+  clearsAt, warning?}` and never the value; `vault.fill.native {name, app: {bundle, pid},
+  session?}` returns `{filled, via, app}`; `vault.totp` takes `session?` and returns `{code,
+  period, remaining}`. All cli/local only except totp (also modules) and session.close. Each
+  declares `presence`; reveal, copy and totp `skip` while `vault.sessions.ok(session, name)`.
+  `vault.sessions` is on the Vault instance; the last session closing calls
+  `vault.account.lock()` if it exists; `vault.lock` also ends sessions and clears the clipboard.
+  Reprompt is read from `row.meta.reprompt` (cards default to true until meta lands); native
+  fill outside a browser reads `row.meta.apps`.
+- Events: `vault.unlocked {surface, sessions}`, `vault.locked {surface, why, ended, sessions}`,
+  `vault.revealed {name, field, surface}`, `vault.copied {name, field, surface, clearsAt}`;
+  `vault.filled` may carry `app` or `what: "otp"`. Config `vault.lock: {idle, max, onSleep,
+  onScreenLock}`; `vault.testHelpers` is honoured only under `node --test`.
+- Fill listener: `POST /v1/fill/otp {name, url}` returns `{code, remaining, period}`;
+  `POST /v1/fill/save {url, username?, password, name?}` returns `{name, created, updated}`.
+  Both need a device and a session. New items get `hosts = [origin]`; updates keep the old
+  password in the sealed `history` field (JSON, last 5).
+- `module.json` `shows.capsule`: results:vault.list, action:vault.fill.native, action:vault.copy,
+  action:vault.totp, action:vault.lock.
+- New tools (deck branch): `vault.caps {}` returns `{reveal, breach, host}` (`vault.deck.reveal`,
+  default false; `vault.breach`, "off" or "ask", default "off"). `vault.health {}` (all callers,
+  MCP too) returns `{items: [{name, kind, reasons, group?}], counts, checked, at}` with reasons
+  weak, reused (opaque per-run group ids), old, rotate, 2fa-available, unprotected.
+  `vault.breach.check {}` (cli, local, deck; presence) returns `{breached: [names], checked,
+  requests, at}`. `vault.update {name, kind?, description?, url?, hosts?, fields?, remove?,
+  generate?: {field, length?, symbols?, words?}}` (cli, local, deck; presence) merges with the
+  item's fields and returns `{name, kind, created, changed, generated?, bits?}`, never a value.
+- The Deck expects (degrading without them): `vault.session.open {surface}` to `{session,
+  expires}`, `vault.session.close {session}`, `vault.copy {name, field, session}` to `{copied,
+  clearsAt}` (field "totp" copies the current code), `vault.clipboard.clear {}`, `vault.reveal
+  {name, field, session}` to `{value}`, `vault.totp {name, session}`, `vault.history {name}` to
+  `{versions: [{ver, at, by, fields}], passwords: [{at}]}`, `vault.ssh.generate {name}`. It
+  needs the "deck" caller on `vault.totp`, `grant`, `pending`, `approve`, `pass.create` and
+  `offboard`, which exclude it today.
+- Shared vaults:
+  - Items appear locally as `vault_items` rows named `<vault>/<item>` with `vault =
+    "shared:<id>"`, so run, inject, grants and the Deck use them unchanged. `vault.open` gets the
+    key from `vault.shared.keyFor`, and `vault.at` gets the key version from `vault.shared.kvOf`.
+  - `vault.put` with a `<vault>/<item>` name writes to the shared vault and returns
+    `{name, vault, rev, merged?}` or `{conflict: true, current}`. `vault.delete` refuses shared
+    items (not built yet). `vault.offboard` is async and adds `vaults` to its result.
+  - New tools: `vault.vaults.create {name}`, `vault.vaults.list` (mcp visible),
+    `vault.vaults.sync {vault?}`, `vault.members.invite {vault, person, role?}` (the person must
+    be pinned and verified; returns `vyre-invite:v1:...`), `vault.members.accept {invite}`,
+    `vault.members.role`, `vault.members.remove`, `vault.vaults.rotate`, `vault.move {name, to}`.
+    Invite, accept, role, remove, rotate and move declare presence.
+  - Relay: `serve({onSync})` routes `POST /v1/sync`; `syncEnvelope` and `checkSync` sign and
+    check it (tag "vyre-sync-v1", audience, ts, nonce); `callRelay(url, env, {route})`.
+    crypto.js gains `rewrapItemKey`.
+  - Events: `vault.member-added`, `vault.member-removed`, `vault.key-rotated`,
+    `vault.sync-conflicted`. None carries a value.
+  - `vault.delete` on a `<vault>/<item>` name writes a signed tombstone; a stale delete is refused.
+  - Homes poke members over `/v1/sync` (`op: "poke"`, from the home's key) at the relay address
+    on the card pinned for each member; a member pulls on a poke, on start, after its own writes,
+    and every ten minutes.
+- Devices:
+  - New tools: `vault.device.join {role?, approval?}`, `vault.device.approve {code}` (presence),
+    `vault.device.list`, `vault.device.sync`. Event `vault.device-joined`.
+  - `Vault.replaceAgentKey(raw)` (fresh homes only; re-seals the identity and re-signs MACed
+    rows), `Vault.adoptAccount({secretKey, account})`, `Vault.accountRecord()`,
+    `Vault.agentKeyBytes()`. `Vault.onEmit` sees every event (sync hooks on item events).
+  - `/v1/sync` envelopes whose vault is `device:<group>` go to devices.js. The approving device
+    is the home. The newer item version wins; a local edit that loses is kept in
+    `vault_group_conflicts` and `vault.sync-conflicted` fires with `vault: "devices"`.
+  - Shared vaults are not part of device sync: each device joins those itself.
+- Interim presence (`core/vault/prove.js`): `proof.prove({tool, input, caller, summary, env})`
+  is the one swappable function; the registry can mark a call as already checked with
+  `ctx.presenceEnforced === true` or `presence` in run's second argument. Deck callers pass
+  `confirm: true`. Tests set `vault.testHelpers.prove` ("deny" or `{mode, record}`; allow by
+  default under node --test). Refusals are Errors with code `presence_required`; the registry
+  on this branch reports them as code "failed" with the message.
+- `vault.account.unlock {password? , method?: "password"|"touchid"}`, `vault.account.enroll-touchid
+  {password}` (presence), `vault.account.status` to `{account, unlocked, touchid, acct?}`.
+  `vault.caps` reports `reveal: true`.
+- `vault.history {name, field?}` returns `{name, entries: [{version, at, by, changed, current,
+  readable}], versions: [{ver, at, by, fields}], passwords: [{at}]}` (the Deck's shape too).
+  `vault.revert {name, version}` (cli, local, deck, capsule; presence) returns `{name, version,
+  from}`. `vault.reveal` and `vault.copy` take `version`. `vault.versionFields(row, ver)` is the
+  method behind them.
+- `vault.share.setRelayRules(name, rules)` is async (a new sealed version); `vault.put` takes
+  `relay: {body}` directly. `vault.setMeta(name, changes)` re-seals with new sealed columns.
+  `vault_ssh_keys` and `vault_marks` rows must be signed with `vault.sign(table, name)` after a
+  direct write (tools/cli.js does); `ensureMacColumns(db)` runs after migrate.

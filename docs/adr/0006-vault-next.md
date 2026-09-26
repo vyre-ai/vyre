@@ -258,3 +258,51 @@ Code running as the user can still rewrite Vyre, restart vyred and wait for the 
 program handed a value by `vault run` can print it. A box whose root is taken yields every agent
 secret, but no longer a personal login. These are stated in the threat model the way ADR 0001
 stated its own.
+
+## Implementation notes (vault/core, 26 Sep 2026)
+
+Where the build differs from the text above, and why:
+
+- **Secret Key format.** `V2-<acct 6>-<26 base32>-<2 base32>`. 26 base32 characters hold the
+  128 bits with 2 to spare, which is no room for a checksum, and cutting key bits to make room
+  would drop below the 2^128 the AUK argument rests on. So the checksum (10 bits of SHA-256 over
+  the account id and key) is its own two-character group.
+- **The agent VK** is a random key wrapped by the keystore's key (`vaults/agents.json`), not the
+  keystore key itself, so it can rotate later without touching the keychain. The v1 master key
+  becomes that device key.
+- **Row MACs need the agent VK.** Paths that hand out a value or act on a grant, pass or device
+  load it first, so they always check. Names-only paths (`list`, `match`) on a passphrase vault
+  that is still locked cannot check and show the rows as they are; nothing there is a value.
+- **Upgrade trust.** Rows that predate MACs are signed once, on the first v2 start, and a MACed
+  `state.json` then marks the home as v2. After that a v1 item file is refused, not migrated,
+  so an old file put back cannot come in through the migration.
+- **Crash safety.** Every new sealed version is written as `<id>__next.json`, the row changes in
+  a transaction, then the file is renamed over. On start a staged copy that opens against its
+  row is promoted, and any other is removed.
+- **Presence skip for mcp.** `vault.grant` and `vault.pass.create` from Claude only create
+  pending requests, and approving needs presence, so their declarations carry
+  `skip: ({ caller }) => caller is mcp`, matching section 7 ("grant and pass.create (pending)").
+- **Touch ID spike (26 Sep 2026, this Mac, macOS 26.2).** An ad-hoc `swiftc -O` build of
+  `core/vault/mac/enclave.swift` made a `SecureEnclave.P256.KeyAgreement.PrivateKey` with
+  `[.privateKeyUsage, .biometryCurrentSet]` and returned its blob and public key: no
+  entitlement error, no prompt at creation. So the enclave path is used and the LAContext-gated
+  keychain fallback is not needed. `derive` was not run by hand (it prompts); tests use a fake.
+  The AUK is wrapped under HKDF(ECDH(enclave key, ephemeral P-256), salt ephPub || sePub,
+  "vyre touchid v2:<acct>") in `vault/touchid.json`; the ephemeral private key is dropped at once.
+- **Keychain helper (finding 1), 26 Sep 2026.** `core/vault/mac/keychain.swift`, built and
+  hash-checked like the other helpers, writes the device key and the Secret Key with SecItemAdd
+  and a SecAccess whose trusted-application list is only the helper itself (deprecated
+  SecAccessCreate and SecTrustedApplicationCreateFromPath, which still work from an ad-hoc
+  build). `security dump-keychain -a` on a temp keychain shows decrypt trusted to the helper
+  alone and an empty change_acl list, so `security find-generic-password -w` from any other
+  process has to ask the person. An item the old `security -i` path wrote is read once through
+  `security`, rewritten through the helper and deleted (tested). Open risk: a new build of the
+  helper (any edit to keychain.swift) is a different binary the old items do not trust. The
+  store then tries the older builds left in the same private folder and moves the item. That
+  first version tried reads and made macOS show a keychain access dialog in a test, although
+  the helper had turned user interaction off: SecKeychainSetUserInteractionAllowed(false) does
+  not stop every prompt. So the store no longer tries anything. Each item's comment names the
+  helper build that wrote it (`vyre-helper:<binary hash>`), read with an attributes-only
+  `info` op. Only that build (or `security`, for an unlabelled item) ever reads it; an item
+  from a build that is gone is refused with `vyre vault migrate-key`, which a person runs and
+  which may prompt. `mac/dialogs.js` refuses any helper call that could prompt under tests.

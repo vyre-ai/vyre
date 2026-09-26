@@ -14,15 +14,27 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { sealItem, openItem, newIdentity, sealFor, openFrom } from "./crypto.js";
-import { keystore, defaultKind } from "./keys.js";
-import { ensureDir, writeSealed, readSealed, removeSealed } from "./store.js";
+import {
+  openItem, newIdentity, sealFor, openFrom, canonical, same, keyObject, newVaultKey, wrapVaultKey, unwrapVaultKey,
+  sealItemV2, openItemV2, macKey, rowMac, newAccountId, formatSecretKey, parseSecretKey, accountUnlockKey,
+  passwordKdf, clampKdf, ARGON2, AUK_SCRYPT, MIN_PASSWORD,
+} from "./crypto.js";
+import { keystore, defaultKind, secretKeyStore } from "./keys.js";
+import {
+  ensureDir, writeSealed, readSealed, removeSealed, promoteSealed, stagedIds, STAGED, writeJsonFile, readJsonFile,
+} from "./store.js";
 import * as relay from "./relay.js";
+import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
+import { Helper } from "./mac/helper.js";
+import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, merge as mergeImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
+import { Share, SHARE_MIGRATIONS } from "./share.js";
+import { Shared, SHARED_MIGRATIONS } from "./shared.js";
+import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -55,16 +67,81 @@ export const MIGRATIONS = [
   // A pass can be bound to the holder's Tailscale login as well as their device key.
   `ALTER TABLE vault_people ADD COLUMN login TEXT;
    ALTER TABLE vault_passes ADD COLUMN holder_login TEXT;`,
+  // ADR 0006: item versions and vault classes, the meta sealed with each item, and row MACs.
+  `ALTER TABLE vault_items ADD COLUMN ver INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE vault_items ADD COLUMN vault TEXT NOT NULL DEFAULT 'agents';
+   ALTER TABLE vault_items ADD COLUMN apps TEXT NOT NULL DEFAULT '[]';
+   ALTER TABLE vault_items ADD COLUMN reprompt INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE vault_items ADD COLUMN mac TEXT;
+   ALTER TABLE vault_grants ADD COLUMN mac TEXT;
+   ALTER TABLE vault_passes ADD COLUMN mac TEXT;
+   ALTER TABLE vault_devices ADD COLUMN mac TEXT;`,
+  ...SHARE_MIGRATIONS,
+  ...SHARED_MIGRATIONS,
+  ...DEVICE_MIGRATIONS,
+  history.HISTORY_MIGRATION,
+  // Made here now, with a mac column; tools/cli.js used to make them on the fly.
+  `CREATE TABLE IF NOT EXISTS vault_ssh_keys (name TEXT PRIMARY KEY, type TEXT NOT NULL, fingerprint TEXT NOT NULL, public TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);
+   CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL, mac TEXT);`,
 ];
 
-export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set"];
+/** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
+export const AGENTS = "agents", PERSONAL = "personal";
+const KV = 1;
+/** What goes in the personal vault once there is an account: these kinds, and anything with a TOTP seed. */
+const PERSONAL_KINDS = ["login", "card", "note"];
+
+/**
+ * The columns of each row that decide what a value may do: where it goes, who may have it, and
+ * which sealed version is current. A module that writes vyre.db cannot change them without the
+ * MAC failing, and a row whose MAC fails is ignored and audited.
+ */
+export const MACED = {
+  vault_items: ["id", "name", "kind", "url", "hosts", "origin", "rotate", "vault", "ver", "apps", "reprompt", "relay"],
+  vault_grants: ["id", "item", "module", "watcher", "status"],
+  vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
+  vault_devices: ["id", "name", "token_hash", "revoked"],
+  vault_history: ["id", "item", "ver", "name", "vault", "at", "by", "changed", "fh"],
+  // The ssh agent's record of each key's public half (what a signing prompt names), and the
+  // marks that say a login must be rotated. Keyed by item name, made by tools/cli.js.
+  vault_ssh_keys: ["name", "type", "fingerprint", "public"],
+  vault_marks: ["name", "stale"],
+};
+/** The key column of each MACed table, where it is not `id`. */
+const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name" };
+/** Tables MACed after the v2 upgrade: their rows from before are signed once, then checked. */
+const LATE_MACED = ["vault_ssh_keys", "vault_marks"];
+
+/**
+ * Tables tools/cli.js made before they were numbered migrations have no mac column; add it.
+ * @param {import("node:sqlite").DatabaseSync} db
+ */
+export function ensureMacColumns(db) {
+  for (const t of LATE_MACED) {
+    const cols = /** @type {any[]} */ (db.prepare(`PRAGMA table_info(${t})`).all()).map(c => c.name);
+    if (cols.length && !cols.includes("mac")) db.exec(`ALTER TABLE ${t} ADD COLUMN mac TEXT`);
+  }
+}
+
+const ACCOUNT = "account.json";
+const TOUCHID = "touchid.json";
+const AGENT_VK = path.join("vaults", "agents.json");
+const STATE = "state.json";
+const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
+const locked = message => Object.assign(new Error(message), { code: "locked" });
+const isShared = cls => String(cls || "").startsWith("shared:");
+
+export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set", "ssh-key"];
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MODULE = /^[a-z][a-z0-9-]{1,40}$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$/;
 /** The field a kind hands over when nobody names one. env-set has none: name the variable. */
-const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null };
+// ssh-key has none either: its private half is used by vyred's ssh agent and never handed out.
+const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null, "ssh-key": null };
 const MAX_VALUE = 64 * 1024;
 const IDENTITY = "identity";
+/** The device identity is sealed in the agent vault at a fixed version: it is written once, or by a restore. */
+const IDENTITY_AT = { vault: "agents", kv: 1, id: IDENTITY, ver: 1, name: IDENTITY };
 
 const now = () => Date.now();
 const newId = () => crypto.randomBytes(9).toString("base64url");
@@ -92,19 +169,38 @@ export function origin(u) {
 
 export class Vault {
   /**
-   * @param {{ db: import("node:sqlite").DatabaseSync, dir: string, config: any, emit: (type: string, payload: object) => void, log?: (m: string) => void }} deps
+   * @param {{ db: import("node:sqlite").DatabaseSync, dir: string, config: any, emit: (type: string, payload: object) => void, log?: (m: string) => void, testKdf?: any }} deps
+   *   testKdf: tests only, a cheap password KDF (`{ kdf: "argon2id", m, t, p }`) used for a new
+   *   account and allowed on unlock. Nothing outside a test passes it; the defaults never drop.
    */
-  constructor({ db, dir, config, emit, log = () => {} }) {
-    this.db = db; this.dir = dir; this.emit = emit; this.log = log;
+  constructor({ db, dir, config, emit, log = () => {}, testKdf = null }) {
+    this.db = db; this.dir = dir; this.log = log;
+    /** Set by sync (devices.js): told of every event, so a local write can be pushed. */
+    /** @type {((type: string, payload: any) => void) | null} */ this.onEmit = null;
+    this.emit = (type, payload) => { emit(type, payload); try { this.onEmit?.(type, payload); } catch {} };
     const opts = (config && config.vault) || {};
     this.name = (config && config.name) || "vyre";
     this.kind = opts.keystore || defaultKind();
     this.guarded = this.kind === "keychain" && !opts.keychain && Boolean(process.env.NODE_TEST_CONTEXT);
-    this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain });
-    /** @type {Buffer|null} */
-    this.mk = null;
-    /** Nonces seen on the relay listener, for replay refusal. */
-    this.seen = new Map();
+    // On a Mac the keychain is written by a hash-checked helper that is the only app on each
+    // item's access list (ADR 0006 finding 1); elsewhere there is no keychain keystore.
+    const kcHelper = this.kind === "keychain" && process.platform === "darwin" ? new Helper({ name: "keychain", dir: path.join(dir, "helpers") }) : null;
+    this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain, helper: kcHelper });
+    this.secretKeys = secretKeyStore({ dir, kind: this.kind === "keychain" ? "keychain" : "file", keychain: opts.keychain, helper: kcHelper });
+    this.testKdf = testKdf;
+    /** The agent vault's key, the personal vault's key while unlocked, and the row MAC key. All KeyObjects. */
+    /** @type {import("node:crypto").KeyObject|null} */ this.vk = null;
+    /** @type {import("node:crypto").KeyObject|null} */ this.pvk = null;
+    /** @type {import("node:crypto").KeyObject|null} */ this.mkey = null;
+    /** @type {Promise<import("node:crypto").KeyObject>|null} */ this.opening = null;
+    /** Rows already reported as failing their MAC, so one bad row is one audit entry per run. */
+    this.flagged = new Set();
+    /** People, signed cards and tickets, relay guards (share.js). */
+    this.share = new Share(this);
+    /** Shared vaults: manifests, sync, and the keys of `shared:<id>` classes (shared.js). */
+    this.shared = new Shared(this);
+    /** This person's other devices: join, approve, and syncing items between them (devices.js). */
+    this.devices = new Devices(this);
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
@@ -118,45 +214,584 @@ export class Vault {
 
   // ---- keys -----------------------------------------------------------------------------
 
-  /** The master key, loaded (or made, the first time) on first use rather than at start. */
+  /**
+   * The agent vault's key, loaded (or made, the first time) on first use. The keystore holds a
+   * device key; the device key unwraps the agent VK; the first load after an upgrade also
+   * re-seals v1 items and signs the rows that were there before MACs existed.
+   */
   async key() {
-    if (this.mk) return this.mk;
+    if (this.vk) return this.vk;
+    if (!this.opening) this.opening = this.openAgents().finally(() => { this.opening = null; });
+    return this.opening;
+  }
+
+  async openAgents() {
     // Under node --test the real login keychain is out of bounds: a test that forgot to pick a
     // keystore must fail loudly, not quietly write a key into someone's keychain.
     if (this.guarded) throw new Error("under tests the keychain keystore needs vault.keychain (a temporary keychain file)");
+    let raw;
     if (await this.keys.exists()) {
-      const mk = await this.keys.load();
-      if (!mk) throw Object.assign(new Error("the vault is locked · vyre vault unlock"), { code: "locked" });
-      this.mk = mk;
+      raw = await this.keys.load();
+      if (!raw) throw locked("the vault is locked · vyre vault unlock");
     } else {
-      if (this.kind === "passphrase") throw Object.assign(new Error("the vault has no passphrase yet · vyre vault unlock sets one"), { code: "locked" });
-      this.mk = await this.keys.create();
+      if (this.kind === "passphrase") throw locked("the vault has no passphrase yet · vyre vault unlock sets one");
+      raw = await this.keys.create();
       this.log(`vault key created in the ${this.kind} keystore`);
     }
-    return this.mk;
+    const vk = this.adopt(raw);
+    await this.sealRelayRules();
+    return vk;
+  }
+
+  /** Take a device key (raw bytes, zeroed here), open the agent VK with it, and bring the home up to v2. */
+  adopt(raw) {
+    const dk = keyObject(raw);
+    const w = readJsonFile(this.dir, AGENT_VK);
+    let vk;
+    if (w) {
+      try { vk = unwrapVaultKey(dk, w, vkAad(AGENTS, KV)); } catch { throw new Error("the device key does not open this vault's agent key"); }
+    } else {
+      if (readJsonFile(this.dir, STATE)) throw new Error("this vault's agent key file is missing; restore it or a backup");
+      vk = newVaultKey();
+      writeJsonFile(this.dir, AGENT_VK, wrapVaultKey(dk, vk, vkAad(AGENTS, KV)));
+    }
+    this.vk = vk;
+    this.mkey = macKey(vk);
+    // A failed upgrade leaves the vault closed, so the next key() runs it again.
+    try { this.upgrade(dk); } catch (e) { this.vk = null; this.mkey = null; throw e; }
+    return vk;
   }
 
   async unlock(passphrase) {
     if (this.kind !== "passphrase") { await this.key(); return { unlocked: true, keystore: this.kind }; }
-    this.mk = (await this.keys.exists()) ? await this.keys.load({ passphrase }) : await this.keys.create({ passphrase });
+    const raw = (await this.keys.exists()) ? await this.keys.load({ passphrase }) : await this.keys.create({ passphrase });
+    if (raw) this.adopt(raw);
     return { unlocked: true, keystore: this.kind };
   }
 
   /** For autofill: is this the vault passphrase? A yes also unlocks, since filling needs the key. */
   async checkPassphrase(passphrase) {
     if (this.kind !== "passphrase" || !(await this.keys.exists())) return false;
-    try { this.mk = await this.keys.load({ passphrase }); return Boolean(this.mk); } catch { return false; }
+    try { const raw = await this.keys.load({ passphrase }); if (!raw) return false; this.adopt(raw); return true; } catch { return false; }
   }
 
+  /** Drop every key this process holds. The agent vault reopens on its own; the personal one needs the password. */
   lock() {
-    if (this.mk) this.mk.fill(0);
-    this.mk = null;
+    this.vk = null; this.pvk = null; this.mkey = null;
     return { locked: true, keystore: this.kind, relocks: this.kind !== "passphrase" };
   }
 
   async locked() {
-    if (this.mk) return false;
+    if (this.vk) return false;
     return this.kind === "passphrase";
+  }
+
+  // ---- the upgrade to v2 ------------------------------------------------------------------
+
+  /**
+   * Run once per key load. Staged copies left by a crash are finished or dropped. On the first
+   * v2 start: rows that predate MACs are signed (they are trusted once, at upgrade), v1 items are
+   * re-sealed as v2 in the agent vault, and a state file marks it done, after which a v1 file is
+   * refused rather than migrated, so an old file put back cannot come in that way.
+   * @param {import("node:crypto").KeyObject} dk the device key, which opened v1 items
+   */
+  upgrade(dk) {
+    this.recoverStaged();
+    const state = readJsonFile(this.dir, STATE);
+    if (state) {
+      if (!state.mac || !same(state.mac, this.stateMac())) this.flag("state", "vault", null);
+      this.relaySealed = Boolean(state.relay && same(state.relay, this.relayMac()));
+      // Tables MACed after this home went v2: their older rows are trusted once, like at upgrade.
+      if (!state.late || !same(state.late, this.lateMac())) {
+        for (const t of LATE_MACED) for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${t} WHERE mac IS NULL`).all())) this.sign(t, r.name);
+        writeJsonFile(this.dir, STATE, { ...state, late: this.lateMac() });
+      }
+      return;
+    }
+    this.relaySealed = true;
+    for (const [table] of Object.entries(MACED)) {
+      for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${table} WHERE mac IS NULL`).all())) this.sign(table, r[KEY_COL[table] || "id"]);
+    }
+    this.migrateV1(dk);
+    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac(), relay: this.relayMac(), late: this.lateMac() });
+  }
+
+  lateMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { late: LATE_MACED }); }
+
+  relayMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { relaySealed: true }); }
+
+  /**
+   * Once per home: items whose relay rules were set before rules were sealed get a new version
+   * with the rules in their meta. Until that is done for every item, open() does it on the way;
+   * after, a row whose rules differ from the sealed copy is refused like any other mismatch.
+   */
+  async sealRelayRules() {
+    if (this.relaySealed !== false) return;
+    let pending = 0;
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE relay IS NOT NULL").all())) {
+      if (!this.rowOk("vault_items", r)) continue;
+      if (r.vault === PERSONAL && !this.pvk) { pending++; continue; }
+      try { await this.open(r); } catch { /* refused or missing: nothing to bring forward */ }
+    }
+    if (pending) return;
+    this.relaySealed = true;
+    const state = readJsonFile(this.dir, STATE) || { v: 2, mac: this.stateMac() };
+    writeJsonFile(this.dir, STATE, { ...state, relay: this.relayMac() });
+  }
+
+  stateMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { v: 2 }); }
+
+  /** Re-seal every v1 item as v2 in the agent vault; v1 files go only after every v2 copy verifies. */
+  migrateV1(dk) {
+    const vk = /** @type {import("node:crypto").KeyObject} */ (this.vk);
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items").all());
+    const staged = [];
+    for (const r of rows) {
+      const sealed = readSealed(this.dir, r.id);
+      if (!sealed || sealed.v !== 1) continue;
+      let fields;
+      try { fields = openItem(dk, r.id, r.name, sealed); }
+      catch { this.audit("migrate", r.name, "vault", false, "the v1 copy did not open"); continue; }
+      const next = { ...r, ver: Number(r.ver || 0) + 1, vault: AGENTS };
+      writeSealed(this.dir, r.id + STAGED, sealItemV2(vk, this.at(next), { meta: this.meta(next), fields }));
+      staged.push({ next, fields });
+    }
+    const ident = readSealed(this.dir, IDENTITY);
+    let identity = null;
+    if (ident && ident.v === 1) {
+      try {
+        identity = openItem(dk, IDENTITY, IDENTITY, ident);
+        writeSealed(this.dir, IDENTITY + STAGED, sealItemV2(vk, IDENTITY_AT, { meta: { kind: IDENTITY }, fields: identity }));
+      } catch { this.audit("migrate", IDENTITY, "vault", false, "the v1 identity did not open"); identity = null; }
+    }
+    // Verify every staged copy before any row or v1 file changes.
+    for (const { next, fields } of staged) {
+      const back = openItemV2(vk, this.at(next), readSealed(this.dir, next.id + STAGED));
+      if (canonical(back.fields) !== canonical(fields)) throw new Error(`the v2 copy of ${next.name} did not verify; nothing was changed`);
+    }
+    if (identity) openItemV2(vk, IDENTITY_AT, readSealed(this.dir, IDENTITY + STAGED));
+    this.tx(() => {
+      for (const { next } of staged) {
+        this.db.prepare("UPDATE vault_items SET ver=?, vault=? WHERE id=?").run(next.ver, AGENTS, next.id);
+        this.sign("vault_items", next.id);
+      }
+    });
+    for (const { next } of staged) promoteSealed(this.dir, next.id);
+    if (identity) promoteSealed(this.dir, IDENTITY);
+    if (staged.length) this.log(`vault: ${staged.length} items re-sealed as v2`);
+  }
+
+  /** Finish or drop staged copies: a copy that opens against its row's current version is the one the row names. */
+  recoverStaged() {
+    for (const id of stagedIds(this.dir)) {
+      const sealed = readSealed(this.dir, id + STAGED);
+      let good = false;
+      try {
+        if (id === IDENTITY) { openItemV2(/** @type {any} */ (this.vk), IDENTITY_AT, sealed); good = true; }
+        else {
+          const r = this.db.prepare("SELECT * FROM vault_items WHERE id = ?").get(id);
+          const k = r && (r.vault === PERSONAL ? this.pvk : this.vk);
+          if (r && !k) continue; // a personal item while locked: sort it out on unlock
+          if (r) { openItemV2(/** @type {any} */ (k), this.at(r), sealed); good = true; }
+        }
+      } catch { good = false; }
+      if (good) promoteSealed(this.dir, id); else removeSealed(this.dir, id + STAGED);
+    }
+  }
+
+  tx(fn) {
+    this.db.exec("BEGIN");
+    try { fn(); this.db.exec("COMMIT"); } catch (e) { this.db.exec("ROLLBACK"); throw e; }
+  }
+
+  // ---- row MACs ---------------------------------------------------------------------------
+
+  /** @param {keyof typeof MACED} table @param {any} r */
+  macOf(table, r) {
+    const f = {};
+    for (const c of MACED[table]) f[c] = r[c] ?? null;
+    return rowMac(/** @type {any} */ (this.mkey), table, f);
+  }
+
+  /** Sign one row as it is now. Only code that just wrote it, or verified it, calls this. */
+  sign(table, id) {
+    if (!this.mkey) return;
+    const col = KEY_COL[table] || "id";
+    const r = this.db.prepare(`SELECT * FROM ${table} WHERE ${col} = ?`).get(id);
+    if (r) this.db.prepare(`UPDATE ${table} SET mac = ? WHERE ${col} = ?`).run(this.macOf(/** @type {any} */ (table), r), id);
+  }
+
+  /**
+   * Whether a row is one this vault wrote. Without the key there is nothing to check against;
+   * every path that hands out a value loads the key first, so it always checks.
+   * @param {keyof typeof MACED} table @param {any} r
+   */
+  rowOk(table, r) {
+    if (!r) return false;
+    if (!this.mkey) return true;
+    if (r.mac && same(r.mac, this.macOf(table, r))) return true;
+    this.flag(table, r[KEY_COL[table] || "id"], r.mac);
+    return false;
+  }
+
+  flag(table, id, mac) {
+    const k = `${table}:${id}:${mac}`;
+    if (this.flagged.has(k)) return;
+    this.flagged.add(k);
+    const name = table === "vault_items" ? /** @type {any} */ (this.db.prepare("SELECT name FROM vault_items WHERE id = ?").get(id))?.name : null;
+    this.audit("tamper", name ?? null, "vault", false, `${table} row ${id} failed its check and is ignored`);
+  }
+
+  // ---- the account and the personal vault -------------------------------------------------
+
+  hasAccount() { return Boolean(readJsonFile(this.dir, ACCOUNT)); }
+
+  /** Password KDF parameters for a new account: Argon2id, or scrypt where node lacks it. */
+  kdfParams() {
+    if (this.testKdf) return { ...this.testKdf };
+    return passwordKdf() === "argon2id" ? { kdf: "argon2id", ...ARGON2 } : { kdf: "scrypt", ...AUK_SCRYPT };
+  }
+
+  /**
+   * Set the account password: a new account id and Secret Key, and a personal vault whose key
+   * is wrapped under the account unlock key. Returns the Secret Key once, for the recovery kit.
+   * @param {{ password: string }} input
+   */
+  async createAccount({ password }, who = "cli") {
+    if (this.hasAccount()) throw new Error("this vault already has an account password · vyre vault account unlock");
+    if (typeof password !== "string" || password.normalize("NFKC").length < MIN_PASSWORD) throw new Error(`a vault password is at least ${MIN_PASSWORD} characters`);
+    await this.key();
+    const acct = newAccountId();
+    const sk = crypto.randomBytes(16);
+    const params = clampKdf(this.kdfParams(), { test: Boolean(this.testKdf) });
+    const salt = crypto.randomBytes(16);
+    const secretKey = formatSecretKey(acct, sk);
+    const auk = accountUnlockKey({ password, secretKey: sk, acct, salt, params });
+    sk.fill(0);
+    const pvk = newVaultKey();
+    // The Secret Key is stored before the account file, so a crash never leaves an account
+    // whose Secret Key is nowhere.
+    await this.secretKeys.put(secretKey);
+    writeJsonFile(this.dir, ACCOUNT, { v: 2, acct, ...params, salt: salt.toString("base64"), personal: { kv: KV, ...wrapVaultKey(auk, pvk, vkAad(PERSONAL, KV, acct)) } });
+    this.pvk = pvk;
+    const moved = await this.migratePersonal();
+    this.audit("account-create", null, who, true, `${moved} items moved into the personal vault`);
+    this.emit("vault.unlocked", { vault: PERSONAL });
+    return { acct, secretKey, moved };
+  }
+
+  /** Open the personal vault with the password and this device's Secret Key. */
+  /**
+   * The account unlock key from the password and this device's Secret Key. A wrong password
+   * throws in words and is audited.
+   */
+  async deriveAuk(password, who) {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    await this.key();
+    const params = clampKdf(rec, { test: Boolean(this.testKdf) });
+    const text = await this.secretKeys.read();
+    if (!text) throw new Error("this device has no Secret Key for the account · use your recovery kit");
+    const { acct, bytes } = parseSecretKey(text);
+    if (acct !== rec.acct) { bytes.fill(0); throw new Error("the Secret Key on this device belongs to another account"); }
+    try {
+      const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
+      unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+      return { auk, rec, acct };
+    } catch {
+      this.audit("account-unlock", null, who, false, "wrong password");
+      throw new Error("that password does not open your personal vault");
+    } finally { bytes.fill(0); }
+  }
+
+  /**
+   * Open the personal vault with the password, or with Touch ID once enrolled on this Mac.
+   * @param {{ password?: string, method?: "password"|"touchid" }} input
+   */
+  async unlockAccount({ password, method = "password" }, who = "cli") {
+    let auk, rec, acct;
+    if (method === "touchid") ({ auk, rec, acct } = await this.touchIdAuk(who));
+    else ({ auk, rec, acct } = await this.deriveAuk(password, who));
+    this.pvk = unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+    this.recoverStaged();
+    const moved = await this.migratePersonal();
+    await this.sealRelayRules();
+    this.audit("account-unlock", null, who, true, [method === "touchid" ? "touch id" : null, moved ? `${moved} items moved into the personal vault` : null].filter(Boolean).join(", ") || null);
+    this.emit("vault.unlocked", { vault: PERSONAL });
+    return { unlocked: true, acct, method };
+  }
+
+  /**
+   * Turn on Touch ID unlock on this Mac: a Secure Enclave key, and the AUK wrapped to it. Needs
+   * the password, since the AUK is made from it. Enrolling again replaces the old wrap.
+   */
+  async enrollTouchId({ password }, who = "cli") {
+    if (!this.enclave) throw new Error("Touch ID unlock needs a Mac with a Secure Enclave");
+    const { auk, acct } = await this.deriveAuk(password, who);
+    const made = await enclaveCall(this.enclave, { op: "create" });
+    if (!made || !made.ok) throw new Error(`the Secure Enclave did not make a key: ${(made && made.message) || "no answer"}`);
+    const { ephPub, wrapped } = wrapAuk(auk, made.pub, acct);
+    writeJsonFile(this.dir, TOUCHID, { v: 2, acct, blob: made.blob, sePub: made.pub, ephPub, wrapped });
+    this.audit("touchid-enroll", null, who, true, null);
+    return { enrolled: true };
+  }
+
+  /** The AUK through the enclave: one Touch ID dialog, and only this Mac's enclave can answer it. */
+  async touchIdAuk(who) {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    const t = readJsonFile(this.dir, TOUCHID);
+    if (!t || t.acct !== rec.acct) throw new Error("Touch ID unlock is not set up on this Mac · vyre vault account enroll-touchid");
+    if (!this.enclave) throw new Error("Touch ID unlock needs a Mac with a Secure Enclave");
+    await this.key();
+    const r = await enclaveCall(this.enclave, { op: "derive", blob: t.blob, peerPub: t.ephPub, reason: "unlock your personal vault" });
+    if (!r || !r.ok) {
+      this.audit("account-unlock", null, who, false, r && r.code === "refused" ? "touch id refused" : "touch id failed");
+      throw new Error(r && r.code === "refused" ? "Touch ID was not confirmed" : "Touch ID unlock no longer works on this Mac (were fingerprints changed?) · unlock with your password and enroll again");
+    }
+    try { return { auk: unwrapAuk(Buffer.from(String(r.shared), "base64"), t, rec.acct), rec, acct: rec.acct }; }
+    catch { this.audit("account-unlock", null, who, false, "touch id wrap did not open"); throw new Error("the Touch ID wrap does not open · unlock with your password and enroll again"); }
+  }
+
+  /**
+   * `vyre vault migrate-key`: move keychain items a gone helper build wrote to this build. The
+   * one keychain path that may ask the person to allow access, so only a person starts it.
+   */
+  async migrateKey(who = "cli") {
+    const out = { key: false, secretKey: false };
+    if (typeof this.keys.migrate === "function") out.key = (await this.keys.migrate()).moved;
+    if (typeof this.secretKeys.migrate === "function") out.secretKey = (await this.secretKeys.migrate()).moved;
+    this.audit("migrate-key", null, who, true, `key ${out.key ? "moved" : "unchanged"}, secret key ${out.secretKey ? "moved" : "unchanged"}`);
+    return out;
+  }
+
+  /** Whether there is an account, whether it is unlocked, and whether Touch ID is set up here. */
+  accountStatus() {
+    const rec = readJsonFile(this.dir, ACCOUNT);
+    const t = readJsonFile(this.dir, TOUCHID);
+    return { account: Boolean(rec), unlocked: Boolean(this.pvk), touchid: Boolean(rec && t && t.acct === rec.acct), ...(rec ? { acct: rec.acct } : {}) };
+  }
+
+  /** Close the personal vault. The agent vault stays open: agents keep working. */
+  lockAccount(who = "cli") {
+    const was = Boolean(this.pvk);
+    this.pvk = null;
+    if (was) { this.audit("account-lock", null, who); this.emit("vault.locked", { vault: PERSONAL }); }
+    return { locked: true };
+  }
+
+  /**
+   * A joining device takes the agent key of the device that approved it (devices.js). Only on a
+   * fresh home: no items and no account. The device identity is re-sealed under the new key and
+   * every MACed row is signed again, since the MAC key comes from the agent key.
+   * @param {Buffer} raw the agent VK, zeroed here
+   */
+  async replaceAgentKey(raw) {
+    await this.key();
+    const n = Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM vault_items").get()).n);
+    if (n || this.hasAccount()) { raw.fill(0); throw new Error("only a fresh vault can join another device: this one already holds items or an account"); }
+    if (this.kind === "passphrase") { raw.fill(0); throw new Error("a passphrase vault cannot join another device yet; use the keychain or file keystore"); }
+    const id = await this.identity();
+    const dkRaw = await this.keys.load();
+    if (!dkRaw) { raw.fill(0); throw locked("the vault is locked"); }
+    const dk = keyObject(dkRaw);
+    dkRaw.fill(0);
+    const vk = keyObject(raw);
+    raw.fill(0);
+    writeJsonFile(this.dir, AGENT_VK, wrapVaultKey(dk, vk, vkAad(AGENTS, KV)));
+    this.vk = vk;
+    this.mkey = macKey(vk);
+    await this.writeIdentity(id);
+    for (const table of Object.keys(MACED)) {
+      const col = KEY_COL[table] || "id";
+      for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT ${col} AS k FROM ${table}`).all())) this.sign(table, r.k);
+    }
+    this.relaySealed = true;
+    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac(), relay: this.relayMac(), late: this.lateMac() });
+  }
+
+  /**
+   * A joining full device takes the account: the Secret Key into this device's store, and the
+   * account record (the personal VK wrapped under the password and Secret Key). The password
+   * never travels; the person types it here to unlock.
+   * @param {{ secretKey: string, account: any }} a
+   */
+  async adoptAccount({ secretKey, account }) {
+    if (this.hasAccount()) throw new Error("this vault already has an account");
+    const { acct, bytes } = parseSecretKey(secretKey);
+    bytes.fill(0);
+    if (!account || account.acct !== acct) throw new Error("the account record does not match its Secret Key");
+    await this.secretKeys.put(secretKey);
+    writeJsonFile(this.dir, ACCOUNT, account);
+  }
+
+  /** The account record, for a device being approved. Holds the personal VK wrapped, never open. */
+  accountRecord() { return readJsonFile(this.dir, ACCOUNT); }
+
+  /** The agent VK's raw bytes, for a device being approved. The caller seals and zeroes it. */
+  async agentKeyBytes() { return (await this.key()).export(); }
+
+  /** The Secret Key on this device, formatted, for the recovery kit. Internal: no tool returns it yet. */
+  async secretKey() {
+    const text = await this.secretKeys.read();
+    if (!text) throw new Error("this device has no Secret Key");
+    return text;
+  }
+
+  /** Which vault an item belongs in: personal for logins, cards, notes and TOTP seeds once there is an account, unless granted. */
+  classFor(kind, fieldNames, name) {
+    if (!this.hasAccount()) return AGENTS;
+    if (name && this.grantedNames().has(name)) return AGENTS;
+    return PERSONAL_KINDS.includes(kind) || fieldNames.includes("totp") ? PERSONAL : AGENTS;
+  }
+
+  grantedNames() {
+    return new Set(/** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all())
+      .filter(g => this.rowOk("vault_grants", g)).map(g => String(g.item)));
+  }
+
+  /** Move agent-vault items that belong in the personal vault there. Needs it unlocked. */
+  async migratePersonal() {
+    if (!this.pvk) return 0;
+    let n = 0;
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE vault = ?").all(AGENTS))) {
+      if (!this.rowOk("vault_items", r)) continue;
+      if (this.classFor(r.kind, json(r.fields, []), r.name) !== PERSONAL) continue;
+      try { await this.reseal(r, PERSONAL); n++; }
+      catch { this.audit("migrate", r.name, "vault", false, "could not move into the personal vault"); }
+    }
+    return n;
+  }
+
+  /** Re-seal one item into another vault class, as a new version. */
+  async reseal(r, cls) {
+    const { meta, fields } = await this.open(r);
+    const next = { ...r, ver: Number(r.ver || 0) + 1, vault: cls };
+    const k = cls === PERSONAL ? this.pvk : await this.key();
+    if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
+    writeSealed(this.dir, r.id + STAGED, sealItemV2(k, this.at(next), { meta, fields }));
+    const hist = await this.historyStep(r, r, next, fields, "vault", now(), fields);
+    this.tx(() => {
+      this.db.prepare("UPDATE vault_items SET ver=?, vault=? WHERE id=?").run(next.ver, cls, r.id);
+      this.sign("vault_items", r.id);
+      hist.commit();
+    });
+    promoteSealed(this.dir, r.id);
+    hist.prune();
+  }
+
+  /**
+   * Change sealed details of an item (relay rules today) as a new version, so the row and the
+   * sealed meta always agree. @param {string} name @param {{ relay?: string|null }} changes
+   */
+  async setMeta(name, changes, why = "details") {
+    const r = this.mustRow(name);
+    const { fields } = await this.open(r);
+    await this.writeVersion(this.mustRow(name), changes, fields, "vault");
+    this.audit("change", name, "vault", true, why);
+  }
+
+  /** Seal the same fields again as a new version of `r` with `changes` to its sealed columns. */
+  async writeVersion(r, changes, fields, by) {
+    const next = { ...r, ...changes, ver: Number(r.ver || 0) + 1 };
+    const k = next.vault === PERSONAL ? this.pvk : await this.key();
+    if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
+    writeSealed(this.dir, r.id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields }));
+    const hist = await this.historyStep(r, r, next, fields, by, now(), fields);
+    this.tx(() => {
+      this.db.prepare("UPDATE vault_items SET ver=?, relay=? WHERE id=?").run(next.ver, next.relay ?? null, r.id);
+      this.sign("vault_items", r.id);
+      hist.commit();
+    });
+    promoteSealed(this.dir, r.id);
+    hist.prune();
+  }
+
+  // ---- history ----------------------------------------------------------------------------
+
+  /**
+   * Before a new version replaces an item: keep the current sealed file as history, and make
+   * the new version's history row. `commit` runs inside the put's transaction, `prune` after.
+   * @param {any} raw the row now (or null) @param {any} old the same row if it passed its MAC
+   * @param {any} next the new row values @param {Record<string,string>} fields the new fields
+   */
+  async historyStep(raw, old, next, fields, by, at, prevFields = null) {
+    const mkey = /** @type {any} */ (this.mkey);
+    const fh = history.fieldHashes(mkey, next.id, fields);
+    let prev = null;
+    if (old) {
+      const h = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? AND ver = ?").get(old.id, Number(old.ver || 0)));
+      if (h && this.rowOk("vault_history", h)) prev = json(h.fh, null);
+      else if (prevFields) prev = history.fieldHashes(mkey, next.id, prevFields);
+      else { try { prev = history.fieldHashes(mkey, next.id, (await this.open(old)).fields); } catch { prev = null; } }
+      const sealed = readSealed(this.dir, old.id);
+      if (sealed && sealed.v === 2) {
+        history.keepVersion(this.dir, old.id, Number(old.ver || 0), sealed);
+        // A version made before history existed gets its row now, so it can be listed and read.
+        if (!h) {
+          const hid = `${old.id}:${Number(old.ver || 0)}`;
+          this.db.prepare("INSERT OR REPLACE INTO vault_history (id, item, ver, name, vault, at, by, changed, fh) VALUES (?,?,?,?,?,?,?,?,?)")
+            .run(hid, old.id, Number(old.ver || 0), old.name, old.vault || AGENTS, Number(old.updated || at), "", "[]", JSON.stringify(prev || {}));
+          this.sign("vault_history", hid);
+        }
+      }
+    }
+    const changed = raw && !old ? Object.keys(fields).sort() : history.changedFields(prev, fh);
+    const hid = `${next.id}:${next.ver}`;
+    return {
+      commit: () => {
+        this.db.prepare("INSERT OR REPLACE INTO vault_history (id, item, ver, name, vault, at, by, changed, fh) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(hid, next.id, next.ver, next.name, next.vault, at, String(by), JSON.stringify(changed), JSON.stringify(fh));
+        this.sign("vault_history", hid);
+      },
+      prune: () => {
+        const floor = Number(next.ver) - history.KEEP;
+        for (const h of /** @type {any[]} */ (this.db.prepare("SELECT ver FROM vault_history WHERE item = ? AND ver < ?").all(next.id, floor))) history.dropVersion(this.dir, next.id, h.ver);
+        this.db.prepare("DELETE FROM vault_history WHERE item = ? AND ver < ?").run(next.id, floor);
+      },
+    };
+  }
+
+  /** An item's versions, newest first: when, who, which fields changed. Never a value. */
+  history({ name, field }) {
+    const r = this.mustRow(name);
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? ORDER BY ver DESC").all(r.id))
+      .filter(h => this.rowOk("vault_history", h) && h.ver <= r.ver);
+    const entries = rows.map(h => ({ version: h.ver, at: h.at, by: h.by, changed: json(h.changed, []), current: h.ver === r.ver,
+      readable: h.ver === r.ver || Boolean(history.readVersion(this.dir, r.id, h.ver)) }));
+    const shown = field ? entries.filter(e => e.changed.includes(String(field))) : entries;
+    return {
+      name, entries: shown,
+      // The Deck's shape: versions, and the passwords this login has had before the current one.
+      versions: shown.map(e => ({ ver: e.version, at: e.at, by: e.by, fields: e.changed })),
+      passwords: entries.filter(e => e.version > 1 && e.changed.includes("password")).map(e => ({ at: e.at })),
+    };
+  }
+
+  /** One version's fields: the current one, or a kept older one, under the key it was sealed with. */
+  async versionFields(r, ver) {
+    const v = Number(ver);
+    if (!Number.isInteger(v) || v < 1) throw new Error("a version is a whole number from vault.history");
+    if (v === Number(r.ver)) return this.fields(r);
+    const vk = await this.key();
+    if (!this.rowOk("vault_items", r)) throw new Error(`the record for ${r.name} failed its check and is ignored`);
+    const h = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? AND ver = ?").get(r.id, v));
+    if (!h || !this.rowOk("vault_history", h) || v > Number(r.ver)) throw new Error(`${r.name} has no version ${v} kept`);
+    const sealed = history.readVersion(this.dir, r.id, v);
+    if (!sealed) throw new Error(`version ${v} of ${r.name} is no longer kept`);
+    const k = h.vault === PERSONAL ? this.pvk : vk;
+    if (!k) throw locked(`version ${v} of ${r.name} was sealed in your personal vault, which is locked · vyre vault account unlock`);
+    try { return openItemV2(k, { vault: h.vault, kv: KV, id: r.id, ver: v, name: h.name }, sealed).fields; }
+    catch { this.audit("open", r.name, "vault", false, `kept version ${v} did not open`); throw new Error(`version ${v} of ${r.name} does not open`); }
+  }
+
+  /** Put an older version's fields back, as a new version. The item's details stay as they are now. */
+  async revert({ name, version }, who) {
+    const r = this.mustRow(name);
+    const fields = await this.versionFields(r, version);
+    await this.put({ name, kind: r.kind, description: r.description, fields, url: r.url || undefined, hosts: json(r.hosts, []), origin: r.origin || undefined, apps: json(r.apps, []), reprompt: Boolean(r.reprompt) }, who);
+    this.audit("revert", name, who, true, `to version ${version}`);
+    return { name, version: this.row(name).ver, from: Number(version) };
   }
 
   // ---- audit ----------------------------------------------------------------------------
@@ -174,7 +809,22 @@ export class Vault {
 
   // ---- items ----------------------------------------------------------------------------
 
-  row(name) { return /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name))); }
+  /** The row for a name, or undefined, including when the row fails its MAC. */
+  row(name) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
+    return r && this.rowOk("vault_items", r) ? r : undefined;
+  }
+
+  /** What the row says about an item: exactly what is sealed as `meta` with it, and checked on open. */
+  meta(r) {
+    const relayRules = json(r.relay, null);
+    return { kind: r.kind, url: r.url ?? null, hosts: json(r.hosts, []), apps: json(r.apps, []), reprompt: Boolean(r.reprompt),
+      // Relay rules decide what a relayed value may be put into, so they are sealed like hosts.
+      ...(relayRules && relayRules.body === true ? { relay: { body: true } } : {}) };
+  }
+
+  /** Where a row's sealed copy sits in the key hierarchy. */
+  at(r) { return { vault: r.vault || AGENTS, kv: isShared(r.vault) ? this.shared.kvOf(r.vault) : KV, id: r.id, ver: Number(r.ver || 0), name: r.name }; }
 
   mustRow(name) {
     const r = this.row(name);
@@ -184,16 +834,42 @@ export class Vault {
 
   /** An item's fields, opened. Only the methods that hand a value to its one recipient call this. */
   async fields(r) {
+    return (await this.open(r)).fields;
+  }
+
+  /**
+   * Open an item: `{ meta, fields }`. The row must pass its MAC, the file must be the version
+   * the row names, and the sealed meta must match the row, or it is refused and audited.
+   */
+  async open(r) {
+    const vk = await this.key();
+    if (!this.rowOk("vault_items", r)) throw new Error(`the record for ${r.name} failed its check and is ignored`);
+    const k = r.vault === PERSONAL ? this.pvk : isShared(r.vault) ? await this.shared.keyFor(r.vault) : vk;
+    if (!k) throw locked(`${r.name} is in your personal vault, which is locked · vyre vault account unlock`);
     const sealed = readSealed(this.dir, r.id);
     if (!sealed) throw new Error(`the sealed copy of ${r.name} is missing`);
-    return openItem(await this.key(), r.id, r.name, sealed);
+    let body;
+    try { body = openItemV2(k, this.at(r), sealed); }
+    catch { this.audit("open", r.name, "vault", false, "the sealed copy is not the version its record names"); throw new Error(`the sealed copy of ${r.name} does not open: it was replaced or is an older version`); }
+    if (canonical(body.meta) !== canonical(this.meta(r))) {
+      // Relay rules set before they were sealed lived only in the (MACed) row. A copy whose one
+      // difference is that is brought up to date, as a new version, rather than refused.
+      const { relay: _r, ...rest } = this.meta(r);
+      if (this.relaySealed === false && !("relay" in body.meta) && _r && canonical(body.meta) === canonical(rest)) {
+        await this.writeVersion(r, {}, body.fields, "vault");
+        return { meta: this.meta(r), fields: body.fields };
+      }
+      this.audit("open", r.name, "vault", false, "vyre.db details do not match the sealed copy");
+      throw new Error(`the details of ${r.name} in vyre.db do not match its sealed copy, so it is refused`);
+    }
+    return body;
   }
 
   /**
    * Add or replace an item. The fields arrive from the CLI's hidden prompt, an import file or a
    * sealed pass; the tool layer refuses them from Claude.
    */
-  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from }, who) {
+  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt, relay: relayRules }, who) {
     if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
     if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
     if (!fields || typeof fields !== "object" || Array.isArray(fields)) throw new Error("fields must be an object");
@@ -214,19 +890,40 @@ export class Vault {
     if (h.includes(null)) throw new Error("hosts must be origins such as https://api.example.com");
     if (!h.length && u && origin(u)) h = [/** @type {string} */ (origin(u))];
 
-    const mk = await this.key();
-    const old = this.row(name);
-    const id = old ? old.id : newId();
-    writeSealed(this.dir, id, sealItem(mk, id, name, clean));
+    if (apps !== undefined && (!Array.isArray(apps) || apps.some(a => typeof a !== "string" || a.length > 200))) throw new Error("apps must be a list of app ids");
+
+    await this.key();
+    // A row that failed its MAC is replaced, not trusted: its id and version are reused so the
+    // new copy supersedes whatever file is there.
+    const raw = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
+    const old = raw && this.rowOk("vault_items", raw) ? raw : null;
+    const id = raw ? raw.id : newId();
+    const cls = this.classFor(kind, Object.keys(clean), name);
+    const k = cls === PERSONAL ? this.pvk : this.vk;
+    if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
+    const next = {
+      id, name, kind, url: u, hosts: JSON.stringify(h), vault: cls, ver: Number(raw ? raw.ver || 0 : 0) + 1,
+      apps: JSON.stringify(apps ?? (old ? json(old.apps, []) : [])),
+      reprompt: (reprompt ?? (old ? Boolean(old.reprompt) : kind === "card")) ? 1 : 0,
+      relay: relayRules !== undefined ? this.share.checkRelayRules(relayRules) : (old ? old.relay ?? null : null),
+    };
+    writeSealed(this.dir, id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields: clean }));
     const t = now();
-    if (old) {
-      // Putting an item again is how it is rotated, so the rotate mark goes.
-      this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=COALESCE(?, origin), rotate=NULL, updated=? WHERE id=?")
-        .run(kind, String(description || old.description || ""), JSON.stringify(Object.keys(clean)), u, JSON.stringify(h), from || null, t, id);
-    } else {
-      this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?)")
-        .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, JSON.stringify(h), from || null, t, t);
-    }
+    const hist = await this.historyStep(raw, old, next, clean, who, t);
+    this.tx(() => {
+      if (raw) {
+        // Putting an item again is how it is rotated, so the rotate mark goes.
+        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=?, relay=? WHERE id=?")
+          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, next.relay, id);
+      } else {
+        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt, relay) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt, next.relay);
+      }
+      this.sign("vault_items", id);
+      hist.commit();
+    });
+    promoteSealed(this.dir, id);
+    hist.prune();
     this.audit(old ? "change" : "add", name, who);
     this.emit(old ? "vault.item-changed" : "vault.item-added", { name, kind });
     return { name, kind, created: !old };
@@ -234,23 +931,30 @@ export class Vault {
 
   list({ filter } = {}) {
     const f = filter ? String(filter).toLowerCase() : "";
-    const grants = this.db.prepare("SELECT item, module, watcher FROM vault_grants WHERE status = 'active'").all();
+    const grants = this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all().filter(g => this.rowOk("vault_grants", g));
     const items = this.db.prepare("SELECT * FROM vault_items ORDER BY name").all()
+      .filter(r => this.rowOk("vault_items", r))
       .filter(r => !f || String(r.name).toLowerCase().includes(f) || String(r.description).toLowerCase().includes(f))
       .map(r => ({
         name: r.name, kind: r.kind, description: r.description, fields: json(r.fields, []),
         ...(r.url ? { url: r.url } : {}), hosts: json(r.hosts, []), rotate: Boolean(r.rotate), ...(r.rotate ? { why: r.rotate } : {}),
-        ...(r.origin ? { origin: r.origin } : {}), updated: r.updated,
+        ...(r.origin ? { origin: r.origin } : {}), updated: r.updated, vault: r.vault || AGENTS,
         grants: grants.filter(g => g.item === r.name).map(g => ({ module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}) })),
       }));
-    return { locked: this.kind === "passphrase" && !this.mk, keystore: this.kind, items };
+    const personal = this.hasAccount() ? (this.pvk ? "unlocked" : "locked") : "none";
+    return { locked: this.kind === "passphrase" && !this.vk, keystore: this.kind, personal, items };
   }
 
   remove({ name }, who) {
-    const r = this.mustRow(name);
+    // A row that fails its check can still be deleted: removing is always safe.
+    const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
+    if (!r) throw new Error(`no item named ${name}`);
+    if (isShared(r.vault)) throw new Error(`${name} is in a shared vault; deleting from a shared vault is not built yet`);
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
+    history.dropHistory(this.dir, r.id);
+    this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_grants WHERE item = ?").run(name);
     this.audit("delete", name, who);
@@ -263,7 +967,8 @@ export class Vault {
     const o = origin(url);
     if (!o) return { logins: [] };
     const host = new URL(o).hostname;
-    const logins = this.db.prepare("SELECT name, description, url, hosts FROM vault_items WHERE kind = 'login'").all()
+    const logins = this.db.prepare("SELECT * FROM vault_items WHERE kind = 'login'").all()
+      .filter(r => this.rowOk("vault_items", r))
       .filter(r => json(r.hosts, []).includes(o) || (r.url && origin(r.url) && new URL(/** @type {string} */ (origin(r.url))).hostname === host))
       .map(r => ({ name: r.name, description: r.description, url: r.url }));
     return { logins };
@@ -271,16 +976,20 @@ export class Vault {
 
   // ---- grants and release ---------------------------------------------------------------
 
-  grant({ name, module, watcher = "" }, caller) {
+  async grant({ name, module, watcher = "" }, caller) {
+    await this.key();
     const item = this.mustRow(name);
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
     const status = kindOf(caller) === "mcp" ? "pending" : "active";
     const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=?").get(name, module, watcher));
-    if (old && old.status === "active") return { grant: this.grantOut(old) };
+    if (old && old.status === "active" && this.rowOk("vault_grants", old)) return { grant: this.grantOut(old) };
+    // A module uses an item while nobody is here, so a granted item lives in the agent vault.
+    if (status === "active" && item.vault === PERSONAL) await this.reseal(item, AGENTS);
     const id = old ? old.id : "g_" + newId();
     this.db.prepare("INSERT OR REPLACE INTO vault_grants (id, item, module, watcher, status, by, at) VALUES (?,?,?,?,?,?,?)").run(id, name, module, watcher, status, String(caller), now());
+    this.sign("vault_grants", id);
     const g = this.db.prepare("SELECT * FROM vault_grants WHERE id=?").get(id);
     this.audit(status === "active" ? "grant" : "grant-requested", name, caller, true, watcher ? `${module}/${watcher}` : module);
     this.emit(status === "active" ? "vault.granted" : "grant.requested", { name, module, ...(watcher ? { watcher } : {}) });
@@ -307,13 +1016,15 @@ export class Vault {
     const mod = moduleOf(caller);
     const who = watcher ? `${caller}/${watcher}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
-    const g = this.db.prepare("SELECT 1 FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").get(name, mod, watcher);
+    await this.key();
+    const g = this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher).some(x => this.rowOk("vault_grants", x));
     if (!g) {
       this.audit("release", name, who, false, "no grant");
       throw new Error(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
     }
     const r = this.row(name);
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }
+    if (r.kind === "ssh-key") { this.audit("release", name, who, false, "ssh key"); throw new Error(`${name} is an ssh key; it signs through the vault's ssh agent and is never handed out`); }
     const f = await this.fields(r);
     const want = field || DEFAULT_FIELD[r.kind];
     if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is an env-set; name the field you want`); }
@@ -329,6 +1040,7 @@ export class Vault {
     for (const it of items) {
       const r = this.row(it.name);
       if (!r) { this.audit("inject", it.name, caller, false, "no such item"); throw new Error(`no item named ${it.name}`); }
+      if (r.kind === "ssh-key") throw new Error(`${it.name} is an ssh key; it signs through the vault's ssh agent and is never handed out`);
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {
@@ -343,9 +1055,11 @@ export class Vault {
   }
 
   async code({ name }, caller) {
+    await this.key();
     const r = this.mustRow(name);
     const mod = moduleOf(caller);
-    if (mod && !this.db.prepare("SELECT 1 FROM vault_grants WHERE item=? AND module=? AND status='active'").get(name, mod)) {
+    await this.key();
+    if (mod && !this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND status='active'").all(name, mod).some(x => this.rowOk("vault_grants", x))) {
       this.audit("totp", name, caller, false, "no grant");
       throw new Error(`${name} is not granted to ${mod}`);
     }
@@ -353,7 +1067,7 @@ export class Vault {
     if (!f.totp) throw new Error(`${name} has no one-time password`);
     const c = totp(f.totp);
     this.audit("totp", name, caller);
-    return { code: c.code, remaining: c.remaining };
+    return { code: c.code, period: c.period, remaining: c.remaining };
   }
 
   async generate({ length, words, symbols, name, description }, caller) {
@@ -394,49 +1108,51 @@ export class Vault {
   // ---- identity -------------------------------------------------------------------------
 
   async identity() {
-    const mk = await this.key();
-    let sealed = readSealed(this.dir, IDENTITY);
-    if (!sealed) {
-      const id = newIdentity();
-      writeSealed(this.dir, IDENTITY, sealItem(mk, IDENTITY, IDENTITY, id));
-      sealed = readSealed(this.dir, IDENTITY);
-    }
-    return openItem(mk, IDENTITY, IDENTITY, sealed);
+    const vk = await this.key();
+    if (!readSealed(this.dir, IDENTITY)) await this.writeIdentity(newIdentity());
+    return openItemV2(vk, IDENTITY_AT, readSealed(this.dir, IDENTITY)).fields;
   }
 
-  async card() {
-    const id = await this.identity();
-    const card = { name: this.name, sign: id.sign.public, box: id.box.public, relay: this.relayUrl || "", ...(this.login ? { login: this.login } : {}) };
-    return { card: relay.encodeCard(card), name: card.name, relay: card.relay || null };
+  /** Seal a device identity in the agent vault (new, or from a backup). */
+  async writeIdentity(id) {
+    const vk = await this.key();
+    writeSealed(this.dir, IDENTITY, sealItemV2(vk, IDENTITY_AT, { meta: { kind: IDENTITY }, fields: id }));
   }
+
+  async card() { return this.share.myCard(); }
 
   // ---- passes: the owner's side ---------------------------------------------------------
 
   activePasses() {
     const t = now();
     return this.db.prepare("SELECT * FROM vault_passes WHERE status='active' AND revoked IS NULL").all()
-      .map(p => this.passOut(p)).filter(p => !p.expires || p.expires > t);
+      .filter(p => this.rowOk("vault_passes", p)).map(p => this.passOut(p)).filter(p => !p.expires || p.expires > t);
   }
 
   passOut(p) {
     return { id: p.id, holder: p.holder, items: json(p.items, []), mode: p.mode, ...(p.hosts ? { hosts: json(p.hosts, []) } : {}),
+      ...(p.methods ? { methods: json(p.methods, []) } : {}), ...(p.paths ? { paths: json(p.paths, []) } : {}),
       expires: p.expires, note: p.note, status: p.revoked ? "revoked" : p.status, created: p.created, ...(p.revoked ? { revoked: p.revoked } : {}) };
   }
 
-  async createPass({ holder, card, items, mode = "relayed", hosts, expires, note = "" }, caller) {
+  async createPass({ holder, card, items, mode = "relayed", hosts, expires, note = "", methods, paths }, caller) {
+    await this.key();
     if (!PERSON.test(String(holder || ""))) throw new Error("a holder is a person's name");
     if (!Array.isArray(items) || !items.length) throw new Error("a pass needs at least one item");
     if (!["relayed", "sealed"].includes(mode)) throw new Error("mode is relayed or sealed");
-    let person = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_people WHERE name=?").get(holder));
     if (card) {
-      const c = relay.decodeCard(card);
-      if (person && person.sign !== c.sign && kindOf(caller) === "mcp") throw new Error(`${holder}'s card changed; a person must confirm that with vyre vault pass create`);
-      this.db.prepare("INSERT OR REPLACE INTO vault_people (name, sign, box, relay, login, added) VALUES (?,?,?,?,?,?)").run(holder, c.sign, c.box, c.relay || null, c.login || null, now());
-      person = this.db.prepare("SELECT * FROM vault_people WHERE name=?").get(holder);
+      // An agent's new or changed card waits for a person, and so does the pass that needs it.
+      const added = await this.share.addPerson({ card, name: holder }, caller);
+      if ("pending" in added) throw Object.assign(new Error(`${holder}'s card waits for a person to approve it (vyre vault approve ${added.pending.id}); then ask for the pass again`), { code: "pending" });
     }
-    if (!person) throw new Error(`no card for ${holder} yet: ask them to run vyre vault card and pass it with --card`);
+    const person = this.share.trusted(holder);
     const narrowed = Array.isArray(hosts) && hosts.length ? hosts.map(origin) : null;
     if (narrowed && narrowed.includes(null)) throw new Error("hosts must be origins such as https://api.example.com");
+    const ms = Array.isArray(methods) && methods.length ? methods.map(m => String(m).toUpperCase()) : null;
+    if (ms && !ms.every(m => /^[A-Z]{3,10}$/.test(m))) throw new Error("methods are HTTP methods such as GET or POST");
+    const ps = Array.isArray(paths) && paths.length ? paths.map(String) : null;
+    if (ps && !ps.every(x => x.startsWith("/"))) throw new Error("paths start with /, such as /v1/charges");
+    if (mode === "sealed" && (ms || ps)) throw new Error("methods and paths narrow a relayed pass; a sealed pass hands the value over");
     for (const n of items) {
       const r = this.mustRow(n);
       if (mode === "relayed") {
@@ -446,8 +1162,10 @@ export class Vault {
     }
     const id = "p_" + newId();
     const status = kindOf(caller) === "mcp" ? "pending" : "active";
-    this.db.prepare("INSERT INTO vault_passes (id, holder, holder_sign, holder_box, holder_login, items, mode, hosts, expires, note, status, by, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(id, holder, person.sign, person.box, person.login || null, JSON.stringify(items), mode, narrowed ? JSON.stringify(narrowed) : null, parseExpiry(expires), String(note), status, String(caller), now());
+    this.db.prepare("INSERT INTO vault_passes (id, holder, holder_sign, holder_box, holder_login, items, mode, hosts, methods, paths, expires, note, status, by, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, holder, person.sign, person.box, person.login || null, JSON.stringify(items), mode, narrowed ? JSON.stringify(narrowed) : null,
+        ms ? JSON.stringify(ms) : null, ps ? JSON.stringify(ps) : null, parseExpiry(expires), String(note), status, String(caller), now());
+    this.sign("vault_passes", id);
     this.audit(status === "active" ? "pass" : "pass-requested", null, caller, true, `${id} to ${holder}: ${items.join(", ")} (${mode})`);
     if (status === "pending") {
       this.emit("pass.requested", { pass: id, holder, items, mode });
@@ -456,54 +1174,72 @@ export class Vault {
     return this.issue(id);
   }
 
-  /** Make the ticket for an active pass. For a sealed pass this is when the items leave. */
+  /**
+   * Make the signed ticket for an active pass. For a sealed pass this is when the items leave.
+   * The holder's pinned key is checked again, since a pass approved later may have waited
+   * through a key change.
+   */
   async issue(id) {
     const p = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(id));
+    const person = this.share.trusted(p.holder);
+    if (person.sign !== p.holder_sign || person.box !== p.holder_box) throw new Error(`${p.holder}'s key changed after this pass was asked for · create it again`);
     const me = await this.identity();
+    if (!this.rowOk("vault_passes", p)) throw new Error(`pass ${id} failed its check and is ignored`);
     const items = json(p.items, []);
-    const ticket = { pass: p.id, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, holder: p.holder, items, mode: p.mode, expires: p.expires };
+    /** @type {any} */
+    const ticket = { pass: p.id, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, ownerCard: (await this.share.myCard()).card,
+      holder: p.holder, holderSign: p.holder_sign, items, mode: p.mode, expires: p.expires };
     if (p.mode === "sealed") {
       ticket.sealed = {};
       for (const n of items) {
         const r = this.mustRow(n);
-        ticket.sealed[n] = sealFor(p.holder_box, { kind: r.kind, description: r.description, fields: await this.fields(r), url: r.url, hosts: json(r.hosts, []) }, `vyre:pass:v1:${p.id}:${n}`);
+        ticket.sealed[n] = sealFor(p.holder_box, { kind: r.kind, description: r.description, fields: await this.fields(r), url: r.url, hosts: json(r.hosts, []) }, `vyre:pass:v1:${p.id}:${n}`, "pass");
       }
     } else if (!this.relayUrl) {
       throw new Error("this Vyre has no relay address, so a relayed pass cannot reach it · set vault.relay in config.json");
     }
     this.db.prepare("UPDATE vault_passes SET issued=? WHERE id=?").run(now(), id);
+    this.sign("vault_passes", id);
     this.emit("pass.created", { pass: p.id, holder: p.holder, items, mode: p.mode });
-    return { pass: this.passOut(p), ticket: relay.encodeTicket(ticket) };
+    return { pass: this.passOut(p), ticket: relay.encodeTicket(ticket, me.sign.private) };
   }
 
   pending() {
     return {
-      grants: this.db.prepare("SELECT * FROM vault_grants WHERE status='pending' ORDER BY at").all().map(g => ({ ...this.grantOut(g), by: g.by, at: g.at })),
-      passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().map(p => ({ ...this.passOut(p), by: p.by })),
+      grants: this.db.prepare("SELECT * FROM vault_grants WHERE status='pending' ORDER BY at").all().filter(g => this.rowOk("vault_grants", g)).map(g => ({ ...this.grantOut(g), by: g.by, at: g.at })),
+      passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().filter(p => this.rowOk("vault_passes", p)).map(p => ({ ...this.passOut(p), by: p.by })),
+      ...this.share.requests(),
     };
   }
 
   async approve({ id }, caller) {
+    await this.key();
     const g = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE id=? AND status='pending'").get(id));
-    if (g) {
+    if (g && this.rowOk("vault_grants", g)) {
+      const item = this.row(g.item);
+      if (item && item.vault === PERSONAL) await this.reseal(item, AGENTS);
       this.db.prepare("UPDATE vault_grants SET status='active', by=?, at=? WHERE id=?").run(String(caller), now(), id);
+      this.sign("vault_grants", id);
       this.audit("grant", g.item, caller, true, `approved ${g.module}${g.watcher ? "/" + g.watcher : ""}`);
       this.emit("vault.granted", { name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}) });
       return { approved: this.grantOut({ ...g, status: "active" }) };
     }
     const p = this.db.prepare("SELECT * FROM vault_passes WHERE id=? AND status='pending' AND revoked IS NULL").get(id);
-    if (p) {
+    if (p && this.rowOk("vault_passes", p)) {
       this.db.prepare("UPDATE vault_passes SET status='active', by=? WHERE id=?").run(String(caller), id);
+      this.sign("vault_passes", id);
       this.audit("pass", null, caller, true, `approved ${id}`);
       const out = await this.issue(id);
       return { approved: out.pass, ticket: out.ticket };
     }
+    const s = await this.share.approve(id, caller);
+    if (s) return s;
     throw new Error(`nothing pending with id ${id}`);
   }
 
   passes() {
     return {
-      passes: this.db.prepare("SELECT * FROM vault_passes ORDER BY created DESC").all().map(p => this.passOut(p)),
+      passes: this.db.prepare("SELECT * FROM vault_passes ORDER BY created DESC").all().filter(p => this.rowOk("vault_passes", p)).map(p => this.passOut(p)),
       held: this.db.prepare("SELECT * FROM vault_held ORDER BY accepted DESC").all().map(h => ({ id: h.id, owner: h.owner, items: json(h.items, []), mode: h.mode, expires: h.expires })),
     };
   }
@@ -513,7 +1249,9 @@ export class Vault {
     const p = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(id));
     if (!p) throw new Error(`no pass ${id}`);
     if (p.revoked) return { revoked: false, rotate: [] };
+    // Revoking is always allowed, even for a row that fails its check: taking access away is safe.
     this.db.prepare("UPDATE vault_passes SET revoked=? WHERE id=?").run(now(), id);
+    if (this.rowOk("vault_passes", p)) this.sign("vault_passes", id);
     const rotate = p.mode === "sealed" && p.issued ? this.markRotate(p) : [];
     this.audit("pass-revoke", null, caller, true, `${id} from ${p.holder}`);
     this.emit("pass.revoked", { pass: id, holder: p.holder, rotate: rotate.length });
@@ -527,38 +1265,51 @@ export class Vault {
       const r = this.row(n);
       if (!r || r.updated > p.issued) continue;
       this.db.prepare("UPDATE vault_items SET rotate=? WHERE id=?").run(`sealed to ${p.holder} by ${p.id}`, r.id);
+      this.sign("vault_items", r.id);
       out.push(n);
     }
     return out;
   }
 
   /** Someone leaves: every pass they hold ends, their card is forgotten, and the list to rotate. */
-  offboard({ person }, caller) {
+  async offboard({ person }, caller) {
     const all = this.db.prepare("SELECT * FROM vault_passes WHERE holder=?").all(person);
-    const known = this.db.prepare("SELECT 1 FROM vault_people WHERE name=?").get(person);
-    if (!all.length && !known) throw new Error(`no one called ${person} holds anything`);
-    const revoked = [], rotate = new Set();
+    const known = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_people WHERE name=?").get(person));
+    // Shared vaults first, while their pinned key is still known: out of every vault this Vyre
+    // can administer, with a new key there and every item they could read flagged.
+    const shared = await this.shared.removeEverywhere(known ? known.sign : null, person, caller);
+    if (!all.length && !known && !shared.vaults.length) throw new Error(`no one called ${person} holds anything`);
+    const revoked = [], rotate = new Set(shared.rotate);
     for (const p of all) {
-      if (!p.revoked) { this.db.prepare("UPDATE vault_passes SET revoked=? WHERE id=?").run(now(), p.id); revoked.push(p.id); }
+      if (!p.revoked) {
+        const good = this.rowOk("vault_passes", p);
+        this.db.prepare("UPDATE vault_passes SET revoked=? WHERE id=?").run(now(), p.id);
+        if (good) this.sign("vault_passes", p.id);
+        revoked.push(p.id);
+      }
       if (p.mode === "sealed" && p.issued) for (const n of this.markRotate(p)) rotate.add(n);
     }
     this.db.prepare("DELETE FROM vault_people WHERE name=?").run(person);
     this.audit("offboard", null, caller, true, `${person}: ${revoked.length} passes, ${rotate.size} to rotate`);
     this.emit("person.offboarded", { person, revoked: revoked.length, rotate: rotate.size });
-    return { person, revoked, rotate: [...rotate].sort() };
+    return { person, revoked, rotate: [...rotate].sort(), ...(shared.vaults.length ? { vaults: shared.vaults } : {}) };
   }
 
   /**
    * The relay listener's handler: a holder's signed request, checked against its pass, sent on
-   * with the value added, and the value scrubbed from whatever comes back.
+   * with the value added, and the value scrubbed from whatever comes back. Nothing a stranger
+   * sends reaches an error message verbatim, and a pass nobody issued writes at most one audit
+   * row a minute.
    */
   async onRelay(env, meta = {}) {
     const deny = (status, message) => ({ status, body: { error: { code: status === 403 ? "denied" : "bad_request", message } } });
-    const p = env && typeof env.pass === "string" ? /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(env.pass)) : null;
-    const who = p ? `pass:${p.id}:${p.holder}` : "pass:unknown";
-    const refuse = why => { this.audit("relay", env && env.item, who, false, why); return deny(403, why); };
-    if (!p) return refuse("no such pass");
-    const why = relay.checkEnvelope(env, { holderKey: p.holder_sign, seen: this.seen });
+    try { await this.key(); } catch { return { status: 503, body: { error: { code: "locked", message: "this vault is locked" } } }; }
+    const raw = env && typeof env.pass === "string" ? /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(env.pass)) : null;
+    const p = raw && this.rowOk("vault_passes", raw) ? raw : null;
+    if (!p) { this.share.auditUnknown(env && env.pass, env && env.item, "no such pass"); return deny(403, "no such pass"); }
+    const who = `pass:${p.id}:${p.holder}`;
+    const refuse = why => { this.audit("relay", env && typeof env.item === "string" ? env.item : null, who, false, why); return deny(403, why); };
+    const why = relay.checkEnvelope(env, { holderKey: p.holder_sign, audience: this.relayUrl || "", seen: this.share.nonces });
     if (why) return refuse(why);
     if (this.relayIdentity) {
       if (!meta.login) return refuse(this.relayIdentity === "whois" ? "this relay answers only people on the tailnet" : "this relay answers only through tailscale serve");
@@ -573,14 +1324,17 @@ export class Vault {
     if (!r) return refuse(`${env.item} no longer exists`);
     const narrowed = p.hosts ? json(p.hosts, []) : null;
     const hosts = json(r.hosts, []).filter(h => !narrowed || narrowed.includes(h));
-    if (!relay.allowedOrigin(env.request && env.request.url, hosts)) return refuse(`${env.item} may only be sent to ${hosts.join(", ") || "nowhere"}`);
+    if (!relay.allowedOrigin(env.request.url, hosts)) return refuse(`${env.item} may only be sent to ${hosts.join(", ") || "nowhere"}`);
+    if (!relay.secureTarget(env.request.url)) return refuse("a relayed value goes over https only (plain http is allowed to loopback)");
+    const narrow = relay.requestAllowed(env.request, { methods: json(p.methods, null), paths: json(p.paths, null) });
+    if (narrow) return refuse(narrow);
     const f = await this.fields(r);
     let sub;
-    try { sub = relay.substitute(env.request, f, DEFAULT_FIELD[r.kind]); }
+    try { sub = relay.substitute(env.request, f, DEFAULT_FIELD[r.kind], this.share.relayRules(r)); }
     catch (e) { return refuse(/** @type {Error} */ (e).message); }
     let res;
     try { res = await relay.send(sub.request); }
-    catch (e) { this.audit("relay", env.item, who, false, "upstream failed"); return { status: 502, body: { error: { code: "upstream", message: relay.scrub(/** @type {Error} */ (e).message, sub.values) } } }; }
+    catch { this.audit("relay", env.item, who, false, "upstream failed"); return { status: 502, body: { error: { code: "upstream", message: "the request to the upstream failed" } } }; }
     const headers = {};
     for (const [k, v] of Object.entries(res.headers || {})) headers[k] = relay.scrub(String(v), sub.values);
     this.audit("relay", env.item, who, true, `${origin(env.request.url)} ${res.status}${meta.login ? " as " + meta.login : ""}`);
@@ -590,26 +1344,36 @@ export class Vault {
 
   // ---- passes: the holder's side --------------------------------------------------------
 
-  /** Take a ticket someone sent. A sealed ticket's items become ordinary sealed items here. */
+  /**
+   * Take a ticket someone sent. It must be signed by its owner, for this Vyre, from a key that
+   * matches the one pinned for them (or a first contact, pinned now). From an agent it waits for
+   * a person. A sealed ticket's items become ordinary sealed items here.
+   */
   async accept({ ticket }, caller) {
     const t = relay.decodeTicket(ticket);
     const me = await this.identity();
+    if (t.holderSign !== me.sign.public) throw new Error(`this ticket was made for another Vyre (${t.holder}), not this one`);
+    if (kindOf(caller) === "mcp") return this.share.request("accept", t.owner, String(ticket).trim(), caller, { items: t.items, mode: t.mode });
+    const owner = await this.share.pinOwner(relay.decodeCard(t.ownerCard), t.ownerCard, caller);
+    const from = `pass:${owner}:${t.pass}`;
     const added = [];
     if (t.mode === "sealed") {
       for (const n of t.items) {
         let item;
-        try { item = openFrom(me.box.private, t.sealed[n], `vyre:pass:v1:${t.pass}:${n}`); }
+        try { item = openFrom(me.box.private, t.sealed?.[n], `vyre:pass:v1:${t.pass}:${n}`, "pass"); }
         catch { throw new Error("this ticket was not sealed for this Vyre"); }
-        const name = this.row(n) && this.row(n).origin !== `pass:${t.owner}:${t.pass}` ? `${t.owner}.${n}`.replace(/[^A-Za-z0-9._-]/g, "-") : n;
-        await this.put({ name, kind: item.kind, description: item.description, fields: item.fields, url: item.url, hosts: item.hosts, origin: `pass:${t.owner}:${t.pass}` }, caller);
+        const name = this.row(n) && this.row(n).origin !== from ? `${owner}.${n}`.replace(/[^A-Za-z0-9._-]/g, "-") : n;
+        await this.put({ name, kind: item.kind, description: item.description, fields: item.fields, url: item.url, hosts: item.hosts, origin: from }, caller);
         added.push(name);
       }
     }
-    this.db.prepare("INSERT OR REPLACE INTO vault_held (id, owner, relay, owner_sign, items, mode, expires, accepted) VALUES (?,?,?,?,?,?,?,?)")
-      .run(t.pass, t.owner, t.relay || "", t.ownerSign, JSON.stringify(t.items), t.mode, t.expires, now());
-    this.audit("pass-accept", null, caller, true, `${t.pass} from ${t.owner}`);
-    this.emit("pass.accepted", { pass: t.pass, owner: t.owner, items: t.items, mode: t.mode });
-    return { held: { id: t.pass, owner: t.owner, items: t.items, mode: t.mode, ...(added.length ? { added } : {}) } };
+    // Keyed on (owner key, pass): the same owner may re-issue, nobody else can take the slot.
+    this.db.prepare(`INSERT INTO vault_held (owner_sign, id, owner, relay, items, mode, expires, accepted) VALUES (?,?,?,?,?,?,?,?)
+      ON CONFLICT (owner_sign, id) DO UPDATE SET owner=excluded.owner, relay=excluded.relay, items=excluded.items, mode=excluded.mode, expires=excluded.expires, accepted=excluded.accepted`)
+      .run(t.ownerSign, t.pass, owner, t.relay || "", JSON.stringify(t.items), t.mode, t.expires, now());
+    this.audit("pass-accept", null, caller, true, `${t.pass} from ${owner}`);
+    this.emit("pass.accepted", { pass: t.pass, owner, items: t.items, mode: t.mode });
+    return { held: { id: t.pass, owner, items: t.items, mode: t.mode, ...(added.length ? { added } : {}) } };
   }
 
   /** Use an item someone relayed to us: the request goes to their box, which adds the value. */
@@ -620,7 +1384,7 @@ export class Vault {
     if (!held.length) throw new Error(`no relayed pass holds ${item}${owner ? ` from ${owner}` : ""}`);
     const h = held[0];
     const me = await this.identity();
-    const env = relay.envelope({ pass: String(h.id), item, request, privDer: me.sign.private });
+    const env = relay.envelope({ pass: String(h.id), item, request, privDer: me.sign.private, aud: String(h.relay) });
     const r = await relay.callRelay(String(h.relay), env);
     this.audit("relay-out", item, caller, !r.error, r.error ? r.error.message : `via ${h.owner}`);
     if (r.error) throw Object.assign(new Error(`${h.owner}'s Vyre said: ${r.error.message}`), { code: r.error.code });

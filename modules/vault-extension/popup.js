@@ -45,6 +45,8 @@ async function refresh() {
     return;
   }
   show("logins");
+  const inl = await ask({ type: "inline-state" });
+  input("inline").checked = Boolean(inl.data && inl.data.inline);
   await listLogins();
 }
 
@@ -99,6 +101,22 @@ $("unlock-btn").addEventListener("click", async () => {
 input("passphrase").addEventListener("keydown", e => { if (e.key === "Enter") $("unlock-btn").click(); });
 
 $("lock").addEventListener("click", async () => { await ask({ type: "lock" }); say("Locked."); await refresh(); });
+
+// Suggestions on pages need the browser's leave to run on every site, asked for on this click.
+input("inline").addEventListener("change", async () => {
+  const box = input("inline");
+  say("");
+  if (box.checked) {
+    const granted = await chrome.permissions.request({ origins: ["https://*/*", "http://*/*"] });
+    const r = granted ? await ask({ type: "inline-enable" }) : { error: { message: "The browser did not allow suggestions on pages." } };
+    if (r.error) { box.checked = false; return say(r.error.message, true); }
+    say("Suggestions are on. Reload open pages to see them.");
+  } else {
+    await ask({ type: "inline-disable" });
+    await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+    say("Suggestions are off.");
+  }
+});
 
 $("settings").addEventListener("click", () => { show("setup"); say(""); });
 

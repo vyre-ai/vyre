@@ -38,8 +38,10 @@ async function setup(t, { now } = {}) {
   /** @param {string} route @param {any} [body] @param {Record<string,string>} [headers] */
   const call = async (route, body, headers = {}) => {
     const [method, name] = route.split(" ");
+    // Pairing needs the extension's Origin; the other routes are tested with and without one.
+    const pairing = name === "pair" && !("origin" in headers) ? { origin: EXT } : {};
     const res = await fetch(`${srv.url}/v1/fill/${name}`, {
-      method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers },
+      method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...pairing, ...headers },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     return { status: res.status, headers: res.headers, body: await res.json() };
@@ -129,7 +131,7 @@ test("no token, wrong route, wrong method and an oversized body are refused", as
   assert.equal((await fetch(`${srv.url}/v1/fill/nope`)).status, 404);
   assert.equal((await fetch(`${srv.url}/v1/relay`, { method: "POST" })).status, 404);
   assert.equal((await fetch(`${srv.url}/v1/fill/fill`)).status, 405);
-  const big = await fetch(`${srv.url}/v1/fill/pair`, { method: "POST", body: "x".repeat(70 * 1024) }).catch(e => e);
+  const big = await fetch(`${srv.url}/v1/fill/match`, { method: "POST", body: "x".repeat(70 * 1024) }).catch(e => e);
   assert.ok(big instanceof Error || big.status === 413);
 });
 
@@ -333,4 +335,37 @@ test("the extension manifest parses, is MV3 and keeps its permissions narrow", (
 
 test("the vault's own migrations include the fill tables", () => {
   assert.ok(MIGRATIONS.includes(FILL_MIGRATION));
+});
+
+test("pairing without an extension Origin is refused, so a script cannot pair itself", async t => {
+  const { fill, srv, db } = await setup(t);
+  const { code } = fill.code({ name: "agent" });
+  const r = await fetch(`${srv.url}/v1/fill/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) });
+  assert.equal(r.status, 403);
+  assert.equal((await r.json()).error.code, "origin_required");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM vault_devices").get().n, 0);
+  // The code was not spent: the extension can still use it.
+  const ok = await fetch(`${srv.url}/v1/fill/pair`, { method: "POST", headers: { "content-type": "application/json", origin: EXT }, body: JSON.stringify({ code }) });
+  assert.equal(ok.status, 200);
+});
+
+test("a Host that is not loopback or a configured name is refused (DNS rebinding)", async t => {
+  const { fill, pairNew } = await setup(t);
+  const { token } = await pairNew();
+  const http = await import("node:http");
+  const named = await serveFill({ host: "127.0.0.1", port: 0, fill, names: ["vault.acme.test"] });
+  t.after(() => named.close());
+  const port = Number(new URL(named.url).port);
+  const get = host => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path: "/v1/fill/status", method: "GET", headers: { host, authorization: `Bearer ${token}` } }, res => {
+      let b = ""; res.on("data", d => { b += d; }); res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(b) }));
+    });
+    req.on("error", reject); req.end();
+  });
+  const evil = /** @type {any} */ (await get(`rebind.example.com:${port}`));
+  assert.equal(evil.status, 421);
+  assert.equal(evil.body.error.code, "host_refused");
+  for (const h of [`127.0.0.1:${port}`, `localhost:${port}`, `vault.acme.test:${port}`, "LOCALHOST"]) {
+    assert.equal((/** @type {any} */ (await get(h))).status, 200, h);
+  }
 });

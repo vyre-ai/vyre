@@ -135,16 +135,39 @@ test("vault cli: a relayed pass between two vyreds, revoked at once; offboarding
   const dbPassword = fake("db");
   await vyre(owner, ["vault", "put", "db-password"], dbPassword);
 
-  const card = (await vyre(mate, ["vault", "card"])).out.split("\n").find(l => l.startsWith("vyre-card:v1:"));
+  const shownCard = await vyre(mate, ["vault", "card"]);
+  const card = shownCard.out.split("\n").find(l => l.startsWith("vyre-card:v2:"));
   assert.ok(card, "the teammate has no card");
+  const mateFp = /fingerprint\s+((?:[0-9A-Z]{4} ){4}[0-9A-Z]{4})/.exec(shownCard.out)?.[1];
+  assert.ok(mateFp, shownCard.out);
 
   // Relayed: the value never leaves the owner's box.
   const created = await vyre(owner, ["vault", "pass", "create", "teammate", "api-token", "--card", card, "--note", "for the billing sync"]);
   assert.equal(created.code, 0, created.all);
-  const ticket = created.out.split("\n").find(l => l.startsWith("vyre-pass:v1:"));
+  const ticket = created.out.split("\n").find(l => l.startsWith("vyre-pass:v2:"));
   const passId = /pass (p_\S+)/.exec(created.out)?.[1];
   assert.ok(ticket && passId, created.out);
+  assert.ok(!ticket.includes(token) && !Buffer.from(ticket.slice(13), "base64url").toString().includes(token), "a ticket carries no secret");
+
+  // Tickets are signed: an edited one and an old unsigned one are refused, in words.
+  const body = JSON.parse(Buffer.from(ticket.slice(13), "base64url").toString());
+  const edited = "vyre-pass:v2:" + Buffer.from(JSON.stringify({ ...body, relay: "https://relay.acme.test" })).toString("base64url");
+  const forged = await vyre(mate, ["vault", "pass", "accept", edited]);
+  assert.equal(forged.code, 1);
+  assert.match(forged.all, /signature does not match/);
+  const old = "vyre-pass:v1:" + Buffer.from(JSON.stringify({ pass: body.pass, owner: "owner-box", relay: body.relay, ownerSign: body.ownerSign, holder: "teammate", items: body.items, mode: "relayed", expires: null })).toString("base64url");
+  assert.match((await vyre(mate, ["vault", "pass", "accept", old])).all, /older Vyre and is not signed/);
+
   assert.match((await vyre(mate, ["vault", "pass", "accept", ticket])).out, /accepted relayed pass from owner-box: api-token/);
+  // Accepting pinned the owner; the owner pinned the teammate from --card; both see the same words.
+  assert.match((await vyre(mate, ["vault", "people"])).out, /owner-box\s+(?:[0-9A-Z]{4} ){4}[0-9A-Z]{4}\s+pinned/);
+  const words = s => /\n\s+([a-z]{6}(?: [a-z]{6}){3})\n/.exec(s)?.[1];
+  const ownerView = await vyre(owner, ["vault", "fingerprint", "teammate"]);
+  const mateView = await vyre(mate, ["vault", "fingerprint", "owner-box"]);
+  assert.ok(words(ownerView.out) && words(ownerView.out) === words(mateView.out), ownerView.out + mateView.out);
+  assert.match(ownerView.out, new RegExp("theirs\\s+" + mateFp));
+  assert.match((await vyre(owner, ["vault", "people", "verify", "teammate", "0000 0000 0000 0000 0000"])).all, /does not match/);
+  assert.match((await vyre(owner, ["vault", "people", "verify", "teammate", ...mateFp.toLowerCase().split(" ")])).out, /verified teammate/);
 
   const used = await vyre(mate, ["vault", "relay", "api-token", `${apiOrigin}/v1/charges`, "--header", "Authorization: Bearer {{vault}}"]);
   assert.equal(used.code, 0, used.all);
@@ -170,10 +193,10 @@ test("vault cli: a relayed pass between two vyreds, revoked at once; offboarding
 
   // A second relayed pass, and a sealed one for offline use; then the teammate leaves.
   const second = await vyre(owner, ["vault", "pass", "create", "teammate", "api-token"]);
-  await vyre(mate, ["vault", "pass", "accept", second.out.split("\n").find(l => l.startsWith("vyre-pass:v1:"))]);
+  await vyre(mate, ["vault", "pass", "accept", second.out.split("\n").find(l => l.startsWith("vyre-pass:v2:"))]);
   const sealed = await vyre(owner, ["vault", "pass", "create", "teammate", "db-password", "--sealed"]);
   assert.match(sealed.out, /revoking this pass means rotating/);
-  await vyre(mate, ["vault", "pass", "accept", sealed.out.split("\n").find(l => l.startsWith("vyre-pass:v1:"))]);
+  await vyre(mate, ["vault", "pass", "accept", sealed.out.split("\n").find(l => l.startsWith("vyre-pass:v2:"))]);
   assert.match((await vyre(mate, ["vault", "list"])).out, /db-password\s+secret/);
   assert.equal(JSON.parse((await vyre(mate, ["vault", "relay", "api-token", `${apiOrigin}/`, "--header", "Authorization: Bearer {{vault}}"])).out).ok, true);
 

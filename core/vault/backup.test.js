@@ -36,8 +36,9 @@ async function filled(t) {
   const a = makeVault(t, "a");
   a.vault.relayUrl = "http://relay.example.com:7443";
   for (const [name, f] of Object.entries(FIXTURES)) await a.vault.put({ name, ...f }, "cli");
-  a.vault.grant({ name: "example-api", module: "switchboard" }, "cli");
+  await a.vault.grant({ name: "example-api", module: "switchboard" }, "cli");
   a.vault.db.prepare("UPDATE vault_items SET rotate='sent sealed' WHERE name='example-note'").run();
+  a.vault.sign("vault_items", a.vault.db.prepare("SELECT id FROM vault_items WHERE name='example-note'").get().id);
   const c = makeVault(t, "c");
   await a.vault.createPass({ holder: "Sam Example", card: (await c.vault.card()).card, items: ["example-api"] }, "cli");
   return a;

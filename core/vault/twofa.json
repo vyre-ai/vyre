@@ -1,0 +1,16 @@
+{
+  "about": "Well-known sites that offer two-factor codes (TOTP). Bundled so Watchtower never asks the network. Registrable domains only.",
+  "domains": [
+    "adobe.com", "airbnb.com", "amazon.com", "apple.com", "atlassian.com", "atlassian.net", "autodesk.com",
+    "aws.amazon.com", "binance.com", "bitbucket.org", "bitwarden.com", "box.com", "canva.com", "cloudflare.com",
+    "coinbase.com", "digitalocean.com", "discord.com", "docker.com", "dropbox.com", "ebay.com", "epicgames.com",
+    "facebook.com", "fastly.com", "figma.com", "fly.io", "gitlab.com", "github.com", "gmail.com", "godaddy.com",
+    "google.com", "heroku.com", "hubspot.com", "instagram.com", "intuit.com", "kraken.com", "linear.app",
+    "linkedin.com", "live.com", "mailchimp.com", "microsoft.com", "namecheap.com", "netlify.com", "notion.so",
+    "npmjs.com", "office.com", "okta.com", "openai.com", "outlook.com", "paypal.com", "pypi.org", "quickbooks.com",
+    "railway.app", "reddit.com", "render.com", "salesforce.com", "sentry.io", "shopify.com", "slack.com",
+    "snapchat.com", "squarespace.com", "steampowered.com", "stripe.com", "supabase.com", "tiktok.com",
+    "twilio.com", "twitch.tv", "twitter.com", "vercel.com", "wix.com", "wordpress.com", "x.com", "xero.com",
+    "yahoo.com", "zendesk.com", "zoom.us"
+  ]
+}
