@@ -79,7 +79,7 @@ export function client({ base, getToken, fetch: f = globalThis.fetch, timeoutMs 
       const posts = r && r.posts ? Object.values(r.posts) : [];
       return /** @type {Post[]} */ (posts).sort((a, b) => a.create_at - b.create_at);
     },
-    /** @param {{ trigger_id: string, url: string, dialog: any }} d */
+    /** An interactive dialog, opened from a button press's trigger_id. @param {{ trigger_id: string, url: string, dialog: any }} d */
     openDialog: d => req("POST", "/actions/dialogs/open", d),
   };
 }

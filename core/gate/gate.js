@@ -28,6 +28,8 @@ export const MIGRATIONS = [
      state TEXT NOT NULL, error TEXT, result TEXT, by TEXT, decided INTEGER
    );
    CREATE INDEX gate_items_state ON gate_items (state, at);`,
+  // Where the agent first addressed it, so a revision that changes `to` still counts as an edit.
+  `ALTER TABLE gate_items ADD COLUMN draft_dest TEXT;`,
 ];
 
 export const KINDS = ["send", "spend", "delete"];
@@ -104,8 +106,8 @@ export class Gate {
     if (!content || typeof content !== "object" || Array.isArray(content)) throw new Error("content must be an object");
     t.check(dest, content, s);
     const id = crypto.randomBytes(9).toString("hex");
-    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft, why, agent, thread, project, state)
-      VALUES (?,?,?,?,?,?,?,?,?,?, 'held')`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(content),
+    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held')`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
       why ? cut(String(why), 1000) : null, agent, thread || null, project || null);
     const summary = t.summary(dest, content);
     this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
@@ -151,17 +153,7 @@ export class Gate {
     if (r.state !== "held") throw new Error(`${id} is already ${r.state}`);
     const { s, t } = this.sender(r.via);
     const draft = json(r.draft, {});
-    const base = json(r.final, null) || draft;
-    let dest = json(r.dest, []);
-    let final = base;
-    if (edited !== undefined) {
-      if (!edited || typeof edited !== "object" || Array.isArray(edited)) throw new Error("edited must be an object of the fields that changed");
-      const { to, ...fields } = edited;
-      if (to !== undefined) dest = (Array.isArray(to) ? to : [to]).map(String).filter(Boolean);
-      final = { ...base, ...fields };
-      if (!dest.length) throw new Error("say where it is going: to");
-      t.check(dest, final, s);
-    }
+    const { dest, final } = this.merge(r, edited);
     const taken = this.db.prepare("UPDATE gate_items SET state = 'sending', final = ?, dest = ?, by = ? WHERE id = ? AND state = 'held'")
       .run(JSON.stringify(final), JSON.stringify(dest), by || null, id);
     if (Number(taken.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
@@ -170,7 +162,7 @@ export class Gate {
       const result = await t.send(dest, final, s, { fetchCredential: this.deps.fetchCredential, relay: this.deps.relay, fetch: this.deps.fetch });
       this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, error = NULL, decided = ? WHERE id = ?").run(JSON.stringify(result ?? null), this.now(), id);
       const edits = diff(draft, final);
-      const changed = edits.removed.length > 0 || edits.added.length > 0 || JSON.stringify(dest) !== r.dest;
+      const changed = edits.removed.length > 0 || edits.added.length > 0 || JSON.stringify(dest) !== (r.draft_dest ?? r.dest);
       this.deps.emit("gate.released", { id, kind: r.kind, via: r.via, to: dest, edited: changed, by: by || null, agent: r.agent, thread: r.thread, project: r.project }, w);
       if (changed && this.deps.teach) await this.teachEdit(r, dest, edits).catch(() => {});
       return { id, state: "sent", result: result ?? null };
@@ -181,6 +173,43 @@ export class Gate {
       this.deps.emit("gate.failed", { id, via: r.via, error: cut(error, 200) }, w);
       return { id, state: "failed", error };
     }
+  }
+
+  /**
+   * The edited words and destination over what is there now (the last revision, else the draft).
+   * `edited` may be the whole content or only the fields that changed; a field given as "" clears
+   * it. Checked with the sender's own check, so a revision the sender would refuse is refused now.
+   * @param {any} r the row @param {any} edited
+   */
+  merge(r, edited) {
+    const { s, t } = this.sender(r.via);
+    const base = json(r.final, null) || json(r.draft, {});
+    let dest = json(r.dest, []);
+    if (edited === undefined) return { dest, final: base };
+    if (!edited || typeof edited !== "object" || Array.isArray(edited)) throw new Error("edited must be an object: the content as it should go out, or the fields that changed");
+    const { to, ...fields } = edited;
+    if (to !== undefined) dest = (Array.isArray(to) ? to : [to]).map(String).map(x => x.trim()).filter(Boolean);
+    const final = { ...base };
+    for (const [k, v] of Object.entries(fields)) { if (v === "" || v === null) delete final[k]; else final[k] = v; }
+    if (!dest.length) throw new Error("say where it is going: to");
+    t.check(dest, final, s);
+    return { dest, final };
+  }
+
+  /**
+   * A person changed the words (or where they go) and has not sent yet. Held stays held; Send
+   * then sends exactly this revision, which is what every surface now shows.
+   * @param {{ id: string, edited: any, by?: string }} input
+   */
+  revise({ id, edited, by }) {
+    const r = this.row(id);
+    if (r.state !== "held") throw new Error(`${id} is already ${r.state}`);
+    const { dest, final } = this.merge(r, edited);
+    const done = this.db.prepare("UPDATE gate_items SET final = ?, dest = ?, by = ? WHERE id = ? AND state = 'held'")
+      .run(JSON.stringify(final), JSON.stringify(dest), by || null, id);
+    if (Number(done.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
+    this.deps.emit("gate.revised", { id, via: r.via, to: dest, by: by || null, agent: r.agent, thread: r.thread, project: r.project }, where(r.thread, r.project));
+    return this.get({ id });
   }
 
   /** A person discarded it. Nothing is sent. @param {{ id: string, reason?: string, by?: string }} input */

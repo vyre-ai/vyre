@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vyre Vault</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <strong>Vyre Vault</strong>
+    <span id="where" class="muted"></span>
+  </header>
+
+  <section id="setup" hidden>
+    <label for="url">vyred fill address</label>
+    <input id="url" type="url" placeholder="http://127.0.0.1:7788" autocomplete="off" spellcheck="false">
+    <label for="name">Name for this browser</label>
+    <input id="name" type="text" placeholder="Chrome on laptop" maxlength="64" autocomplete="off">
+    <label for="code">Pairing code from <code>vyre vault pair</code></label>
+    <input id="code" type="text" placeholder="ABCD-EFGH" maxlength="9" autocomplete="off" spellcheck="false">
+    <button id="pair" type="button">Pair</button>
+  </section>
+
+  <section id="unlock" hidden>
+    <label for="passphrase">Unlock passphrase</label>
+    <input id="passphrase" type="password" autocomplete="off">
+    <button id="unlock-btn" type="button">Unlock</button>
+    <p class="muted">Or use Touch ID from the Vyre Capsule, then reopen this popup.</p>
+  </section>
+
+  <section id="logins" hidden>
+    <ul id="list"></ul>
+    <p id="empty" class="muted" hidden>No saved login for this page.</p>
+    <button id="lock" type="button" class="quiet">Lock</button>
+  </section>
+
+  <p id="msg" role="status"></p>
+
+  <footer>
+    <button id="settings" type="button" class="quiet">Settings</button>
+    <button id="forget" type="button" class="quiet" hidden>Unpair this browser</button>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>

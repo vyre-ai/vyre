@@ -3,8 +3,8 @@
 //
 // It records every call (method, path, whether the bearer matched) so a test can assert on what
 // Chat did, and it can act as a person: post as a user, press a button on a post (posting the
-// button's integration context to its url, as the real server does), submit an opened dialog and
-// run a slash command. Nothing here talks to a real server; the users are the fictional world.
+// button's integration context to its url, as the real server does), submit a dialog Chat opened
+// and run a slash command. Nothing here talks to a real server; the users are the fictional world.
 
 import http from "node:http";
 import crypto from "node:crypto";
@@ -24,7 +24,9 @@ export async function fakeMattermost({ token, team = "vyre", users = ["alex", "s
   /** @type {Map<string, any>} */ const channels = new Map();
   /** @type {Map<string, any>} */ const posts = new Map();
   /** @type {{ channel: string, user: string }[]} */ const members = [];
-  /** @type {any[]} */ const dialogs = [];
+  /** @type {{ trigger_id: string, url: string, dialog: any }[]} */ const dialogs = [];
+  /** Trigger ids handed out with presses and not yet used: the real server opens a dialog only for one. */
+  const triggers = new Set();
   /** @type {{ method: string, path: string, authed: boolean, body: any }[]} */ const calls = [];
 
   const makePost = (user_id, p) => {
@@ -87,7 +89,8 @@ export async function fakeMattermost({ token, team = "vyre", users = ["alex", "s
       return send(200, { order: list.map(x => x.id), posts: Object.fromEntries(list.map(x => [x.id, x])) });
     }
     if (req.method === "POST" && p === "/actions/dialogs/open") {
-      if (!body.trigger_id) return send(400, { message: "trigger_id is required" });
+      if (!body || !triggers.delete(body.trigger_id)) return send(400, { message: "trigger_id is missing, used or expired" });
+      if (!body.url || !body.dialog || !Array.isArray(body.dialog.elements)) return send(400, { message: "a dialog needs a url and elements" });
       dialogs.push(body);
       return send(200, { status: "OK" });
     }
@@ -122,10 +125,21 @@ export async function fakeMattermost({ token, team = "vyre", users = ["alex", "s
       const post = posts.get(postId);
       const action = post && (post.props.attachments || []).flatMap(x => x.actions || []).find(x => x.id === actionId);
       if (!action) throw new Error(`post ${postId} has no button ${actionId}`);
-      return postJson(action.integration.url, { user_id: userId(user), post_id: postId, channel_id: post.channel_id, trigger_id: rid(), context: action.integration.context });
+      const trigger_id = rid();
+      triggers.add(trigger_id);
+      return postJson(action.integration.url, { user_id: userId(user), post_id: postId, channel_id: post.channel_id, trigger_id, context: action.integration.context });
     },
-    /** Submit an opened dialog as a person. @param {any} d @param {Record<string, string>} submission @param {string} user */
-    submit: (d, submission, user) => postJson(d.url, { type: "dialog_submission", callback_id: d.dialog.callback_id, state: d.dialog.state, user_id: userId(user), submission, cancelled: false }),
+    /**
+     * Submit an opened dialog as a person, the way Mattermost does: POST its url with the state it
+     * was opened with and what was typed. Fields left out of `submission` keep their defaults.
+     * @param {{ url: string, dialog: any }} d @param {Record<string, string>} submission @param {string} user
+     * @param {{ state?: string, cancelled?: boolean }} [o] a different state, to forge one
+     */
+    submit: (d, submission, user, o = {}) => {
+      const filled = Object.fromEntries(d.dialog.elements.map(e => [e.name, e.default ?? ""]));
+      return postJson(d.url, { type: "dialog_submission", callback_id: d.dialog.callback_id, state: o.state ?? d.dialog.state, user_id: userId(user),
+        submission: { ...filled, ...submission }, cancelled: Boolean(o.cancelled) });
+    },
     /** Run a slash command as a person. @param {string} url @param {{ token: string, user: string, text: string, channel_id?: string }} o */
     slash: async (url, o) => {
       const form = new URLSearchParams({ token: o.token, user_id: userId(o.user), text: o.text, channel_id: o.channel_id || "", command: "/vyre" });
