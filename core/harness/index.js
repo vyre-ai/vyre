@@ -75,6 +75,12 @@ export default {
       run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent }) => {
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
         let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
+        // A send inside an agent's thread goes through the Gate instead, where the user can edit
+        // it. Without the Gate running, the floor's "ask first" stands.
+        if (verdict.rule === 1 && agent) {
+          const g = await ask("gate.route", { tool: tool_name, input: tool_input || {}, agent, ...(session ? { session } : {}) });
+          if (g && g.decision) verdict = { decision: g.decision, reason: g.reason, rule: 1 };
+        }
         // The floor first; a lesson can only add a hold, never lift one.
         if (!verdict.decision) {
           const l = await ask("learn.check", { stage: "tool", session, prompt_id, cwd, agent, tool_name, tool_input: tool_input || {} });
