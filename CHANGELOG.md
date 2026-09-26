@@ -90,6 +90,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Tests prove no value appears in events, logs, `vault.list`, the audit trail, the MCP server's
   tool list, the HTTP API or any file under either home. Under `node --test` the keychain
   keystore refuses the login keychain; its own test uses a temporary keychain.
+- Autofill (`docs/adr/0001-autofill.md`): a fill listener (`vault.fill: {host, port}` in
+  config) that only paired browser extensions reach. Pairing is a one-time code from `vyre vault
+  pair`; nothing is filled until the person unlocks with their unlock passphrase (or the vault
+  passphrase, or later Touch ID through the Capsule), sessions end after 10 idle minutes, and a
+  login fills only into a page whose origin is one of its hosts. Web pages are refused outright.
+  `vault.fill` is a route there, never a tool, so no agent can call it. A minimal Chrome
+  extension is in `modules/vault-extension/`.
+- `vault.backup` and `vault.restore` (`vyre vault backup <file>`, `restore <file> [--replace]`):
+  the whole vault, including the device identity so passes stay valid, sealed to its own
+  passphrase (scrypt, AES-256-GCM), safe to keep in any cloud drive. Restoring re-seals every
+  item under the new vault's key.
+- 1Password `.1pux` import, through a small ZIP reader over `node:zlib` with CRC checks and a
+  zip-bomb guard.
 - Shared core, kept small:
   - vyred no longer trusts a `module:` caller claimed over HTTP, which let anything on the socket
     call internal tools such as `vault.release`.

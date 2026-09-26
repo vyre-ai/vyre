@@ -18,7 +18,8 @@ import { sealItem, openItem, newIdentity, sealFor, openFrom } from "./crypto.js"
 import { keystore, defaultKind } from "./keys.js";
 import { ensureDir, writeSealed, readSealed, removeSealed } from "./store.js";
 import * as relay from "./relay.js";
-import { parse as parseImport, merge as mergeImport } from "./import.js";
+import { parseFile as parseImport, merge as mergeImport } from "./import.js";
+import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
 
@@ -49,6 +50,7 @@ export const MIGRATIONS = [
      id TEXT PRIMARY KEY, owner TEXT NOT NULL, relay TEXT NOT NULL, owner_sign TEXT NOT NULL,
      items TEXT NOT NULL, mode TEXT NOT NULL, expires INTEGER, accepted INTEGER NOT NULL
    );`,
+  FILL_MIGRATION,
 ];
 
 export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set"];
@@ -128,6 +130,12 @@ export class Vault {
     if (this.kind !== "passphrase") { await this.key(); return { unlocked: true, keystore: this.kind }; }
     this.mk = (await this.keys.exists()) ? await this.keys.load({ passphrase }) : await this.keys.create({ passphrase });
     return { unlocked: true, keystore: this.kind };
+  }
+
+  /** For autofill: is this the vault passphrase? A yes also unlocks, since filling needs the key. */
+  async checkPassphrase(passphrase) {
+    if (this.kind !== "passphrase" || !(await this.keys.exists())) return false;
+    try { this.mk = await this.keys.load({ passphrase }); return Boolean(this.mk); } catch { return false; }
   }
 
   lock() {
@@ -359,7 +367,7 @@ export class Vault {
     const st = fs.statSync(p);
     if (!st.isFile()) throw new Error(`${p} is not a file`);
     if (st.size > 20 * 1024 * 1024) throw new Error(`${p} is larger than 20 MB`);
-    const parsed = parseImport(fs.readFileSync(p, "utf8"), { format, filename: path.basename(p) });
+    const parsed = parseImport(fs.readFileSync(p), { format, filename: path.basename(p) });
     if (parsed.error) throw new Error(parsed.error);
     const existing = this.db.prepare("SELECT name FROM vault_items").all().map(r => String(r.name));
     const { add, duplicate } = mergeImport(existing, parsed.items);
