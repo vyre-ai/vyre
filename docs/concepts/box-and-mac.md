@@ -48,6 +48,90 @@ The only published port is the onboarding page, on the host's `127.0.0.1:7300`. 
 
 The alternative without Docker is a systemd unit, installed with `sudo vyre up --system --user <account>` (the account vyred runs as, never root). See [without Docker](../get-started/without-docker.md).
 
+### Who can reach the box
+
+- **The `tailscale` container is the only way in.** It runs the official image with kernel networking and publishes one port: 7300, on the host's `127.0.0.1`, for the onboarding page.
+- **vyred has no network of its own.** It binds the tailnet addresses on 443 and serves them with its own certificate: `tailscale cert` for the box's ts.net name, or an ACME certificate for a `vyre.run` name. There is no `tailscale serve` in the path.
+- **Callers are identified by `tailscale whois` of the WireGuard source address**, never by a header. A process on the host, or in another container, cannot produce a tailnet source address, so it cannot pose as you.
+- **The onboarding listener binds only the `vyred` alias on the `vyre` network**, where Docker delivers the published port, never `0.0.0.0`, which would include `tailscale0`. It also needs the one-time token in the link, and answers "Not here." to any `Host` other than its loopback address and port. That is why the tunnel uses port 7300 on both ends.
+- **vyred runs as uid 1000 (`vyre`), not root.** It is Tailscale's operator, so it can run `tailscale up` and `tailscale cert` from the onboarding page.
+
+The reasoning is in [ADR 0002](../adr/0002-network-and-identity.md).
+
+### Folders and volumes
+
+The installer puts the stack in `/srv/vyre` (`VYRE_DIR` moves it), owned by you, not root:
+
+```
+/srv/vyre/
+  compose.yml          the stack: tailscale, vyre, and docker-api under the computers profile
+  compose.build.yml    used when COMPOSE_FILE lists it: build the image from VYRE_SOURCE
+  src/                 the unpacked vyre.tgz, when the image is built from it
+  vyre.env.example     copy to vyre.env for CLOUDFLARE_VYRE_TOKEN and similar
+  vyre.env             optional, yours, read by the vyre container
+  .env                 COMPOSE_PROJECT_NAME, COMPOSE_FILE, VYRE_SOURCE, DOCKER_GID; yours to add TS_AUTHKEY, COMPOSE_PROFILES
+/usr/local/bin/vyre    the host wrapper
+```
+
+The data lives in Docker volumes, all labelled `run.vyre=1`:
+
+| Volume | Mounted at | Holds |
+|---|---|---|
+| `vyre_vyre-home` | `/home/vyre` | `.vyre/` (Vyre's home folder, below) and `.claude/`, `.claude.json` (Claude Code's own state and transcripts) |
+| `vyre_vyre-work` | `/work` | projects |
+| `vyre_tailscale-state` | `/var/lib/tailscale` | the node's identity; delete it and the box is a new node |
+| `vyre_tailscale-sock` | `/var/run/tailscale` | tailscaled's socket, shared with the `vyre` container |
+
+A container can be recreated at any time: nothing in it matters but the volumes. Backing them up and moving them is in [Box care](../using/box-care.md).
+
+### Vyre's home folder
+
+Every vyred keeps its state in one folder, `~/.vyre` (mode 0700), with the same layout on every machine:
+
+::: tabs
+::: tab On a server
+On a Docker box it is `/home/vyre/.vyre`, inside the `vyre_vyre-home` volume.
+
+```
+/home/vyre/.vyre/
+  config.json             settings (0600); onboarding writes name, network, onboard
+  vyre.db, -wal, -shm     the store (SQLite, WAL)
+  vault/                  sealed vault items
+  certs/                  acme-production.key, <name>.crt, <name>.key
+  names/                  the name directory key, once the hosted directory exists
+  modules/, watchers/     what you installed and what Claude wrote
+  models/                 embedding weights (about 23 MB), a cache: safe to delete
+  logs/                   YYYY-MM-DD.log from vyred
+  vyred.sock, vyred.pid
+```
+::: tab On this Mac
+On the Mac it is `~/.vyre` in your own home folder. It has the same store, vault, models and logs, and no `certs/` or `names/`, because the Mac serves nothing on the tailnet. It also holds `link.json` (0600), the key that pairs this Mac with its box, and `logs/capsule.out`, the Capsule's log.
+:::
+
+### Claude Code on the box
+
+- Claude Code is installed in the image (`npm install -g @anthropic-ai/claude-code` at build). Its state, `~/.claude/` and `~/.claude.json`, lives in `vyre_vyre-home`, so a new image keeps it.
+- **Sessions Vyre runs headless** (the assistant, agents) use the credential from the onboarding's Claude Code step, which lives in the Vault as `claude-setup-token` (a subscription token) or `anthropic-api-key`. Each session gets it in its environment at start (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`), never in a file.
+- To run `claude` by hand on the box, run it in the container:
+
+  ```
+  cd /srv/vyre && docker compose exec vyre claude
+  ```
+
+  Its transcripts land in the same `~/.claude/projects/`, which is how Vyre's history sees them.
+
+### The agents' computers
+
+Agents get their own containers ([Specification](../architecture/spec.md#79-computers--workstream), Section 7.9) through `docker-api`, Vyre's own Docker proxy (`core/dockerproxy`, run from the same image). It is off until the `computers` profile is on; turning it on is in [Box care](../using/box-care.md#turn-on-agents-computers).
+
+- The host's Docker socket is mounted into the proxy and nowhere else. vyred reaches it at `http://docker-api:2375` on an internal network.
+- The proxy allows only what agents' computers use (create, start, stop, pause, unpause, inspect, list, remove, exec on a computer, volume inspect) and refuses every other endpoint.
+- It checks request bodies too: a create must match `core/computers/driver/policy.js` and the box's `VYRE_COMPUTERS_*` settings, and every per-container call is checked against the labels the Docker Engine itself reports.
+- It runs as uid 1000 with a read-only root, no capabilities, and the socket's group, `DOCKER_GID` in `/srv/vyre/.env`, which the installer fills in from the socket.
+
+> [!WHY] Why a proxy, and not the Docker socket?
+> Whoever holds the Docker socket is root on the host. The proxy keeps the socket in one small container and lets vyred ask only for the calls a computer needs, so a mistake or a prompt injection in a session cannot turn into a privileged container.
+
 ## What runs on the Mac
 
 On the Mac, `vyre up` starts vyred in the background with role `local`. It opens no tailnet listener. It serves its API on `~/.vyre/vyred.sock` to the CLI, the Harness hooks in your terminal sessions, and the Capsule.

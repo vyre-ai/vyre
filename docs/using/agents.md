@@ -136,6 +136,10 @@ The matching tools are `agents.list`, `agents.threads`, `agents.usage`, `agents.
 `agents.delete`. `agents.delete` is open only to your own surfaces (the terminal, the Deck and the
 Capsule), not to Claude.
 
+In the Deck, **Agents** (`/agents`) shows the same list:
+
+![Agents in the Deck: juno, the assistant on every project, and kit on Harlow Legal and Northwind Bakery, both idle](shots/deck-agents.png)
+
 ## Give an agent a computer
 
 An agent can have its own computer: a container with a desktop, Chrome and a terminal. Screens

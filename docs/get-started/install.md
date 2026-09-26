@@ -147,7 +147,7 @@ The setup page has six screens. Each one can be skipped and finished later.
 On the first, type your name (lowercase, like `alex`) and a name for your assistant (like
 `juno`). Press **Continue**.
 
-<!-- shot: onboarding screen 1 "What should we call you?", name alex, assistant juno, Continue enabled -->
+![The first screen, "What should we call you?", with the name alex and the assistant's name filled in, and Continue](shots/onboarding-you.png)
 
 ```output
   You            done
@@ -161,7 +161,7 @@ Vyre's sessions and agents run on your Claude account. Choose **Your Claude subs
 press **Sign in with Claude**. Claude's sign-in opens in a new tab. When it shows you a code,
 copy it, paste it into the **Code** box on the Vyre page, and press **Continue**.
 
-<!-- shot: onboarding screen 2 "Connect Claude Code.", subscription chosen, Code field showing -->
+![The Claude Code screen: Claude Code found on the server, Your Claude subscription chosen, and Sign in with Claude](shots/onboarding-claude.png)
 
 The screen then says "Signed in with your Claude subscription. The token is in the Vault."
 
@@ -186,7 +186,7 @@ The screen then says "Signed in with your Claude subscription. The token is in t
 This puts the server on your tailnet. Press **Connect**. Tailscale's sign-in opens in a new tab:
 sign in with the **same account as your Mac**. The page waits, then shows the server joined.
 
-<!-- shot: onboarding screen 3 "Put this machine on your tailnet.", all three rows done, "vyre.tail1234.ts.net at 100.64.0.2" -->
+![The Tailscale screen with all three rows ticked: the server has joined the tailnet and shows its name and IP](shots/onboarding-tailscale.png)
 
 ```output
   Tailscale      done
@@ -201,7 +201,7 @@ sign in with the **same account as your Mac**. The page waits, then shows the se
 Vyre gets an HTTPS certificate for the server's name on your tailnet, such as
 `https://vyre.tail1234.ts.net`. Press **Get your address** and wait for the three rows to finish.
 
-<!-- shot: onboarding screen 4 "Your address.", https://vyre.tail1234.ts.net, three rows done, "Switch to vyre.tail1234.ts.net" button -->
+![The address screen: the address reserved, pointed at the server and certified, with the Switch to button](shots/onboarding-name.png)
 
 As soon as the address works, the terminal moves on by itself. It closes the tunnel, opens a new
 tab to make your passkey (step 9), asks your box to pair with this Mac (step 12), and prints the
@@ -244,8 +244,6 @@ The passkey tab asks you to **Add a passkey**. Name the device, press **Add a pa
 confirm with Touch ID. The passkey approves anything important on your box from now on,
 including a new Mac. When it says "Passkey added.", press **Continue setting up**.
 
-<!-- shot: passkey page "Add a passkey.", then "Passkey added." with Continue setting up -->
-
 > [!WHY] Why a passkey?
 > A passkey cannot be typed into a fake page or read by a program on your server. Vyre asks for it
 > before anything that matters: approving a Mac, taking over a session, releasing a secret. A
@@ -265,15 +263,14 @@ Vyre reads the Claude Code sessions already on the server and makes them searcha
 are some, pick a few and press **Make project**. On a new server there are none: press
 **Continue**.
 
-<!-- shot: onboarding screen 5 "Your history.", sessions count and progress bar -->
+![The history screen: the sessions read so far, and a picker to group them into first projects](shots/onboarding-history.png)
 
 ## 11. Your devices
 
 This screen shows two QR codes for your phone (step 14) and the Capsule for your Mac (step 13).
 Press **Open the Deck**. Your assistant says hello on the last screen. Press **Open Vyre**.
 
-<!-- shot: onboarding screen 6 "Your devices.", Tailscale and Phone QR codes, Mac column -->
-<!-- shot: ending screen "Vyre is ready." with the assistant's greeting and Open Vyre -->
+![The devices screen: QR codes for the Tailscale app and for your address, and the Capsule for the Mac](shots/onboarding-devices.png)
 
 ## 12. Approve your Mac
 
@@ -290,8 +287,6 @@ vyre link
 ```
 
 Once you approve it, `vyre link` says `linked to` and names your box.
-
-<!-- shot: Deck pairing approval showing alex-mac and code 482-913 -->
 
 > [!GAP]
 > There is no Deck screen that approves a pairing yet, so this step may stay at "waiting for
@@ -323,7 +318,7 @@ vyre capsule
   Capsule open · press Control twice anywhere · log /Users/alex/.vyre/logs/capsule.out
 ```
 
-<!-- shot: Capsule open over the desktop, empty input -->
+![The Capsule just opened: an empty box, and a line saying two things wait on you](../using/shots/capsule-open.png)
 
 > [!SNAG] macOS says it cannot check the app for malicious software
 > The app is not signed yet. In Finder, right-click `Vyre.app` in `~/Applications` and choose
@@ -343,7 +338,7 @@ Your address only opens on your own devices on your tailnet, so the phone needs 
 2. Scan the **Phone** code, or open `https://vyre.tail1234.ts.net` in the phone's browser.
 3. Add it to your home screen to use it like an app.
 
-<!-- shot: the Deck's Now screen on a phone -->
+![Now in the Deck on a phone: what needs you, with the tab bar at the bottom](../using/shots/phone-now.png)
 
 > [!SNAG] The phone says it cannot find the server, or the page never loads
 > Open the Tailscale app. Check three things: it is signed in as the same account as your Mac,

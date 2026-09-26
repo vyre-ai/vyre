@@ -8,6 +8,7 @@
 //   <out>/assets/demos.<hash>.css, .js          the demo widgets, linked only from pages with a demo
 //   <out>/search-index.json                     what the search box searches: pages, and one item
 //                                               per heading and per [!SNAG], with its anchor
+//   <out>/index.json                            the terms index (docs/index.json), for agents
 //   <out>/llms.txt, llms-full.txt               the llms.txt convention: an index, and everything
 //   <out>/sitemap.xml, robots.txt, 404.html, favicon.svg
 //   <out>/_redirects                            a 301 for every moved page, pretty and .md
@@ -200,13 +201,17 @@ export function build({ root, out, log = () => {}, palette }) {
 
     index.push({ t: page.title, u: page.url, s: page.section, d: page.summary });
     for (const it of searchItems(r)) items.push({ p: k, ...it });
-    fullParts.push(`---\ntitle: ${page.title}\nurl: ${site.url}${page.mdUrl}\n---\n\n${parseFrontMatter(md).body.trim()}\n`);
+    // The terms index is a lookup table, not reading: llms-full.txt points at index.json instead.
+    if (page.path !== "reference/index.md") fullParts.push(`---\ntitle: ${page.title}\nurl: ${site.url}${page.mdUrl}\n---\n\n${parseFrontMatter(md).body.trim()}\n`);
   }
 
   for (const p of [...copies].sort()) put(p, fs.readFileSync(path.join(docsDir, p)));
 
   if (demosUsed) { put(demoCssName, demoCss); put(demoJsName, demoJs); }
   put("search-index.json", JSON.stringify({ pages: index, items }));
+  // The terms index as data (scripts/gen-docs-reference writes it beside the pages).
+  const terms = path.join(docsDir, "index.json");
+  if (fs.existsSync(terms)) put("index.json", fs.readFileSync(terms));
   put("llms.txt", llmsTxt(site, nav));
   put("llms-full.txt", `# ${site.title}\n\n> ${site.summary}\n\n${fullParts.join("\n")}`);
   put("sitemap.xml", sitemap(site, order));
@@ -303,6 +308,7 @@ const plainText = htmlToText;
 function llmsTxt(site, nav) {
   const out = [`# ${site.title}`, "", `> ${site.summary}`, ""];
   out.push(`Every page is Markdown at the URL below. Everything in one file: ${site.url}/llms-full.txt`, "");
+  out.push(`Every command, tool, event, config key, variable, screen and concept, with the page that explains it and every mention: ${site.url}/index.json`, "");
   for (const s of nav) {
     out.push(`## ${s.title}`, "");
     for (const p of s.pages) out.push(`- [${p.title}](${site.url}${p.mdUrl})${p.summary ? ": " + p.summary : ""}`);
@@ -334,6 +340,9 @@ function headers(pages) {
     "  Cache-Control: public, max-age=31536000, immutable",
     "",
     "/search-index.json",
+    "  Cache-Control: public, max-age=300",
+    "",
+    "/index.json",
     "  Cache-Control: public, max-age=300",
     "",
     "/llms.txt",

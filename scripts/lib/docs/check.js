@@ -43,7 +43,7 @@ const REQUIRED = ["title", "summary", "audience", "owner", "status"];
 const KEYS = [...REQUIRED, "generated"];
 const SITE_HOSTS = ["docs.vyre.run"];
 // Files the build writes beside the pages, which a page may link to.
-const BUILT = ["/llms.txt", "/llms-full.txt", "/sitemap.xml", "/search-index.json", "/404.html"];
+const BUILT = ["/llms.txt", "/llms-full.txt", "/sitemap.xml", "/search-index.json", "/index.json", "/404.html"];
 const EM_DASH = "\u2014", SECTION = "\u00a7";
 const INCLUDE = /^\s*<!--\s*include:\s*(\S+)\s*-->\s*$/;
 

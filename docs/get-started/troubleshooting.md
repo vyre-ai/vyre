@@ -13,7 +13,7 @@ Most problems show up as one line from `vyre`. Find that line below. If yours is
 ## First look
 
 ::: tabs
-::: tab On the box
+::: tab On a server
 ```
 vyre status                 # is vyred running, and what is it running
 vyre logs                   # follow vyred's output
@@ -21,7 +21,7 @@ docker compose -p vyre ps   # are the tailscale and vyre containers up
 ```
 
 If your account on the server is not in the `docker` group, every `vyre` command there needs `sudo`.
-::: tab On the Mac
+::: tab On this Mac
 ```
 vyre status
 vyre modules                # every module, and whether it started

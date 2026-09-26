@@ -26,7 +26,6 @@ import path from "node:path";
 import { manifests, environment, sources, balanced, literalKeys, typedef, typedefFields, SHIPPED, GENERATOR } from "./reference.js";
 import { slugger } from "./slug.js";
 import { loadDocs } from "./load.js";
-import { SECRET } from "../hygiene.js";
 import * as markdown from "./markdown.js";
 
 // Page syntax the build and docs-check share: `:::` lines are not prose, and a `> [!SNAG] Title`
@@ -115,13 +114,6 @@ const IGNORE = "<!-- terms: ignore -->";
 // listed mention that is no longer on its page fails the check, so the list cannot rot.
 /** @type {{ page: string, text: string }[]} */
 export const STALE_ALLOWED = [
-  // No module registers vault.export, though core/presence, core/harness/rules.js and
-  // core/vault/prove.js list it: either the vault gains the tool or the lists and pages drop it.
-  { page: "concepts/floor.md", text: "vault.export" },
-  { page: "concepts/presence.md", text: "vault.export" },
-  // The spec's `vyre <module> <tool>` command, which the page says is not built: mark the line
-  // with <!-- terms: ignore --> (or reword it) and take this off.
-  { page: "build/writing-a-module.md", text: "vyre notes add" },
 ];
 
 const SHELL = new Set(["sh", "bash", "shell", "zsh", "console", "shell-session"]);
@@ -670,8 +662,7 @@ export function indexPage(things) {
     const [p, a] = page.split("#");
     const rel = path.posix.relative("reference", p) || path.posix.basename(p);
     // hygiene's secret pattern takes an anchor like #ask-your-assistant-or-a-model for an sk- key;
-    // %73 is the same s to a browser and to docs-check, which decode anchors.
-    const hash = a ? "#" + (SECRET.test(a) ? a.replace(/sk-/g, "%73k-") : a) : "";
+    const hash = a ? "#" + a : "";
     return `[${text}](${rel}${hash})`;
   };
   const letter = t => (t.name.match(/[A-Za-z0-9]/)?.[0] || "#").toUpperCase();

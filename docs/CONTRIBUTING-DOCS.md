@@ -186,6 +186,15 @@ alt text that says what the screen shows.
 If `onboarding-tailscale.dark.png` sits beside it, the dark theme shows that file instead. The
 build reads each PNG's width and height from the file, so the page does not jump as shots load.
 
+Shots are taken, not drawn. `npm run docs:shots` (on the test box, never the Mac) starts the sample
+world in a temp home and captures every shot listed in `scripts/lib/docs/shots.js`, in light and
+dark, with `CHROME` pointing at a headless Chrome. Each entry there names the source files the
+shot shows. `docs/shots.json` records a hash of those files at capture time, and docs-check fails a
+shot once any of them changes, so a screen that moved on gets retaken. To add a shot, add an entry
+to `shots.js`, run `npm run docs:shots -- --only <name>`, and put it on the page. Command output
+is text, not a picture: paste it into an `output` block (`npm run docs:shots -- --cli` prints the
+real output of the common commands from the sample world).
+
 ### Demos
 
 A widget that replaces its fallback when the page's script runs. The fallback is what readers
@@ -237,6 +246,23 @@ npm run docs:ref            # write the pages
 node scripts/gen-docs-reference --check   # exit 1 if any page is stale, write nothing
 ```
 
+### The index
+
+`npm run docs:ref` also writes `docs/reference/index.md` and `docs/index.json` (served at
+`/index.json`): every command and subcommand, tool, event, config key, `VYRE_` variable, Deck
+screen and concept, with the code file that defines it, the page that explains it, and every page,
+line and heading anchor that mentions it. One lookup finds every instance of a thing. It reads
+every published page, so run `npm run docs:ref` after editing any page, not only after changing
+code; docs-check fails when the index is out of date.
+
+docs-check also fails a stale mention: inline code or a `sh`/`console` command line naming a `vyre`
+command or subcommand, a tool, a config key under a known section, or a `VYRE_` variable that the
+code no longer has. Placeholders (`<name>`), flags, file names and example modules are left alone,
+and ADRs, the changelog, known gaps and the spec are indexed but never failed. If a line must show
+an old or made-up name on purpose, end it with `<!-- terms: ignore -->`. Curated concepts live in
+`CONCEPTS` in `scripts/lib/docs/terms.js`; add one there, with the page and heading that explain
+it, when a page teaches a new word.
+
 ## Check your pages
 
 ```
@@ -255,7 +281,9 @@ It prints one `path:line: problem` per problem and exits 1 if there are any. It 
   `[!SNAG]` titles count as anchors;
 - **characters**: no em dash and no section sign, in pages and in files they include;
 - **hygiene**: no real person's or business's name, nothing shaped like a secret, no email address outside the example domains, no IP address outside the documentation and private ranges (`scripts/lib/hygiene.js`);
-- **reference**: the generated pages match what the code makes now.
+- **reference**: the generated pages and the index match what the code and the pages make now;
+- **stale**: no page names a command, tool, config key or variable the code no longer has;
+- **shots**: every screenshot is in `docs/shots.json`, and none is older than the code it shows.
 
 `test/docs-check.test.js` runs the same check on the real tree under `npm test`, so a broken page fails the suite.
 

@@ -73,7 +73,7 @@ Enforced:
 
 - The Harness denies any tool call that names the vault folder, and any `security` command aimed at the vault's keychain item.
 - The Harness denies reading, listing or writing Vyre's internals under `VYRE_HOME` (`vyre.db`, the socket, `config.json`, keys, logs).
-- Every tool that lets a value out (`vault.reveal`, `vault.copy`, `vault.inject`, `vault.totp`, `vault.export` and the rest) needs presence.
+- Every tool that lets a value out (`vault.reveal`, `vault.copy`, `vault.inject`, `vault.totp` and the rest) needs presence.
 - Modules get values only through `ctx.vault.fetch`, only for items their manifest declares under `needs.vault`.
 - The event log refuses a payload that looks like a secret (known key prefixes, private keys, `"password": "..."` and similar).
 - Push notifications carry a kind, a fixed title and a Deck path, never content.

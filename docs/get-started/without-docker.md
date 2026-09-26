@@ -36,7 +36,7 @@ Once Vyre is published, this becomes `npm install -g vyre`.
 ## Run it
 
 ::: tabs
-::: tab On a Mac
+::: tab On this Mac
 
 ```
 vyre up                  # role local: this Mac talks to your box
@@ -66,7 +66,7 @@ vyre modules             # every module and whether it started
 vyred's own output goes to `~/.vyre/logs/vyred.out`, and its log to `~/.vyre/logs/`, one file
 per day (`2026-09-27.log`).
 
-::: tab On Linux
+::: tab On a server
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz

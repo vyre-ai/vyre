@@ -246,19 +246,20 @@ test("directives: which lines are page syntax", () => {
   assert.equal(directive("plain"), null);
 });
 
-test("theme: core/config/theme.js holds TOKENS.md's colours verbatim, with a use for each", () => {
+test("theme: core/config/theme.js is the palette TOKENS.md draws, each colour valid and with a use", () => {
   const pal = loadPalette(REPO);
   assert.ok(pal, "core/config/theme.js loads");
   const tokens = fs.readFileSync(path.join(REPO, "docs/design/TOKENS.md"), "utf8");
-  const want = { dark: {}, light: {} };
-  let mode = "";
-  for (const line of tokens.split("\n")) {
-    if (/^## Colour: dark/.test(line)) mode = "dark"; else if (/^## Colour: light/.test(line)) mode = "light"; else if (/^## /.test(line)) mode = "";
-    const m = mode && line.match(/^\| `--([a-z0-9-]+)` \| `([^`]+)` \|/);
-    if (m) /** @type {any} */ (want)[mode][m[1]] = m[2];
+  assert.match(tokens, /^<!-- colors: dark -->$/m);
+  assert.match(tokens, /^<!-- colors: light -->$/m);
+  assert.doesNotMatch(tokens, /^\| `--[a-z0-9-]+` \| `(#|rgba)/m, "no hand-copied colour table left");
+  for (const mode of ["dark", "light"]) {
+    assert.ok(Object.keys(pal.colors[mode]).length > 5, mode);
+    for (const [k, v] of Object.entries(pal.colors[mode])) {
+      assert.match(String(v), /^(#[0-9A-Fa-f]{3}|#[0-9A-Fa-f]{6}|rgba\(\d+,\d+,\d+,(0|1|0?\.\d+)\))$/, `${mode}.${k}`);
+      assert.ok(pal.use[k], `a use for ${k}`);
+    }
   }
-  assert.deepEqual(pal.colors, want);
-  for (const k of [...Object.keys(want.dark), ...Object.keys(want.light)]) assert.ok(pal.use[k], `a use for ${k}`);
 });
 
 test("pngSize: width and height from the header, null for anything else", t => {

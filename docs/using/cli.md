@@ -16,7 +16,7 @@ true. This page is organised by task. Every command and its usage line is in the
 ## Where to run it
 
 ::: tabs
-::: tab On the box
+::: tab On a server
 The host's `vyre` (in `/usr/local/bin`) is a small wrapper that runs the same CLI inside the
 box's container, so every command on this page works there. The wrapper adds two of its own:
 
@@ -26,7 +26,7 @@ vyre logs      # follow vyred's output
 ```
 
 It looks for the box in `/srv/vyre`; set `VYRE_DIR` if you put it elsewhere.
-::: tab On the Mac
+::: tab On this Mac
 `vyre` talks to the vyred on your Mac. `vyre box` looks after a box on a server from here:
 
 ```sh

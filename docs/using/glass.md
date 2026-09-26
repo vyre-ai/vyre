@@ -78,6 +78,8 @@ The Files tab browses the agent's home, or on `/glass/box` the box's folders. Yo
 preview text and images, download, upload, make folders, move and trash. Every change says what
 happened. Downloads and uploads use a one-time ticket, so a link cannot be reused.
 
+![Glass on the box: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash](shots/glass-files.png)
+
 Secret places are hidden and refused at any depth, whatever their case. Among them: `.vyre`,
 `.claude`, `.ssh`, `.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.npmrc`, `.env` and `.env.*`,
 `*.pem`, `*.key`, `*.kdbx`, `id_*`, `credentials.json`, browser cookie and login stores, and any

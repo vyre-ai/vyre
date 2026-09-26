@@ -1,5 +1,6 @@
-// The Vyre palette, copied verbatim from docs/design/TOKENS.md: keys are the CSS names without `--`.
-// THEME_COLORS holds the values per theme, THEME_USE says what each token is for. No dependencies.
+// The Vyre palette, the one source for it: docs/design/TOKENS.md draws its colour tables from here.
+// Keys are the CSS names without `--`. THEME_COLORS holds the values per theme, THEME_USE says what
+// each token is for. No dependencies.
 
 export const THEME_COLORS = {
   dark: {

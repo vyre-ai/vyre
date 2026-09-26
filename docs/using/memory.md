@@ -47,6 +47,10 @@ the matching words in gold:
 Resume a hit with `claude --resume <id>`, or `vyre resume <thread>` to open it with its project's
 brief.
 
+In the Deck, the search box at the top (Command-K) runs the same search:
+
+![The Deck's search for harlow intake: matching turns from the Harlow sessions, each with its session, project and date](shots/deck-search.png)
+
 ### Keep the index up to date
 
 vyred indexes on its own: a session a moment after each Claude Code turn ends, and every folder
@@ -102,6 +106,8 @@ facts do not fade. A fact two projects disagree about is marked "two projects di
 In the Deck, **Memory** (`/memory`) draws the graph as a floor plan, one room per project, with
 people, things and threads inside and each fact as a gold dot on its link. Choose a fact to see
 its source turns. **Now** shows **Memory learned today**, each fact with its source thread.
+
+![Memory in the Deck as a map: rooms for Northwind Bakery and Harlow Legal with Sam Okafor, Dana Reyes, their things and threads, and each fact as a gold dot](shots/deck-memory.png)
 
 > [!SNAG] The Deck says "Memory is not available."
 > The Memory view could not read the graph from vyred. Choose **Try again**. If it keeps failing,

@@ -15,6 +15,11 @@ to your assistant, an agent or a running session. It also holds the list of what
 you: permission questions from sessions and drafts held at the Gate. The vyred on your Mac runs
 it (a module with role `local`). Local search keeps working when vyred or your box is down.
 
+::: demo capsule
+![The Capsule with harlow intake typed: the Harlow intake thread in Harlow Legal on top, and Ask juno, your assistant, below it](shots/capsule-ask.png)
+Type in the Capsule and it finds your threads, projects and agents, and offers to ask your assistant about the rest.
+:::
+
 ## Install it
 
 1. Install the app:
@@ -41,6 +46,8 @@ it (a module with role `local`). Local search keeps working when vyred or your b
    Capsule when it is installed; `vyre up --no-capsule` starts vyred without it.
 
 3. Allow double-Control (next section).
+
+![The Capsule just opened: an empty box reading Ask, or @agent, and a line saying two things wait on you](shots/capsule-open.png)
 
 The Capsule lives in the menu bar. Click its mark for a menu that says whether anything is
 waiting on you, whether double-Control works, and whether vyred is running.
@@ -103,6 +110,8 @@ anything is sent, and Enter uses exactly that destination:
   which can act.
 - With no assistant made yet, memory answers on its own, with no model.
 
+![The Capsule with harlow intake typed: the Harlow intake thread in Harlow Legal on top, and Ask juno, your assistant, below it](shots/capsule-ask.png)
+
 Answers render in place as markdown, with a copy button and the cost. Anything that came from
 memory is drawn in gold, with its source.
 
@@ -117,6 +126,8 @@ Type `@` to name one. It completes agents, projects and threads:
   you hold the session's keyboard (its lease). If another surface holds it, the Capsule says who,
   and Command-Enter takes it.
 - `@` a project starts a new thread in it, or sends to a matching thread there.
+
+![The Capsule completing @ki to kit, the agent, so what you type next goes to it](shots/capsule-mention.png)
 
 ## Drive or watch a session without `@`
 
@@ -137,12 +148,16 @@ When a session asks permission or the Gate holds a draft, the menu-bar mark turn
 colour. The Capsule does not open itself for this and never takes your keyboard: you open it when
 you choose.
 
+![The Capsule listing what waits on you: an email to dana@harlowlegal.com and a payment for Northwind Bakery, oldest first](shots/capsule-waiting.png)
+
 1. Open the Capsule and press the up arrow in the empty box to reach the waiting list.
 2. Pick the item:
    - **A permission question**: Allow or Deny. Command-Enter allows.
    - **A held draft** (an email, for example): To, Subject and body read as text and become
      editable when you click them. Command-Enter sends exactly what is on screen, through
      `gate.approve`. Discard drops it. Escape leaves a field.
+
+![The held email to Dana opened in the Capsule: click any line to change it, then Send or Discard, with why it was held](shots/capsule-held.png)
 
 ## Open Glass
 

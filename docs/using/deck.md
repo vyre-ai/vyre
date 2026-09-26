@@ -53,6 +53,8 @@ Agents; your initials at the top open Settings.
 
 A view whose module is not running says which module is missing instead of failing.
 
+![Now in the Deck: two things wait for you, an email to dana@harlowlegal.com and a spend for Northwind Bakery, both held at the Gate, with Send and Discard](shots/deck-now.png)
+
 ## Search what was said
 
 Type in the search box at the top (Command-K) to search every session's words, the same search
@@ -66,6 +68,8 @@ When an agent wants to send something, the Gate holds it and Now lists it in the
 2. Click a field to edit it: To, Subject and Body for an email; for a web request, Method, URL,
    Headers and Body. The fields read as text until you click them.
 3. Press Send to send exactly what is on screen, or Discard to drop it.
+
+![A held email opened in the Deck: who it goes to, the subject and body you can edit, and Send or Discard](shots/deck-held.png)
 
 Sending is a person's action, so the box asks for proof that you are there. When it does, the
 Deck shows a passkey prompt (see [Add a passkey](#add-a-passkey)). If the send fails, the item goes
@@ -96,11 +100,15 @@ here you can change its instructions and model, stop it, give it a computer or r
 computer, and open its screen in [Glass](glass.md). **New agent** on the Agents list makes one;
 see [Agents](agents.md).
 
+![kit's page in the Deck: its job, the projects it works in, a box to talk to it, what wakes it, its usage and its model](shots/deck-agent.png)
+
 ## Finish setup, or change it
 
 Settings starts with Setup: every onboarding step (you, Claude Code, Tailscale, your address,
 your history, your devices) and whether it is done. **Finish** beside a skipped step opens the
 onboarding at that step. `vyre index` does the history step from a terminal.
+
+![Settings in the Deck: the six setup steps, each marked To do or Done with a Finish or Open button, then your name and address](shots/deck-settings.png)
 
 > [!GAP]
 > The command shown beside each step (`vyre up --step ...`) does not exist in the CLI. Finish the step in the Deck or run `vyre up` again. See [known gaps](../known-gaps.md#the-decks-setup-commands-name-a-flag-the-cli-lacks).

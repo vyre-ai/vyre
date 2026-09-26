@@ -47,6 +47,8 @@ The tab bar at the bottom has Now, Projects, Chat, Ask and Agents.
 Memory, Vault and Settings open from their paths (`/memory`, `/vault`, `/settings`), laid out for
 a narrow screen.
 
+![Now on a phone: two drafts held at the Gate, what is running and recent sessions, with the tab bar at the bottom](shots/phone-now.png)
+
 ## Turn on notifications
 
 1. In the installed app, open **Settings**, then **Notifications**.
@@ -85,6 +87,8 @@ Sending a held draft and taking over an agent's screen need proof that a person 
 On the phone that is a passkey (Face ID or Touch ID). Add one from the phone in Settings,
 Security, with a one-time code from `vyre presence code` on the box (see
 [Deck](deck.md#add-a-passkey)).
+
+![A held email on a phone, full screen, with Send and Discard in reach of your thumb](shots/phone-held.png)
 
 ## Offline
 

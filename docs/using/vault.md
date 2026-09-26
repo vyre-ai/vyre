@@ -90,7 +90,11 @@ In the Deck, **Vault** (`/vault`) lists items by kind, with **Watchtower** (weak
 missing two-factor), **Passes**, **Shared with you** and **Devices**. Every field shows as twelve
 dots whatever its length.
 
+![The Vault in the Deck: a secret, a login, an env set, an API key, a card and a secure note, listed by name, kind and holder, with no values shown](shots/deck-vault.png)
+
 ## Show, copy or fill a value yourself
+
+![One Vault item, harlow-gmail, in the Deck: its fields sealed until you reveal or copy them, who holds it, and its history](shots/deck-vault-item.png)
 
 Each of these is for one value, and asks you to prove presence first:
 
@@ -102,10 +106,10 @@ vyre vault read vault://stripe-live/value   # one field alone on stdout, for $(.
 ```
 
 ::: tabs
-::: tab On the Mac
+::: tab On this Mac
 The terminal asks for Touch ID (or your Mac password). After you cancel, the next request waits
 30 seconds.
-::: tab On the box
+::: tab On a server
 A terminal on the box cannot prove presence: the box has no Touch ID, and it does not accept a
 terminal code. There, only a passkey from the Deck proves you are there. Use the Deck, or your
 Mac.

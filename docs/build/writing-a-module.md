@@ -67,7 +67,7 @@ vyre call notes.add '{"text":"call the printer people"}'
 The one definition becomes an MCP tool Claude can call (the Harness's `vyre` server lists every
 tool) and an HTTP route, `POST /v1/tools/notes.add` on vyred. `vyre call` runs any tool from the
 terminal. [Section 5.3](../architecture/spec.md#53-one-tool-three-surfaces) of the Specification
-also describes a `vyre notes add` command for tools listed under `shows.cli`; the loader does not
+also describes a `vyre notes add` command for tools listed under `shows.cli`; the loader does not <!-- terms: ignore -->
 make those commands yet.
 
 A module runs on both a box and a Mac unless its manifest sets `roles` to `["box"]` or

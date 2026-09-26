@@ -27,7 +27,7 @@ Before you prove anything, every method shows you the tool's summary: for the Ga
 The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A module can add a tool to it with `presence: true`, but it cannot take one away.
 
 - Gate and permissions: `gate.approve`, `gate.revise`, `gate.reject`, `threads.answer`.
-- Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.export`, `vault.kit`.
+- Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.kit`.
 - Learning: `learn.accept`, `learn.retire`, `learn.relax`, `learn.skill-install`.
 - Hands and machines: `computers.takeover`, `computers.giveback`, `link.pair.approve`.
 - Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`.
