@@ -70,6 +70,10 @@ with real Claude Code, not only a fake.
   cli -> curl-b -> curl-a, and the non-holder's `threads.send` came back `{sent:false, holder}`; `vyre agents
   ask scout` replied "pong."; `mcp:agent:scout` was refused `threads.list`; everything stopped with no child left.
 
+- After merging main (the vault) and three subagent branches, a second real run on haiku confirmed three things. An mcp caller's
+  `threads.answer` was `denied` by the loader while deck's was allowed, and the Write happened. A plain `claude -p --resume <id>` from
+  outside vyred, against a live headless thread, was warned in its brief (it quoted the warning), and vyred emitted `thread.contended`.
+
 ## Doing
 - Nothing. Waiting on review.
 
