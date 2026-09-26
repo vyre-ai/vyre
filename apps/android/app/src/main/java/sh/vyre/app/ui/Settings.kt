@@ -36,6 +36,7 @@ import sh.vyre.app.push.PushRegistration
 fun SettingsScreen(onBack: () -> Unit) {
     val app = LocalApp.current
     val activity = LocalActivity.current
+    val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     val theme by app.prefs.theme.collectAsState()
     val address by app.prefs.address.collectAsState()
@@ -65,13 +66,18 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    Page(top = { BackBar("More", onBack) }) {
+    Page(top = { BackBar("Now", onBack) }) {
         item { Text("Settings", style = Type.h2, color = c.text) }
+
+        item {
+            SectionHead("Vault")
+            Row2("Vault", "Names on the box; a value only after your fingerprint", onClick = { nav("vault") })
+        }
 
         item {
             SectionHead("Theme")
             Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                for (t in ThemeChoice.entries) Chip(when (t) { ThemeChoice.System -> "Like the phone"; ThemeChoice.Dark -> "Dark"; ThemeChoice.Paper -> "Paper" },
+                for (t in ThemeChoice.entries) Chip(t.label,
                     onClick = { app.prefs.setTheme(t) }, selected = theme == t)
             }
         }

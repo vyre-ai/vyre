@@ -52,58 +52,9 @@ import sh.vyre.app.design.VButton
 import java.io.File
 import java.time.Instant
 
-/**
- * Files: the box's files (CONTRACT.md 5). Over the tailnet the phone reaches only the box's files
- * module, whose root is /work; the Mac's files need a box-to-Mac link that does not exist yet.
- */
-@Composable
-fun FilesScreen() {
-    val app = LocalApp.current
-    val nav = LocalNav.current
-    var q by rememberSaveable { mutableStateOf("") }
-    var searched by rememberSaveable { mutableStateOf("") }
-    var results by remember { mutableStateOf<Load<JsonElement>>(Load(null, null, false)) }
-    val scope = rememberCoroutineScope()
-
-    fun search(text: String) {
-        val t = text.trim()
-        if (t.isEmpty()) { results = Load(null, null, false); searched = ""; return }
-        searched = t
-        results = Load(results.value, null, true)
-        scope.launch {
-            results = try { Load(app.client.call("files.search", input("q" to t, "limit" to 50)), null, false) }
-            catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; Load(null, e, false) }
-        }
-    }
-    // Search as the person pauses typing, at most once per 400 ms.
-    LaunchedEffect(q) { if (q.trim().length >= 2 && q.trim() != searched) { delay(400); search(q) } }
-
-    val rows = results.value.at("results").arr
-    val sources = results.value.at("sources").arr
-    Page(top = {
-        BrandBar()
-        Text("Files", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s, bottom = Space.m))
-        InputBox(q, { q = it }, "Search the box's files", imeAction = ImeAction.Search, onGo = { search(q) })
-    }) {
-        if (searched.isEmpty()) {
-            item {
-                Quiet("Search by name for anything on the box, under /work. This phone reaches the box only: the Mac's files are not reachable from a phone yet.", "box only")
-            }
-            return@Page
-        }
-        item { SectionHead("Results · ${rows.size}", sources.firstOrNull()?.str("source")) }
-        loadState(results, rows.isEmpty(), "Nothing on the box matches \"$searched\".")
-        sources.filter { it.bool("ok") == false }.forEach { s -> item { Quiet(s.str("error") ?: s.str("note") ?: "A source failed.", s.str("source")) } }
-        items(rows, key = { "f" + it.str("path") }) { f ->
-            Row2(f.str("name") ?: f.str("path").orEmpty(), dots(f.str("kind"), bytes(f.long("size")).takeIf { f.str("kind") != "folder" }, f.str("path")),
-                onClick = { f.str("path")?.let { nav("file/" + android.net.Uri.encode(it)) } })
-        }
-    }
-}
-
 /** One file: what the box can preview (an image thumbnail, text), and Open, which fetches it to this phone. */
 @Composable
-fun FileScreen(path: String, onBack: () -> Unit) {
+fun FileScreen(path: String, back: String, onBack: () -> Unit) {
     val app = LocalApp.current
     val activity = LocalActivity.current
     val scope = rememberCoroutineScope()
@@ -131,7 +82,7 @@ fun FileScreen(path: String, onBack: () -> Unit) {
         }
     }
 
-    Page(top = { BackBar("Files", onBack) }) {
+    Page(top = { BackBar(back, onBack) }) {
         item {
             Text(s.str("name") ?: path.substringAfterLast('/'), style = Type.h2, color = c.text)
             Text(dots(s.str("kind"), bytes(s.long("size")), s.str("mtime")?.let { runCatching { sh.vyre.app.data.ago(Instant.parse(it).toEpochMilli()) + " ago" }.getOrNull() }),

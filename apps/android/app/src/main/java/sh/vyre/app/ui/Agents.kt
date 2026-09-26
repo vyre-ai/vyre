@@ -38,32 +38,18 @@ import sh.vyre.app.design.Type
 import sh.vyre.app.design.V
 import sh.vyre.app.design.VButton
 
-/** More: Agents, Memory, Vault, Settings. */
-@Composable
-fun MoreScreen() {
-    val app = LocalApp.current
-    val nav = LocalNav.current
-    val address by app.prefs.address.collectAsState()
-    Page(top = { BrandBar(address?.substringAfter("://")) }) {
-        item { Text("More", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s, bottom = Space.m)) }
-        item { Row2("Agents", "The assistant and the agents, what each is doing", onClick = { nav("agents") }) }
-        item { Row2("Memory", "What Vyre has learned, and where from", onClick = { nav("memory") }) }
-        item { Row2("Vault", "Names on the box; a value only after your fingerprint", onClick = { nav("vault") }) }
-        item { Row2("Settings", "Theme, the box, this phone, sign out", onClick = { nav("settings") }) }
-    }
-}
-
 // ---- Agents (CONTRACT.md 4.1) ----
 
+/** Agents (a tab, as in the PWA): the assistant first, then the agents; each opens its page. */
 @Composable
-fun AgentsScreen(onBack: () -> Unit) {
+fun AgentsScreen() {
     val app = LocalApp.current
     val nav = LocalNav.current
     val load = rememberLoad("agents") { app.client.call("agents.list").arr.toList() }
     OnEvents("thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered") { load.refresh() }
     val list = load.v.value.orEmpty()
-    Page(refreshing = load.v.loading && load.v.value != null, onRefresh = { load.refresh() }, top = { BackBar("More", onBack) }) {
-        item { Text("Agents", style = Type.h2, color = V.c.text) }
+    Page(top = { BrandBar() }) {
+        item { Text("Agents", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s)) }
         item { SectionHead("Agents · ${list.size}") }
         loadState(load.v, list.isEmpty(), "No agents on this box yet.")
         items(list, key = { "a" + it.str("name") }) { a ->
@@ -78,7 +64,7 @@ fun AgentsScreen(onBack: () -> Unit) {
 
 /** One agent: what it is doing, its spend, its sessions, and a line to ask it something. */
 @Composable
-fun AgentScreen(name: String, onBack: () -> Unit) {
+fun AgentScreen(name: String, back: String, onBack: () -> Unit) {
     val app = LocalApp.current
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
@@ -94,7 +80,7 @@ fun AgentScreen(name: String, onBack: () -> Unit) {
     val c = V.c
     val running = threads.v.value.orEmpty().any { it.str("status") != "stopped" && it.str("status") != "idle" }
 
-    Page(top = { BackBar("Agents", onBack) }) {
+    Page(top = { BackBar(back, onBack) }) {
         item {
             Text(name, style = Type.h2, color = c.text)
             Text(dots(a.str("kind"), a.str("doing"), a.str("model"), a.str("auth")), style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
@@ -152,11 +138,11 @@ private fun Stat(label: String, value: String) {
 // ---- Memory (CONTRACT.md 4.2: the phone may read facts and why, and pin or mute) ----
 
 @Composable
-fun MemoryScreen(onBack: () -> Unit) {
+fun MemoryScreen(start: String, back: String, onBack: () -> Unit) {
     val app = LocalApp.current
     val nav = LocalNav.current
-    var q by rememberSaveable { mutableStateOf("") }
-    var about by rememberSaveable { mutableStateOf("") }
+    var q by rememberSaveable { mutableStateOf(start) }
+    var about by rememberSaveable { mutableStateOf(start) }
     val load = rememberLoad("facts", about) {
         app.client.call("memory.facts", if (about.isBlank()) input("limit" to 100) else input("about" to about.trim(), "limit" to 100))
     }
@@ -164,8 +150,8 @@ fun MemoryScreen(onBack: () -> Unit) {
     val facts = load.v.value.at("facts").arr
     val node = load.v.value.at("about")
     val c = V.c
-    Page(refreshing = load.v.loading && load.v.value != null, onRefresh = { load.refresh() }, top = {
-        BackBar("More", onBack)
+    Page(top = {
+        BackBar(back, onBack)
         Text("Memory", style = Type.h2, color = c.text, modifier = Modifier.padding(bottom = Space.m))
         InputBox(q, { q = it; if (it.isBlank()) about = "" }, "About someone or something: Harlow Legal, juno", imeAction = ImeAction.Search, onGo = { about = q })
     }) {
@@ -185,7 +171,7 @@ fun MemoryScreen(onBack: () -> Unit) {
 
 /** One fact: where it came from (memory.why), and pin or mute its subject. */
 @Composable
-fun FactScreen(id: String, onBack: () -> Unit) {
+fun FactScreen(id: String, back: String, onBack: () -> Unit) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val load = rememberLoad("why", id) { app.client.call("memory.why", input("fact" to id, "limit" to 10)) }
@@ -204,7 +190,7 @@ fun FactScreen(id: String, onBack: () -> Unit) {
             } catch (e: Exception) { e.plain() }
         }
     }
-    Page(top = { BackBar("Memory", onBack) }) {
+    Page(top = { BackBar(back, onBack) }) {
         item {
             Text(f.str("text") ?: id, style = Type.h3, color = c.text)
             Text(dots(f.str("age"), f.double("confidence")?.let { "${(it * 100).toInt()}% sure" }, f.str("origin"), f.long("evidence")?.let { "$it sources" }),

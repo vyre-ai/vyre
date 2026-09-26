@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,7 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -58,8 +63,8 @@ import sh.vyre.app.design.V
 import sh.vyre.app.push.Notifier
 import sh.vyre.app.vyre
 
-/** The five tabs, as on iOS: the Capsule in the centre, raised. */
-enum class Tab(val label: String) { Now("Now"), Chat("Chat"), Capsule("Capsule"), Files("Files"), More("More") }
+/** The five tabs, the PWA's order (docs/work/pwa.md, Changed contracts). */
+enum class Tab(val label: String) { Now("Now"), Projects("Projects"), Chat("Chat"), Find("Find"), Agents("Agents") }
 
 /**
  * The app: first run until this phone's key is enrolled with a box, then the tabs. Each tab keeps
@@ -106,7 +111,7 @@ private fun Main(activity: MainActivity) {
             r.startsWith("tab/") -> (Tab.entries.firstOrNull { it.name.equals(r.removePrefix("tab/"), true) } ?: Tab.Now) to null
             r.startsWith("needs/") -> Tab.Now to r
             r.startsWith("thread/") -> Tab.Chat to r
-            r == "settings" -> Tab.More to r
+            r == "settings" -> Tab.Now to r
             else -> Tab.Now to null
         }
         tab = t
@@ -125,17 +130,44 @@ private fun Main(activity: MainActivity) {
     val offline by app.client.offline.collectAsState()
     val ime = WindowInsets.isImeVisible
 
+    // Pull down from the top of any screen to open Find (the PWA's pullToFind): only the drag a
+    // list could not use (it is already at the top) counts, and it must reach 72 dp.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val threshold = with(density) { PULL_DP.dp.toPx() }
+    var pull by remember { mutableStateOf(0f) }
+    val openFind = { tab = Tab.Find; stacks.getValue(Tab.Find).clear() }
+    val pullToFind = remember(tab) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (pull > 0f && available.y < 0f) { val used = maxOf(available.y, -pull); pull += used; return androidx.compose.ui.geometry.Offset(0f, used) }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+            override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (tab == Tab.Find || source != androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput || available.y <= 0f) return androidx.compose.ui.geometry.Offset.Zero
+                pull += available.y * 0.5f
+                return androidx.compose.ui.geometry.Offset(0f, available.y)
+            }
+            override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
+                val ready = pull >= threshold
+                pull = 0f
+                if (ready) { openFind(); return available }
+                return androidx.compose.ui.unit.Velocity.Zero
+            }
+        }
+    }
+
     CompositionLocalProvider(LocalNav provides nav) {
         Column(Modifier.fillMaxSize().background(V.c.ground)) {
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(pullToFind)) {
                 val top = stack.lastOrNull()
                 if (top == null) when (tab) {
                     Tab.Now -> NowScreen()
+                    Tab.Projects -> ProjectsScreen()
                     Tab.Chat -> ChatScreen()
-                    Tab.Capsule -> CapsuleScreen()
-                    Tab.Files -> FilesScreen()
-                    Tab.More -> MoreScreen()
-                } else Pushed(top, tab, back)
+                    Tab.Find -> FindScreen()
+                    Tab.Agents -> AgentsScreen()
+                } else Pushed(top, tab, stack.getOrNull(stack.lastIndex - 1), back)
+                if (pull > 0f) PullHint(pull / threshold)
             }
             if (!ime) {
                 if (offline) OfflineBar()
@@ -151,20 +183,25 @@ private fun Main(activity: MainActivity) {
 
 /** A pushed screen, by its route string. */
 @Composable
-private fun Pushed(route: String, tab: Tab, back: () -> Unit) {
+private fun Pushed(route: String, tab: Tab, prev: String?, back: () -> Unit) {
     val head = route.substringBefore('/')
     val rest = route.substringAfter('/', "")
-    val from = tab.label
+    // The back label names the screen underneath: the tab, or the pushed screen it came from.
+    val from = when (prev?.substringBefore('/')) {
+        null -> tab.label
+        "settings" -> "Settings"; "vault" -> "Vault"; "memory", "fact" -> "Memory"; "project" -> "Project"
+        "thread" -> "Session"; "agent" -> android.net.Uri.decode(prev.substringAfter('/')); "needs" -> "Now"; "file" -> "File"
+        else -> tab.label
+    }
     when (head) {
         "thread" -> ThreadScreen(rest, back)
         "needs" -> NeedsScreen(rest, back)
         "project" -> ProjectScreen(rest, back)
-        "file" -> FileScreen(android.net.Uri.decode(rest), back)
-        "agents" -> AgentsScreen(back)
-        "agent" -> AgentScreen(android.net.Uri.decode(rest), back)
-        "memory" -> MemoryScreen(back)
-        "fact" -> FactScreen(android.net.Uri.decode(rest), back)
-        "vault" -> if (rest.isEmpty()) VaultScreen(back) else VaultItemScreen(android.net.Uri.decode(rest), back)
+        "file" -> FileScreen(android.net.Uri.decode(rest), from, back)
+        "agent" -> AgentScreen(android.net.Uri.decode(rest), from, back)
+        "memory" -> MemoryScreen(android.net.Uri.decode(rest), from, back)
+        "fact" -> FactScreen(android.net.Uri.decode(rest), from, back)
+        "vault" -> if (rest.isEmpty()) VaultScreen(from, back) else VaultItemScreen(android.net.Uri.decode(rest), back)
         "settings" -> SettingsScreen(back)
         else -> Page(top = { BackBar(from, back) }) { item { Quiet("Nothing is here.") } }
     }
@@ -190,10 +227,10 @@ private fun TabBar(selection: Tab, badge: Int, onSelect: (Tab) -> Unit) {
         Hairline()
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = Space.s), verticalAlignment = Alignment.CenterVertically) {
             TabItem(Tab.Now, Icons.Filled.Notifications, selection, badge, onSelect)
+            TabItem(Tab.Projects, Icons.AutoMirrored.Filled.List, selection, 0, onSelect)
             TabItem(Tab.Chat, Icons.Filled.Email, selection, 0, onSelect)
-            CapsuleItem(selection == Tab.Capsule) { onSelect(Tab.Capsule) }
-            TabItem(Tab.Files, Icons.AutoMirrored.Filled.List, selection, 0, onSelect)
-            TabItem(Tab.More, Icons.Filled.MoreVert, selection, 0, onSelect)
+            TabItem(Tab.Find, Icons.Filled.Search, selection, 0, onSelect)
+            TabItem(Tab.Agents, Icons.Filled.Person, selection, 0, onSelect)
         }
     }
 }
@@ -214,27 +251,28 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(t: Tab, icon: Im
             if (badge > 0) Box(
                 Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-6).dp).clip(RoundedCornerShape(50)).background(c.beaconDot)
                     .padding(horizontal = 5.dp, vertical = 1.dp),
-            ) { Text(if (badge > 99) "99+" else "$badge", style = Type.label.copy(fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp)), color = sh.vyre.app.design.Hex.signalInk) }
+            ) { Text(if (badge > 99) "99+" else "$badge", style = Type.label.copy(fontSize = 10.sp, letterSpacing = 0.sp), color = sh.vyre.app.design.Hex.signalInk) }
         }
-        Label(t.label, Modifier.padding(top = 4.dp), color = tint)
+        // The PWA's tab labels: mono 10, +0.14em, uppercase.
+        Text(t.label.uppercase(), style = Type.label.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.14.em), color = tint, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
-/** The Capsule: centre, raised, the one pill in the bar, the mark inside it. */
+/** What a pull says, growing with it: "Pull to find", then "Release to find". */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.CapsuleItem(on: Boolean, onClick: () -> Unit) {
+private fun PullHint(p: Float) {
     val c = V.c
-    Box(Modifier.weight(1.2f), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier.offset(y = (-10).dp).size(width = 68.dp, height = 44.dp).clip(RoundedCornerShape(50))
-                .background(if (on) c.primaryFill else c.raised)
-                .border(1.dp, if (on) c.primaryFill else c.ruleStrong, RoundedCornerShape(50))
-                .clickable(role = Role.Tab, onClick = onClick)
-                .semantics { selected = on; contentDescription = "Capsule" },
-            contentAlignment = Alignment.Center,
-        ) { Mark(22.dp, wire = if (on) c.primaryInk else c.text, dot = if (on) c.primaryInk else c.dot) }
+    val f = p.coerceIn(0f, 1f)
+    Column(Modifier.fillMaxWidth().statusBarsPadding().background(c.ground)) {
+        Row(Modifier.fillMaxWidth().height((44 * f).dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Label(if (p >= 1f) "Release to find" else "Pull to find", color = if (p >= 1f) c.text else c.label)
+        }
+        Hairline()
     }
 }
 
-/** Debug builds only: `adb shell am start -e sh.vyre.app.TAB capsule` opens a tab, for screenshots. */
+/** How far a pull must go to open Find, as in the PWA (THRESHOLD 72 px). */
+private const val PULL_DP = 72
+
+/** Debug builds only: `adb shell am start -e sh.vyre.app.TAB find` opens a tab, for screenshots. */
 const val EXTRA_TAB = "sh.vyre.app.TAB"

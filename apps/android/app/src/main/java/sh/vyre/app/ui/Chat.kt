@@ -55,6 +55,7 @@ import sh.vyre.app.api.ApiError
 import sh.vyre.app.api.arr
 import sh.vyre.app.api.at
 import sh.vyre.app.api.input
+import sh.vyre.app.api.long
 import sh.vyre.app.api.obj
 import sh.vyre.app.api.plain
 import sh.vyre.app.api.str
@@ -74,29 +75,52 @@ import sh.vyre.app.design.Type
 import sh.vyre.app.design.V
 import sh.vyre.app.design.VButton
 
-/** Chat: the projects, then a project's sessions, then a thread. */
+/** Projects (a tab, as in the PWA): the projects on the box; a project opens its sessions. */
 @Composable
-fun ChatScreen() {
+fun ProjectsScreen() {
     val app = LocalApp.current
     val nav = LocalNav.current
     val load = rememberLoad("projects") { app.client.call("projects.list") }
-    val running = rememberLoad("running") { runCatching { app.client.call("threads.list").arr.toList() }.getOrDefault(emptyList()) }
     val projects = load.v.value.at("projects").arr
-    Page(refreshing = load.v.loading && load.v.value != null, onRefresh = { load.refresh(); running.refresh() }, top = { BrandBar() }) {
-        item { Text("Chat", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s)) }
-        val live = running.v.value.orEmpty().filter { it.str("status") != "stopped" }
-        if (live.isNotEmpty()) {
-            item { SectionHead("Live · ${live.size}") }
-            items(live, key = { "l" + it.str("id") }) { t ->
-                Row2(t.str("name") ?: "Session", listOfNotNull(t.str("agent"), t.str("project"), t.str("status")).joinToString(" · "), onClick = { nav("thread/${t.str("id")}") })
-            }
-        }
+    Page(top = { BrandBar() }) {
+        item { Text("Projects", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s)) }
         item { SectionHead("Projects · ${projects.size}") }
         loadState(load.v, projects.isEmpty(), "No projects yet. Make one on the Mac with vyre new.")
         items(projects, key = { "p" + it.str("slug") }) { p ->
             Row2(p.str("name") ?: p.str("slug").orEmpty(),
-                listOfNotNull(p.str("org"), "${p.str("threads") ?: 0} sessions", ago(p.str("last")?.toLongOrNull()).takeIf { it.isNotEmpty() }).joinToString(" · "),
+                dots(p.str("org"), "${p.str("threads") ?: 0} sessions", ago(p.str("last")?.toLongOrNull())),
                 onClick = { nav("project/${p.str("slug")}") })
+        }
+    }
+}
+
+/**
+ * Chat (a tab): sessions and threads. Live ones first (running, starting, waiting), then the
+ * others from the last day; each opens the thread.
+ */
+@Composable
+fun ChatScreen() {
+    val app = LocalApp.current
+    val nav = LocalNav.current
+    val load = rememberLoad("threads-all") { app.client.call("threads.list", input("all" to true)).arr.toList() }
+    OnEvents("thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered") { load.refresh() }
+    val all = load.v.value.orEmpty().sortedByDescending { it.str("last")?.toLongOrNull() ?: 0 }
+    val live = all.filter { it.str("status") in setOf("working", "starting", "waiting") }
+    val rest = all.filter { it !in live }
+    Page(top = { BrandBar() }) {
+        item { Text("Chat", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s)) }
+        item { SectionHead("Live · ${live.size}") }
+        if (load.v.value != null && live.isEmpty()) item { Quiet("No session is running. Start one from a project.") }
+        items(live, key = { "l" + it.str("id") }) { t ->
+            Row2(label(t), dots(t.str("agent"), t.str("project"), if (t.str("status") == "waiting") "waiting on you" else t.str("status")),
+                subColor = if (t.str("status") == "waiting") V.c.beacon else null,
+                leading = { Dot(if (t.str("status") == "waiting") V.c.beaconDot else V.c.focus) },
+                onClick = { nav("thread/${t.str("id")}") })
+        }
+        item { SectionHead("Sessions · ${rest.size}") }
+        loadState(load.v, all.isEmpty(), "No session in the last day.")
+        items(rest, key = { "s" + it.str("id") }) { t ->
+            Row2(label(t), dots(t.str("agent"), t.str("project"), ago(t.str("last")?.toLongOrNull())), onClick = { nav("thread/${t.str("id")}") })
         }
     }
 }
@@ -112,7 +136,7 @@ fun ProjectScreen(slug: String, onBack: () -> Unit) {
     var prompt by remember { mutableStateOf("") }
     var note by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    Page(refreshing = load.v.loading && load.v.value != null, onRefresh = { load.refresh() }, top = { BackBar("Chat", onBack) }) {
+    Page(top = { BackBar("Projects", onBack) }) {
         item {
             Text(p?.str("name") ?: slug, style = Type.h2, color = V.c.text)
             p?.at("people")?.arr?.takeIf { it.isNotEmpty() }?.let { people -> Text(people.joinToString(", ") { it.str("name").orEmpty() }, style = Type.small, color = V.c.secondary) }
@@ -170,7 +194,19 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
             if (transcript.status == null || transcript.status == "working") transcript.setStatus(record.str("status"))
             version++
             error = null
-        } catch (e: Exception) { error = e.plain() }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            // Not a live thread: a session that ran in a terminal. Show its recorded turns, read-only in effect.
+            try {
+                val r = app.client.call("recall.thread", input("session" to id, "limit" to 400))
+                val sess = r.at("session")
+                record = JsonObject(mapOf("name" to kotlinx.serialization.json.JsonPrimitive(sess.str("title") ?: sess.str("name") ?: "Session"), "status" to kotlinx.serialization.json.JsonPrimitive("recorded")))
+                for (t in r.at("turns").arr) transcript.turn(t.long("seq"), t.str("role"), t.str("text").orEmpty(), t.long("ts"))
+                transcript.setStatus("recorded")
+                version++
+                error = null
+            } catch (e2: Exception) { if (e2 is kotlinx.coroutines.CancellationException) throw e2; error = e.plain() }
+        }
     }
     LaunchedEffect(id) { reload() }
     OnEvents("thread.*", "ask.*", "gate.*", "lease.changed") { e ->

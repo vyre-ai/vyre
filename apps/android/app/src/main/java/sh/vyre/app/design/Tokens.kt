@@ -4,7 +4,11 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/** docs/design/TOKENS.md, verbatim. No colour here that the tokens do not name. */
+/**
+ * docs/design/TOKENS.md, verbatim: each value is named after its CSS token (`--rule-strong` is
+ * ruleStrong, `--ink-2` is ink2). No colour here that the tokens do not name, except the three
+ * paper washes, which TOKENS.md leaves out: they are the dark washes' alphas over the deep tones.
+ */
 object Hex {
     val graphite = Color(0xFF0E0D0C)
     val carbon = Color(0xFF161513)
@@ -89,12 +93,20 @@ object Space {
     val l = 16.dp
     val xl = 24.dp
     val xxl = 32.dp
+    val xxxl = 48.dp
+    /** The page side gutter on a phone (TOKENS.md: 16px phone). */
     val gutter = 16.dp
     /** 48dp touch targets. */
     val target = 48.dp
 }
 
+/** TOKENS.md shape: --r-1 chips, --r-2 buttons and inputs, --r-3 panels and the Capsule, --r-4 windows. */
 object Radius {
+    val r0 = 0.dp
+    val r1 = 4.dp
+    val r2 = 6.dp
+    val r3 = 10.dp
+    val r4 = 14.dp
     val chip = 4.dp
     val button = 6.dp
     val panel = 10.dp

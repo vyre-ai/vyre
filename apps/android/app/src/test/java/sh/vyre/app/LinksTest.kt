@@ -15,7 +15,10 @@ class LinksTest {
     @Test fun vyreLinks() {
         assertEquals("needs/abc", Links.route("vyre://needs/abc"))
         assertEquals("thread/t1", Links.route("vyre://threads/t1/"))
-        assertEquals("tab/capsule", Links.route("vyre://capsule"))
+        assertEquals("tab/find", Links.route("vyre://find"))
+        assertEquals("tab/find", Links.route("vyre://capsule"))
+        assertEquals("tab/projects", Links.route("vyre://projects"))
+        assertEquals("tab/now", Links.route("vyre://more"))
         assertNull(Links.route("vyre://enrolled?id=abcdefgh"))
     }
 

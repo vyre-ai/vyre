@@ -75,7 +75,7 @@ fun NowScreen() {
     val working = d?.threads?.filter { it.str("status") in setOf("working", "starting", "waiting") }.orEmpty()
     val needs = (d?.held?.size ?: 0) + (d?.asks?.size ?: 0)
 
-    Page(refreshing = load.v.loading && d != null, onRefresh = { load.refresh() }, top = { BrandBar(host) }) {
+    Page(top = { BrandBar(host) { Avatar(host.orEmpty()) { nav("settings") } } }) {
         item {
             Text(if (d == null) " " else needsLine(needs), style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s))
             val assistant = d?.agents?.firstOrNull { it.str("kind") == "assistant" }

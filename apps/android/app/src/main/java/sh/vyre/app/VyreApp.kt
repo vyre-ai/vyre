@@ -57,10 +57,10 @@ class Prefs(context: Context) {
     private val p = context.getSharedPreferences("vyre", Context.MODE_PRIVATE)
     val address = MutableStateFlow(p.getString("address", null))
     val keyId = MutableStateFlow(p.getString("key_id", null))
-    val theme = MutableStateFlow(runCatching { ThemeChoice.valueOf(p.getString("theme", "System")!!) }.getOrDefault(ThemeChoice.System))
+    val theme = MutableStateFlow(runCatching { ThemeChoice.valueOf(p.getString("theme", "Dark")!!) }.getOrDefault(ThemeChoice.Dark))
 
     fun setAddress(a: String?) { p.edit().putString("address", a).apply(); address.value = a }
     fun setKeyId(id: String?) { p.edit().putString("key_id", id).apply(); keyId.value = id }
     fun setTheme(t: ThemeChoice) { p.edit().putString("theme", t.name).apply(); theme.value = t }
-    fun clear() { p.edit().clear().apply(); address.value = null; keyId.value = null }
+    fun clear() { p.edit().remove("address").remove("key_id").apply(); address.value = null; keyId.value = null }
 }

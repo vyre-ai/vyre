@@ -63,7 +63,7 @@ import sh.vyre.app.design.VButton
  * and when the app leaves the screen, and the window is FLAG_SECURE while one shows.
  */
 @Composable
-fun VaultScreen(onBack: () -> Unit) {
+fun VaultScreen(back: String, onBack: () -> Unit) {
     val app = LocalApp.current
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
@@ -91,8 +91,8 @@ fun VaultScreen(onBack: () -> Unit) {
         scope.launch { runCatching { app.client.call("presence.session.close", input("session" to s.id)) } }
     }
 
-    Page(refreshing = load.v.loading && v != null, onRefresh = { load.refresh() }, top = {
-        BackBar("More", onBack)
+    Page(top = {
+        BackBar(back, onBack)
         Text("Vault", style = Type.h2, color = c.text, modifier = Modifier.padding(bottom = Space.m))
         InputBox(filter, { filter = it }, "Filter by name or host", imeAction = ImeAction.Search)
     }) {

@@ -116,4 +116,11 @@ class Transcript(val thread: String) {
     }
 
     fun setStatus(s: String?) { status = s }
+
+    /** A recorded turn (recall.thread), for a session that ran in a terminal and is not a live thread. */
+    fun turn(seq: Long?, role: String?, text: String, ts: Long?) {
+        val key = "turn:${seq ?: lines.size}"
+        if (lines.any { it.key == key } || text.isBlank()) return
+        lines += if (role == "user") Line.User(key, text, "terminal", ts) else Line.Assistant(key, text, done = true)
+    }
 }

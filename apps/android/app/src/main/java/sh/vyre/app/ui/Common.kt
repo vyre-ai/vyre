@@ -26,10 +26,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -111,15 +109,31 @@ fun OnEvents(vararg types: String, block: suspend (JsonObject) -> Unit) {
     }
 }
 
-/** The top of a tab: the mark and wordmark, the box's name at the right (PhoneNow board). */
+/** The top of a tab (the PWA's phone-head): the mark and wordmark, the box's name, and an action at the right. */
 @Composable
-fun BrandBar(right: String? = null) {
-    Row(Modifier.fillMaxWidth().padding(top = Space.l, bottom = Space.s), verticalAlignment = Alignment.CenterVertically) {
+fun BrandBar(right: String? = null, action: (@Composable () -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth().heightIn(min = Space.target).padding(top = Space.s, bottom = Space.s), verticalAlignment = Alignment.CenterVertically) {
         Mark(20.dp)
         Spacer(Modifier.width(6.dp))
-        Wordmark(20.dp)
+        Wordmark(22.dp)
         Spacer(Modifier.weight(1f))
-        if (right != null) Text(right, style = Type.monoSmall, color = V.c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (right != null) Text(right, style = Type.monoSmall, color = V.c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (action != null) { Spacer(Modifier.width(Space.m)); action() }
+    }
+}
+
+/** The avatar at the right of Now's head: a round tile with the owner's initial; it opens Settings. */
+@Composable
+fun Avatar(initial: String, onClick: () -> Unit) {
+    val c = V.c
+    Box(
+        Modifier.size(Space.target).clickable(role = Role.Button, onClickLabel = "Settings", onClick = onClick).semantics { contentDescription = "Settings" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(32.dp).background(c.raised, androidx.compose.foundation.shape.CircleShape)
+            .border(1.dp, c.ruleStrong, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+            Text(initial.take(1).uppercase().ifEmpty { "V" }, style = Type.button, color = c.text)
+        }
     }
 }
 
@@ -138,18 +152,15 @@ fun BackBar(title: String, onBack: () -> Unit, right: (@Composable () -> Unit)? 
 }
 
 /**
- * The page: side gutter 16, pull to refresh, a list. Everything is on the ground; sections are
- * separated by rules and labels, not boxes.
+ * The page: side gutter 16, a list. Everything is on the ground; sections are separated by rules
+ * and labels, not boxes. There is no pull to refresh: pulling down from the top opens Find (Root),
+ * as in the PWA, and screens re-read when they open and when the box says something changed.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Page(refreshing: Boolean = false, onRefresh: (() -> Unit)? = null, top: @Composable ColumnScope.() -> Unit = {}, content: LazyListScope.() -> Unit) {
+fun Page(top: @Composable ColumnScope.() -> Unit = {}, content: LazyListScope.() -> Unit) {
     Column(Modifier.fillMaxSize().background(V.c.ground).statusBarsPadding()) {
         Column(Modifier.padding(horizontal = Space.gutter), content = top)
-        val list: @Composable () -> Unit = {
-            LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(start = Space.gutter, end = Space.gutter, bottom = Space.xxl), content = content)
-        }
-        if (onRefresh != null) PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) { list() } else list()
+        LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(start = Space.gutter, end = Space.gutter, bottom = Space.xxl), content = content)
     }
 }
 

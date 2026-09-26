@@ -15,11 +15,12 @@ object V {
     val c: VyreColors @Composable get() = LocalVyre.current
 }
 
-enum class ThemeChoice { System, Dark, Paper }
+/** Dark is Graphite, the default (TOKENS.md: "Colour: dark (default)"); Paper is the light one; System follows the phone. */
+enum class ThemeChoice(val label: String) { Dark("Graphite"), Paper("Paper"), System("Like the phone") }
 
-/** Dark by default and paper when the system is light, unless Settings picks one. */
+/** Graphite by default, unless Settings picks Paper or the phone's setting. */
 @Composable
-fun VyreTheme(choice: ThemeChoice = ThemeChoice.System, content: @Composable () -> Unit) {
+fun VyreTheme(choice: ThemeChoice = ThemeChoice.Dark, content: @Composable () -> Unit) {
     val dark = when (choice) {
         ThemeChoice.System -> isSystemInDarkTheme()
         ThemeChoice.Dark -> true

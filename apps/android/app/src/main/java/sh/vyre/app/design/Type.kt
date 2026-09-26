@@ -20,11 +20,11 @@ private fun mono(w: Int) = Font(R.font.jetbrains_mono, FontWeight(w), variationS
 val Sans = FontFamily(sans(400), sans(500), sans(600))
 val Mono = FontFamily(mono(400), mono(500))
 
-/** The type roles in TOKENS.md. Sizes are sp so they follow the system font scale. */
+/** The type roles in docs/design/TOKENS.md (H1 44/48, H2 28/34, H3 20/26, Body 15/22, Small 13/18, Label and Code in mono), as the PWA sets them on a phone. Sizes are sp so they follow the system font scale. */
 object Type {
-    val h1 = TextStyle(fontFamily = Sans, fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight(600), letterSpacing = (-0.03).em)
-    val h2 = TextStyle(fontFamily = Sans, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight(600), letterSpacing = (-0.02).em)
-    val h3 = TextStyle(fontFamily = Sans, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight(600), letterSpacing = (-0.01).em)
+    val h1 = TextStyle(fontFamily = Sans, fontSize = 44.sp, lineHeight = 48.sp, fontWeight = FontWeight(600), letterSpacing = (-0.03).em)
+    val h2 = TextStyle(fontFamily = Sans, fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight(600), letterSpacing = (-0.02).em)
+    val h3 = TextStyle(fontFamily = Sans, fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight(600), letterSpacing = (-0.01).em)
     val body = TextStyle(fontFamily = Sans, fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight(400))
     val bodyStrong = body.copy(fontWeight = FontWeight(500))
     val small = TextStyle(fontFamily = Sans, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight(400))

@@ -2,12 +2,13 @@ package sh.vyre.app.data
 
 /** Where a link opens in the app. Pure, so it is tested on the JVM. */
 object Links {
+    private val TABS = setOf("now", "projects", "chat", "find", "agents")
     private val ID = Regex("^[A-Za-z0-9_-]{1,128}$")
 
     /**
      * An in-app route for a push path (`/needs/<id>`, `/threads/<id>`, `/settings?...`, CONTRACT.md 7)
      * or a `vyre://` link (`vyre://needs/<id>`, `vyre://threads/<id>`, `vyre://settings`,
-     * `vyre://capsule`). Null for anything else, including `vyre://enrolled`, which sign-in reads.
+     * `vyre://find` and the other tabs). Null for anything else, including `vyre://enrolled`, which sign-in reads.
      */
     fun route(link: String?): String? {
         if (link.isNullOrBlank()) return null
@@ -22,7 +23,10 @@ object Links {
             parts.size == 2 && parts[0] == "needs" && ID.matches(parts[1]) -> "needs/${parts[1]}"
             parts.size == 2 && parts[0] == "threads" && ID.matches(parts[1]) -> "thread/${parts[1]}"
             parts.size == 1 && parts[0] == "settings" -> "settings"
-            parts.size == 1 && parts[0] in setOf("now", "chat", "capsule", "files", "more") -> "tab/${parts[0]}"
+            parts.size == 1 && parts[0] in TABS -> "tab/${parts[0]}"
+            // Older names: the Capsule and Files became Find, More became Now's avatar.
+            parts.size == 1 && parts[0] in setOf("capsule", "files") -> "tab/find"
+            parts.size == 1 && parts[0] == "more" -> "tab/now"
             else -> null
         }
     }
