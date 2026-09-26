@@ -1,4 +1,12 @@
-# ADR 0003 · How Glass streams an agent's screen, and who may type into it
+---
+title: ADR 0003: How Glass streams an agent's screen, and who may type into it
+summary: How an agent's screen streams live to the Deck over the tailnet, and how one person at a time takes the keyboard and hands it back.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0003: How Glass streams an agent's screen, and who may type into it
 
 Status: accepted, 26 Sep 2026 · Workstream: computers · Spec: sections 7.9, 9 (Glass) and 11 (floor rules 3 and 4)
 

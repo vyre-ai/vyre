@@ -64,7 +64,6 @@
           <li>A Mac with Node 22.5 or newer (<code>node --version</code>).</li>
           <li>A Claude subscription (Pro or Max) or an Anthropic API key.</li>
           <li>A Tailscale account. The free plan is enough.</li>
-          <li>A Cloudflare API token with DNS edit rights on the <code>vyre.run</code> zone. vyred uses it to publish <code>&lt;you&gt;.vyre.run</code> and to get its certificate. The hosted name directory will replace it.</li>
         </ul>
       </div>
     </section>
@@ -80,13 +79,6 @@
       </div>
         <p>The installer asks before installing anything (Docker, if the server has none). It lays out the stack in <code>/srv/vyre</code>, installs the <code>vyre</code> command to <code>/usr/local/bin/vyre</code>, builds the image from <code>vyre.run/box/vyre.tgz</code> after checking its checksum, and starts two containers: <code>tailscale</code> and <code>vyre</code>. The first build takes a few minutes.</p>
         <p>If a test stack is already in <code>/srv/vyre</code>, the installer leaves <code>/srv/vyre/.env</code> as it is. To start clean: <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then run the one line again. The data volumes stay unless you add <code>--purge</code>.</p>
-        <p>Then give vyred the Cloudflare token, in a file only you can read:</p>
-      <div class="term-block">
-        <div class="term-row"><pre>cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env</pre><button class="btn btn-line btn-sm" type="button" data-copy="cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env" aria-label="Copy the command cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
-        <div class="term-row"><pre>chmod 600 /srv/vyre/vyre.env</pre><button class="btn btn-line btn-sm" type="button" data-copy="chmod 600 /srv/vyre/vyre.env" aria-label="Copy the command chmod 600 /srv/vyre/vyre.env"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
-        <div class="term-row"><pre>nano /srv/vyre/vyre.env            <span class="note"># uncomment CLOUDFLARE_VYRE_TOKEN= and paste the token</span></pre><button class="btn btn-line btn-sm" type="button" data-copy="nano /srv/vyre/vyre.env" aria-label="Copy the command nano /srv/vyre/vyre.env"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
-        <div class="term-row"><pre>vyre update                        <span class="note"># recreates the vyre container so it reads the file</span></pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre update" aria-label="Copy the command vyre update"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
-      </div>
         <p><code>vyre up</code> prints the onboarding link, and, because you are on ssh, the tunnel line to reach it:</p>
         <div class="term-block">
           <div class="term-cap"><span class="lbl">Output of vyre up</span></div>
@@ -108,13 +100,13 @@
         <ol class="sub">
           <li><span>In a second Terminal tab on your Mac, run the <code>ssh -N -L 7300:...</code> line and leave it open.</span></li>
           <li><span>Open the <code>http://127.0.0.1:7300/onboard?t=...</code> link in your Mac's browser. The link works once and for an hour. If it has expired, run <code>vyre up</code> on the server for a new one.</span></li>
-          <li><span><strong>You.</strong> Type the name you want, e.g. <code>alex</code>. That becomes <code>alex.vyre.run</code>. The rest of this page writes <code>&lt;you&gt;</code> for it.</span></li>
+          <li><span><strong>You.</strong> Your name, e.g. <code>alex</code>, and a name for your assistant.</span></li>
           <li><span><strong>Claude Code.</strong> Sign in with your subscription (the page runs <code>claude setup-token</code> for you and shows Anthropic's sign-in link) or paste an API key. It goes into the Vault.</span></li>
           <li><span><strong>Tailscale.</strong> Press Connect. Tailscale's own sign-in opens; sign in with your Tailscale account. The page waits until the server shows up on your tailnet.</span></li>
-          <li><span><strong>Your address.</strong> Vyre points <code>&lt;you&gt;.vyre.run</code> at the server's tailnet address and gets a certificate. When that is done the page moves to <code>https://&lt;you&gt;.vyre.run</code>, and the <code>127.0.0.1:7300</code> link stops working. You can close the ssh tunnel.</span></li>
+          <li><span><strong>Your address.</strong> Vyre gets a certificate for the server's tailnet name, <code>https://vyre.&lt;your-tailnet&gt;.ts.net</code>. The first time, Tailscale needs HTTPS turned on for your tailnet: press <strong>Turn on HTTPS</strong>, flip the switch on the page that opens, then press <strong>Check again</strong>. The page then moves to your new address, and the <code>127.0.0.1:7300</code> link stops working. You can close the ssh tunnel.</span></li>
           <li><span><strong>Your history</strong> and <strong>Your devices</strong> can be skipped for now and finished from Settings.</span></li>
         </ol>
-        <p><code>https://&lt;you&gt;.vyre.run</code> only opens from your own devices on your tailnet. Put Tailscale on the Mac and your phone (<a href="https://tailscale.com/download">tailscale.com/download</a>) and sign in with the same account.</p>
+        <p>Your address only opens from your own devices on your tailnet. Put Tailscale on the Mac and your phone (<a href="https://tailscale.com/download">tailscale.com/download</a>) and sign in with the same account.</p>
       </div>
     </section>
 
@@ -122,17 +114,18 @@
       <span class="num">03</span>
       <div class="body-col">
         <h2 id="mac-h" class="h2">The Mac</h2>
-        <p>Install the CLI from the same tarball the server uses:</p>
+        <p>Install the CLI from the same tarball the server uses, then run <code>vyre up</code>:</p>
       <div class="term-block">
-        <div class="term-row"><pre>npm install -g https://vyre.run/box/vyre.tgz</pre><button class="btn btn-line btn-sm" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" aria-label="Copy the command npm install -g https://vyre.run/box/vyre.tgz"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
-        <div class="term-row"><pre>vyre up --connect &lt;you&gt;.vyre.run</pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre up --connect &lt;you&gt;.vyre.run" aria-label="Copy the command vyre up --connect &lt;you&gt;.vyre.run"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+        <div class="term-row"><pre>npm i -g https://vyre.run/box/vyre.tgz</pre><button class="btn btn-line btn-sm" type="button" data-copy="npm i -g https://vyre.run/box/vyre.tgz" aria-label="Copy the command npm i -g https://vyre.run/box/vyre.tgz"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+        <div class="term-row"><pre>vyre up</pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre up" aria-label="Copy the command vyre up"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
       </div>
-        <p><code>vyre up</code> on a Mac sets its role to <code>local</code>, starts vyred for this Mac, and checks that your box answers (the Mac must be on your tailnet). Plain <code>vyre up</code> also works: it looks for your box on the tailnet and takes it when there is exactly one. Then it pairs this Mac with the box and prints a code:</p>
+        <p><code>vyre up</code> starts vyred for this Mac and looks for your box on the tailnet (the Mac must be signed in to Tailscale). When it asks where Vyre should run, pick <strong>3, I already set up a box</strong>, and give it your address, <code>https://vyre.&lt;your-tailnet&gt;.ts.net</code>. Then it asks the box to pair this Mac and prints a code:</p>
         <div class="term-block">
           <div class="term-cap"><span class="lbl">Output of vyre up</span></div>
-<pre class="term-out">  pair this Mac: on the box, run vyre link approve 123-456</pre>
+<pre class="term-out">  Approve this Mac in your Deck: it names this Mac (alex-mac) and asks for your passkey. Code: 123-456
+  vyre link shows when it is done.</pre>
         </div>
-        <p>Run that line on the server (<code>ssh &lt;you&gt;@&lt;server&gt;</code>, then <code>vyre link approve 123-456</code>). The code expires after a few minutes; <code>vyre up</code> again prints a fresh one. <code>vyre link</code> on the Mac says when it is paired. Last, <code>vyre up</code> opens the Capsule if you have installed it (next step).</p>
+        <p>Approve it in your Deck and confirm with your passkey. A terminal on the box cannot approve a Mac on its own: <code>vyre link approve</code> there points you to the Deck. The Deck screen that approves a Mac is not built yet (see Known gaps below). <code>vyre link</code> on the Mac says when it is paired.</p>
         <p>The install is about 480 MB, most of it the optional local embedding model that lets search find things by meaning. Search still works without it, as full text.</p>
         <p>To use Vyre's tools inside Claude Code on the Mac:</p>
       <div class="term-block">
@@ -145,14 +138,12 @@
       <span class="num">04</span>
       <div class="body-col">
         <h2 id="capsule-h" class="h2">The Capsule</h2>
-        <p>Download <a href="/box/Vyre-mac.zip">vyre.run/box/Vyre-mac.zip</a>, unzip it, and move <code>Vyre.app</code> to Applications before you open it. Opened from Downloads, macOS runs it from a temporary copy, and the permissions you grant it do not stick.</p>
-        <p>The app is not signed with a Developer ID or notarized yet, so macOS stops it the first time:</p>
-        <ol class="sub">
-          <li><span>In Finder, right-click (or Control-click) <code>Vyre.app</code> and choose <strong>Open</strong>.</span></li>
-          <li><span>macOS says it cannot check the app for malicious software. Choose <strong>Open</strong> again. On recent macOS the dialog may offer only <strong>Done</strong>. If so, open System Settings, then Privacy &amp; Security, scroll to the note about Vyre, and choose <strong>Open Anyway</strong>. If you prefer the terminal, this does the same (it removes the download mark macOS checks): <code>xattr -dr com.apple.quarantine /Applications/Vyre.app</code></span></li>
-          <li><span>Grant Input Monitoring when it asks: Control twice opens the Capsule from any app, and macOS needs that permission to see the key. Contacts is optional, for contact results.</span></li>
-        </ol>
-        <p>After the first open it starts normally. Run <code>vyre capsule</code> (or <code>vyre up</code> again) so it opens wired to this Mac's vyred, then press Control twice anywhere to open it.</p>
+        <p>The Capsule comes with the CLI you just installed. Open it:</p>
+      <div class="term-block">
+        <div class="term-row"><pre>vyre capsule</pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre capsule" aria-label="Copy the command vyre capsule"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+      </div>
+        <p>If it says Electron or the double-Control helper is not built, run <code>vyre capsule build</code> once (it needs the Xcode command line tools: <code>xcode-select --install</code>), then <code>vyre capsule</code> again.</p>
+        <p>Grant Input Monitoring when it asks: Control twice opens the Capsule from any app, and macOS needs that permission to see the key. Contacts is optional, for contact results. Then press Control twice anywhere.</p>
       </div>
     </section>
 
@@ -166,18 +157,18 @@
             <li><strong>The server install.</strong> The one line installs Docker if you agree, verifies every file against a published SHA-256, builds the image from main, and prints the onboarding link. Tested end to end on a fresh Linux server.</li>
             <li><strong>Onboarding in the browser.</strong> The one-time link over the <code>ssh -L</code> tunnel, with the Claude, Tailscale and name steps.</li>
             <li><strong>The Mac CLI and Claude Code plugin.</strong> <code>npm install -g</code> from the tarball, <code>vyre up</code>, and Vyre's tools inside Claude Code.</li>
-            <li><strong>The Capsule.</strong> Control twice, from the zip. It opens after the one-time right-click, Open.</li>
-            <li><strong>Pairing.</strong> <code>vyre up</code> on the Mac finds the box, and you approve the code on the box.</li>
+            <li><strong>The Capsule.</strong> Control twice, built on your Mac from the npm install with <code>vyre capsule</code>.</li>
+            <li><strong>Finding the box.</strong> <code>vyre up</code> on the Mac finds the box on your tailnet, or takes its address.</li>
           </ul>
-          <p>Not yet checked on a real server: the Tailscale sign-in, the certificate for your name, and pairing against it. Each works in tests with a simulated tailnet.</p>
+          <p>Not yet checked on a real server: the Tailscale sign-in, the certificate for your address, and pairing against it. Each works in tests with a simulated tailnet.</p>
           <h2 class="h2">What's coming</h2>
           <ul class="need">
             <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li>
             <li><strong>A published image.</strong> Today each server builds its own from the tarball, which takes a few minutes. <code>vyre update</code> rebuilds it.</li>
-            <li><strong>A signed, notarized Mac app.</strong> Until then, right-click, Open. If macOS refuses the zip, <code>vyre capsule build</code> (needs the Xcode command line tools) and then <code>vyre capsule --dev</code> run the Capsule from the npm install.</li>
-            <li><strong>Names without a token.</strong> <code>&lt;you&gt;.vyre.run</code> needs your own Cloudflare token for now. The hosted name directory is designed (ADR 0002) and not built.</li>
-            <li><strong>Approving from your phone.</strong> Today a Mac is approved from the box's terminal. The Deck screen for it is not built.</li>
-            <li><strong>Updates.</strong> Nothing updates itself. On the server, <code>vyre update</code>. On the Mac, run the <code>npm install -g</code> line again and download the zip again.</li>
+            <li><strong>A signed, notarized Mac app to download.</strong> Until then the Capsule is built on your Mac by <code>vyre capsule</code>.</li>
+            <li><strong>A vyre.run name.</strong> Your address is your tailnet name today. A <code>&lt;you&gt;.vyre.run</code> name needs the hosted name directory, which is designed (ADR 0002) and not built.</li>
+            <li><strong>Approving a Mac in the Deck.</strong> Pairing asks for your passkey in the Deck, and the Deck screen for it is not built yet, so pairing a Mac can stall at that step.</li>
+            <li><strong>Updates.</strong> Nothing updates itself. On the server, <code>vyre update</code>. On the Mac, run the <code>npm i -g</code> line again.</li>
           </ul>
         </div>
       </div>

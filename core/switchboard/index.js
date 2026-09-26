@@ -725,6 +725,18 @@ export class Switchboard {
 const str = { type: "string" };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/**
+ * Whose words are queued for a session busy in a terminal: a person's. That is every surface of
+ * the person's, the owner's Deck or phone over the tailnet ("tailnet:<login>", the only login the
+ * tailnet listener admits, ADR 0002) among them. A model's words are refused instead: an MCP call,
+ * the Harness, or anything speaking as an agent, an agent's own tailnet node included.
+ * @param {string} [caller]
+ */
+export const queuesFor = caller => {
+  const c = String(caller || "");
+  return !/^(mcp|harness|hook)/.test(c) && !/(^|[\s:])agent:/.test(c) && c !== "tailnet:";
+};
+
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
@@ -755,7 +767,7 @@ export default {
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first.",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller }) => { guard(caller, "type into sessions"); return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: !/^(mcp|harness)/.test(String(caller || "")) }); });
+      async (i, { caller }) => { guard(caller, "type into sessions"); return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller) }); });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
       { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },

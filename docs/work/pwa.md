@@ -85,6 +85,14 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - Shots: 56 (19 screens at 390 and 430, plus onboarding, pairing, no assistant and Now at 1280,
   1440, 2000), all checks pass.
 
+- Speed (lead, from the user's iPhone): pages kept mounted (app.js router: mount/away/drop,
+  KEEP 8), the tabs warmed at idle on a phone, Chat opens sessions from known rows with the last 60
+  turns, Back is history.back, fonts self-hosted, SW stale-while-revalidate. deck/test/pwa-perf.js
+  (tab first tap, revisit, Chat open/back/open) and pwa-perf.test.js. Numbers in CHANGELOG.
+- Queue: threads.send queues for tailnet:<login> (was already true on main after capsule-now;
+  queuesFor now also refuses an agent's tailnet node). If the user's phone still refused, his box
+  runs code from before capsule-now's merge.
+
 ## How to rerun the shots (the test box)
 - `rsync -a --delete --exclude node_modules --exclude .git ./ the test box:~/vyre-ci/pwa/`
 - Chrome (connectors' shared install): `/usr/local/bin/vyre-chrome --headless=new --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/pwa-chrome-prof about:blank`
@@ -99,6 +107,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   with the Mac's sessions showing (federation), and fix what looks off.
 
 ## Next
+- SW version skew: the Deck's files come from the cache first; a new release lands on the second
+  launch. Consider registering sw.js with the build commit so a release swaps the cache at once.
 - Settings > Setup rows could rerun a step in place (polish-cli's suggestion) instead of naming
   `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.

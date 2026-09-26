@@ -1,4 +1,12 @@
-# ADR 0020 · Vyre as an installable Claude Code plugin, and Vyre's line in every session
+---
+title: ADR 0020: Vyre as an installable Claude Code plugin
+summary: Installing Vyre as a Claude Code plugin, what it does without Vyre on the machine, and Vyre's status line.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0020: Vyre as an installable Claude Code plugin
 
 Status: accepted, 27 Sep 2026 · Workstream: cc-plugin · Spec: section 8 (the Harness)
 

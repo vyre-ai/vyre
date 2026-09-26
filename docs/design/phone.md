@@ -1,0 +1,474 @@
+---
+title: Vyre phone
+summary: The design for Vyre on a phone, the PWA first and then the native apps, built on the Deck's tokens.
+audience: builders
+owner: mobile
+status: draft
+---
+
+# Vyre phone
+
+The design for Vyre on a phone: the PWA first, then the native iOS and Android apps. Both build
+from this file. Colours and type come from [TOKENS.md](TOKENS.md) and are pasted verbatim; this
+file adds only phone roles, sizes and behaviour. Desktop (the Deck) shares the same tokens and
+chat items, so a card looks the same on both.
+
+Decision (2026-09-27): Direction B's shell (no tab bar, pages you swipe between, the floating
+Capsule with hold-to-talk) with Direction A's screens (Chat, Find, Agents, the approval sheet).
+Now is A's grouped "Needs you" list: every row swipes to approve or deny and opens a detail sheet
+with Open session. The screens feel native to iOS: sentence-case sans type, grouped cards,
+standard sheets. Mono is for commands, code and logs only.
+
+## 1. What the phone is for
+
+In order of how often it happens:
+
+1. Glance at what needs you, and answer it (approve with Face ID, deny, reply, pick a choice).
+2. Chat with a session or an agent, and read what it did.
+3. Find anything: a session, a file, a memory, a command to run.
+4. Watch an agent work.
+
+Everything else (setup, rules, vault, connections) lives in Settings, behind the avatar.
+
+Principles:
+
+- What needs you comes first on every screen, and it is always one tap from an answer.
+- Calm. One primary action per view, and no motion that is not feedback.
+- Native gestures and sheets. Nothing the user has to learn twice.
+- Light (SPEC principle 8). Nothing polls faster than 60 s, and live output streams only while it
+  is on screen.
+
+## 2. Tokens
+
+### Colour roles
+
+Role names are the Deck's (deck/css/deck.css, and the shared mockup sheet
+docs/design/deck-directions/vyre.css), so a phone view and a Deck view read the same variables.
+
+| Role | Dark | Paper | Use |
+|---|---|---|---|
+| `--bg` | #0E0D0C | #F4F1EA | Page ground |
+| `--panel` | #161513 | #FBFAF6 | Cards, sheets, the Capsule |
+| `--hover` | #1E1C1A | rgba(20,19,17,0.045) | Agent tiles, pressed rows, the Deny reveal |
+| `--rule` | #2B2926 | #DCD7CC | Hairlines between rows |
+| `--rule-strong` | #3A3733 | #C9C3B7 | Card and input borders, outline buttons |
+| `--text` | #F1EEE6 | #141311 | Primary text |
+| `--text-2` | #B3AEA4 | #4A463F | Secondary text |
+| `--label` | #8C877D | #6B665D | Labels, meta, placeholders. Smallest text colour allowed |
+| `--primary-bg` / `--primary-ink` | #C6F36B / #0E0D0C | #141311 / #F4F1EA | The one primary button per view |
+| `--focus` | #C6F36B | #46700C | Focus ring |
+| `--signal-wash` | rgba(198,243,107,0.12) | rgba(70,112,12,0.10) | The Ask row in Find, added diff lines |
+| `--match` (phone) | rgba(198,243,107,0.20) | rgba(70,112,12,0.16) | Search match highlight, the Open session flash |
+| `--beacon-ink` / `--beacon-dot` | #FF7A59 / #FF7A59 | #C2411F / #E5532F | Needs you. Nothing else |
+| `--beacon-wash` | rgba(255,122,89,0.12) | rgba(229,83,47,0.09) | Behind a held item |
+| `--recall` | #EBC76B | #7E5B0C | Came from memory |
+| `--recall-wash` | rgba(235,199,107,0.10) | rgba(126,91,12,0.08) | Behind a recalled block |
+| `--del-wash` | rgba(140,135,125,0.14) | rgba(107,102,93,0.10) | Deleted diff lines, with `--label` text |
+| `--code-bg` | rgba(14,13,12,0.55) | rgba(20,19,17,0.04) | Command blocks, the live console |
+| `--mark-wire` / `--mark-dot` | #F1EEE6 / #C6F36B | #141311 / #141311 | The mark |
+| `--scrim` (phone) | rgba(0,0,0,0.62) | rgba(20,19,17,0.34) | Behind a sheet |
+
+The mark's dot is Signal (dark) or Ink (paper) when nothing is waiting, and Beacon when anything
+needs you. A deleted line in a diff is `--label` on `--del-wash`, never Beacon. A failure is `--text`
+with a `--label` "failed" label; it turns Beacon only when it needs the user.
+
+Theme follows the system (`prefers-color-scheme`), with Dark, Paper and System in Settings.
+
+### Type
+
+Sans is Instrument Sans (400, 500, 600). Mono is JetBrains Mono (400, 500). Native apps bundle
+both fonts and scale them with Dynamic Type (iOS) and font scale (Android); the sizes below are
+the default "Large" size.
+
+| Role | Family | Size / line | Weight | Tracking | Use |
+|---|---|---|---|---|---|
+| Page | Sans | 22 / 28 | 600 | -0.015em | The page labels in the header (Now, Chats, Agents) |
+| Sheet title | Sans | 26 / 32 | 600 | -0.015em | The detail sheet's title |
+| Section | Sans | 20 / 25 | 600 | 0 | Section headers on Now |
+| Group | Sans | 17 / 22 | 600 | 0 | Group headers in Find and Agents; chat nav title; agent names |
+| Row title | Sans | 16 / 21 | 600 | 0 | Rows in cards |
+| Lead | Sans | 17 / 24 | 400 | 0 | Chat messages, a question's text (shared with the Deck) |
+| Input | Sans | 17 / 22 | 400 | 0 | Search and composer text (never under 16: no iOS zoom) |
+| Secondary | Sans | 15 / 20 | 400 | 0 | Row second lines, fact rows |
+| Meta | Sans | 13 / 18 | 400 | 0 | "kit · Harlow Legal", times, hints |
+| Micro | Sans | 12 / 16 | 400 | 0 | Chat nav subtitle, tags (shared with the Deck) |
+| Button | Sans | 15 / 20 (17 on the 54 tall primary) | 600 | 0 | Every button label, sentence case |
+| Command | Mono | 14 / 20 in blocks, 13 / 18 in rows | 400 | 0 | Commands |
+| Log | Mono | 12 / 19 (13 / 18 in tool rows) | 400 | 0 | Live console, tool rows, diffs |
+
+Buttons are sentence-case sans on the phone, not the Deck's mono uppercase: it is the one place
+the phone departs from TOKENS.md, for the native feel the user picked.
+
+### Space, shape, lines
+
+- 4 px grid. Use 4, 8, 12, 16, 24, 32. Side gutter 16. Safe areas come from the device
+  (`env(safe-area-inset-*)`); the mockups use 59 top and 34 bottom.
+- Radii: chip 4, filter chip 8, code block 6 (inline) or 8 (sheet), card 10, button 10 (44 tall)
+  or 12 (46 and 54 tall), segmented control 9 (segments 7), sheet 14 (top corners), agent tile 8
+  (at 32 px) or 11 (at 40), chat bubble 18, the Capsule and round buttons fully round. Cards and
+  sheets match the Deck; buttons are rounder, as on iOS.
+- Hairline 1 px `--rule` between rows; `--rule-strong` on card, input and outline-button borders.
+- One shadow, for things that float (the Capsule and sheets):
+  dark `inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6)`,
+  paper `0 24px 48px -24px rgba(20,19,17,0.28)`.
+- No gradients, glows, or blur behind content. The Capsule and sheets are opaque `--panel`.
+- Icons: inline stroke SVG on a 24 grid, 1.5 stroke (1.7 at 26 px and above), round caps and
+  joins, `currentColor`. Sizes 16, 20, 22, 26. The set the phone needs: back, more, plus, close,
+  search, mic, send (arrow up), stop, check, face-id, terminal, eye, pause, clock, file, chat.
+- Touch targets are 44 x 44 at least, even where the drawing is smaller.
+
+## 3. The shell
+
+No tab bar. Three pages side by side: **Now**, **Chats**, **Agents**. Find is not a page; it is
+the Capsule, opened.
+
+```
++--------------------------------------+
+| (v)  Now   Chats   Agents       (a)  |  header, 48 tall under the safe area
+|                                      |
+|  page content, scrolls               |
+|                                      |
+|                                      |
+|  ( v   Ask juno, find, or run   (mic) )  the Capsule, floating
++--------------------------------------+
+```
+
+- **Header.** The mark (22 px) on the left, then the three page labels in Page type, the current
+  one in `--text`, the others in `--label`. The avatar (34 px circle, the owner's initial) on the
+  right opens Settings as a sheet. On Agents the avatar's place holds "+" (new agent). The header
+  does not collapse; it stays 48 tall.
+- **Pages** swipe left and right with the page label snapping under the finger. Tapping a label
+  jumps there. The app reopens on the page it was on, except that it opens on Now whenever
+  something needs you.
+- **The Capsule** floats 12 from each side, sitting on the bottom safe area, 56 tall, `--panel`
+  fill, `--rule-strong` border, the float shadow. It holds the mark (20 px), the placeholder "Ask
+  <assistant>, find, or run" (the assistant's name from onboarding), and a 40 px mic button.
+  - Tap: Find opens as a full-height sheet with the keyboard up.
+  - Drag up: same, following the finger.
+  - Hold the mic: dictate. Release to put the words in Find; the words are never sent on their
+    own.
+  - Pages leave 56 + 16 of bottom padding so the last row clears it.
+- **Pushed screens** (a chat, an agent's live view, Settings pages) slide in from the right, have
+  a back chevron, and support the edge swipe back. A pushed chat hides the Capsule and shows its
+  own composer (section 6).
+
+## 4. Now
+
+Sections have sentence-case headers in Section type (20/25, 600) with the count on the right in
+Secondary `--label`, 24 above and 8 below. Cards are `--panel`, `--rule` border, radius 10, with
+hairlines between rows. Any section with nothing in it is left out, except as noted.
+
+### Needs you
+
+Header: a 8 px `--beacon-dot`, then "Needs you", count on the right. One card holds a row per
+item, oldest first. Under the card, one Meta line in `--label`: "Swipe right to approve with Face
+ID, left to deny." Show the hint until the user has swiped once, then drop it.
+
+The row:
+
+```
+[k]  Send email to Dana                    12m  >
+     Q3 report, the short version
+     kit · Harlow Legal
+```
+
+- 12 x 14 padding. Tile 32 px, radius 8, `--hover` fill, `--rule-strong` border, the agent's
+  initial (15, 600). The tile is the agent that asked.
+- Line 1: the title in Row title, time since it was held on the right in Meta `--label`.
+- Line 2: the command in Command mono (13/18) `--text-2` for an ask; the subject for a draft; the
+  question for a question, in Secondary `--text-2`. One line, truncated at the end.
+- Line 3: "<agent> · <project>" in Meta `--label`.
+- Chevron 16 px in `--label`.
+- Titles by kind: an ask is the action ("Push q3-report"); a draft is "Send email to Dana" (verb
+  and person); a question is "<agent> has a question".
+
+Swipe:
+
+- **Right** reveals the primary action from the left edge, 100 wide, in `--primary-bg` with
+  `--primary-ink`: the Face ID glyph (24) over "Approve" (asks) or "Send" (drafts) in 13/600.
+  Past 100 or a fast fling, it commits: the presence check runs (section 5), and on success the
+  row collapses. Letting go short of 100 leaves the action showing; tapping it commits.
+- **Left** reveals "Deny" (asks) or "Discard" (drafts) from the right edge, 100 wide, `--hover`
+  fill with `--text` label and an x glyph. Committing needs no presence check unless the tool
+  demands one. The row collapses with an Undo toast for 4 s.
+- A **question** has no one-swipe answer: swiping right opens its sheet, swiping left offers
+  "Later" (snooze 1 h).
+- A failed approval springs the row back and shows the reason under line 3 in `--text`, with a
+  `--label` "failed".
+- **Tap** anywhere else on the row opens its detail sheet (section 5).
+
+When nothing needs you, the section is one line in `--label`: "Nothing needs you." No card.
+
+### Working
+
+Header "Working" and count. One card, a row per running session:
+
+- Tile 32, the session name in Row title with the step count on the right in Meta ("3 of 5"),
+  the latest step in Secondary `--text-2` ("Rendering reports/q3.pdf"), then a 3 px progress bar
+  (`--rule` track, `--text` fill, radius 2) 8 below.
+- A finished one reads "Done" on the right, no bar, and leaves after an hour.
+- Tap opens the agent's live view. When nothing is running, the two most recent sessions stand in.
+
+### From memory
+
+One `--recall-wash` block, radius 10, 12 x 14 padding: a 14 px history glyph and "From memory"
+in 13/600 `--recall`, then what memory learned today or what is due soon, in 15/21 `--text`. Tap
+opens the fact in Find with its source.
+
+### Setup and pairing
+
+The passkey and "Set up this phone" cards leave Now. First run is an onboarding flow (install,
+notifications, passkey or device key). Later, anything missing is one row at the top of Now ("Add
+a passkey to approve from this phone", chevron) that opens that step as a sheet. A Mac asking to
+pair is a Needs you row like any other, with its own sheet.
+
+## 5. The detail sheet
+
+Every Needs you row, and "Details" on a chat's approval card, opens this sheet at the large
+detent (the page behind scales to 0.94 with rounded top corners, over black), radius 14 top
+corners, grabber (36 x 5, `--rule-strong`), `--panel` fill, the float shadow, 20 side padding.
+Swipe down, the close button or the scrim closes it. Content scrolls; the action area stays
+pinned above the bottom safe area.
+
+Header (every kind):
+
+- Row 1: a 22 px agent tile and "<agent> asks · <project>" in Meta `--text-2` on the left; a 30
+  px round close button (`--hover`, `--rule` border, x glyph) on the right.
+- Title in Sheet title (26/32, 600, -0.015em), 12 above.
+- Row 3: a 7 px `--beacon-dot` and "Held 4 min" in 15/20 `--beacon-ink` on the left; **Open
+  session** with a chevron on the right, 15/600 `--text`, 44 tall.
+
+**Open session** opens the exact session this came from in Chat, scrolled to the moment it was
+raised: the matching tool row or message is centred and flashes `--match` for 1.2 s. The sheet
+closes first. If the session is on a Mac that is away, it still opens the read-only transcript,
+and the chat header says the Mac is away.
+
+Body by kind:
+
+- **Ask (a tool call).** The command in a mono block (`--code-bg` on dark, `--bg` on paper,
+  `--rule` border, radius 8, 12 x 14 padding, 14/20, `$` in `--label`). Then "Why <agent> wants
+  to" in 13/600 `--label` and the agent's reason in 16/23. Then fact rows between hairlines, label
+  on the left in 15 `--label`, value on the right in 15 `--text`: Remote, Branch, Changes ("6
+  files +412 -38", counts in 13 mono `--text-2`), Held by ("Your rule: pushes ask first"). Tap
+  Changes to expand the files, each with its counts; tap a file for its diff (+ lines on
+  `--signal-wash`, - lines on `--del-wash` with `--label` text).
+- **Draft (held at the Gate).** To and Subject as editable fact rows, then the body as an
+  editable text area (the same editing as the Deck, js/editable.js). The sources it drew from, if
+  any, in a `--recall-wash` block. An edit changes the primary to "Send edited".
+- **Question.** The question in Lead type, then the choices as full-width rows (radius 10,
+  `--rule-strong` border, 52 tall, the choice in Row title and its note in Meta). Tap a choice
+  to select it (`--signal-wash` fill, `--focus` border); the last row is a free-text field
+  ("Something else").
+
+Action area (8 between buttons, 34 bottom):
+
+- Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: Face ID glyph (22) +
+  "Approve with Face ID" ("with Touch ID", "with fingerprint", "with passkey" by device). Under
+  it, two outline buttons side by side, 46 tall, radius 12, `--rule-strong` border: "Always in
+  <project>" (approves and writes the rule, after the same presence check) and "Deny". Where the
+  tool cannot write a rule, Deny takes the full width.
+- Draft: "Send with Face ID" primary; "Discard" outline.
+- Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" outline. No
+  presence check unless the tool asks for one.
+- The primary runs the presence check, the same box-verified proof per ADR 0004 on every
+  surface. The PWA uses a WebAuthn passkey assertion. The native apps use a device-key signature
+  after Face ID or the fingerprint (ADR 0018): a P-256 key in the Secure Enclave or StrongBox,
+  enrolled once through the Deck's passkey, signs the same message the Capsule signs, and the box
+  checks it as method `device`. (A store app cannot assert passkeys for a self-hosted box's
+  domain, so native never uses platform passkeys.) On success the sheet closes, the row
+  collapses and the next item's row pulses once. On cancel nothing changes.
+- Verbs: the Deck's gate card says Allow once / Always in <project> / Deny. The phone says
+  "Approve" (the user's pick); both send the same decision, `allow`.
+
+## 6. Chats
+
+### The list (page)
+
+Project filter chips across the top (All, then each project), 30 tall, radius 8, 13/600: the
+selected one `--text` fill with `--bg` text, the others `--rule-strong` outline with `--text-2`
+text. This replaces the old Projects tab. Below, one card of rows, newest first:
+
+- Tile 32, session name (Row title), time on the right (Meta), last line (Secondary `--text-2`,
+  one line), "<agent> · <project>" (Meta `--label`). A running session shows a 7 px `--text` dot
+  before the agent's name; one with an open ask shows the `--beacon-dot` and its count on the
+  right instead of the time.
+- Tap opens the session. Swipe left: Archive.
+
+### A session (pushed)
+
+Nav bar, 52 tall under the safe area, hairline below, three columns: "< Chats" (17) on the left;
+the session name (Title) centred with "<agent> · <project>" under it in 12/16 `--label`; a 44 px
+more button on the right (rename, watch, stop, archive). The header does not show the page labels;
+the edge swipe goes back.
+
+The transcript, 16 side padding, 14 between items, a centred Meta `--label` time stamp at each
+gap of more than an hour ("Today 12:01"):
+
+- **You**: a bubble on the right, max 290 wide, `--hover` fill, `--rule` border, radius
+  18 18 6 18, 10 x 14 padding, 17/22.
+- **Agent**: no bubble. A 24 px tile and the author in 13/600 `--text-2` (the assistant's name,
+  or the agent's name; "Vyre" only when none is known), then the text in 17/24.
+- **Tool rows**: grouped in one box, `--rule` border, radius 10, hairlines between rows. One row
+  each, 9 x 12 padding, mono 13/18: a 16 px check (done) or spinner (running) in `--label`, the
+  action and target ("Edited reports/q3.tsx", "Ran npm test"), the result on the right in
+  `--label` ("+412 -38", "42 passed"). Tap expands the row in place: the full command, output
+  (mono 12/19, 12 lines then "Show all"), or the diff.
+- **Streaming**: the reply grows in 17/24 with a 2 x 19 `--text` caret at the end.
+- **Approval card (an ask in this session)**: `--beacon-wash` fill, radius 12, 14 padding, 10
+  between parts. A 7 px `--beacon-dot` and "<agent> is waiting on you" in 13/600
+  `--beacon-ink`, "Details" on the right in 13 `--text-2` (opens the detail sheet). The command
+  in a mono block (`--bg`, radius 6, 10 x 12, 14/20). One Meta `--text-2` line of facts ("3
+  commits · 6 files · harlow-legal/reports"). Then Deny (outline) and Approve (primary, Face ID
+  glyph) side by side, 44 tall, radius 10, 15/600. Answered, it shrinks to one Meta line:
+  "Approved by you, 12:07".
+- **Question card**: the same card with the choices as rows inside it.
+- **Recalled**: a "From memory" `--recall-wash` block when memory fed the reply.
+
+Composer: a bar pinned above the keyboard or the bottom safe area, `--bg` fill, hairline above,
+8 x 12 padding: a 36 px round attach button (`--hover`, plus glyph), the input (38 tall, radius
+19, `--rule-strong` border, 17, placeholder "Message <agent>"), and a 36 px round button: send
+(arrow up, `--primary-bg`) once there is text, stop (an 11 px square on `--text`) while a reply
+streams. The Capsule is hidden in a pushed chat. Sending resumes the session here (the lease moves
+to this phone); if another surface holds it, one Meta line above the composer says who, and
+sending takes it.
+
+## 7. Find (the Capsule, opened)
+
+A full-height sheet, 16 side padding, 12 between blocks:
+
+- Top row, 52 tall: the search field (40 tall, radius 10, `--hover` fill, `--rule` border,
+  magnifier in `--label`, 17 text, a clear button) and "Done" (17) on the right.
+- A segmented control: All, Chats, Files, Memory, Run. 32 tall, radius 9, `--hover` track with
+  a `--rule` border, 2 inset; the selected segment `--bg` with a `--rule-strong` border and
+  13/600 text, the others 13 `--text-2`.
+
+Results as the user types:
+
+1. **Ask**: a card row: the assistant's tile, "Ask <assistant>" in Row title, the typed words as
+   a question in Secondary `--text-2`, a chevron. Tap runs it: a new lean thread with the
+   assistant, pushed as a chat.
+2. **Run**: a card of matching commands (the Deck's Find grammar: `@kit ...`, `tell <session> to
+   ...`, `watch <session>`, "New session on ..."): a terminal glyph, the plain-words action in
+   Row title with matches on `--match`, the command it will run in mono 12 `--label` below.
+3. **From memory**: the `--recall-wash` block, the fact with matches on `--match`, source and
+   date in 12 `--label` below.
+4. **Chats**: header in 17/600, then a card of sessions: name (Row title), the snippet (Secondary,
+   one line, matches on `--match`), "<project> · <date>" (Meta).
+5. **Files**: from the paired Macs, when they are online: file glyph, path in mono 14, "<repo> ·
+   <Mac>" in Meta. One Meta line says so when the Macs are away.
+
+Empty query: recent searches and the four most recent sessions. Search waits 150 ms after the
+last keystroke and cancels the previous request.
+
+## 8. Agents
+
+Under the header, one Secondary `--label` line: "1 working, 1 idle".
+
+- **Working agent card** (`--panel`, radius 10, 14 padding, 12 between parts):
+  - A 40 px tile (radius 11), the name in 17/600, and under it a 7 px `--text` dot with a 3 px
+    `--rule` ring and "Working on <session>" in 13 `--text-2`; elapsed time in 13 mono `--label`
+    on the right.
+  - The live console: `--code-bg` / `--bg`, `--rule` border, radius 8, 10 x 12, mono 12/19
+    `--text-2`, the last 3 lines (the command in `--label`), a block caret on the last.
+  - "Step 3 of 5" in 13 `--text-2` and a 3 px progress bar filling the rest of the row.
+  - Watch (eye glyph) and Pause (pause glyph) outline buttons side by side, 40 tall, radius 10,
+    15/600.
+  - The projects it may work in as chips: 13, 3 x 8 padding, radius 4, `--rule-strong` border,
+    `--text-2`.
+- **Idle agent**: one card row, 40 px tile, the name in 17/600 with a role tag ("Assistant", 12,
+  radius 4, outline) and "Idle · sees every project" in 13 `--label`, a chevron. Tap opens the
+  agent.
+- **Scheduled**: header in 17/600, then a card of rows: a clock glyph (22, `--label`), the job in
+  16 and "<agent> · <cadence>" in 13 `--label`, "in 14h" on the right in 13 `--label`.
+- **Watch** pushes the live view: the full console, scrollable, with the session's tool rows,
+  and the same approval card when it asks.
+
+## 9. Motion
+
+| What | How |
+|---|---|
+| Hover-like press feedback | Row fills `--hover` for the press, 120 ms ease-out out |
+| Row swipe | Follows the finger 1:1; release springs (iOS default: response 0.35, damping 1) |
+| Row collapse after an answer | Height to 0 over 180 ms ease-out, rows below move up |
+| Sheet open and close | iOS sheet presentation; page behind scales to 0.94 |
+| Expand a tool row or diff | 180 ms ease-out |
+| Page swipe | Follows the finger; snaps with a spring; label colour crossfades |
+| Streaming | Tokens appear as they arrive, no fade; caret blinks at 1 s |
+| Open session highlight | `--match` fill on the target row, fades out over 1.2 s |
+| Beacon dot on arrival | One pulse (scale 1 to 1.6 and back, 400 ms), then still |
+
+Reduce Motion: no scale behind sheets, no pulse, swipes and pages crossfade instead of slide.
+Nothing animates in the background.
+
+## 10. Haptics (native; the PWA uses none on iOS, and `navigator.vibrate(10)` on Android only for commits)
+
+| Moment | iOS | Android |
+|---|---|---|
+| Swipe crosses the commit point | `UIImpactFeedbackGenerator(.medium)` | `CONFIRM` |
+| Approval or send succeeds | `UINotificationFeedbackGenerator(.success)` | `CONFIRM` |
+| Deny, discard | `.warning` | `REJECT` |
+| Page label snaps | `UISelectionFeedbackGenerator` | `CLOCK_TICK` |
+| Hold-to-talk starts and stops | `.soft` impact | `VIRTUAL_KEY` |
+| A new item needs you while the app is open | `.warning`, once, only if Now is on screen | `REJECT` |
+
+## 11. States
+
+- **Loading**: layout skeleton (the real card shapes in `--hover`, no shimmer) for the first load
+  only; later refreshes keep the old content until the new arrives.
+- **Offline** (box unreachable): one line under the header, `--text-2`, "Can't reach your box.
+  Showing what it said at 12:04.", with Retry. Actions that need the box are disabled with the
+  reason on press.
+- **Mac away**: its sessions stay, read-only, with a machine chip; Open session still works.
+- **Empty pages**: one sentence and a way forward. Chats: "No sessions yet." plus the Capsule.
+  Agents: "Only <assistant> so far." plus "New agent".
+- **Errors**: `--text` with a `failed` Label and the reason; Beacon only when the user must act.
+
+## 12. Accessibility
+
+- Real buttons and links. Every swipe action is also in the row's accessibility actions (VoiceOver
+  custom actions, Android `AccessibilityAction`) and in the detail sheet.
+- Labels: a Needs row reads "kit, Harlow Legal, wants to push q3-report, git push origin
+  q3-report, 4 minutes ago. Actions: Approve, Deny, Open."
+- Contrast: `--label` is the smallest text colour (5.4:1 dark, 5.0:1 paper). Beacon text on paper
+  is `--beacon-deep`.
+- Dynamic Type up to AX3: rows grow, the header labels shrink to fit and then scroll
+  horizontally, the Capsule grows to 64.
+- Focus ring: 2 px `--focus`, 2 px offset.
+
+## 13. Light by default
+
+- Needs, Working and agents come from events (gate.held, gate.released, ask.raised,
+  ask.answered, thread.*). The fallback poll is 60 s, and none while hidden.
+- The live console subscribes only while an agent panel or live view is on screen, and shows at
+  most 4 new lines a second.
+- Transcripts load the last 50 items and page backwards on scroll.
+
+## 14. What each build does
+
+**pwa** (deck/, the phone layout under 600 px):
+
+1. Shell: header with pages, horizontal page swipe (scroll-snap), the Capsule; remove the tab
+   bar and the Projects tab.
+2. Now: the Needs you list with swipe and Undo, the Working card, From memory; move setup and the
+   first-passkey card out of Now into onboarding plus the one-row reminder.
+3. Detail sheet for ask, draft and question, with Open session.
+4. Chat: nav bar, bubbles and agent messages, the tool-row box, the approval card, the composer
+   with stop.
+5. Find as the Capsule sheet: search field, segmented scope, Ask, Run, From memory, Chats, Files.
+6. Agents: the working-agent card with its console, idle rows, Scheduled, and the live view.
+
+**mobile** (native iOS and Android): the same order, with platform sheets
+(`.presentationDetents([.large])`, Material bottom sheet), system swipe actions, the haptics in
+section 10, Dynamic Type, and the bundled fonts.
+
+## 15. Contracts this needs
+
+- **Open session at the moment** needs an anchor: `threads.asks` and `gate.held` rows should
+  carry the transcript event id (or the tool_use id) they came from, so Chat can scroll to it.
+  Until then, Chat scrolls to the first item at or after the row's `at` time.
+- **Questions** (an agent asking the user to pick) as Needs items with `options` (label, note),
+  answered through the same capability id.
+- **Always in <project>** needs the rule write the Deck's gate card uses; the scope control is
+  hidden where the tool does not offer it.
+- **Diff summary** for a held push or edit: files with added and removed counts, when the tool
+  can say.
