@@ -589,6 +589,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Quick answers start lean (`threads.start {lean: true, append}`): no plugin, tools, MCP servers
+  or settings, about half the cost of a full thread. Watches set from the Capsule use the
+  switchboard's `threads.watch {notify: "capsule"}`, which outlives restarts, and any
+  `thread.watched` meant for the user (the assistant can set one on their behalf) becomes a
+  notification and a report. The Capsule's own filter on the stream stays as the fallback.
 - File results with taste: noise paths are gone (dependencies, SDKs, third-party code, build
   output, caches, ~/Library, dot-folders), a name start or word start beats a substring, recently
   used documents, images and folders in Documents, Desktop and Downloads rise, files inside code

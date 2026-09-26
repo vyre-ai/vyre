@@ -325,8 +325,26 @@ async function follow() {
 // ------------------------------------------------------------------ what the page may ask
 
 ipcMain.handle("capsule:snapshot", () => ({ ...bridge.snapshot(), hotkey: { ok: hotkey.ok, message: hotkey.message }, watching: watches.list(), reports: watches.unread() }));
-ipcMain.handle("capsule:watch", (_e, thread, label) => { const w = watches.add(String(thread || ""), String(label || "")); push(); return w; });
-ipcMain.handle("capsule:unwatch", (_e, thread) => { watches.remove(String(thread || "")); push(); return { ok: true }; });
+ipcMain.handle("capsule:watch", async (_e, thread, label) => {
+  const t = String(thread || ""), l = String(label || "");
+  // The switchboard's watch outlives the Capsule and vyred restarting; the Capsule's own filter on
+  // the stream is the fallback for a vyred without it.
+  let server = null;
+  if (bridge.has("threads.watch")) {
+    const r = await vyred.call("threads.watch", { thread: t, until: "either", notify: "capsule", note: l });
+    if (r.data && r.data.watch) server = String(r.data.watch);
+  }
+  const w = watches.add(t, l, "either", server);
+  push();
+  return w;
+});
+ipcMain.handle("capsule:unwatch", async (_e, thread) => {
+  const w = watches.list().find(x => x.thread === String(thread || ""));
+  if (w && w.server) await vyred.call("threads.unwatch", { watch: w.server });
+  watches.remove(String(thread || ""));
+  push();
+  return { ok: true };
+});
 ipcMain.handle("capsule:report-read", (_e, id) => { const r = watches.read(String(id || "")); push(); return r; });
 ipcMain.handle("capsule:mention", (_e, text, caret) => bridge.mention(String(text || ""), Number(caret) || 0));
 ipcMain.handle("capsule:destinations", (_e, target, text) => bridge.destinations(target || null, String(text || "")));

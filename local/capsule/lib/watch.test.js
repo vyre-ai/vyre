@@ -53,3 +53,16 @@ test("watch: the words that mean watch", () => {
   assert.equal(watchWords("tell me when the deploy thread is done"), "deploy");
   assert.equal(watchWords("what time is it"), null);
 });
+
+test("watch: the switchboard's thread.watched fires the report, and raw events do not fire it twice", () => {
+  const w = new Watches();
+  w.add("t1", "intake", "either", "w-1");
+  assert.equal(w.onEvent({ type: "thread.finished", thread: "t1", payload: { ok: true } }), null, "the switchboard's watch decides");
+  const r = w.onEvent({ id: 3, type: "thread.watched", thread: "t1", payload: { thread: "t1", watch: "w-1", reason: "finished", notify: "capsule", summary: "Tests pass." } });
+  assert.deepEqual([r?.label, r?.why, r?.text], ["intake", "finished", "Tests pass."]);
+  // The assistant set a watch for the user: reported, named by its note.
+  const a = w.onEvent({ id: 4, type: "thread.watched", payload: { thread: "t9", reason: "asked", notify: "capsule", note: "deploy", summary: "May I push?" } });
+  assert.deepEqual([a?.label, a?.why], ["deploy", "asked"]);
+  // A watch another agent set for itself is not the user's.
+  assert.equal(w.onEvent({ type: "thread.watched", payload: { thread: "t8", reason: "finished", notify: "kit" } }), null);
+});

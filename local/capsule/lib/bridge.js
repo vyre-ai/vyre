@@ -367,7 +367,9 @@ export class Bridge extends EventEmitter {
     this.reply = this.fresh("", text, model);
     this.pending = true;
     this.emit("change");
-    const r = await this.client.call("threads.start", { prompt: quickPrompt(text), model, cwd, surface: "capsule",
+    // Lean: no plugin, no tools, no MCP servers, no settings. A question needs none of them, and
+    // they were most of what an answer cost (switchboard measured $0.027 against $0.013 lean).
+    const r = await this.client.call("threads.start", { prompt: String(text).trim(), append: QUICK_APPEND, lean: true, model, cwd, surface: "capsule",
       name: "Capsule: " + String(text).trim().replace(/\s+/g, " ").slice(0, 40) });
     this.pending = false;
     if (r.error) { this.reply = null; this.emit("change"); return { error: explain(r.error) }; }
@@ -662,7 +664,7 @@ function needs(d) {
 }
 
 /** The words a quick question is sent as: the user's own, then how to answer. */
-export const quickPrompt = text => `${String(text).trim()}\n\n(Answer briefly, in markdown. Use no tools unless the question needs them.)`;
+export const QUICK_APPEND = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line.";
 
 /** vyred's home from its socket, when the socket sits in it (config/socketPath: <home>/vyred.sock). */
 const homeOf = socket => (socket && path.basename(socket) === "vyred.sock" ? path.dirname(socket) : null);
