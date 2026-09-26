@@ -30,7 +30,7 @@ function setup(t, { vault = {} } = {}) {
     call: async tool => tool === "projects.list"
       ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: HOME_FOLDERS[0], workspaces: HOME_FOLDERS }] } }
       : { error: { code: "no_such_tool" } },
-    fetch: async name => { fetched.push(name); if (!(name in vault)) throw new Error(`no vault item ${name}`); return vault[name]; },
+    fetch: async (name, watcher, field) => { fetched.push([watcher, name, field].filter(Boolean).join(":")); if (!(name in vault)) throw new Error(`no vault item ${name}`); return vault[name]; },
     teach: async (kind, fact) => { taught.push({ kind, ...fact }); return true; },
   });
   t.after(() => rt.stop());
@@ -198,7 +198,7 @@ test("watchers: vault items only from the watcher's own needs, and a released va
   const secret = "billing-value-0000111122223333";
   const { rt, write, fetched } = setup(t, { vault: { "billing-inbox": secret, "other-item": "nope" } });
   write("harlow-invoices", `export default async function watch({ vault, emit, log }) {
-    const v = await vault.fetch("billing-inbox");
+    const v = await vault.fetch("billing-inbox", { field: "password" });
     log("got", v);
     console.log("token is " + v);
     try { await vault.fetch("other-item"); } catch (e) { log("refused:", e.message); }
@@ -206,7 +206,7 @@ test("watchers: vault items only from the watcher's own needs, and a released va
   }`, { needs: ["billing-inbox"] });
   const r = await rt.test("harlow-invoices");
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.deepEqual(fetched, ["billing-inbox"], "the runtime asked the vault for an item the watcher does not list");
+  assert.deepEqual(fetched, ["harlow-invoices:billing-inbox:password"], "the runtime asked the vault for an item the watcher does not list, or did not say which watcher asked");
   const all = JSON.stringify(r) + JSON.stringify(rt.logs("harlow-invoices"));
   assert.ok(!all.includes(secret), "a vault value reached a log");
   assert.ok(r.logs.some(l => l === "got [vault value]"));

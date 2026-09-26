@@ -5,6 +5,7 @@
 // skill, and this runs it. Projects, the vault and Memory are used through ctx and are not listed
 // under requires, so the runtime starts without them: a watcher that needs a vault item fails its
 // run with "the vault is not running", and filed items wait for Memory rather than being lost.
+// Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
 import { Runtime, MIGRATIONS } from "./runtime.js";
 
@@ -21,7 +22,7 @@ export default {
     const rt = new Runtime({
       db: ctx.store.db, dir: ctx.paths.watchers,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
-      call: ctx.call, fetch: name => ctx.vault.fetch(name),
+      call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
       log: ctx.log,
     });
