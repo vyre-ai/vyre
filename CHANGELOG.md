@@ -13,6 +13,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - voice: `vyre voice` gives push-to-talk from the terminal (Enter to talk, words shown live,
   `--send <thread>`), `vyre voice key` saves the speech key through the vault as a person without
   echoing it, and `vyre voice status` prints the provider, key and online state.
+- capsule-sight: the session panel. "Side view" slides the Capsule's own window in at the left
+  29% of the display with the assistant (or "Side view: <name>" for any session): tabs, the
+  conversation live from its events, a prompt that sends, the mic (Option-Return) and a status
+  line. Chrome or the box's Glass is fitted beside it through the new `sideview.open` `panel`
+  input, which moves only Chrome. "Close side view" slides it out and puts Chrome back.
 - capsule-sight: the sight extension for the native Capsule (`Sources/Extensions/sight`): Side
   view, Side view with Glass and Close side view; Ask about my screen, with a side panel and the
   window put in the box, blind places shown as off limits; Option-Return push-to-talk through

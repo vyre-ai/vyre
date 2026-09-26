@@ -28,10 +28,15 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
 ## Doing
-- Waiting on the lead (Mac free for the real side view test) and capsule-pro (host).
+- e263e22 + f7830bd: session panel in the sight extension (Capsule-owned window slides in at 29%,
+  Chrome fitted by sideview.open `panel`). Combined tree 191 pass, 1 fail (capsule-pro's icon
+  test); the test box: sideview 15 pass, 1 skip. Builds only against capsule-pro's UNCOMMITTED host
+  (ExtensionHost.swift, Stream.swift, sessionWindow(owner:)): waiting on their commit.
+- Real-Mac test skipped per lead: the user tries `vyre sideview` himself.
 
 ## Next
-1. When capsule-pro's host runs extensions: try the sight extension in the app.
+1. When capsule-pro commits extension loading: rebuild combined, then push for a capsule-mac.yml build.
+   Next after the panel (lead): voice push-to-talk inside the native Capsule, verified in the app.
 2. Real-Mac side view test when the lead says the Mac is free:
    `VYRE_MAC_REAL=1 nice -n 15 node --test local/sideview/real.test.js` (needs screen-mac testwin built).
 3. perf-check numbers for sideview (one-shot) and voice idle.
