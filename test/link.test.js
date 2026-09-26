@@ -275,3 +275,45 @@ test("link: a listener's tailnet peer reaches the tool through vyred's router, n
   assert.equal(body.data.caller, "tailnet:owner@example.com");
   assert.deepEqual(body.data.peer, { node: "test-mac", stableId: "nMAC", login: "owner@example.com" });
 });
+
+test("link: pairing through the real names listener binds to the Mac's node and needs another device to approve", async t => {
+  const { names } = await import("../core/names/service.js");
+  const config = await import("../core/config/index.js");
+  const { Readable } = await import("node:stream");
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
+    network: { tailscale: true, owner: "alex@example.com", port: 0 }, modules: { disable: ["names", "onboard"] } }));
+  const box = await start({ root, log: () => {} });
+  t.after(() => box.stop());
+  // The names service, built on this vyred's real router, with whois simulated. Only the
+  // WireGuard source address says who is calling; the headers below are ignored.
+  const whois = { "100.101.1.2": { login: "alex@example.com", tagged: false, node: "mac", stableId: "nMAC" },
+    "100.101.1.4": { login: "alex@example.com", tagged: false, node: "phone", stableId: "nPHONE" } };
+  const ctx = box.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
+  const svc = names({ ctx, ts: { whois: async ip => whois[ip] || null, status: async () => ({}) }, save: p => config.save(p, root, box.config),
+    certs: { load: () => null, save: () => {} }, dns: async () => ({}), issue: async () => ({}) });
+  t.after(() => svc.close());
+  const send = async (ip, tool, input) => {
+    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(input))]), { method: "POST", url: `/v1/tools/${tool}`,
+      headers: { host: "alex.vyre.run:0", "content-type": "application/json", "x-vyre-caller": "cli", "tailscale-user-login": "alex@example.com" }, socket: { remoteAddress: ip } });
+    let raw = "", status = 0;
+    const res = { setHeader() {}, writeHead(s) { status = s; }, end(b = "") { raw += b; }, headersSent: false };
+    await svc.onRequest(req, res);
+    return { status, ...JSON.parse(raw) };
+  };
+  const MAC_IP = "100.101.1.2", PHONE_IP = "100.101.1.4";
+  // Headers claiming the owner from an address that is not on the tailnet change nothing.
+  assert.equal((await send("127.0.0.1", "link.pair.request", { name: "mac" })).status, 403);
+  const p = (await send(MAC_IP, "link.pair.request", { name: "mac" })).data;
+  assert.deepEqual((await box.registry.call("link.pending", {}, "cli")).data.map(x => x.node), ["mac"]);
+  assert.match((await send(MAC_IP, "link.pair.approve", { code: p.code })).error.message, /cannot approve its own/);
+  assert.ok(!(await send(PHONE_IP, "link.pair.approve", { code: p.code })).error);
+  // Only the Mac's node collects the key.
+  assert.equal((await send(PHONE_IP, "link.pair.poll", { id: p.id, secret: p.secret })).data.state, "gone");
+  const got = (await send(MAC_IP, "link.pair.poll", { id: p.id, secret: p.secret })).data;
+  assert.equal(got.state, "approved");
+  // The key works from the Mac's node and not from another device.
+  assert.equal((await send(MAC_IP, "link.hello", { key: got.key })).data.paired, true);
+  assert.equal((await send(PHONE_IP, "link.hello", { key: got.key })).data.paired, false);
+  assert.equal((await box.registry.call("link.peers", {}, "cli")).data[0].node, "mac");
+});

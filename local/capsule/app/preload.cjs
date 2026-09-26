@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld("vyre", {
   full: text => ipcRenderer.invoke("capsule:full", text),
   pick: (result, query) => ipcRenderer.invoke("capsule:pick", result, query),
   timing: t => ipcRenderer.send("capsule:timing", t),
+  // Pictures for result rows, as file:// URLs, fetched after the rows are drawn.
+  icons: results => ipcRenderer.invoke("capsule:icons", results),
+  // Stop an answer that is streaming (Esc). The first Esc stops; the next closes.
+  cancel: () => ipcRenderer.invoke("capsule:cancel"),
+  // Only the user's own click puts text on the clipboard.
+  copy: text => ipcRenderer.invoke("capsule:copy", text),
   // The page says how tall it is; the window follows. Width never changes.
   size: h => ipcRenderer.send("capsule:size", h),
   // Escape: the window goes away, which is the only reliable way to hand the keyboard back.
