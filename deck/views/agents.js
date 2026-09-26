@@ -564,7 +564,8 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
       if (r.error) { put(status, why(r.error)); return; }
       Object.assign(c, r.data || {});
       drawComputer(aside, a, cr, stub, listErr, reload);
-      put(status, `Saved. Restart ${who}'s computer to apply them.`);
+      const fresh = aside.querySelector(".ab-comp-status");
+      if (fresh) put(fresh, `Saved. Restart ${who}'s computer to apply them.`);
     } }, "Save limits");
     put(box, h("div", { class: "ab-limits-grid" },
       h("label", { class: "small faint" }, "Cores", cpu), h("label", { class: "small faint" }, "Memory GB", mem)),
