@@ -32,6 +32,9 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   (`vault.relay.identity: "tailscale"`).
 - Keychain tests that hold up under parallel runs (`testing.js`): a unique keychain per test,
   taken off the search list under a machine-wide lock, `security` retried when busy.
+- CLI parity with `op` (ADR 0006 section 6): `get`, `read vault://item/field`, `add`, `edit`,
+  `rm`, `inject -i/-o`, `run --env-file`, `share`, `--json` everywhere; the ssh agent
+  (`ssh/`) and `git-credential-vyre` (`git.js`), tools in `tools/cli.js`, references in `refs.js`.
 
 ## Doing
 
@@ -89,3 +92,21 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Cards may carry `login`. With `vault.relay.identity: "tailscale"` the relay listener requires
   the `Tailscale-User-Login` header from `tailscale serve`, and a pass made from a card with a
   login answers only that login.
+- New tools (tools/cli.js): `vault.item {name}` (all callers) returns `{item}` with `ssh?`,
+  `stale?`, `otp`; `vault.resolve {refs, destination?}` returns `{values: {ref: value}}`;
+  `vault.render {template, out, force?}` writes `out` itself and returns `{file, refs, items,
+  replaced, warnings}`; `vault.edit {name, rename?, description?, url?, fields?, removeFields?,
+  addHosts?, removeHosts?}`; `vault.git {action, request}` returns `{response, name?, why?}`;
+  `vault.ssh.keys` (all) `{socket, keys}`; `vault.ssh.generate {name, type?, comment?}` (cli,
+  local, mcp; new names only) and `vault.ssh.add {name, file}` return `{key}` (public half);
+  `vault.ssh.approvals`, `vault.ssh.approve {id}`, `vault.ssh.forget {name?, host?}` (all).
+  Resolve, render, edit, git (not erase), ssh.add and ssh.approve declare `presence`.
+- `vault.list` takes `kind` and `host`; items gain `ssh: {type, fingerprint, public}` and `stale`.
+- Kind `ssh-key` (field `private`): never released, injected, resolved or rendered.
+- Config `vault.ssh: { socket: "ssh/agent.sock" }` (relative to, and required under, the Vyre
+  home). The module's start handle exposes `ssh.setApprover(fn)` for tests and the presence
+  wiring; the default approver refuses and logs "approval needed".
+- Event `vault.ssh-approved {name, host, expires}`. Audit actions `resolve`, `render`,
+  `git-get`, `git-store`, `git-erase`, `ssh-sign`, `ssh-generate`, `ssh-add`, `ssh-approve`,
+  `ssh-forget`. Tables `vault_ssh_keys` and `vault_marks` are created IF NOT EXISTS, outside
+  the numbered migrations.
