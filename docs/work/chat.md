@@ -130,11 +130,12 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
   (vyre.css at work/deck-design 62c7934).
 - recall.watch: DONE in 10604b9 (104/106 pass, 0 fail on testbox); shapes sent to capsule-sight.
   session.turn ids are String(recall seq) or "tool:<tool_use_id>"; seq is the transcript line.
-- Phone contracts (phone-design, docs/design/phone.md section 15): (1) ask `anchor: { tool_use_id,
-  event }` on threads.asks/get and on gate.held (smallest change in core/gate); (2) threads.asks
-  { kind } filter, asks carry `agent` and `thread_name`; (3) decision "always" + scope "project"
-  writes a project-scoped allow rule via updatedPermissions (addRules, projectSettings/localSettings),
-  ask carries `always_project`. Tell pwa, mobile, phone-design the shapes when done.
+- Phone contracts: DONE in 10604b9 (switchboard + gate 69/69). Shapes sent to phone-design, pwa, mobile.
+  Rule destination: localSettings (project's .claude/settings.local.json, never committed); chosen
+  over projectSettings. gate anchors carry tool_use_id null for MCP calls until harness/mcp forwards
+  params._meta["claudecode/toolUseId"] (not ours; unverified on 2.1.283).
+- Known red: deck/chat/cards.test.js "tool cards: the checklist, a short diff and a run open on their
+  own" fails in the 10604b9 snapshot (session view port was mid-edit). Fix first next session.
 
 ## Next
 - STANDING RULE (user): Vyre must not nag; the user runs on bypass permissions. term.unlock needs
@@ -168,4 +169,5 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - files.dirs adds `limit`, `truncated`; files.recent returns an array. files `forward()` passes arrays through.
 - system.info adds `assistant: { name }`. deck/sw.js SHELL lists Chat's new modules.
 - recall.watch/unwatch, events session.turn and session.state; recall.thread items add id, at; recall.status adds watches.
+- threads.asks { kind }; asks add agent, thread_name, anchor { tool_use_id, event }, always_project; request_id hidden. threads.answer scope "project". gate.held adds anchor { tool_use_id, event, thread, at }; gate.request takes tool_use_id. ask.answered adds scope.
 - ask.answered adds `answers`. answerLine takes a fifth argument { answers, permissions }.
