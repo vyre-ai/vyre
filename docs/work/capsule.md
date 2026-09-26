@@ -90,11 +90,13 @@ answered. Screen-recorded or screenshotted against the boards.
   assistant or sonnet, as markdown with copy, cost and memory in gold; clipboard history that
   skips secrets; `@agent` DMs with history; "watch <thread>" with a notification and a report;
   "tell <thread> to <words>", sent as the user and watched.
-- Not yet: box files (waiting on `link`'s `files.*` shapes); the assistant driving threads for
-  the user (needs the assistant to hold threads.* tools, and switchboard's `threads.watch`, both
-  asked); a lean quick-answer thread (one haiku answer cost $0.027, all start-up context; asked
-  switchboard for a lean start flag); Open Glass on agent rows (waiting on glass for the address
-  tool).
+- Since: box files through `files.*` (fakes only until a box is paired), lean quick answers,
+  watches through `threads.watch` (the assistant can set one for the user with notify "capsule"),
+  Open Glass, quiet lesson proposals, module results and actions (`shows.capsule`, the vault's
+  contract), a signed app bundle, and hidden RSS under budget (212 to 238 MB).
+- Still open: presence signing (ADR 0004, from security); the assistant's standing brief telling
+  it to use `threads.watch {notify: "capsule"}` (asked switchboard); whether vault fill actions
+  need the Capsule hidden first (asked vault); an end-to-end run against a real paired box.
 
 ## Doing
 - Nothing in progress.
