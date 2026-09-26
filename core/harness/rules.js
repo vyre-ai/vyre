@@ -32,7 +32,10 @@ export function rules({ tool, input, cwd, home }) {
   const tilde = vault.startsWith(os.homedir()) ? "~" + vault.slice(os.homedir().length) : null;
   const hits = [vault, tilde].filter(Boolean).some(v => text.includes(/** @type {string} */ (v)))
     || candidatePaths(input).some(p => within(path.resolve(cwd || os.homedir(), untilde(p)), vault));
-  if (hits) return { decision: "deny", rule: 8, reason: "Vyre keeps vault values off every screen. Use the item through the tool that declared it; the value itself is never read." };
+  // The Vault's master key on a Mac is a keychain item; a shell command that names it could print
+  // it with the `security` tool, which the keychain trusts for items it wrote.
+  const keychain = typeof input.command === "string" && /\bsecurity\b/.test(input.command) && /vyre-vault|dump-keychain|find-generic-password[^|;&]*-w/.test(input.command);
+  if (hits || keychain) return { decision: "deny", rule: 8, reason: "Vyre keeps vault values off every screen. Use the item through the tool that declared it; the value itself is never read." };
 
   // Rules 1 and 2. Only MCP tools: those are the ones that reach people (mail, chat, posts).
   if (tool.startsWith("mcp__")) {
