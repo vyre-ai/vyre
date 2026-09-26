@@ -28,7 +28,8 @@ export function parse(args, valued = ["user", "connect"]) {
     const a = args[i];
     if (!a.startsWith("--")) { rest.push(a); continue; }
     const [k, v] = a.slice(2).split("=", 2);
-    flags[k] = v !== undefined ? v : valued.includes(k) ? args[++i] : true;
+    // A valued flag never swallows the next flag: `--connect --json` is a missing address, not "--json".
+    flags[k] = v !== undefined ? v : valued.includes(k) && args[i + 1] !== undefined && !args[i + 1].startsWith("--") ? args[++i] : true;
   }
   return { flags, rest };
 }
@@ -114,9 +115,24 @@ export const normalize = a => String(a).trim().replace(/^(?!https:\/\/)/, "https
  * @param {Deps} [deps]
  */
 export async function up(args, deps = {}) {
+  if (!parse(args).flags.json) return run(args, deps);
+  // A caller parsing --json gets one object whatever happens, so a throw anywhere is an error object too.
+  try { return await run(args, deps); }
+  catch (e) { out(JSON.stringify({ error: { code: "failed", message: String((e && /** @type {Error} */ (e).message) || e) } })); return 1; }
+}
+
+/**
+ * @param {string[]} args
+ * @param {Deps} deps
+ */
+async function run(args, deps) {
   const { flags } = parse(args);
-  if (flags.system) return upSystem(flags);
   const json = Boolean(flags.json);
+  if (flags.system) {
+    // --system prints the plan it applies as it goes; there is no single object to give.
+    if (json) { out(JSON.stringify({ error: { code: "bad_input", message: "--json does not go with --system" } })); return 1; }
+    return upSystem(flags);
+  }
   const callTool = deps.call || call;
   const platform = deps.platform || process.platform;
   // In JSON mode the one object is the whole output: no prose, no colour, and no questions.
@@ -125,6 +141,9 @@ export async function up(args, deps = {}) {
   const done = (o, code = 0) => { if (json) out(JSON.stringify({ role, version: VERSION, url: null, port: null, ssh: null, address: null, box: null, ready: false, ...o })); return code; };
   const fail = (code, message) => { if (json) out(JSON.stringify({ error: { code, message } })); else out(beacon("  " + message)); return 1; };
 
+  if (flags.connect !== undefined && (flags.connect === true || !String(flags.connect).trim())) {
+    return fail("no_address", "--connect needs your box's address: vyre up --connect https://vyre.<tailnet>.ts.net");
+  }
   const cfg = config.load();
   let role = cfg.role;
   if (flags.box) role = "box";

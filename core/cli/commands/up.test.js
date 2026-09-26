@@ -285,3 +285,47 @@ test("up on a Mac: with no Capsule installed it points at the download", async (
   assert.equal(r.code, 0);
   assert.match(r.text, /vyre capsule install/);
 });
+
+test("up --connect with no address is refused, and nothing is saved", async t => {
+  world(t, running([]));
+  for (const args of [["--connect"], ["--connect", "--json"], ["--connect="]]) {
+    const f = fakes(t);
+    assert.equal(await up(args, f.deps), 1, args.join(" "));
+    assert.match(f.text(), /--connect needs your box's address/);
+    t.mock.restoreAll();
+  }
+  const j = fakes(t);
+  assert.equal(await up(["--json", "--connect"], j.deps), 1);
+  assert.equal(j.lines.length, 1);
+  assert.equal(JSON.parse(j.lines[0]).error.code, "no_address");
+  assert.equal(config.load().network.box, undefined);
+});
+
+test("up --json --system is refused with one JSON error, not the system plan", async t => {
+  world(t, running([]));
+  const f = fakes(t);
+  assert.equal(await up(["--system", "--json", "--dry-run", "--user", "alex"], f.deps), 1);
+  assert.equal(f.lines.length, 1);
+  assert.equal(JSON.parse(f.lines[0]).error.code, "bad_input");
+});
+
+test("up --json: a throw anywhere is still exactly one error object and exit 1", async t => {
+  world(t, running([]));
+  for (const breakIt of [
+    d => { d.bring = async () => { throw new Error("bring broke"); }; },
+    d => { d.call = async () => { throw new Error("tool broke"); }; },
+  ]) {
+    const f = fakes(t);
+    breakIt(f.deps);
+    assert.equal(await up(["--json"], f.deps), 1);
+    assert.equal(f.lines.length, 1);
+    const o = JSON.parse(f.lines[0]);
+    assert.equal(o.error.code, "failed");
+    assert.match(o.error.message, /broke/);
+    t.mock.restoreAll();
+  }
+  // Without --json a throw still surfaces as a throw, as before.
+  const f = fakes(t);
+  f.deps.bring = async () => { throw new Error("bring broke"); };
+  await assert.rejects(up([], f.deps), /bring broke/);
+});

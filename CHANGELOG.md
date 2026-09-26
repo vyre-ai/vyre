@@ -51,6 +51,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `vyre capsule install`: downloads `Vyre-mac.zip`, checks it against `SHA256SUMS`, unpacks it
   with ditto into `~/Applications/Vyre.app` (asks before replacing one; `--yes`). Never
   `/Applications`, never sudo.
+- `vyre capsule install` checks the zip against `box/Vyre-mac.sha256` in the npm package when
+  release ships it (SHA256SUMS then only cross-checks), and refuses a zip holding anything but
+  one real `Vyre.app` folder (no entries beside it, no symlinked app).
+- `vyre up`: `--connect` with no address is refused (`no_address`), `--json --system` is refused
+  (`bad_input`), and any throw under `--json` is one `{ error: { code: "failed" } }` object.
 - `core/cli/ending.js`: the "Vyre is ready." block (ADR 0008 section 6), shared by `vyre box add`
   and `vyre up`.
 - `core/cli/tailnet.js`: the Mac's own view of its tailnet, read-only (`tailscale status --json`
