@@ -22,10 +22,11 @@ function files(dir) {
   let entries = [];
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
-    if (e.name === "node_modules" || e.name.startsWith(".git")) continue;
+    // dist/ and bin/ hold build output (a packaged app, compiled helpers), not source.
+    if (e.name === "node_modules" || e.name === "dist" || e.name === "bin" || e.name.startsWith(".git")) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) out.push(...files(p));
-    else if (/\.(js|json|md|mjs|cjs|sh|html|css)$|^vyre$/.test(e.name)) out.push(p);
+    else if (/\.(js|json|md|mjs|cjs|sh|html|css|swift)$|^vyre$/.test(e.name)) out.push(p);
   }
   return out;
 }

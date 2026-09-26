@@ -65,12 +65,23 @@ tests in `the prototype's bin/test/t-recall-append.cjs`, `t-session-names.cjs` a
   Search through the socket: keyword p50 19ms, max 51ms; hybrid warm p50 68ms, max 175ms.
   `recall.thread` 29ms. Database 192MB with vectors.
 
+- Dense retrieval: meaning is a way into the pool, not only a re-ranker (566c922), built in
+  the background (71bf215), with a floor that rises with corpus size; download shown in
+  `vyre status` (22e5035). Real corpus, 26 Sep 2026: 23,779 turns, 37,160 chunks, dense index
+  57MB, built in 1.05s in the background. Hybrid through the socket p50 41ms, p95 60ms, first
+  query 83ms; keyword p50 13ms. Dense scan alone 19ms.
+
 ## Doing
 - Nothing in progress.
 
 ## Next
-- Measure hybrid against keyword on the real corpus with the new turn definition (tool results
-  are no longer turns, so the old 0.195 against 0.142 MRR needs re-running).
+- Measure MRR again on the real corpus. There is no eval harness in the prototype folder (the
+  0.195 against 0.142 figure is only quoted in SPEC.md), so one needs writing: labelled queries
+  with a known answer turn, keyword against hybrid.
+- The dense index is rebuilt whole after any pass that wrote turns. Appending the new vectors
+  in place would save a 1 to 6 second background rebuild per active pass.
+- The floor was fitted on two corpora and the margin at 37k chunks is a few hundredths. Worth
+  re-checking with labelled queries once an eval harness exists.
 - A grown transcript is still read in full. Reading only the bytes after the last indexed size
   would make passes over one very large live session cheaper.
 - `recall_turns` has no index on `session` (FTS5 UNINDEXED), so `recall.thread` and the append
@@ -98,7 +109,12 @@ tests in `the prototype's bin/test/t-recall-append.cjs`, `t-session-names.cjs` a
 - `recall.index` returns the five documented fields plus `added`, `failed` and `turns`. It
   resolves to null if vyred is stopping.
 - `recall.status` returns `{ sessions, turns, folders, every, indexing, last, error,
-  vectors: { on, why, embedded, pending, embedding } }`.
+  vectors: { on, why, embedded, pending, embedding, dense } }`. `dense` is `{ chunks, bytes, ms }`
+  once built, else null. While the weights download, `why` starts with "downloading".
+- `recall.search` scores are now reciprocal-rank, normalised to [0,1], higher is better. The
+  undocumented `weight` input is gone.
+- `recall_meta` row `generation` (no schema change): bumped whenever the indexer deletes turns.
+  Anything that caches turns by (session, seq) can compare it to know its copy went stale.
 - A turn is a user or assistant line with text parts. Tool results, tool calls, thinking and
   `isMeta` lines are not turns (the prototype indexed tool results as user turns).
 - `human` is 0 for sidechains, any `entrypoint` starting with `sdk`, and every subagent file.

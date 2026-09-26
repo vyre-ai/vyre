@@ -1,18 +1,21 @@
 // @ts-check
-// search — find the turns that answer a question, by words and then by meaning.
+// search — find the turns that answer a question, by their words and by their meaning.
 //
-// FTS5 RETRIEVES, EMBEDDINGS RE-RANK. A keyword query narrows a hundred thousand turns to a few
-// hundred candidates in milliseconds, and re-ranking a few hundred vectors is a few hundred dot
-// products. No nearest-neighbour index to install or rebuild. The honest cost, written down
-// rather than discovered: a turn sharing NO word with the question is never a candidate.
+// Two ways into the candidate pool. FTS5 finds turns that share words with the question, first
+// as typed (strict) and then any of its words (loose). The dense index (dense.js) finds turns
+// whose MEANING is close, which is the only way to reach a turn that shares no word with the
+// question: "making it easier for blind visitors" against an accessibility audit. Measured on a
+// real 100k-turn corpus, dense retrieval beat full-text plus re-ranking, MRR 0.195 against 0.142.
 //
-// Re-ranking may reorder and add. It may NOT lose an exact match. Most of what a technical corpus
-// is asked for is a literal string (an error message, an id, a path), and a re-ranker that sinks
-// the one turn containing it is worse than none. So the top half of the keyword answer is
-// pinned into the result before blending fills the rest: a guarantee by construction, not a
-// tendency of the weights.
+// The two rankings are merged by reciprocal rank rather than by blending a position with a
+// cosine. A blend let hundreds of loose keyword matches, each sharing one common word, bury a
+// turn that meaning alone had found; by rank, the best of each list starts level.
+//
+// Merging may reorder and add. It may NOT lose an exact match. Most of what a technical corpus is
+// asked for is a literal string (an error message, an id, a path), and a ranker that sinks the
+// one turn containing it is worse than none. So the top half of the STRICT keyword answer is
+// pinned into the result before anything else is consulted: a guarantee by construction.
 
-import { cosine, decode } from "./embed.js";
 
 /** The text spelled so FTS5 reads it as one literal phrase rather than as grammar. */
 export const phrase = (/** @type {string} */ q) => '"' + String(q).replace(/"/g, '""') + '"';
@@ -36,7 +39,7 @@ export function anyOf(/** @type {string} */ q) {
 
 /**
  * @typedef {{ q: string, limit?: number, project_cwds?: string[], role?: "user"|"assistant", hybrid?: boolean,
- *             per_session?: number, candidates?: number, weight?: number }} Query
+ *             per_session?: number, candidates?: number }} Query
  * @typedef {{ session: string, seq: number, role: string, ts: number, text: string, snippet: string,
  *             score: number, name: string|null, title: string|null, cwd: string|null }} Hit
  */
@@ -74,6 +77,25 @@ function match(db, expr, { role, cwds, limit }) {
 }
 
 /**
+ * How close a dense hit must be to count, for a corpus of n chunks. Without a floor every query
+ * has a nearest neighbour, and nonsense would return results.
+ *
+ * It rises with the corpus, because the best score pure noise reaches does: the expected maximum
+ * of n noise scores grows like sqrt(2 ln n). Fitted to two measurements with the real model:
+ *   16 fixture turns    nonsense at most 0.186, the questions meant 0.339 and 0.473
+ *   36,878 real chunks  nonsense at most 0.413, the weakest real question's best 0.476
+ * giving 0.276 and 0.444. The margins are a few hundredths at the real corpus's size, which is
+ * why it is capped: past that, a stricter floor starts losing real questions instead.
+ */
+export function floorFor(/** @type {number} */ n) {
+  return Math.min(0.45, Math.max(0.25, 0.10 + 0.075 * Math.sqrt(2 * Math.log(Math.max(2, n)))));
+}
+/** How many turns meaning may add to the pool. */
+export const DENSE_K = 200;
+/** The reciprocal-rank constant: the usual 60, so the top few of each list stay close. */
+const RRF = 60;
+
+/**
  * Search. Hybrid when there are vectors and an embedder, keyword otherwise; every way the
  * meaning half can fail (no model, no vectors yet, a model that throws) ends in the keyword
  * answer rather than an exception. Search is what people reach for when something has already
@@ -81,9 +103,10 @@ function match(db, expr, { role, cwds, limit }) {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {Query} query
  * @param {import("./embed.js").Embedder | null} [embedder]
+ * @param {import("./dense.js").Dense | null} [dense]
  * @returns {Promise<{ hits: Hit[], hybrid: boolean }>}
  */
-export async function search(db, query, embedder = null) {
+export async function search(db, query, embedder = null, dense = null) {
   const q = String(query.q || "").trim();
   const limit = Math.max(1, Math.min(100, query.limit || 10));
   const cap = query.per_session === undefined ? 3 : query.per_session;
@@ -91,49 +114,48 @@ export async function search(db, query, embedder = null) {
   const opts = { role: query.role, cwds: query.project_cwds || [] };
   const wide = Math.max(query.candidates || 300, limit * 4);
 
-  // Two passes: the question as typed (AND, strict, the pinned ordering) and then its words ORed
-  // together (the reach), deduplicated, strict first. A query with quotes in it was written in
-  // FTS5's grammar on purpose, and widening "intake form" into intake OR form would answer a
-  // different question, so it gets the strict pass only.
+  // The question as typed (AND: the pinned ordering) and then its words ORed together (the
+  // reach), deduplicated, strict first. A query with quotes in it was written in FTS5's grammar
+  // on purpose, and widening "intake form" into intake OR form would answer another question.
   const strict = match(db, q, { ...opts, limit: wide });
   const widen = !q.includes('"') && strict.length < wide;
   const loose = widen ? match(db, anyOf(q), { ...opts, limit: wide - strict.length }) : [];
-  const seen = new Set(), cand = [];
-  for (const c of [...strict, ...loose]) if (!seen.has(c.rid)) { seen.add(c.rid); cand.push(c); }
-  if (!cand.length) return { hits: [], hybrid: false };
+  /** @type {Map<number, any>} */
+  const pool = new Map();
+  [...strict, ...loose].forEach(c => { if (!pool.has(c.rid)) { c.krank = pool.size; pool.set(c.rid, c); } });
 
   // Meaning, when there is something to compare against.
-  const sim = new Map();
   let used = false;
-  if (embedder && query.hybrid !== false) {
+  if (embedder && dense && query.hybrid !== false) {
     try {
       const qv = await embedder.embed(q);
-      const vec = db.prepare("SELECT off, v FROM recall_vectors WHERE session = ? AND seq = ?");
-      for (const c of cand) {
-        for (const r of /** @type {any[]} */ (vec.all(c.session, c.seq))) {
-          if (!r.v || !r.v.length) continue;
-          const score = cosine(qv, decode(r.v));
-          const best = sim.get(c.rid);
-          if (!best || score > best.score) sim.set(c.rid, { score, off: Number(r.off) });
+      const cwds = opts.cwds.map(c => String(c).replace(/\/+$/, "")).filter(Boolean);
+      const keep = cwds.length ? (/** @type {string|null} */ cwd) => !!cwd && cwds.some(c => cwd === c || cwd.startsWith(c + "/")) : undefined;
+      const near = await dense.search(qv, { k: DENSE_K, floor: floorFor(await dense.size()), role: opts.role, keep });
+      used = (dense.stats()?.chunks || 0) > 0;
+      const fetch = db.prepare(`SELECT t.rowid AS rid, t.session, t.seq, t.role, t.ts, t.text, s.name, s.title, s.cwd
+        FROM recall_turns t JOIN recall_sessions s ON s.id = t.session WHERE t.rowid = ?`);
+      near.forEach((h, i) => {
+        let c = pool.get(h.rid);
+        if (!c) {
+          c = /** @type {any} */ (fetch.get(h.rid));
+          // The snapshot may be older than the table: a rowid reused for another turn is skipped.
+          if (!c || c.session !== h.session || Number(c.seq) !== h.seq) return;
+          c.snippet = null;
+          pool.set(h.rid, c);
         }
-      }
-      used = sim.size > 0;
+        c.drank = i;
+        c.voff = h.off;
+      });
     } catch { used = false; }
   }
+  if (!pool.size) return { hits: [], hybrid: used };
 
-  // A bm25 rank and a cosine are on different scales, so the keyword side is scored by POSITION
-  // in the candidate list, normalised to [0,1] like the cosine. The cosine is used raw, clamped at
-  // zero: MiniLM puts unrelated text near 0.05 and a real match near 0.5, and rescaling [-1,1]
-  // to [0,1] would squeeze away most of that range.
-  const weight = query.weight ?? 0.5;
-  const n = cand.length;
-  cand.forEach((c, i) => {
-    const k = n > 1 ? 1 - i / (n - 1) : 1;
-    const v = sim.get(c.rid);
-    c.k = k;
-    c.blend = used ? (1 - weight) * k + weight * Math.max(0, Math.min(1, v ? v.score : 0)) : k;
-    c.voff = v ? v.off : 0;
-  });
+  const top = 2 / (RRF + 1);
+  for (const c of pool.values()) {
+    const r = (c.krank !== undefined ? 1 / (RRF + 1 + c.krank) : 0) + (c.drank !== undefined ? 1 / (RRF + 1 + c.drank) : 0);
+    c.score = used ? r / top : r * (RRF + 1);
+  }
 
   const perSession = new Map();
   const chosen = new Map();
@@ -144,18 +166,18 @@ export async function search(db, query, embedder = null) {
     perSession.set(c.session, had + 1);
     chosen.set(c.rid, c);
   };
-  // Half the slots, rounded up, belong to the keyword ordering and are filled before blending
-  // is consulted. That is what makes "hybrid never loses what keyword found" a property.
+  // Half the slots, rounded up, belong to the strict keyword answer and are filled first. That is
+  // what makes "hybrid never loses an exact match" a property rather than a tendency.
   const pinned = Math.ceil(limit / 2);
-  for (const c of cand) { if (chosen.size >= pinned) break; take(c); }
-  for (const c of [...cand].sort((a, b) => b.blend - a.blend)) take(c);
+  for (const c of strict) { if (chosen.size >= pinned) break; take(pool.get(c.rid)); }
+  for (const c of [...pool.values()].sort((a, b) => b.score - a.score)) take(c);
 
-  const hits = [...chosen.values()].sort((a, b) => b.blend - a.blend).map(c => ({
+  const hits = [...chosen.values()].sort((a, b) => b.score - a.score).map(c => ({
     session: String(c.session), seq: Number(c.seq), role: String(c.role), ts: Number(c.ts), text: String(c.text),
-    // A meaning hit that did not match the words shows the chunk the cosine came from. Citing an
+    // A meaning hit that did not match the words shows the chunk its score came from. Citing an
     // answer and showing a different line is how a system that is right stops being believed.
-    snippet: String(c.snippet && c.snippet.includes("«") ? c.snippet : String(c.text).slice(c.voff, c.voff + 200)).replace(/\s+/g, " "),
-    score: Math.round(c.blend * 1000) / 1000,
+    snippet: String(c.snippet && c.snippet.includes("«") ? c.snippet : String(c.text).slice(c.voff || 0, (c.voff || 0) + 200)).replace(/\s+/g, " "),
+    score: Math.round(c.score * 1000) / 1000,
     name: c.name ?? null, title: c.title ?? null, cwd: c.cwd ?? null,
   }));
   return { hits, hybrid: used };

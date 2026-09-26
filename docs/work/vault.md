@@ -4,68 +4,73 @@ Branch: work/vault · Worktree: ../vyre-vault · Milestone: M3 · Wave 1
 
 ## Scope
 
-Owns `core/vault/`, `core/cli/commands/vault.js`, `docs/adr/0001-vault-crypto.md` (write it first).
+Owns `core/vault/`, `core/cli/commands/vault.js`, `docs/adr/0001-vault-crypto.md`.
 
-Credentials sealed at rest, released one item at a time to a module that declared it, never shown
-on any screen, log or event (floor rule 8). The case this exists for: a teammate leaves with an
-.env file of shared secrets. That must be impossible, and offboarding must be one action.
+Credentials sealed at rest, released one item at a time to a module that holds a grant, never
+shown on any screen, log or event (floor rule 8). The case this exists for: a teammate leaves
+with an .env file of shared secrets. That must be impossible, and offboarding must be one
+action. The goal beyond that is that the user can cancel 1Password (spec section 7.5).
 
-- **Sealing.** Items are encrypted at rest in `~/.vyre/vault/` (mode 0700), with keys from the OS
-  keychain on macOS (`security`) and a key file readable only by the vyred user on Linux, or a
-  passphrase. Use only `node:crypto` (AES-256-GCM, scrypt or HKDF). Put the reasoning in the ADR.
-- **Items.** `{ name, kind: "secret"|"login"|"card"|"note", description, fields }`. Names and
-  descriptions are listable; values never are.
-- **Release.** The internal tool `vault.release {name}` (register it with `internal: true`; the
-  registry already routes `ctx.vault.fetch` to it and passes `caller: "module:<name>"`). It
-  checks a grant for that module exists, returns `{ value }`, and records who fetched what and when
-  (never the value).
-- **Passes** (sharing with another person's Vyre over Tailscale). **Relayed** by default: the value
-  never leaves this box; the holder's calls go through this box and it adds the credential at the
-  boundary; revoke ends access at once. **Sealed** on request: an encrypted copy for offline use;
-  revoking lists the item as "rotate". A pass has a holder, items, an expiry and a note.
-- **Offboard.** `vault.offboard {person}` revokes every pass they hold and returns what must be
-  rotated (every sealed item they received).
-- **Import.** `vault.import` from a `.env` file (names become items; the file is left alone and the
-  user is told to delete it), later 1Password/Bitwarden CSV.
-- **`vyre vault run <name...> -- <cmd>`** injects values into that one child process's
-  environment. Nothing is printed. The `use-the-vault` skill already tells Claude to use this.
+## Done
 
-## Replacing 1Password (spec section 7.5)
+- ADR 0001: threat model, keystores, per-item keys, caller policy, passes, offboarding.
+- Sealing: `crypto.js` (AES-256-GCM, HKDF, scrypt, Ed25519, X25519), `keys.js` (keychain, file,
+  passphrase), `store.js` (atomic 0600 item files in a 0700 folder).
+- Items, grants, release, audit, pending and approve: `vault.js`, `index.js`.
+- Passes: relayed (signed envelopes, host allowlist, replay window, scrubbed replies) and
+  sealed (ECIES to the holder's box key); offboarding; `relay.js`.
+- Import: `.env`, 1Password CSV, Bitwarden CSV and JSON, Chrome and Safari CSV (`import.js`).
+- TOTP (RFC 6238 vectors) and the generator (`totp.js`, `generate.js`).
+- CLI: `vyre vault ...` with hidden prompts and `run` with output scrubbing (`cli-io.js`).
+- Tests: `core/vault/*.test.js`, `test/vault-cli.test.js` (two real vyred processes, relayed
+  pass, revoke, sealed pass, offboard), and the no-leak scan in `core/vault/module.test.js`.
 
-The goal is that the user can cancel 1Password. Beyond secrets for agents:
-- Item kinds `login` (url, username, password, TOTP secret → `vault.totp {name}` returns the
-  current code), `card`, `note`, `api-key`, `env-set`.
-- `vault.generate {length?, words?}` passwords.
-- Import from 1Password (.1pux / CSV), Bitwarden (JSON), Chrome and Safari (CSV).
-- Unlock: people see values only after unlocking on their own device (Touch ID on the Mac through
-  the Capsule's helper, a passphrase on the Deck); agents never see values at all.
-- Autofill: a browser extension (Chrome first) that asks vyred over the tailnet for a login
-  matching the page, after unlock. It can come after the core, but design the API for it now.
-- The Capsule fills a login into the front app (with the capsule stream).
+## Doing
 
-## Tools
+- Nothing. Waiting for review before the merge.
 
-`vault.put {name, kind?, description?}` (the value arrives over the socket from the CLI's hidden
-prompt; never through MCP), `vault.list`, `vault.grant {name, module}`, `vault.revoke`,
-`vault.pass.create {holder, items, mode?: "relayed"|"sealed", expires?}`, `vault.pass.list`,
-`vault.pass.revoke`, `vault.offboard {person}`, `vault.import {file}`, `vault.audit {name?}`, and
-internal `vault.release`.
+## Next
 
-Refuse `vault.put` from caller `mcp`: Claude must never be the channel a value travels through.
+1. The relayed pass between two machines on the tailnet (needed before M3 is called done). This
+   needs the box workstream to bind `vault.relay` to the tailnet address, and ideally to check
+   Tailscale identity on the listener as well as the signature.
+2. `vault.fill` for unlocked surfaces (Touch ID through the Capsule helper, a passphrase on the
+   Deck) and the Chrome extension on top of `vault.match`.
+3. 1Password `.1pux` import (a zip reader over `node:zlib`).
+4. `vyre vault export --sealed`, a passphrase-sealed backup, since losing the keychain item loses
+   the vault.
+5. Grants for relayed items on the holder's side: today any module on the holder's box may call
+   `vault.relay` for an item held there.
+6. A scan for `.env` files in project folders, offering to import each and delete it.
 
-## Events
+## Needs from others
 
-`vault.item-added`, `vault.granted`, `vault.revoked`, `pass.created`, `pass.revoked`,
-`person.offboarded`, `vault.released` (name, module; never the value).
+- box: bind `vault.relay.host` to the tailnet address and set `vault.relay.url` to the
+  `<you>.vyre.run` form; pass Tailscale identity headers to the listener if it can.
+- watchers: use `ctx.vault.fetch(name, { watcher })` from the runtime (manifest
+  `needs.vault: ["per-watcher"]`); grants are `vault.grant {name, module: "watchers", watcher}`.
+- switchboard: agents' `auth.vault` items (setup token, API key) come through the `agents`
+  module's `ctx.vault.fetch(name)` (manifest `needs.vault: ["per-agent"]`), with a grant per item
+  to `agents`.
+- gate (M9): take over adding credentials at the boundary; the relay listener becomes its client.
 
-## Port from
+## Changed contracts
 
-`the prototype's bin/vault.cjs`, `broker.cjs`, `vaultsync.cjs`, `vaultimport.cjs`. Read their headers for
-the reasoning. Never open or print the real secrets files they point at.
-
-## Done when
-
-- Put, list, grant, fetch through a real module's `ctx.vault.fetch`, revoke, pass, offboard, all
-  tested with a temp home. A test proves no value appears in events, logs or `vault.list`.
-- Relayed pass exercised for real between two vyred instances (two temp homes on one machine is
-  acceptable for the first merge; two machines on the tailnet before M3 is called done).
+- `ctx.vault.fetch(name, { field?, watcher? })`: the second argument is new and optional.
+  `needs.vault` may say "per-agent" as well as "per-watcher".
+- `vault.release {name, field?, watcher?}` (internal) returns `{ value }`. It requires an active
+  grant for exactly the calling module (and watcher); the manifest declaration alone is not
+  enough.
+- `vault.put {name, kind?, description?, value? | fields, url?, hosts?, grants?}` returns
+  `{name, kind, created, granted?}`. Callers are cli, local and modules; never mcp. A module may
+  only create items or replace its own (origin `module:<name>`), and `grants` (module names) is
+  for modules only, applied to the item it just put.
+- Tool definitions may carry `callers: ["cli", "local", "mcp", "module"]`. Other callers get
+  `denied`, and `GET /v1/tools` lists only what the requesting caller may use.
+- vyred treats an HTTP `x-vyre-caller: module:*` header as `local`.
+- Events: `vault.item-added`, `vault.item-changed`, `vault.item-deleted`, `vault.granted`,
+  `vault.revoked`, `vault.released` (`{name, module}` or `{name, pass, holder}`),
+  `grant.requested`, `pass.requested`, `pass.created`, `pass.revoked`, `pass.accepted`,
+  `person.offboarded`. None carries a value.
+- Config: `vault.keystore` (`keychain` | `file` | `passphrase`), `vault.keychain` (a keychain
+  file), `vault.relay` (`{host, port, url?}`).

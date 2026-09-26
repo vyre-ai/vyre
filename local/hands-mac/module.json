@@ -1,0 +1,12 @@
+{
+  "name": "hands",
+  "version": "0.1.0",
+  "description": "Computer use on macOS through the accessibility tree: observe an app, act on one control, and verify by observing again.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["hands.observe", "hands.act"] },
+  "watches": { "emits": ["hands.acted"] },
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

@@ -102,4 +102,11 @@ export const MIGRATIONS = [
     PRIMARY KEY (edge, module, kind, key)
   ) WITHOUT ROWID;
   `,
+  `
+  -- Small durable values. graph_version goes up by one whenever the graph a surface would draw
+  -- changes (a derive that wrote something, a pin, a mute), so the Deck can poll with it as a
+  -- cursor and survive a restart of vyred.
+  CREATE TABLE memory_meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL);
+  INSERT INTO memory_meta (k, v) VALUES ('graph_version', 0);
+  `,
 ];
