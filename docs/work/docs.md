@@ -58,10 +58,14 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-- Round 2 done and on the preview; waiting for the user's second look. Then production
-  (`--branch main`) and docs.vyre.run, only after the user's yes.
-- theme.colors: asked integrator (core/config owner) to take `theme.colors` defaulting to
-  core/config/theme.js; TOKENS.md says it is planned. When it lands: reference/config.md swatches.
+- aaeb16a sent to integrator (round 2 + main at d51dd69). Round 3 on top, subagents:
+  T Tailscale-from-zero guide (get-started/tailscale.md); M1 sweep of get-started, known-gaps,
+  concepts, build, security, architecture for today's merges (pairing in onboarding, rules for
+  every non-person call, vault.caps, federation ADR 0021, install 6 MB and lazy model); M2 sweep of
+  using/ (connectors patch from scratchpad, new using/claude-code.md from cc-plugin, glass-live
+  text into using/glass.md, pwa Settings > Devices, Create your assistant, theme.colors).
+  Then retake shots (180 stale after main's Deck changes), regen, tests, preview redeploy.
+- Capsule "build locally" waits for capsule-pro 4c957a4 to reach main.
 
 ## Next
 
