@@ -60,15 +60,17 @@ test("route: with no @ it goes to the assistant, or to memory when there is none
   assert.equal(destinations(null, "x", { ...CAT, agents: null }).options[0].kind, "recall");
 });
 
-test("route: @agent goes to the thread its words match, with a new thread as the other choice", () => {
+test("route: @agent goes to the thread its words match, with its current thread as the other choice", () => {
   const kit = complete("kit", CAT)[0];
   const threads = CAT.threads.slice(0, 2).map(t => ({ ...t, agent: "kit" }));
   const d = destinations(kit, "the Harlow deck needs the Q3 report numbers", CAT, { agentThreads: threads, now: NOW });
   assert.equal(d.options[0].kind, "thread");
   assert.equal(d.options[0].thread, "aaaa1111");
   assert.equal(d.options[0].meta, "thread · 4 days");
-  assert.equal(d.options[1].fresh, true, "the other choice is a new thread");
-  assert.deepEqual(describe(d.options[1]), { who: "kit", where: ["new thread"] });
+  assert.equal(d.options[1].kind, "agent", "the other choice is its current thread; agents.ask cannot start a new one");
+  assert.deepEqual(describe(d.options[1]), { who: "kit", where: ["current thread"] });
+  const onCurrent = { ...CAT, agents: CAT.agents.map(a => (a.name === "kit" ? { ...a, thread: "aaaa1111" } : a)) };
+  assert.equal(destinations(kit, "the Q3 report numbers", onCurrent, { agentThreads: threads }).options.length, 1, "the match is its current thread: one choice");
   assert.match(String(d.why), /"report" matched Q3 report/);
   assert.deepEqual(describe(d.options[0]), { who: "kit", where: ["Harlow Legal", "Q3 report"] });
   assert.equal(destinations(kit, "hello", CAT, { agentThreads: threads }).options[0].kind, "agent", "no match: the agent's current thread");
