@@ -157,6 +157,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   every workflow can also be run by hand (workflow_dispatch). Replaces `test.yml`, which ran the
   whole suite on two macOS runners without installing dependencies. `.github/workflows/`, README
   badges.
+- `capsule-mac` also proves the "Vyre Local" signing path on a throwaway keychain: createIdentity,
+  then codesign and a strict verify of the native app (once `capsule-native.js` is on the branch).
 - Docs and comments call the test server "the test box", the prototype's folder "the
   prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
   comments only).
