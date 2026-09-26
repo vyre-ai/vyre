@@ -93,6 +93,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- Usage metering: every turn is a row (`threads_turns`: thread, agent, auth, cost, duration,
+  input/output/cache tokens), and `thread.finished` carries `tokens`. `agents.usage {agent?, since?}`
+  returns, per agent, `{agent, kind, auth, turns, threads, duration_ms, cost_usd, api_cost_usd,
+  tokens: {input, output, cache_read, cache_write}, by_auth: {<auth>: {turns, duration_ms,
+  cost_usd}}, budget_usd, spent_usd, left_usd, limit, last_at}`. With no agent, a row with `agent:
+  null` covers threads no agent ran. The CLI is `vyre agents usage [name]`.
+- Budgets are enforced turn by turn for API-key agents. At 80% the thread gets a notice, and at 100%
+  it stops with `thread.stopped {reason: "budget"}` and a note naming the command that raises it.
+  New internal tools `threads.notice` and `threads.halt` carry both.
+- The subscription's rate limit: every `rate_limit_event` becomes `thread.limit {status, kind,
+  resets_at, utilization?}`, is kept on the thread (`last_limit`), and a warning or a refusal is
+  said in the thread once per status.
+- Learned skills: `<home>/learned/account/` loads into every thread with the Harness, and
+  `<home>/learned/projects/<slug>/` into that project's threads, each only if it holds
+  `.claude-plugin/plugin.json`. Lean threads and jobs load none of them. `threads.launch
+  {plugins: [dirs]}` adds folders explicitly, even with `plugin: false`.
 - `agents.list` rows carry `computer` again; without it core/computers refused every agent a
   computer. Found by the computers workstream, which made the same one-line fix on its branch.
 - Lean threads: `threads.start {lean: true}` runs with no Vyre plugin, `--tools ""`,

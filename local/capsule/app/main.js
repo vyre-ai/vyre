@@ -108,8 +108,20 @@ function create() {
   return win;
 }
 
+// SPEC.md section 2 principle 8: "it wakes in under 100ms" — measured as the gap between the
+// hotkey gesture (or any other wake trigger) and the renderer's next actual paint. No first-paint
+// hook existed before this; `bridge.refresh()` finishing (the old end-of-show() point) is a data
+// fetch, not a paint. wakeStart marks the top of show(), and the matching end is the
+// "capsule:paintping" IPC the renderer sends from inside a requestAnimationFrame after onOpen()
+// repaints — a real paint callback, not a guess, because rAF only fires once the frame is about
+// to be presented. One in-flight timestamp is enough: show() is never re-entered before the
+// previous wake's ping lands (its window is already visible by then).
+let wakeStart = 0n;
+const TRACE_WAKE = Boolean(process.env.VYRE_CAPSULE_TRACE_WAKE);
+
 /** Open ready to type. Called only for the user's own gesture. */
 async function show(via, at = Date.now()) {
+  wakeStart = process.hrtime.bigint();
   const w = create();
   const refresh = bridge.refresh();
   launcher.warm().catch(() => {});
@@ -137,6 +149,15 @@ async function show(via, at = Date.now()) {
   push();
   say({ shown: w.getBounds(), via, focused: w.isFocused() });
 }
+
+// The renderer's proof that it actually painted after onOpen(), not just that the IPC arrived.
+// See the wakeStart comment above show().
+ipcMain.on("capsule:paintping", () => {
+  if (!wakeStart) return;
+  const ms = Number(process.hrtime.bigint() - wakeStart) / 1e6;
+  wakeStart = 0n;
+  if (TRACE_WAKE) say({ wakeMs: Math.round(ms * 100) / 100 });
+});
 
 function hide() {
   if (win && !win.isDestroyed() && win.isVisible()) {

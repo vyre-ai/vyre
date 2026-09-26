@@ -80,10 +80,16 @@ server.listen(PORT, "127.0.0.1", async () => {
     content: { method: "POST", url: "https://api.example.com/v1/topups", body: JSON.stringify({ account: "northwind-ads", amount_usd: 150 }) } });
 });
 
+// Belt and suspenders on the /tmp/vy-deck-* home: the "exit" event fires for every path out of
+// this process (Ctrl-C below, an uncaught exception, a thrown "vyred did not come up"), not just
+// a clean quit, so the temp dir does not outlive the process. fs.rmSync is sync, which "exit"
+// handlers require.
+process.on("exit", () => { try { fs.rmSync(root, { recursive: true, force: true }); } catch {} });
+
 const quit = () => {
   server.close();
   daemon.kill("SIGTERM");
-  daemon.on("exit", () => { fs.rmSync(root, { recursive: true, force: true }); process.exit(0); });
+  daemon.on("exit", () => process.exit(0));
 };
 process.on("SIGINT", quit);
 process.on("SIGTERM", quit);
