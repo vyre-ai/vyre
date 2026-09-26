@@ -22,7 +22,8 @@ import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
-import { load as loadModel } from "./embed.js";
+import { load as loadModel, cached } from "./embed.js";
+import { Dense } from "./dense.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -54,6 +55,9 @@ export default {
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
     const folders = readable(ctx.config.transcripts || []);
+    // Every vector in memory for retrieval by meaning; dropped whenever a pass writes, rebuilt on
+    // the next hybrid search.
+    const dense = new Dense(db);
     const indexer = new Indexer(db, {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       log: ctx.log,
@@ -73,7 +77,11 @@ export default {
       const p = chain.then(async () => {
         if (stopped) return null;
         running = true;
-        try { return await indexer.run(folders, { stopped: isStopped }); }
+        try {
+          const s = await indexer.run(folders, { stopped: isStopped });
+          if (s.turns || s.reindexed) dense.invalidate();
+          return s;
+        }
         finally { running = false; vectorLoop(); }
       });
       chain = p.catch(e => { lastError = e.message; ctx.log(`index pass failed: ${e.message}`); });
@@ -96,9 +104,12 @@ export default {
       if (!vec.on) return Promise.resolve(null);
       if (vec.embedder) return Promise.resolve(vec.embedder);
       if (!vec.loading) {
-        vec.why = "loading the model";
+        const models = opts.models || path.join(ctx.paths.root, "models");
+        // The one network call Recall ever makes, once. Said out loud, so a first `vyre status`
+        // explains the wait instead of looking stuck.
+        vec.why = injected || cached(models) ? "loading the model" : "downloading the search model (23 MB, once)";
         vec.loading = (injected ? Promise.resolve({ embedder: injected })
-          : loadModel({ cacheDir: opts.models || path.join(ctx.paths.root, "models"), download: opts.download !== false }))
+          : loadModel({ cacheDir: models, download: opts.download !== false }))
           .then(r => {
             if (r.embedder) { vec.embedder = r.embedder; vec.why = `on (${r.embedder.model})`; return r.embedder; }
             vec.on = false; vec.why = r.why || "unavailable";
@@ -120,6 +131,7 @@ export default {
             const e = await embedder();
             if (!e || stopped) break;
             const r = await indexer.vectorize(e, { stopped: isStopped });
+            if (r.turns) dense.invalidate();
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
         } catch (e) { vec.why = `embedding failed: ${/** @type {Error} */ (e).message}`; ctx.log(vec.why); }
@@ -139,7 +151,7 @@ export default {
         // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
         const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
         const e = input.hybrid === false || !any ? null : await embedder();
-        return (await search(db, input, e)).hits;
+        return (await search(db, input, e, dense)).hits;
       },
     });
     ctx.tool("recall.thread", {
@@ -170,7 +182,7 @@ export default {
         return {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
-          vectors: { on: vec.on, why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy },
+          vectors: { on: vec.on, why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
       },
     });

@@ -6,11 +6,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
-import { search, thread, sessions, anyOf } from "./search.js";
+import { search, thread, sessions, anyOf, FLOOR } from "./search.js";
+import { Dense } from "./dense.js";
 import { chunks, encode, decode, cosine, CHUNK } from "./embed.js";
 import { SESSIONS, writeTranscripts, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
@@ -289,7 +291,7 @@ test("recall: hybrid re-ranks by meaning but never loses the top keyword hits", 
   const e = await corpus(t, { vectors: true });
   const limit = 4;
   const kw = (await search(e.db, { q: "intake", limit, per_session: 0 }, null)).hits;
-  const { hits, hybrid } = await search(e.db, { q: "intake", limit, per_session: 0 }, fakeEmbedder());
+  const { hits, hybrid } = await search(e.db, { q: "intake", limit, per_session: 0 }, fakeEmbedder(), new Dense(e.db));
   assert.equal(hybrid, true);
   const pinned = kw.slice(0, Math.ceil(limit / 2)).map(h => `${h.session}:${h.seq}`);
   const got = hits.map(h => `${h.session}:${h.seq}`);
@@ -298,10 +300,10 @@ test("recall: hybrid re-ranks by meaning but never loses the top keyword hits", 
 
 test("recall: hybrid degrades to keyword when the model throws or there are no vectors", async t => {
   const e = await corpus(t);
-  const none = await search(e.db, { q: "intake" }, fakeEmbedder());
+  const none = await search(e.db, { q: "intake" }, fakeEmbedder(), new Dense(e.db));
   assert.equal(none.hybrid, false, "claimed hybrid with no vectors stored");
   await e.ix.vectorize(fakeEmbedder());
-  const broken = await search(e.db, { q: "intake" }, fakeEmbedder({ fail: true }));
+  const broken = await search(e.db, { q: "intake" }, fakeEmbedder({ fail: true }), new Dense(e.db));
   assert.equal(broken.hybrid, false);
   assert.ok(broken.hits.length > 0, "a broken model took keyword search down with it");
 });
@@ -327,4 +329,92 @@ test("recall: sessions lists newest first, by folder, time and who started them"
   assert.equal(sessions(e.db, { human: false }).length, 2);
   assert.equal(sessions(e.db, { human: true, limit: 2 }).length, 2);
   assert.equal(sessions(e.db, { since: Date.parse("2026-09-01T11:30:00Z") }).length, 2);
+});
+
+// ------------------------------------------------------------------ dense retrieval
+
+// Words that mean the same thing to the fake model and share nothing on the page.
+const SAME = { blind: "accessibility", visitors: "problems", baker: "bakery", money: "dollars", spend: "total" };
+
+test("recall: meaning alone finds a turn that shares no word with the question", async t => {
+  const e = await corpus(t);
+  const emb = fakeEmbedder({ same: SAME });
+  await e.ix.vectorize(emb);
+  const dense = new Dense(e.db);
+  const blind = await search(e.db, { q: "blind visitors" }, emb, dense);
+  assert.equal(blind.hybrid, true);
+  assert.equal(blind.hits[0]?.session, "11111111-aaaa-4000-8000-000000000001/agent-a5ub", "the accessibility audit was not found");
+  assert.equal(blind.hits[0]?.seq, 0);
+  assert.match(blind.hits[0].snippet, /accessibility/, "a meaning hit must show the text its score came from");
+  const baker = await search(e.db, { q: "baker money spend" }, emb, dense);
+  assert.ok(baker.hits.some(h => h.session === "11111111-aaaa-4000-8000-000000000006" && h.seq === 1), "the invoice total was not found");
+  assert.equal((await search(e.db, { q: "blind visitors" }, null, dense)).hits.length, 0, "keyword alone should find nothing here");
+});
+
+test("recall: a question with no near turn returns nothing, because of the floor", async t => {
+  const e = await corpus(t);
+  const emb = fakeEmbedder();
+  await e.ix.vectorize(emb);
+  assert.deepEqual((await search(e.db, { q: "zygomorphic quux" }, emb, new Dense(e.db))).hits, []);
+  assert.ok(FLOOR > 0.186 && FLOOR < 0.339, "the floor no longer sits between the measured nonsense and real matches");
+});
+
+test("recall: dense retrieval honours role and project folders", async t => {
+  const e = await corpus(t);
+  const emb = fakeEmbedder({ same: SAME });
+  await e.ix.vectorize(emb);
+  const dense = new Dense(e.db);
+  const asst = (await search(e.db, { q: "blind visitors", role: "assistant" }, emb, dense)).hits;
+  assert.ok(asst.every(h => h.role === "assistant"));
+  const elsewhere = (await search(e.db, { q: "blind visitors", project_cwds: ["/home/alex/Work/northwind"] }, emb, dense)).hits;
+  assert.ok(elsewhere.every(h => h.cwd === "/home/alex/Work/northwind"), "a dense hit came from outside the project");
+});
+
+test("recall: the exact keyword matches stay pinned when meaning disagrees", async t => {
+  const e = await corpus(t);
+  // A model that thinks "form" means "invoices" pulls the Northwind turns up by meaning.
+  const emb = fakeEmbedder({ same: { form: "invoices", intake: "watcher" } });
+  await e.ix.vectorize(emb);
+  const limit = 4;
+  const strict = (await search(e.db, { q: '"intake form"', limit, per_session: 0 })).hits.map(h => `${h.session}:${h.seq}`);
+  const got = (await search(e.db, { q: "intake form", limit, per_session: 0 }, emb, new Dense(e.db))).hits.map(h => `${h.session}:${h.seq}`);
+  for (const p of strict.slice(0, Math.ceil(limit / 2))) assert.ok(got.includes(p), "meaning pushed out an exact match");
+});
+
+test("recall: the dense index is a snapshot, and a stale one never mislabels a hit", async t => {
+  const e = setup(t);
+  const emb = fakeEmbedder({ same: SAME });
+  e.writeTurns(["the accessibility problems in the form", "fixed"]);
+  await e.index();
+  await e.ix.vectorize(emb);
+  const dense = new Dense(e.db);
+  assert.equal((await search(e.db, { q: "blind visitors" }, emb, dense)).hits[0]?.seq, 0);
+  assert.equal(dense.stats()?.chunks, 2);
+  assert.ok((dense.stats()?.bytes || 0) > 2 * 384 * 4);
+  // Rewrite the session without rebuilding: the old vector's (session, seq) now holds other text.
+  e.writeTurns(["an unrelated opening about lunch", "fixed"]);
+  await e.index();
+  const stale = await search(e.db, { q: "blind visitors" }, emb, dense);
+  assert.ok(!stale.hits.some(h => /lunch/.test(h.text)), "a stale vector's score was attached to new text");
+  dense.invalidate();
+  assert.equal(dense.stats(), null);
+});
+
+test("recall: the real model finds both questions and returns nothing for nonsense", async t => {
+  let load;
+  try { await import("@huggingface/transformers"); ({ load } = await import("./embed.js")); }
+  catch { t.skip("the optional @huggingface/transformers package is not installed"); return; }
+  // A shared cache outside any home, so the 23MB download happens once per machine, not per run.
+  const { embedder, why } = await load({ cacheDir: path.join(os.tmpdir(), "vyre-test-models") });
+  if (!embedder) { t.skip(`the model did not load: ${why}`); return; }
+  const e = await corpus(t);
+  await e.ix.vectorize(embedder);
+  const dense = new Dense(e.db);
+  const blind = (await search(e.db, { q: "making it easier for blind visitors" }, embedder, dense)).hits;
+  assert.equal(blind[0]?.session, "11111111-aaaa-4000-8000-000000000001/agent-a5ub");
+  const baker = (await search(e.db, { q: "how much money did the baker spend" }, embedder, dense)).hits;
+  assert.ok(baker.slice(0, 3).some(h => h.session === "11111111-aaaa-4000-8000-000000000006" && h.seq === 1));
+  for (const q of ["zygomorphic flux capacitor", "asdf qwerty", "purple elephants dancing on the moon"]) {
+    assert.deepEqual((await search(e.db, { q }, embedder, dense)).hits, [], `nonsense returned hits: ${q}`);
+  }
 });
