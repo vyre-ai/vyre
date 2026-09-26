@@ -246,7 +246,16 @@ function serveDeck(res, pathname) {
   const dir = path.join(REPO, "deck");
   let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
   if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
-  try { if (fs.statSync(file).isDirectory()) file = path.join(file, "index.html"); } catch { file = path.join(dir, "index.html"); }
+  const shell = path.join(dir, "index.html");
+  try {
+    if (fs.statSync(file).isDirectory()) {
+      // A view's own real subfolder (deck/chat/, deck/glass/, …) serves its own index.html when
+      // it has one; otherwise, same as any client-side route that names no real file, this falls
+      // back to the shell rather than 404ing — the shell's router reads location.pathname itself.
+      const own = path.join(file, "index.html");
+      file = fs.existsSync(own) ? own : shell;
+    }
+  } catch { file = shell; }
   let buf;
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } }); }
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",

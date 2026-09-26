@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { start } from "../core/daemon/index.js";
+import { start, REPO } from "../core/daemon/index.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
 
@@ -144,6 +144,29 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
     const r = await get(p);
     assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
   }
+});
+
+test("daemon: a view's own real subfolder falls back to the shell when it has no index.html", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
+  const shell = fs.readFileSync(path.join(REPO, "deck", "index.html"), "utf8");
+
+  // A real subfolder (a view's own, like deck/chat/) but no index.html of its own: the shell,
+  // not a 404, since a client-side route may still name a real directory under deck/.
+  const bare = path.join(REPO, "deck", "zzz-daemon-test-subfolder");
+  fs.mkdirSync(bare, { recursive: true });
+  t.after(() => fs.rmSync(bare, { recursive: true, force: true }));
+  const noOwn = await get("/zzz-daemon-test-subfolder");
+  assert.equal(noOwn.status, 200);
+  assert.equal(noOwn.body, shell);
+
+  // The same subfolder, once it has its own index.html, serves that instead.
+  fs.writeFileSync(path.join(bare, "index.html"), "<html>own</html>");
+  const withOwn = await get("/zzz-daemon-test-subfolder");
+  assert.equal(withOwn.status, 200);
+  assert.equal(withOwn.body, "<html>own</html>");
 });
 
 test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", async t => {
