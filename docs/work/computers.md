@@ -113,23 +113,53 @@ published on the host; vyred reaches them over the internal network.
 
 ## Done
 - ADR 0003 and this design.
+- The pool, idle freeze, take-over on the thread lease (`core/computers/pool.js`, `keyboard.js`),
+  the Docker and fake drivers, wired into `index.js`'s tools. Tested against a fake driver.
+- `hands-chrome` and `hands-desktop`: full modules (act, snapshot, selector, verify, consequence,
+  a CDP/computerd client each), with their own tests. `hands-chrome`'s Chrome-backed tests ran
+  for real against headless Chromium on this Mac (a temp profile, per the lead's instruction) and
+  pass; `hands-desktop`'s tests run against a fake computerd, since there is no AT-SPI on macOS.
+- Glass (`core/computers/glass.js`, `ws.js`, and the predecessor's `rfb.js`): the RFB relay behind
+  `/v1/streams/computers/glass`, using the `ctx.upgrade` path that had landed on main by the time
+  this resumed. `ws.js` hand-rolls the RFC 6455 handshake and framing (no `ws` dependency in this
+  repo); `glass.js` redeems the ticket before completing the WebSocket handshake, relays
+  Xvnc-to-browser bytes untouched, and gates browser-to-Xvnc input through `keyboard.canType`.
+  Tested end to end against a fake RFB server and a real TCP/WebSocket-framed client; no real
+  Xvnc reached yet (needs a container).
+- The container image (`core/computers/image/`: Dockerfile, entrypoint.sh, computerd in Node +
+  Python/AT-SPI). Built by inspection against ADR 0003's port table and the design doc's
+  computerd route table; never `docker build`'d, since there is no Linux Docker host in this
+  worktree.
 
 ## Doing
-- Image, pool, hands-chrome, hands-desktop and Glass, in parallel.
+- Nothing in parallel right now; waiting on switchboard, deck and the box (below).
 
 ## Next
-- Real container runs on the box once the lead says it is ready and names the label prefix.
+- Once switchboard confirms the lease shapes: point `keyboard.js`'s tests at the real
+  `threads.lease` contract instead of the stub, if it differs.
+- Once deck confirms the `deck/glass/` path: the watch/take-over/phone views (vendoring noVNC,
+  or writing straight against `ws.js`'s framing and `computers.watch`'s ticket, whichever deck
+  prefers).
+- Real container runs on the box once the lead says it is ready and names the label prefix. That
+  first run is also the first real validation of the Dockerfile, entrypoint.sh and computerd:
+  expect to find things (AT-SPI's session bus timing, Xvnc's `-SecurityTypes` flag name, whether
+  `chromium --remote-debugging-address=127.0.0.1` actually stays loopback-only under whatever the
+  box's network policy is) that inspection alone could not catch.
 
 ## Needs from others
 - switchboard: confirm `threads.lease` / `threads.release` / `lease.changed` shapes, how to read a
-  thread's live holder, and how to find an agent's current thread (asked 26 Sep).
+  thread's live holder, and how to find an agent's current thread (asked 26 Sep, resurfaced same
+  day after a restart). `keyboard.js`'s take-over logic is built and tested against this contract
+  as we understand it from the design doc; it's a stub until switchboard confirms it matches.
 - deck: `deck/glass/` as the Glass folder, a route to mount it, and `connect-src 'self'` covering
-  same-origin `wss:` (asked 26 Sep).
+  same-origin `wss:` (asked 26 Sep, resurfaced same day). Nothing written into `deck/` yet,
+  pending that answer.
 - box: the Compose service for the restricted Docker proxy, the internal network, and vyred joined
   to it.
 - gate: the container's egress. Until the Gate exists the network is internal plus whatever the box
   allows; consequential clicks (send, pay, delete) are refused by the hands, not held.
 
 ## Changed contracts
-- (pending) `ctx.upgrade(name, handler)` in `core/modules` and a WebSocket upgrade path
-  `/v1/streams/<module>/...` in `core/daemon`.
+- `ctx.upgrade(name, handler)` in `core/modules` and the WebSocket upgrade path
+  `/v1/streams/<module>/...` in `core/daemon`: landed on main before this resumed. Glass is its
+  first real consumer.
