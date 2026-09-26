@@ -109,13 +109,7 @@ async function up(args) {
     } catch {}
   }
 
-  if (role === "local") {
-    const box = config.load().network.box;
-    if (!box) { out(`  this machine is local. Point it at your box: ${dim("vyre up --connect <you>.vyre.run")}`); return 0; }
-    const ok = await fetch(box + "/v1/health", { signal: AbortSignal.timeout(5000) }).then(r => r.ok).catch(() => false);
-    out(ok ? `  your box: ${signal(box)}` : beacon(`  your box ${box} did not answer from here`) + dim(" · is this machine on your tailnet?"));
-    return ok ? 0 : 1;
-  }
+  if (role === "local") return mac(config.load().network.box, { capsule: !flags["no-capsule"] });
 
   const link = await call("onboard.link");
   if (link.error) { out(beacon("  onboarding is not available: ") + link.error.message); return 1; }
@@ -136,6 +130,50 @@ async function up(args) {
   }
   if (d.address) out(dim(`\n  or, once your devices are on the tailnet: ${d.address}`));
   out("");
+  return 0;
+}
+
+const CAPSULE_ZIP = "https://vyre.run/box/Vyre-mac.zip";
+
+/**
+ * The end of `vyre up` on a Mac: the box answers, this Mac is paired with it (or the code to
+ * approve on the box is on screen), and the Capsule is open. Every step says what to do next
+ * when it cannot finish. `deps` is for tests.
+ */
+export async function mac(box, { capsule = true } = {}, deps = {}) {
+  const {
+    health = b => fetch(b + "/v1/health", { signal: AbortSignal.timeout(5000) }).then(r => r.ok).catch(() => false),
+    tool = call,
+    platform = process.platform,
+    openCapsule = async () => {
+      const c = await import("./capsule.js");
+      if (!c.installed() && !c.packaged().bin && !c.electron()) return false;
+      return (await c.default.run([])) === 0;
+    },
+  } = deps;
+  if (!box) { out(`  this machine is local. Point it at your box: ${dim("vyre up --connect <you>.vyre.run")}`); return 0; }
+  const ok = await health(box);
+  out(ok ? `  your box: ${signal(box)}` : beacon(`  your box ${box} did not answer from here`) + dim(" · is this machine on your tailnet?"));
+  if (!ok) return 1;
+
+  const s = await tool("link.status");
+  if (s.error) out(beacon("  cannot read the link: ") + s.error.message);
+  else if (s.data.linked) out(`  ${signal("linked")} ${dim("· this Mac and your box work as one")}`);
+  else {
+    let code = s.data.pending && s.data.pending.code;
+    if (!code) {
+      const p = await tool("link.pair", { box });
+      if (p.error) out(beacon("  pairing did not start: ") + p.error.message + dim(" · vyre link pair " + box));
+      code = p.data && p.data.code;
+    }
+    if (code) {
+      out(`  pair this Mac: on the box, run ${signal("vyre link approve " + code)}`);
+      out(dim("  or approve it in the Deck on another of your devices. vyre link shows when it is done."));
+    }
+  }
+
+  if (!capsule || platform !== "darwin") return 0;
+  if (!(await openCapsule())) out(`  the Capsule is not installed: ${signal(CAPSULE_ZIP)} ${dim("· unzip it into Applications, then vyre capsule")}`);
   return 0;
 }
 
@@ -170,7 +208,7 @@ async function upSystem(flags) {
 
 export default [
   {
-    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>]", summary: "start vyred and print the onboarding link, or this box's address",
+    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>] [--no-capsule]", summary: "start vyred and print the onboarding link, or this box's address",
     run: up,
   },
   {
