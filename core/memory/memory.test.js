@@ -311,6 +311,11 @@ test("memory: relevant returns the few facts a prompt names, [] otherwise, and i
   assert.ok(r.length > 0 && r.length <= 5);
   assert.ok(r.every(f => f.text.includes("Harlow Legal")), r.map(f => f.text).join("\n"));
   assert.ok(r.every(f => f.source && f.age && f.confidence > 0), "each fact carries source, age and confidence");
+  // The shape the Enrich hook reads: a readable source label and an age in words.
+  const h = graph.relevant({ text: "ask Sam Okafor" })[0];
+  assert.equal(h.source, "Northwind invoices", "source should be the thread's /rename name");
+  assert.match(h.age, /^\d+ (minute|hour|day|week|month|year)s?$/);
+  assert.deepEqual(Object.keys(h.ref), ["session", "seq", "name"]);
   assert.deepEqual(graph.relevant({ text: "What's a good way to cache this function?" }), []);
   assert.deepEqual(graph.relevant({ text: "" }), []);
   // An address names its owner.

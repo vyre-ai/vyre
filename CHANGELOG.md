@@ -71,6 +71,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Curation runs in the background on start and shortly after each `session.indexed`, yielding
   to the event loop. With no Recall tables the module starts and answers with nothing.
 - `vyre memory [about]` and `vyre why <fact>`, in the Recall gold.
+- A fact's `source` is a readable label (the thread's name) and `age` is in words ("3 weeks"),
+  which is what the Enrich hook and the projects brief print; the exact turn is in `ref`.
 - Measured on a copy of a real 103k-turn index: first pass 6.7s, a pass with nothing new 5ms,
   one new turn 1.2s in the background; `memory.relevant` p50 0.06ms, p95 1.4ms.
 

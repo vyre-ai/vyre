@@ -23,14 +23,18 @@ const PHRASE = {
   mentioned_in: (a, b) => `${a} came up in "${b}"`,
 };
 
-/** "3h", "2d", "4mo": how old, the way a person says it. */
+/** "5 minutes", "3 weeks", "4 months": how old, the way a person says it. */
 export function ago(ms, now = Date.now()) {
   if (!ms) return "";
   const s = Math.max(0, (now - ms) / 1000);
-  if (s < 3600) return Math.max(1, Math.round(s / 60)) + "m";
-  if (s < 86400) return Math.round(s / 3600) + "h";
+  const say = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  if (s < 3600) return say(Math.max(1, Math.round(s / 60)), "minute");
+  if (s < 86400) return say(Math.round(s / 3600), "hour");
   const d = Math.round(s / 86400);
-  return d < 60 ? d + "d" : Math.round(d / 30) + "mo";
+  if (d < 14) return say(d, "day");
+  if (d < 60) return say(Math.round(d / 7), "week");
+  if (d < 730) return say(Math.round(d / 30), "month");
+  return say(Math.round(d / 365), "year");
 }
 
 export class Graph {
@@ -108,7 +112,10 @@ export class Graph {
       since: Number(e.valid_from) || null,
       until: e.valid_to == null ? null : Number(e.valid_to),
       seen: seen || null, age: ago(seen, this.now()),
-      source: best ? { session: String(best.session), seq: Number(best.seq), name: names.get(String(best.session))?.name || null } : null,
+      // source is what a person reads: the thread's /rename name or its first message. ref is
+      // the exact turn, for memory.why and anything that wants to open it.
+      source: best ? names.get(String(best.session))?.name || String(best.session).slice(0, 8) : null,
+      ref: best ? { session: String(best.session), seq: Number(best.seq), name: names.get(String(best.session))?.name || null } : null,
       evidence: ev.length,
     };
   }
@@ -277,7 +284,7 @@ export class Graph {
     }
     return [...scored.values()].sort((a, b) => b.s - a.s || a.e.id - b.e.id).slice(0, limit).map(({ e, matched, s }) => {
       const x = this.fact(e);
-      return { id: x.id, text: x.text, matched, confidence: x.confidence, age: x.age, seen: x.seen, source: x.source, score: Number(s.toFixed(3)) };
+      return { id: x.id, text: x.text, matched, confidence: x.confidence, age: x.age, seen: x.seen, source: x.source, ref: x.ref, score: Number(s.toFixed(3)) };
     });
   }
 

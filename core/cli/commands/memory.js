@@ -11,7 +11,7 @@ const fail = r => { out(unreachable(r) ? `  vyred is not running ${dim("· vyre 
 /** One fact on one line, with where it came from underneath. */
 function line(f) {
   const past = f.until ? dim(" (until " + new Date(f.until).toISOString().slice(0, 10) + ")") : "";
-  const src = f.source ? `${f.source.name || f.source.session.slice(0, 8)} #${f.source.seq}` : "";
+  const src = f.ref ? `${f.source} #${f.ref.seq}` : "";
   out(`  ${recall("·")} ${f.until ? dim(f.text) : recall(f.text)}${past}`);
   out(dim(`      ${[f.age && f.age + " ago", "confidence " + f.confidence, src].filter(Boolean).join(" · ")}`));
   out(dim(`      vyre why '${f.id}'`));

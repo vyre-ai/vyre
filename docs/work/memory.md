@@ -86,10 +86,12 @@ None to other modules' contracts. New, for dependents:
   or null. With `project_cwds`, facts are about what sessions in those folders (or under them)
   name, outside parties only, pinned first, muted left out.
 - A fact: `{ id: "src|rel|dst", text, subject, rel, object, confidence, since, until, seen,
-  age, source: {session, seq, name}, evidence }`. `rel` is one of `works_at`, `has_email`,
+  age, source, ref: {session, seq, name}, evidence }`. `source` is a readable label (the
+  thread's /rename name, else its first message); `age` is words ("3 weeks"); `ref` is the
+  exact turn. `rel` is one of `works_at`, `has_email`,
   `has_domain`, `at_domain`, `owned_by`, `mentioned_in`. `until` is set on a closed edge.
 - `memory.relevant {text, project_cwds?, limit?}` returns `[{ id, text, matched, confidence,
-  age, seen, source, score }]`, at most `limit` (default 5), or `[]`. Only things the text
+  age, seen, source, ref, score }]`, at most `limit` (default 5), or `[]`. Only things the text
   names count; the user's own things, tools and hubs never appear.
 - `memory.why {fact, limit?}` takes a fact id or a name; returns `{ fact, turns: [{session, seq,
   name, role, ts, age, text}], gone }`.
