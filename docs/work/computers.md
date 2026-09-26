@@ -235,6 +235,19 @@ unauthenticated port, which was a real hole).
 - Nothing in parallel right now.
 
 ## Next
+- Deliver VNC_PASSWORD and COMPUTERD_TOKEN without Env at all (security, 26 Sep - found both
+  readable via `docker inspect`'s Config.Env and `/proc/1/environ` through exec; box is
+  stripping Config.Env from the proxy's own inspect responses, and computerd's spawned children
+  no longer inherit either, but the real secrets still sit in the container's real environment
+  for its whole life). The design security sketched: entrypoint.sh starts computerd first, with
+  only a short-lived, single-use BOOTSTRAP_TOKEN in Env; pool.js's `ensure()` calls computerd's
+  own `POST /bootstrap {token, vnc_password, helper_token}` right after start, over the network,
+  body not Env; computerd keeps `helper_token` in memory from then on (never env-sourced) and
+  writes `vnc_password` to a one-shot tmpfs file entrypoint.sh polls for, reads once, and deletes,
+  then proceeds to `vncpasswd -f` as before. This reorders container startup (computerd before
+  Xvnc) and adds a new failure mode (a bootstrap that never arrives) - a genuine architecture
+  change, not attempted here without a live container to validate the timing against. Next real
+  step once picked up: build it, then one more real run on the box to prove the ordering.
 - Glass's ADR 0005 review list, decision 1 (still mine, not yet started): backpressure on the
   Xvnc→browser relay, RFB close codes, always dropping `SetDesktopSize`/`xvp` regardless of what
   the client asked for, a per-computer viewer cap of 4, and the "checkout reports success when the
