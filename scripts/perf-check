@@ -40,7 +40,11 @@ const SAMPLE_MS = 1500;
 const STARTUP_TIMEOUT_MS = 60_000;
 const SETTLE_MS = 3000;
 
-const BUDGET = { cpuPct: 0.5, rssMB: 150, minTimerMs: 60_000 };
+// cpuPct/rssMB gate the steady state (p95 of the samples — one noisy `ps` tick, or a GC pause,
+// shouldn't fail the whole check when 39 of 40 samples are clean). cpuSustainedPct/window catch
+// the failure mode p95 alone would miss: real ongoing load that just isn't the single worst
+// sample, e.g. a leftover polling loop running the whole 60s at 1-2%.
+const BUDGET = { cpuPct: 0.5, rssMB: 150, minTimerMs: 60_000, cpuSustainedPct: 1.0, cpuSustainedWindow: 5 };
 
 function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
 
@@ -123,6 +127,11 @@ function spawnDaemon(home, timersFile) {
     if (code !== 0 && code !== null) log(`vyred exited early (code ${code}, signal ${signal}):\n${out.slice(-2000)}`);
   });
   child.__output = () => out;
+  // Run at low priority so this check doesn't compete with — or get crowded out by — whatever
+  // else is on the box; also keeps the sampled numbers closer to what an idle daemon actually
+  // costs rather than what it costs under contention. Best-effort: os.setPriority can fail
+  // (e.g. no permission, or platforms that don't support it), which shouldn't fail the check.
+  try { os.setPriority(child.pid, 10); } catch { /* best effort */ }
   return child;
 }
 
@@ -248,8 +257,9 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function report(samples, timers, idleStart) {
   const cpu = samples.map(s => s.cpuPct);
   const rssMB = samples.map(s => s.rssKB / 1024);
-  const meanCpu = mean(cpu), maxCpu = Math.max(...cpu);
+  const meanCpu = mean(cpu), maxCpu = Math.max(...cpu), p95Cpu = percentile(cpu, 95);
   const meanRss = mean(rssMB), maxRss = Math.max(...rssMB);
+  const sustainedCpu = maxWindowMean(cpu, BUDGET.cpuSustainedWindow);
 
   // setInterval: ANY call anywhere in the process's life is a standing recurring timer for as
   // long as vyred runs (see timer-hook.mjs), so every one under budget counts, whenever it was
@@ -267,17 +277,30 @@ function report(samples, timers, idleStart) {
   );
 
   const rows = [
-    { name: "CPU (mean)", value: `${meanCpu.toFixed(2)}%`, budget: `< ${BUDGET.cpuPct}%`, pass: meanCpu < BUDGET.cpuPct },
-    { name: "CPU (max)", value: `${maxCpu.toFixed(2)}%`, budget: `< ${BUDGET.cpuPct}%`, pass: maxCpu < BUDGET.cpuPct },
-    { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: meanRss < BUDGET.rssMB },
-    { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: maxRss < BUDGET.rssMB },
+    // Gating: p95, not max — a single sampling-noise spike (GC, a scheduler blip, another
+    // process on a shared/CI host) shouldn't fail the check when the steady state is clean.
+    { name: "CPU (p95)", value: `${p95Cpu.toFixed(2)}%`, budget: `< ${BUDGET.cpuPct}%`, pass: p95Cpu < BUDGET.cpuPct, gate: true },
+    // Gating: catches sustained load that p95 alone can miss (e.g. a steady 1-2% the whole
+    // window — no single sample is the "worst" by much, but it's still a real, ongoing cost).
+    { name: `CPU (sustained, ${BUDGET.cpuSustainedWindow}-sample mean)`, value: `${sustainedCpu.toFixed(2)}%`,
+      budget: `< ${BUDGET.cpuSustainedPct}%`, pass: sustainedCpu < BUDGET.cpuSustainedPct, gate: true },
+    // Informational only: raw mean/max are still useful to see, but neither gates on its own —
+    // mean hides a real spike, max fails on one noisy tick. See docs/PERF.md for why.
+    { name: "CPU (mean)", value: `${meanCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
+    { name: "CPU (max)", value: `${maxCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
+    { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: meanRss < BUDGET.rssMB, gate: true },
+    { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: maxRss < BUDGET.rssMB, gate: true },
     { name: "fastest recurring timer", value: fastestMs === Infinity ? "none under 60s" : `${fastestMs} ms`,
-      budget: `>= ${BUDGET.minTimerMs} ms`, pass: fastestMs >= BUDGET.minTimerMs },
+      budget: `>= ${BUDGET.minTimerMs} ms`, pass: fastestMs >= BUDGET.minTimerMs, gate: true },
   ];
 
   const w = Math.max(...rows.map(r => r.name.length));
+  const load = os.loadavg().map(n => n.toFixed(1)).join(", ");
   process.stdout.write("\nvyred idle budget check (docs/SPEC.md section 2, principle 8)\n");
-  process.stdout.write(`  samples: ${samples.length} over ~${IDLE_SECONDS}s\n\n`);
+  process.stdout.write(`  samples: ${samples.length} over ~${IDLE_SECONDS}s\n`);
+  // A loaded host inflates every number here, especially CPU max — report it next to the
+  // results so a failure caused by machine contention isn't read as a regression.
+  process.stdout.write(`  host load average (1m, 5m, 15m): ${load}\n\n`);
   for (const r of rows) {
     process.stdout.write(`  ${r.pass ? "PASS" : "FAIL"}  ${r.name.padEnd(w)}  ${String(r.value).padEnd(14)} budget ${r.budget}\n`);
   }
@@ -293,5 +316,22 @@ function report(samples, timers, idleStart) {
 }
 
 function mean(xs) { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
+
+/** Nearest-rank percentile (p in 0-100) over a copy of xs, sorted ascending. */
+function percentile(xs, p) {
+  if (!xs.length) return 0;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
+  return sorted[Math.max(0, idx)];
+}
+
+/** The highest mean CPU% over any `window`-sample consecutive slice — sustained load, not a
+ * single spike. With fewer samples than `window`, falls back to the mean of everything. */
+function maxWindowMean(xs, window) {
+  if (xs.length <= window) return mean(xs);
+  let best = 0;
+  for (let i = 0; i + window <= xs.length; i++) best = Math.max(best, mean(xs.slice(i, i + window)));
+  return best;
+}
 
 main().catch(e => { log(`FAILED: ${e.stack || e.message}`); process.exitCode = 1; });

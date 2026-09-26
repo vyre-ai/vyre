@@ -3,11 +3,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { backup, inspect, restore } from "./backup.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 // A cheap scrypt cost so the suite runs fast. The default (N=2^17) is checked on its own below.
 const FAST = { params: { N: 1 << 12, r: 8, p: 1 } };
@@ -22,22 +22,23 @@ const FIXTURES = {
 };
 const VALUES = Object.values(FIXTURES).flatMap(f => Object.values(f.fields)).filter(v => v.length > 6);
 
-function makeVault(name) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-backup-"));
+function makeVault(t, name) {
+  const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-backup-"));
   const db = open(path.join(home, "vyre.db"));
+  t.after(() => { try { db.close(); } catch {} fs.rmSync(home, { recursive: true, force: true }); });
   migrate(db, "vault", MIGRATIONS);
   const dir = path.join(home, "vault");
   const vault = new Vault({ db, dir, config: { name, vault: { keystore: "file" } }, emit: () => {} });
   return { home, db, dir, vault };
 }
 
-async function filled() {
-  const a = makeVault("a");
+async function filled(t) {
+  const a = makeVault(t, "a");
   a.vault.relayUrl = "http://relay.example.com:7443";
   for (const [name, f] of Object.entries(FIXTURES)) await a.vault.put({ name, ...f }, "cli");
   a.vault.grant({ name: "example-api", module: "switchboard" }, "cli");
   a.vault.db.prepare("UPDATE vault_items SET rotate='sent sealed' WHERE name='example-note'").run();
-  const c = makeVault("c");
+  const c = makeVault(t, "c");
   await a.vault.createPass({ holder: "Sam Example", card: (await c.vault.card()).card, items: ["example-api"] }, "cli");
   return a;
 }
@@ -51,12 +52,12 @@ function allBytes(root) {
   return out;
 }
 
-test("a backup restores into a vault with a different master key", async () => {
-  const a = await filled();
+test("a backup restores into a vault with a different master key", async t => {
+  const a = await filled(t);
   const blob = await backup(a.vault, PASS, FAST);
   assert.match(blob, /^vyre-backup:v1:/);
 
-  const b = makeVault("b");
+  const b = makeVault(t, "b");
   const bmk = await b.vault.key();
   assert.notDeepEqual(bmk, await a.vault.key());
 
@@ -97,8 +98,8 @@ test("a backup restores into a vault with a different master key", async () => {
   for (const [file, bytes] of allBytes(b.home)) for (const v of VALUES) assert.ok(!bytes.includes(Buffer.from(v)), `a value appeared in ${path.basename(file)}`);
 });
 
-test("inspect reads the label without the passphrase", async () => {
-  const a = await filled();
+test("inspect reads the label without the passphrase", async t => {
+  const a = await filled(t);
   const before = Date.now();
   const blob = await backup(a.vault, PASS, FAST);
   const i = inspect(blob);
@@ -109,10 +110,10 @@ test("inspect reads the label without the passphrase", async () => {
   assert.throws(() => inspect("not a backup"), /not a vyre backup/);
 });
 
-test("a wrong passphrase or a tampered blob does not open", async () => {
-  const a = await filled();
+test("a wrong passphrase or a tampered blob does not open", async t => {
+  const a = await filled(t);
   const blob = await backup(a.vault, PASS, FAST);
-  const b = makeVault("b");
+  const b = makeVault(t, "b");
   await assert.rejects(restore(b.vault, blob, "a-different-passphrase"), /that passphrase does not open this backup/);
 
   const o = JSON.parse(Buffer.from(blob.slice(15), "base64url").toString());
@@ -125,10 +126,10 @@ test("a wrong passphrase or a tampered blob does not open", async () => {
   assert.equal(b.db.prepare("SELECT COUNT(*) AS n FROM vault_items").get().n, 0);
 });
 
-test("merge keeps an existing item and an existing identity", async () => {
-  const a = await filled();
+test("merge keeps an existing item and an existing identity", async t => {
+  const a = await filled(t);
   const blob = await backup(a.vault, PASS, FAST);
-  const b = makeVault("b");
+  const b = makeVault(t, "b");
   await b.vault.put({ name: "example-note", kind: "note", fields: { text: "the second vault's own note" } }, "cli");
   const own = await b.vault.identity();
   const r = await restore(b.vault, blob, PASS, { mode: "merge" });
@@ -139,22 +140,22 @@ test("merge keeps an existing item and an existing identity", async () => {
   assert.deepEqual(await b.vault.identity(), own);
 });
 
-test("replace needs an empty vault", async () => {
-  const a = await filled();
+test("replace needs an empty vault", async t => {
+  const a = await filled(t);
   const blob = await backup(a.vault, PASS, FAST);
-  const b = makeVault("b");
+  const b = makeVault(t, "b");
   await b.vault.put({ name: "other", kind: "secret", fields: { value: "other-value-example" } }, "cli");
   await assert.rejects(restore(b.vault, blob, PASS, { mode: "replace" }), /empty vault/);
 
-  const c = makeVault("c");
+  const c = makeVault(t, "c");
   await c.vault.identity();
   const r = await restore(c.vault, blob, PASS, { mode: "replace" });
   assert.equal(r.identity, "restored");
   assert.deepEqual(await c.vault.identity(), await a.vault.identity());
 });
 
-test("a short passphrase is refused, and the default cost is N=2^17", async () => {
-  const a = await filled();
+test("a short passphrase is refused, and the default cost is N=2^17", async t => {
+  const a = await filled(t);
   await assert.rejects(backup(a.vault, "too-short"), /at least 12/);
   const blob = await backup(a.vault, PASS);
   const o = JSON.parse(Buffer.from(blob.slice(15), "base64url").toString());

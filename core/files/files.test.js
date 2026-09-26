@@ -14,6 +14,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { writeModule } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 import { seams, merge } from "./index.js";
 import { guard } from "./safety.js";
 
@@ -24,7 +25,7 @@ const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfD
 
 /** A temp folder, removed after the test. Never the user's own files or ~/.vyre. */
 function tmp(t, prefix = "vyre-files-") {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, prefix));
   assert.notEqual(path.resolve(dir), path.join(os.homedir(), ".vyre"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
@@ -199,7 +200,7 @@ test("files: allowDot opens a dot name, but never .env", async t => {
 });
 
 test("files: the deny list holds even when a root is inside it", () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-files-"));
+  const base = fs.mkdtempSync(path.join(SCRATCH, "vyre-files-"));
   try {
     const home = path.join(base, "home");
     for (const f of [".ssh/config", ".config/gcloud/creds", ".aws/config", ".claude/settings.json", "Library/Keychains/login.db", "work/ok.txt"]) put(path.join(home, f), "x");
@@ -394,4 +395,29 @@ test("files: a pull stops when the file changes underneath it, or is over the li
   const big = path.join(q.work, "big.txt");
   put(big, "x".repeat(2000));
   await refused(q.local, "files.fetch", { path: big, source: "box" }, /more than the 1000 byte limit/);
+});
+
+test("files: a Keynote package named *.key is reachable; key files are refused by name or by content", async t => {
+  const { work, vyreHome } = workspace(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
+  // Keynote saves a document as a folder named *.key.
+  put(path.join(work, "talks", "Budget.key", "Index.zip"), "zip");
+  put(path.join(work, "talks", "Budget.key", "preview.jpg"), "jpg");
+  const pkg = await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key") });
+  assert.equal(pkg.data.dir, true);
+  assert.ok(!(await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key", "Index.zip") })).error);
+  // A private key is a key whatever it is called.
+  put(path.join(work, "notes", "server.key"), "budget\n");
+  // Put together at run time, so the source itself never looks like it carries a key.
+  const pk = kind => `-----BEGIN ${kind} ${"PRIVATE"} KEY-----`;
+  put(path.join(work, "notes", "budget-deploy.txt"), `${pk("OPENSSH")}\nnot a real key\n`);
+  put(path.join(work, "notes", "budget-tls"), `${pk("EC")}\nnot a real key\n`);
+  for (const p of ["server.key", "budget-deploy.txt", "budget-tls"]) {
+    await refused(reg, "files.stat", { path: path.join(work, "notes", p) });
+    await refused(reg, "files.preview", { path: path.join(work, "notes", p) });
+    await refused(reg, "files.fetch", { path: path.join(work, "notes", p) });
+  }
+  const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.name);
+  assert.ok(found.includes("Budget.key"));
+  assert.ok(!found.some(n => ["server.key", "budget-deploy.txt", "budget-tls"].includes(n)), found.join());
 });

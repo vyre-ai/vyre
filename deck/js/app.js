@@ -29,7 +29,12 @@ const ROUTES = [
   ["/agents", "agents"],
   ["/agents/:name", "agents"],
   ["/agents/:name/glass", "glass"],
+  ["/chat", "chat"],
+  ["/chat/:project", "chat"],
+  ["/chat/:project/:thread", "chat"],
   ["/vault", "vault"],
+  ["/vault/:place", "vault"],
+  ["/vault/:place/:name", "vault"],
   ["/settings", "settings"],
   ["/ask", "ask"],
 ];
@@ -38,6 +43,7 @@ const PLACES = [
   { href: "/projects", label: "Projects", icon: "projects", view: "projects" },
   { href: "/memory", label: "Memory", icon: "memory", view: "memory" },
   { href: "/agents", label: "Agents", icon: "agents", view: "agents" },
+  { href: "/chat", label: "Chat", icon: "chat", view: "chat" },
   { href: "/vault", label: "Vault", icon: "vault", view: "vault" },
   { href: "/settings", label: "Settings", icon: "settings", view: "settings" },
 ];
@@ -77,6 +83,9 @@ const avatar = link("/settings", { class: "avatar", "aria-label": "Settings and 
 const railLinks = PLACES.map(p => link(p.href, { class: "rail-a", "data-view": p.view }, icon(p.icon), h("span", null, p.label),
   p.view === "now" ? h("span", { class: "count", hidden: true }) : null));
 const pins = h("div", { class: "rail-pins" });
+// A view fills this from ctx.rail(el) (e.g. Vault's places); cleared on every navigation, so a
+// view that does not use it leaves the rail exactly as Projects/Agents/etc. already look.
+const railLower = h("div", { class: "rail-lower" });
 const foot = h("div", { class: "rail-foot" });
 const view = h("main", { class: "view", id: "view" });
 const tabs = TABS.map(t => link(t.href, { "data-view": t.view }, icon(t.icon, 22), h("span", null, t.label),
@@ -91,7 +100,7 @@ put(deck,
     needsPill,
     avatar),
   h("div", { class: "body" },
-    h("nav", { class: "rail", "aria-label": "Places" }, h("div", { style: { display: "flex", flexDirection: "column", gap: "2px" } }, railLinks), pins, foot),
+    h("nav", { class: "rail", "aria-label": "Places" }, h("div", { style: { display: "flex", flexDirection: "column", gap: "2px" } }, railLinks), pins, railLower, foot),
     view),
   h("nav", { class: "tabbar", "aria-label": "Places" }, tabs));
 
@@ -200,6 +209,7 @@ async function route() {
     if (a.getAttribute("aria-current") === "false") a.removeAttribute("aria-current");
   }
   drawRail();
+  put(railLower);
   view.scrollTop = 0;
   put(view);
   const ctx = {
@@ -207,6 +217,8 @@ async function route() {
     on: (type, fn) => { offs.push(on(type, fn)); },
     cleanup: fn => { offs.push(fn); },
     alive: () => alive,
+    /** Fill the rail's lower group (between Recent/Pinned and the machine footer). */
+    rail: (/** @type {any} */ el) => put(railLower, el),
   };
   try {
     await style(name);

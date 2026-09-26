@@ -84,16 +84,26 @@ const drop = (list, source, id) => {
  * replaces the pieces: the whole block is what Claude Code said, the pieces are only how it
  * arrived. `message` is Claude Code's message id, shared by a block's pieces and its whole text.
  * A notice from vyred itself (the switch to the API key) is `{message: "vyre", text, done, notice}`.
+ *
+ * `cost` is what thread.finished reported (Claude Code's total_cost_usd, summed over the turns of
+ * this reply), `ms` how long the last turn took. The switchboard reports no token counts.
+ * `cancelled` is the user's Stop: nothing that arrives after it changes the reply.
  * @typedef {{ thread: string, order: string[], text: Record<string, string>, tools: { id: string, summary: string, done: boolean, error: boolean }[],
- *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null }} Reply
+ *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null, cost: number|null, ms: number|null,
+ *   cancelled?: boolean, model?: string|null, memory?: { answer: string|null, sources: any[] }|null }} Reply
  */
 export function reply(thread) {
-  return /** @type {Reply} */ ({ thread, order: [], text: {}, tools: [], finished: false, ok: null, error: null, lease: null });
+  return /** @type {Reply} */ ({ thread, order: [], text: {}, tools: [], finished: false, ok: null, error: null, lease: null, cost: null, ms: null });
+}
+
+/** The user stopped it: finished, with the error "stopped", and deaf to what comes after. @param {Reply} r @returns {Reply} */
+export function cancel(r) {
+  return { ...r, finished: true, ok: false, error: "stopped", cancelled: true };
 }
 
 /** @param {Reply} r @param {any} e @returns {Reply} */
 export function applyReply(r, e) {
-  if (!r || e.thread !== r.thread) return r;
+  if (!r || r.cancelled || e.thread !== r.thread) return r;
   const p = e.payload || {};
   if (e.type === "thread.text") {
     const id = s(p.message || "m");
@@ -106,7 +116,11 @@ export function applyReply(r, e) {
     return { ...r, tools: [...r.tools, { id: s(p.id), summary: s(p.summary || p.tool), done: false, error: false }].slice(-6) };
   }
   if (e.type === "thread.stopped") return { ...r, finished: true, ok: false, error: `the thread stopped${p.reason ? ": " + s(p.reason) : ""}` };
-  if (e.type === "thread.finished") return { ...r, finished: true, ok: p.ok !== false, error: p.ok === false ? s(p.error || "the turn failed") : null };
+  if (e.type === "thread.finished") {
+    const cost = typeof p.cost_usd === "number" ? (r.cost || 0) + p.cost_usd : r.cost;
+    const ms = typeof p.duration_ms === "number" ? p.duration_ms : r.ms;
+    return { ...r, finished: true, ok: p.ok !== false, error: p.ok === false ? s(p.error || "the turn failed") : null, cost, ms };
+  }
   // lease.changed {holder, previous, took?}: holder null when the keyboard was given back.
   if (e.type === "lease.changed") return { ...r, lease: p.holder == null ? null : s(p.holder) };
   return r;

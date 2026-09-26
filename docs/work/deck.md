@@ -4,10 +4,13 @@ Branch: work/deck · Worktree: ../vyre-deck · Milestone: M6 · Wave 1
 
 ## Scope
 
-Owns `deck/` except three carve-outs, each its own workstream now: **Vault** (`deck/views/vault*`,
+Owns `deck/` except four carve-outs, each its own workstream now: **Vault** (`deck/views/vault*`,
 `deck/vault/` — team `vault`), **Memory** (`deck/views/memory*` — team `intelligence`), **Glass**
-(`deck/glass/` — team `glass`). deck keeps the shell (header, rail, phone tab bar, router),
-routing hooks for all three, Now, Projects, Agents, Ask, Settings and onboarding.
+(`deck/glass/` — team `glass`), **Chat** (`deck/chat/` — team gate-chat; Mattermost is dropped).
+deck keeps the shell (header, rail, phone tab bar, router), routing hooks for all four (route,
+loader with a "not here yet" fallback, an auto-loaded css/views/<name>.css slot; Vault also gets
+`ctx.rail(el)` to fill the rail's lower group), Now, Projects, Agents, Ask, Settings and
+onboarding.
 
 vyred already serves `deck/` for every non-API path, with a strict CSP (`default-src 'self'`,
 Google Fonts allowed), so no inline scripts and no CDNs.
@@ -84,26 +87,69 @@ checked by screenshot against the boards.
   a Discard, and a failed send (no real credential) that returns to held with the edit kept as
   `final` and its error shown as "Held again: …" in Beacon, above the still-editable fields.
 
+Onboarding rewritten again (2026-09-27) to box's full `onboard.*` contract (both messages) and
+install's ADR 0008: no more `<you>.vyre.run` anywhere, a ts.net address shown once box gives it,
+`https_off` handled with "Turn on HTTPS" + "Check again", a collapsed "Your own domain", the
+Tailscale no-account line, Devices as three cards with two QR codes and door-A "Connected: <name>",
+and a real ending screen (greeting streamed from `onboard.finish`'s thread, three ticks, "Open
+Vyre"). Verified against a rewritten `deck/fixtures/onboard.json`, not yet against box's real
+branch (not merged into this worktree).
+
+Shell hooks landed for the four carve-outs: `deck/chat/` mounts via `deck/views/chat.js` (same
+"not here yet" pattern as Glass) routed at `/chat`, `/chat/:project`, `/chat/:project/:thread` plus
+a rail entry (gate-chat asked where; settled); `/vault/:place` and `/vault/:place/:name` routed;
+`ctx.rail(el)` lets a view fill the rail's lower group. `js/api.js`'s module-name map said `learn`
+was named "learning"; it's `learn`.
+
+Now made a real home (2026-09-27): the assistant's name and what it's doing (`agents.list`'s
+`doing`), Recent projects, and an offline read of the last state (`localStorage`, counts and a
+timestamp only, never a held item's words — the service worker already refuses `/v1/` for the
+same reason) shown as "Offline. As of … ago: …" when `threads.list` fails with the offline error
+code. Found and fixed a real bug while wiring this: Working read `t.state === "running"`, but the
+real field is `status`, and the switchboard never sets `"running"` or `"finished"` — only
+starting/working/waiting/idle/stopped — so Working always said "Nothing is running" no matter
+what was actually live. Verified against a real thread (`status: "working"`).
+
+PWA installability: manifest, icons (already generated from the mark, matching `icons.js`'s
+`mark()` exactly), iOS meta tags and the shell-caching service worker were already in place from
+an earlier pass; the offline-Now read above completes the "offline gives you something" half of
+the ask. Web Push is not built: there is no server-side piece anywhere in the codebase (no VAPID
+keys, no subscribe tool, nothing that would call a push service when an event fires while the
+Deck is closed) — a client `Notification`/`PushManager` registration alone cannot deliver anything
+without one. iOS 16.4+ supports Web Push for an installed (Add to Home Screen) PWA, and the
+tailnet does not block it (the box has ordinary outbound internet to reach Apple's/the browser's
+push service; the tailnet only restricts inbound). So it is feasible, but it needs a new module
+(VAPID keypair in the vault, a `push.subscribe`/`push.send` pair, called from wherever
+`ask.raised`/`gate.held` already fire) that nobody owns yet — flagged to the lead rather than
+guessed at.
+
 ## Doing
-- Nothing; waiting on box's onboard core to merge, and answers from box/switchboard below.
+- Nothing; waiting on box's onboard core to merge, and answers from box below.
 
 ## Next
-- Re-check onboarding once box's onboard core merges (branch not yet in this worktree; fixed
-  to the shapes the lead relayed, two left unconfirmed — see Needs).
+- Re-check onboarding once box's onboard core merges (branch not yet in this worktree).
+- `deck/js/presence.js` (ADR 0004, on work/security): vault and intelligence both asked for it
+  independently; told both to prototype it in their own view first, to centralize once there are
+  two real callers to generalize from rather than guessing the challenge/retry shape now.
+- View-scoped keyboard shortcuts (vault asked): same answer, prototype first, lift out later.
+- Settings section 7 (Lessons) should become a link to `/memory?tab=lessons` once intelligence's
+  tab exists; a one-line swap, waiting on them to say it's live.
+- `/threads/:id?seq=N` scroll-to-and-highlight (intelligence asked, for provenance links).
+- Proposed lessons in Now's needs, with a count (intelligence asked) — a new need "kind" next to
+  draft/ask, bigger scope, not started.
 - `agents.history` is not a real tool; Ask's past-exchange log degrades to empty rather than
   builds something from `threads.list` per agent — worth deciding whether switchboard adds the
   tool or deck reconstructs it.
 - Settings: confirm the per-step `vyre` commands it shows once box's core is in.
 
 ## Needs from others
-- box: exact shape for a blocked-Tailscale state in `onboard.tailscale` (asked 2026-09-26 in the
-  onboarding fixes) — implemented as `t.state === "blocked"`, `t.why`, `t.operator?.fix` as a best
-  guess; and whether a wrong/expired setup-token code comes back as a tool error or
-  `{signedIn:false}`.
+- box: whether `detail.devices.phoneUrl`/`macDownload`/`mac.connected` (Devices step) are the
+  real field names or my guess at them from install's ADR 0008 description; confirmed already:
+  the blocked-Tailscale and bad-setup-token-code shapes.
 - switchboard: `agents.ask` returning a recall-first answer (so Ask's already-built "From memory"
   block and "Ask a model" button have something to show); `agents.history`, if it's coming;
   `computers.*` shapes (`computers.get`, `restart`, `limits`), `watchers.list/pause` shapes.
-- main: `deck/**/*.test.js` is outside the `npm test` globs; if the Deck gets unit tests, add it.
+- vault: the new `vault.*` event names, for `js/api.js`'s known SSE list (asked 2026-09-27).
 
 ## Changed contracts
 - None.

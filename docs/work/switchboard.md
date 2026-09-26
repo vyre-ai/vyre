@@ -91,6 +91,17 @@ with real Claude Code, not only a fake.
   claude process. The hook gets `CLAUDE_PID` and the MCP server does not. Both get an undocumented
   `CLAUDE_CODE_SESSION_ID`, which is fixed at spawn, so it is not used.
 
+- Adopt: threads.send resumes a terminal session headless when nothing else has it open, and refuses
+  with the reason when something does (core/switchboard/adopt.js). The switchboard tests now point
+  `transcripts` at the temp home.
+
+- For others: `agents.history` (Deck), lean threads and `threads.watch` (Capsule), job options for
+  `threads.launch` and `tool`/`summary` on `ask.answered` (Intelligence).
+- Learned skills load as plugins from `<home>/learned/{account,projects/<slug>}` (layout sent to
+  Intelligence), and `plugins: [dirs]` on threads.launch.
+- Usage and budgets: per-turn rows, `agents.usage`, the 80% notice and 100% halt for API-key agents,
+  and `thread.limit` for the subscription's rate-limit reports. Shapes sent to deck.
+
 ## Answers
 - gate-chat asked whether a tool called inside a thread can see its session id. Inside a thread the
   Switchboard started, yes: the child's env has `VYRE_THREAD=<session id>`, and the MCP server and

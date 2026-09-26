@@ -7,6 +7,7 @@ import path from "node:path";
 import { Hands } from "./hands.js";
 import { makeRunner, responsibleApp, grantMessage } from "./runner.js";
 import { fakeApp } from "./fake.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const nosleep = async () => {};
 const calculator = () => ({
@@ -122,7 +123,7 @@ test("runner: a missing helper says to run the build script", { skip: !mac }, as
 });
 
 test("runner: a missing grant names the app to grant and where", { skip: !mac }, async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-hands-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-hands-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const bin = path.join(dir, "ax");
   fs.writeFileSync(bin, `#!/bin/sh\ncat >/dev/null\necho '{"error":"not allowed","code":"not_trusted"}'\nexit 2\n`, { mode: 0o755 });
@@ -131,7 +132,7 @@ test("runner: a missing grant names the app to grant and where", { skip: !mac },
 });
 
 test("runner: the request travels on stdin, not in argv", { skip: !mac }, async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-hands-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-hands-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const bin = path.join(dir, "ax");
   fs.writeFileSync(bin, `#!/bin/sh\nread -r line\nprintf '{"argc":%s,"got":%s}\\n' "$#" "$line"\n`, { mode: 0o755 });

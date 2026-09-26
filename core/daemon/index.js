@@ -120,7 +120,7 @@ async function body(req) {
 
 /**
  * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
- *   eventType?: string, headers?: Record<string, string> }} Policy
+ *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */

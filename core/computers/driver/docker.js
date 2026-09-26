@@ -104,7 +104,7 @@ export class DockerDriver {
   /**
    * @param {import("./index.js").CreateSpec} spec
    *
-   * Hardening (docs/adr/0004-container-hardening.md): the restricted proxy (box's
+   * Hardening (docs/adr/0009-container-hardening.md): the restricted proxy (box's
    * docker-socket-proxy) filters which Engine *endpoints* are reachable, not the *bodies* of the
    * requests it lets through. A create body could still ask for Privileged, a docker.sock bind,
    * host network or PID, extra capabilities or host devices, and the proxy would forward every

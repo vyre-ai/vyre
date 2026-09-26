@@ -8,6 +8,8 @@
 //   "write <file>"  asks permission for Write, then writes the file only if allowed
 //   "limit"         on a setup token, fails as a subscription at its limit would
 //   "whoami"        says which credential it was given (never the value)
+//   "spend <usd>"   a turn that cost that much
+//   "nearlimit"     a rate-limit warning (85% of the five-hour limit), then a normal turn
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
 //   anything else   echoes the prompt back in a few deltas
@@ -42,7 +44,8 @@ async function say(text) {
 }
 
 const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "success" : "error_during_execution", is_error: !ok, result: text,
-  total_cost_usd: cost, duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session });
+  total_cost_usd: cost, duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
+  usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 } });
 
 async function turn(prompt) {
   const p = String(prompt).trim();
@@ -71,6 +74,12 @@ async function turn(prompt) {
     const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
     await say(r);
     return result(true, r);
+  }
+  const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
+  if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
+  if (/^nearlimit$/i.test(p)) {
+    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: 1790000000, utilization: 0.85 } });
+    await say("still here"); return result(true, "still here", 0);
   }
   if (/^whoami$/i.test(p)) { await say(`auth=${auth}`); return result(true, `auth=${auth}`, auth === "api-key" ? 0.25 : 0); }
   await say(`echo: ${p}`);
