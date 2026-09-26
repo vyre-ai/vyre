@@ -28,9 +28,12 @@ const LABELS = { you: "You", claude: "Claude Code", tailscale: "Tailscale", name
 // or through sudo (a fresh Docker install leaves the account out of the docker group).
 const PRELUDE = 'DIR=${VYRE_DIR:-/srv/vyre}; if docker info >/dev/null 2>&1; then D=""; else D="sudo -n"; fi';
 
-/** Local settings the server's commands should see too. */
+/**
+ * Local settings the server's commands should see too. VYRE_WRAPPER moves the host wrapper, so a
+ * second stack on a server (a test one beside the person's own) never replaces theirs.
+ */
 function passEnv(env = process.env) {
-  return ["VYRE_DIR", "VYRE_BOX_URL"].filter(k => env[k]).map(k => `${k}=${env[k]}`);
+  return ["VYRE_DIR", "VYRE_BOX_URL", "VYRE_WRAPPER"].filter(k => env[k]).map(k => `${k}=${env[k]}`);
 }
 
 /** A POSIX sh script, run on the server with this Mac's VYRE_DIR and VYRE_BOX_URL. */

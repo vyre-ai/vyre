@@ -6,6 +6,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `vyre box add` forwards `VYRE_WRAPPER` with `VYRE_DIR` and `VYRE_BOX_URL`, so a second stack on
+  one server can be installed without replacing the host's own `/usr/local/bin/vyre`.
 - `vyre box` hardening: a `user@host` whose user or host starts with `-` is refused, and every ssh
   call puts `--` before the target; calls after the master use `BatchMode` and `ServerAlive`.
   When sudo needs a password and the account is not in the docker group, the plan says so and
