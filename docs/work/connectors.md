@@ -62,7 +62,7 @@ Connect Google as smoothly as the rest (lead, 2026-09-27). Plan:
    grant.
 2. (done) DWD helper: `google.test` on a service account returns its `client_id` (a public number) and
    the exact scope line for the admin console.
-3. Deck: Google form becomes "Sign in with Google" (pick or name the OAuth client item, grant it
+3. (done) Deck: Google form becomes "Sign in with Google" (pick or name the OAuth client item, grant it
    with presence, open the consent page, wait for `google.connected`, paste box as a fallback),
    "Service account" (with the admin-console helper and copy buttons), and "Refresh token item".
 4. CLI `vyre connect add google --sign-in` prints the URL and waits (later, if time).

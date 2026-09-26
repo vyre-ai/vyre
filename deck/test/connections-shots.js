@@ -4,7 +4,13 @@
 // the shot in headless Chrome. Every other tool answers no_such_tool, so the rest of Settings
 // shows its own empty states. A test helper, not part of the product.
 //
-//   node deck/test/connections-shots.js <out-dir>     writes connections.png (and -phone.png)
+//   node deck/test/connections-shots.js <out-dir> [form]
+//
+// With no form: connections.png and connections-phone.png, the list with the tracker's tools and
+// the work account's test open (its admin console block included). With a form, the Add a Google
+// account form in that mode, at desktop and phone width: signin, waiting (after pressing Sign in
+// with Google, with window.open stubbed to null so no tab goes to Google), or service-account.
+// "all" takes every one.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -47,14 +53,32 @@ await new Promise(r => server.listen(0, "127.0.0.1", () => r(null)));
 const port = /** @type {any} */ (server.address()).port;
 const base = `http://127.0.0.1:${port}/settings#connections`;
 // Open the tracker's tool list, so the shot shows which tools are held.
-const script = `document.querySelector("#connections").scrollIntoView({ block: "start" }); await wait(300);
+const list = `document.querySelector("#connections").scrollIntoView({ block: "start" }); await wait(300);
   document.querySelector('[data-server="tracker"] button[data-act="test"]').click(); await wait(600);
   document.querySelector('[data-account="work"] button[data-act="test"]').click(); await wait(600);
   document.querySelector("#connections").scrollIntoView({ block: "start" });`;
+// The Google form in one mode. northwind-google is already granted to google, so no passkey sheet.
+const form = mode => `document.querySelector("#connections").scrollIntoView({ block: "start" }); await wait(300);
+  click('[data-act="add-google"]'); await wait(600);
+  const f = document.querySelector('form[data-form="google"]');
+  ${mode === "service-account" ? `click('[data-auth="service-account"]'); await wait(100);` : ""}
+  f.querySelector("#cg-name").value = "${mode === "service-account" ? "work" : "dana"}";
+  ${mode === "service-account" ? `f.querySelector("#cg-email").value = "alex@harlowlegal.com";` : ""}
+  const it = f.querySelector("#cg-item"); it.value = "${mode === "service-account" ? "harlow-google-sa" : "northwind-google"}"; it.dispatchEvent(new Event("change"));
+  ${mode === "waiting" ? `window.open = () => null; f.requestSubmit(); await wait(800);` : ""}
+  document.querySelector('[data-form="google"]').scrollIntoView({ block: "start" }); await wait(200);`;
+const SHOTS = { "": list, signin: form("signin"), waiting: form("waiting"), "service-account": form("service-account") };
+const want = process.argv[3] || "";
+if (want !== "all" && !(want in SHOTS)) { console.error(`form is one of ${Object.keys(SHOTS).filter(Boolean).join(", ")}, or all`); process.exit(2); }
+
 // Async, not spawnSync: this process is the server the shot's page talks to.
-const shoot = (name, w, hgt) => new Promise(r => spawn(process.execPath, [path.join(DECK, "test", "shoot.js"), path.join(out, name), base, String(w), String(hgt), script],
+const shoot = (name, w, hgt, script) => new Promise(r => spawn(process.execPath, [path.join(DECK, "test", "shoot.js"), path.join(out, name), base, String(w), String(hgt), script],
   { stdio: "inherit" }).on("exit", r));
 fs.mkdirSync(out, { recursive: true });
-await shoot("connections.png", 1440, 1800);
-await shoot("connections-phone.png", 390, 2400);
+for (const [mode, script] of Object.entries(SHOTS)) {
+  if (want !== "all" && mode !== want) continue;
+  const stem = mode ? `connections-${mode}` : "connections";
+  await shoot(`${stem}.png`, 1440, mode ? 1000 : 1800, script);
+  await shoot(`${stem}-phone.png`, 390, mode ? 1400 : 2400, script);
+}
 server.close();
