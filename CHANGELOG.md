@@ -33,7 +33,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
 - `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,
   zip, and a signature check after unzipping; the build output is deleted afterwards.
-  `release-check --perf` runs perf-check too (opt-in: it fails on a loaded machine).
+  `release-check` runs perf-check after the suite (`--skip-perf` to leave it out).
 - `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
   `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
   finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
