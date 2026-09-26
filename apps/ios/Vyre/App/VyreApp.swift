@@ -35,7 +35,7 @@ struct RootView: View {
             case .ready: MainTabs()
             }
             // A vault value is on screen and the app is leaving it: cover everything, so the app
-            // switcher's snapshot shows nothing (ADR 0015 section 7).
+            // switcher's snapshot shows nothing (ADR 0018 section 7).
             if app.secretOnScreen && scenePhase != .active {
                 Color.ground.ignoresSafeArea()
                     .overlay { Mark(size: 48) }

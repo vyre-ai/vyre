@@ -1,6 +1,6 @@
 # mobile
 
-Branch: work/mobile · Worktree: ../vyre-mobile · ADR 0015
+Branch: work/mobile · Worktree: ../vyre-mobile · ADR 0018
 
 ## Scope
 
@@ -16,7 +16,7 @@ Small changes outside the scope, each through the owner's contract and listed be
 
 ## Plan
 
-1. ADR 0015 and the client contract (`apps/CONTRACT.md`). Done.
+1. ADR 0018 and the client contract (`apps/CONTRACT.md`). Done.
 2. Server side, in parallel with the apps: the `device` presence method and its tests; a
    `tailnet` entry in `callers` lists for the people-only tools; `deck/onboard/device/`;
    `apps/test/world.js`, a temp-home vyred with the fictional world behind a plain HTTP proxy the
@@ -30,7 +30,7 @@ Small changes outside the scope, each through the owner's contract and listed be
 5. Release steps written down for the user (`apps/RELEASE.md`).
 
 ## Done
-- ADR 0015, claimed in docs/work/README.md. `apps/CONTRACT.md` from the code at d1f7b75.
+- ADR 0018, claimed in docs/work/README.md. `apps/CONTRACT.md` from the code at d1f7b75.
 - `device` presence method (f60991a): a phone's P-256 key, enrolled with `presence.enroll
   {kind:"device", name, public_key, alg:-7}`, signs the Capsule's message with ES256. One code
   path and one nonce set for capsule and device. Offered only once enrolled, allowed on the box,
@@ -52,7 +52,7 @@ Small changes outside the scope, each through the owner's contract and listed be
 - Share sheet in and out, Taildrop (tailnet team), widgets and Live Activities (later).
 
 ## Needs from others
-- lead: the push relay decision for store builds (ADR 0015 section 4); until then push works
+- lead: the push relay decision for store builds (ADR 0018 section 4); until then push works
   with the owner's own APNs/FCM keys in the Vault.
 - link or tailnet: a way for the box to call the Mac (box-to-Mac `link.remote`), so the phone
   sees the Mac's files and sessions. Without it the phone reaches the box only.

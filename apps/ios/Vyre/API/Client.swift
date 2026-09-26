@@ -62,7 +62,7 @@ enum VyreError: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
-/// How a call proves a person is there (ADR 0015 section 3).
+/// How a call proves a person is there (ADR 0018 section 3).
 enum Proof: Sendable, Equatable {
     case none
     /// Sign with this phone's device key; `reason` is what Face ID shows.

@@ -8,7 +8,7 @@ import kotlin.coroutines.resume
 
 /**
  * FCM data-only messages. Google sees a kind and a fixed sentence; the id is sealed to this phone
- * (ADR 0015 section 4). The app opens the seal and posts the notification itself.
+ * (ADR 0018 section 4). The app opens the seal and posts the notification itself.
  */
 class MessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {

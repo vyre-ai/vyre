@@ -2,14 +2,14 @@
 
 Source: main at `d1f7b75`. All paths are repo-relative. Shapes are what `run()` returns, not what the schemas advertise. `?` = optional/conditional key.
 
-Mobile additions (ADR 0015): the `device` presence method, `surface: "ios"|"android"` on every write, and native push transports. Where a shape here and the code disagree, the code wins and this file is fixed.
+Mobile additions (ADR 0018): the `device` presence method, `surface: "ios"|"android"` on every write, and native push transports. Where a shape here and the code disagree, the code wins and this file is fixed.
 
 ---
 
 ## 0. Things that block a native phone today (read first)
 
 1. **Where the phone connects.** Only a **box** has a network listener. The tailnet listener lives in the `names` module, and that module runs with `roles: ["box"]` (`core/names/module.json:4`, `core/names/service.js:181-226`). A Mac vyred listens only on its unix socket. So the phone talks to the box over HTTPS on its ts.net/cert name. Every request from the phone arrives with caller **`tailnet:<login>`** (`service.js:225`). The router ignores `x-vyre-caller` when a listener has set the caller (`core/daemon/index.js:149`).
-2. **`callers` and the tailnet (fixed on work/mobile, ADR 0015).** `callerKind("tailnet:alex@example.com")` still returns the whole string (memory's guard relies on it), but a `callers` entry `"tailnet"` now matches any `tailnet:<login>` caller, in `Registry.call` and in `GET /v1/tools` (`callerAllowed`, `core/modules/index.js`). A bare `tailnet` label from the socket never matches. These tools list it:
+2. **`callers` and the tailnet (fixed on work/mobile, ADR 0018).** `callerKind("tailnet:alex@example.com")` still returns the whole string (memory's guard relies on it), but a `callers` entry `"tailnet"` now matches any `tailnet:<login>` caller, in `Registry.call` and in `GET /v1/tools` (`callerAllowed`, `core/modules/index.js`). A bare `tailnet` label from the socket never matches. These tools list it:
    - `gate.get`, `gate.approve`, `gate.reject`, `gate.revise` (`core/gate/index.js`)
    - `threads.answer` (`core/switchboard/index.js`)
    - every `push.*` tool (`core/push/index.js`, `PEOPLE`)
@@ -375,7 +375,7 @@ Over the tailnet the phone reaches the **box's** files module (roles box+local).
 - **Native implications:**
   - A native passkey for the box hostname needs Associated Domains / Digital Asset Links. vyred serves no `/.well-known/apple-app-site-association` or `assetlinks.json`; unknown paths return the Deck's index.html (`daemon/index.js:283-291`).
   - The ready path today is a **`capsule` Ed25519 key**: the private key in Keychain/Keystore behind a biometric gate, enrolled once with the code, and signing `vyre-presence-v1\n…` for each call.
-  - Note: the Secure Enclave has no Ed25519 support. So the phone uses a **`device` P-256 key** instead (ADR 0015 section 3).
+  - Note: the Secure Enclave has no Ed25519 support. So the phone uses a **`device` P-256 key** instead (ADR 0018 section 3).
 - **Phone enrollment path: `/onboard/device`** (`deck/onboard/device/`):
   - The app opens `https://<address>/onboard/device#k=<b64url SPKI>&n=<device name>&r=vyre` in `ASWebAuthenticationSession` / Custom Tabs, with callback scheme `vyre`. `r` must be exactly `vyre` or the page stops and returns nowhere. A missing or malformed `k` also stops it. `n` is cleaned (control and bidi characters), cut to 80 characters, and defaults to "This phone". The page strips the hash at once.
   - With a passkey on the box: `POST /v1/presence/challenge {tool:"presence.enroll", input:{kind:"device", name, public_key, alg:-7}, method:"passkey"}`, `navigator.credentials.get`, then `presence.enroll` with the passkey header.

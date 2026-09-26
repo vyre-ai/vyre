@@ -280,7 +280,7 @@ the same line to any new test of that kind.
 
 ## Addendum, 27 Sep 2026: device keys for the phone apps
 
-ADR 0015 adds a seventh method, `device`, for the native iOS and Android apps. A phone holds an
+ADR 0018 adds a seventh method, `device`, for the native iOS and Android apps. A phone holds an
 ECDSA P-256 key in its Secure Enclave or StrongBox, behind a biometric prompt, and enrolls it
 with `presence.enroll {kind: "device", name, public_key, alg: -7}` under a passkey or one-time
 code proof. Its id is the key's fingerprint, as a Capsule key's is, and it has no relying party. A

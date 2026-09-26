@@ -113,7 +113,7 @@ export const callerKind = caller => {
 
 /**
  * May this caller use a tool with this `callers` list? An entry is a caller kind, compared whole,
- * except "tailnet", which lets in any of the owner's devices ("tailnet:<login>", ADR 0015). The
+ * except "tailnet", which lets in any of the owner's devices ("tailnet:<login>", ADR 0018). The
  * bare word is never a caller itself: a socket client could send it as a label.
  * @param {string[]} callers
  * @param {string} caller

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The offline cache, the Deck's rule (ADR 0015 section 6): `projects.list`, `agents.list`, and
+/// The offline cache, the Deck's rule (ADR 0018 section 6): `projects.list`, `agents.list`, and
 /// `threads.get` for threads the person opened, at most 20 threads and 7 days. Files are written
 /// with complete file protection (unreadable while the phone is locked) and excluded from
 /// backups. Nothing else is ever cached: no held item, vault item, memory fact or file.

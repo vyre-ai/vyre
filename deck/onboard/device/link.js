@@ -1,5 +1,5 @@
 // @ts-check
-// The pure parts of /onboard/device (ADR 0015 section 3), kept apart from the page so node can
+// The pure parts of /onboard/device (ADR 0018 section 3), kept apart from the page so node can
 // test them: what the phone app put in the link, the one presence.enroll input a proof is bound
 // to, and the only way back, vyre://enrolled.
 

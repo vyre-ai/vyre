@@ -1,5 +1,5 @@
 // @ts-check
-// The phone's sign-in page (ADR 0015 section 3). The Vyre app opens it in the system's
+// The phone's sign-in page (ADR 0018 section 3). The Vyre app opens it in the system's
 // authentication browser, so the passkey ceremony runs at the box's own origin, against the
 // passkeys the Deck enrolled. It enrolls the phone's device key with that proof and hands the key
 // id back to the app at vyre://enrolled. If the box has no passkey yet, a one-time code from

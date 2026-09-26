@@ -9,7 +9,7 @@ import sh.vyre.app.api.str
 import java.io.File
 
 /**
- * The offline cache, the Deck's rule (ADR 0015 section 6): projects.list, agents.list, and
+ * The offline cache, the Deck's rule (ADR 0018 section 6): projects.list, agents.list, and
  * threads.get for threads the person opened, at most 20 threads and 7 days. It lives in the app's
  * private files (excluded from backup in the manifest and data_extraction_rules.xml). Nothing
  * else is ever written: no held item, no vault value, no memory fact, no file.

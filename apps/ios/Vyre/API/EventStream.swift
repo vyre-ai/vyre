@@ -96,7 +96,7 @@ struct SSEParser: Sendable {
 }
 
 /// The one live connection to `GET /v1/events/stream`, open only while the app is in front
-/// (ADR 0015 section 5). It resumes from the last id it saw with Last-Event-ID, and backs off
+/// (ADR 0018 section 5). It resumes from the last id it saw with Last-Event-ID, and backs off
 /// 1, 2, 4 ... 30 seconds between attempts. Views subscribe with `on(_:)`.
 @MainActor
 @Observable

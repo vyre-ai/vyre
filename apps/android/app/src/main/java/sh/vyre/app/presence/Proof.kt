@@ -8,7 +8,7 @@ import java.security.SecureRandom
 
 /** The pure half of a device proof, tested on the JVM: what is signed and how the header reads. */
 object Proof {
-    /** `vyre-presence-v1\n<tool>\n<input hash>\n<ts>\n<nonce>`, the Capsule's message (ADR 0015 section 3). */
+    /** `vyre-presence-v1\n<tool>\n<input hash>\n<ts>\n<nonce>`, the Capsule's message (ADR 0018 section 3). */
     fun message(tool: String, input: JsonObject, ts: Long, nonce: String): ByteArray =
         "vyre-presence-v1\n$tool\n${Canonical.hash(input)}\n$ts\n$nonce".toByteArray(Charsets.UTF_8)
 

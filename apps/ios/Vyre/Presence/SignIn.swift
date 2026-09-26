@@ -3,7 +3,7 @@ import Foundation
 import UIKit
 
 /// Signing in enrolls this phone's device key with the box, approved by the Deck's passkey
-/// (ADR 0015 section 3). The app opens the box's own `/onboard/device` page in the system's
+/// (ADR 0018 section 3). The app opens the box's own `/onboard/device` page in the system's
 /// authentication browser, so WebAuthn runs against the box's origin with the passkeys the Deck
 /// enrolled; the page calls `presence.enroll` and returns to `vyre://enrolled?id=<key id>`.
 enum SignIn {

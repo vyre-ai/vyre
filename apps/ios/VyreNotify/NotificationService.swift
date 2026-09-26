@@ -1,6 +1,6 @@
 import UserNotifications
 
-/// Opens the sealed part of a Vyre push (ADR 0015 section 4) into the notification's userInfo,
+/// Opens the sealed part of a Vyre push (ADR 0018 section 4) into the notification's userInfo,
 /// so a tap deep-links to `/needs/<id>` or `/threads/<id>`. The visible text stays the fixed
 /// sentence the box sent: nothing from the sealed part is shown on the lock screen.
 final class NotificationService: UNNotificationServiceExtension {

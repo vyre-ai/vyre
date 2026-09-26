@@ -3,7 +3,7 @@ import Observation
 import UIKit
 import UserNotifications
 
-/// Native push (ADR 0015 section 4): register with APNs, then `push.subscribe` with the token and
+/// Native push (ADR 0018 section 4): register with APNs, then `push.subscribe` with the token and
 /// a fresh 32-byte key the box seals each push's `{path, tag, at}` under. A box without the push
 /// update answers no_such_tool or bad_input (or denied, before tailnet callers are allowed), and
 /// the app says so instead of failing.

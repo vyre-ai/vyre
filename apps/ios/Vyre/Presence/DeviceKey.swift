@@ -3,7 +3,7 @@ import Foundation
 import LocalAuthentication
 import Security
 
-/// This phone's presence key (ADR 0015 section 3): ECDSA P-256 in the Secure Enclave, usable only
+/// This phone's presence key (ADR 0018 section 3): ECDSA P-256 in the Secure Enclave, usable only
 /// after Face ID or Touch ID with the currently enrolled biometrics. The private key never leaves
 /// the Enclave; the Keychain holds only the Enclave's wrapped blob. The simulator has no Enclave, so
 /// a DEBUG build there keeps a software P-256 key in the Keychain instead, with no biometric gate

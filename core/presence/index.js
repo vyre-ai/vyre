@@ -152,7 +152,7 @@ const spki = b64 => crypto.createPublicKey({ key: Buffer.from(String(b64), "base
 const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from(String(b64), "base64url")).digest("base64url").slice(0, 22);
 /**
  * The keys that sign a call themselves, the same message and rules for each: the Capsule's
- * Ed25519 key, and a phone's P-256 key held in its Secure Enclave or StrongBox (ADR 0015).
+ * Ed25519 key, and a phone's P-256 key held in its Secure Enclave or StrongBox (ADR 0018).
  * `check` is crypto.verify's algorithm and key for that kind.
  */
 const SIGNERS = {
@@ -502,7 +502,7 @@ export class Presence {
       alg = -8; rp_id = undefined;
       id = fingerprint(public_key);
     } else if (kind === "device") {
-      // What a phone's hardware can hold: ES256 on P-256, nothing else (ADR 0015).
+      // What a phone's hardware can hold: ES256 on P-256, nothing else (ADR 0018).
       if (key.asymmetricKeyType !== "ec" || /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve !== "prime256v1") throw new Error("a device key must be an EC P-256 key");
       if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256)");
       rp_id = undefined;

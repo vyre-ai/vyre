@@ -38,4 +38,4 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
 ## ADR numbers claimed
 
 - 0013 box sessions, 0014 tailnet (lead)
-- 0015 mobile: the phone apps (work/mobile)
+- 0018 mobile: the phone apps (work/mobile)

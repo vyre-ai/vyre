@@ -1,5 +1,5 @@
 // @ts-check
-// The phone on the tailnet (docs/adr/0015-mobile.md): a real vyred with the real Gate and
+// The phone on the tailnet (docs/adr/0018-mobile.md): a real vyred with the real Gate and
 // verifier, reached the way the names listener reaches it, with the caller and peer the listener
 // sets from `tailscale whois`. A tailnet device may now ask for the human-only tools, and presence
 // still decides them: no proof is presence_required, a device key's signature sends.

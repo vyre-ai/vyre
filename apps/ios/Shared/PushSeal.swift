@@ -3,7 +3,7 @@ import Foundation
 import Security
 
 /// The push key this phone gave the box at `push.subscribe`: 32 random bytes, kept in the shared
-/// Keychain so the notification service extension can open the sealed part (ADR 0015 section 4).
+/// Keychain so the notification service extension can open the sealed part (ADR 0018 section 4).
 enum PushKeyStore {
     static let account = "push-key"
 

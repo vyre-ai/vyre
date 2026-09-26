@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Generic-password items in the Keychain: the device key's blob, the box address, the push key.
-/// Nothing else is kept there (ADR 0015 section 6). Items shared with the notification extension
+/// Nothing else is kept there (ADR 0018 section 6). Items shared with the notification extension
 /// go in the app's shared keychain group when the build is signed with a team; an unsigned
 /// simulator build has no groups, and the items stay in the app's own.
 enum Keychain {

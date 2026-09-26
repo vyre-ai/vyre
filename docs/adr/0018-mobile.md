@@ -1,4 +1,4 @@
-# ADR 0015 · The phone apps: native iOS and Android on the box's API
+# ADR 0018 · The phone apps: native iOS and Android on the box's API
 
 Status: proposed, 27 Sep 2026 · Workstream: mobile (`apps/ios`, `apps/android`) · Spec: sections
 2, 7.1, 9, 10, 11 · Builds on ADR 0002 (network and identity), ADR 0004 (presence), ADR 0011

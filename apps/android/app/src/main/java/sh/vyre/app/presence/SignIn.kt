@@ -11,7 +11,7 @@ import java.net.URLEncoder
 
 /**
  * Signing in is enrolling this phone's device key with a proof from something already trusted
- * (ADR 0015 section 3): the Deck's passkey, in the system browser at the box's own origin.
+ * (ADR 0018 section 3): the Deck's passkey, in the system browser at the box's own origin.
  */
 object SignIn {
     const val SCHEME = "vyre"
