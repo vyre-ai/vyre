@@ -299,6 +299,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
 
+- Vault surfaces: sessions for the Deck, Capsule and extension (idle 10m, max 12h, locked on
+  sleep and screen lock), `vault.reveal`, `vault.copy` through a concealed, self-clearing
+  clipboard helper, `vault.fill.native` for the Capsule, TOTP with a session, and the extension's
+  inline chooser, keyboard fill, one-time codes and save on submit. Presence is declared on
+  each tool; until ADR 0004 merges it is not enforced, so reveal and copy from cli/local run
+  without a proof.
+
 #### Watchers
 
 - `core/watchers`: the watcher runtime (spec 7.6). Claude writes a folder in
