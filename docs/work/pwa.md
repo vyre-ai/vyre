@@ -52,6 +52,14 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   (no sideways scroll, tab bar present, standalone, no page errors, pull releases to /find, reopen
   lands on the last screen). iPhone UA, touch, 3x, safe areas 47/34 and 59/34.
 
+- After ci's history rewrite the pairing card is 845f637. Since then: first-passkey card on Now
+  and the iCloud Keychain line on the pairing card; memory.relevant for the owner's tailnet devices
+  and system.info owner.name (116ceb7, tests in core/memory/access.test.js and test/daemon.test.js);
+  Find commands (76d473f, deck/js/commands.js + commands.test.js, the mobile/Capsule grammar);
+  /theme.css from config theme.colors (394753a, core/config/theme.js + tests, daemon route).
+- Shots: 56 (19 screens at 390 and 430, plus onboarding, pairing, no assistant and Now at 1280,
+  1440, 2000), all checks pass.
+
 ## How to rerun the shots (the test box)
 - `rsync -a --delete --exclude node_modules --exclude .git ./ the test box:~/vyre-ci/pwa/`
 - Chrome (connectors' shared install): `/usr/local/bin/vyre-chrome --headless=new --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/pwa-chrome-prof about:blank`
@@ -64,21 +72,20 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - Nothing running (world and Chrome stopped). Waiting on the lead and the user's live try.
 
 ## Next
-- Find: "@agent text" and "tell/watch <session>" commands, matching the native Capsule (asked mobile
-  for the grammar).
-- Step 6 Mac card: show "Already on your tailnet" for an online Mac node, as the phone card does.
-- threads.unqueue (withdraw) once capsule-now ships it.
-- See a live streamed reply in a browser: the world has no harness, so streaming is unit-level only.
-- Real iPhone check by the user: launch screens, push on the Home Screen app, Face ID passkey.
-- A monochrome badge icon for Android notifications (the colour icon shows as a white square).
+- Settings > Setup rows could rerun a step in place (polish-cli's suggestion) instead of naming
+  `vyre up`.
+- Step 6 Mac card: "Already on your tailnet" for an online Mac node.
+- theme.colors: match docs' final shape (asked docs: "light" or "paper", shared validator).
+- threads.unqueue once capsule-now ships it.
+- Real iPhone check by the user.
 
 ## Needs from others
-- polish-cli: add `vyre up --step <id>` (then Settings goes back to per-step commands) or not.
+- polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).
 - box: review the additive `onboard.status` detail.devices.peers and parsePeers (core/onboard).
   Also onboard.finish sends auth {vault: "anthropic-api-key"} for an API key, which agents reads as
   a subscription token (the assistant card sends {fallback: "anthropic-api-key"} instead).
-- presence: the first passkey on the phone for the box's real hostname (rpId), if onboarding made
-  it on 127.0.0.1.
+- e2e: confirm the passkey on the user's box has the right rpId (the lead asked them).
+- docs: the theme.colors shape.
 - link / files: the box cannot search the Mac's files (link carries Mac to box only). Find says
   "Files on your Mac show here when your Mac is online."
 - lead or e2e: confirm the phone's first passkey code comes from `vyre presence code` on the Mac
@@ -86,6 +93,9 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- memory.relevant: tailnet:<login> callers may read without a room (was refused).
+- system.info: adds owner { name } (onboard.person).
+- GET /theme.css served by vyred from config theme.colors.
 - onboard.status: detail.devices.peers [{name, dns, os, online, lastSeen}] (additive), parsePeers export.
 - docs/JOURNEY.md step 6 describes pairing the Mac and Add to Home Screen.
 - Tabs on the phone: Now, Projects, Chat, Find, Agents (Ask moved off the tab bar; /ask stays).
