@@ -22,14 +22,12 @@
 .nd-status:not(:empty) { margin-top: 10px; }
 .nd-note { text-align: center; margin-top: 10px; }
 
-.nd-draft .nd-mail { margin-top: 16px; }
-.nd-mail .nd-row > span:last-child { font-size: 15px; line-height: 22px; min-width: 0; overflow-wrap: anywhere; }
 .nd-body { margin-top: 20px; padding: 16px; background: var(--panel); border-radius: var(--r-3); font-size: 16px; line-height: 25px; }
 .nd-body p { white-space: pre-wrap; }
-.nd-src { text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 4px; }
-.nd-src sup { color: var(--recall-ink); font-family: var(--mono); font-size: 10px; margin-left: 2px; }
-.nd-body.editing { background: transparent; padding: 0; }
-.nd-edit { font-size: 16px; line-height: 25px; }
+/* The held item's own fields (js/editable.js): a bit more room than the compact Now card. */
+.nd-form .ed-row { grid-template-columns: 76px minmax(0, 1fr); }
+.nd-form .ed-in { font-size: 16px; line-height: 25px; }
+.nd-form .ed-in.ed-mono { font-size: 13px; line-height: 20px; }
 .nd-memhead { display: flex; justify-content: space-between; margin: 24px 0 8px; }
 .nd-mem { list-style: none; margin: 0; padding: 4px 16px; display: flex; flex-direction: column; }
 .nd-mem li { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--rule); }

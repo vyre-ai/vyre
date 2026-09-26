@@ -6,6 +6,7 @@
 import { h, put, link, go } from "../js/dom.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
+import { form, gateFields } from "../js/editable.js";
 import { since } from "../js/fmt.js";
 
 /** @param {any} ctx */
@@ -34,19 +35,36 @@ function top(n) {
       n.kind === "draft" ? "Held at the Gate" : `Held ${since(n.at)}`) : null);
 }
 
-/** Answer, then go back to Now; on failure the buttons come back with the reason. */
-function actions(n, buttons, status, list) {
-  return list.map(({ opt, cls, text }) => h("button", { type: "button", class: "btn nd-btn " + (cls || ""), onclick: async () => {
-    if (opt.decision === "edit") return text();
+/**
+ * Answer, then go back to Now; on failure the buttons come back with the reason.
+ * `getEdited`, when given, is asked only for the primary (approve) action: it returns
+ * `{ error }` to stop and show a message, or `{ edited }` (maybe null) to send.
+ */
+function actions(n, buttons, status, list, getEdited) {
+  return list.map(({ opt, cls }) => h("button", { type: "button", class: "btn nd-btn " + (cls || ""), onclick: async () => {
+    let edited = null;
+    if (opt.decision === "approve" && getEdited) {
+      const r = getEdited();
+      if (r.error) { put(status, r.error); return; }
+      edited = r.edited;
+    }
     answering = true;
     for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = true;
-    try { await needs.answer(n, opt, typeof text === "string" ? text : undefined); go("/now"); }
+    put(status);
+    try { await needs.answer(n, opt, edited); go("/now"); }
     catch (e) {
-      const err = /** @type {any} */ (e);
-      put(status, err.missing ? `The ${err.module} module is not running, so this cannot be answered here yet.` : String(err.message));
+      put(status, problem(e));
       for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     } finally { answering = false; }
-  } }, opt.label === "Send as drafted" ? [icon("send", 14), "Send"] : opt.label));
+  } }, opt.label === "Send" ? [icon("send", 14), "Send"] : opt.label));
+}
+
+/** An error from the Gate or a module, in plain words. */
+function problem(e) {
+  const x = /** @type {any} */ (e);
+  if (x?.missing) return `The ${x.module} module is not running, so this cannot be answered here yet.`;
+  if (x?.code === "denied" || /denied/i.test(String(x?.message || x))) return "The Gate does not let the Deck read or answer this yet. Answer it from the terminal or chat.";
+  return String(x?.message || x);
 }
 
 function ask(n) {
@@ -72,55 +90,35 @@ function ask(n) {
 }
 
 function draft(n) {
-  const d = n.draft || { to: "", body: "", sources: [] };
-  const name = d.toName || d.to;
+  const g = n.gate || { kind: "send", via: "", to: [], summary: "", draft: null, error: null, sources: [] };
+  const name = g.toName || g.to?.join(", ") || "someone";
   const status = h("p", { class: "small muted nd-status", role: "status" });
-  const bodyBox = h("div", { class: "nd-body" });
   const buttons = h("div", { class: "nd-actions nd-sticky" });
-  const showBody = () => bodyBox.classList.remove("editing") || put(bodyBox, d.segments?.length
-    ? h("p", null, d.segments.map(s => s.source
-      ? h("span", { class: "nd-src" }, s.text, h("sup", { "aria-label": `source ${s.source}` }, String(s.source)))
-      : s.text))
-    : h("p", null, d.body));
-  const edit = () => {
-    const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", { class: "input nd-edit", rows: "8", "aria-label": "Edit the draft" }));
-    ta.value = d.body;
-    bodyBox.classList.add("editing");
-    put(bodyBox, ta);
-    put(buttons,
-      h("button", { type: "button", class: "btn btn-primary nd-btn nd-grow", onclick: () => sendEdited(ta.value) }, icon("send", 14), "Send this version"),
-      h("button", { type: "button", class: "btn nd-btn", onclick: () => { showBody(); drawButtons(); } }, "Cancel"));
-    ta.focus();
+  // Every field, To through Body, is a real input that reads as text until focused (js/editable.js).
+  // There is no Edit button: Send sends what is shown.
+  const f = g.draft ? form(gateFields({ to: g.to, draft: g.draft })) : null;
+  const getEdited = () => {
+    const err = f?.error();
+    return err ? { error: err } : { edited: f?.changed() ? f.edited() : null };
   };
-  const sendEdited = async text => {
-    answering = true;
-    for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = true;
-    try { await needs.answer(n, { label: "Send", decision: "approve" }, text); go("/now"); }
-    catch (e) {
-      const err = /** @type {any} */ (e);
-      put(status, err.missing ? `The ${err.module} module is not running, so this cannot be sent from here yet.` : String(err.message));
-      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
-    } finally { answering = false; }
-  };
-  const drawButtons = () => put(buttons, actions(n, buttons, status, [
+  put(buttons, actions(n, buttons, status, [
     { opt: n.options[0], cls: "btn-primary nd-grow" },
-    { opt: n.options[1], text: edit },
-    { opt: n.options[2] },
-  ]));
-  showBody();
-  drawButtons();
-  const title = /^Re:/i.test(d.subject || "") ? `Reply to ${name}` : `Email to ${name}`;
+    { opt: n.options[1] },
+  ], getEdited));
+  const subject = typeof g.draft?.subject === "string" ? g.draft.subject : "";
+  const title = g.kind !== "send" ? (g.kind === "spend" ? `Spend through ${g.via}` : `Delete through ${g.via}`)
+    : /^Re:/i.test(subject) ? `Reply to ${name}` : `Email to ${name}`;
+  const recalled = g.recalled || g.sources?.[0]?.text || "";
   return h("div", { class: "nd nd-draft" }, top(n),
     h("h1", { class: "nd-title" }, title),
-    h("p", { class: "small muted" }, `${n.agent || "An agent"} wrote this ${since(n.at)} ago. Client email waits here until you send it.`),
-    h("div", { class: "nd-rows nd-mail" },
-      h("div", { class: "nd-row" }, h("span", { class: "lbl" }, "To"), h("span", null, name, d.toName ? h("span", { class: "code faint" }, " " + d.to) : null)),
-      d.subject ? h("div", { class: "nd-row" }, h("span", { class: "lbl" }, "Subject"), h("span", null, d.subject)) : null),
-    bodyBox,
-    d.sources?.length ? [
-      h("div", { class: "nd-memhead" }, h("span", { class: "lbl recall" }, `From memory · ${d.sources.length}`), h("span", { class: "lbl" }, "No model used")),
-      h("ol", { class: "recalled nd-mem" }, d.sources.map((s, i) => h("li", null, h("span", { class: "nd-n" }, String(i + 1)),
+    h("p", { class: "small muted" }, `${n.agent || "An agent"} wrote this ${since(n.at)} ago. It waits here until you send it.`),
+    f ? h("div", { class: "nd-body nd-form" }, f.el) : h("div", { class: "nd-body" },
+      g.summary ? h("p", null, g.summary) : null,
+      h("p", { class: "small muted" }, g.error ? `The full draft cannot be shown here: ${problem(g.error)}` : "The full draft cannot be shown here.")),
+    g.sources?.length ? [
+      h("div", { class: "nd-memhead" }, h("span", { class: "lbl recall" }, `From memory · ${g.sources.length}`), h("span", { class: "lbl" }, "No model used")),
+      h("ol", { class: "recalled nd-mem" }, g.sources.map((s, i) => h("li", null, h("span", { class: "nd-n" }, String(i + 1)),
         h("span", null, h("span", { class: "nd-memtext" }, s.text), s.from ? h("span", { class: "nd-from" }, s.from) : null))))]
-      : d.recalled ? h("div", { class: "recalled small" }, d.recalled) : null,
+      : recalled ? h("div", { class: "recalled small" }, recalled) : null,
     status, buttons);
 }
