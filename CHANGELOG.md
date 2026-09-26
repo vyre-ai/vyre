@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Side view and voice from the terminal (ADR 0015)
+
+- Side view on macOS (`local/sideview`, `vyre sideview`): the front terminal session on the left at
+  29% of the display and Chrome filling the rest, edge to edge, in one call; `--glass` opens the
+  box's Glass page; `vyre sideview close` puts the windows back. The helper runs once per call and
+  never moves a password manager or a system dialog.
+- voice: `vyre voice` gives push-to-talk from the terminal (Enter to talk, words shown live,
+  `--send <thread>`), `vyre voice key` saves the speech key through the vault as a person without
+  echoing it, and `vyre voice status` prints the provider, key and online state.
+- screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
+
 #### The Capsule is Spotlight's size
 
 - The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it

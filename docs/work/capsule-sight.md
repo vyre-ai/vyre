@@ -19,22 +19,35 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
 - f5d7a9e hands: the whole Mac inside the floor, overlay indicator, stop key, commit needs presence.
 - 73e48e5 screen: screen.context from AX notifications with a long-lived sight helper, screen.shot.
 - 788d5fb voice module (lead snapshot): status, settings, speak, the listen stream, mic helper.
+- 10ea172 screen tests run on the test box (fake helper, platform darwin). screen 20/20, hands 42/42.
+- e1540a6 sideview: `local/sideview` + `vyre-tile` + `vyre sideview`. the test box 21 pass, 1 skip (real Mac).
+- 7c7be45 voice: `vyre voice`, `vyre voice key`, `vyre voice status`. the test box 20 pass, 1 skip.
+- ADR 0015 written (docs/adr/0015-capsule-sight.md).
 
 ## Doing
-- Session resumed 2026-09-27 after a restart. Merged main (bfbfd69).
+- Capsule extension `local/capsule/native/Sources/Extensions/sight/` against capsule-pro's Kit.
 
 ## Next
-1. Run screen, hands, voice tests on the test box; fix what fails.
-2. Side view: tiling helper + `sideview.*` tools.
-3. Capsule extension (sight): "Side view", "Ask about my screen", push-to-talk.
-4. ADR 0015 file, CHANGELOG, perf numbers.
+1. Capsule extension (sight): "Side view", "Ask about my screen", push-to-talk (vyre-mic + listen).
+2. Real-Mac side view test when the lead says the Mac is free:
+   `VYRE_MAC_REAL=1 nice -n 15 node --test local/sideview/real.test.js` (needs screen-mac testwin built).
+3. perf-check numbers for sideview (one-shot) and voice idle.
+
+## Try it (the user, own terminal, a vyred from this worktree in a separate home)
+    cd <vyre-dir>/vyre-capsule-sight
+    <team-dir>/buildlock.sh capsule-sight sh local/sideview/build.sh
+    export VYRE_HOME=/tmp/vyre-sight VYRE_ALLOW_DIALOGS=1
+    ./bin/vyre sideview            # --url U, --ratio 0.33, --glass <agent>; ./bin/vyre sideview close
+    set -a; source <vault>/.env.vyre; set +a
+    printf %s "$DEEPGRAM_API_KEY" | ./bin/vyre voice key
+    ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
 - capsule-pro: the native Capsule host (Sources/Host, UI) so the extension can run in the app.
   Until then the extension compiles against Kit only.
 
 ## Changed contracts
-- (none yet)
+- New CLI files only: core/cli/commands/sideview.js, core/cli/commands/voice.js (auto-discovered).
 
 ## Test windows
 - Tiny, offscreen or occluded, unfocused, short-lived, titled "vyre-test" only (never sample data).
