@@ -58,13 +58,10 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-- Round 2 from the user's review of the preview (all before production). Syntax spec for the new
-  page features is copied to docs/work/docs-syntax.md. Subagents:
-  R renderer (tabs, callout titles, SNAG, WHY, figures with dark variants, demos, colour
-  swatches, copy buttons, heading search); I terms index (docs/index.json, reference/index.md,
-  stale-mention rule); S screenshots on the test box (scripts/docs-shots, docs/shots.json, stale-shot
-  rule); P1/P2 accuracy review of every page; N install page rewrite.
-  Then: place shots and demos, theme.colors (asked integrator), redeploy preview.
+- Round 2 done and on the preview; waiting for the user's second look. Then production
+  (`--branch main`) and docs.vyre.run, only after the user's yes.
+- theme.colors: asked integrator (core/config owner) to take `theme.colors` defaulting to
+  core/config/theme.js; TOKENS.md says it is planned. When it lands: reference/config.md swatches.
 
 ## Next
 

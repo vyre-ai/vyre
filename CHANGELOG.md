@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### docs.vyre.run, round 2: screenshots, a terms index, interactive pages (ADR 0019)
+
+- Page syntax that works with JavaScript off and gets better with it: copy buttons on every
+  command (prompts left out), `output` blocks labelled "You should see", `::: tabs` for a choice
+  of path (one choice follows the reader across pages), `[!SNAG]` "If this happens" boxes,
+  `[!WHY]` expandable background, figures with a dark twin, `::: demo capsule` (a Capsule you can
+  type into, sample data only) and `::: demo onboarding` (the six screens as slides), and search
+  that jumps to headings (`/` focuses it). `scripts/lib/docs/assets/demos.{js,css}` load only on
+  pages with a demo.
+- Screenshots: `npm run docs:shots` (on the test box) starts the sample world and captures the
+  Deck, onboarding, the Capsule, Glass and the phone views in light and dark. `docs/shots.json`
+  holds a hash of the files each shot shows; docs-check fails a shot once they change.
+- The terms index: `npm run docs:ref` writes `docs/reference/index.md` and `docs/index.json`
+  (published at /index.json): every command, tool, event, config key, variable, screen and
+  concept, with where it is defined, the page that explains it and every mention. docs-check
+  fails a mention of a command, tool, key or variable the code no longer has.
+- `core/config/theme.js` holds the palette; the design tokens page draws its colour tables from
+  it as live swatches.
+- Every page reviewed against main; install is one numbered path with expected output and snag
+  boxes; the old install reference moved to box care and the box-and-Mac concepts page.
+- `scripts/lib/hygiene.js`: the `sk-` secret pattern no longer matches inside words (an anchor
+  like `#ask-...`).
+
 #### vyre.run/start matches the code again
 
 - /start's Mac section is `npm i -g https://vyre.run/box/vyre.tgz`, `vyre up` (pick 3, I already
