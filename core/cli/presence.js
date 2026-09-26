@@ -1,5 +1,5 @@
 // @ts-check
-// presence — the CLI side of ADR 0004. A human-only tool answers `presence_required` until the
+// presence: the CLI side of ADR 0004. A human-only tool answers `presence_required` until the
 // call carries a proof that a person is here. This file gets that proof: Touch ID when vyred
 // offers it, else a code that vyred writes to our own terminal and the person types back.
 //
@@ -50,20 +50,21 @@ export async function callAsPerson(tool, input = {}, { root = config.home(), io 
   if (!needsProof(r)) return r;
   const methods = r.error.methods || [];
 
-  if (!tty && methods.includes("touchid")) {
-    io.print("  Confirm on this Mac (Touch ID or password)...");
-    return as("touchid");
-  }
-  if (!methods.includes("tty")) {
-    return { error: { ...r.error, message: `${tool} needs presence by ${methods.join(" or ") || "a method"} this terminal cannot give` } };
-  }
-
+  // A terminal first, for every method: without one this is not a person at a prompt, and a
+  // Touch ID dialog the user did not ask for is one they might accept without reading.
   let fd, name;
   try { fd = io.openTty(); name = io.ttyName(fd); } catch {
     if (fd !== undefined) io.close?.(fd);
     return { error: { code: "no_terminal", message: NO_TERMINAL } };
   }
   try {
+    if (!tty && methods.includes("touchid")) {
+      io.print("  Confirm on this Mac (Touch ID or password)...");
+      return await as("touchid");
+    }
+    if (!methods.includes("tty")) {
+      return { error: { ...r.error, message: `${tool} needs presence by ${methods.join(" or ") || "a method"} this terminal cannot give` } };
+    }
     const c = await request("POST", "/v1/presence/challenge", { tool, input, method: "tty", tty: name }, { root });
     if (c.error) return c;
     const id = c.data.challenge;
