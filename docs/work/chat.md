@@ -128,10 +128,8 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
   (labelFor: assistant name from system.info.assistant.name, else "Vyre"; agents their names;
   user "you"), the ?at=<ms> deep link (scroll + flash; prefer ask anchor), deck-design's card specs
   (vyre.css at work/deck-design 62c7934).
-- recall.watch { session, from? } -> { watch, session, from }, renew by calling again with `watch`
-  (expires 3 min after last renew, 30 min idle), recall.unwatch, events session.turn {session, id,
-  seq, role, text, tool?, at} (thread field = session) and session.state {session, busy}. One
-  fs.watch per file. capsule-sight is waiting on final names + sha.
+- recall.watch: DONE in 10604b9 (104/106 pass, 0 fail on testbox); shapes sent to capsule-sight.
+  session.turn ids are String(recall seq) or "tool:<tool_use_id>"; seq is the transcript line.
 - Phone contracts (phone-design, docs/design/phone.md section 15): (1) ask `anchor: { tool_use_id,
   event }` on threads.asks/get and on gate.held (smallest change in core/gate); (2) threads.asks
   { kind } filter, asks carry `agent` and `thread_name`; (3) decision "always" + scope "project"
@@ -169,4 +167,5 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
   may be `open: true`; user blocks may be `command: true`; tool blocks may carry `patch`.
 - files.dirs adds `limit`, `truncated`; files.recent returns an array. files `forward()` passes arrays through.
 - system.info adds `assistant: { name }`. deck/sw.js SHELL lists Chat's new modules.
+- recall.watch/unwatch, events session.turn and session.state; recall.thread items add id, at; recall.status adds watches.
 - ask.answered adds `answers`. answerLine takes a fifth argument { answers, permissions }.
