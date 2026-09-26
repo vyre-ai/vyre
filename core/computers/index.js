@@ -21,6 +21,8 @@ import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
 import { Shield } from "./shield.js";
 import { helper, tellComputerd } from "./helper.js";
+import * as egress from "./egress.js";
+import * as config from "../config/index.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -44,7 +46,9 @@ export default {
     const cfg = (ctx.config && ctx.config.computers) || {};
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
-    const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg });
+    // Read when a computer is made, from the live config, so a change needs no vyred restart.
+    const egressCfg = () => (ctx.config && ctx.config.glass && ctx.config.glass.egress) || undefined;
+    const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg, egress: egressCfg });
     const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log });
     const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on) => tellComputerd(pool, agent, on) });
 
@@ -231,6 +235,34 @@ export default {
 
     tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
       obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true), { internal: true });
+
+    // ---- egress: the listed sites through the user's Mac (egress.js) -------------------------
+
+    const APPLIES = "applies to computers started after the change: a stopped computer is made again with it on its next start (its home stays); a running or frozen one keeps its old setting until computers.stop";
+
+    tool("computers.egress.status", "Whether computers' Chrome sends the listed sites through the user's Mac (config glass.egress), the sites, and whether the egress sidecar answers right now.",
+      obj({}), async () => {
+        const raw = egressCfg() || {};
+        const via = egress.proxy();
+        /** @type {{ enabled: boolean, sites: any[], proxy: string, applies: string, problem?: string }} */
+        let out;
+        try { out = { ...egress.setting(raw), proxy: via, applies: APPLIES }; }
+        catch (e) { out = { enabled: raw.enabled === true, sites: Array.isArray(raw.sites) ? raw.sites : [], proxy: via, applies: APPLIES, problem: /** @type {Error} */ (e).message }; }
+        const p = await egress.probe(via);
+        return { ...out, sidecar: p.answers ? { answers: true } : { answers: false, why: p.why } };
+      });
+
+    tool("computers.egress.set", "Turn the Mac egress on or off, or replace its site list (hostnames, optionally *.hostname). The owner's to change, never an agent's; it applies to computers started afterwards.",
+      obj({ enabled: { type: "boolean" }, sites: { type: "array", items: str } }), async (i, { caller }) => {
+        const who = String(caller || "");
+        if (AGENT_CLAIM.test(who)) throw new Error(`"${who}" is an agent; where an agent's browser goes out is the owner's to change`);
+        const now = egress.setting(egressCfg());
+        const next = { enabled: i.enabled === undefined ? now.enabled : i.enabled === true, sites: i.sites === undefined ? now.sites : egress.checkSites(i.sites) };
+        if (!ctx.paths) throw new Error("this vyred has no home to save config in");
+        config.save({ glass: { egress: next } }, ctx.paths.root, ctx.config);
+        ctx.log(`egress ${next.enabled ? "on" : "off"}, ${next.sites.length} site(s), set by ${who || "unknown"}`);
+        return { ...next, applies: APPLIES };
+      }, { presence: { summary: i => i && i.enabled === true ? "Send the listed sites through your Mac" : "Change which sites go through your Mac" } });
 
     return {
       pool, keyboard, shield, driver, sweep,
