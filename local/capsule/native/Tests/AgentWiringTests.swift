@@ -39,7 +39,7 @@ let agentWiringSuite = Suite("agent wiring") { t in
             if !(await until { m.flat.contains { $0.kind == "watch" } }) {
                 let f = await MainActor.run { m.flat.map { "\($0.kind):\($0.title)" } + ["threads=\(m.catalog.threads.map(\.label))"] }
                 FileHandle.standardError.write("wiring: no watch row: \(f)\n".data(using: .utf8)!)
-                return nil
+                return (nil, nil, nil)
             }
             let row = await MainActor.run { () -> String? in
                 let i = m.flat.firstIndex { $0.kind == "watch" } ?? 0
@@ -69,7 +69,7 @@ let agentWiringSuite = Suite("agent wiring") { t in
             if !(await until { m.flat.contains { $0.kind == "drive" } }) {
                 let f = await MainActor.run { m.flat.map { "\($0.kind):\($0.title)" } + ["threads=\(m.catalog.threads.map(\.label))"] }
                 FileHandle.standardError.write("wiring: no drive row: \(f)\n".data(using: .utf8)!)
-                return nil
+                return (nil, 0)
             }
             await MainActor.run { m.selected = m.flat.firstIndex { $0.kind == "drive" } ?? 0; m.run() }
             _ = await until { !v.callsOf("threads.watch").isEmpty }
