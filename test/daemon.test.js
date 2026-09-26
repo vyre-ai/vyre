@@ -127,8 +127,12 @@ test("daemon: stop is not held open by a connected event stream", async t => {
   await new Promise(r => setTimeout(r, 50));
   const t0 = Date.now();
   await d.stop();
-  // Without the fix, stop() never returns; the bound is generous so a busy machine does not fail it.
-  assert.ok(Date.now() - t0 < 5000, "stop waited on the stream");
+  // Without the fix, stop() never returns at all (it hangs forever waiting on the
+  // connected stream), so the guarantee this test protects is "resolves" vs "hangs",
+  // not a particular speed. The bound stays wall-clock (there is no work counter for
+  // "an unbounded hang") but is deliberately huge (measured ~5-10ms on this machine)
+  // so a busy shared machine running many concurrent suites never trips it by accident.
+  assert.ok(Date.now() - t0 < 15000, "stop waited on the stream");
 });
 
 test("daemon: non-API paths serve the Deck and never anything outside deck/", async t => {
