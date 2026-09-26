@@ -62,7 +62,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   was typed.
 - The Deck proves presence with a passkey for `glass.take` and `glass.release`: it asks
   `/v1/presence/challenge` for WebAuthn options, gets Touch ID or Face ID, and repeats the same
-  call with `x-vyre-presence` (`deck/glass/presence.js`, to move into `js/api.js`).
+  call with `x-vyre-presence`, through `attempt(name, input, { presence: true })` in `js/api.js`.
+  With no passkey enrolled, it links to Settings to add one.
 - Files: one guard for every path. Paths are relative, no `..`, no NUL, symlinks must stay
   inside the root, and secret places (`.vyre`, `.ssh`, `.env*`, keys, Chrome's cookie and
   login stores) are refused and hidden at any depth. Bytes move only on ticketed

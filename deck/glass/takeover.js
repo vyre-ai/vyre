@@ -5,12 +5,11 @@
 //
 // Both glass.take and glass.release need a presence proof. When the box asks for one
 // (presence_required), the view shows a "Confirm it's you" step; its button makes a passkey
-// proof (presence.js) and repeats the same call with it.
+// proof (api.js, { presence: true }) and repeats the same call with it.
 
-import { h, put } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { h, put, link } from "../js/dom.js";
+import { attempt, canProve } from "../js/api.js";
 import { gicon, errText, clock, surfaceKind } from "./util.js";
-import { proveAndCall, canProve } from "./presence.js";
 
 /**
  * @param {any} s the screen state from watch.js: name, target, surface, holder, phone, visible()
@@ -50,7 +49,7 @@ export function takeover(s, hooks) {
     if (busy || mine()) return;
     busy = true; hooks.changed();
     const input = { target: s.target, surface: s.surface, ...(priv ? { private: true } : {}) };
-    const r = proved ? await proveAndCall("glass.take", input) : await attempt("glass.take", input);
+    const r = await attempt("glass.take", input, proved ? { presence: true } : {});
     busy = false;
     if (r.error) {
       hooks.notice(r.error.code === "presence_required" && !proved ? confirm(r.error, () => take(priv, true)) : failed(priv ? "Private sign-in did not start" : "Take-over did not start", r.error));
@@ -67,7 +66,7 @@ export function takeover(s, hooks) {
     busy = true; hooks.changed();
     const text = note.value.trim();
     const input = { target: s.target, surface: s.surface, ...(text ? { note: text } : {}) };
-    const r = proved === true ? await proveAndCall("glass.release", input) : await attempt("glass.release", input);
+    const r = await attempt("glass.release", input, proved === true ? { presence: true } : {});
     busy = false;
     if (r.error) {
       hooks.notice(r.error.code === "presence_required" && proved !== true ? confirm(r.error, () => release(true)) : failed("Hand-back did not go through", r.error));
@@ -98,8 +97,11 @@ export function takeover(s, hooks) {
   }
 
   function failed(title, err) {
+    // No passkey on the box yet: enrolling one is in Settings, so say where.
+    const enroll = /no passkey is enrolled/i.test(String(err?.message || ""))
+      ? h("p", null, link("/settings?section=security", { class: "link" }, "Add a passkey in Settings"), ", then take over again.") : null;
     return h("div", { class: "gl-notice gl-notice-hold", role: "alert" },
-      h("div", { class: "gl-notice-text" }, h("div", { class: "lbl beacon" }, title), h("p", null, errText(err))),
+      h("div", { class: "gl-notice-text" }, h("div", { class: "lbl beacon" }, title), h("p", null, errText(err)), enroll),
       h("div", { class: "gl-notice-acts" }, h("button", { type: "button", class: "btn btn-ghost", onclick: () => hooks.notice(null) }, "Dismiss")));
   }
 
