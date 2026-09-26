@@ -435,6 +435,13 @@ export class Personal {
     return this.db.prepare("SELECT * FROM memory_me_facts ORDER BY current DESC, confidence DESC, sessions DESC, id LIMIT ?").all(Math.max(1, Math.min(1000, limit))).map(r => this.row(r));
   }
 
+  /** The word the user most often calls a relative ("wife", "mom"), or null. */
+  called(id) {
+    const r = this.db.prepare(`SELECT substr(obj, 5) w, COUNT(*) n FROM memory_me_claims WHERE rel = 'called' AND subj = ?
+      GROUP BY w ORDER BY n DESC, w LIMIT 1`).get(String(id));
+    return r ? String(r.w) : null;
+  }
+
   /** The turns behind a fact, newest first. */
   evidence(factId, limit = EVIDENCE_PER_FACT) {
     return this.db.prepare(`SELECT v.session, v.seq, c.ts FROM memory_me_evidence v

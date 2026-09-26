@@ -23,12 +23,12 @@ export const CONF = { explicit: 0.9, indirect: 0.7, model: 0.75, assistant: 0.35
 export const SINGULAR = new Set(["spouse", "partner", "mother", "father"]);
 
 /** Relations where one value holds at a time: a new value competes with the old one. */
-export const SINGLE_VALUED = new Set(["name", "birthday", "lives_in", "from", "works_at", "role", "drives", "spouse", "partner", "mother", "father"]);
+export const SINGLE_VALUED = new Set(["name", "birthday", "lives_in", "from", "works_at", "role", "drives", "color", "spouse", "partner", "mother", "father"]);
 /** Of those, the ones that change over a life: the newest value is favoured, not just tie-broken. */
 export const TIME_VARYING = new Set(["lives_in", "works_at", "role", "drives"]);
 
 /** word -> [role, gender]. Gender only steers she/he; null matches either. */
-const KIN = /** @type {Record<string, [string, "f"|"m"|null]>} */ ({
+export const KIN = /** @type {Record<string, [string, "f"|"m"|null]>} */ ({
   wife: ["spouse", "f"], husband: ["spouse", "m"], spouse: ["spouse", null],
   partner: ["partner", null], girlfriend: ["partner", "f"], boyfriend: ["partner", "m"], fiancee: ["partner", "f"], fiance: ["partner", "m"],
   mother: ["mother", "f"], mom: ["mother", "f"], mum: ["mother", "f"], father: ["father", "m"], dad: ["father", "m"],
@@ -49,9 +49,18 @@ const MAKES = ["Alfa Romeo", "Aston Martin", "Land Rover", "Range Rover", "Merce
   "Lexus", "Porsche", "Rivian", "Polestar", "Jaguar", "Mini", "Fiat", "Dodge", "GMC", "Cadillac", "Buick", "Acura", "Infiniti",
   "Lincoln", "Mitsubishi", "Skoda", "Peugeot", "Renault", "Citroen", "Genesis", "Lucid", "Prius"];
 const MAKE_SET = new Set(MAKES.map(m => m.toLowerCase()));
+// Model names people say without the make ("the Outback", "the XC40"). Generic, like the makes.
+export const MODELS = /** @type {Record<string, string>} */ ({
+  Outback: "Subaru", Forester: "Subaru", Crosstrek: "Subaru", Impreza: "Subaru", "XC40": "Volvo", "XC60": "Volvo", "XC90": "Volvo",
+  Civic: "Honda", Accord: "Honda", "CR-V": "Honda", Pilot: "Honda", Camry: "Toyota", Corolla: "Toyota", "RAV4": "Toyota", Tacoma: "Toyota",
+  Highlander: "Toyota", Sienna: "Toyota", "F-150": "Ford", Mustang: "Ford", Bronco: "Ford", Explorer: "Ford", Golf: "Volkswagen",
+  Jetta: "Volkswagen", Tiguan: "Volkswagen", Wrangler: "Jeep", Cherokee: "Jeep", "CX-5": "Mazda", Miata: "Mazda", Leaf: "Nissan",
+  Rogue: "Nissan", Altima: "Nissan", Tucson: "Hyundai", Ioniq: "Hyundai", Sorento: "Kia", Sportage: "Kia", Cayenne: "Porsche", Macan: "Porsche",
+});
+const COLORS = "black|white|silver|grey|gray|red|blue|green|yellow|orange|brown|beige|gold|purple|maroon|navy|dark\\s+blue|dark\\s+green|dark\\s+grey";
 // A capitalised word after a make that says it is a company, not a car ("the Ford Foundation").
 const NOT_MODEL = new Set("foundation motor motors company group credit financial finance dealership dealer center centre store stadium arena park inc corp corporation stock shares earnings".split(" "));
-const VEHICLE = `(?<make>${MAKES.map(m => m.replace(/-/g, "\\-")).join("|")})(?:\\s+(?<model>Model\\s+[A-Z0-9]\\b|[A-Z0-9][A-Za-z0-9-]*))?`;
+const VEHICLE = `(?:(?<col>${COLORS})\\s+)?(?:(?<make>${MAKES.map(m => m.replace(/-/g, "\\-")).join("|")})(?:\\s+(?<model>Model\\s+[A-Z0-9]\\b|[A-Z0-9][A-Za-z0-9-]*))?|(?<solo>${Object.keys(MODELS).map(m => m.replace(/-/g, "\\-")).join("|")})\\b)`;
 // Words after "the Volvo" that say it is a car the user has, not a brand in the news.
 const CARISH = /^\s+(?:needs|need|broke|won't|wont|keeps|got|is\s+in\s+the\s+shop|is\s+due|service|tires|tyres|battery|brakes|oil|keys|lease|insurance|registration|inspection|repair|parked|still|started|starts|makes|made|has\s+a\s+flat)\b/;
 
@@ -81,6 +90,13 @@ const CUE = /\b(?:wife|husband|spouse|partner|girlfriend|boyfriend|fianc\w*|mom|
 const FIRST_PERSON = /\b(?:I|I'm|I've|I'd|my|we|our|me|us)\b/;
 const SECOND_PERSON = /\b(?:you|your|you're|you've)\b/i;
 
+/** What may come before a verb whose subject the user left out: nothing, or an adverb of time. */
+const ELLIPSIS = /^(?:(?:just|finally|also|already|recently|today|yesterday|so|and|then|actually|officially)[\s,]+)*$/i;
+/** A line that starts dictating someone else's words: "Start with: ...", "Write: ...". */
+const DICTATE = /\b(?:start(?:s)?\s+with|write|say|begin\s+with|something\s+like|in\s+(?:his|her|their)\s+own\s+words)\s*:/i;
+/** Someone else speaking in the first person: "I, Tomas Park, am ...". */
+const OTHER_I = /(?:^|[\s:"])I,\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,/;
+
 /** Longest turn read in full. A longer one is mostly pasted material: only its first-person sentences are read. */
 export const LONG_TURN = 4000;
 
@@ -109,6 +125,8 @@ function build(who) {
     myCar: g(`\\b${MY}\\s+(?:car|ride)\\s+is\\s+(?:a|an)\\s+(?:(?:new|used|old)\\s+)?(?:(?:19|20)\\d\\d\\s+)?${VEHICLE}`),
     myEditor: g(`\\b${MY}\\s+(?:code\\s+|text\\s+)?editor(?:\\s+of\\s+choice)?\\s+is\\s+(?<t>${TOOL})`),
     clientIs: g(`(?<o>${ORG})\\s+(?:is|are)\\s+(?:a|an|our|my|${MY})\\s+(?:(?:new|big|biggest|long-?time|key|good|great)\\s+)?client\\b`),
+    myCompany: g(`\\b${MY}\\s+(?:own\\s+)?(?:company|studio|firm|agency|business|startup|consultancy|practice|shop),?\\s+(?<o>${ORG})`),
+    atOrgWe: new RegExp(`^(?:[Hh]ere\\s+)?[Aa]t\\s+(?<o>${ORG}),?\\s+(?:${I})\\s+[a-z]`),
     ourClient: g(`\\b(?:${MYOUR})\\s+(?:(?:new|big|biggest|key)\\s+)?client,?\\s+(?<o>${ORG})`),
     mention: g(`(?<![A-Za-z])(?<det>${MYOUR}|[Tt]he)\\s+${VEHICLE}\\b`),
     // Predicates. subj: which tail must precede; aux: the tail must carry a be-verb ("I'm from").
@@ -144,7 +162,11 @@ const AFTER = {
 // Cheap tests that decide which rules a sentence can need at all. Most turns are about code and
 // pass none of them, which is what keeps a first pass over a large history fast.
 const HAS_KIN = new RegExp(`\\b(?:${KINW})\\b`, "i");
-const HAS_CAR = new RegExp(`\\b(?:${MAKES.join("|")})\\b`);
+/** First words of every make and model: a sentence with none of them names no car. A set lookup per
+ * capitalised word is far cheaper than one alternation of a hundred names on every sentence. */
+const CAR_WORDS = new Set([...MAKES, ...Object.keys(MODELS)].map(m => m.split(/[\s]/)[0]));
+const hasCarWord = s => { for (const w of s.match(/\b[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)?/g) || []) if (CAR_WORDS.has(w)) return true; return false; };
+const HAS_COMPANY = /\b(?:company|studio|firm|agency|business|startup|consultancy|practice|shop)\b/;
 const HAS_NAME = /\bname\b|\bI'm\s+[A-Z]|\bI\s+am\s+[A-Z]|\b[Cc]all\s+me\s/;
 
 const lower = s => s.toLowerCase();
@@ -171,6 +193,7 @@ function dateOf(gr) {
   return `${d} ${name}${gr.y ? " " + gr.y : ""}`;
 }
 function vehicleOf(gr) {
+  if (gr.solo) return `vehicle:${MODELS[gr.solo]} ${gr.solo}`;
   if (!gr.make) return null;
   let model = gr.model || "";
   if (model && NOT_MODEL.has(lower(model))) return null;
@@ -199,6 +222,12 @@ function readable(text, who) {
     out.push(line);
   }
   let s = out.join("\n").split(/(?<=[.!?])\s+(?=[A-Z"'(])|\n+/).map(x => x.trim()).filter(Boolean);
+  // Dictated words are someone else's: from "Start with:" (or "I, <Name>,") to the end of the turn.
+  const cut = t.includes(":") || t.includes("I,") ? s.findIndex(x => DICTATE.test(x) || OTHER_I.test(x)) : -1;
+  if (cut >= 0) {
+    const m = DICTATE.exec(s[cut]);
+    s = [...s.slice(0, cut), ...(m ? [s[cut].slice(0, m.index).trim()].filter(Boolean) : [])];
+  }
   if (t.length > LONG_TURN) s = s.filter(x => (who === "user" ? FIRST_PERSON : SECOND_PERSON).test(x));
   return s;
 }
@@ -232,6 +261,14 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     const k = `${subj}|${rel}|${obj}`;
     const c = claims.get(k);
     if (!c || c.conf < conf) claims.set(k, { subj, rel, obj, conf, method: conf === CONF.indirect && !assistant ? "indirect" : method });
+  };
+  /** A car claim, and its colour when one was said ("a blue Volvo XC40"). */
+  const car = (subj, rel, gr, conf) => {
+    const v = vehicleOf(gr);
+    if (!v) return null;
+    add(subj, rel, v, conf);
+    if (gr.col && rel !== "ended:owns") add(v, "color", `lit:${lower(gr.col).replace(/\s+/g, " ")}`, conf);
+    return v;
   };
   /** Names said this turn: name (and first name) -> the reference it stands for. */
   const names = new Map();
@@ -313,7 +350,7 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     const question = /\?\s*["')]*$/.test(sentence) || QUESTION_START.test(sentence);
     if (question) continue;
 
-    const hasKin = HAS_KIN.test(sentence), hasCar = HAS_CAR.test(sentence);
+    const hasKin = HAS_KIN.test(sentence), hasCar = hasCarWord(sentence);
     // Names first, so a subject later in the sentence can use them.
     if (hasKin) {
     for (const m of sentence.matchAll(R.kinName)) if (!unsure(sentence, m.index)) kin(m.groups.kw, [m.groups.n], explicit);
@@ -344,23 +381,32 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
       const im = R.imName.exec(sentence);
       if (im) { const n = cleanName(im.groups.n); if (n) add("me", "name", `lit:${n}`, CONF.indirect); }
     }
-    if (hasCar) for (const m of sentence.matchAll(R.myCar)) { const v = vehicleOf(m.groups); if (v && !unsure(sentence, m.index)) add("me", "owns", v, explicit); }
+    if (hasCar) for (const m of sentence.matchAll(R.myCar)) if (!unsure(sentence, m.index)) car("me", "owns", m.groups, explicit);
     if (sentence.includes("editor")) for (const m of sentence.matchAll(R.myEditor)) { const t = toolOf(m.groups.t); if (t && !unsure(sentence, m.index)) add("me", "uses", t, explicit); }
     if (sentence.includes("client")) for (const m of sentence.matchAll(R.clientIs)) {
       const o = cleanRun(m.groups.o);
       if (o && !unsure(sentence, m.index)) add("me", "client", `org:${o}`, explicit);
     }
+    if (HAS_COMPANY.test(sentence)) for (const m of sentence.matchAll(R.myCompany)) { const o = cleanRun(m.groups.o); if (o && !unsure(sentence, m.index)) add("me", "works_at", `org:${o}`, explicit); }
+    if (/^(?:[Hh]ere\s+)?[Aa]t\s+[A-Z]/.test(sentence)) { const m = R.atOrgWe.exec(sentence); const o = m && cleanRun(m.groups.o); if (o) add("me", "works_at", `org:${o}`, indirect); }
     if (sentence.includes("client")) for (const m of sentence.matchAll(R.ourClient)) { const o = cleanRun(m.groups.o); if (o && !unsure(sentence, m.index)) add("me", "client", `org:${o}`, explicit); }
 
+    // The verbs are matched in lower case: a sentence may start with one ("Sold the Outback").
+    const low = sentence.charAt(0).toLowerCase() + sentence.slice(1);
     for (const p of R.preds) {
-      if (p.car ? !hasCar : !p.hint.test(sentence)) continue;
-      for (const m of sentence.matchAll(p.re)) {
+      if (p.car ? !hasCar : !p.hint.test(low)) continue;
+      for (const m of low.matchAll(p.re)) {
         if (unsure(sentence, m.index)) continue;
         const tail = sentence.slice(Math.max(0, m.index - 100), m.index);
         const t = (p.tail === "poss" ? R.poss : R.subj).exec(tail);
-        if (!t) continue;
-        if (p.aux && !/(?:'m|'re|'s|\b(?:am|are|is|was|were)\b)/.test(t.groups.aux || "")) continue;
-        const s = subjectOf(t.groups, sentence, m.index, p.names);
+        let s = null;
+        if (t) {
+          if (p.aux && !/(?:'m|'re|'s|\b(?:am|are|is|was|were)\b)/.test(t.groups.aux || "")) continue;
+          s = subjectOf(t.groups, sentence, m.index, p.names);
+        }
+        // "Moved to Seattle last weekend", "Just bought a blue Volvo XC40": the user's own diary
+        // style leaves out the I. Only at the very start of the sentence, and only in their words.
+        if (!s && !assistant && p.tail === "subj" && !p.aux && ELLIPSIS.test(sentence.slice(0, m.index))) s = { ref: "me", conf: indirect };
         if (!s) continue;
         const conf = Math.min(s.conf, p.conf ?? explicit);
         const gr = m.groups;
@@ -373,9 +419,8 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
           add(s.ref, p.rel, `org:${o}`, conf);
           if (r) add(s.ref, "role", `lit:${lower(r)}`, conf);
         } else if (p.ob === "vehicle") {
-          const v = vehicleOf(gr);
+          const v = car(s.ref, p.rel, gr, conf);
           if (!v) continue;
-          add(s.ref, p.rel, v, conf);
           if (p.rel === "drives") add(s.ref, "owns", v, Math.min(conf, indirect));
         } else if (p.ob === "thing") {
           const th = gr.th.split(/\s+/).filter(w => !OWN_STOP.has(w));
@@ -391,11 +436,10 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     }
     // "the Volvo needs a service", "my Tesla": a car the user has, said in passing.
     if (hasCar) for (const m of sentence.matchAll(R.mention)) {
-      const v = vehicleOf(m.groups);
-      if (!v || unsure(sentence, m.index)) continue;
+      if (!vehicleOf(m.groups) || unsure(sentence, m.index)) continue;
       const the = /^[Tt]he$/.test(m.groups.det);
       if (the && !CARISH.test(sentence.slice(m.index + m[0].length))) continue;
-      add("me", "owns", v, indirect);
+      car("me", "owns", m.groups, indirect);
     }
 
     if (!assistant && claims.size === before && cues.length < 5 && CUE.test(sentence) && FIRST_PERSON.test(sentence)) cues.push(sentence.slice(0, 300));

@@ -172,3 +172,29 @@ test("personal extract: 20,000 turns in well under 2 s", () => {
   assert.ok(n > 0);
   assert.ok(ms < 1500, `took ${Math.round(ms)} ms`);
 });
+
+test("personal extract: a car by its model alone, its colour, and the I a diary leaves out", () => {
+  has("Just bought a blue Volvo XC40, picking it up tomorrow.", ["me|owns|vehicle:Volvo XC40", "vehicle:Volvo XC40|color|lit:blue"]);
+  has("My green Subaru Outback failed its inspection.", ["me|owns|vehicle:Subaru Outback", "vehicle:Subaru Outback|color|lit:green"]);
+  has("The Outback is in the shop again.", "me|owns|vehicle:Subaru Outback");
+  has("Driving the XC40 to Harlow for the review.", ["me|drives|vehicle:Volvo XC40", "me|owns|vehicle:Volvo XC40"]);
+  has("Sold the Outback this weekend.", "me|ended:owns|vehicle:Subaru Outback");
+  has("Moved to Seattle last weekend, boxes everywhere.", "me|lives_in|place:Seattle");
+  // Only at the start of a sentence, and only in the user's words.
+  none("Driving the XC40 to Harlow.", { role: "assistant" });
+  none("Sam said moved to Seattle was hard.");
+  // A colour with no car is nothing.
+  none("The blue logo looks better.");
+});
+
+test("personal extract: the user's own company", () => {
+  has("My studio, Rivera Studio, needs a cleaner invoice template.", "me|works_at|org:Rivera Studio");
+  has("At Rivera Studio we bill monthly.", "me|works_at|org:Rivera Studio");
+});
+
+test("personal extract: dictated words are someone else's", () => {
+  none("Tomas wants it in his own words. Start with: I, Tomas Park, am the spouse of Lena Park. My wife Lena works as a head baker.");
+  none("Write: My wife Casey and I moved to Denver.");
+  // What comes before the dictation is still the user's.
+  has("My wife Jordan asked for this. Start with: My husband Tomas is a baker.", WIFE);
+});

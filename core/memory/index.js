@@ -12,6 +12,7 @@ import { floorPlan } from "./floor.js";
 import path from "node:path";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
+import { answerer } from "./personal/answer.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -369,6 +370,22 @@ export default {
         }
         return { about: null, facts: personal.facts({ limit: n }) };
       }, "memory.me"),
+    });
+    // One line about the user's life from what they have said (docs/work/memory-iq.md). Personal
+    // facts are the user's, not a project's: the user's surfaces, their tailnet devices, modules,
+    // and the assistant or an agent granted every project ask it; a project's agent is refused.
+    const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
+      scratch: ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null });
+    ctx.tool("memory.answer", {
+      description: "Answer a question about the user's own life in one line (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\") from personal facts, the graph, then the user's own words. Returns { answer, confidence, kind: fact|said|null, from (conversations), facts, sources, via: fact|meaning|keyword|null, ms }; answer is null when memory does not know. sources: true lists more of the turns it came from.",
+      input: { type: "object", required: ["q"], properties: { q: { type: "string" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const r = await reach(input.agent, caller);
+        if (r.agent ? !r.all : !reader(caller)) {
+          throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `memory.answer is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
+        }
+        return answer({ q: String(input.q ?? ""), project_cwds: clean(input.project_cwds), sources: Boolean(input.sources) });
+      },
     });
     ctx.tool("memory.uncorrect", {
       callers: OWNERS,

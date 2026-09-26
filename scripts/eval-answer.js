@@ -7,6 +7,9 @@
 //   node scripts/eval-answer.js --json   the same, as JSON
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
 //
+// Exits non-zero when memory.answer misses the bar: overall 0.9 or more, no confident wrong
+// answer, p95 under 150 ms.
+//
 // It builds a temporary store under os.tmpdir(), seeds test/fixtures/personal-world.js the way
 // the tests seed Recall, embeds every turn with the fake embedder (core/recall/testing.js) into a
 // dense index, starts the memory module with a stand-in for vyred whose ctx.call answers
@@ -291,9 +294,25 @@ function print(r) {
   process.stdout.write(out.join("\n") + "\n");
 }
 
+/** The bar memory.answer must clear (test/eval/answer-eval.test.js holds it too). */
+export const BAR = { overall: 0.9, confident_wrong: 0, p95_ms: 150 };
+
+/** Why the answer bar fails, or [] when it holds. */
+export function barFailures(a) {
+  if (!a || !a.supported) return [`memory.answer is not there: ${a?.reason || "unknown"}`];
+  const out = [];
+  if (!(a.overall >= BAR.overall)) out.push(`overall ${a.overall} is under ${BAR.overall}`);
+  if (a.confident_wrong > BAR.confident_wrong) out.push(`${a.confident_wrong} confident wrong answer(s)`);
+  if (!(a.p95_ms < BAR.p95_ms)) out.push(`p95 ${a.p95_ms} ms is not under ${BAR.p95_ms} ms`);
+  return out;
+}
+
 async function main(argv) {
   const r = await runEval({ vectors: !argv.includes("--keyword") });
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 2) + "\n"); else print(r);
+  // CI runs this: a memory.answer under the bar fails the build.
+  const bad = barFailures(r.answerers.answer);
+  if (bad.length) { process.stderr.write(`eval-answer: the memory.answer bar fails: ${bad.join("; ")}\n`); process.exitCode = 1; }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
