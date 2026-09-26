@@ -100,8 +100,23 @@ export function floorFor(/** @type {number} */ n) {
 export const Z = undefined;
 /** How many turns meaning may add to the pool. */
 export const DENSE_K = 200;
-/** The reciprocal-rank constant: the usual 60, so the top few of each list stay close. */
-export const RRF = 60;
+/**
+ * The reciprocal-rank constant. The earlier rank-fusion-k sweep (docs/work/recall.md) tested
+ * only the assistant-only variant at dense_weight 0.05-0.08, where 60 held up; re-swept on the
+ * SHIPPED all-role index at dense_weight 0.2-0.3 it does not: rrf_k pushes a keyword rank down
+ * faster than a dense rank at the SAME rrf_k when dense_weight < 1, so at 60 a candidate ranked
+ * ~5th by keyword but 1st by dense could already outscore the true top keyword answer sitting
+ * alone at rank 0 (score 0.8 vs 0.94 at k=60, worked out in the sweep) — the exact shape of the
+ * "kw wins" failures a differential pass over real queries turned up (recall.md). A smaller k
+ * sharpens the top of BOTH lists relative to their tails, so a lone strong keyword match is no
+ * longer outrun by a weaker one riding dense agreement. Swept 5/8/10/12/20/30/45 x dense_weight
+ * 0.15-0.35 on the real corpus, cross-checked against the fictional set every time: rrf_k 10 at
+ * dense_weight 0.25 (unchanged) was the best point found — real hybrid MRR 0.549 -> 0.597,
+ * recall 0.887 -> 0.897, fictional hybrid MRR/recall unchanged at 0.881/0.821 (no regression),
+ * nonsense false-positive rate unchanged at 1/30 (the floor is untouched by rrf_k). This is the
+ * first change in this pass that clears keyword's own MRR (0.572) outright. See recall.md.
+ */
+export const RRF = 10;
 /**
  * How much a dense rank counts against a keyword rank. Re-swept after agreement gating (above)
  * changed what floor-only exclusion is for: on the real labelled set, at USER_WEIGHT 1, hybrid
@@ -110,9 +125,8 @@ export const RRF = 60;
  * corpus, but every weight under 0.25 also drops the FICTIONAL set's hybrid MRR from 0.881 to
  * 0.81 (still above the pre-this-branch 0.845, but a real step down from 0.25's own 0.881) —
  * apparently a rank-ordering threshold in that small a corpus, not a smooth tradeoff. Kept at
- * 0.25 because the fictional set is the one measurement here that must not regress; a future
- * pass could revisit with a bigger fictional set that resolves the threshold instead of hitting
- * it. See docs/work/recall.md.
+ * 0.25 because the fictional set is the one measurement here that must not regress; re-checked
+ * against the retuned rrf_k (10) above and still the best point. See docs/work/recall.md.
  */
 export const DENSE_WEIGHT = 0.25;
 /**
