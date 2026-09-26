@@ -246,14 +246,15 @@ function upgradeTo(port, headers) {
   });
 }
 
-test("names: the listener answers WebSocket upgrades rather than dropping them", { skip }, async t => {
+test("names: the listener takes WebSocket upgrades itself rather than routing them as requests", { skip }, async t => {
   const w = world(t, { ips: ["127.0.0.1"] });
   w.svc.claim("alex");
   await w.svc.wait();
   assert.equal(w.svc.status().phase, "serving");
   const port = Number(new URL(String(w.svc.status().address)).port);
   // The test connects from the box's own address, which the identity rule refuses; what matters
-  // here is that the refusal is an answer. With no upgrade listener, Node hung up on every one.
+  // here is that the upgrade reached the listener's own rules. With no upgrade listener, Node
+  // handed it to the request router, which answered 404 (the live box did, 27 Sep).
   const r = await upgradeTo(port, { host: `alex.vyre.run:${port}` });
   assert.equal(r.status, 403);
 });

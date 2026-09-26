@@ -227,7 +227,8 @@ export function names(deps) {
 
   // WebSockets (Glass's screen, /v1/streams/...): the same owner, host and origin rules as a
   // request, then vyred's stream router with the caller this listener established. Without an
-  // upgrade listener Node drops every upgrade, so Glass over the tailnet never connected.
+  // upgrade listener Node passed each one to the request router, which answered 404, so Glass's
+  // screen never connected over the tailnet.
   let upgrade = null;
   async function onUpgrade(req, socket, head) {
     const refuse = (status, text) => { try { socket.end(`HTTP/1.1 ${status} ${text}\r\nconnection: close\r\n\r\n`); } catch {} };

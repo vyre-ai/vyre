@@ -245,7 +245,7 @@ export class Registry {
       // establishes the caller; the policy limits what that listener can reach. See ADR 0002.
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
       // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
-      // a module's listener drops every upgrade, and Glass over the tailnet never connected.
+      // a module's listener cannot carry a stream, and Glass over the tailnet never connected.
       upgrader: policy => { if (!this.deps.upgrader) throw new Error("this vyred has no stream router to hand out"); return this.deps.upgrader(policy); },
       // A tool on the user's box, from a module on the Mac: the link module carries it over the
       // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
