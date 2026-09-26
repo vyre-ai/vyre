@@ -97,6 +97,17 @@ export function graphCursor(io) {
 // ---- rooms -------------------------------------------------------------------------------
 
 /**
+ * What a Memory call names for the selected project: its room, by slug. Never its folders: a
+ * project may have none (only picked threads), and one project's folder can sit inside
+ * another's. No project is the main graph.
+ * @param {string} [slug]
+ * @returns {{ room?: string }}
+ */
+export function roomInput(slug) {
+  return slug ? { room: slug } : {};
+}
+
+/**
  * The projects the scope select offers: from projects.list when it answered, else from the main
  * graph's rooms (which carry each project's folders).
  * @param {any[] | null} list projects.list's projects

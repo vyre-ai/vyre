@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   turnHref, splitFact, graphCursor, projectsFrom, byRoom, scopeWords, countsLine, groupLessons, verdictOf,
-  lowerLevels, presenceText, checkWords,
+  lowerLevels, presenceText, checkWords, roomInput,
 } from "../views/memory-data.js";
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -206,4 +206,18 @@ test("fixtures: memory.graph matches core/memory/floor.js", () => {
   const facts = fixture("memory.json")["memory.facts"].cases["*"].facts;
   const edges = new Set(g.cases["*"].edges.map(e => e.id));
   for (const f of facts) assert.ok(edges.has(f.id), f.id);
+});
+
+test("the selected project is asked for by its room, never by its folders", () => {
+  assert.deepEqual(roomInput("harlow-legal"), { room: "harlow-legal" });
+  assert.deepEqual(roomInput(""), {});
+  assert.deepEqual(roomInput(undefined), {});
+  // A project may have no folders, and one project's folder can sit inside another's: every
+  // memory.graph, memory.facts and memory.why call in the view names the room.
+  const src = fs.readFileSync(path.join(DECK, "views", "memory.js"), "utf8");
+  assert.ok(!/project_cwds/.test(src), "memory.js still sends project_cwds");
+  const calls = [...src.matchAll(/attempt\("memory\.(facts|why)", \{[^\n]*\}\)/g)].map(m => m[0]);
+  assert.ok(calls.length >= 4, calls.join("\n"));
+  for (const c of calls) assert.match(c, /roomInput\(st\.project\)/, c);
+  assert.match(src, /const input = \{ limit: 150, \.\.\.roomInput\(st\.project\)/);
 });

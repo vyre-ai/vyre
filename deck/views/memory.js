@@ -19,7 +19,7 @@ import { attempt, call } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, clock, startOfToday, plural } from "../js/fmt.js";
 import { floor, legendMark } from "./memory-map.js";
-import { graphCursor, projectsFrom, turnHref, relWords, pct } from "./memory-data.js";
+import { graphCursor, projectsFrom, turnHref, relWords, pct, roomInput } from "./memory-data.js";
 import { correctForm, corrected, errWords } from "./memory-correct.js";
 
 const phone = () => window.matchMedia("(max-width: 760px)").matches;
@@ -152,14 +152,13 @@ export default async function memory(ctx) {
 
   /** memory.graph and memory.facts for the current scope; the graph carries the cursor. */
   async function fetchGraph(since) {
-    const project_cwds = st.project ? cwdsOf(st.project) : undefined;
-    const input = { limit: 150, ...(project_cwds ? { project_cwds } : {}), ...(st.around ? { around: st.around, depth: 1 } : {}), ...(since !== undefined ? { since } : {}) };
+    const input = { limit: 150, ...roomInput(st.project), ...(st.around ? { around: st.around, depth: 1 } : {}), ...(since !== undefined ? { since } : {}) };
     const g = await attempt("memory.graph", input);
     if (!ctx.alive()) return { unchanged: true };
     if (g.error) { data.error = g.error; data.graph = null; drawCounts(); drawBody(); return { unchanged: true }; }
     if (g.data?.unchanged) return g.data;
     // Only a changed graph costs the facts read.
-    const f = await attempt("memory.facts", { limit: 200, ...(project_cwds ? { project_cwds } : {}) });
+    const f = await attempt("memory.facts", { limit: 200, ...roomInput(st.project) });
     if (!ctx.alive()) return { unchanged: true };
     data.facts = f.data?.facts || [];
     data.factsError = f.error || null;
@@ -484,8 +483,7 @@ export default async function memory(ctx) {
   function sources(id, into, onCount) {
     const n = ++sideSeq;
     put(into, h("div", { class: "small faint mem-loading" }, "Reading the sources…"));
-    const project_cwds = st.project ? cwdsOf(st.project) : undefined;
-    attempt("memory.why", { fact: id, limit: 10, ...(project_cwds ? { project_cwds } : {}) }).then(r => {
+    attempt("memory.why", { fact: id, limit: 10, ...roomInput(st.project) }).then(r => {
       if (n !== sideSeq || !ctx.alive()) return;
       if (r.error) { put(into, empty("The sources are not available.", r.error)); return; }
       const turns = r.data?.turns || [];
@@ -533,7 +531,7 @@ export default async function memory(ctx) {
       // Not drawn and not listed (muted, or past the limit): memory.why still knows the fact.
       side.hidden = false;
       put(side, h("div", { class: "small faint" }, "Reading memory…"));
-      attempt("memory.why", { fact: id, limit: 1 }).then(r => {
+      attempt("memory.why", { fact: id, limit: 1, ...roomInput(st.project) }).then(r => {
         if (!ctx.alive() || st.about !== id) return;
         const head = r.data?.fact;
         if (head && head.id === id) { data.byId.set(id, head); drawFact(id); } else drawThing(id);
@@ -585,8 +583,7 @@ export default async function memory(ctx) {
   async function drawThing(id) {
     const n = ++sideSeq;
     if (side.hidden) { side.hidden = false; put(side, h("div", { class: "small faint" }, "Reading memory…")); }
-    const project_cwds = st.project ? cwdsOf(st.project) : undefined;
-    const r = await attempt("memory.facts", { about: id, limit: 50, ...(project_cwds ? { project_cwds } : {}) });
+    const r = await attempt("memory.facts", { about: id, limit: 50, ...roomInput(st.project) });
     if (n !== sideSeq || !ctx.alive() || st.about !== id) return;
     const a = r.data?.about || (data.nodes.get(id) ? { ...data.nodes.get(id) } : null);
     if (r.error && !a) {
