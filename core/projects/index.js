@@ -4,7 +4,8 @@
 // brief without them; it only searches less and says so.
 
 import { Projects, MIGRATIONS } from "./projects.js";
-import { wantsMacs, askMacs, mergeRows, sourcesOf } from "../modules/federate.js";
+import { label } from "./brief.js";
+import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -13,6 +14,29 @@ const person = { type: "object", properties: { name: str, email: str } };
 const machines = { type: "string", enum: ["all", "local"] };
 /** The catalogue's own order across machines: title matches, then how often it was said, then newest. */
 const byCatalog = (a, b) => Number(Boolean(b.titled)) - Number(Boolean(a.titled)) || (b.said || 0) - (a.said || 0) || (b.last || 0) - (a.last || 0);
+
+/**
+ * A project's threads with its missing picks filled in from the Macs' recall.sessions answers:
+ * name, title, folder and times from the Mac, labelled with it. Every other row is the box's and
+ * labelled so; a pick no machine answered for stays as it was, missing, with no label. Newest
+ * first, missing picks last, as threadsOf orders them.
+ * @param {any} ctx @param {any[]} rows @param {Array<{ name: string, ok: boolean, data?: any }>} answers
+ */
+function resolvePicks(ctx, rows, answers) {
+  /** @type {Map<string, any>} */
+  const found = new Map();
+  for (const a of answers) if (a.ok && Array.isArray(a.data)) for (const s of a.data) if (s && s.id && !found.has(s.id)) found.set(s.id, { s, where: macLabel(a) });
+  const out = rows.map(t => {
+    if (!t.missing) return { ...t, ...boxLabel(ctx) };
+    const f = found.get(t.id);
+    if (!f) return t;
+    const s = f.s;
+    const row = { ...t, name: s.name || null, title: s.title || null, cwd: s.cwd || null, started: Number(s.started) || 0,
+      last: Number(s.ended) || 0, turns: Number(s.turns) || 0, human: Number(s.human) === 1 || s.human === true, missing: false };
+    return { ...row, label: label(row), ...f.where };
+  });
+  return out.sort((a, b) => Number(Boolean(a.missing)) - Number(Boolean(b.missing)) || (b.last || 0) - (a.last || 0));
+}
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -76,8 +100,19 @@ export default {
     });
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",
-      input: { type: "object", required: ["project"], properties: { project: str, limit: { type: "integer" } } },
-      run: async ({ project, limit = 100 }) => { P.refresh(); return P.threadsOf(P.resolve(project)).slice(0, limit); },
+      input: { type: "object", required: ["project"], properties: { project: str, limit: { type: "integer" }, machines } },
+      run: async (input, { caller } = {}) => {
+        const { project, limit = 100 } = input;
+        P.refresh();
+        const rows = P.threadsOf(P.resolve(project));
+        if (!wantsMacs(ctx, input, caller)) return rows.slice(0, limit);
+        // On the box, for the person: a pick the box has no session for may be a Mac session
+        // picked from the Deck. The Macs are asked once, for those ids only, and what they have
+        // comes back labelled and is never stored here. A pick no machine has stays missing.
+        const ids = rows.filter(t => t.missing).map(t => t.id);
+        const answers = ids.length ? await askMacs(ctx, "recall.sessions", { ids, limit: ids.length }) : [];
+        return resolvePicks(ctx, rows, answers).slice(0, limit);
+      },
     });
     ctx.tool("projects.context", {
       description: "The brief for a thread starting in a project, as plain text for Claude: what the project is, its people, its other threads and its memory. Give project, or cwd and session as a SessionStart hook sees them.",

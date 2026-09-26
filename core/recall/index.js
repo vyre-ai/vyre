@@ -200,9 +200,9 @@ export default {
       },
     });
     ctx.tool("recall.sessions", {
-      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, or started by a person.",
+      description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
-        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, machines } },
+        cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines } },
       run: async (input, { caller } = {}) => {
         const { machines: _, ...q } = input;
         if (!wantsMacs(ctx, input, caller)) return sessions(db, q);

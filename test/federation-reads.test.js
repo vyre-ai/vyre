@@ -216,3 +216,44 @@ test("federation reads: onboarding on the box counts the Mac's sessions and says
   assert.equal(off.why, "Your Mac (test-mac) is offline, so its sessions do not show here yet");
   assert.deepEqual(off.machines.map(m => [m.source, m.ok]), [["box", true], ["mac", false]]);
 });
+
+test("federation reads: a Mac session picked into a box project resolves through the Mac, and only for the person", async t => {
+  const s = await world(t);
+  assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: path.join(s.boxWork, "harlow") })).error);
+  // The Mac's session as the Mac answers it by id, and the box's own picked alongside it.
+  const [mac] = (await s.macCall("recall.sessions", { ids: [MAC_ID] })).data;
+  assert.equal(mac.id, MAC_ID);
+  const picked = await asBox(s, "projects.add-threads", { project: "harlow-legal", threads: [MAC_ID, BOX_ID] });
+  assert.deepEqual(picked.added, [MAC_ID, BOX_ID]);
+
+  const rows = await asBox(s, "projects.threads", { project: "harlow-legal" });
+  assert.deepEqual(rows.map(r => [r.id, r.source, r.machine, r.missing || false]), [[BOX_ID, "box", "testbox", false], [MAC_ID, "mac", "test-mac", false]]);
+  const r = /** @type {any} */ (rows[1]);
+  assert.deepEqual([r.name, r.title, r.cwd, r.last, r.turns, r.how], [mac.name, mac.title, mac.cwd, mac.ended, mac.turns, ["picked"]]);
+  assert.equal(r.label, mac.name || mac.title);
+  // Nothing about it is kept on the box, and the brief stays the box's own.
+  const db = s.box.registry.deps.db;
+  assert.deepEqual(db.prepare("SELECT id FROM recall_sessions").all().map(x => x.id), [BOX_ID]);
+  const brief = await asBox(s, "projects.context", { project: "harlow-legal" }, "cli");
+  assert.ok(!brief.text.includes(r.label), "the brief lists the box's threads only");
+  // A module that asks for every machine gets it resolved too.
+  assert.equal((await asBox(s, "projects.threads", { project: "harlow-legal", machines: "all" }, "module:x")).find(x => x.id === MAC_ID).source, "mac");
+
+  // Agents, MCP, guests, modules that do not ask, and machines: "local" see a missing pick, unlabelled.
+  const missing = async (caller, input = {}) => {
+    const list = await asBox(s, "projects.threads", { project: "harlow-legal", ...input }, caller);
+    const m = list.find(x => x.id === MAC_ID);
+    assert.deepEqual([m.missing, m.source, m.name], [true, undefined, null], caller);
+    assert.ok(list.every(x => x.source === undefined), `${caller}: no row is labelled`);
+  };
+  for (const caller of ["module:x", "mcp", "harness:agent:juno", "tailnet-guest:sam@harlow.example"]) await missing(caller);
+  await missing("deck", { machines: "local" });
+
+  // The Mac away: the pick is missing again, at once, and the box's row is still there.
+  await s.stopTailnet();
+  await offline(s);
+  const t0 = Date.now();
+  const away = await asBox(s, "projects.threads", { project: "harlow-legal" });
+  assert.ok(Date.now() - t0 < 2000, `answered in ${Date.now() - t0} ms`);
+  assert.deepEqual(away.map(x => [x.id, x.source, x.missing || false]), [[BOX_ID, "box", false], [MAC_ID, undefined, true]]);
+});
