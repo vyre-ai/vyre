@@ -20,7 +20,7 @@
 // passage retrieval better. So this holds facts, people and links, and leaves search to Recall.
 
 import { extract } from "./extract.js";
-import { lesson, within } from "./teach.js";
+import { lesson, within, ENDS } from "./teach.js";
 import { MIGRATIONS } from "./schema.js";
 import { migrate } from "../store/index.js";
 import { OPENERS, HEADINGS, TOOL_WORDS, ORG_WORDS, FREE_MAIL, NO_PERSON, registrable, letters, stemOf } from "./lexicon.js";
@@ -86,6 +86,10 @@ export class Curator {
     this.dirty = false;
     /** Which rooms each session is in, until the rooms or the sessions change. */
     this.members = null;
+    /** The stored rooms, read once until setRooms changes them. */
+    this.roomList = null;
+    /** Sessions per room, for the membership above. */
+    this.bySlug = null;
   }
 
   /** The durable graph cursor: how many times the drawable graph has changed. */
@@ -256,6 +260,46 @@ export class Curator {
     return { nodes: one("SELECT COUNT(*) n FROM memory_nodes"), edges: one("SELECT COUNT(*) n FROM memory_edges") };
   }
 
+  // ------------------------------------------------------------------ corrections
+
+  /**
+   * Record what the user said about a fact, or a merge or split of nodes (ADR 0007, decision 4).
+   * Stored as given and applied on the next derive, after the votes, so no transcript can
+   * derive it away. Returns the row.
+   * @param {{ action: string, src: string, rel?: string|null, dst?: string|null, object?: string|null, at?: number|null, scope?: string, note?: string|null, who?: string|null }} c
+   */
+  correct(c) {
+    if (!ACTIONS.has(c.action)) throw new Error(`action must be one of ${[...ACTIONS].join(", ")}`);
+    const r = this.db.prepare(`INSERT INTO memory_corrections (action, src, rel, dst, object, at, scope, note, who, created)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(c.action, c.src, c.rel ?? null, c.dst ?? null, c.object ?? null, c.at ?? null, c.scope || "*",
+      c.note == null ? null : String(c.note).slice(0, 160), c.who ?? null, this.now());
+    this.dirty = true;
+    return this.correction(Number(r.lastInsertRowid));
+  }
+
+  /** One correction row, or null. */
+  correction(id) {
+    const r = this.db.prepare("SELECT * FROM memory_corrections WHERE id = ?").get(id);
+    return r ? { ...r } : null;
+  }
+
+  /** Undo a correction: it stops applying on the next derive and stays listed as undone. */
+  uncorrect(id) {
+    const r = this.db.prepare("UPDATE memory_corrections SET undone = ? WHERE id = ? AND undone IS NULL").run(this.now(), id);
+    if (!r.changes) throw new Error(`no correction ${id} to undo`);
+    this.dirty = true;
+    return this.correction(id);
+  }
+
+  /**
+   * Corrections, newest first: every scope, or '*' and one room's.
+   * @param {{ scope?: string, all?: boolean }} [opts]  all includes undone ones
+   */
+  corrections({ scope, all = false } = {}) {
+    return this.db.prepare(`SELECT * FROM memory_corrections WHERE (? IS NULL OR scope IN ('*', ?)) AND (? OR undone IS NULL) ORDER BY id DESC`)
+      .all(scope ?? null, scope ?? null, all ? 1 : 0).map(r => ({ ...r }));
+  }
+
   // ------------------------------------------------------------------ rooms
 
   /**
@@ -283,14 +327,15 @@ export class Curator {
       }
       for (const slug of have.keys()) if (!want.has(slug)) { this.db.prepare("DELETE FROM memory_rooms WHERE slug = ?").run(slug); changed = true; }
     });
-    if (changed) { this.dirty = true; this.members = null; }
+    if (changed) { this.dirty = true; this.members = null; this.roomList = null; }
     return changed;
   }
 
   /** @returns {{ slug: string, name: string, folders: string[], threads: string[] }[]} */
   rooms() {
-    return this.db.prepare("SELECT slug, name, folders, threads FROM memory_rooms ORDER BY slug").all()
+    if (!this.roomList) this.roomList = this.db.prepare("SELECT slug, name, folders, threads FROM memory_rooms ORDER BY slug").all()
       .map(r => ({ slug: String(r.slug), name: String(r.name), folders: JSON.parse(String(r.folders)), threads: JSON.parse(String(r.threads)) }));
+    return this.roomList;
   }
 
   /**
@@ -314,10 +359,16 @@ export class Curator {
     return out;
   }
 
-  /** The sessions in one room. */
+  /** The sessions in one room, cached with the membership they come from. */
   roomSessions(room) {
-    const out = new Set();
-    for (const [s, rs] of this.membership()) if (rs.includes(room)) out.add(s);
+    const m = this.membership();
+    if (this.bySlug?.members !== m) this.bySlug = { members: m, map: new Map() };
+    let out = this.bySlug.map.get(room);
+    if (!out) {
+      out = new Set();
+      for (const [s, rs] of m) if (rs.includes(room)) out.add(s);
+      this.bySlug.map.set(room, out);
+    }
     return out;
   }
 
@@ -368,16 +419,38 @@ export class Curator {
       if (!cuesBy.has(s)) cuesBy.set(s, []);
       cuesBy.get(s).push({ session: s, seq: Number(r.seq), rel: String(r.rel), a: String(r.a), b: String(r.b), ts: Number(r.ts) });
     }
+    // What the user said. Merges and splits rename nodes before anything is counted; the rest
+    // is applied after the votes, in each scope it names.
+    const said = db.prepare("SELECT * FROM memory_corrections WHERE undone IS NULL ORDER BY id").all().map(r => /** @type {Correction} */ ({
+      id: Number(r.id), action: String(r.action), src: String(r.src), rel: r.rel == null ? null : String(r.rel), dst: r.dst == null ? null : String(r.dst),
+      object: r.object == null ? null : String(r.object), at: r.at == null ? null : Number(r.at), scope: String(r.scope), created: Number(r.created) }));
+    const apart = new Set(said.filter(c => c.action === "split" && c.dst).flatMap(c => [`${c.src}\u0000${c.dst}`, `${c.dst}\u0000${c.src}`]));
+    const into = new Map();
+    for (const c of said) if (c.action === "merge" && c.dst && !apart.has(`${c.src}\u0000${c.dst}`)) into.set(c.src, c.dst);
+    /** Where a merge sends a node, following chains, never round a loop. */
+    const merged = id => { const seen = new Set(); while (into.has(id) && !seen.has(id)) { seen.add(id); id = /** @type {string} */ (into.get(id)); } return id; };
+    const splits = said.filter(c => c.action === "split" && !c.dst && c.object).map(c => ({ node: merged(c.src), room: /** @type {string} */ (c.object) }));
+    /** A node as a session in these rooms names it: merged, then split off for a room. */
+    const alias = (id, session) => {
+      let x = merged(id);
+      for (const sp of splits) if (sp.node === x && (member.get(session) || []).includes(sp.room)) { x = `${x}#${sp.room}`; break; }
+      return x;
+    };
+    const facts = said.filter(c => !["merge", "split"].includes(c.action))
+      .map(c => ({ ...c, src: merged(c.src), dst: c.dst && merged(c.dst), object: c.object && merged(c.object) }));
+
     /** @type {Lesson[]} */
     const lessons = [];
+    const renamed = r => r && { ...r, id: merged(r.id) };
     for (const r of db.prepare("SELECT module, kind, key, fact, at FROM memory_taught ORDER BY module, kind, key").all()) {
       try {
         const l = lesson(JSON.parse(String(r.fact)));
-        lessons.push({ module: String(r.module), kind: String(r.kind), key: String(r.key), at: Number(r.at), factAt: l.at, text: l.text, claims: l.claims, project: l.project });
+        const claims = into.size ? l.claims.map(c => ({ ...c, src: /** @type {any} */ (renamed(c.src)), dst: renamed(c.dst) })) : l.claims;
+        lessons.push({ module: String(r.module), kind: String(r.kind), key: String(r.key), at: Number(r.at), factAt: l.at, text: l.text, claims, project: l.project });
       } catch { /* a fact that no longer checks out is ignored, not fatal */ }
     }
 
-    const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map() };
+    const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map(), alias: into.size || splits.length ? alias : null };
     const bySlug = new Map();
     for (const [s, rs] of member) for (const r of rs) { if (!bySlug.has(r)) bySlug.set(r, new Set()); bySlug.get(r).add(s); }
     /** @type {Result[]} */
@@ -388,10 +461,12 @@ export class Curator {
       const mine = lessons.filter(l => room.slug === UNFILED ? !l.project : !l.project || l.project.some(c => within(c, room.folders)));
       if (!sessions.size && !mine.some(l => l.project)) continue;
       const multi = new Set([...sessions].filter(s => /** @type {string[]} */ (member.get(s)).length > 1));
-      results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [] }, common));
+      results.push(await this.compute({ room: room.slug, names: room.slug === UNFILED ? [] : [room.name], sessions, multi, lessons: mine, others: [],
+        said: facts.filter(c => c.scope === "*" || c.scope === room.slug) }, common));
       await yieldNow();
     }
-    results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice() }, common));
+    results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
+      said: facts.filter(c => c.scope === "*") }, common));
     conflicts(results);
     return this.write(results, now);
   }
@@ -399,8 +474,8 @@ export class Curator {
   /**
    * One scope's beliefs: a room from its own sessions and lessons, or the main graph from all.
    * The same rules everywhere; only what they are fed differs.
-   * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[] }} scope
-   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]> }} common
+   * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[], said?: Correction[] }} scope
+   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null }} common
    * @returns {Promise<Result>}
    */
   async compute(scope, common) {
@@ -439,10 +514,12 @@ export class Curator {
     const own = [], shared = [];
     for (const s of scope.sessions || obsBy.keys()) (scope.multi.has(s) ? shared : own).push(s);
     own.sort(); shared.sort();
-    for (const s of own) for (const o of obsBy.get(s) || []) { touch(o.node, s, o.seq, o.n, o.initial, o.ts); anchor.add(o.node); }
-    for (const s of shared) for (const o of obsBy.get(s) || []) if (anchor.has(o.node)) touch(o.node, s, o.seq, o.n, o.initial, o.ts);
+    const as = common.alias || ((id, _s) => id);
+    for (const s of own) for (const o of obsBy.get(s) || []) { const id = as(o.node, s); touch(id, s, o.seq, o.n, o.initial, o.ts); anchor.add(id); }
+    for (const s of shared) for (const o of obsBy.get(s) || []) { const id = as(o.node, s); if (anchor.has(id)) touch(id, s, o.seq, o.n, o.initial, o.ts); }
     const cues = [];
-    for (const s of [...own, ...shared].sort()) for (const c of cuesBy.get(s) || []) {
+    for (const s of [...own, ...shared].sort()) for (const c0 of cuesBy.get(s) || []) {
+      const c = common.alias ? { ...c0, a: as(c0.a, s), b: as(c0.b, s) } : c0;
       if (scope.multi.has(s) && !(anchor.has(c.a) && anchor.has(c.b))) continue;
       cues.push(c);
     }
@@ -476,6 +553,17 @@ export class Curator {
     /** For an edge derived from other facts: the lessons behind its ends, used only when no turn supports it. */
     const lessonsOfEnds = (src, dst) => [...(nodeLessons.get(src) || []), ...(nodeLessons.get(dst) || [])]
       .filter((v, i, all) => all.findIndex(w => w.join("\u0000") === v.join("\u0000")) === i);
+    // What the user added, replaced or confirmed names its things outright, like a lesson.
+    const said = scope.said || [];
+    for (const c of said) if (["add", "replace", "confirm"].includes(c.action)) {
+      const ends = ENDS[/** @type {keyof typeof ENDS} */ (c.rel || "")] || [null, null];
+      for (const [id, k] of [[c.src, ends[0]], [c.action === "replace" ? c.object : c.dst, ends[1]]]) {
+        if (!id) continue;
+        if (!agg.has(id)) { const i = id.indexOf(":"); agg.set(id, { id, kind: id.slice(0, i), key: id.slice(i + 1), by: new Map(), parents: new Set(), mentions: 0, first: c.created, last: c.created, mid: true }); }
+        taughtIds.add(id);
+        if (k && id.startsWith("name:")) hint.set(id, k);
+      }
+    }
     /** When a lesson says so: the newest of its lessons, for decay. */
     const lessonSeen = list => Math.max(0, ...list.map(x => lessons.find(l => l.module === x[0] && l.kind === x[1] && l.key === x[2])?.at || 0));
 
@@ -516,7 +604,7 @@ export class Curator {
     const names = [...agg.values()].filter(a => a.kind === "name");
     const orgDomain = new Map();  // org id -> domain id
     for (const a of names) {
-      const words = a.key.split(/\s+/).filter(x => x !== "&");
+      const words = labelOf(a.key).split(/\s+/).filter(x => x !== "&");
       const last = words[words.length - 1].toLowerCase();
       const dom = orgStems(a.key).map(s => domainByStem.get(s)).find(Boolean);
       if (dom) orgDomain.set(a.id, dom);
@@ -546,7 +634,7 @@ export class Curator {
     const byLocal = new Map();
     for (const p of names) {
       if (kind.get(p.id) === "org") continue;
-      const w = p.key.toLowerCase().split(/\s+/).map(letters);
+      const w = labelOf(p.key).toLowerCase().split(/\s+/).map(letters);
       const [f, l] = [w[0], w[w.length - 1]];
       for (const form of new Set([f, f + l, `${f}.${l}`, `${f}_${l}`, f[0] + l, `${f[0]}.${l}`, l])) {
         if (!byLocal.has(form)) byLocal.set(form, []);
@@ -718,6 +806,10 @@ export class Curator {
     }
     /** @type {Map<string, Work>} */
     const worksAt = new Map();
+    // The user's word on who works where: an org they called wrong gets no vote; one they said
+    // ended gets votes only from turns after it ended.
+    const wrongAt = new Set(said.filter(c => c.action === "wrong" && c.rel === "works_at").map(c => `${c.src}\u0000${c.dst}`));
+    const endedAt = new Map(said.filter(c => ["ended", "replace"].includes(c.action) && c.rel === "works_at").map(c => [`${c.src}\u0000${c.dst}`, c.at ?? c.created]));
     for (const p of [...kept].filter(id => kind.get(id) === "person" && role.get(id) !== "hub")) {
       const mineOwn = role.get(p) === "own";
       const eligible = new Set(orgs.filter(o => (role.get(o) === "own") === mineOwn));
@@ -730,37 +822,42 @@ export class Curator {
       const why = new Map();   // org -> the rule that gave it most
       const credit = (o, rule, v) => { const w = why.get(o) || {}; w[rule] = (w[rule] || 0) + v; why.set(o, w); };
       const psessions = sessionsOf([p, ...(emailsOf.get(p) || [])]);
+      const ended = o => endedAt.get(`${p}\u0000${o}`);
+      const after = (o, s) => { const at = ended(o); return at === undefined || Math.max(0, ...[p, ...(emailsOf.get(p) || [])].map(x => agg.get(x)?.by.get(s)?.last || 0)) > at; };
       for (const s of psessions) {
         const m = presence.get(s);
         if (!m) continue;
         let total = 0;
         for (const [o, v] of m) if (eligible.has(o)) total += v;
-        for (const [o, v] of m) if (eligible.has(o)) {
+        for (const [o, v] of m) if (eligible.has(o) && after(o, s)) {
           votes.set(o, (votes.get(o) || 0) + v / total);
           credit(o, "focus", v / total);
           if (v / total > 0.5) mark(o, [s]);
         }
       }
       const cueSessions = new Map();
-      for (const c of cues) if (c.rel === "works_at" && c.a === p && eligible.has(c.b)) { if (!cueSessions.has(c.b)) cueSessions.set(c.b, new Set()); cueSessions.get(c.b).add(c.session); }
+      for (const c of cues) if (c.rel === "works_at" && c.a === p && eligible.has(c.b) && (ended(c.b) === undefined || c.ts > /** @type {number} */ (ended(c.b)))) { if (!cueSessions.has(c.b)) cueSessions.set(c.b, new Set()); cueSessions.get(c.b).add(c.session); }
       for (const [o, ss] of cueSessions) { votes.set(o, (votes.get(o) || 0) + T.cueVote * ss.size); credit(o, "cue", T.cueVote * ss.size); mark(o, ss); }
       for (const e of emailsOf.get(p) || []) {
         const d = "domain:" + registrable(agg.get(e).key.split("@")[1]);
-        for (const o of eligible) if (orgDomain.get(o) === d) { votes.set(o, (votes.get(o) || 0) + T.emailVote); credit(o, "email", T.emailVote); mark(o, agg.get(e).by.keys()); }
+        for (const o of eligible) if (orgDomain.get(o) === d && ended(o) === undefined) { votes.set(o, (votes.get(o) || 0) + T.emailVote); credit(o, "email", T.emailVote); mark(o, agg.get(e).by.keys()); }
       }
       const taughtAt = new Map();
-      for (const l of lessons) for (const c of l.claims) if (c.rel === "works_at" && c.src.id === p && c.dst && kept.has(c.dst.id)) {
+      for (const l of lessons) for (const c of l.claims) if (c.rel === "works_at" && c.src.id === p && c.dst && kept.has(c.dst.id) && ended(c.dst.id) === undefined) {
         votes.set(c.dst.id, (votes.get(c.dst.id) || 0) + T.taughtVote);
         credit(c.dst.id, "taught", T.taughtVote);
         if (l.factAt) taughtAt.set(c.dst.id, Math.min(taughtAt.get(c.dst.id) ?? Infinity, l.factAt));
       }
+      for (const o of [...votes.keys()]) if (wrongAt.has(`${p}\u0000${o}`)) votes.delete(o);
       const ranked = [...votes].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
       const [first, second] = ranked;
       if (!first || first[1] < T.voteMin || (second && first[1] < T.voteLead * second[1])) continue;
       const sum = ranked.reduce((n, r) => n + r[1], 0);
       const o = first[0];
       const cueEv = cues.filter(c => c.rel === "works_at" && c.a === p && c.b === o).map(c => /** @type {[string, number]} */ ([c.session, c.seq]));
-      const ev = [...cueEv, ...together([p, ...(emailsOf.get(p) || [])], cluster(o))].filter((v, i, all) => all.findIndex(w => w[0] === v[0] && w[1] === v[1]) === i).slice(0, T.evidencePerEdge);
+      const since = ended(o);
+      const ev = [...cueEv, ...together([p, ...(emailsOf.get(p) || [])], cluster(o))].filter((v, i, all) => all.findIndex(w => w[0] === v[0] && w[1] === v[1]) === i)
+        .filter(([s, q]) => since === undefined || tsOf(s, q) > since).slice(0, T.evidencePerEdge);
       const taught = lessonsFor(p, "works_at", o);
       if (!ev.length && !taught.length) continue;
       const clear = ev.filter(([s]) => strong.get(o)?.has(s));
@@ -771,7 +868,66 @@ export class Curator {
         seen: Math.max(newest([p, ...(emailsOf.get(p) || [])], cluster(o)), lessonSeen(taught)), rule, origin: ev.length ? "extract" : "taught", conflict: 0 });
     }
 
-    return { room: scope.room, agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor };
+    // Facts the user called wrong here: no row keeps them, whatever evidence is left.
+    const wrong = new Set(said.filter(c => c.action === "wrong").map(c => `${c.src}\u0000${c.rel}\u0000${c.dst}`));
+    const out = { room: scope.room, agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, wrong };
+    if (said.length) this.userSaid(out, said, tsOf);
+    return out;
+  }
+
+  /**
+   * Apply what the user said, after the votes. The user outranks a lesson and a lesson outranks
+   * a vote; a transcript that later disagrees with the user raises a conflict, never a change.
+   * @param {Result} r
+   * @param {Correction[]} said
+   */
+  userSaid(r, said, tsOf) {
+    const k = (s, rel, d) => `${s}\u0000${rel}\u0000${d}`;
+    const userRow = (c, dst, from) => ({ src: c.src, rel: /** @type {string} */ (c.rel), dst, weight: 1, from, conf: 1, ev: [], lessons: [], seen: c.created, origin: "user", rule: "user", conflict: 0 });
+    for (const c of said) {
+      if (!c.rel) continue;
+      const at = c.at ?? c.created;
+      if (c.rel === "works_at") {
+        const w = r.worksAt.get(c.src);
+        if (c.action === "ended" || c.action === "replace") {
+          // History: the old belief, closed when the user says it ended.
+          if (r.kept.has(c.src) && c.dst && r.kept.has(c.dst)) {
+            const ev = r.together([c.src, ...(r.emailsOf.get(c.src) || [])], r.cluster(c.dst)).filter(([s, q]) => tsOf(s, q) <= at);
+            const times = ev.map(([s, q]) => tsOf(s, q)).filter(Boolean);
+            const from = times.length ? Math.min(...times) : 0;
+            r.want.push({ src: c.src, rel: "works_at", dst: c.dst, weight: 1, from, to: Math.max(from, at), conf: 1, ev, lessons: [], seen: Math.max(0, ...times),
+              origin: ev.length ? "extract" : "user", rule: ev.length ? "vote" : "user", conflict: 0 });
+          }
+        }
+        const says = c.action === "replace" ? c.object : ["confirm", "add"].includes(c.action) ? c.dst : null;
+        if (says && r.kept.has(c.src) && r.kept.has(says)) {
+          const agrees = w && w.org === says;
+          // A vote for someone else, newer than what the user said, is a question for them.
+          const conflict = w && !agrees && (w.seen || 0) > c.created ? 1 : 0;
+          if (agrees && c.action === "confirm") r.worksAt.set(c.src, { ...w, conf: 1, origin: "confirmed", conflict: 0, keep: new Set() });
+          else r.worksAt.set(c.src, { ...userRow(c, says, c.action === "replace" ? at : agrees ? /** @type {Work} */ (w).from : 0), org: says,
+            ev: agrees ? /** @type {Work} */ (w).ev : [], origin: c.action === "confirm" ? "confirmed" : "user", conflict });
+        }
+        continue;
+      }
+      const hit = r.want.filter(w => k(w.src, w.rel, w.dst) === k(c.src, c.rel, c.dst || ""));
+      if (c.action === "wrong") { r.want = r.want.filter(w => !hit.includes(w)); continue; }
+      if (c.action === "ended" || c.action === "replace") for (const w of hit) {
+        const before = w.ev.filter(([s, q]) => tsOf(s, q) <= at), later = w.ev.filter(([s, q]) => tsOf(s, q) > at);
+        if (later.length) r.want.push({ ...w, from: Math.min(...later.map(([s, q]) => tsOf(s, q))), ev: later, to: null });
+        Object.assign(w, { to: Math.max(w.from, at), ev: before.length ? before : w.ev });
+      }
+      if (c.action === "confirm") {
+        if (hit.length) for (const w of hit) Object.assign(w, { conf: 1, origin: "confirmed" });
+        else if (c.dst && r.kept.has(c.src) && r.kept.has(c.dst)) r.want.push({ ...userRow(c, c.dst, 0), origin: "confirmed" });
+      }
+      const says = c.action === "replace" ? c.object : c.action === "add" ? c.dst : null;
+      if (says && r.kept.has(c.src) && r.kept.has(says)) {
+        const same = r.want.find(w => k(w.src, w.rel, w.dst) === k(c.src, c.rel, says) && w.to == null);
+        if (same) Object.assign(same, { conf: 1, origin: "user", rule: "user" });
+        else r.want.push(userRow(c, says, c.action === "replace" ? at : 0));
+      }
+    }
   }
 
   /**
@@ -806,7 +962,7 @@ export class Curator {
     /** form -> identity -> the spellings of that identity starting with the form */
     const claims = new Map();
     for (const id of ids) {
-      const words = agg.get(id).key.split(/\s+/).filter(w => w !== "&");
+      const words = labelOf(agg.get(id).key).split(/\s+/).filter(w => w !== "&");
       if (words.length < 2) continue;
       const form = words[0].toLowerCase();
       if (form.length < 3 || OPENERS.has(form) || HEADINGS.has(form) || TOOL_WORDS.has(form) || ORG_WORDS.has(form)) continue;
@@ -903,17 +1059,21 @@ export class Curator {
       for (const r of results) {
         const edges = all.filter(e => e.room === r.room);
         const byKey = new Map(edges.map(e => [key(e.src, e.rel, e.dst, e.from), e]));
-        for (const w of r.want) {
+        for (let w of r.want) {
           if (!w.ev.length && !w.lessons?.length && w.origin !== "user") continue;
           const k = key(w.src, w.rel, w.dst, w.from);
           const to = w.to ?? null;
           let e = byKey.get(k);
+          // A belief the user ended closes the row that held it, whatever start the vote gave it.
+          if (!e && to !== null) e = edges.find(x => x.src === w.src && x.rel === w.rel && x.dst === w.dst && (x.to === null || x.to === to) && !wanted.has(x.id));
+          if (e && e.from !== w.from && to !== null) w = { ...w, from: e.from };
           if (!e) {
             const id = Number(put(r.room, w, to).lastInsertRowid);
             e = { id, room: r.room, src: w.src, rel: w.rel, dst: w.dst, weight: w.weight, from: w.from, to, conf: w.conf, seen: w.seen || null, conflict: w.conflict || 0, origin: w.origin || "extract", rule: w.rule ?? null };
             byKey.set(k, e); changed++;
           } else if (!same(e, w, to)) {
             set(e.id, w, to, w.from); changed++;
+            Object.assign(e, { weight: w.weight, conf: w.conf, to, from: w.from, seen: w.seen || null, conflict: w.conflict || 0, origin: w.origin || "extract", rule: w.rule ?? null });
           }
           wanted.add(e.id);
           evidence.set(e.id, w.ev);
@@ -954,7 +1114,7 @@ export class Curator {
           }
           // Every other works_at edge of this person stays while the turns or lessons behind it exist.
           for (const e of mine) {
-            if (wanted.has(e.id) || !r.kept.has(e.src) || !r.kept.has(e.dst)) continue;
+            if (wanted.has(e.id) || !r.kept.has(e.src) || !r.kept.has(e.dst) || r.wrong?.has(`${e.src}\u0000works_at\u0000${e.dst}`)) continue;
             const ev = r.together([e.src, ...(r.emailsOf.get(e.src) || [])], r.cluster(e.dst));
             const ls = r.lessonsFor(e.src, "works_at", e.dst);
             if (ev.length || ls.length) { wanted.add(e.id); evidence.set(e.id, ev); taught.set(e.id, ls); }
@@ -1002,6 +1162,9 @@ export class Curator {
 
 /** The room for sessions in no project. */
 export const UNFILED = "unfiled";
+
+/** What memory.correct can say, plus the merge and split of nodes. */
+export const ACTIONS = new Set(["wrong", "ended", "replace", "confirm", "add", "merge", "split"]);
 
 /** How long apart two rooms' beliefs may be seen and still be a question for the user, not an update. */
 const CONFLICT_MS = 90 * 86_400_000;
@@ -1054,5 +1217,6 @@ function orgStems(label) {
  * @typedef {{ module: string, kind: string, key: string, at: number, factAt: number, text: string|null, claims: import("./teach.js").Claim[], project: string[]|null }} Lesson
  * @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, to?: number|null, conf: number, ev: [string, number][], lessons?: string[][], seen?: number, conflict?: number, origin?: string, rule?: string }} Want
  * @typedef {{ org: string, conf: number, from: number, to?: number|null, weight: number, ev: [string, number][], lessons: string[][], seen: number, rule: string, origin: string, conflict: number, keep?: Set<string> }} Work
- * @typedef {{ room: string, agg: Map<string, Agg>, kept: Set<string>, kind: Map<string, string>, role: Map<string, string|null>, want: Want[], worksAt: Map<string, Work>, forms: any[], together: Function, cluster: Function, emailsOf: Map<string, string[]>, lessonsFor: Function }} Result
+ * @typedef {{ id: number, action: string, src: string, rel: string|null, dst: string|null, object: string|null, at: number|null, scope: string, created: number }} Correction
+ * @typedef {{ room: string, wrong?: Set<string>, agg: Map<string, Agg>, kept: Set<string>, kind: Map<string, string>, role: Map<string, string|null>, want: Want[], worksAt: Map<string, Work>, forms: any[], together: Function, cluster: Function, emailsOf: Map<string, string[]>, lessonsFor: Function }} Result
  */

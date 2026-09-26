@@ -188,6 +188,94 @@ export default {
         return r;
       },
     });
+    // ---- the user's corrections (docs/adr/0007-intelligence.md, decision 4). Owner callers only:
+    // a session never writes Memory; inside a turn Claude proposes a correction as a lesson.
+    const OWNERS = ["deck", "cli", "local", "capsule"];
+    /** The scope a correction applies in: a room's slug, or '*' for everywhere. */
+    const scopeOf = input => {
+      const room = roomOf(input);
+      if (!room || room === "*") return { scope: "*", sc: null };
+      return { scope: room, sc: graph.view([], room) };
+    };
+    /** When a thing stopped being true: ms, or a date the user typed. */
+    const when = at => {
+      if (at == null || at === "") return null;
+      const ms = typeof at === "number" ? at : /^\d+$/.test(String(at)) ? Number(at) : Date.parse(String(at));
+      if (!Number.isFinite(ms)) throw new Error(`at: ${JSON.stringify(at)} is not a date`);
+      return ms;
+    };
+    /** Derive now, so what the user said shows in the next read. */
+    const settle = async () => { if (running) await running.catch(() => {}); await run({ force: true }); };
+    const corrected = (c, prior) => ctx.events.emit("memory.corrected", {
+      // Ids, kinds and numbers only: no labels, node ids, addresses, notes or session ids.
+      id: Number(c.id), action: String(c.action), rel: c.rel ?? null, scope: c.scope === "*" ? "all" : "project",
+      prior_source: prior ? String(prior.origin || "extract") : null, prior_rule: prior?.rule ?? null,
+      prior_confidence: prior ? Number(prior.confidence) : null,
+    });
+    ctx.tool("memory.correct", {
+      callers: OWNERS,
+      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere.",
+      input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
+        action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add"] }, at: {}, note: { type: "string" }, ...roomField } },
+      run: async (input, { caller } = {}) => {
+        const { scope, sc } = scopeOf(input);
+        const t = graph.target(input, sc);
+        const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who: String(caller || "") });
+        corrected(c, t.row);
+        await settle();
+        return { correction: c, facts: graph.facts({ about: t.src, room: sc?.room ?? undefined, limit: 20 }).facts.filter(f => f.rel === t.rel) };
+      },
+    });
+    ctx.tool("memory.corrections", {
+      callers: OWNERS,
+      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones.",
+      input: { type: "object", properties: { all: { type: "boolean" }, ...roomField } },
+      run: async input => curator.corrections({ scope: roomOf(input), all: Boolean(input.all) }),
+    });
+    ctx.tool("memory.uncorrect", {
+      callers: OWNERS,
+      description: "Undo a correction, merge or split by its id. It stays listed as undone.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
+      run: async ({ id }) => { const c = curator.uncorrect(id); await settle(); return c; },
+    });
+    ctx.tool("memory.merge", {
+      callers: OWNERS,
+      description: "Two nodes are one: everything said about the first is said about the second (into).",
+      input: { type: "object", required: ["node", "into"], properties: { node: { type: "string" }, into: { type: "string" } } },
+      run: async ({ node, into }, { caller } = {}) => {
+        const a = graph.resolve(node), b = graph.resolve(into);
+        if (!a) throw new Error(`nothing in memory matches "${node}"`);
+        if (!b) throw new Error(`nothing in memory matches "${into}"`);
+        if (a.id === b.id) throw new Error("that is one node already");
+        const c = curator.correct({ action: "merge", src: String(a.id), dst: String(b.id), who: String(caller || "") });
+        ctx.events.emit("memory.merged", { id: Number(c.id), scope: "all" });
+        await settle();
+        return { correction: c, into: graph.facts({ about: String(b.id), limit: 20 }).about };
+      },
+    });
+    ctx.tool("memory.split", {
+      callers: OWNERS,
+      description: "One node is two: with room or project, the one that project's sessions name is someone else (two different people with one name); with other, two nodes that were merged are kept apart.",
+      input: { type: "object", required: ["node"], properties: { node: { type: "string" }, other: { type: "string" }, ...roomField } },
+      run: async (input, { caller } = {}) => {
+        const n = graph.resolve(input.node);
+        if (!n) throw new Error(`nothing in memory matches "${input.node}"`);
+        const room = roomOf(input);
+        let c;
+        if (input.other) {
+          const o = graph.resolve(input.other) || graph.node(String(input.other));
+          const other = o ? String(o.id) : String(input.other);
+          c = curator.correct({ action: "split", src: String(n.id), dst: other, who: String(caller || "") });
+        } else {
+          if (!room || room === "*") throw new Error("split needs room (the project whose one is someone else) or other");
+          graph.view([], room);
+          c = curator.correct({ action: "split", src: String(n.id), object: room, who: String(caller || "") });
+        }
+        ctx.events.emit("memory.split", { id: Number(c.id), scope: room && !input.other ? "project" : "all" });
+        await settle();
+        return { correction: c };
+      },
+    });
     ctx.tool("memory.curate", {
       description: "Read any new turns and rebuild the graph now. full: true re-reads every turn. Returns counts.",
       input: { type: "object", properties: { full: { type: "boolean" }, ...agentField } },

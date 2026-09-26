@@ -503,6 +503,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- The user corrects a fact (decision 4). `memory.correct {fact | subject, rel, object; action;
+  object?; at?; note?; room?}` with `wrong` (never true, dropped from every vote in scope),
+  `ended` (closed at `at`; older evidence never reopens it, newer opens a new row), `replace`
+  (ended, plus a row sourced `user`, confidence 1, shown as "your correction"), `confirm`
+  (confidence 1, no decay, never closed by derive) and `add`. Corrections are rows
+  (`memory_corrections`), applied in derive after the votes, so no pass derives them away;
+  `memory.corrections` lists them and `memory.uncorrect` undoes one. A newer transcript that
+  disagrees with the user marks a conflict and changes nothing.
+- `memory.merge {node, into}` makes two nodes one; `memory.split {node, room}` makes the one a
+  project's sessions name someone else (two different people with one name, both labelled the
+  same), and `memory.split {node, other}` keeps two nodes apart (it undoes a merge).
+- Correct, merge and split are owner callers only (`deck`, `cli`, `local`, `capsule`): a session
+  or an agent gets `denied`. Events: `memory.corrected {id, action, rel, scope, prior_source,
+  prior_rule, prior_confidence}` with no labels, node ids, addresses, notes or session ids;
+  `memory.merged {id, scope}`; `memory.split {id, scope}`. Facts carry `origin` and
+  `correction`; `memory.why` returns `corrections`.
+- CLI: `vyre memory correct|corrections|uncorrect|merge|split|pin|mute`, and `--project <slug>` on
+  `vyre memory` and `vyre why`. Stale facts print "last said 10 months ago"; conflicts are marked.
+- Reads compile each SQL statement once and cache a room's sessions, so `memory.relevant` p50 on
+  the eval world went from 0.21 to 0.16ms.
+
 - Rooms (ADR 0007, decision 1). A room is a project (its folders plus the threads picked into
   it) or `unfiled`. The curator derives every room from its own sessions and lessons with the
   same rules, and writes rows with `room = '<slug>'`; `'*'` rows are the main graph. Deleting

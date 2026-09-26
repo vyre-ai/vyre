@@ -9,7 +9,7 @@
 import path from "node:path";
 import { registrable, OPENERS } from "./lexicon.js";
 import { T, UNFILED } from "./curator.js";
-import { within } from "./teach.js";
+import { within, ref } from "./teach.js";
 
 /** What one lesson taught for a project counts for, against a session's mentions, when ranking a project's facts. */
 const LESSON_WEIGHT = 3;
@@ -83,14 +83,23 @@ export class Graph {
     this.now = opts.now || (() => Date.now());
     /** Phrases per room ('*' is the main graph), rebuilt when the curator changes the graph. */
     this.cache = new Map();
+    /** Prepared statements by their SQL: the Enrich hook reads on every prompt. */
+    this.stmts = new Map();
+  }
+
+  /** A prepared statement, compiled once. */
+  sql(text) {
+    let st = this.stmts.get(text);
+    if (!st) { st = this.db.prepare(text); this.stmts.set(text, st); }
+    return st;
   }
 
   // ------------------------------------------------------------------ nodes
 
   /** A node as the view sees it: in a room, that room's kind, role, counts and dates. */
   node(id, sc = null) {
-    if (sc?.room) return this.db.prepare("SELECT * FROM memory_room_nodes WHERE room = ? AND id = ?").get(sc.room, id) || null;
-    return this.db.prepare("SELECT * FROM memory_nodes WHERE id = ?").get(id) || null;
+    if (sc?.room) return this.sql("SELECT * FROM memory_room_nodes WHERE room = ? AND id = ?").get(sc.room, id) || null;
+    return this.sql("SELECT * FROM memory_nodes WHERE id = ?").get(id) || null;
   }
 
   /**
@@ -101,7 +110,7 @@ export class Graph {
     if (!n) return null;
     if (sc && !sc.room) {
       const ms = this.mentionEdges(String(n.id), 10_000, sc);
-      const times = this.db.prepare("SELECT started, ended FROM recall_sessions WHERE id = ?");
+      const times = this.sql("SELECT started, ended FROM recall_sessions WHERE id = ?");
       let first = 0, last = 0;
       for (const e of ms) {
         const r = this.curator.hasRecall() ? times.get(String(e.dst).slice(8)) : null;
@@ -134,10 +143,10 @@ export class Graph {
     const nodes = sc?.room ? "(SELECT * FROM memory_room_nodes WHERE room = ?)" : "(SELECT * FROM memory_nodes WHERE ? = '*')";
     const steps = [
       () => [this.node(r, sc)],
-      () => db.prepare(`SELECT * FROM ${nodes} WHERE lower(label) = lower(?) ORDER BY sessions DESC LIMIT ${lim}`).all(room, r),
-      () => db.prepare(`SELECT n.* FROM memory_shortforms f JOIN ${nodes} n ON n.id = f.node
+      () => this.sql(`SELECT * FROM ${nodes} WHERE lower(label) = lower(?) ORDER BY sessions DESC LIMIT ${lim}`).all(room, r),
+      () => this.sql(`SELECT n.* FROM memory_shortforms f JOIN ${nodes} n ON n.id = f.node
                      WHERE f.room = ? AND f.form = lower(?) AND f.precision >= ? AND f.sessions >= ? ORDER BY f.precision DESC, n.sessions DESC LIMIT ${lim}`).all(room, room, r, T.shortPrecision, T.shortMinSessions),
-      () => db.prepare(`SELECT * FROM ${nodes} WHERE lower(label) LIKE lower(?) ESCAPE '\\'
+      () => this.sql(`SELECT * FROM ${nodes} WHERE lower(label) LIKE lower(?) ESCAPE '\\'
                      ORDER BY (role IS NULL) DESC, sessions DESC, label LIMIT ${lim}`).all(room, "%" + r.replace(/[\\%_]/g, "\\$&") + "%"),
     ];
     for (const step of steps) { const hit = step().find(ok); if (hit) return hit; }
@@ -150,7 +159,7 @@ export class Graph {
     if (sc.room) return Boolean(this.node(id, sc));
     if (this.mentionEdges(id, 1, sc).length) return true;
     const scopes = this.lessonScopes();
-    return this.db.prepare("SELECT * FROM memory_edges WHERE room = '*' AND (src = ? OR dst = ?) AND rel != 'mentioned_in'").all(id, id).some(e => this.edgeIn(e, sc, scopes));
+    return this.sql("SELECT * FROM memory_edges WHERE room = '*' AND (src = ? OR dst = ?) AND rel != 'mentioned_in'").all(id, id).some(e => this.edgeIn(e, sc, scopes));
   }
 
   // ------------------------------------------------------------------ facts
@@ -159,7 +168,7 @@ export class Graph {
   labels(ids) {
     const out = new Map();
     if (!ids.length || !this.curator.hasRecall()) return out;
-    const q = this.db.prepare("SELECT id, name, title, cwd FROM recall_sessions WHERE id = ?");
+    const q = this.sql("SELECT id, name, title, cwd FROM recall_sessions WHERE id = ?");
     for (const id of new Set(ids)) { const r = q.get(id); if (r) out.set(id, { name: r.name || r.title || id, cwd: r.cwd }); }
     return out;
   }
@@ -171,13 +180,13 @@ export class Graph {
    */
   fact(e, sc = null) {
     const db = this.db;
-    const ev = db.prepare("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY session, seq").all(e.id)
+    const ev = this.sql("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY session, seq").all(e.id)
       .filter(v => !sc || sc.sessions.has(String(v.session)));
     const src = this.node(e.src, sc), dst = String(e.dst).startsWith("session:") ? null : this.node(e.dst, sc);
     const sessionId = String(e.dst).startsWith("session:") ? String(e.dst).slice(8) : null;
     // The most recent supporting turn is the one worth pointing at. Its time comes from the
     // observations, which carry each turn's own clock.
-    const tsq = db.prepare("SELECT MAX(ts) ts FROM memory_obs WHERE session = ? AND seq = ?");
+    const tsq = this.sql("SELECT MAX(ts) ts FROM memory_obs WHERE session = ? AND seq = ?");
     let best = null, seen = 0;
     for (const v of ev) { const ts = Number(tsq.get(v.session, v.seq)?.ts || 0); if (!best || ts >= seen) { best = v; seen = ts; } }
     // The newest supporting turn over all evidence, not the capped few, when the row knows it
@@ -186,10 +195,15 @@ export class Graph {
     const names = this.labels([...(best ? [String(best.session)] : []), ...(sessionId ? [sessionId] : [])]);
     // Lessons: what modules taught that supports this edge. When no turn does, the module is
     // the source.
-    const taught = db.prepare(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
+    const taught = this.sql(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
       LEFT JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key
       WHERE l.edge = ? ORDER BY t.at DESC, l.module, l.kind, l.key`).all(e.id).filter(t => this.lessonIn(t.fact, sc));
     if (!best && taught.length) seen = Math.max(seen, ...taught.map(t => Number(t.at) || 0));
+    // What the user said about it: the newest correction in this scope that made or kept it.
+    const origin = String(e.origin || "extract");
+    const said = ["user", "confirmed"].includes(origin) ? this.sql(`SELECT id, action, created, note FROM memory_corrections WHERE undone IS NULL
+      AND src = ? AND rel = ? AND (dst = ? OR object = ?) AND scope IN ('*', ?) ORDER BY id DESC LIMIT 1`).get(e.src, e.rel, e.dst, e.dst, sc?.room || "*") : null;
+    if (origin === "user" && said) seen = Number(said.created);
     const fresh = Number(freshness({ ...e, seen }, this.now()).toFixed(3));
     const note = String(e.dst).startsWith("note:");
     const noteText = note ? (() => { try { return JSON.parse(String(taught[0]?.fact)).text; } catch { return null; } })() : null;
@@ -206,7 +220,7 @@ export class Graph {
       if (since && ev.length) since = Math.min(...ev.map(v => Number(tsq.get(v.session, v.seq)?.ts || 0)).filter(Boolean)) || since;
       if (until !== null) {
         const scopes = this.lessonScopes();
-        const next = db.prepare("SELECT * FROM memory_edges WHERE room = '*' AND src = ? AND rel = ? AND dst != ? AND valid_to IS NULL").all(e.src, e.rel, e.dst);
+        const next = this.sql("SELECT * FROM memory_edges WHERE room = '*' AND src = ? AND rel = ? AND dst != ? AND valid_to IS NULL").all(e.src, e.rel, e.dst);
         if (!next.some(x => this.edgeIn(x, sc, scopes))) until = null;
       }
     }
@@ -222,19 +236,21 @@ export class Graph {
       fresh, stale: fresh < STALE, seen_age: ago(seen, this.now()),
       // source is what a person reads: the thread's /rename name or its first message. ref is
       // the exact turn, for memory.why and anything that wants to open it.
-      source: best ? names.get(String(best.session))?.name || String(best.session).slice(0, 8) : taught.length ? `taught by ${taught[0].module}` : null,
+      source: origin === "user" ? "your correction" : best ? names.get(String(best.session))?.name || String(best.session).slice(0, 8) : taught.length ? `taught by ${taught[0].module}` : null,
       ref: best ? { session: String(best.session), seq: Number(best.seq), name: names.get(String(best.session))?.name || null } : null,
       evidence: ev.length,
       taught: taught.map(t => ({ module: String(t.module), kind: String(t.kind) })),
       // Two rooms believe different things and the user has not said which: the Deck asks.
       conflict: Boolean(e.conflict),
+      origin,
+      correction: said ? { id: Number(said.id), action: String(said.action), age: ago(Number(said.created), this.now()), note: said.note ?? null } : null,
     };
   }
 
   focus(scopes) {
     const out = { pin: new Set(), mute: new Set() };
     const want = new Set(["*", ...scopes]);
-    for (const r of this.db.prepare("SELECT node, scope, mode FROM memory_focus").all()) if (want.has(String(r.scope))) out[/** @type {"pin"|"mute"} */ (r.mode)].add(String(r.node));
+    for (const r of this.sql("SELECT node, scope, mode FROM memory_focus").all()) if (want.has(String(r.scope))) out[/** @type {"pin"|"mute"} */ (r.mode)].add(String(r.node));
     return out;
   }
 
@@ -243,23 +259,23 @@ export class Graph {
     if (!cwds.length || !this.curator.hasRecall()) return new Set();
     // A plain prefix compare: LIKE ignores case, and on a case-sensitive disk /w/acme and
     // /w/ACME are two different clients.
-    const q = this.db.prepare("SELECT id FROM recall_sessions WHERE cwd = ? OR substr(cwd, 1, length(?) + 1) = ? || '/'");
+    const q = this.sql("SELECT id FROM recall_sessions WHERE cwd = ? OR substr(cwd, 1, length(?) + 1) = ? || '/'");
     const out = new Set();
     for (const c of cwds) {
       const base = String(c).replace(/\/+$/, "") || "/";
-      for (const r of base === "/" ? this.db.prepare("SELECT id FROM recall_sessions WHERE substr(cwd, 1, 1) = '/'").all() : q.all(base, base, base)) out.add(String(r.id));
+      for (const r of base === "/" ? this.sql("SELECT id FROM recall_sessions WHERE substr(cwd, 1, 1) = '/'").all() : q.all(base, base, base)) out.add(String(r.id));
     }
     return out;
   }
 
   identityEdges(id, { closed = false, sc = null } = {}) {
-    return this.db.prepare(`SELECT * FROM memory_edges WHERE room = ? AND (src = ? OR dst = ?) AND rel != ?
+    return this.sql(`SELECT * FROM memory_edges WHERE room = ? AND (src = ? OR dst = ?) AND rel != ?
       ${closed ? "" : "AND valid_to IS NULL"} ORDER BY valid_to IS NOT NULL, confidence DESC, id`).all(sc?.room || "*", id, id, WHERE);
   }
 
   mentionEdges(id, limit = 5, sc = null) {
     const legacy = sc && !sc.room;
-    const rows = this.db.prepare(`SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC, id DESC ${legacy ? "" : "LIMIT ?"}`)
+    const rows = this.sql(`SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC, id DESC ${legacy ? "" : "LIMIT ?"}`)
       .all(...(legacy ? ["*", id] : [sc?.room || "*", id, limit]));
     return legacy ? rows.filter(e => sc.sessions.has(String(e.dst).slice(8))).slice(0, limit) : rows;
   }
@@ -274,7 +290,7 @@ export class Graph {
     // Enrich hook asks on every prompt, and a watcher can teach thousands of items.
     if (this.scopeCache?.version === this.curator.version) return this.scopeCache.map;
     const out = new Map();
-    for (const r of this.db.prepare(`SELECT l.edge, t.fact FROM memory_lessons l
+    for (const r of this.sql(`SELECT l.edge, t.fact FROM memory_lessons l
         JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key`).all()) {
       let cwds = null;
       try { cwds = JSON.parse(String(r.fact)).project_cwds || null; } catch {}
@@ -328,7 +344,7 @@ export class Graph {
     if (sc.room) return String(e.room) === sc.room;
     if (String(e.room ?? "*") !== "*") return false;
     if (e.rel === WHERE) return sc.sessions.has(String(e.dst).slice(8));
-    for (const r of this.db.prepare("SELECT DISTINCT session FROM memory_evidence WHERE edge = ?").all(e.id)) if (sc.sessions.has(String(r.session))) return true;
+    for (const r of this.sql("SELECT DISTINCT session FROM memory_evidence WHERE edge = ?").all(e.id)) if (sc.sessions.has(String(r.session))) return true;
     const s = scopes.get(Number(e.id));
     return Boolean(s && (s.open || s.cwds.some(c => within(c, sc.cwds))));
   }
@@ -353,8 +369,8 @@ export class Graph {
     if (sc?.room) {
       // A room's own rows: what its sessions name most, and what was taught for it.
       const score = new Map();
-      for (const r of this.db.prepare("SELECT src, SUM(weight) w FROM memory_edges WHERE room = ? AND rel = 'mentioned_in' GROUP BY src").all(sc.room)) score.set(String(r.src), Number(r.w));
-      const edge = this.db.prepare("SELECT src, room FROM memory_edges WHERE id = ?");
+      for (const r of this.sql("SELECT src, SUM(weight) w FROM memory_edges WHERE room = ? AND rel = 'mentioned_in' GROUP BY src").all(sc.room)) score.set(String(r.src), Number(r.w));
+      const edge = this.sql("SELECT src, room FROM memory_edges WHERE id = ?");
       for (const [id, l] of scopes) {
         const n = l.cwds.filter(c => within(c, sc.cwds)).length;
         const e = n && edge.get(id);
@@ -364,12 +380,12 @@ export class Graph {
     } else if (sc) {
       const score = new Map();
       if (sc.sessions.size) {
-        const q = this.db.prepare("SELECT src, weight FROM memory_edges WHERE room = '*' AND dst = ? AND rel = 'mentioned_in'");
+        const q = this.sql("SELECT src, weight FROM memory_edges WHERE room = '*' AND dst = ? AND rel = 'mentioned_in'");
         for (const s of sc.sessions) for (const r of q.all("session:" + s)) score.set(String(r.src), (score.get(String(r.src)) || 0) + Number(r.weight));
       }
       // Facts a module taught for this project (a watcher's items, say) bring their subject in,
       // whether or not any of the project's sessions name it.
-      const edge = this.db.prepare("SELECT src FROM memory_edges WHERE id = ? AND room = '*'");
+      const edge = this.sql("SELECT src FROM memory_edges WHERE id = ? AND room = '*'");
       for (const [id, sc] of scopes) {
         const n = sc.cwds.filter(c => within(c, project_cwds)).length;
         const src = n && edge.get(id)?.src;
@@ -377,7 +393,7 @@ export class Graph {
       }
       ranked = [...score].map(([id, s]) => ({ n: this.node(id), s }));
     } else {
-      ranked = this.db.prepare("SELECT * FROM memory_nodes WHERE kind IN ('org','person') ORDER BY sessions DESC, mentions DESC, label LIMIT 200").all()
+      ranked = this.sql("SELECT * FROM memory_nodes WHERE kind IN ('org','person') ORDER BY sessions DESC, mentions DESC, label LIMIT 200").all()
         .map(n => ({ n, s: Number(n.sessions) }));
     }
     ranked = ranked.filter(r => r.n && !QUIET.has(String(r.n.role)) && !f.mute.has(String(r.n.id)) && ["org", "person", "name", "email", "repo"].includes(String(r.n.kind)))
@@ -418,13 +434,13 @@ export class Graph {
       phrases.get(k).push({ node, weight, via });
     };
     const nodes = room === "*" ? "(SELECT * FROM memory_nodes WHERE ? = '*')" : "(SELECT * FROM memory_room_nodes WHERE room = ?)";
-    for (const n of this.db.prepare(`SELECT id, kind, label, role FROM ${nodes}`).all(room)) {
+    for (const n of this.sql(`SELECT id, kind, label, role FROM ${nodes}`).all(room)) {
       if (QUIET.has(String(n.role))) continue;
       put(String(n.label), String(n.id), 1, "name");
     }
     // Every claimant of a short form, most precise first. Which one a prompt means is decided
     // when it is read: the first one in view.
-    for (const r of this.db.prepare(`SELECT f.node, f.form, f.precision FROM memory_shortforms f JOIN ${nodes} n ON n.id = f.node
+    for (const r of this.sql(`SELECT f.node, f.form, f.precision FROM memory_shortforms f JOIN ${nodes} n ON n.id = f.node
         WHERE f.room = ? AND f.precision >= ? AND f.sessions >= ? AND (n.role IS NULL OR n.role NOT IN ('own','tool','mail','hub'))
         ORDER BY f.form, f.precision DESC, f.sessions DESC, f.node`).all(room, room, T.shortPrecision, T.shortMinSessions)) {
       put(String(r.form), String(r.node), Number(r.precision), "short");
@@ -524,19 +540,19 @@ export class Graph {
     let edges = [], head = null;
     const parts = String(fact).split("|");
     if (parts.length === 3) {
-      edges = db.prepare("SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = ? AND dst = ? ORDER BY valid_to IS NOT NULL, valid_from DESC").all(sc?.room || "*", ...parts)
+      edges = this.sql("SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = ? AND dst = ? ORDER BY valid_to IS NOT NULL, valid_from DESC").all(sc?.room || "*", ...parts)
         .filter(e => this.edgeIn(e, sc, scopes));
       if (edges.length) head = this.fact(edges[0], sc);
     }
     if (!edges.length) {
       const n = this.resolve(fact, sc);
-      if (!n) return { fact: null, turns: [], taught: [], gone: 0 };
+      if (!n) return { fact: null, turns: [], taught: [], corrections: [], gone: 0 };
       head = this.summary(n, sc);
-      edges = db.prepare("SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC").all(sc?.room || "*", n.id)
+      edges = this.sql("SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC").all(sc?.room || "*", n.id)
         .filter(e => this.edgeIn(e, sc, scopes));
     }
     const lessons = [];
-    for (const e of edges) for (const r of db.prepare(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
+    for (const e of edges) for (const r of this.sql(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
         LEFT JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key WHERE l.edge = ?`).all(e.id)) {
       if (!this.lessonIn(r.fact, sc)) continue;
       if (lessons.some(x => x.module === r.module && x.kind === r.kind && x.key === r.key)) continue;
@@ -545,7 +561,7 @@ export class Graph {
       lessons.push({ module: String(r.module), kind: String(r.kind), key: String(r.key), text, at: Number(r.at) || null, age: ago(Number(r.at), this.now()) });
     }
     const refs = [];
-    for (const e of edges) for (const r of db.prepare("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY seq").all(e.id)) {
+    for (const e of edges) for (const r of this.sql("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY seq").all(e.id)) {
       if (sc && !sc.sessions.has(String(r.session))) continue;
       if (!refs.some(x => x.session === r.session && x.seq === r.seq)) refs.push({ session: String(r.session), seq: Number(r.seq) });
     }
@@ -553,7 +569,7 @@ export class Graph {
     const found = new Map();
     if (wanted.length && this.curator.hasRecall()) {
       const ids = [...new Set(wanted.map(w => w.session))];
-      const rows = db.prepare(`SELECT session, seq, role, ts, text FROM recall_turns WHERE session IN (${ids.map(() => "?").join(",")})`).all(...ids);
+      const rows = this.sql(`SELECT session, seq, role, ts, text FROM recall_turns WHERE session IN (${ids.map(() => "?").join(",")})`).all(...ids);
       for (const r of rows) found.set(`${r.session}\u0000${r.seq}`, r);
     }
     const names = this.labels(wanted.map(w => w.session));
@@ -565,7 +581,42 @@ export class Graph {
       turns.push({ session: w.session, seq: w.seq, name: names.get(w.session)?.name || null, role: r.role, ts: Number(r.ts) || null,
         age: ago(Number(r.ts), this.now()), text: String(r.text).slice(0, 400) });
     }
-    return { fact: head, turns, taught: lessons, gone };
+    const corrections = parts.length === 3 ? this.sql(`SELECT id, action, rel, dst, object, at, scope, note, created, undone FROM memory_corrections
+      WHERE src = ? AND (rel = ? OR rel IS NULL) AND scope IN ('*', ?) ORDER BY id DESC`).all(parts[0], parts[1], sc?.room || "*")
+      .filter(c => c.dst === parts[2] || c.object === parts[2])
+      .map(c => ({ id: Number(c.id), action: String(c.action), scope: String(c.scope), note: c.note ?? null, age: ago(Number(c.created), this.now()), undone: c.undone != null })) : [];
+    return { fact: head, turns, taught: lessons, corrections, gone };
+  }
+
+  /**
+   * The fact a correction is about, in a view's own rows: node ids for its two ends, the row it
+   * corrects (for the prior source, rule and confidence), and for replace the new object.
+   * Ends may be node ids or names; an object the graph does not know yet becomes a new node.
+   * @param {{ fact?: string, subject?: string, rel?: string, object?: string, action: string }} input
+   */
+  target({ fact, subject, rel, object, action }, sc = null) {
+    let a = subject, r = rel, b = object, replacement = null;
+    if (fact) {
+      const parts = String(fact).split("|");
+      if (parts.length !== 3) throw new Error("fact must be src|rel|dst, as memory.facts gives it");
+      [a, r, b] = parts;
+      replacement = object ?? null;
+    }
+    if (!a || !r || !b) throw new Error("say which fact: fact, or subject, rel and object");
+    if (!/^[a-z][a-z_]{1,40}$/.test(String(r))) throw new Error("rel must be snake_case, like works_at");
+    const known = x => (this.node(String(x), sc) || this.resolve(String(x), sc))?.id ?? null;
+    const fresh = x => known(x) ?? ref(String(x).replace(/^name:/, ""), "object").id;
+    const src = action === "add" ? fresh(a) : known(a);
+    if (!src) throw new Error(`nothing in memory matches "${a}"`);
+    const dst = action === "add" ? fresh(b) : known(b) ?? String(b);
+    const row = this.sql(`SELECT * FROM memory_edges WHERE room = ? AND src = ? AND rel = ? AND dst = ? ORDER BY valid_to IS NOT NULL, valid_from DESC LIMIT 1`)
+      .get(sc?.room || "*", src, r, dst) || null;
+    if (!row && action !== "add") throw new Error(`memory holds no fact ${src}|${r}|${dst} here`);
+    if (action === "replace") {
+      if (!replacement) throw new Error("replace needs object: what is true instead");
+      replacement = fresh(replacement);
+    }
+    return { src: String(src), rel: String(r), dst: String(dst), object: replacement, row };
   }
 
   // ------------------------------------------------------------------ steering
@@ -574,8 +625,8 @@ export class Graph {
   steer({ node, scope = "*", mode, off = false, who = null, project_cwds = [] }) {
     const n = this.resolve(node, this.view(project_cwds));
     if (!n) throw new Error(`nothing in memory matches "${node}"`);
-    if (off) this.db.prepare("DELETE FROM memory_focus WHERE node = ? AND scope = ? AND mode = ?").run(n.id, scope, mode);
-    else this.db.prepare(`INSERT INTO memory_focus (node, scope, mode, at, who) VALUES (?,?,?,?,?)
+    if (off) this.sql("DELETE FROM memory_focus WHERE node = ? AND scope = ? AND mode = ?").run(n.id, scope, mode);
+    else this.sql(`INSERT INTO memory_focus (node, scope, mode, at, who) VALUES (?,?,?,?,?)
       ON CONFLICT(node, scope) DO UPDATE SET mode = excluded.mode, at = excluded.at, who = excluded.who`).run(n.id, scope, mode, this.now(), who);
     this.curator.bump();
     return { node: n.id, label: n.label, scope, mode: off ? null : mode };
@@ -583,8 +634,8 @@ export class Graph {
 
   stats() {
     const db = this.db;
-    const one = sql => Number(db.prepare(sql).get()?.n || 0);
-    const last = db.prepare("SELECT at, sessions, turns, nodes, edges, ms FROM memory_runs ORDER BY id DESC LIMIT 1").get() || null;
+    const one = sql => Number(this.sql(sql).get()?.n || 0);
+    const last = this.sql("SELECT at, sessions, turns, nodes, edges, ms FROM memory_runs ORDER BY id DESC LIMIT 1").get() || null;
     return {
       recall: this.curator.hasRecall(),
       sessions: one("SELECT COUNT(*) n FROM memory_curated"),
@@ -592,9 +643,9 @@ export class Graph {
       edges: one("SELECT COUNT(*) n FROM memory_edges WHERE room = '*'"),
       facts: one(`SELECT COUNT(*) n FROM memory_edges WHERE room = '*' AND rel != 'mentioned_in' AND valid_to IS NULL`),
       evidence: one("SELECT COUNT(*) n FROM memory_evidence"),
-      byKind: Object.fromEntries(db.prepare("SELECT kind, COUNT(*) n FROM memory_nodes GROUP BY kind ORDER BY n DESC").all().map(r => [r.kind, r.n])),
-      byRole: Object.fromEntries(db.prepare("SELECT coalesce(role, 'outside') role, COUNT(*) n FROM memory_nodes GROUP BY 1 ORDER BY n DESC").all().map(r => [r.role, r.n])),
-      shortforms: Number(db.prepare("SELECT COUNT(*) n FROM memory_shortforms WHERE room = '*' AND precision >= ? AND sessions >= ?").get(T.shortPrecision, T.shortMinSessions)?.n || 0),
+      byKind: Object.fromEntries(this.sql("SELECT kind, COUNT(*) n FROM memory_nodes GROUP BY kind ORDER BY n DESC").all().map(r => [r.kind, r.n])),
+      byRole: Object.fromEntries(this.sql("SELECT coalesce(role, 'outside') role, COUNT(*) n FROM memory_nodes GROUP BY 1 ORDER BY n DESC").all().map(r => [r.role, r.n])),
+      shortforms: Number(this.sql("SELECT COUNT(*) n FROM memory_shortforms WHERE room = '*' AND precision >= ? AND sessions >= ?").get(T.shortPrecision, T.shortMinSessions)?.n || 0),
       rooms: this.curator.rooms().length,
       focus: one("SELECT COUNT(*) n FROM memory_focus"),
       taught: one("SELECT COUNT(*) n FROM memory_taught"),

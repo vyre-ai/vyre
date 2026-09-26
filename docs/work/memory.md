@@ -63,6 +63,10 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
 - Decay at read time (decision 3): `seen` over all evidence, freshness per relation, Enrich
   scores times `fresh` with the 0.35 cut unless pinned, `stale`/`fresh`/`seen_age` on facts.
   Derive stays clock-free (tested with two curator clocks 400 days apart).
+- Correct, merge, split (decision 4): `memory.correct` (wrong, ended, replace, confirm, add),
+  `memory.corrections`, `memory.uncorrect`, `memory.merge`, `memory.split` (by room, or apart),
+  owner callers only, applied in derive after the votes, conflicts recorded, events with the ADR
+  payload, CLI subcommands and `--project`. `module.json` does/watches/shows as in decision 12.
 - `memory.graph` (floor plan, rooms, `updated` cursor), strict project graphs, agent access checks.
 - Taught facts scoped to a project with `fact.project_cwds`.
 - Short forms pooled per identity (spellings sharing a domain), so "the Harlow team" style references match on the real index.
@@ -109,6 +113,14 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   supporting turn over all evidence. `memory.relevant` results carry `fresh` and never include a
   stale fact unless its subject or object is pinned.
 - `memory.stats` counts the main graph only and adds `rooms`.
+- New tools `memory.correct`, `memory.corrections`, `memory.uncorrect`, `memory.merge`,
+  `memory.split`, for `deck`, `cli`, `local` and `capsule` callers only. New events
+  `memory.corrected {id, action, rel, scope: "all"|"project", prior_source, prior_rule,
+  prior_confidence}`, `memory.merged {id, scope}`, `memory.split {id, scope}` (for Learning:
+  count `prior_rule`). Facts carry `origin` (`extract`, `taught`, `user`, `confirmed`) and
+  `correction: {id, action, age, note} | null`; `memory.why` returns `corrections`.
+- A split node's id is `<id>#<room slug>` with the same label, so the Deck shows two "Dana Reyes".
+- `module.json` `shows`: `{deck: ["panel:memory"], capsule: ["answer:memory.relevant"], cli: ["memory", "why"]}`.
 - `memory_edges` has a `room` column; any direct reader must filter `room = '*'` for the main
   graph. `memory_shortforms` has `room` in its key.
 

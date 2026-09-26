@@ -27,7 +27,7 @@ const DOMAIN = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const REL = /^[a-z][a-z_]{1,40}$/;
 /** What each known relation says about the kinds at its two ends. */
-const ENDS = { works_at: ["person", "org"], has_email: ["person", "email"], has_domain: ["org", "domain"], owned_by: ["repo", "org"] };
+export const ENDS = { works_at: ["person", "org"], has_email: ["person", "email"], has_domain: ["org", "domain"], owned_by: ["repo", "org"] };
 
 /** @typedef {{ id: string, kind: string|null }} Ref */
 /** @typedef {{ src: Ref, rel: string|null, dst: Ref|null }} Claim */
