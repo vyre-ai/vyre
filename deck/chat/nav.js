@@ -3,6 +3,12 @@
 // sessions), "No project", agents. Pure render: index.js owns the data and calls this again on
 // every relevant event. Disclosure state (which projects/agents are expanded) lives at module
 // scope, so it survives a re-render but not a reload.
+//
+// Toggling a disclosure triangle must never cost more than a redraw of this tree: it used to
+// dispatch deck:navigate, which runs the whole router again — refetching projects.list and
+// threads.list, tearing down and rebuilding the session view (dropping an unsent composer draft
+// and the session's own SSE subscription) just to flip one arrow (perf flagged this). It now
+// calls the onChange index.js passes in, which redraws only ctx.rail() from data already in hand.
 
 import { h, link } from "../js/dom.js";
 import { icon } from "../js/icons.js";
@@ -11,12 +17,13 @@ import { threadHref, projectHref } from "./lib/routes.js";
 const open = new Set();
 
 /**
- * @param {{ projects: any[], threads: any[], route: { project: string|null, thread: string|null }, err: any }} p
+ * @param {{ projects: any[], threads: any[], route: { project: string|null, thread: string|null },
+ *   err: any, onChange: () => void }} p
  */
-export function renderNav({ projects, threads, route, err }) {
-  const list = h("div", { id: "chat-nav-list" }, groups(projects, threads, route, ""));
+export function renderNav({ projects, threads, route, err, onChange }) {
+  const list = h("div", { id: "chat-nav-list" }, groups(projects, threads, route, "", onChange));
   const q = h("input", { type: "text", placeholder: "Search sessions", "aria-label": "Search sessions",
-    oninput: e => { list.replaceChildren(); for (const k of [groups(projects, threads, route, /** @type {any} */ (e.target).value)].flat(Infinity)) if (k) list.append(k); } });
+    oninput: e => { list.replaceChildren(); for (const k of [groups(projects, threads, route, /** @type {any} */ (e.target).value, onChange)].flat(Infinity)) if (k) list.append(k); } });
 
   return h("div", { style: { display: "flex", flexDirection: "column", gap: "14px" } },
     h("label", { class: "search", style: { width: "auto" } }, icon("search", 14), q),
@@ -25,7 +32,7 @@ export function renderNav({ projects, threads, route, err }) {
   );
 }
 
-function groups(projects, threads, route, q) {
+function groups(projects, threads, route, q, onChange) {
   const needle = q.trim().toLowerCase();
   const match = t => !needle || String(t.name || t.id).toLowerCase().includes(needle) || String(t.agent || "").toLowerCase().includes(needle);
   const byProject = new Map(projects.map(p => [p.slug, []]));
@@ -39,37 +46,34 @@ function groups(projects, threads, route, q) {
   const out = [];
   if (projects.length) out.push(h("div", { class: "rail-group" },
     projects.filter(p => !needle || p.name.toLowerCase().includes(needle) || byProject.get(p.slug).length)
-      .map(p => projectGroup(p, byProject.get(p.slug) || [], route))));
+      .map(p => projectGroup(p, byProject.get(p.slug) || [], route, onChange))));
   if (noProject.length) out.push(h("div", { class: "rail-group" }, disclose("no-project", "No project", noProject.length, () =>
-    h("div", { class: "rail-sub" }, noProject.map(t => threadLink(t, route))))));
+    h("div", { class: "rail-sub" }, noProject.map(t => threadLink(t, route))), false, undefined, onChange)));
   if (byAgent.size) out.push(h("div", { class: "rail-group" },
     h("div", { class: "lbl", style: { padding: "0 10px 6px" } }, "Agents"),
     [...byAgent.entries()].map(([agent, rows]) => disclose("agent:" + agent, agent, rows.length, () =>
-      h("div", { class: "rail-sub" }, rows.map(t => threadLink(t, route))), rows.some(t => t.status === "running")))));
+      h("div", { class: "rail-sub" }, rows.map(t => threadLink(t, route))), rows.some(t => t.status === "running"), undefined, onChange))));
   if (!out.length) out.push(h("div", { class: "empty" }, needle ? "No matches." : "Nothing yet."));
   return out;
 }
 
-function projectGroup(p, rows, route) {
+function projectGroup(p, rows, route, onChange) {
   const isOpen = open.has("p:" + p.slug) || route.project === p.slug;
   const label = link(projectHref(p.slug), { class: "ellipsis link quiet", style: { flexGrow: "1", color: "inherit" }, onclick: e => e.stopPropagation() }, p.name);
   return disclose("p:" + p.slug, label, rows.length, () =>
     h("div", { class: "rail-sub" }, rows.length ? rows.map(t => threadLink(t, route)) : h("div", { class: "empty", style: { padding: "4px 10px" } }, "No sessions")),
-    false, isOpen);
+    false, isOpen, onChange);
 }
 
-function disclose(key, label, count, body, live, isOpen) {
-  const btn = h("button", { class: "rail-disclose", type: "button", "aria-expanded": String(isOpen), onclick: () => { if (isOpen) open.delete(key); else open.add(key); rerender(); } },
+function disclose(key, label, count, body, live, isOpen, onChange) {
+  const open_ = isOpen !== undefined ? isOpen : open.has(key);
+  const btn = h("button", { class: "rail-disclose", type: "button", "aria-expanded": String(open_), onclick: () => { if (open_) open.delete(key); else open.add(key); onChange(); } },
     icon("chevron", 11),
     live ? h("span", { class: "agent-dot live" }) : null,
     typeof label === "string" ? h("span", { style: { flexGrow: "1", textAlign: "left" } }, label) : label,
     count ? h("span", { class: "code" }, String(count)) : null);
-  return h("div", null, btn, isOpen ? body() : null);
+  return h("div", null, btn, open_ ? body() : null);
 }
-
-// Toggling disclosure has no data of its own to change, so the cheapest correct redraw is asking
-// the router to run this view's render again (index.js listens for the same events already).
-function rerender() { window.dispatchEvent(new Event("deck:navigate")); }
 
 function threadLink(t, route) {
   const current = route.thread === t.id;

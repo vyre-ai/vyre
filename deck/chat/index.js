@@ -1,26 +1,48 @@
 // @ts-check
 // Vyre Chat's view module. deck/views/chat.js dynamically imports this and calls its default
 // export with the Deck's real ctx (deck/js/app.js documents the contract). Mounted at /chat,
-// /chat/:project/:thread and, since the router has no route for a project-less thread yet,
-// /chat/_/:thread (project "_" means none — see the note to deck in docs/work/gate-chat.md).
+// /chat/:project, /chat/:project/:thread and /chat/thread/:thread (a project-less session).
 // The shell (header, rail's upper Places, tabbar) is deck's; this file fills ctx.root with the
 // session list or the session view, and ctx.rail() with the project/session tree.
 
 import { h, put, empty, link, go } from "../js/dom.js";
 import { attempt } from "../js/api.js";
+import { when } from "../js/fmt.js";
 import { renderNav } from "./nav.js";
 import { mountSession } from "./session.js";
 import { threadHref, projectHref } from "./lib/routes.js";
 
+// Offline read of the recent-session list: names, ids, projects and timestamps only, never a
+// message's words (the same line deck's service worker already draws for /v1/, and the same
+// shape as Now's own snapshot in deck/views/now.js — deck's call on what "offline read" may hold).
+const SNAP_KEY = "vyre.chat.snapshot";
+const saveSnapshot = (projects, threads) => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(),
+  projects: projects.map(p => ({ slug: p.slug, name: p.name, threads: p.threads, last: p.last })),
+  threads: threads.map(t => ({ id: t.id, name: t.name, project: t.project, agent: t.agent, status: t.status, last: t.last, asks: t.asks })) })); } catch {} };
+const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch { return null; } };
+
 /** @param {any} ctx */
 export default async function chat(ctx) {
-  const project = ctx.params.project && ctx.params.project !== "_" ? ctx.params.project : null;
+  const project = ctx.params.project || null;
   const thread = ctx.params.thread || null;
+  const state = { projects: [], threads: [], err: null, offline: false, snapAt: null };
 
-  const [p, t] = await Promise.all([attempt("projects.list"), attempt("threads.list", { all: true })]);
+  /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
+  async function load() {
+    const [p, t] = await Promise.all([attempt("projects.list"), attempt("threads.list", { all: true })]);
+    if (!ctx.alive()) return;
+    const offline = p.error?.code === "offline" || t.error?.code === "offline";
+    const snap = offline ? loadSnapshot() : null;
+    state.projects = p.data ? p.data.projects : (snap ? snap.projects : state.projects);
+    state.threads = t.data || (snap ? snap.threads : state.threads);
+    state.err = p.error || t.error;
+    state.offline = offline && !!snap;
+    state.snapAt = snap ? snap.at : state.snapAt;
+    if (p.data && t.data) saveSnapshot(state.projects, state.threads);
+  }
+
+  await load();
   if (!ctx.alive()) return;
-  const state = { projects: p.data ? p.data.projects : [], threads: t.data || [], err: p.error || t.error };
-
   drawNav();
   drawMain();
 
@@ -28,17 +50,17 @@ export default async function chat(ctx) {
     ctx.on(type, refresh);
 
   async function refresh() {
-    const [p2, t2] = await Promise.all([attempt("projects.list"), attempt("threads.list", { all: true })]);
+    await load();
     if (!ctx.alive()) return;
-    state.projects = p2.data ? p2.data.projects : state.projects;
-    state.threads = t2.data || state.threads;
     drawNav();
     if (!thread) drawMain();               // the session view follows its own SSE; no full redraw needed
   }
 
   function drawNav() {
     if (!ctx.alive()) return;
-    ctx.rail(renderNav({ projects: state.projects, threads: state.threads, route: { project, thread }, err: state.err }));
+    // onChange (a disclosure triangle toggled) redraws only this, from data already in hand: no
+    // refetch, and drawMain/the session view are never touched just because a folder opened.
+    ctx.rail(renderNav({ projects: state.projects, threads: state.threads, route: { project, thread }, err: state.err, onChange: drawNav }));
   }
 
   function drawMain() {
@@ -59,10 +81,11 @@ export default async function chat(ctx) {
       return;
     }
     const open = state.threads.slice(0, 30);
-    put(ctx.root, open.length
-      ? h("div", { style: { padding: "20px" } }, h("div", { class: "section-head" }, h("h2", { class: "lbl" }, "Recent")),
-        h("div", { class: "rows", style: { marginTop: "12px" } }, open.map(threadRow)))
-      : empty("No sessions yet.", state.err));
+    put(ctx.root, state.offline ? h("div", { class: "empty", style: { padding: "12px 20px 0" } }, `Offline, showing what was cached as of ${when(state.snapAt)}.`) : null,
+      open.length
+        ? h("div", { style: { padding: "20px" } }, h("div", { class: "section-head" }, h("h2", { class: "lbl" }, "Recent")),
+          h("div", { class: "rows", style: { marginTop: "12px" } }, open.map(threadRow)))
+        : empty("No sessions yet.", state.err));
   }
 
   function threadRow(row) {
