@@ -28,15 +28,28 @@ Before publishing, a checkout works the same way: `claude plugin marketplace add
 
 ## Done
 
-- `c33635b` marketplace manifest, launchers (`harness/hooks/run.js`, `harness/mcp/run.js`,
+- `d347015` marketplace manifest, launchers (`harness/hooks/run.js`, `harness/mcp/run.js`,
   `harness/lib/vyre.js`), `/vyre ask|send|statusline`, Learning's hook guard covers `hooks/run.js`,
   `test/cc-plugin.test.js`.
-- `d3291b5`, `ad3e5b7` `core/statusline` module, `harness/statusline/statusline.sh`,
+- `cd75da3`, `4c6696e` `core/statusline` module, `harness/statusline/statusline.sh`,
   `vyre statusline [install|uninstall]` with tests.
-- `07582bd` `vyre up` offers the status line on the person's own terminal (never under node --test).
-- ADR 0020, SPEC section 8, CHANGELOG.
+- `a50dff2` `vyre up` offers the status line on the person's own terminal (never under node --test).
+- `7d3469b` ADR 0020, SPEC section 8, CHANGELOG. `aa3ba8e` the no-Vyre line points at
+  https://vyre.run/start (npm form behind `ON_NPM`); the fallback MCP server keeps the hub rule.
 
 Verified:
+- End to end from GitHub (27 Sep, after ci's rewrite), temp `HOME` and `CLAUDE_CONFIG_DIR`:
+  `claude plugin marketplace add 'vyre-ai/vyre#work/cc-plugin'` and `claude plugin install vyre@vyre`
+  succeed (commit aa3ba8e, cache `plugins/cache/vyre/vyre/0.0.1/` holds harness/ alone). From that
+  copy: no Vyre prints the vyre.run/start line; a Vyre package on PATH with a temp home and vyred
+  down gives the floor's vault deny; a package with no home says to run `vyre up`; `claude mcp list`
+  shows `plugin:vyre:vyre` connected. Main has no `.claude-plugin/` until this branch merges, so the
+  plain `vyre-ai/vyre` form works only after that.
+- `statusline.sh` drains Claude Code's stdin when it is not chaining: exiting with it unread made
+  the writer fail with EPIPE (seen once in the install test on the test box). Still 3.96 ms mean,
+  4.44 ms p95 with a 600-byte stdin. The statusline cli test then passed 5 runs in a row.
+- A `vyre` on PATH that is not the Vyre package (the old prototype's bin/ on this Mac) is skipped,
+  and the search goes on down PATH.
 - `claude plugin validate . --strict` and `claude plugin validate harness --strict` pass (2.1.283).
 - In a temp `HOME` and `CLAUDE_CONFIG_DIR`: marketplace add + install succeed; `claude plugin details vyre@vyre`
   lists 4 skills (including the `vyre` command), 6 hooks, the MCP server, about 326 always-on tokens;
@@ -60,8 +73,8 @@ Perf:
 
 ## Next
 
-- Once `vyre-ai/vyre` is public: install from GitHub in a temp config and confirm the cache copy
-  finds the npm-installed `vyre` on PATH.
+- After this branch merges to main: repeat the install with the plain `vyre-ai/vyre` form.
+- docs: a "Vyre in Claude Code" page; content sent to the docs team, waiting for their draft to review.
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 
 ## Needs from others

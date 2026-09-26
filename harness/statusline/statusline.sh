@@ -11,6 +11,9 @@ if [ -s "$home/statusline.prev" ]; then
   prev=$(cat "$home/statusline.prev" 2>/dev/null)
   theirs=$(sh -c "$prev" 2>/dev/null)
   [ -n "$theirs" ] && printf '%s\n' "$theirs"
+elif [ ! -t 0 ]; then
+  # Take Claude Code's JSON and drop it: exiting with it unread can fail the writer with EPIPE.
+  cat >/dev/null 2>&1
 fi
 
 # Line 1 is vyred's pid, line 2 the line. A dead pid means the line is stale: show nothing.

@@ -17,6 +17,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `core/statusline`: a module that keeps `<home>/statusline` (pid and line, such as
   `vyre · 2 need you · box ok · juno idle`), recomputed on events and once a minute.
   `harness/statusline/statusline.sh` prints it in about 4 ms, never touching vyred or the network.
+  It reads and drops Claude Code's stdin JSON unless it chains, so the writer never hits EPIPE.
 - `vyre statusline [install [--chain] [--yes] | uninstall]`: sets Claude Code's `statusLine` with
   consent, never replacing one the user has (`--chain` keeps theirs above Vyre's line). `vyre up`
   on a Mac offers it once on a terminal.
