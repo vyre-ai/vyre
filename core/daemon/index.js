@@ -105,6 +105,16 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "denied" ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }
+  // Webhooks: POST /v1/<module>/<name>/hook reaches that module's hook tool (watchers.hook) with
+  // the name, the token from x-vyre-token or ?token=, and the JSON body. The tool checks the token.
+  const hook = req.method === "POST" && /^\/v1\/([a-z][a-z0-9-]*)\/([^/]+)\/hook$/.exec(url.pathname);
+  if (hook) {
+    const token = String(req.headers["x-vyre-token"] || url.searchParams.get("token") || "");
+    let payload;
+    try { payload = await body(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
+    const result = await registry.call(`${hook[1]}.hook`, { name: decodeURIComponent(hook[2]), token, body: payload }, "hook");
+    return send(res, result.error ? (result.error.code === "no_such_tool" ? 404 : 403) : 202, result);
+  }
   if (req.method === "GET" && url.pathname === "/v1/events") {
     return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
       type: url.searchParams.get("type"), project: url.searchParams.get("project"), limit: Math.min(1000, Number(url.searchParams.get("limit") || 200)) }) });

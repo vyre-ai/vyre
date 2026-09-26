@@ -200,7 +200,9 @@ export class Registry {
         if (typeof def.run !== "function") throw new Error(`tool ${name} needs a run function`);
         // internal: only other modules may call it (never Claude, the CLI or a surface), and it is
         // left out of every listing. vault.release is the reason this exists.
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal) });
+        // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
+        // "hook"), and left out of every listing. The tool checks its own secret.
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal), hook: Boolean(def.hook) });
       },
     };
   }
@@ -213,6 +215,7 @@ export class Registry {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    if (def.hook !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
     if (this.deps.rules) {
@@ -229,7 +232,7 @@ export class Registry {
   }
 
   listTools() {
-    return [...this.tools.entries()].filter(([, d]) => !d.internal).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
+    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
   }
 
   async stop() {
