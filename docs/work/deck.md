@@ -143,11 +143,11 @@ guessed at.
 - Nothing; waiting on box's onboard core to merge, and answers from box below.
 
 ## Next
-- Re-check onboarding once box's onboard core merges (branch not yet in this worktree).
-- `deck/js/presence.js` (ADR 0004, on work/security): vault and intelligence both asked for it
-  independently; told both to prototype it in their own view first, to centralize once there are
-  two real callers to generalize from rather than guessing the challenge/retry shape now.
-- View-scoped keyboard shortcuts (vault asked): same answer, prototype first, lift out later.
+- `deck/views/projects.js:313` calls `memory.facts {project_cwds}`; intelligence says unscoped or
+  folder-only reads are now refused and it must move to `memory.facts {room}` — waiting on
+  work/memory to reach main (not yet, checked 2026-09-27) before switching, so as not to guess the
+  new shape.
+- View-scoped keyboard shortcuts (vault asked): prototype in deck/vault/ first, lift out later.
 - Settings section 7 (Lessons) should become a link to `/memory?tab=lessons` once intelligence's
   tab exists; a one-line swap, waiting on them to say it's live.
 - `/threads/:id?seq=N` scroll-to-and-highlight (intelligence asked, for provenance links).
