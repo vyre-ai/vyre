@@ -137,24 +137,33 @@ guessed at.
 - `/threads/:id?seq=N` scroll-to-and-highlight (intelligence asked, for provenance links).
 - Proposed lessons in Now's needs, with a count (intelligence asked) — a new need "kind" next to
   draft/ask, bigger scope, not started.
-- `agents.history` is not a real tool; Ask's past-exchange log degrades to empty rather than
-  builds something from `threads.list` per agent — worth deciding whether switchboard adds the
-  tool or deck reconstructs it.
 - Settings: confirm the per-step `vyre` commands it shows once box's core is in.
-- A per-agent usage view (Agents detail page): switchboard sent the shape (`agents.usage`, work/
-  switchboard 44367ce) — `{agent,kind,auth,turns,threads,duration_ms,cost_usd,api_cost_usd,tokens,
-  by_auth,budget_usd,spent_usd,left_usd,limit,last_at}`, money shown only for `auth:"api-key"`
-  (`spent_usd` of `budget_usd`; subscription/ambient show turns and time, `cost_usd` there is
-  notional, not spent), `thread.limit`/`thread.finished{tokens}`/`thread.stopped{reason:"budget"}`
-  events. Not started; not asked for by anyone yet, so waiting on priority before building it.
+- Web Push client side: subscribe UI in Settings, iOS "install first" hint, and the service
+  worker's `push`/`notificationclick` handlers — waiting on switchboard's `core/push` shapes
+  (VAPID, subscribe, delivery on ask.raised/gate.held/thread.watched, no content in the payload).
+- A usage badge on the Agents *list* rows (turns or spend, at a glance) — the detail page's Usage
+  section (below) covers "per agent"; the list is a natural follow-up, not started.
+
+## Done (continued)
+- `agents.history` turned out to already be a real tool by the time I checked (switchboard added
+  it alongside `agents.usage`) — Ask's past-exchange log, which already read the right field names
+  defensively, works with no code change.
+- A per-agent Usage section on the Agents detail page (`agents.usage`, switchboard, merged to
+  main): money only for `auth:"api-key"` (`spent_usd` of `budget_usd`, `left_usd`); subscription/
+  ambient agents show turns and time instead, since `cost_usd` there is Claude Code's notional
+  figure, not money spent. Tokens, last used, and the last rate-limit report
+  (`allowed_warning`/`rejected`, with when it resets) when there is one. Verified the real shape
+  live (curl) and the populated state (mocked at the fetch layer, since a fake `claude` binary
+  can't produce real turns).
 
 ## Needs from others
 - box: whether `detail.devices.phoneUrl`/`macDownload`/`mac.connected` (Devices step) are the
   real field names or my guess at them from install's ADR 0008 description; confirmed already:
   the blocked-Tailscale and bad-setup-token-code shapes.
 - switchboard: `agents.ask` returning a recall-first answer (so Ask's already-built "From memory"
-  block and "Ask a model" button have something to show); `agents.history`, if it's coming;
-  `computers.*` shapes (`computers.get`, `restart`, `limits`), `watchers.list/pause` shapes.
+  block and "Ask a model" button have something to show); `computers.*` shapes (`computers.get`,
+  `restart`, `limits`), `watchers.list/pause` shapes; `core/push`'s client-facing shapes, when
+  ready.
 - vault: the new `vault.*` event names, for `js/api.js`'s known SSE list (asked 2026-09-27).
 
 ## Changed contracts
