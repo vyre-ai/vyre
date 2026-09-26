@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A Mac-only owner can pair the Mac
+
+- `link.pair.approve` refused the node that asked, so the Deck on the Mac being paired could never
+  approve it, and an owner without a second device could not pair at all. The asking Mac may now
+  approve its own request when that call carries a fresh passkey assertion (not a presence
+  session) and the typed code matches; a model on the Mac can do neither. `core/link/box.js`.
+- The Deck's pairing card and the CLI say to approve "on this Mac or your phone".
+
 #### A public name only when the person chose it; slow steps say so
 
 - Step 1's live availability check (`onboard.name` check) saved every valid name it was asked
