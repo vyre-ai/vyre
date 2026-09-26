@@ -67,7 +67,14 @@ Embedding-pipeline CPU/battery behavior needs a separate check later.
 - **switchboard**: no findings — audited, event-driven, nothing to fix.
 - **gate-chat**: chat poller numbers above; recommend raising the shipped default toward 30-60s
   and/or making it adaptive rather than a flat 2s.
-- **capsule**: hidden-state RSS ~300MB vs. 250MB budget, breakdown above.
+- **capsule**: FIXED by `capsule` on `work/capsule` (9cefc71) — running the network service and
+  GPU in the main process and keeping no spare renderer took hidden RSS from 301-324MB down to
+  212-233MB (238MB worst case with the hotkey helper), under the 250MB budget. Warm open now
+  measures 18-50ms via their own end-to-end `open:<via>` timing (gesture `at` through two
+  frames) — consistent with the 34-40ms this audit measured for the narrower show()-to-paint
+  path (eff2206's `capsule:paintping`), both comfortably under the 100ms budget. Both timing
+  mechanisms now coexist on `work/capsule`: theirs is the broader real-world measurement,
+  mine is the Electron-internal one, gated behind `VYRE_CAPSULE_TRACE_WAKE`.
 
 ## Capsule wake latency (measured)
 
