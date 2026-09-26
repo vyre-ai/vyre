@@ -42,6 +42,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- `agents.list` rows carry `computer` again; without it core/computers refused every agent a
+  computer. Found by the computers workstream, which made the same one-line fix on its branch.
 - Lean threads: `threads.start {lean: true}` runs with no Vyre plugin, `--tools ""`,
   `--strict-mcp-config` and `--setting-sources ""`. Checked on Claude Code 2.1.283 with haiku:
   "What is 2+2?" cost $0.013 (6.5k tokens of Claude Code's own system prompt), where the

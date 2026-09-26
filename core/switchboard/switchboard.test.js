@@ -496,7 +496,9 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
 test("agents.history: each question with its answer and thread, newest last, pageable, and only for the assistant or a person", async t => {
   const { tool } = await boot(t);
   await tool("agents.create", { name: "juno", kind: "assistant" });
-  await tool("agents.create", { name: "scout", projects: [] });
+  await tool("agents.create", { name: "scout", projects: [], computer: true });
+  // agents.list says whether each may have a computer; core/computers decides on it.
+  assert.deepEqual((await tool("agents.list", {})).data.map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
   for (const [agent, text] of [["juno", "one"], ["scout", "two"], ["juno", "three"]]) {
     assert.equal((await tool("agents.ask", { agent, text, surface: "deck" })).data.text, `echo: ${text}`);
   }
