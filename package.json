@@ -8,6 +8,7 @@
   "scripts": {
     "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\""
   },
+  "optionalDependencies": { "@huggingface/transformers": "^4.3.0" },
   "files": ["bin", "core", "harness", "local", "deck", "modules", "docs", "LICENSE", "README.md"],
   "homepage": "https://vyre.run",
   "repository": { "type": "git", "url": "https://github.com/vyre-ai/vyre" },
