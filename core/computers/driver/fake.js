@@ -20,12 +20,15 @@ export class FakeDriver {
   constructor(opts = {}) {
     this.name = "fake";
     this.local = opts.local || null;
-    /** @type {Map<string, { id: string, agent: string, state: "created"|"running"|"paused"|"exited", spec: CreateSpec }>} */
+    /** @type {Map<string, { id: string, agent: string, state: "created"|"running"|"paused"|"exited", spec: CreateSpec, exitCode?: number }>} */
     this.containers = new Map();
     /** Every operation, in order, so tests can assert what the pool asked for. */
     /** @type {Array<{ op: string, id?: string, agent?: string }>} */
     this.calls = [];
     this.n = 0;
+    /** Agents whose container exits the moment it starts, as a broken image's does. */
+    /** @type {Set<string>} */
+    this.crashing = new Set();
   }
 
   /** The driver for one vyred home, made on first use and kept across restarts in this process. */
@@ -56,7 +59,8 @@ export class FakeDriver {
   async start(id) {
     const c = this.must(id);
     if (c.state === "paused") throw new Error(`container ${id} is paused; unpause it first`);
-    c.state = "running";
+    c.state = this.crashing.has(c.agent) ? "exited" : "running";
+    if (this.crashing.has(c.agent)) c.exitCode = 127;
     this.calls.push({ op: "start", id });
   }
 
@@ -91,11 +95,12 @@ export class FakeDriver {
     const c = this.containers.get(id);
     if (!c) return { state: "missing", host: null };
     const state = c.state === "created" ? "exited" : c.state;
+    const exit = state === "exited" && c.exitCode != null ? { exitCode: c.exitCode } : {};
     if (this.local) {
       const p = this.local.ports || {};
-      return { state, host: this.local.host || "127.0.0.1", ports: { vnc: p.vnc || PORTS.vnc, helper: p.helper || PORTS.helper } };
+      return { state, host: this.local.host || "127.0.0.1", ports: { vnc: p.vnc || PORTS.vnc, helper: p.helper || PORTS.helper }, ...exit };
     }
-    return { state, host: `fake-${c.agent}` };
+    return { state, host: `fake-${c.agent}`, ...exit };
   }
 
   async list() {

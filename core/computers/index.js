@@ -15,7 +15,7 @@
 // computers.endpoint, which is internal (modules only): the hands need the token to reach
 // computerd, and they hold it in memory, never in a result they pass on.
 
-import { Pool, MIGRATIONS, NO_DRIVER } from "./pool.js";
+import { Pool, MIGRATIONS, NO_DRIVER, LIMITS } from "./pool.js";
 import { Keyboard, isSurface } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
@@ -182,6 +182,18 @@ export default {
         // to another, so it passes as itself rather than the (possibly different) caller here.
         if (t) await keyboard.giveback(agent, t.surface, "module:computers");
         return pool.stop(agent);
+      });
+
+    tool("computers.restart", "Restart an agent's computer: a new container on the same home, so its files and Chrome profile stay, with its current limits. Whatever is open on its screen closes.",
+      obj({ agent: str }), async (i, { caller }) => pool.restart(await resolve(i, caller)));
+
+    tool("computers.limits", `Set an agent's processor cores (cpus, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}) and memory (memory_gb, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}). They apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
+      obj({ agent: str, cpus: { type: "number" }, memory_gb: { type: "number" } }), async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        const claim = AGENT_CLAIM.exec(String(caller || ""));
+        if (claim && (await kindOf(claim[1])) !== "assistant") throw new Error(`${claim[1]} cannot change a computer's limits; the user sets them`);
+        await pool.allowed(agent);
+        return pool.limits(agent, { cpus: i.cpus, memory_gb: i.memory_gb });
       });
 
     tool("computers.pause", "Pause an agent's hands: its input actions are refused until resumed. The computer keeps running.", obj({ agent: str }),

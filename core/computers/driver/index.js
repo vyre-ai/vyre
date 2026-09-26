@@ -32,7 +32,7 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
 
 /**
  * @typedef {"running"|"paused"|"exited"|"missing"} ContainerState
- * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, helper: number } }} Inspection
+ * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, helper: number }, exitCode?: number }} Inspection
  */
 
 /**

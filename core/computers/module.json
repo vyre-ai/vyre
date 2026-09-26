@@ -5,7 +5,7 @@
   "requires": [],
   "does": {
     "tools": [
-      "computers.list", "computers.get", "computers.checkout", "computers.release", "computers.stop",
+      "computers.list", "computers.get", "computers.checkout", "computers.release", "computers.stop", "computers.restart", "computers.limits",
       "computers.pause", "computers.resume", "computers.takeover", "computers.giveback", "computers.watch",
       "computers.endpoint", "computers.may-act", "computers.helper", "computers.shield"
     ]

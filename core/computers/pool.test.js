@@ -276,3 +276,73 @@ test("pool: pause and resume are recorded and emitted once each", async t => {
   assert.deepEqual(types(), ["computer.paused", "computer.resumed"]);
 });
 
+
+test("pool: a computer that exits on boot fails the checkout with the reason, and is not left running", async t => {
+  const { pool, driver } = setup(t);
+  driver.crashing.add("kit");
+  await assert.rejects(pool.checkout("kit"), /kit's computer stopped as soon as it started \(exit code 127\).*docker logs vyre-computer-kit/);
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.equal(pool.view("kit").screen, null, "the screen went back to the pool");
+  assert.equal(pool.vnc("kit"), null);
+  driver.crashing.delete("kit");
+  assert.equal((await pool.checkout("kit")).screen, 1, "a fixed image starts the same container");
+  assert.equal(pool.view("kit").state, "running");
+});
+
+test("pool: a checkout waits for the screen to answer, and gives up after bootMs", async t => {
+  let answers = 0;
+  const { pool } = setup(t, { config: { bootMs: 100 } });
+  pool.probe = async () => ++answers >= 3;
+  await pool.checkout("kit");
+  assert.equal(answers, 3, "probed until the screen answered");
+  pool.probe = async () => false;
+  await pool.stop("pax").catch(() => {});
+  await assert.rejects(pool.checkout("pax"), /pax's computer started but its screen did not answer within 0 s/);
+});
+
+test("pool: a computer that died while idle freezes to stopped, not a stuck running", async t => {
+  const { pool, driver, clock, types } = setup(t, { config: { idleMs: 10, freezeMs: 10 } });
+  await pool.checkout("kit");
+  pool.release("kit");
+  const c = [...driver.containers.values()][0];
+  c.state = "exited";
+  clock.t += 20;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.ok(types().includes("computer.stopped"));
+  assert.equal((await pool.checkout("kit")).screen, 1, "the next checkout starts it");
+  assert.equal(pool.view("kit").state, "running");
+});
+
+test("pool: limits apply at restart, which keeps the home and the checkout and changes the passwords", async t => {
+  const { pool, driver } = setup(t);
+  await pool.checkout("kit");
+  const before = pool.vnc("kit");
+  const first = [...driver.containers.values()][0];
+  assert.deepEqual([first.spec.cpus, first.spec.memoryMb], [2, 3072]);
+  assert.deepEqual([pool.view("kit").cpus, pool.view("kit").memory_gb], [2, 3]);
+  assert.throws(() => pool.limits("kit", { cpus: 0 }), /cpus is a whole number of cores from 1 to 16/);
+  assert.throws(() => pool.limits("kit", { memory_gb: 1.5 }), /memory_gb is a whole number/);
+  assert.throws(() => pool.limits("kit", {}), /say cpus or memory_gb/);
+  const v = pool.limits("kit", { cpus: 4, memory_gb: 8 });
+  assert.deepEqual([v.cpus, v.memory_gb], [4, 8]);
+  assert.equal(first.spec.cpus, 2, "the running container keeps its limits until a restart");
+  const r = await pool.restart("kit");
+  assert.equal(r.state, "running");
+  assert.equal(r.screen, 1, "the checkout survives");
+  assert.equal(driver.containers.has(first.id), false, "the old container is gone");
+  const next = [...driver.containers.values()][0];
+  assert.deepEqual([next.spec.cpus, next.spec.memoryMb, next.spec.volume], [4, 8192, first.spec.volume]);
+  assert.notEqual(pool.vnc("kit").password, before.password);
+  await assert.rejects(pool.restart("rio"), /rio has no computer/);
+});
+
+test("pool: restarting a computer nobody holds leaves it to freeze on schedule", async t => {
+  const { pool, clock } = setup(t, { config: { freezeMs: 10 } });
+  await pool.restart("kit");
+  assert.equal(pool.view("kit").state, "running");
+  assert.equal(pool.view("kit").screen, null);
+  clock.t += 20;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "frozen");
+});
