@@ -121,9 +121,30 @@ lease surface naming pattern, and never inventing custom UI for what a real cont
 - `3b64c03` End-to-end Done-when in one vyred with fake Mattermost and fake Gmail. Suite: 316 pass, 0 fail.
 - (uncommitted) The Edit button is back as a Mattermost dialog prefilled with the current words; saving calls `gate.revise`, and Send sends. Suite: 420 pass, 0 fail, 1 skipped.
 
+## Done (Vyre Chat)
+- `5f9d815` Mattermost removed: `modules/chat`, `test/gate-chat.test.js`, SPEC.md's Chat row.
+- Subagent-built, CSP-safe (no innerHTML anywhere) `deck/chat/lib/`: `markdown.js` (paragraphs,
+  headings, bold/italic, inline code, fenced+highlighted code blocks, lists, links restricted to
+  http(s)/relative, blockquotes, a 50k-char cap), `highlight.js` (regex tokenizer, js/ts/json/
+  bash/css/html/python + a safe fallback), `diff.js` (word-level LCS diff, reused for a Gate
+  item's draft-vs-final and for file edits).
+- `bf7a62a` `deck/chat/`: `app.js` (hash router + shell on deck.css's existing `.shell/.rail/.view/
+  .tabbar`), `nav.js` (projects -> sessions, no-project, agents, search), `session.js` (loads
+  `threads.get`, follows `thread.*`/`ask.*`/`gate.*` over api.js's shared SSE, renders streaming
+  text with a cursor, tool chips that expand, day rules), `gate-item.js` (held items inline and
+  editable: `gate.revise` on edit, `gate.approve` only for Send, `gate.reject` for Discard, no
+  separate Edit surface), `ask-item.js` (Allow/Deny), `composer.js` (`threads.send`, lease on
+  typing, @ mentions, "/" left to Claude Code's own commands), a manifest and `sw.js` (installable
+  PWA, offline read of recent sessions, writes never cached).
+- Verified for real: `deck/test/world.js` plus a live `threads.start` with `claude -p --model
+  haiku`. Streamed text and a `Bash ls -la` chip rendered and expanded; a held Gate item (via a
+  temporary `gate.senders.mail` added for the run) was edited inline, Sent, failed correctly on an
+  ungranted vault item, and showed the server's own error in the card. Screenshots at 1440 and 390.
+
 ## Doing
-- Building `deck/chat/`: navigation, the SSE session view, the composer, held-item and ask inline
-  editing. Verifying against a real vyred with a real headless thread.
+- Nothing blocking. Next pass: pointer-cursor scroll-stick tuning, the memory-fact tool once
+  intelligence answers, folding the hash router into deck's shared one once it lands, and updating
+  `docs/design/boards/Chat.dc.html` from the real screenshots (still Mattermost-shaped today).
 
 ## Next
 1. `deck/chat/` v1: projects -> sessions -> session view, composer with lease, gate items and asks
