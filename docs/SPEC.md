@@ -137,6 +137,7 @@ vyre/
     names/                 <you>.vyre.run, Tailscale, certificates (workstream: box)
     link/                  the Mac and the box as one system: pairing, ctx.remote, box events (workstream: link)
     files/                 search, preview and fetch files on both machines, inside their roots (workstream: link)
+    planner/               alarms, timers, reminders, todos, notes, a calendar; one scheduler (workstream: planner)
     cli/                   every `vyre` command
   harness/                 a Claude Code plugin
     .claude-plugin/plugin.json

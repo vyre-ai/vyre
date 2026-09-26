@@ -182,3 +182,46 @@ test("push: devices subscribe, the moments reach them as kind, title and path on
   const everything = JSON.stringify([d.events.since(0, { limit: 5000 }), lines, svc.got.map(g => [g.path, g.headers])]);
   assert.ok(priv.length > 40 && !everything.includes(priv), "the VAPID private key leaked");
 });
+
+test("push: a planner firing reaches the phone as kind planner with a fixed title, never the label; alarms ring through quiet hours", async t => {
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+  const until = async (fn, what) => { const end = Date.now() + 5000; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 20)); } };
+  const phone = await browser();
+  await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys } });
+  const fire = (firing, kind, title) => d.events.emit("planner", "planner.fired", { firing, item: "i_1", kind, title, due: Date.now(), ring: 1, missed: false, actions: ["done", "snooze"] }, {});
+
+  fire("f_alarm", "alarm", "Pick up juno from Northwind Bakery");
+  const got = await until(() => svc.got[0], "the alarm push");
+  assert.equal(got.headers.urgency, "high");
+  const msg = JSON.parse((await decrypt(phone, got.body)).toString());
+  assert.deepEqual({ ...msg, at: 0 }, { kind: "planner", title: "Alarm", path: "/planner/f_alarm", tag: "planner-f_alarm", actions: ["done", "snooze"], at: 0 });
+  assert.ok(!/juno|Northwind|loud/.test(JSON.stringify(msg)), "the label never crosses the push service");
+
+  // Quiet now: a timer still rings; a reminder and a todo wait.
+  const now = Date.now(), hhmm = ms => new Date(ms).toISOString().slice(11, 16);
+  await deck("push.settings", { quiet: { start: hhmm(now - 3600_000), end: hhmm(now + 3600_000), timezone: "UTC" } });
+  fire("f_rem", "reminder", "Call Harlow Legal");
+  fire("f_todo", "todo", "File the return");
+  fire("f_timer", "timer", "Pasta");
+  await until(() => svc.got[1], "the timer push");
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(svc.got.length, 2, "only the timer rang in quiet hours");
+  const timer = JSON.parse((await decrypt(phone, svc.got[1].body)).toString());
+  assert.equal(timer.title, "Timer finished");
+  assert.equal(timer.tag, "planner-f_timer");
+  // Out of quiet hours, each kind has its own fixed word.
+  await deck("push.settings", { quiet: null });
+  fire("f_ev", "event", "Harlow Legal intake call");
+  fire("f_todo2", "todo", "Draft the proposal");
+  fire("f_rem2", "reminder", "Call kit");
+  await until(() => svc.got.length === 5, "three more");
+  const titles = await Promise.all(svc.got.slice(2).map(async g => JSON.parse((await decrypt(phone, g.body)).toString()).title));
+  assert.deepEqual(titles.sort(), ["Reminder", "Starting soon", "Todo due"]);
+  assert.equal((await deck("push.settings", { kinds: { planner: false } })).data.kinds.planner, false);
+});

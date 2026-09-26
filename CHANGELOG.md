@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The planner: alarms, timers, reminders, todos and notes kept on the box (ADR 0025, slice 1)
+
+- New core module `planner` (core/planner, both roles). Tools: planner.add, list, get, update,
+  done, snooze, dismiss, delete (soft, restorable for 30 days), agenda, parse and settings.
+  Events: planner.added, changed, removed, fired and acked. No new dependency: zone math is Intl.
+- Time is UTC plus a zone. Repeats (day, weekday, week with days, month, year, interval, until)
+  keep their wall time in their zone, so a daily 07:00 stays 07:00 across DST; a skipped 02:30
+  moves forward and a repeated 01:30 takes the first. Alarms and timers are floating and follow
+  planner.settings timezone; reminders and events stay in the zone they were made in.
+- One unref'd timer to the earliest fire, escalation or wake hook, capped at 6 hours, none when
+  nothing is due; a clock jump over 60 s is logged and everything recomputed. At start, what fell
+  due while vyred was down rings once, marked missed (a repeat once, for its latest time); a day
+  stale is kept as missed without ringing. An unacknowledged firing rings again every
+  escalate_after minutes (5), escalate_max more times (3). The first done, snooze or dismiss wins.
+- Agents (mcp, module, harness) may read and may add, change and finish todos, reminders and
+  notes; alarms, timers, events, snooze, dismiss, delete and settings are for people's surfaces.
+- A Mac paired with a box forwards every planner tool to the box and keeps its scheduler idle; an
+  agent's limits are checked on the Mac first. An unpaired Mac runs the planner itself.
+- push: planner.fired becomes kind `planner` with a fixed title per item kind (Alarm, Timer
+  finished, Reminder, Starting soon, Todo due), path /planner/<firing>, tag planner-<firing> and
+  actions done and snooze, at high urgency. The label never crosses the push service. Alarms and
+  timers ring through quiet hours; reminders and todos wait.
+
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours

@@ -23,12 +23,13 @@ export const MIGRATIONS = [
 /** The push services browsers use. Anything else is refused: vyred must not POST to any URL a client names. */
 const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.apple.com", "notify.windows.com"];
 const KEY_ITEM = "push-vapid";
-const KINDS = ["ask", "draft", "watch", "lesson"];
+const KINDS = ["ask", "draft", "watch", "lesson", "planner"];
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
 /**
  * What each event becomes. Titles are fixed words; the only variable part is an id in the path.
- * @type {Record<string, (e: any) => { kind: string, title: string, path: string, tag: string } | null>}
+ * `loud` rings through quiet hours: an alarm or a timer the user set themselves (ADR 0025).
+ * @type {Record<string, (e: any) => { kind: string, title: string, path: string, tag: string, actions?: string[], loud?: boolean } | null>}
  */
 const NOTES = {
   "ask.raised": e => ({ kind: "ask", title: "A session is waiting for your answer", path: `/needs/${enc(e.payload.ask)}`, tag: `ask-${e.payload.ask}` }),
@@ -37,7 +38,12 @@ const NOTES = {
     title: e.payload.reason === "asked" ? "A thread you are watching is asking" : e.payload.reason === "stopped" ? "A thread you are watching stopped" : "A thread you are watching finished",
     path: `/threads/${enc(e.thread)}`, tag: `watch-${e.payload.watch}` }),
   "lesson.proposed": e => ({ kind: "lesson", title: "Vyre has a lesson for you to review", path: "/settings?section=lessons", tag: `lesson-${e.payload.lesson}` }),
+  // Never the label the user typed: a fixed word per item kind, and the firing id as the tag, so
+  // a second ring replaces the first on the device.
+  "planner.fired": e => ({ kind: "planner", title: PLANNER_TITLES[e.payload.kind] || "Reminder", path: `/planner/${enc(e.payload.firing)}`,
+    tag: `planner-${e.payload.firing}`, actions: ["done", "snooze"], loud: e.payload.kind === "alarm" || e.payload.kind === "timer" }),
 };
+const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });
 const enc = v => encodeURIComponent(String(v ?? ""));
 
 /**
@@ -109,7 +115,7 @@ export default {
       await Promise.all(devices.map(async d => {
         if (d.expires && d.expires < Date.now()) { db.prepare("DELETE FROM push_devices WHERE id = ?").run(d.id); out.dropped++; return; }
         const r = await send({ endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } }, message,
-          { privateKey: k.privateKey, publicKey: k.publicKey, subject, urgency: message.kind === "ask" || message.kind === "draft" ? "high" : "normal" });
+          { privateKey: k.privateKey, publicKey: k.publicKey, subject, urgency: ["ask", "draft", "planner"].includes(message.kind) ? "high" : "normal" });
         if (r.gone) { db.prepare("DELETE FROM push_devices WHERE id = ?").run(d.id); out.dropped++; return; }
         if (r.ok) { db.prepare("UPDATE push_devices SET last_ok = ?, fails = 0 WHERE id = ?").run(Date.now(), d.id); out.sent++; }
         else { db.prepare("UPDATE push_devices SET fails = fails + 1 WHERE id = ?").run(d.id); out.failed++; ctx.log(`push to device ${d.id} failed (${r.status || "network"})`); }
@@ -119,10 +125,11 @@ export default {
 
     const offs = Object.entries(NOTES).map(([type, make]) => ctx.events.on(type, async e => {
       try {
-        const n = make(e);
-        if (!n) return;
+        const made = make(e);
+        if (!made) return;
+        const { loud, ...n } = made;
         const s = settings();
-        if (!s.kinds[n.kind] || isQuiet(s.quiet)) return;
+        if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet))) return;
         if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
         await deliver({ ...n, at: Date.now() });
       } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); }
@@ -159,7 +166,7 @@ export default {
       async () => /** @type {any[]} */ (db.prepare("SELECT * FROM push_devices ORDER BY at").all()).map(d => ({
         device: d.id, label: d.label, service: new URL(d.endpoint).hostname, at: d.at, last_ok: d.last_ok, fails: d.fails })));
 
-    tool("push.settings", "Quiet hours ({start: \"22:00\", end: \"07:00\", timezone?}, or null for none) and which kinds notify (ask, draft, watch, lesson). With no input, the current settings.",
+    tool("push.settings", "Quiet hours ({start: \"22:00\", end: \"07:00\", timezone?}, or null for none) and which kinds notify (ask, draft, watch, lesson, planner). With no input, the current settings.",
       { type: "object", properties: { quiet: { anyOf: [{ type: "object" }, { type: "null" }] }, kinds: { type: "object" } } },
       async i => {
         if (i.quiet !== undefined) {
