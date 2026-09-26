@@ -23,6 +23,9 @@ test("daemon: answers health, lists the system module and runs its tools", async
   assert.match((await call("system.info", {}, { root })).data.version, /^\d+\.\d+\.\d+/);
   const ev = (await request("GET", "/v1/events", undefined, { root })).data;
   assert.ok(ev.some(e => e.type === "system.started"));
+  // A surface follows the stream from here rather than replaying the whole log.
+  const last = (await request("GET", "/v1/health", undefined, { root })).data.last_event;
+  assert.equal(last, Math.max(...ev.map(e => e.id)));
 });
 
 test("daemon: bad tool input is a 400 with a readable message", async t => {

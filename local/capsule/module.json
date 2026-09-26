@@ -1,0 +1,12 @@
+{
+  "name": "capsule",
+  "version": "0.1.0",
+  "description": "The Mac command bar: press Control twice and talk to the assistant, any agent or any session.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["capsule.status", "capsule.show"] },
+  "watches": { "emits": ["capsule.requested"] },
+  "shows": { "capsule": [], "cli": ["capsule"] },
+  "needs": {},
+  "teaches": {}
+}

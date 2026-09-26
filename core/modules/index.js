@@ -181,16 +181,15 @@ export class Registry {
       },
       // Vault items, one at a time, only those the manifest declares under needs.vault. The value
       // comes from the vault module's internal vault.release tool, which only modules can call,
-      // and which sees which module asked. "per-watcher" and "per-agent" are the declarations of
-      // the watcher runtime and the agents module: their item names are dynamic, one set per
-      // watcher or agent, so they must check those names themselves. The vault's grant still
-      // decides, per item and per module.
+      // and which sees which module asked. A "per-<thing>" entry ("per-watcher", "per-agent",
+      // "per-sender") declares a module that fetches on behalf of things it runs, whose items are
+      // named at run time; it must check each one's own declaration, and the grant still decides.
       // `field` picks one field of an item (a login's password, say); `watcher` is for the
       // watcher runtime, whose grants are per watcher.
       vault: {
         fetch: async (name, { field, watcher } = {}) => {
           const declared = (m.needs && m.needs.vault) || [];
-          if (!declared.includes(name) && !declared.includes("per-watcher") && !declared.includes("per-agent")) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
+          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-"))) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
           const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;

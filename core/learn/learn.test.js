@@ -303,7 +303,7 @@ test("learn: what the hooks logged while vyred was down is counted at start, esc
 test("learn: a draft the user edited to take out every em dash proposes a remind lesson, told once in that thread", async t => {
   const home = tempHome(t);
   const gate = `export default { async start(ctx) {
-    const drafts = { 7: { draft: "Dana, the brief is ready \\u2014 sending Friday.", final: "Dana, the brief is ready. Sending Friday.", diff: { removed: ["\\u2014 sending"], added: [". Sending"] } },
+    const drafts = { 7: { draft: { subject: "Brief", body: "Dana, the brief is ready \\u2014 sending Friday." }, final: { subject: "Brief", body: "Dana, the brief is ready. Sending Friday." }, diff: { removed: ["\\u2014 sending"], added: [". Sending"] } },
                      8: { draft: "Thanks, Dana.", final: "Thanks Dana!", diff: { removed: [","], added: ["!"] } } };
     ctx.tool("gate.get", { run: async ({ id }) => drafts[id] });
     ctx.tool("gate.fire", { run: async ({ id }) => { ctx.events.emit("gate.released", { id, kind: "mail", via: "mail", to: "dana@harlowlegal.com", edited: true, agent: null, thread: "s1", project: null }); return {}; } });
