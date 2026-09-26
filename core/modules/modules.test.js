@@ -179,3 +179,37 @@ test("modules: ctx.memory.teach checks the declared kinds and is a no-op without
   assert.deepEqual(await reg.call("notes.add", { kind: "note.item" }), { data: { taught: false } });
   assert.match((await reg.call("notes.add", { kind: "secret.item" })).error.message, /does not declare under teaches.memory/);
 });
+
+test("modules: a second module with a name already loaded is reported, and the first keeps running", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), b = path.join(home, "b");
+  writeModule(a, "notes", good, echo);
+  writeModule(b, "notes", { ...good, does: { tools: ["notes.other"] } }, `export default { async start(ctx) { ctx.tool("notes.other", { run: async () => 1 }); return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+  await reg.start(discover([a, b]), { role: "local" });
+  const st = reg.status();
+  assert.equal(st.find(m => m.name === "notes").state, "running");
+  const dup = st.find(m => m.name.startsWith("notes@"));
+  assert.equal(dup.state, "invalid");
+  assert.match(dup.error, /already loaded/);
+  assert.equal((await reg.call("notes.add", { text: "x" })).data.saved, "x");
+  assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
+});
+
+test("modules: a per-<thing> declaration lets a module fetch items named at run time", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("relay.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["relay", { version: "0.1.0", does: { tools: ["relay.check"] }, needs: { vault: ["per-sender"] } }, user],
+  ]);
+  assert.deepEqual(await reg.call("relay.check", { item: "work-mail" }, "cli"), { data: { got: "value-of-work-mail-for-module:relay" } });
+});

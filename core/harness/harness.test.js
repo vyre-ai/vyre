@@ -129,3 +129,21 @@ test("harness: brief warns a terminal resume of a live headless thread, and not 
   assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-other" })).data.text, "", "a session vyred is not running");
   assert.equal(events.since(0).filter(e => e.type === "thread.contended").length, 1);
 });
+
+test("harness: a send inside an agent's thread is routed to the Gate; the user's own session still asks", async t => {
+  const gate = `export default { async start(ctx) {
+    ctx.tool("gate.route", { internal: true, run: async ({ agent }) => agent ? { decision: "deny", reason: "Use gate_request." } : { decision: null } });
+    return {};
+  } };`;
+  const { reg } = await harness(t, [["gate", { version: "0.1.0", does: { tools: ["gate.route"] } }, gate]]);
+  const call = { tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com", body: "hi" }, session: "s1" };
+  const agent = (await reg.call("harness.rules", { ...call, agent: "juno" })).data;
+  assert.deepEqual([agent.decision, agent.reason, agent.rule], ["deny", "Use gate_request.", 1]);
+  assert.equal((await reg.call("harness.rules", call)).data.decision, "ask", "without an agent the floor's ask stands");
+});
+
+test("harness: without the Gate running, an agent's send falls back to asking", async t => {
+  const { reg } = await harness(t);
+  const r = (await reg.call("harness.rules", { tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com" }, agent: "juno" })).data;
+  assert.equal(r.decision, "ask");
+});

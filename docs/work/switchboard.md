@@ -74,6 +74,23 @@ with real Claude Code, not only a fake.
   `threads.answer` was `denied` by the loader while deck's was allowed, and the Write happened. A plain `claude -p --resume <id>` from
   outside vyred, against a live headless thread, was warned in its brief (it quoted the warning), and vyred emitted `thread.contended`.
 
+- Merged main (vault, gate with gate.revise, chat, capsule, memory.graph, watchers, learning, deck
+  onboarding). The Harness keeps lessons outside an agent's scope and withholds only the brief and memory.
+- Agent identity: a per-thread key (`VYRE_AGENT_KEY`), `mcp:agent:<name>` / `harness:agent:<name>`
+  callers, and vyred's check through `threads.vouch`. The design was sent to `security`, whose
+  presence proof covers what this does not: a process inside a thread can still call as `cli` or
+  `local` with no agent name, and vyred takes that as the user.
+
+## Answers
+- gate-chat asked whether a tool called inside a thread can see its session id. Inside a thread the
+  Switchboard started, yes: the child's env has `VYRE_THREAD=<session id>`, and the MCP server and
+  every Bash child inherit it. But the MCP server does not forward it, so a vyred tool called
+  through MCP sees only its caller (`mcp:agent:<name>`), not the session. What does see it is the
+  PreToolUse hook: `harness.rules` gets `session` for every tool call, MCP tools included, which is
+  how `gate.route` gets it now. In an interactive terminal session nothing gives the MCP server the
+  session id. If a tool needs it, the cheap way is for vyred to pass the thread `threads.vouch`
+  already found to the tool as part of the verified caller; say so and it gets done.
+
 ## Doing
 - Nothing. Waiting on review.
 
@@ -98,7 +115,10 @@ with real Claude Code, not only a fake.
 - `thread.started` now also comes from `threads` (payload `{thread,name,cwd,project,agent,headless:true,resumed}`),
   alongside harness's `{session,cwd,source}` for every session. Consumers must stay idempotent.
 - `harness.brief` / `harness.enrich` take an optional `projects` ("*" or a comma list).
-- MCP server caller: `mcp:agent:<name>` inside an agent's thread, otherwise `mcp`.
+- MCP server caller: `mcp:agent:<name>` inside an agent's thread, otherwise `mcp`; hook caller
+  `harness:agent:<name>` inside one, otherwise `harness`. Either is refused by vyred without the thread's
+  key in `x-vyre-agent-key`. `callerKind` maps both to `mcp` / `harness`.
+- Internal `threads.vouch {agent, key}` -> `{thread}` or `{thread: null}`, for vyred's route.
 - Internal `threads.claimed {session}` -> `{headless, holder, status}`: true when the id is a live headless thread in
   this vyred; holder is the lease surface, else `agent:<name>`, else null. Internal `threads.contend {session}` emits
   `thread.contended {thread, session, holder}` only if the thread is still live (`core/switchboard/claim.js`).
@@ -108,6 +128,10 @@ with real Claude Code, not only a fake.
 ## Shared files touched (minimal)
 - `harness/mcp/server.js`: the caller identity, the tool filter for non-assistant agents, recall scope, and a 600s timeout for agents.ask.
 - `harness/hooks/hook.js`: passes `VYRE_PROJECTS` to brief and enrich, and `headless` to brief.
+- `core/daemon/index.js` (route: the agent-key check), `core/daemon/client.js` (sends the key).
+- `core/modules/index.js` `callerKind`, `core/vault/vault.js` + `index.js` (use it), `core/memory/index.js` (the regex).
+- Tests: `core/vault/module.test.js`, `core/memory/floor.test.js`, `core/gate/module.test.js`, `test/gate-chat.test.js`,
+  `local/capsule/lib/bridge.test.js` (core threads now exists, so they turn it off or call in-process).
 - `core/harness/index.js` (+ test): scope check in brief and enrich; the second-writer warning in brief.
 - `core/cli/commands/home.test.js`, `test/projects-cli.test.js`: they asserted that agents did not exist yet.
 - `core/events/index.js` (+ test): `Events.prune({ type, before, source?, thread?, has? })`, the log's one
@@ -117,7 +141,7 @@ with real Claude Code, not only a fake.
 
 ## Assumptions
 - `--permission-prompt-tool stdio` is not in `claude --help`. It is what the SDK passes, and without it
-  `--permission-prompts host` denies every question. Principle 1 lists public flags only, so the spec may need a note.
+  `--permission-prompts host` denies every question. SPEC section 2 principle 1 now names it as a known risk.
 - Headless threads load the user's own `~/.claude` settings and hooks (their SessionStart hooks ran). Hook output is dropped
   from events. `--setting-sources` could isolate agents later.
 - One process per thread, and stdin stays open between turns. The process model lives in `runner.js` alone.

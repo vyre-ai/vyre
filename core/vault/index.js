@@ -13,6 +13,7 @@
 import { Vault, MIGRATIONS, KINDS } from "./vault.js";
 import { serve } from "./relay.js";
 import { envName } from "./cli-io.js";
+import { callerKind } from "../modules/index.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -35,9 +36,25 @@ export default {
 
     const tool = (name, callers, description, input, run) => ctx.tool(name, { description, input, callers, run });
 
-    tool("vault.put", PEOPLE, "Add or replace an item. Values come from `vyre vault put`'s hidden prompt, never from Claude.",
-      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, fields: { type: "object" }, url: str, hosts: strs }, ["name", "fields"]),
-      (input, { caller }) => vault.put(input, caller));
+    // Modules may put too (onboarding stores the Claude credential this way), but only new items
+    // or items they made themselves, and they may grant only what they put: neither reveals a
+    // value the module did not already have. `value` is shorthand for fields.value.
+    tool("vault.put", ["cli", "local", "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
+      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, grants: strs }, ["name"]),
+      async ({ value, grants, ...input }, { caller }) => {
+        if (value !== undefined) input.fields = { ...(input.fields || {}), value };
+        if (!input.fields) throw new Error("give the item a value or fields");
+        const mod = caller.startsWith("module:") ? caller.slice(7) : null;
+        if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
+        if (mod) {
+          const old = vault.row(input.name);
+          if (old && old.origin !== caller) throw new Error(`${input.name} was not made by ${mod}, so ${mod} cannot replace it`);
+          input.origin = caller;
+        }
+        const out = await vault.put(input, caller);
+        for (const g of grants || []) vault.grant({ name: input.name, module: g }, caller);
+        return { ...out, ...(grants ? { granted: grants } : {}) };
+      });
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
       obj({ filter: str }), input => vault.list(input));
@@ -74,7 +91,7 @@ export default {
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),
       (input, { caller }) => {
-        if (caller === "mcp" && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
+        if (callerKind(caller) === "mcp" && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
         return vault.generate(input, caller);
       });
 

@@ -41,6 +41,13 @@ export default {
      */
     const inScope = (projects, slug) => !projects || projects === "*" || (slug != null && projects.split(",").includes(slug));
 
+    /**
+     * The agent a hook speaks for. The caller "harness:agent:<name>" is checked by vyred against
+     * the thread's key; input.agent is only a fallback for callers that name none (tests, modules).
+     * @param {string|undefined} agent @param {string|undefined} caller
+     */
+    const agentOf = (agent, caller) => /^harness:agent:(.+)$/.exec(String(caller || ""))?.[1] || agent || undefined;
+
     /** The project a folder is in, if Projects is running and knows one. */
     const projectOf = async cwd => (cwd ? ask("projects.of", { cwd }) : null);
 
@@ -84,7 +91,8 @@ export default {
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
       input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" } } },
-      run: async ({ prompt, cwd, session, prompt_id, agent, projects }) => {
+      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects }, { caller } = {}) => {
+        const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
@@ -103,9 +111,16 @@ export default {
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" } } },
-      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent }) => {
+      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named }, { caller } = {}) => {
+        const agent = agentOf(named, caller);
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
         let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
+        // A send inside an agent's thread goes through the Gate instead, where the user can edit
+        // it. Without the Gate running, the floor's "ask first" stands.
+        if (verdict.rule === 1 && agent) {
+          const g = await ask("gate.route", { tool: tool_name, input: tool_input || {}, agent, ...(session ? { session } : {}) });
+          if (g && g.decision) verdict = { decision: g.decision, reason: g.reason, rule: 1 };
+        }
         // The floor first; a lesson can only add a hold, never lift one.
         if (!verdict.decision) {
           const l = await ask("learn.check", { stage: "tool", session, prompt_id, cwd, agent, tool_name, tool_input: tool_input || {} });
@@ -141,8 +156,9 @@ export default {
     ctx.tool("harness.stop", {
       description: "Stop: the lessons' output checks, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" } } },
-      run: async ({ session, ...turn }) => {
-        const check = session ? await ask("learn.check", { stage: "stop", session, ...turn }) : null;
+      run: async ({ session, ...turn }, { caller } = {}) => {
+        const agent = agentOf(turn.agent, caller);
+        const check = session ? await ask("learn.check", { stage: "stop", session, ...turn, ...(agent ? { agent } : {}) }) : null;
         if (check && check.decision === "block") return { decision: "block", reason: String(check.reason) };
         if (session) ctx.events.emit("turn.completed", { session });
         return { ok: true };

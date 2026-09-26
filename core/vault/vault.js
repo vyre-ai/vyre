@@ -18,6 +18,7 @@ import { sealItem, openItem, newIdentity, sealFor, openFrom } from "./crypto.js"
 import { keystore, defaultKind } from "./keys.js";
 import { ensureDir, writeSealed, readSealed, removeSealed } from "./store.js";
 import * as relay from "./relay.js";
+import { callerKind } from "../modules/index.js";
 import { parse as parseImport, merge as mergeImport } from "./import.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
@@ -65,7 +66,7 @@ const newId = () => crypto.randomBytes(9).toString("base64url");
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /** A caller's kind, as the registry sees it. */
-const kindOf = c => (String(c).startsWith("module:") ? "module" : String(c));
+const kindOf = callerKind;
 const moduleOf = c => (String(c).startsWith("module:") ? String(c).slice(7) : null);
 
 /** "30d", "12h", "90m", an ISO date or ms since epoch, to ms since epoch. */
@@ -254,7 +255,9 @@ export class Vault {
   // ---- grants and release ---------------------------------------------------------------
 
   grant({ name, module, watcher = "" }, caller) {
-    this.mustRow(name);
+    const item = this.mustRow(name);
+    // A module grants only items it put itself (index.js lets it do so only through vault.put).
+    if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
     const status = kindOf(caller) === "mcp" ? "pending" : "active";
     const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=?").get(name, module, watcher));

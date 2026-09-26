@@ -72,6 +72,10 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    `--append-system-prompt`, `-n`, `--resume`, `-p` with `stream-json`, `--permission-prompts`).
    Reading transcript files on disk is the one exception. It lives in a single adapter
    (`core/transcripts`), is best effort, and must degrade to "no history" rather than fail.
+   One flag is a known risk: the Switchboard passes `--permission-prompt-tool stdio` so a
+   headless thread's permission questions come to vyred. It is the flag the Agent SDK passes,
+   but `claude --help` does not list it, so a release could change it without notice. It lives
+   in one place (`core/switchboard/runner.js`), and a thread without it denies every question.
 2. **Local first.** Everything runs on machines the user owns. Nothing leaves them except
    through the Gate, and nothing about the user reaches Vyre AI beyond a DNS record.
 3. **One process per machine.** `vyred` runs every service on that machine. On the box it runs

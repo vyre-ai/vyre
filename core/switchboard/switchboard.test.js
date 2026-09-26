@@ -183,13 +183,15 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   assert.equal(open[0].request_id, undefined, "Claude Code's request id stays inside vyred");
   assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "waiting");
 
-  // A model never approves a permission: the loader refuses both MCP caller forms and hides the tool.
+  // A model never approves a permission: the loader refuses both MCP caller forms and hides the
+  // tool. (An agent named without its thread's key is refused before that, listing included.)
   for (const who of ["mcp", "mcp:agent:juno"]) {
     const byModel = await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" }, who);
     assert.equal(byModel.error.code, "denied", who);
-    const listed = (await request("GET", "/v1/tools", undefined, { root, caller: who })).data.map(x => x.name);
-    assert.ok(!listed.includes("threads.answer") && listed.includes("threads.get"), `${who} does not see threads.answer`);
   }
+  const listed = (await request("GET", "/v1/tools", undefined, { root, caller: "mcp" })).data.map(x => x.name);
+  assert.ok(!listed.includes("threads.answer") && listed.includes("threads.get"), "mcp does not see threads.answer");
+  assert.equal((await request("GET", "/v1/tools", undefined, { root, caller: "mcp:agent:juno" })).error.code, "denied");
   for (const who of ["deck", "capsule", "local"]) {
     assert.ok((await request("GET", "/v1/tools", undefined, { root, caller: who })).data.some(x => x.name === "threads.answer"), `${who} can answer`);
   }
@@ -326,14 +328,27 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   const ev = (await tool("threads.get", { thread: who.thread, limit: 1000 })).data.events;
   assert.ok(!JSON.stringify(ev).includes("fake-setup-value") && !JSON.stringify(ev).includes("fake-api-value"), "no credential reaches an event");
 
-  // Only the assistant may drive sessions from inside its thread.
-  assert.match((await tool("threads.list", {}, "mcp:agent:scout")).error.message, /only the assistant/);
-  assert.match((await tool("agents.ask", { agent: "juno", text: "hi" }, "mcp:agent:scout")).error.message, /only the assistant/);
+  // Only the assistant may drive sessions from inside its thread. Each call below is made from
+  // inside the agent's own thread, as its MCP server makes it, with the key the thread was given.
+  const inside = async (agent, call) => JSON.parse((await tool("agents.ask", { agent, text: `vyre ${call}` })).data.text);
+  assert.match((await inside("scout", "threads.list {}")).error.message, /only the assistant/);
+  assert.match((await inside("scout", 'agents.ask {"agent":"juno","text":"hi"}')).error.message, /only the assistant/);
   const hi = (await tool("agents.ask", { agent: "juno", text: "hi" })).data;
   assert.equal(hi.text, "echo: hi");
   assert.equal(launches().at(-1).auth, "ambient", "no auth configured means the machine's own login");
   assert.equal(launches().at(-1).projects, "*");
-  assert.ok(Array.isArray((await tool("threads.list", {}, "mcp:agent:juno")).data));
+  assert.ok(Array.isArray((await inside("juno", "threads.list {}")).data));
+  assert.equal((await inside("juno", 'threads.answer {"ask":"a1","decision":"allow"}')).error.code, "denied", "not even the assistant answers a permission");
+  // Naming an agent without its thread's key is refused outright, before any tool runs: nothing
+  // outside juno's thread can pass for the assistant, and scout's key does not make it juno.
+  assert.equal((await tool("threads.list", {}, "mcp:agent:juno")).error.code, "denied");
+  assert.equal((await tool("memory.graph", {}, "mcp agent:juno")).error.code, "denied");
+  assert.equal((await tool("harness.rules", { tool_name: "Read" }, "harness:agent:juno")).error.code, "denied");
+  const was = process.env.VYRE_AGENT_KEY;
+  process.env.VYRE_AGENT_KEY = "a-guess";
+  try { assert.match((await tool("threads.list", {}, "mcp:agent:juno")).error.message, /no thread of that agent is running with this key/); }
+  finally { if (was === undefined) delete process.env.VYRE_AGENT_KEY; else process.env.VYRE_AGENT_KEY = was; }
+  assert.ok(!JSON.stringify(launches()).includes("VYRE_AGENT_KEY"));
 
   assert.equal((await tool("agents.threads", { agent: "scout" })).data.length, 1);
   const stopped = (await tool("agents.stop", { agent: "scout" })).data;

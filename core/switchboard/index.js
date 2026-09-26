@@ -198,15 +198,18 @@ export class Switchboard {
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
-    if (o.agent) { env.VYRE_AGENT = o.agent; env.VYRE_AGENT_KIND = o.agent_kind || "agent"; }
-    else { delete env.VYRE_AGENT; delete env.VYRE_AGENT_KIND; }
+    // The key is how the child proves which agent it is: vyred believes "mcp:agent:<name>" only
+    // with the key of a live thread of that agent (threads.vouch). A new one per process.
+    const key = o.agent ? crypto.randomBytes(24).toString("base64url") : null;
+    if (o.agent) { env.VYRE_AGENT = o.agent; env.VYRE_AGENT_KIND = o.agent_kind || "agent"; env.VYRE_AGENT_KEY = /** @type {string} */ (key); }
+    else { delete env.VYRE_AGENT; delete env.VYRE_AGENT_KIND; delete env.VYRE_AGENT_KEY; }
     // An agent's context is limited to its projects; the Harness reads these (brief, Enrich,
     // recall.search through MCP). "*" is the assistant's: every project.
     if (o.scope) { env.VYRE_PROJECTS = o.scope.projects === "*" ? "*" : o.scope.projects.join(","); env.VYRE_SCOPE_CWDS = JSON.stringify(o.scope.cwds || []); }
     else { delete env.VYRE_PROJECTS; delete env.VYRE_SCOPE_CWDS; }
     const rec = this.must(id);
     const args = argsFor({ id, resume: o.resume, plugin: pluginDir(), model: o.model || rec.model, name: rec.name, append: o.append, budgetUsd: o.budget_usd });
-    const state = { launch: o, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };
+    const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };
     this.live.set(id, state);
     state.proc = this.run({
       bin: this.bin, args, cwd: rec.cwd, env,
@@ -381,6 +384,21 @@ export class Switchboard {
     return r ? r.agent_kind : null;
   }
 
+  /**
+   * Which live thread of this agent holds this key, or null. The key dies with the process, so a
+   * stopped or replaced thread vouches for nothing.
+   * @param {string} agent @param {string} key
+   */
+  vouch(agent, key) {
+    const k = Buffer.from(String(key));
+    for (const [id, st] of this.live) {
+      if (!st.key || st.launch.agent !== agent) continue;
+      const mine = Buffer.from(st.key);
+      if (mine.length === k.length && crypto.timingSafeEqual(mine, k)) return id;
+    }
+    return null;
+  }
+
   async stopAll() {
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
     for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
@@ -458,6 +476,12 @@ export default {
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" } } },
       run: async i => sb.launch(i),
+    });
+    // For vyred only: is this caller the agent it names? See the route in core/daemon.
+    ctx.tool("threads.vouch", {
+      description: "The live thread of this agent that holds this key, or null.", internal: true,
+      input: { type: "object", required: ["agent", "key"], properties: { agent: str, key: str } },
+      run: async i => ({ thread: sb.vouch(i.agent, i.key) }),
     });
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 

@@ -4,12 +4,15 @@
 // asks vyred, and prints Claude Code's answer. No logic lives here (see core/harness).
 //
 // When vyred is not running, every piece prints nothing and exits 0, so Claude Code behaves
-// exactly as without Vyre, with one exception: the security floor. The rules are pure and
-// local, so they still run in-process when vyred is down. The floor cannot be switched off by
-// stopping a daemon.
+// exactly as without Vyre, with two exceptions: the security floor, and the lessons the user
+// accepted. Both are pure and local, so they still run in-process when vyred is down (the
+// lessons from the snapshot Learning keeps in the home). Neither is switched off by stopping a
+// daemon.
 
 import { call } from "../../core/daemon/client.js";
 import { rules } from "../../core/harness/rules.js";
+import { offlineTool, offlineTouched, offlineStop } from "../../core/learn/offline.js";
+import { home } from "../../core/config/index.js";
 
 const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", stop: "Stop" };
 const piece = /** @type {keyof typeof EVENT} */ (process.argv[2]);
@@ -30,7 +33,11 @@ async function main() {
   const base = { cwd: h.cwd, session: h.session_id, prompt_id: h.prompt_id, agent: process.env.VYRE_AGENT || undefined };
   // An agent's thread carries its projects (set by the switchboard); the brief and Enrich stay inside them.
   const scope = process.env.VYRE_PROJECTS ? { projects: process.env.VYRE_PROJECTS } : {};
-  const opts = { caller: "harness", timeout: 3000 };
+  // Inside an agent's thread the hooks say which agent they are, and the client sends the thread's
+  // key with it (VYRE_AGENT_KEY), so vyred can tell that claim from a made-up one.
+  const opts = { caller: base.agent ? `harness:agent:${base.agent}` : "harness", timeout: 3000 };
+  const down = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
+  const offline = { root: home(), session: h.session_id, prompt_id: h.prompt_id, agent: base.agent };
 
   if (piece === "brief") {
     const project = process.env.VYRE_PROJECT || undefined;
@@ -45,16 +52,19 @@ async function main() {
   } else if (piece === "rules") {
     const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} };
     const r = await call("harness.rules", input, opts);
-    const v = r.data || (r.error && ["unreachable", "timeout", "no_such_tool"].includes(r.error.code)
+    let v = r.data || (r.error && ["unreachable", "timeout", "no_such_tool"].includes(r.error.code)
       ? rules({ tool: input.tool_name, input: input.tool_input, cwd: h.cwd }) : null);
+    if (down(r) && v && !v.decision) v = offlineTool({ ...offline, tool: input.tool_name, input: input.tool_input });
     if (v && v.decision) answer(EVENT.rules, { permissionDecision: v.decision, permissionDecisionReason: v.reason || "Vyre security floor" });
   } else if (piece === "learn") {
-    await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} }, opts);
+    const r = await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} }, opts);
+    if (down(r)) offlineTouched({ ...offline, cwd: h.cwd, tool: String(h.tool_name || ""), input: h.tool_input || {} });
   } else if (piece === "stop") {
     const text = typeof h.last_assistant_message === "string" ? h.last_assistant_message : undefined;
     const r = await call("harness.stop", { ...base, text, stop_hook_active: Boolean(h.stop_hook_active) }, opts);
+    const d = down(r) ? offlineStop({ ...offline, text, stop_hook_active: Boolean(h.stop_hook_active) }) : r.data;
     // Stop's answer is top level, not hookSpecificOutput. The reason goes to Claude, which continues.
-    if (r.data && r.data.decision === "block") process.stdout.write(JSON.stringify({ decision: "block", reason: r.data.reason }));
+    if (d && d.decision === "block") process.stdout.write(JSON.stringify({ decision: "block", reason: d.reason }));
   }
 }
 

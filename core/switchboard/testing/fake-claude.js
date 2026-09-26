@@ -8,6 +8,8 @@
 //   "write <file>"  asks permission for Write, then writes the file only if allowed
 //   "limit"         on a setup token, fails as a subscription at its limit would
 //   "whoami"        says which credential it was given (never the value)
+//   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
+//                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
 //   anything else   echoes the prompt back in a few deltas
 // FAKE_CLAUDE_LOG, when set, gets one line per launch with argv and credential kind.
 
@@ -61,6 +63,14 @@ async function turn(prompt) {
   if (/^limit$/i.test(p) && auth === "subscription") {
     out({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } });
     return result(false, "Claude usage limit reached.", 0);
+  }
+  const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
+  if (tool) {
+    const { call } = await import("../../daemon/client.js");
+    const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
+    const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
+    await say(r);
+    return result(true, r);
   }
   if (/^whoami$/i.test(p)) { await say(`auth=${auth}`); return result(true, `auth=${auth}`, auth === "api-key" ? 0.25 : 0); }
   await say(`echo: ${p}`);

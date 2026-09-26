@@ -77,6 +77,9 @@ export async function start(opts = {}) {
   return { registry, events, config: cfg, paths: p, stop };
 }
 
+/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit", "mcp agent:kit". */
+const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
@@ -95,10 +98,24 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
   // the loader can say that, and a module caller is what internal tools such as vault.release
   // trust. Anything on the socket posing as "module:x" is treated as a plain local client.
   const claimed = String(req.headers["x-vyre-caller"] || "local");
-  const caller = claimed.startsWith("module:") ? "local" : claimed;
+  // A header is a claim, not an identity. "module:<name>" is what the registry uses between
+  // modules, and "hook" is what the webhook route sets itself; neither may be claimed over HTTP.
+  const caller = claimed.startsWith("module:") || claimed === "hook" ? "local" : claimed;
+  // Naming an agent ("mcp:agent:<name>", "harness:agent:<name>") is a claim Memory, the Gate and
+  // the Switchboard act on, and naming the assistant reaches every project. So it must come with
+  // the key the Switchboard put in that agent's thread (x-vyre-agent-key); without it, nothing.
+  const said = AGENT_CLAIM.exec(caller);
+  if (said) {
+    const key = String(req.headers["x-vyre-agent-key"] || "");
+    const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
+    if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
+  }
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
-    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started,
+    // last_event lets a surface follow the stream from now: `since=0` would replay the whole
+    // log, and a guessed cursor past the end drops every live event.
+    const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
+    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started, last_event: Number(last && last.id) || 0,
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
@@ -108,6 +125,16 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
     const result = await registry.call(name, await body(req), caller);
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "denied" ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
+  }
+  // Webhooks: POST /v1/<module>/<name>/hook reaches that module's hook tool (watchers.hook) with
+  // the name, the token from x-vyre-token or ?token=, and the JSON body. The tool checks the token.
+  const hook = req.method === "POST" && /^\/v1\/([a-z][a-z0-9-]*)\/([^/]+)\/hook$/.exec(url.pathname);
+  if (hook) {
+    const token = String(req.headers["x-vyre-token"] || url.searchParams.get("token") || "");
+    let payload;
+    try { payload = await body(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
+    const result = await registry.call(`${hook[1]}.hook`, { name: decodeURIComponent(hook[2]), token, body: payload }, "hook");
+    return send(res, result.error ? (result.error.code === "no_such_tool" ? 404 : 403) : 202, result);
   }
   if (req.method === "GET" && url.pathname === "/v1/events") {
     return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
@@ -126,7 +153,11 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
  */
 function stream(req, res, url, events, streams) {
   const type = url.searchParams.get("type") || "*";
-  const lastId = Number(req.headers["last-event-id"] || url.searchParams.get("since") || 0);
+  // since=latest skips the backlog: a surface that renders current state from tools only needs
+  // what happens next, and replaying a long log to reach "now" is wasted work.
+  const sinceParam = url.searchParams.get("since");
+  const latest = !req.headers["last-event-id"] && sinceParam === "latest";
+  const lastId = latest ? events.latestId() : Number(req.headers["last-event-id"] || sinceParam || 0);
   const match = type === "*" ? () => true : type.endsWith(".*") ? e => e.type.startsWith(type.slice(0, -1)) : e => e.type === type;
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
