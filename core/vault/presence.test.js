@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
-import mod from "./index.js";
+import { recorded } from "./testing.js";
 import { encodeTicket, encodeCard } from "./relay.js";
 import { newIdentity } from "./crypto.js";
 
@@ -28,27 +28,6 @@ const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit
   "vault.people", "vault.fingerprint",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
   "vault.session.close", "vault.session.status", "vault.caps", "vault.health", "vault.clipboard.clear"];
-
-/** Start the vault module against a ctx that records every tool definition. */
-export async function recorded(t, extra = {}) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-presence-"));
-  const db = open(path.join(tmp, "vyre.db"));
-  /** @type {Map<string, any>} */
-  const tools = new Map();
-  const events = [], logs = [];
-  const ctx = {
-    store: { db, migrate: steps => migrate(db, "vault", steps) },
-    paths: { vault: path.join(tmp, "vault") },
-    config: { name: "test-box", vault: { keystore: "file", ...extra } },
-    events: { emit: (type, p) => events.push({ type, p }) },
-    log: m => logs.push(m),
-    tool: (name, def) => tools.set(name, def),
-  };
-  const running = await mod.start(ctx);
-  t.after(async () => { await running.stop(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
-  const run = (name, input, caller = "cli") => tools.get(name).run(input, { caller });
-  return { tmp, db, tools, events, logs, run };
-}
 
 test("presence: every value-out or access-giving tool declares it, with a summary", async t => {
   const { tools } = await recorded(t);

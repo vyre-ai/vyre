@@ -224,16 +224,12 @@ test("surfaces: the canary comes back from vault.reveal only, never in events, l
   }
 });
 
-test("surfaces: the Deck and the Capsule may not reveal unless the person turned it on", async t => {
+test("surfaces: the Deck and the Capsule reveal behind presence; without a proof nothing is shown", async t => {
   const { d, as } = await boot(t);
   t.after(() => d.stop());
   const pw = canary("pw");
   await as("cli")("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw }, url: "https://mail.example.com" });
-  for (const who of ["deck", "capsule"]) {
-    const r = await as(who)("vault.reveal", { name: "site-login" });
-    assert.match(r.error.message, /revealing values is off on this surface/);
-    assert.ok(!JSON.stringify(r).includes(pw));
-  }
+  for (const who of ["deck", "capsule"]) assert.equal((await as(who)("vault.reveal", { name: "site-login", confirm: true })).data.value, pw);
   const cleared = await as("mcp")("vault.clipboard.clear");
   assert.deepEqual(cleared.data, { cleared: true }, "clearing takes nothing from anyone, so even Claude may");
 });

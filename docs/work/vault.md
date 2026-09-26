@@ -208,3 +208,12 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `{versions: [{ver, at, by, fields}], passwords: [{at}]}`, `vault.ssh.generate {name}`. It
   needs the "deck" caller on `vault.totp`, `grant`, `pending`, `approve`, `pass.create` and
   `offboard`, which exclude it today.
+- Interim presence (`core/vault/prove.js`): `proof.prove({tool, input, caller, summary, env})`
+  is the one swappable function; the registry can mark a call as already checked with
+  `ctx.presenceEnforced === true` or `presence` in run's second argument. Deck callers pass
+  `confirm: true`. Tests set `vault.testHelpers.prove` ("deny" or `{mode, record}`; allow by
+  default under node --test). Refusals are Errors with code `presence_required`; the registry
+  on this branch reports them as code "failed" with the message.
+- `vault.account.unlock {password? , method?: "password"|"touchid"}`, `vault.account.enroll-touchid
+  {password}` (presence), `vault.account.status` to `{account, unlocked, touchid, acct?}`.
+  `vault.caps` reports `reveal: true`.

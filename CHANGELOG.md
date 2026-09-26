@@ -316,6 +316,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `vault.account.create`, `vault.account.unlock`, `vault.account.lock`. A v1 home is re-sealed
   at start, v1 files removed only after every v2 copy verifies; once done, a v1 file is refused.
   Keys are KeyObjects and `lock()` drops them all. Backups keep format v1 and old ones restore.
+- Touch ID unlock of the personal vault: `mac/enclave.swift` (Secure Enclave P-256 key with
+  biometryCurrentSet; verbs create, derive, auth) wraps the account unlock key in
+  `vault/touchid.json`. Tools `vault.account.enroll-touchid`, `vault.account.status`, and
+  `vault.account.unlock {method: "touchid"}`.
+- Interim presence (`prove.js`) until the ADR 0004 registry merges: every tool that returns or
+  moves a value asks `proof.prove` first. Touch ID or the Mac password on a Mac, confirm (and
+  the tailnet owner when known) on the Deck, refused where there is no Touch ID. Reveal is on
+  for the Deck and the Capsule behind it (SPEC 11 rule 8); `vault.deck.reveal` is gone.
 
 - Sharing, hardened (ADR 0006, findings 4, 5 and 12): pass tickets are signed by the owner and
   checked against the owner's pinned card, for this holder only, and a held pass can never be

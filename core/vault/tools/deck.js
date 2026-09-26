@@ -1,7 +1,7 @@
 // @ts-check
 // The tools the Deck's Vault app needs that the vault did not have (docs/adr/0006, section 6):
 //
-//   vault.caps          what this vyred lets the Deck do (reveal is off until floor rule 8 moves)
+//   vault.caps          what this vyred lets the Deck do (reveal is on, behind presence: SPEC 11 rule 8)
 //   vault.health        Watchtower: names and reason codes, never a value (health.js)
 //   vault.breach.check  opt-in, a network call; presence
 //   vault.update        add or change an item by merging fields; `generate` makes a value here,
@@ -34,7 +34,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
     input: obj({}),
     run: () => {
       const o = opts();
-      return { reveal: Boolean(o.deck && o.deck.reveal === true), breach: o.breach === "ask" ? "ask" : "off", host: String((ctx.config && ctx.config.name) || "vyre") };
+      return { reveal: true, breach: o.breach === "ask" ? "ask" : "off", host: String((ctx.config && ctx.config.name) || "vyre") };
     },
   });
 

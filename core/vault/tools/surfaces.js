@@ -162,14 +162,8 @@ export function register({ ctx, vault }) {
     presence: { summary: async ({ name, field }) => `Show the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"`, skip },
     run: async ({ name, field, session }, { caller }) => {
       const surface = surfaceFor(session, caller);
-      // Floor rule 8 keeps values off screens a person did not ask for. The Deck and the Capsule
-      // may reveal only when the person turned it on (vault.deck.reveal), since a page served by
-      // a box is not the person's own device (ADR 0006, decision 3).
-      const k = callerKind(caller);
-      if ((k === "deck" || k === "capsule") && !(config.vault && config.vault.deck && config.vault.deck.reveal === true)) {
-        vault.audit("reveal", name, caller, false, "reveal is off for this surface");
-        throw new Error("revealing values is off on this surface · copy or fill instead, or set vault.deck.reveal");
-      }
+      // Floor rule 8 (SPEC 11): a value may be shown to a person who has just proved presence on
+      // their own device, for that one value. prove.js asks for that proof before this runs.
       let want = field || "value";
       try {
         const p = pick(name, field);
