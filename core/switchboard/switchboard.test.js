@@ -110,28 +110,31 @@ async function until(fn, what, ms = 8000) {
   }
 }
 
-async function boot(t, { vault } = {}) {
+/**
+ * A vyred in a temp home. `vault` is items to put in the real vault (name to a fake value), each
+ * granted to module agents the way a person does it from the CLI, except those in `ungranted`.
+ */
+async function boot(t, { vault, ungranted = [] } = {}) {
   const root = tempHome(t);
   const log = path.join(root, "claude.log");
   const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
   process.env.VYRE_CLAUDE_BIN = FAKE;
   process.env.FAKE_CLAUDE_LOG = log;
   t.after(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  if (vault) {
-    // Until the vault stream merges: a stub vault.release, internal as the real one is.
-    writeModule(path.join(root, "modules"), "vault", { does: { tools: ["vault.release"] } }, `
-      const items = ${JSON.stringify(vault)};
-      export default { async start(ctx) {
-        ctx.tool("vault.release", { internal: true, input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
-          run: async ({ name }, { caller }) => { if (!caller.startsWith("module:")) throw new Error("modules only"); if (!(name in items)) throw new Error("no item " + name); return { value: items[name] }; } });
-        return { async stop() {} };
-      } };`);
-  }
+  // The file keystore, so no test goes near the login keychain.
+  if (vault) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const work = fs.mkdtempSync(path.join(root, "work-"));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
-  return { root, d, work, launches, tool: (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 }) };
+  const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
+  for (const [name, value] of Object.entries(vault || {})) {
+    const put = await tool("vault.put", { name, kind: name === "api-key" ? "api-key" : "secret", fields: { value } });
+    assert.ok(put.data, `vault.put ${name}: ${put.error && put.error.message}`);
+    if (ungranted.includes(name)) continue;
+    assert.equal((await tool("vault.grant", { name, module: "agents" })).data.grant.status, "active");
+  }
+  return { root, d, work, launches, tool };
 }
 
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
@@ -277,6 +280,19 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   // Typing into an agent's stopped thread resumes it with the agent's own credentials.
   assert.equal((await tool("threads.send", { thread: who.thread, text: "whoami", surface: "deck:1" })).data.sent, true);
   await until(() => launches().at(-1).argv.includes("--resume") && launches().at(-1).agent === "scout", "the agent's resume");
+});
+
+test("agents: an agent whose item is not granted to agents is refused, naming the grant to make", async t => {
+  const { tool, launches } = await boot(t, { vault: { "setup-token": "fake-setup-value" }, ungranted: ["setup-token"] });
+  await tool("agents.create", { name: "scout", projects: [], auth: { vault: "setup-token" } });
+  const r = await tool("agents.ask", { agent: "scout", text: "whoami" });
+  assert.equal(r.error.message, "scout cannot start: setup-token is not granted to agents · vyre vault grant setup-token agents");
+  assert.equal(launches().length, 0, "nothing was launched without its credentials");
+  // An agent asking for the grant from inside Claude only makes it pending; a person approves it.
+  assert.equal((await tool("vault.grant", { name: "setup-token", module: "agents" }, "mcp")).data.grant.status, "pending");
+  assert.match((await tool("agents.ask", { agent: "scout", text: "whoami" })).error.message, /not granted to agents/);
+  assert.equal((await tool("vault.grant", { name: "setup-token", module: "agents" })).data.grant.status, "active");
+  assert.equal((await tool("agents.ask", { agent: "scout", text: "whoami" })).data.text, "auth=subscription");
 });
 
 test("agents: an API-key agent stops at its budget", async t => {

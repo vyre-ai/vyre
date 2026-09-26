@@ -79,12 +79,22 @@ export default {
       } catch {}
     });
 
-    /** A Vault item's value, through the vault's own release path. It never leaves this function except into a child's env. */
-    const release = async name => {
-      const r = await ctx.call("vault.release", { name });
-      if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : `vault: ${r.error.message}`);
-      const v = r.data && r.data.value;
-      if (!v) throw new Error(`the vault has no value for ${name}`);
+    /**
+     * A Vault item's value, through ctx.vault.fetch (manifest `needs.vault: ["per-agent"]`). It
+     * never leaves this function except into a child's env. The grant is per item to module
+     * `agents`, and the vault's refusal already names the command that makes it, so it is passed
+     * on with the agent's name in front.
+     *
+     * No `field` is asked for. A setup token is stored as a `secret` and an API key as an
+     * `api-key`, and the vault hands over the single `value` field of both by default. An item of
+     * another kind (an env-set from an imported .env, say) is refused by the vault with its own
+     * message, which is what the person needs to see: put the token again as one value.
+     */
+    const release = async (a, name) => {
+      let v;
+      try { v = await ctx.vault.fetch(name); }
+      catch (e) { throw new Error(`${a.name} cannot start: ${/** @type {Error} */ (e).message}`); }
+      if (!v) throw new Error(`${a.name} cannot start: the vault has no value for ${name}`);
       return String(v);
     };
 
@@ -97,13 +107,13 @@ export default {
       const budget = typeof a.auth.budget_usd === "number" ? a.auth.budget_usd : null;
       const left = budget == null ? null : Math.max(0, budget - spent(a.name));
       if (a.auth.vault) {
-        const out = { auth: "subscription", env: envFor(await release(a.auth.vault), "subscription") };
-        if (a.auth.fallback && (left == null || left > 0)) out.fallback = { env: envFor(await release(a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) };
+        const out = { auth: "subscription", env: envFor(await release(a, a.auth.vault), "subscription") };
+        if (a.auth.fallback && (left == null || left > 0)) out.fallback = { env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) };
         return out;
       }
       if (a.auth.fallback) {
         if (left === 0) throw new Error(`${a.name} has spent its $${budget} budget on the API key`);
-        return { auth: "api-key", env: envFor(await release(a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) };
+        return { auth: "api-key", env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) };
       }
       return { auth: "ambient" };
     };

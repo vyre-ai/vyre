@@ -28,6 +28,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - An agent's scope reaches the Harness: `harness.brief` and `harness.enrich` take `projects`, and
   the MCP server tags calls `mcp:agent:<name>`. It hides `threads.*`/`agents.*` from non-assistant
   agents and holds `recall.search` inside the agent's project folders.
+- Agents fetch credentials from the real vault through `ctx.vault.fetch(name)`, declared as
+  `needs.vault: ["per-agent"]`, which the loader now accepts the way it accepts `per-watcher`.
+  Each item needs a grant to module `agents` (`vyre vault grant <item> agents`). Without one,
+  `agents.ask` fails with `<agent> cannot start: <item> is not granted to agents · vyre vault
+  grant <item> agents`. The switchboard tests put and grant items in the real vault.
 - CLI: `vyre threads start|send|watch|lease|release|asks|answer|stop` (other `vyre threads`
   arguments still search the catalogue) and `vyre agents [create|update|ask|threads|stop]`.
 - Verified with real Claude Code on haiku: a thread started from the CLI streamed to two curl SSE

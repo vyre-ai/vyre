@@ -35,7 +35,7 @@ An agent's threads may only use context from its `projects`: pass them to the Ha
 Enrich and `recall.search` stay inside that list. The assistant gets the `threads.*` and `agents.*`
 tools through MCP, so it can start, drive, monitor and stop any session. `agents.ask` is how the
 Capsule, Deck and Chat talk to an agent directly; `threads.send` is how they talk to a session.
-Until the vault stream merges, read the token from a stub `vault.release`.
+Tokens come from the real vault through `ctx.vault.fetch(name)` (`needs.vault: ["per-agent"]`), one grant per item to module `agents`.
 
 ## Tools
 
@@ -78,12 +78,13 @@ with real Claude Code, not only a fake.
    (the prototype's claim.cjs). Two processes on one transcript is the real two-writer risk.
 2. Prune `thread.text` deltas from the event log after a turn ends. Only the `done` text needs to stay.
 3. Scope for `recall.thread` and `memory.*` over MCP, which is not done yet (see Needs).
-4. When the vault merges, switch `vault.release` calls to its real contract, and have onboarding create the assistant.
+4. Have onboarding create the assistant and grant its items to `agents`.
 
 ## Needs from others
 - vault (contract final on work/vault): grants are per item and per module, via `vyre vault grant <item> agents`.
-  Asked vault to let `needs.vault: ["per-agent"]` pass the loader the way `per-watcher` does. Until then agents calls
-  `ctx.call("vault.release")` directly as module:agents; after that, switch to `ctx.vault.fetch` (a one-line change).
+  Done here: the loader (`core/modules/index.js`, `ctx.vault.fetch`) now lets `needs.vault: ["per-agent"]` through the
+  way it does `per-watcher`, with a test in `core/modules/modules.test.js`, and agents uses `ctx.vault.fetch`. Tell vault
+  this branch touched the loader, so its review sees the change.
   Onboarding must grant the assistant's items to `agents` as the cli/local caller.
 - recall/memory: honour an agent's scope on the tools the MCP server does not rewrite yet (`recall.thread`,
   `memory.facts`). The caller is `mcp:agent:<name>`, and `VYRE_PROJECTS`/`VYRE_SCOPE_CWDS` are in the thread's env.
