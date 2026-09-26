@@ -57,6 +57,10 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .note { padding: 10px 16px 12px; font-size: 13px; line-height: 18px; color: var(--stone); }
 .note.warn { color: var(--bone); }
 .note.warn .lbl { color: var(--ash); margin-right: 8px; }
+.boxlink { display: flex; align-items: center; gap: 8px; }
+.hdot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; background: var(--ash); }
+.hdot.direct { background: var(--signal); }
+.hdot.relayed { background: var(--recall); }
 
 /* @ completion */
 .row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 6px; min-width: 0; cursor: default; }

@@ -3,16 +3,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { load, save, accountKey } from "./certs.js";
 import { tempHome } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 
 function selfSigned(days) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-certs-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-certs-"));
   try {
     execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
       "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-subj", "/CN=box1.example.test", "-days", String(days)], { stdio: "ignore" });

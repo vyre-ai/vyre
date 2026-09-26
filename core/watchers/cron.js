@@ -92,6 +92,7 @@ export function next(c, after) {
  */
 export function describe(expr) {
   if (expr === "webhook") return "whenever its webhook is called";
+  if (expr === "event") return "whenever the event it listens for happens";
   let c;
   try { c = parse(expr); } catch { return `"${expr}"`; }
   const [mi, h, dom, mo, dow] = (SHORT[/** @type {keyof typeof SHORT} */ (c.text)] || c.text).split(/\s+/);

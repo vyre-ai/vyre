@@ -25,7 +25,9 @@ function statusWith(bin, env) {
 }
 
 /**
- * @typedef {{ dnsName: string, hostName: string, ips: string[], online: boolean, userId: string, tagged: boolean, os: string }} Peer
+ * ssh: the peer runs Tailscale SSH (its status carries sshHostKeys), so `ssh user@<its MagicDNS name>`
+ * reaches it with the tailnet's own identity instead of a key or password.
+ * @typedef {{ dnsName: string, hostName: string, ips: string[], online: boolean, userId: string, tagged: boolean, os: string, ssh: boolean }} Peer
  * @typedef {{ installed: boolean, running: boolean, backend: string|null, login: string|null, userId: string|null,
  *   self: { dnsName: string, hostName: string, ips: string[] } | null, peers: Peer[], why: string|null }} Tailnet
  */
@@ -58,6 +60,7 @@ export function parse(s) {
   const peers = Object.values(s.Peer || {}).map(p => ({
     dnsName: trim(p.DNSName), hostName: String(p.HostName || ""), ips: p.TailscaleIPs || [], online: Boolean(p.Online),
     userId: String(p.UserID ?? ""), tagged: Boolean(p.Tags && p.Tags.length), os: String(p.OS || ""),
+    ssh: Array.isArray(p.sshHostKeys) && p.sshHostKeys.length > 0,
   }));
   return {
     installed: true, running, backend: s.BackendState || null,

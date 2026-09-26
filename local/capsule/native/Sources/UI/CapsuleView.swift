@@ -12,28 +12,42 @@ struct CapsuleView: View {
     @FocusState private var boxFocused: Bool
 
     var body: some View {
+        let open = CapsuleLayout.isOpen(model)
         VStack(spacing: 0) {
             bar
-            // What waits on the user, when its list or a card is open, or the hint under an empty box.
-            AgentLayout.view(model)
-            if !AgentLayout.deskShown(model) {
-            if model.asked != nil { Rule(); answer }
-            if model.showsMemory, let m = model.memory { Rule(); MemoryBox(memory: m) }
-            if !model.groups.isEmpty || side != nil {
+            if open {
                 Rule()
-                HStack(alignment: .top, spacing: 0) {
-                    if !model.groups.isEmpty { results }
-                    if let side {
-                        Rectangle().fill(Theme.rule).frame(width: 1)
-                        side.frame(width: CapsuleLayout.sideWidth).frame(maxHeight: .infinity, alignment: .top)
+                // One area of fixed height below the bar, like Spotlight's: results, memory and
+                // answers arrive in waves inside it and never resize the panel mid-word.
+                VStack(spacing: 0) {
+                    // What waits on the user (the list, a card) takes the whole area while open;
+                    // the conversation with an @agent sits above the rows (Agent/, UI/Agent*).
+                    if AgentLayout.deskShown(model) { AgentLayout.desk(model) } else {
+                    AgentLayout.above(model)
+                    if model.asked != nil { answer; Rule() }
+                    if model.showsMemory, let m = model.memory { MemoryBox(memory: m); Rule() }
+                    HStack(alignment: .top, spacing: 0) {
+                        if !model.groups.isEmpty { results } else { Spacer(minLength: 0) }
+                        if let side {
+                            Rectangle().fill(Theme.rule).frame(width: 1)
+                            side.frame(width: CapsuleLayout.sideWidth).frame(maxHeight: .infinity, alignment: .top)
+                        }
+                    }
+                    .frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
-                .frame(height: max(resultsHeight, side == nil ? 0 : CapsuleLayout.sideMin))
+                .frame(height: CapsuleLayout.area, alignment: .top)
+                .clipped()
+                .overlay(alignment: .bottom) {
+                    if let line = model.line, !line.isEmpty { lineView(line).background(Theme.carbon.opacity(0.96)).overlay(alignment: .top) { Rule() } }
+                }
+            } else if let line = model.line, !line.isEmpty {
+                Rule(); lineView(line)
+            } else if AgentLayout.slim(model) {
+                AgentLayout.slimView(model)
             }
-            }
-            if let line = model.line, !line.isEmpty { Rule(); lineView(line) }
         }
-        .frame(width: Theme.width)
+        .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
         .background(Backdrop())
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.ruleStrong, lineWidth: 1))
@@ -137,6 +151,7 @@ struct CapsuleView: View {
                         ForEach(g.items) { item in
                             let i = flat.firstIndex(where: { $0.id == item.id }) ?? -1
                             Row(item: item, selected: i == model.selected, icons: model.icons)
+                                .equatable()
                                 .id(item.id)
                                 .contentShape(Rectangle())
                                 .onTapGesture { model.selected = i; model.run() }
@@ -145,7 +160,7 @@ struct CapsuleView: View {
                 }
                 .padding(.bottom, 6)
             }
-            .frame(height: resultsHeight)
+            .frame(maxHeight: .infinity, alignment: .top)
             .onChange(of: model.selected) { if let id = model.current?.id { proxy.scrollTo(id) } }
         }
     }
@@ -157,11 +172,27 @@ struct CapsuleView: View {
 
     private func lineView(_ s: String) -> some View {
         Text(s).font(Theme.subtitle).foregroundColor(Theme.stone)
-            .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+            .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: CapsuleLayout.lineHeight, maxHeight: CapsuleLayout.lineHeight, alignment: .leading)
     }
 }
 
 enum CapsuleLayout {
+    /// The fixed area under the bar while anything is shown there: nine rows and two headers.
+    static let area: CGFloat = 6 + 2 * Theme.headerHeight + 9 * Theme.rowHeight
+    static let lineHeight: CGFloat = 30
+
+    @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
+        m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
+    }
+
+    /// The panel's height: the bar alone, the bar and a line, or the bar and the fixed area.
+    @MainActor static func panelHeight(_ m: CapsuleModel) -> CGFloat {
+        if isOpen(m) { return Theme.barHeight + 1 + area }
+        if let l = m.line, !l.isEmpty { return Theme.barHeight + 1 + lineHeight }
+        if AgentLayout.slim(m) { return Theme.barHeight + 1 + lineHeight }
+        return Theme.barHeight
+    }
+
     static let sideWidth: CGFloat = 260
     static let sideMin: CGFloat = 180
     static func resultsHeight(_ groups: [CapsuleModel.Group]) -> CGFloat {
@@ -217,7 +248,13 @@ struct Rule: View {
     var body: some View { Rectangle().fill(Theme.rule).frame(height: 1) }
 }
 
-struct Row: View {
+/// A result row. Equatable on what it draws, so a keystroke that leaves a row as it was does not
+/// draw it again.
+struct Row: View, Equatable {
+    nonisolated static func == (a: Row, b: Row) -> Bool {
+        a.item.id == b.item.id && a.item.title == b.item.title && a.item.subtitle == b.item.subtitle && a.item.icon == b.item.icon
+            && a.selected == b.selected && a.item.actions.first?.title == b.item.actions.first?.title
+    }
     let item: ResultItem
     let selected: Bool
     let icons: IconCache

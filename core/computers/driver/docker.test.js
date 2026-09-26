@@ -11,10 +11,11 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** A fake Engine: two containers of ours to be, and one that is someone else's database. */
 async function engine(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-docker-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-docker-"));
   const socket = path.join(dir, "d.sock");
   /** @type {Array<{ method: string, path: string, body: any }>} */
   const seen = [];

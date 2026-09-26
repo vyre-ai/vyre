@@ -34,7 +34,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     let panel = CapsulePanel()
     let model: CapsuleModel
     let focus = FocusTicket()
-    private var host: NSHostingView<CapsuleView>!
+    private(set) var host: CountingHostingView!
     private var keys: Any?
     private var clickAway: Any?
     private var observe: AnyCancellable?
@@ -42,11 +42,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var hiddenAt = Date.distantPast
     var onShownChange: ((Bool) -> Void)?
     var extensions: ExtensionHost?
+    /// How many times the panel changed size while shown (the typing check counts jumps with it).
+    private(set) var frameChanges = 0
 
     init(model: CapsuleModel) {
         self.model = model
         super.init()
-        host = NSHostingView(rootView: CapsuleView(model: model, focus: focus))
+        host = CountingHostingView(rootView: CapsuleView(model: model, focus: focus))
         host.sizingOptions = []
         panel.contentView = host
         panel.delegate = self
@@ -85,6 +87,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         onShownChange?(true)
     }
 
+    /// For the typing check: shown far off screen, never key, no global monitors, so a test types
+    /// into its own window and nothing on the user's screen changes.
+    func showOffscreen() {
+        model.willShow(front: nil)
+        top = -10_000
+        let h = height()
+        panel.setFrame(NSRect(x: -10_000, y: top - h, width: Theme.width, height: h), display: false)
+        panel.orderFrontRegardless()
+    }
+
     func hide() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
@@ -112,24 +124,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         return NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens[0]
     }
 
-    func height() -> CGFloat {
-        var h = Theme.barHeight + AgentLayout.height(model)
-        if AgentLayout.deskShown(model) { return h + ((model.line ?? "").isEmpty ? 0 : 31) }
-        if model.asked != nil {
-            h += 1 + 12 + 30 + 22 + 12
-            if let m = model.askedMemory { h += MemoryBox.height(m) + 4 }
-            if model.reply?.queued != nil { h += 22 }
-            if !model.replyText.isEmpty { h += min(240, CGFloat(model.replyText.split(separator: "\n", omittingEmptySubsequences: false).reduce(0) { $0 + $1.count / 78 + 1 }) * 19) }
-            if model.reply?.finished == true, model.reply?.error != nil { h += 18 }
-            if let n = model.reply?.notice, !n.isEmpty { h += 22 }
-            if AgentReplyActions.shown(model) { h += AgentReplyActions.height }
-        }
-        if model.showsMemory, let m = model.memory { h += 1 + MemoryBox.height(m) }
-        let side = model.panelFor?(model.current) != nil
-        if !model.groups.isEmpty || side { h += 1 + max(model.groups.isEmpty ? 0 : CapsuleLayout.resultsHeight(model.groups), side ? CapsuleLayout.sideMin : 0) }
-        if let l = model.line, !l.isEmpty { h += 31 }
-        return h
-    }
+    func height() -> CGFloat { CapsuleLayout.panelHeight(model) }
 
     /// Keep the top edge where it is and grow or shrink downwards.
     func fit() {
@@ -139,6 +134,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         if abs(f.height - h) < 0.5 { return }
         f.origin.y = top - h
         f.size.height = h
+        frameChanges += 1
         panel.setFrame(f, display: true)
         panel.invalidateShadow()
     }
@@ -231,4 +227,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         n.informativeText = body
         NSUserNotificationCenter.default.deliver(n)
     }
+}
+
+/// The hosting view, counting its layout passes (the typing check reads it).
+final class CountingHostingView: NSHostingView<CapsuleView> {
+    private(set) var layouts = 0
+    override func layout() { layouts += 1; super.layout() }
 }

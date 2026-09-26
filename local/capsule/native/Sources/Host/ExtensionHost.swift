@@ -27,9 +27,19 @@ final class ExtensionHost: CapsuleHost {
             extensions.append(e)
             if let why = e.runsHidden { log("\(t.id) runs while hidden: \(why)") }
         }
+        reread()
+        model.panelFor = { [weak self] item in self?.sidePanel(for: item) }
+    }
+
+    /// Read every extension's providers and commands again.
+    private func reread() {
         model.extensionProviders = extensions.flatMap(\.providers)
         model.extensionCommands = extensions.flatMap(\.commands)
-        model.panelFor = { [weak self] item in self?.sidePanel(for: item) }
+    }
+
+    func commandsChanged() {
+        reread()
+        if isShown && !model.text.isEmpty { model.refresh() }
     }
 
     func willShow(front: FrontApp?) { extensions.forEach { $0.capsuleWillShow(front: front) } }
@@ -103,42 +113,55 @@ final class ExtensionHost: CapsuleHost {
 }
 
 /// The session panel: a borderless, non-activating panel at normal window level on the user's
-/// Space, drawn with the Capsule's tokens, animated by the Capsule.
+/// Space, animated by the Capsule. It draws nothing of its own under the extension's view, so a
+/// vibrancy material there shows through, and it becomes key when clicked so its fields type.
 @MainActor
 final class CapsuleSessionWindow: SessionWindow {
-    private var panel: NSPanel?
+    final class Panel: NSPanel {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { false }
+    }
+    private var panel: Panel?
 
     var isOpen: Bool { panel?.isVisible ?? false }
     var frame: NSRect { panel?.frame ?? .zero }
 
     func show(_ content: AnyView, frame: NSRect) {
         let p = panel ?? {
-            let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel, .resizable, .fullSizeContentView],
-                            backing: .buffered, defer: true)
+            let p = Panel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel, .resizable, .fullSizeContentView],
+                          backing: .buffered, defer: true)
             p.level = .normal
             p.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             p.isOpaque = false
             p.backgroundColor = .clear
             p.hasShadow = true
             p.isReleasedWhenClosed = false
+            // Key when a click lands on something that takes typing (the prompt field).
             p.becomesKeyOnlyIfNeeded = true
             return p
         }()
         panel = p
         p.contentView = NSHostingView(rootView: content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.carbon)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)))
         p.setFrame(frame, display: true)
         p.orderFrontRegardless()
     }
 
-    func setFrame(_ frame: NSRect, duration: TimeInterval) {
+    func setFrame(_ frame: NSRect, duration: TimeInterval) { setFrame(frame, duration: duration, curve: .easeInOut) }
+
+    func setFrame(_ frame: NSRect, duration: TimeInterval, curve: SessionWindowCurve) {
         guard let p = panel else { return }
         if duration <= 0 { p.setFrame(frame, display: true); return }
+        let name: CAMediaTimingFunctionName = switch curve {
+        case .easeInOut: .easeInEaseOut
+        case .easeOut: .easeOut
+        case .easeIn: .easeIn
+        case .linear: .linear
+        }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = duration
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            ctx.timingFunction = CAMediaTimingFunction(name: name)
             p.animator().setFrame(frame, display: true)
         }
     }

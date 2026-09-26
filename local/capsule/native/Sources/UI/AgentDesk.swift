@@ -27,7 +27,6 @@ struct WaitingList: View {
         }
     }
 
-    static func height(_ desk: Desk) -> CGFloat { Theme.headerHeight + CGFloat(min(desk.waiting.count, Theme.maxRows)) * Theme.rowHeight + AgentKeys.height }
 }
 
 struct WaitingRow: View {
@@ -116,14 +115,6 @@ struct HeldCardView: View {
 
     static let bodyHeight: CGFloat = 150
 
-    static func height(_ desk: Desk, _ w: Waiting) -> CGFloat {
-        var h: CGFloat = 24 + 22 + 34 + 12
-        if w.source == .gate, desk.held?.draft != nil { h += 22 + 22 + bodyHeight + 16 + 8 * 4 }
-        else if w.source == .lesson { h += 44 + CGFloat(w.lesson?.lines.count ?? 0) * 20 }
-        else { h += 50 }
-        if let n = desk.note, !n.isEmpty { h += n.count > 90 ? 40 : 22 }
-        return h
-    }
 }
 
 /// The quiet key hints under a list.
@@ -163,32 +154,38 @@ struct WaitingHint: View {
     static let height: CGFloat = 30
 }
 
-/// Where the agent views sit in the panel, and how tall they are, for the panel's size.
+/// Where the agent views sit in the panel's fixed area (CapsuleLayout in CapsuleView.swift).
 @MainActor enum AgentLayout {
-    /// The desk takes the space under the bar while it is open.
+    /// The list or a card takes the whole area while it is open.
     static func deskShown(_ m: CapsuleModel) -> Bool { m.desk.mode != .none }
+    /// The conversation with the agent in the chip, above its destination rows.
+    static func directShown(_ m: CapsuleModel) -> Bool { m.desk.mode == .none && m.direct.dm != nil && m.asked == nil }
     static func hintShown(_ m: CapsuleModel) -> Bool {
         m.desk.mode == .none && m.text.isEmpty && m.target == nil && m.asked == nil && !m.desk.waiting.isEmpty
     }
-    /// The conversation with the agent in the chip, while nothing else has the space.
-    static func directShown(_ m: CapsuleModel) -> Bool { m.desk.mode == .none && m.direct.dm != nil && m.asked == nil }
-    static func height(_ m: CapsuleModel) -> CGFloat {
+    /// Whether the agent half needs the area open.
+    static func opens(_ m: CapsuleModel) -> Bool { deskShown(m) || directShown(m) }
+    /// One line under the bar when nothing else shows: offline, or what waits.
+    static func slim(_ m: CapsuleModel) -> Bool { !opens(m) && (m.offline || hintShown(m)) }
+
+    @ViewBuilder static func desk(_ m: CapsuleModel) -> some View {
         switch m.desk.mode {
-        case .none: return (m.offline ? 1 + OfflineBanner.height : 0) + (hintShown(m) ? 1 + WaitingHint.height : 0) + (directShown(m) ? DirectView.height(m.direct) : 0)
-        case .list: return 1 + WaitingList.height(m.desk)
-        case .card: return m.desk.open.map { 1 + HeldCardView.height(m.desk, $0) } ?? 0
+        case .none: EmptyView()
+        case .list: ScrollView(.vertical, showsIndicators: false) { WaitingList(desk: m.desk) }
+        case .card: if let w = m.desk.open { ScrollView(.vertical, showsIndicators: false) { HeldCardView(desk: m.desk, w: w) } }
         }
     }
 
-    @ViewBuilder static func view(_ m: CapsuleModel) -> some View {
-        switch m.desk.mode {
-        case .none:
-            if m.offline { Rule(); OfflineBanner() }
-            if directShown(m) { Rule(); DirectView(direct: m.direct, desk: m.desk) }
-            else if hintShown(m) { Rule(); WaitingHint(desk: m.desk) }
-        case .list: Rule(); WaitingList(desk: m.desk)
-        case .card: if let w = m.desk.open { Rule(); HeldCardView(desk: m.desk, w: w) }
-        }
+    /// Above the rows in the area: offline, then the conversation.
+    @ViewBuilder static func above(_ m: CapsuleModel) -> some View {
+        if m.offline { OfflineBanner(); Rule() }
+        if directShown(m) { DirectView(direct: m.direct, desk: m.desk); Rule() }
+    }
+
+    /// The one line when the area is closed.
+    @ViewBuilder static func slimView(_ m: CapsuleModel) -> some View {
+        Rule()
+        if m.offline { OfflineBanner() } else { WaitingHint(desk: m.desk) }
     }
 }
 

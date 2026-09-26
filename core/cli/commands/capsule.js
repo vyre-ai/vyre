@@ -126,8 +126,10 @@ async function open(flags) {
 }
 
 /** The native Capsule: build it if it is missing or stale, then launch it (or show it). */
-function openNative(flags) {
+async function openNative(flags) {
   const home = config.paths().root;
+  const said = await native.offerIdentity({ home, ask: askYesNo });
+  if (said) out(dim("  " + said));
   const b = native.ensureBuilt({ dir: NATIVE, home, say: s => out(dim("  " + s)) });
   if (!b.ok) { out(beacon("  " + b.message)); return 1; }
   if (b.built) out(dim(`  ${b.message}`));
@@ -136,6 +138,14 @@ function openNative(flags) {
   if (r.status !== 0) { out(beacon("  The Capsule did not open: ") + dim(String(r.stderr || "").trim())); return 1; }
   out(`  Capsule ${signal("open")} ${dim("· ⌥Space, or Control twice once it is allowed · " + b.app)}`);
   return 0;
+}
+
+/** A y/N on this terminal; null when there is none. @param {string} question */
+async function askYesNo(question) {
+  if (!process.stdin.isTTY) return null;
+  const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout });
+  try { return /^y(es)?$/i.test((await rl.question(`  ${question} [y/N] `)).trim()); }
+  finally { rl.close(); }
 }
 
 function missingElectron() {

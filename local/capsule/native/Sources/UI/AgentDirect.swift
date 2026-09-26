@@ -73,8 +73,4 @@ struct DirectView: View {
         return min(280, CGFloat(lines) * 19 + 12)
     }
 
-    @MainActor static func height(_ direct: Direct) -> CGFloat {
-        guard let d = direct.dm else { return 0 }
-        return 1 + 30 + listHeight(d) + CGFloat(d.asks.count) * Theme.rowHeight + ((d.notice ?? "").isEmpty ? 0 : 22)
-    }
 }

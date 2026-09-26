@@ -5,7 +5,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import https from "node:https";
 import crypto from "node:crypto";
@@ -14,12 +13,13 @@ import * as config from "../config/index.js";
 import * as certs from "./certs.js";
 import { names, checkName } from "./service.js";
 import { tempHome } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 const skip = !hasOpenssl && "openssl is needed to make a certificate";
 
 function selfSigned(cn, days = 90) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-names-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-names-"));
   try {
     execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
       "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-subj", `/O=Test CA/CN=${cn}`, "-days", String(days)], { stdio: "ignore" });

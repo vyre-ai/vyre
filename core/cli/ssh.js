@@ -69,6 +69,10 @@ export function validTarget(target) {
   return Boolean(m && !m[1].startsWith("-") && !m[2].startsWith("-"));
 }
 
+/** Control folders not yet closed. A run that exits without close() (an error, process.exit) still removes them. */
+const unclosed = new Set();
+process.on("exit", () => { for (const d of unclosed) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} } });
+
 /**
  * A server reached as `user@host`.
  * @param {string} target
@@ -80,6 +84,7 @@ export function remote(target, { env = process.env } = {}) {
   const bin = env.VYRE_SSH_BIN || "ssh";
   const dir = fs.mkdtempSync(path.join("/tmp", "vyre-ssh-"));
   fs.chmodSync(dir, 0o700);
+  unclosed.add(dir);
   // Every call names the control socket, so it rides on the master when there is one. Only
   // open() may become the master; a later call never forks a second one behind our back.
   const ctl = ["-o", `ControlPath=${dir}/%C`];
@@ -125,10 +130,17 @@ export function remote(target, { env = process.env } = {}) {
     target,
 
     async open() {
-      let r = await master(false);
+      // A MagicDNS name may be a Tailscale SSH server in "check" mode, which holds the login and
+      // prints a sign-in URL to stderr until the person opens it. The quiet first try sends stderr
+      // to a file, so that URL would be hidden and the wait silent; with a person at the keyboard
+      // a tailnet name goes straight to the interactive master, whose stderr is this terminal.
+      // Nothing may redirect or swallow that stderr. Without a terminal it is the quiet try as for
+      // any host, and a check nobody can answer holds it until Tailscale gives up.
+      const onTailnet = /\.ts\.net$/i.test(target.slice(target.lastIndexOf("@") + 1));
+      let r = onTailnet && process.stdin.isTTY ? await master(true) : await master(false);
       // 255 is ssh's own failure (no key, host unknown): with a person at the keyboard, try once
       // more interactively so they can answer the password or host-key question.
-      if (r.code === 255 && process.stdin.isTTY) r = await master(true);
+      if (r.code === 255 && process.stdin.isTTY && !onTailnet) r = await master(true);
       if (r.code === 0) return { ok: true, why: null };
       return { ok: false, why: r.why || `ssh ${target} failed (exit ${r.code})` };
     },
@@ -181,6 +193,7 @@ export function remote(target, { env = process.env } = {}) {
       closed = true;
       await ssh([...quiet, "-O", "exit", ...to]);
       fs.rmSync(dir, { recursive: true, force: true });
+      unclosed.delete(dir);
     },
   };
 }

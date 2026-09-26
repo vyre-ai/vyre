@@ -88,6 +88,17 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   module's `ctx.vault.fetch(name)` (manifest `needs.vault: ["per-agent"]`), with a grant per item
   to `agents`.
 - gate (M9): take over adding credentials at the boundary; the relay listener becomes its client.
+- tailnet (ADR 0014 part 7, work/tailnet 0622c88): `vault.relay.grants` is "off" by default. With
+  "require", a relayed request also needs the calling peer's whois caps to carry
+  `vyre.run/cap/vault` with an entry whose `items` matches the item (exact, or a trailing-*
+  prefix) and whose `mode` is the pass's mode or "any". Only `vault.relay.identity: "whois"`
+  supplies caps, so "require" under any other identity refuses every relayed request. The check
+  runs after every pass check, so a grant only narrows: pass, approval, presence and expiry still
+  decide, and nothing in a grant shows a value. The vault reads caps through
+  `core/link/transport.js` `parseWhois`/`capValues`, and finds a holder's online node from
+  `tailscale status --json` (Peer UserID to User LoginName, shared-in nodes included); tailnet
+  keeps both shapes stable. Still to verify on a real tailnet: whether a grant naming another
+  tailnet's user reaches their shared-in node's whois caps.
 
 ## Changed contracts
 

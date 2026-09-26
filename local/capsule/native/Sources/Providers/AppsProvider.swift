@@ -182,3 +182,7 @@ public final class AppsProvider: ResultProvider, @unchecked Sendable {
                           payload: a.bundleID.map { ["bundle": $0] } ?? [:])
     }
 }
+
+extension AppsProvider: ImmediateResults {
+    public func resultsNow(for query: Query) -> [ResultItem] { search(query.text) }
+}

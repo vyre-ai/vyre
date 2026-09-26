@@ -1,6 +1,6 @@
 // Kit: the types every part of the Capsule shares, and the seam other teams build into.
 //
-// The Capsule is one Swift process (ADR 0015). Everything that puts something in it (a result
+// The Capsule is one Swift process (ADR 0017). Everything that puts something in it (a result
 // row, a command, a side panel) goes through the types in this folder, whether it is the
 // Capsule's own launcher or an extension another team owns (Sources/Extensions/<name>/). The rules
 // that keep it light and honest live here too, because an extension inherits them by using these
@@ -187,6 +187,12 @@ public protocol ResultProvider: AnyObject, Sendable {
     /// The Capsule hid: stop queries, timers and observers. Keep only what is needed to be quick
     /// next time within the memory budget.
     func cool()
+}
+
+/// A quick provider that can answer in the keystroke's own frame, from memory, without a Task
+/// hop: its rows are drawn with the text that asked for them.
+public protocol ImmediateResults: ResultProvider {
+    func resultsNow(for query: Query) -> [ResultItem]
 }
 
 public extension ResultProvider {

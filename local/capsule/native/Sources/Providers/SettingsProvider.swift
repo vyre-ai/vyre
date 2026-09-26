@@ -142,3 +142,7 @@ public final class SettingsProvider: ResultProvider, @unchecked Sendable {
         }
     }
 }
+
+extension SettingsProvider: ImmediateResults {
+    public func resultsNow(for query: Query) -> [ResultItem] { search(query.text) }
+}
