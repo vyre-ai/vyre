@@ -9,7 +9,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { connector, identifyBox } from "./transport.js";
+import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
 
 const MAX_BACKOFF = 30_000;
 
@@ -128,6 +128,29 @@ export function macSide(ctx, seam = {}) {
       pairing.timer = setTimeout(poll, seam.pollMs || 2000);
       state.error = null;
       return { id: d.id, code: d.code, expires: d.expires };
+    },
+  });
+
+  ctx.tool("link.find", {
+    description: "Look for your box on your tailnet: online peers that answer as a Vyre box. For `vyre up` to offer pairing.",
+    input: { type: "object", properties: {} },
+    callers: ["cli", "local", "capsule"],
+    run: async () => {
+      const peers = await (seam.peers || tailnetPeers)();
+      const names = seam.certNames || certNames;
+      const found = await Promise.all(peers.map(async p => {
+        // The box answers at the name on its certificate; the node is pinned to the peer's own ID.
+        for (const name of [...new Set([...(await names(p.ip, p.dns)), p.dns].filter(Boolean))]) {
+          const address = seam.addressOf ? seam.addressOf(name) : `https://${name}`;
+          try {
+            const c = connect(address, p.stableId);
+            const r = await c.json("GET", "/v1/health", undefined, { timeout: 3000 });
+            if (r.body && r.body.data && r.body.data.role === "box") return { address: c.address, node: p.dns || p.host, version: r.body.data.version || null };
+          } catch {}
+        }
+        return null;
+      }));
+      return { boxes: found.filter(Boolean), paired: saved ? saved.box.address : null };
     },
   });
 

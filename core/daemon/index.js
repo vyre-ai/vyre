@@ -49,7 +49,7 @@ export async function start(opts = {}) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, handler });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
@@ -103,7 +103,7 @@ async function body(req) {
 
 /**
  * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
- *   eventType?: string, headers?: Record<string, string> }} Policy
+ *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
@@ -145,7 +145,9 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const result = await registry.call(name, await body(req), caller);
+    // The tailnet peer a listener established (node, stableId, login) reaches the tool's run
+    // beside the caller, never in its input. The socket has none.
+    const result = await registry.call(name, await body(req), caller, policy.peer ? { peer: policy.peer } : {});
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "denied" ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }
