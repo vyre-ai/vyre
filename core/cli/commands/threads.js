@@ -280,6 +280,8 @@ const run = {
     if (!r) return 1;
     if (json()) { emit(r); return r.sent ? 0 : 1; }
     if (r.sent) { out(dim(`  sent · vyre threads watch ${id8(f.id)}`)); return 0; }
+    // Open in a terminal: queued, and handed over when its turn ends.
+    if (r.queued) { out(dim(`  queued · ${r.note}`)); return 0; }
     if (r.holder) {
       out(beacon(`  ${r.holder} has the keyboard`));
       out(dim(`  vyre threads lease ${id8(f.id)}`));

@@ -260,6 +260,9 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
       if (!c.installed() && !c.packaged().bin && !c.electron()) return false;
       return (await c.default.run([])) === 0;
     },
+    // Offered only on the person's own terminal, never under node --test: a test never reaches
+    // the settings.json of whoever runs it.
+    statusline = async () => { if (io === terminal && !process.env.NODE_TEST_CONTEXT) await (await import("./statusline.js")).offerStatusline({ interactive: true, io }); },
   } = /** @type {any} */ (deps);
   const asking = io.tty && !json;
 
@@ -310,6 +313,7 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
 
   const paired = await pair(box, tool, say);
   if (json) return done({ box, ready: paired !== "pending", ...(paired === "pending" ? { pairing: "waiting for approval" } : {}) });
+  if (asking) await statusline().catch(() => {});
   if (capsule && platform === "darwin" && !(await openCapsule())) {
     say(`  the Capsule is not installed: ${signal("vyre capsule install")}`);
   }

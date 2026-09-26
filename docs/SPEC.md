@@ -455,7 +455,11 @@ Tools: `learn.lessons`, `learn.add`, `learn.edit`, `learn.retire`, `learn.check 
 ## 8. The Harness
 
 A Claude Code plugin in `harness/`. Every thread Vyre starts loads it with `--plugin-dir`, so a
-user's global Claude Code setup is never modified. Users may also install it for plain `claude`.
+user's global Claude Code setup is never modified. Users may also install it for plain `claude`:
+`/plugin marketplace add vyre-ai/vyre`, then `/plugin install vyre@vyre`. Installed that way, its
+hooks and MCP server start from launchers that hand over to the Vyre package on the machine, or,
+with no Vyre, say in one line how to install it and do nothing else (ADR 0020). Vyre's status line
+(`vyre statusline install`) is separate, because a plugin cannot set one.
 
 | Hook | Harness piece | What it does |
 |---|---|---|

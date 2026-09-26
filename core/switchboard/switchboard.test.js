@@ -495,7 +495,7 @@ test("sessions: a session binds to a running claude once, its key is checked, an
   assert.ok(sessions.bind(id, 200).key, "a resumed session binds from its new process");
 });
 
-test("adopt: a terminal session nobody has open is resumed headless with the lease; one that is open is refused", async t => {
+test("adopt: a terminal session nobody has open is resumed headless with the lease; one that is open is refused to a model and queued for a person", async t => {
   const { tool, work, launches, transcripts, root } = await boot(t);
   const quiet = terminalSession(transcripts, work);
   const sent = (await tool("threads.send", { thread: quiet.id, text: "add a phone field", surface: "capsule" })).data;
@@ -509,10 +509,12 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
 
   // Written a moment ago: someone is working in it.
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });
-  const r1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" })).data;
+  const r1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" }, "mcp")).data;
   assert.equal(r1.sent, false);
   assert.equal(r1.open_elsewhere, true);
   assert.match(r1.note, /written \ds ago.*Only one keyboard/);
+  const q1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" }, "capsule")).data;
+  assert.deepEqual([q1.sent, q1.queued, q1.name, q1.note], [false, true, "Intake form", "Intake form is busy in your terminal. I'll hand it your message when this turn ends."]);
 
   // Open but idle in a terminal: a running claude names it (`claude --resume <id>`).
   const idle = terminalSession(transcripts, work);
@@ -523,7 +525,7 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
   const term = spawn(path.join(bin, "claude"), ["-e", "setTimeout(() => {}, 60000)", "--", "--resume", idle.id], { stdio: "ignore" });
   t.after(() => term.kill());
   await new Promise(r => setTimeout(r, 200));
-  const r2 = (await tool("threads.send", { thread: idle.id, text: "hi", surface: "capsule" })).data;
+  const r2 = (await tool("threads.send", { thread: idle.id, text: "hi", surface: "capsule" }, "mcp")).data;
   assert.equal(r2.sent, false);
   assert.match(r2.note, new RegExp(`claude process ${term.pid} has it open`));
   assert.equal(launches().filter(l => l.argv.includes(idle.id) || l.argv.includes(busy.id)).length, 0, "nothing was started for either");
@@ -534,9 +536,46 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
   t.after(() => plain.kill());
   await new Promise(r => setTimeout(r, 200));
   assert.ok((await tool("threads.bind", { session: bound.id, pid: plain.pid }, "harness")).data.key);
-  assert.match((await tool("threads.send", { thread: bound.id, text: "hi", surface: "capsule" })).data.note, new RegExp(`open in claude process ${plain.pid}`));
+  assert.match((await tool("threads.send", { thread: bound.id, text: "hi", surface: "capsule" }, "mcp")).data.note, new RegExp(`open in claude process ${plain.pid}`));
 
   assert.match((await tool("threads.send", { thread: crypto.randomUUID(), text: "hi" })).error.message, /no thread/);
+});
+
+test("queued for a terminal session: the Stop hook hands it over, Claude answers in that session, and the reply comes back as the thread's", async t => {
+  const { root, work, tool, launches, transcripts } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  // A fake session "busy in a terminal": its transcript was written a second ago. Nothing here
+  // is a real Claude Code session; the hooks are called the way hook.js calls them.
+  const busy = terminalSession(transcripts, work, { ageMs: 1000 });
+  const q = (await tool("threads.send", { thread: busy.id, text: "which branch are you on?", surface: "capsule" }, "capsule")).data;
+  assert.equal(q.queued, true);
+  const queued = await until(() => of(s.got, busy.id, "thread.queued")[0], "thread.queued");
+  assert.deepEqual([queued.payload.text, queued.payload.surface], ["which branch are you on?", "capsule"]);
+
+  // The session's current turn ends: Stop sends it back to Claude with the message.
+  const stop1 = (await tool("harness.stop", { session: busy.id, text: "Tests pass.", stop_hook_active: false }, "harness")).data;
+  assert.deepEqual(stop1, { decision: "block", reason: "Message from the user via the Capsule: which branch are you on?" });
+  const sent = await until(() => of(s.got, busy.id, "thread.sent")[0], "thread.sent at hand-over");
+  assert.deepEqual([sent.payload.text, sent.payload.via, sent.payload.surface], ["which branch are you on?", "stop", "capsule"]);
+  assert.equal(of(s.got, busy.id, "thread.text").length, 0, "the turn before is not the reply");
+
+  // Claude answers it; the next Stop carries that answer and lets the session rest.
+  const stop2 = (await tool("harness.stop", { session: busy.id, text: "On main.", stop_hook_active: true }, "harness")).data;
+  assert.deepEqual(stop2, { ok: true });
+  const reply = await until(() => of(s.got, busy.id, "thread.text")[0], "the reply");
+  assert.deepEqual([reply.payload.text, reply.payload.done], ["On main.", true]);
+  await until(() => of(s.got, busy.id, "thread.finished")[0], "thread.finished");
+  assert.deepEqual((await tool("harness.stop", { session: busy.id, text: "later" }, "harness")).data, { ok: true }, "nothing more to hand over or reply to");
+  assert.equal(of(s.got, busy.id, "thread.text").length, 1);
+
+  // Idle in the terminal: the next prompt the user types there carries it.
+  await tool("threads.send", { thread: busy.id, text: "also bump the version", surface: "capsule" }, "capsule");
+  const enrich = (await tool("harness.enrich", { session: busy.id, prompt: "run the tests", cwd: work }, "harness")).data;
+  assert.match(enrich.text, /^Message from the user via the Capsule: also bump the version\n\nThis was sent while the session was idle/);
+  assert.deepEqual((await tool("harness.stop", { session: busy.id, text: "Bumped and tested." }, "harness")).data, { ok: true });
+  await until(() => of(s.got, busy.id, "thread.text").some(e => e.payload.text === "Bumped and tested."), "the second reply");
+  assert.equal(launches().filter(l => l.argv.includes(busy.id)).length, 0, "no process was started for it");
 });
 
 test("agents.history: each question with its answer and thread, newest last, pageable, and only for the assistant or a person", async t => {
@@ -664,6 +703,19 @@ test("usage on the subscription: turns and time, no dollars, and the rate-limit 
   assert.equal(juno.auth, "ambient");
   assert.equal(juno.limit.status, "allowed_warning");
   assert.ok(juno.duration_ms >= 5);
+});
+
+test("rate limit: a warning under 80% is kept on the thread and not said in it", async t => {
+  const { root, tool } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  const r = (await tool("agents.ask", { agent: "juno", text: "lowlimit" })).data;
+  const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
+  assert.equal(limit.payload.utilization, 0.27);
+  await until(() => of(s.got, r.thread, "thread.finished")[0], "the turn");
+  assert.deepEqual(of(s.got, r.thread, "thread.text").filter(e => e.payload.notice), [], "27% is not worth a line in the reply");
+  assert.equal((await tool("agents.usage", {})).data.find(x => x.agent === "juno").limit.utilization, 0.27, "still recorded");
 });
 
 test("learned skills: the account's and the project's folders load as plugins; lean threads and jobs get only what they name", async t => {

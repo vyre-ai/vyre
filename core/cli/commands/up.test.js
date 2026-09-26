@@ -213,7 +213,7 @@ test("up on a box after onboarding: the ending block, the same as on the Mac", a
 });
 
 /** mac() with a fake box and link; returns what it called and printed. */
-async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true } = {}) {
+async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true, io = undefined } = {}) {
   const calls = [], lines = [], saved = [];
   const log = console.log;
   console.log = (...a) => lines.push(a.join(" "));
@@ -228,6 +228,8 @@ async function runMac(box, { healthy = true, status = { linked: false, pending: 
       save: c => saved.push(c),
       platform,
       openCapsule: async () => { calls.push(["capsule"]); return opened; },
+      statusline: async () => { calls.push(["statusline"]); },
+      io: io || { tty: false, ask: async () => "" },
     });
   } finally { console.log = log; }
   return { code, calls, saved, text: lines.join("\n") };
@@ -266,6 +268,13 @@ test("up on a Mac: not paired starts pairing, prints the code to approve, then o
   assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
   assert.deepEqual(r.calls[1][1], { box: "https://alex.vyre.run" });
   assert.match(r.text, /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
+});
+
+test("up on a Mac: on a terminal the status line is offered before the Capsule; without one it is not", async () => {
+  const tty = await runMac("https://alex.vyre.run", { io: { tty: true, ask: async () => "" } });
+  assert.deepEqual(tty.calls.map(c => c[0]), ["link.status", "link.pair", "statusline", "capsule"]);
+  const piped = await runMac("https://alex.vyre.run", { io: { tty: false, ask: async () => "" } });
+  assert.ok(!piped.calls.some(c => c[0] === "statusline"));
 });
 
 test("up on a Mac: a pairing already waiting shows its code instead of starting another", async () => {
