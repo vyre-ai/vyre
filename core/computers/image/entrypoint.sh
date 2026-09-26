@@ -72,7 +72,7 @@ sleep 1
 # ---- Chrome, debugging port loopback-only, proxied out by computerd only ------------------
 # --remote-debugging-port binds loopback by default and stays that way: 9222 is never published
 # and never relayed as a bare port. computerd (started below) is the only process that ever
-# dials it, over its own authenticated /cdp routes (docs/adr/0005-cdp-proxy.md).
+# dials it, over its own authenticated /cdp routes (docs/adr/0012-cdp-proxy.md).
 log "starting chromium"
 # The profile lives on the home volume; a container that was killed leaves Chromium's Singleton
 # locks behind, and the next Chromium then refuses to start with "profile in use".

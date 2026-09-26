@@ -74,6 +74,11 @@
 .ab-row-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .ab-sec > [role=status]:not(:empty) { display: block; margin-top: 10px; }
 .ab-note { margin-top: 12px; max-width: 680px; }
+.ab-note-warn { color: var(--beacon-ink); }
+
+/* Usage */
+.ab-usage-top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px; }
+.ab-usage-big { font-size: 22px; line-height: 28px; font-weight: 500; letter-spacing: -0.01em; }
 
 /* Talk to */
 .ab-talk { margin-top: -8px; display: flex; flex-direction: column; gap: 8px; max-width: 680px; }

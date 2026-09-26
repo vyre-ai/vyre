@@ -1,0 +1,66 @@
+/* vyre.run/start and the 404 page. Uses the tokens in /styles.css only. */
+
+.start { padding: 72px 0 88px; }
+.start .col { max-width: 860px; }
+.start-head { display: flex; flex-direction: column; gap: 18px; padding-bottom: 40px; }
+.start-head .lead { max-width: 720px; }
+
+.start code, .start .c { font-family: var(--mono); font-size: 0.87em; color: var(--bone); background: var(--raised); border: 1px solid var(--rule); border-radius: var(--r-1); padding: 1px 5px; overflow-wrap: anywhere; }
+.start a { color: var(--bone); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 4px; }
+.start a:hover { text-decoration-color: var(--signal); }
+.start strong { color: var(--bone); font-weight: 600; }
+
+/* one numbered part of the checklist */
+.part { border-top: 1px solid var(--rule); padding: 40px 0; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 0 24px; }
+.part > .num { font-family: var(--mono); font-size: 13px; line-height: 34px; font-weight: 500; color: var(--signal); letter-spacing: 0.08em; }
+.part > .num.dim { color: var(--ash); }
+.part > .body-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: var(--stone); }
+.part .h2 { color: var(--bone); }
+
+/* plain bullet list */
+.need { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.need li { padding: 12px 0 12px 22px; border-bottom: 1px solid var(--rule); position: relative; }
+.need li::before { content: ""; position: absolute; left: 2px; top: 20px; width: 7px; height: 7px; border-radius: 4px; background: var(--ash); }
+
+/* numbered sub-steps */
+.sub { list-style: none; margin: 0; padding: 0; counter-reset: sub; border-top: 1px solid var(--rule); }
+.sub li { counter-increment: sub; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.sub li::before { content: counter(sub); font-family: var(--mono); font-size: 13px; line-height: 22px; color: var(--ash); }
+
+/* a command block: one row per command, each with its own copy button */
+.term-block { background: var(--carbon); border: 1px solid var(--rule-strong); border-radius: var(--r-3); box-shadow: var(--light); overflow: hidden; }
+.term-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; border-top: 1px solid var(--rule); }
+.term-row:first-child { border-top: none; }
+.term-row pre { margin: 0; min-width: 0; overflow-x: auto; font-family: var(--mono); font-size: 14px; line-height: 22px; color: var(--bone); white-space: pre; padding: 4px 0; scrollbar-width: thin; }
+.term-row pre .prompt { color: var(--ash); user-select: none; }
+.term-row pre .note { color: var(--ash); }
+.term-row .btn { min-width: 44px; }
+.term-out { margin: 0; padding: 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--stone); white-space: pre; background: var(--graphite); }
+.term-cap { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--rule); }
+
+/* the "What is not finished" callout */
+.callout { background: var(--beacon-wash); border: 1px solid rgba(255, 122, 89, 0.35); border-radius: var(--r-3); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+.callout .need { border-top-color: rgba(255, 122, 89, 0.25); }
+.callout .need li { border-bottom-color: rgba(255, 122, 89, 0.25); color: var(--stone); }
+.callout .need li::before { background: var(--beacon); }
+
+.start-foot { border-top: 1px solid var(--rule); padding-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+/* 404 */
+.nf { padding: 120px 0 140px; }
+.nf .col { max-width: 640px; display: flex; flex-direction: column; gap: 18px; }
+.nf .acts { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+
+@media (max-width: 720px) {
+  .start { padding: 40px 0 56px; }
+  .start-head { padding-bottom: 28px; }
+  .part { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 32px 0; }
+  .part > .num { line-height: 16px; }
+  .term-row { padding: 6px 6px 6px 12px; gap: 8px; }
+  .term-row pre { font-size: 12px; line-height: 20px; }
+  .term-row .btn .txt { display: none; }
+  .term-row .btn { width: 44px; padding: 0; }
+  .term-out { font-size: 11px; line-height: 18px; padding: 12px; }
+  .callout { padding: 18px 16px; }
+  .nf { padding: 64px 0 80px; }
+}
