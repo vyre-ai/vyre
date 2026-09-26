@@ -18,6 +18,7 @@
 // the address the fake box tailscale reports once it is Running.
 
 import fs from "node:fs";
+import https from "node:https";
 import os from "node:os";
 import net from "node:net";
 import path from "node:path";
@@ -221,4 +222,38 @@ export async function browser(url) {
     return j.data;
   }
   return { status: r.status, location, session, tool };
+}
+
+/**
+ * The browser once the address is served: the onboarding page moves to https://<ts.net name>
+ * and the loopback link stops working (deck/onboard/onboard.js), since the Mac takes the tunnel
+ * down as soon as the address step is done. The name does not resolve here, so this connects to
+ * the fake tailnet's 127.0.0.1 and names the host the way the browser would.
+ * @param {{ tailnetPort: number, cert: { crt: string } }} rig
+ */
+export function atAddress(rig) {
+  const host = `${TS_NAME}:${rig.tailnetPort}`;
+  const ca = fs.readFileSync(rig.cert.crt);
+  /** @returns {Promise<any>} the tool's data; throws with its error */
+  function tool(name, input = {}) {
+    const body = JSON.stringify(input);
+    return new Promise((resolve, reject) => {
+      const req = https.request({ host: "127.0.0.1", port: rig.tailnetPort, servername: TS_NAME, ca, method: "POST", path: `/v1/tools/${name}`, timeout: 20_000,
+        headers: { host, origin: `https://${host}`, "content-type": "application/json", "content-length": Buffer.byteLength(body) } }, res => {
+        let text = "";
+        res.setEncoding("utf8");
+        res.on("data", c => { text += c; });
+        res.on("end", () => {
+          try {
+            const j = JSON.parse(text);
+            if (j.error) reject(new Error(`${name}: ${j.error.code}: ${j.error.message}`)); else resolve(j.data);
+          } catch { reject(new Error(`${name}: ${res.statusCode} ${text.slice(0, 200)}`)); }
+        });
+      });
+      req.on("timeout", () => req.destroy(new Error(`${name}: timed out`)));
+      req.on("error", reject);
+      req.end(body);
+    });
+  }
+  return { tool };
 }

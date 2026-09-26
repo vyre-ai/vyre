@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { makeRig, browser, until, TARGET, TS_NAME } from "./journey/rig.js";
+import { makeRig, browser, atAddress, until, TARGET, TS_NAME } from "./journey/rig.js";
 import { ending } from "../core/cli/ending.js";
 
 /** @type {Awaited<ReturnType<typeof makeRig>> | null} */
@@ -34,6 +34,8 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
     run.child.kill("SIGINT");
     t.diagnostic(`box add printed:\n${run.output()}`);
     t.diagnostic(`the box's vyred:\n${tail(path.join(rig.root, "srv", "vyred.out"))}`);
+    t.diagnostic(`the box's network config: ${JSON.stringify(rig.boxConfig().network)}`);
+    for (const f of fs.readdirSync(path.join(rig.root, "srv", "home", ".vyre", "logs"))) t.diagnostic(`box log ${f}:\n${tail(path.join(rig.root, "srv", "home", ".vyre", "logs", f))}`);
   });
   // The Mac waits with the link open in the browser, or stops early if something failed.
   const first = await Promise.race([until(() => rig.opened()[0], Boolean, 40_000, "box add to open the browser"), run.done]);
@@ -83,10 +85,13 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
     t.diagnostic(rig.cert ? "JOURNEY_SKIP_NAME: the address step is skipped" : "no openssl to make a certificate: the address step is skipped");
     await b.tool("onboard.skip", { step: "name" });
   }
+  // With the address served, the page carries on there: box add takes the tunnel down as soon
+  // as it sees the address step done, so the loopback link may already be gone.
+  const page = address ? atAddress(/** @type {any} */ (rig)) : b;
   // History: a fresh box has no sessions, so the step is already done and indexes nothing.
-  const status = await b.tool("onboard.status");
+  const status = await page.tool("onboard.status");
   assert.equal(status.steps.history, "done");
-  const fin = await b.tool("onboard.finish");
+  const fin = await page.tool("onboard.finish");
   assert.ok(fin.finished);
   assert.equal(fin.owner, "alex@example.com", "the login that signed the box in owns it");
 
