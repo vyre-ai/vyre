@@ -430,23 +430,37 @@ export function atTool(check, { tool, input, ran }) {
 // Guards: calls that would weaken what Vyre learned. Anything that makes Vyre stricter is free;
 // anything that makes it looser needs a person (ADR 0007, decision 11). These are asked, never
 // denied: the user may mean it. A lesson a model can quietly switch off is advice.
+//
+// Some guards hold whether or not a lesson is active, because what they protect outlives any one
+// lesson: the store and the socket, the home's learned/ (installed skills), the Harness's hooks,
+// running a hook by hand, Claude Code's plugins and settings, and the human-only tools. The rest
+// (the lesson files, the lesson commands, stopping vyred) only matter while a lesson is active.
 
-const USER = "Retiring, relaxing or accepting a lesson is the user's call, not Claude's.";
+const USER = "Retiring, relaxing or accepting a lesson, or installing, retiring or dismissing a learned skill, is the user's call, not Claude's.";
 const STORE = "This reaches what Vyre learned (its store, socket or lesson files) directly, around the lessons the user taught.";
 const DIRECT = "This calls Learning or the Harness directly, around the hooks that check the lessons the user taught.";
-const HOOKS = "This changes the Vyre Harness's hooks, which check the lessons the user taught.";
-const SETTINGS = "This changes Claude Code's settings, which could drop Vyre's plugin or its hooks.";
+const HOOKS = "This changes or runs the Vyre Harness's hooks, which check the lessons the user taught.";
+const SETTINGS = "This changes Claude Code's plugins or settings, which could drop Vyre's plugin or its hooks.";
 const STOP = "Stopping vyred would stop the lessons the user taught from being checked.";
+
+/** Tools only a person may call: they accept, loosen or retire what Vyre learned. */
+export const HUMAN_TOOLS = ["learn.accept", "learn.retire", "learn.relax", "learn.skill-install", "learn.skill-retire", "learn.skill-dismiss"];
+const HUMAN = /\blearn\.(?:accept|retire|relax|skill-(?:install|retire|dismiss))\b/;
+/** What a script needs to reach vyred: its client, its socket, its header or its tool route. */
+const ROUTE = /daemon\/client|socketPath|vyred\.sock|x-vyre-caller|\/v1\/tools\/|--unix-socket/;
 
 /** What in the Vyre home holds or runs the lessons. A write to any of these is asked. */
 const GUARDED = ["lessons.json", "learn-offline", "vyre.db", "vyre.db-wal", "vyre.db-shm", "vyred.sock", "vyred.pid", "learned"];
-/** Names unusual enough to mean Vyre's files wherever they appear in a command. */
-const NAMED = /vyre\.db\b|vyred\.(sock|pid)\b|\blearn-offline\b/;
+/** Of those, what only matters while a lesson is active. */
+const LESSON_FILES = ["lessons.json", "learn-offline"];
 /** Commands that only read. A command made only of these, with no redirect into a file, writes nothing. */
 const READERS = new Set(["cat", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "ls", "stat", "wc", "file", "diff", "jq", "du", "echo", "printf", "cd", "pwd", "test", "true", "sed", "find", "sort", "uniq", "cut", "tr", "column", "shasum", "sha256sum", "md5", "realpath", "readlink", "basename", "dirname"]);
+/** Programs that run a script file named after them. */
+const RUNNERS = new Set(["node", "bun", "deno", "tsx", "env", "exec", "nohup", "time"]);
 
 const WRITES = { Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" };
 const untilde = p => (p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p);
+const within = (p, dir) => p === dir || p.startsWith(dir + path.sep);
 
 /** Does a shell command only read? Conservative: anything unknown writes. */
 function readOnly(c) {
@@ -471,13 +485,28 @@ function spellings(home) {
   return out;
 }
 
-/** Why a file in the home, the Harness's hooks or Claude Code's settings is guarded, or null. */
-function guardedPath(abs, home) {
-  if (abs === home || abs.startsWith(home + path.sep)) {
+/** A word of a command as a path: ~, $HOME and $VYRE_HOME expanded, resolved from cwd. Null when it is no path. */
+function resolveWord(word, home, cwd) {
+  if (!word || word.startsWith("-") || /^[a-z]+:\/\//i.test(word)) return null;
+  const w = word.replace(/^(?:\$\{HOME\}|\$HOME)(?=\/|$)/, os.homedir()).replace(/^(?:\$\{VYRE_HOME\}|\$VYRE_HOME)(?=\/|$)/, home);
+  if (w.includes("$")) return null;
+  if (!w.includes("/") && !cwd) return null;                    // a bare name, and no folder to read it from
+  return path.resolve(cwd || "/", untilde(w));
+}
+
+/**
+ * Why a file is guarded, or null: a guarded name in the home, the loaded plugin's hooks (the
+ * plugin root Claude Code gave the hook, or a plugin installed under ~/.claude/plugins), Claude
+ * Code's plugins folder and settings files. A hooks folder in some checkout of Vyre is free.
+ */
+function guardedPath(abs, home, plugin, lessons) {
+  if (within(abs, home)) {
     const first = abs === home ? "" : abs.slice(home.length + 1).split(path.sep)[0];
-    if (GUARDED.includes(first)) return STORE;
+    if (GUARDED.includes(first) && (lessons || !LESSON_FILES.includes(first))) return STORE;
   }
-  if (/(^|\/)harness\/hooks\/[^/]+$/.test(abs) || /\/\.claude\/plugins\/.*\/hooks\/(hook\.js|hooks\.json)$/.test(abs)) return HOOKS;
+  if (plugin && within(abs, path.join(plugin, "hooks"))) return HOOKS;
+  const claude = path.join(os.homedir(), ".claude");
+  if (abs === claude || within(abs, path.join(claude, "plugins")) || /\/\.claude\/plugins(\/|$)/.test(abs)) return SETTINGS;
   if (/(^|\/)\.claude\/settings(\.local)?\.json$/.test(abs)) return SETTINGS;
   return null;
 }
@@ -486,43 +515,84 @@ function guardedPath(abs, home) {
 const globRe = g => new RegExp("^" + g.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
 
 /**
- * Calls that would weaken what Vyre learned: retiring, relaxing or accepting a lesson from inside
- * a turn; calling Learning or the Harness directly; writing the lessons' files, the store, the
- * socket, the Harness's hooks or Claude Code's settings; stopping vyred. Asked at every level, by
- * learn.check online and by the hook offline.
+ * A git command's message is prose, not a path or a command: `git commit -m "fix: vyre.db lock"`
+ * names nothing. The argument of -m, --message and combined flags like -am is taken out.
+ * @param {string} command
+ */
+function withoutMessages(command) {
+  return command.replace(/(\bgit\b[^;&|\n]*?\s)(-[a-zA-Z]*m|--message)(?:=|\s+)("(?:[^"\\]|\\.)*"|'[^']*'|\S+)/g, "$1$2 ''");
+}
+
+/** Does a shell command run a hook by hand (`node hooks/hook.js enrich`, `... | ./hook.js`)? */
+function runsHook(c) {
+  return c.split(/\|\|?|&&|;|\n|\$\(|`/).some(seg => {
+    const words = seg.trim().split(/\s+/).filter(w => !/^\w+=/.test(w));
+    const prog = (words[0] || "").split("/").pop() || "";
+    if (/(^|\/)hook\.js$/.test(words[0] || "")) return true;
+    return RUNNERS.has(prog) && words.slice(1).some(w => /(^|\/)hook\.js$/.test(w));
+  });
+}
+
+/**
+ * Calls that would weaken what Vyre learned: the human-only tools (accepting, retiring or
+ * relaxing a lesson, installing, retiring or dismissing a skill) from inside a turn, by any
+ * route; calling Learning or the Harness directly, or running a hook by hand; writing the
+ * lessons' files, the store, the socket, the loaded Harness's hooks, Claude Code's plugins or
+ * settings; stopping vyred. Asked at every level, by learn.check online and by the hook offline.
  * @param {string} tool @param {any} input
- * @param {{ home?: string, cwd?: string }} [where] the Vyre home (default: config's) and the thread's folder
+ * @param {{ home?: string, cwd?: string, pluginRoot?: string|null, lessons?: boolean }} [where] the Vyre home (default:
+ *   config's), the thread's folder, the loaded plugin's root (default: CLAUDE_PLUGIN_ROOT), and whether a lesson is active
  * @returns {string|null} the reason to ask, or null
  */
-export function weakens(tool, input, { home: root, cwd } = {}) {
-  if (/(^|__)learn_(retire|relax|accept)$/.test(tool)) return USER;
+export function weakens(tool, input, { home: root, cwd, pluginRoot, lessons = true } = {}) {
+  if (/(^|__)learn[._](retire|relax|accept|skill[-_](install|retire|dismiss))$/.test(tool)) return USER;
   const home = path.resolve(root || process.env.VYRE_HOME || path.join(os.homedir(), ".vyre"));
+  const pr = pluginRoot === undefined ? process.env.CLAUDE_PLUGIN_ROOT : pluginRoot;
+  const plugin = pr ? path.resolve(untilde(pr)) : null;
   const key = WRITES[/** @type {keyof typeof WRITES} */ (tool)];
-  if (key && typeof input?.[key] === "string") return guardedPath(path.resolve(cwd || home, untilde(input[key])), home);
+  if (key && typeof input?.[key] === "string") {
+    const why = guardedPath(path.resolve(cwd || home, untilde(input[key])), home, plugin, lessons);
+    if (why) return why;
+    // A script that calls a human-only tool through vyred's client, socket or route.
+    const body = written(tool, input);
+    return body && HUMAN.test(body) && ROUTE.test(body) ? USER : null;
+  }
   if (tool !== "Bash" || typeof input?.command !== "string") return null;
   // Quotes and backslashes split words without changing them: vy"re" is vyre.
-  const c = input.command.replace(/\\\n/g, " ").replace(/["'`\\]/g, "");
-  if (/\bvyre(\.js)?\s+learn\s+(retire|relax|edit|level|accept)\b/.test(c)) return USER;
+  const c = withoutMessages(input.command).replace(/\\\n/g, " ").replace(/["'`\\]/g, "");
+  if (/\bvyre(\.js)?\s+learn\s+skills\s+(install|retire|dismiss)\b/.test(c)) return USER;
+  if (lessons && /\bvyre(\.js)?\s+learn\s+(retire|relax|edit|level|accept|scope)\b/.test(c)) return USER;
   if (/\bvyre(\.js)?\s+call\s+(learn|harness)\./.test(c) || /\/v1\/tools\/(learn|harness)\./.test(c)) return DIRECT;
-  if (/\bvyre(\.js)?\s+(down|stop|restart)\b/.test(c) || /\b(pkill|killall)\b[^|;&]*\bvyred?\b/.test(c)
+  if (/\bclaude\s+plugins?\s+(disable|uninstall|remove|rm)\b/.test(c)) return SETTINGS;
+  if (lessons && (/\bvyre(\.js)?\s+(down|stop|restart)\b/.test(c) || /\b(pkill|killall)\b[^|;&]*\bvyred?\b/.test(c)
     || /\blaunchctl\b[^|;&]*\b(unload|bootout|stop|kill|remove|disable)\b[^|;&]*vyre/i.test(c)
     || /\bsystemctl\b[^|;&]*\b(stop|kill|disable|mask)\b[^|;&]*vyre/.test(c)
-    || (/\bkill\b/.test(c) && /vyred\.pid|\bpgrep\b[^|;&]*vyre/.test(c))) return STOP;
+    || (/\bkill\b/.test(c) && /vyred\.pid|\bpgrep\b[^|;&]*vyre/.test(c)))) return STOP;
   const spelled = spellings(home);
   if (/--unix-socket|\bnc\b[^|;&]*\s-U\b|\bsocat\b[^|;&]*UNIX/i.test(c) && (/vyre|\$/.test(c) || spelled.some(s => c.includes(s)))) return STORE;
   if (readOnly(c)) return null;
-  if (NAMED.test(c)) return STORE;
-  if (/(^|[\s/=])harness\/hooks\/|\.claude\/plugins\/\S*\/hooks\/hooks?\.js(on)?/.test(c)) return HOOKS;
+  if (runsHook(c)) return HOOKS;
+  if (HUMAN.test(c)) return USER;
+  const words = c.split(/[\s;|&()<>=]+/).filter(Boolean);
+  // Words that resolve to a guarded file: in the home, the loaded plugin's hooks, Claude Code's
+  // plugins or settings. A store name (vyre.db, lessons.json) counts only there: written bare, only
+  // with cwd in the home; `rm -rf /tmp/t1/vyre.db` is someone else's file.
+  for (const w of words) {
+    const abs = resolveWord(w, home, cwd);
+    if (!abs) continue;
+    const why = guardedPath(abs, home, plugin, lessons);
+    if (why) return why;
+  }
   if (/(^|[\s/=])\.claude\/settings(\.local)?\.json/.test(c)) return SETTINGS;
   // The home itself, or a guarded name in it. Its watchers/ and modules/ stay free.
   for (const s of spelled) for (let i = c.indexOf(s); i >= 0; i = c.indexOf(s, i + 1)) {
     const after = c.slice(i + s.length);
     if (/^[\w.-]/.test(after)) continue;                       // a longer name that starts the same
     const seg = /^\/([^\s/;|&)]*)/.exec(after);
-    if (!seg || !seg[1] || GUARDED.includes(seg[1]) || /[*?[]/.test(seg[1])) return STORE;
+    if (!seg || !seg[1] || (GUARDED.includes(seg[1]) && (lessons || !LESSON_FILES.includes(seg[1]))) || /[*?[]/.test(seg[1])) return STORE;
   }
   // Globs that could match the home or a guarded file in it: ~/.vy*/lessons.json.
-  for (const tok of c.split(/[\s;|&()<>=]+/)) {
+  for (const tok of words) {
     if (!/[*?[]/.test(tok)) continue;
     const re = globRe(tok.replace(/\/+$/, ""));
     if (spelled.some(s => re.test(s) || GUARDED.some(g => re.test(`${s}/${g}`)))) return STORE;

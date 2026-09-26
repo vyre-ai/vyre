@@ -112,8 +112,9 @@ export default {
 
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
-      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" } } },
-      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id }, { caller } = {}) => {
+      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
+        plugin_root: { type: "string" } } },
+      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller } = {}) => {
         const agent = agentOf(named, caller);
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
         let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
@@ -125,7 +126,9 @@ export default {
         }
         // The floor first; a lesson can only add a hold, never lift one.
         if (!verdict.decision) {
-          const l = await ask("learn.check", { stage: "tool", session, prompt_id, cwd, agent, tool_name, tool_input: tool_input || {}, ...(tool_use_id ? { tool_use_id } : {}) });
+          // plugin_root: where Claude Code loaded the Harness from, whose hooks Learning guards.
+          const l = await ask("learn.check", { stage: "tool", session, prompt_id, cwd, agent, tool_name, tool_input: tool_input || {}, ...(tool_use_id ? { tool_use_id } : {}),
+            ...(plugin_root ? { plugin_root } : {}) });
           if (l && l.decision) verdict = { decision: l.decision, reason: l.reason, lesson: l.lesson };
         }
         if (verdict.decision) ctx.events.emit("tool.held", { session: session || null, tool: tool_name, decision: verdict.decision, rule: verdict.rule ?? null, lesson: verdict.lesson ?? null });

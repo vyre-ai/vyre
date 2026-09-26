@@ -892,7 +892,7 @@ export default {
     ctx.tool("learn.check", {
       description: "What the hooks ask. stage tool: may this call run, given the lessons? stage stop: may this turn end, given its final reply and the files it changed? stage brief: every active lesson, for the start of a thread.",
       input: { type: "object", required: ["stage"], properties: { stage: { type: "string", enum: ["tool", "stop", "brief"] }, session: { type: "string" }, prompt_id: { type: "string" },
-        cwd: { type: "string" }, agent: { type: "string" }, tool_name: { type: "string" }, tool_input: { type: "object" }, tool_use_id: { type: "string" },
+        cwd: { type: "string" }, agent: { type: "string" }, tool_name: { type: "string" }, tool_input: { type: "object" }, tool_use_id: { type: "string" }, plugin_root: { type: "string" },
         text: { type: "string" }, stop_hook_active: { type: "boolean" } } },
       run: async input => {
         const lessons = await inScope(active(), input);
@@ -913,10 +913,11 @@ export default {
     });
 
     /** PreToolUse. Returns { decision, reason, lesson } in the Harness rules' shape. */
-    const tool = async (lessons, session, { tool_name = "", tool_input = {}, prompt_id, cwd, tool_use_id }) => {
-      // The guards hold wherever a lesson is active, in this folder or not: a lesson for another
-      // project can be switched off from here too.
-      const guard = active().length ? weakens(tool_name, tool_input, { home: root, cwd }) : null;
+    const tool = async (lessons, session, { tool_name = "", tool_input = {}, prompt_id, cwd, tool_use_id, plugin_root }) => {
+      // The guards hold always, in this folder or not: a lesson for another project can be switched
+      // off from here too, and the store, learned/, the hooks and the plugin outlive any one lesson.
+      // Only the guards about lessons themselves wait for an active one (checks.js).
+      const guard = weakens(tool_name, tool_input, { home: root, cwd, pluginRoot: plugin_root ?? null, lessons: active().length > 0 });
       if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.`, lesson: null };
       const t = turn(session, prompt_id);
       const last = (await touchedSince(session, 0))[0];

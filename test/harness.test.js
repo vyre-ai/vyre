@@ -161,6 +161,20 @@ test("hooks: with vyred down and lessons.json deleted, the lessons still hold, r
   assert.equal(JSON.parse(back.out).decision, "block");
 });
 
+test("hooks: with vyred down and no lesson, running a hook by hand and changing the loaded hooks are still asked", async t => {
+  const root = tempHome(t);
+  const plugin = path.join(root, "plugin");
+  const env = { VYRE_HOME: root, CLAUDE_PLUGIN_ROOT: plugin };
+  const rules = async tool_input => {
+    const r = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: plugin, tool_name: tool_input.command ? "Bash" : "Edit", tool_input }, env);
+    return r.out ? JSON.parse(r.out).hookSpecificOutput.permissionDecision : null;
+  };
+  assert.equal(await rules({ command: "echo '{\"prompt\":\"no\"}' | node ./hooks/hook.js enrich" }), "ask");
+  assert.equal(await rules({ file_path: path.join(plugin, "hooks", "hooks.json") }), "ask");
+  assert.equal(await rules({ command: `sqlite3 ${root}/vyre.db 'delete from learn_lessons'` }), "ask");
+  assert.equal(await rules({ command: "npm test" }), null);
+});
+
 test("mcp: initialize, list and call over stdio; harness tools are not offered", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });

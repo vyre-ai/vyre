@@ -111,7 +111,7 @@ test("offline: with no snapshot, nothing is checked", t => {
   const base = { root, session: "s1", prompt_id: "p1" };
   assert.deepEqual(offlineTool({ ...base, tool: "Write", input: { content: `a ${DASH} b` } }), { decision: null });
   assert.deepEqual(offlineTool({ ...base, tool: "Bash", input: { command: "git commit -m x" } }), { decision: null });
-  assert.deepEqual(offlineTool({ ...base, tool: "mcp__plugin_vyre_vyre__learn_retire", input: { id: 1 } }), { decision: null });
+  assert.equal(offlineTool({ ...base, tool: "mcp__plugin_vyre_vyre__learn_retire", input: { id: 1 } }).decision, "ask", "a human-only tool is guarded with no lesson too");
   offlineTouched({ ...base, cwd: CWD, tool: "Edit", input: { file_path: "src/a.js" } });
   assert.deepEqual(offlineStop({ ...base, text: `a ${DASH} b`, stop_hook_active: false }), { decision: null });
   assert.equal(fs.existsSync(path.join(root, "learn-offline")), false, "nothing written");

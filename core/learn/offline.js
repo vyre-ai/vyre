@@ -152,15 +152,15 @@ function log(root, entry) {
 
 /**
  * PreToolUse with vyred down: the lessons' verdict on a call, in the Harness rules' shape.
- * @param {{ root: string, session?: string, prompt_id?: string, agent?: string, cwd?: string, tool: string, input: any }} call
+ * @param {{ root: string, session?: string, prompt_id?: string, agent?: string, cwd?: string, tool: string, input: any, pluginRoot?: string|null }} call
  * @returns {{ decision: "deny"|"ask"|null, reason?: string, lesson?: number }}
  */
-export function offlineTool({ root, session, prompt_id, agent, cwd, tool, input }) {
+export function offlineTool({ root, session, prompt_id, agent, cwd, tool, input, pluginRoot }) {
   const all = allLessons(root);
-  if (!all.length) return { decision: null };
-  // The guards hold wherever any lesson is active, as online.
-  const guard = weakens(tool, input || {}, { home: root, cwd });
+  // The guards hold always, as online; only those about lessons wait for an active one.
+  const guard = weakens(tool, input || {}, { home: root, cwd, pluginRoot: pluginRoot ?? null, lessons: all.length > 0 });
   if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.` };
+  if (!all.length) return { decision: null };
   const lessons = applicable(all, agent, cwd);
   if (!lessons.length) return { decision: null };
   const s = load(root, session, prompt_id);

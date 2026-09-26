@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { distill, atStop, atTool, weakens, invalid, reply, CODE } from "./checks.js";
 import { discover, Registry } from "../modules/index.js";
@@ -220,10 +221,10 @@ test("learn: git commit is held until the tests have run", async t => {
   assert.equal((await bash("git commit -m x")).data.decision, null);
 });
 
-test("learn: retiring a lesson from inside a turn asks the user, but only when there are lessons", async t => {
+test("learn: retiring a lesson from inside a turn asks the user, with lessons or not (a human-only tool is always guarded)", async t => {
   const { reg, add } = await learning(t);
   const retire = () => reg.call("harness.rules", { tool_name: "mcp__plugin_vyre_vyre__learn_retire", tool_input: { id: 1 }, session: "s1" });
-  assert.equal((await retire()).data.decision, null);
+  assert.equal((await retire()).data.decision, "ask");
   await add("never use em dashes");
   const r = await retire();
   assert.equal(r.data.decision, "ask");
@@ -501,9 +502,22 @@ test("learn: guards ask at every level, online, even for a lesson scoped elsewhe
   assert.equal((await rules("Bash", { command: "npm test" })).data.decision, null);
 });
 
+test("learn: guards hold online with no lesson active; the lesson files wait for one", async t => {
+  const { reg, home } = await learning(t);
+  const rules = (tool_name, tool_input, extra = {}) => reg.call("harness.rules", { tool_name, tool_input, cwd: "/w/other", session: "s1", ...extra });
+  assert.equal((await rules("Bash", { command: `rm ${home}/vyre.db` })).data.decision, "ask");
+  assert.equal((await rules("Write", { file_path: path.join(home, "learned", "skills", "x", "SKILL.md"), content: "x" })).data.decision, "ask");
+  assert.equal((await rules("Bash", { command: "echo '{}' | node /p/harness/hooks/hook.js enrich" }, { plugin_root: "/p/harness" })).data.decision, "ask");
+  assert.equal((await rules("Edit", { file_path: "/p/harness/hooks/hooks.json" }, { plugin_root: "/p/harness" })).data.decision, "ask");
+  assert.equal((await rules("Edit", { file_path: "/p/harness/hooks/hooks.json" })).data.decision, null, "a checkout that is not the loaded plugin");
+  assert.equal((await rules("Bash", { command: "claude plugin disable vyre" })).data.decision, "ask");
+  assert.equal((await rules("Bash", { command: `rm ${home}/lessons.json` })).data.decision, null);
+  assert.equal((await rules("Bash", { command: "npm test" })).data.decision, null);
+});
+
 test("weakens: every route to switching lessons off is asked; ordinary work is not", () => {
   const home = "/Users/someone/.vyre";
-  const w = (tool, input) => weakens(tool, input, { home, cwd: "/w/site" });
+  const w = (tool, input) => weakens(tool, input, { home, cwd: input.cwd || "/w/site", pluginRoot: "/repo/vyre/harness" });
   const asked = [
     ["Write", { file_path: `${home}/lessons.json`, content: "{}" }],
     ["Edit", { file_path: `${home}/learn-offline/s1.json` }],
@@ -521,8 +535,8 @@ test("weakens: every route to switching lessons off is asked; ordinary work is n
     ["Bash", { command: `rm -rf ${home}` }],
     ["Bash", { command: `rm ${home.replace(".vyre", ".vy*")}/lessons.json` }],
     ["Bash", { command: "rm -rf $VYRE_HOME/learned" }],
-    ["Bash", { command: "sqlite3 vyre.db 'delete from learn_lessons'" }],
-    ["Bash", { command: "rm -r learn-offline" }],
+    ["Bash", { command: "sqlite3 vyre.db 'delete from learn_lessons'", cwd: home }],
+    ["Bash", { command: "rm -r learn-offline", cwd: home }],
     ["Bash", { command: "vyre call learn.retire '{\"id\":1}'" }],
     ["Bash", { command: "node /repo/bin/vyre call harness.stop '{}'" }],
     ["Bash", { command: "vy\"re\" learn relax 1 --level remind" }],
@@ -536,7 +550,7 @@ test("weakens: every route to switching lessons off is asked; ordinary work is n
     ["Bash", { command: `kill $(cat ${home}/vyred.pid)` }],
     ["Bash", { command: "launchctl bootout gui/501/sh.vyre.vyred" }],
     ["Bash", { command: "jq 'del(.enabledPlugins)' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json" }],
-    ["Bash", { command: "sed -i '' 's/hook.js/x.js/' harness/hooks/hooks.json" }],
+    ["Bash", { command: "sed -i '' 's/hook.js/x.js/' harness/hooks/hooks.json", cwd: "/repo/vyre" }],
   ];
   for (const [tool, input] of asked) assert.ok(w(tool, input), `${tool} ${JSON.stringify(input)}`);
   const free = [
@@ -555,6 +569,59 @@ test("weakens: every route to switching lessons off is asked; ordinary work is n
     ["Bash", { command: "vyre threads stop 5f0c" }],
   ];
   for (const [tool, input] of free) assert.equal(w(tool, input), null, `${tool} ${JSON.stringify(input)}`);
+});
+
+test("weakens: skills, scope, plugins, the hook by hand and scripts that call human-only tools are asked", () => {
+  const home = path.join(os.homedir(), ".vyre-test-home");
+  const w = (tool, input, extra = {}) => weakens(tool, input, { home, cwd: "/w/site", pluginRoot: null, ...extra });
+  const asked = [
+    "vyre learn scope 3 project foo", "vyre learn skills install 4 --account", "vyre learn skills retire 4", "vyre learn skills dismiss 4",
+    "vyre learn accept 2", "vyre learn relax 1 level remind", "claude plugin disable vyre", "claude plugins uninstall vyre", "claude plugin remove vyre@m",
+    "rm -rf ~/.claude/plugins/cache/vyre", "rm -rf ~/.claude/plugins", "rm -rf ~/.claude", "echo {} > $HOME/.claude/plugins/installed_plugins.json",
+    "cd ~/.claude/plugins/cache/vyre/harness && echo '{}' | node hooks/hook.js stop", "echo '{\"prompt\":\"no\"}' | node ./hooks/hook.js enrich",
+    "node /somewhere/harness/hooks/hook.js rules < x.json", "./hooks/hook.js enrich", "env VYRE_HOME=/x node hook.js stop",
+    "node -e \"import('/x/core/daemon/client.js').then(m => m.call('learn.relax', {id:1, level:'remind'}))\"",
+  ];
+  for (const command of asked) assert.ok(w("Bash", { command }), command);
+  assert.ok(w("Write", { file_path: "/tmp/x.mjs", content: "import { call } from '/x/core/daemon/client.js'; call('learn.relax', { id: 1, level: 'remind' })" }));
+  assert.ok(w("Write", { file_path: path.join(os.homedir(), ".claude/plugins/installed_plugins.json"), content: "{}" }));
+  for (const t of ["mcp__vyre__learn_retire", "mcp__vyre__learn_skill_install", "mcp__vyre__learn_skill-install", "mcp__vyre__learn_skill_retire", "mcp__vyre__learn_skill_dismiss"]) assert.ok(w(t, {}), t);
+  const free = ["node --test test/harness.test.js", "git add harness/hooks/hook.js && git commit -m x", "grep -rn learn.relax core/", "npx prettier --write harness/hooks/hook.js",
+    "ls ~/.claude/plugins", "cat ~/.claude/plugins/installed_plugins.json"];
+  for (const command of free) assert.equal(w("Bash", { command }), null, command);
+  assert.equal(w("Edit", { file_path: "/w/site/core/learn/index.js", new_string: 'ctx.tool("learn.relax", {' }), null, "the tool's own source names it, and reaches no socket");
+});
+
+test("weakens: in a checkout of Vyre, store names, hooks and commit messages are free unless they are the real ones", () => {
+  const home = path.join(os.homedir(), ".vyre");
+  const repo = "/Users/someone/src/vyre";
+  const w = (tool, input, extra = {}) => weakens(tool, input, { home, cwd: repo, pluginRoot: null, ...extra });
+  assert.equal(w("Bash", { command: "git commit -m 'fix: vyre.db lock'" }), null);
+  assert.equal(w("Bash", { command: 'git commit -am "stop rm -rf ~/.vyre/vyre.db in tests"' }), null);
+  assert.equal(w("Bash", { command: "git commit --message='touch lessons.json'" }), null);
+  assert.equal(w("Bash", { command: "rm -rf /tmp/t1/vyre.db" }), null);
+  assert.equal(w("Bash", { command: "rm -rf lessons.json learn-offline vyre.db" }), null, "bare names outside the home");
+  assert.ok(w("Bash", { command: "rm -rf lessons.json vyre.db" }, { cwd: home }), "bare names with cwd in the home");
+  assert.ok(w("Bash", { command: "git commit -m x && rm ~/.vyre/vyre.db" }), "only the message is prose");
+  assert.equal(w("Edit", { file_path: "./harness/hooks/hook.js" }), null);
+  assert.equal(w("Edit", { file_path: `${repo}/harness/hooks/hooks.json` }), null);
+  assert.equal(w("Bash", { command: "sed -i '' s/a/b/ harness/hooks/hook.js" }), null);
+  // The same checkout, loaded as the plugin (claude --plugin-dir): its hooks are the real ones.
+  assert.ok(w("Edit", { file_path: "./harness/hooks/hook.js" }, { pluginRoot: `${repo}/harness` }));
+  assert.ok(w("Bash", { command: "sed -i '' s/a/b/ harness/hooks/hook.js" }, { pluginRoot: `${repo}/harness` }));
+});
+
+test("weakens: with no lesson active, the store, learned/, hooks, plugins and human-only tools stay guarded; lesson files and stopping vyred do not", () => {
+  const home = "/Users/someone/.vyre";
+  const w = (tool, input) => weakens(tool, input, { home, cwd: "/w/site", pluginRoot: "/p/harness", lessons: false });
+  for (const [tool, input] of [
+    ["Write", { file_path: `${home}/learned/skills/x/SKILL.md` }], ["Bash", { command: `rm ${home}/vyre.db` }], ["Edit", { file_path: "/p/harness/hooks/hooks.json" }],
+    ["Bash", { command: "vyre learn skills install 1" }], ["Bash", { command: "claude plugin disable vyre" }], ["Bash", { command: "vyre call learn.retire '{}'" }],
+    ["Bash", { command: "node /p/harness/hooks/hook.js enrich" }], ["mcp__vyre__learn_relax", {}],
+  ]) assert.ok(w(tool, input), `${tool} ${JSON.stringify(input)}`);
+  for (const [tool, input] of [["Write", { file_path: `${home}/lessons.json` }], ["Bash", { command: "vyre down" }], ["Bash", { command: "vyre learn retire 1" }]]) {
+    assert.equal(w(tool, input), null, `${tool} ${JSON.stringify(input)}`);
+  }
 });
 
 test("learn: a snapshot changed or removed while vyred was down is recorded as tampered and rewritten", async t => {

@@ -9,6 +9,8 @@
 // lessons from the snapshot Learning keeps in the home, or read-only from vyre.db when that file
 // is gone). Neither is switched off by stopping a daemon.
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { call } from "../../core/daemon/client.js";
 import { rules } from "../../core/harness/rules.js";
 import { offlineTool, offlineTouched, offlineStop } from "../../core/learn/offline.js";
@@ -39,6 +41,8 @@ async function main() {
   const opts = { caller: base.agent ? `harness:agent:${base.agent}` : "harness", timeout: 3000 };
   const down = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
   const offline = { root: home(), session: h.session_id, prompt_id: h.prompt_id, agent: base.agent, cwd: h.cwd };
+  // Where Claude Code loaded the Harness from: its hooks are the ones Learning guards.
+  const plugin_root = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
   if (piece === "brief") {
     const project = process.env.VYRE_PROJECT || undefined;
@@ -58,11 +62,11 @@ async function main() {
     const r = await call("harness.enrich", { ...base, ...scope, prompt: String(h.prompt || "") }, opts);
     if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });
   } else if (piece === "rules") {
-    const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}) };
+    const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}), plugin_root };
     const r = await call("harness.rules", input, opts);
     let v = r.data || (r.error && ["unreachable", "timeout", "no_such_tool"].includes(r.error.code)
       ? rules({ tool: input.tool_name, input: input.tool_input, cwd: h.cwd }) : null);
-    if (down(r) && v && !v.decision) v = offlineTool({ ...offline, tool: input.tool_name, input: input.tool_input });
+    if (down(r) && v && !v.decision) v = offlineTool({ ...offline, tool: input.tool_name, input: input.tool_input, pluginRoot: plugin_root });
     if (v && v.decision) answer(EVENT.rules, { permissionDecision: v.decision, permissionDecisionReason: v.reason || "Vyre security floor" });
   } else if (piece === "learn") {
     const r = await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {},
