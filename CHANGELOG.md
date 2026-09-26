@@ -47,6 +47,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   into the box's projects only. A paired Mac that is away shows as one quiet "alex-mac offline"
   chip in Chat's header and Now's Working, from `link.macs`, read with each refresh and never while
   the page is hidden. Fixtures: a Mac thread in `threads.list`, and `deck/fixtures/link.json`.
+- A Mac that unpaired while its heartbeat was out could leave a link.json with no box in it, and
+  `vyre link status` then failed until the file was removed. The heartbeat's answer is now dropped
+  when the pairing it asked about is gone.
 
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 

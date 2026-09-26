@@ -138,6 +138,12 @@ box.
     `memory.curated`). A Mac row in Now links to `/threads/:id`, not the Mac's project slug.
     "Add to a project" on a Mac thread offers the box's projects only.
 
+- A race on main, surfaced by these tests' 100 ms heartbeat: a heartbeat in flight while the Mac
+  unpaired wrote `{ revoked: true }` with no box into link.json, and the Mac's `link.status`
+  threw until the file was fixed. `hello()` now drops an answer about a pairing that is gone
+  (core/link/mac.js). link-federation + federation-reads, three at once, four rounds: 12 of 12
+  (2 of 9 failed before). link + hygiene 9/9.
+
 ## Doing
 
 - (nothing; Task C is done)

@@ -96,7 +96,10 @@ export function macSide(ctx, seam = {}) {
 
   async function hello() {
     if (!saved || saved.revoked) return;
+    const asked = saved;
     const r = await boxCall("link.hello", { key: saved.key });
+    // An unpair or a new pairing while this was out wins: its answer is about a pairing that is gone.
+    if (saved !== asked) return;
     if (r.data && r.data.paired === false) { save({ ...saved, revoked: true }); beating(false); state.error = "the box no longer knows this Mac; pair again"; }
     else if (r.data && r.data.box && r.data.box.name !== saved.box.name) save({ ...saved, box: { ...saved.box, name: r.data.box.name } });
   }
