@@ -516,6 +516,15 @@ export class Switchboard {
     this.set(id, { status: "working" });
   }
 
+  /**
+   * Does this machine have the thread: running here, recorded here, or a transcript here that
+   * send could adopt? What threads.send on the box checks before it asks a Mac.
+   * @param {string} id
+   */
+  knows(id) {
+    return this.live.has(id) || Boolean(this.record(id)) || Boolean(findSession(this.deps.transcripts || [], id));
+  }
+
   /** Our children's pids: a session bound to one of these is ours, not open elsewhere. */
   ours() { return [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean); }
 
@@ -889,10 +898,40 @@ export default {
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
       async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
 
-    tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first.",
-      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str } },
+    /**
+     * On the box, the person's words for a thread the box does not have go to the paired Mac that
+     * has it (docs/adr/0021-box-reads-the-mac.md, "Sending to a Mac session"): the Mac's answer,
+     * labelled { source: "mac", machine }, or null when no Mac has it, so the box answers as usual.
+     */
+    const sendToMac = async (i, caller) => {
+      const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
+        input: { thread: i.thread, text: i.text, surface: surfaceOf(i, caller) } });
+      if (r.error || !Array.isArray(r.data)) return null;
+      const done = r.data.find(a => a.ok);
+      if (done) return { ...done.data, source: "mac", machine: done.name };
+      // A Mac that answered with its own error has the thread (or failed on it): say that one. A
+      // Mac without the thread says "no thread"; an offline Mac may have it, so nothing was sent.
+      const failed = r.data.find(a => a.error && !["mac_offline", "timeout"].includes(a.error.code) && !/^no thread\b/.test(a.error.message));
+      if (failed) throw Object.assign(new Error(failed.error.message), { code: failed.error.code });
+      const away = r.data.find(a => a.error && a.error.code === "mac_offline");
+      if (away) throw Object.assign(new Error(`${away.name} is offline; your message was not sent`), { code: "mac_offline" });
+      const slow = r.data.find(a => a.error && a.error.code === "timeout");
+      if (slow) throw Object.assign(new Error(`${slow.name} did not answer in time; your message may not have been sent`), { code: "timeout" });
+      return null;
+    };
+
+    tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
+      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller }) => { guard(caller, "type into sessions"); return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller) }); });
+      async (i, { caller }) => {
+        guard(caller, "type into sessions");
+        // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
+        if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
+          const mac = await sendToMac(i, caller);
+          if (mac) return mac;
+        }
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller) });
+      });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
       { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },
