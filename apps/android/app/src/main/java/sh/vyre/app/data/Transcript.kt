@@ -38,7 +38,10 @@ class Transcript(val thread: String) {
 
     fun add(e: JsonObject): Boolean {
         val type = e.str("type") ?: return false
-        e.str("thread")?.let { if (it != thread && type.startsWith("thread.")) return false }
+        // Only this thread's events; asks and held items without a thread belong to no transcript.
+        val t = e.str("thread")
+        if (t != null && t != thread) return false
+        if (t == null && (type.startsWith("ask.") || type.startsWith("gate.held") || type == "gate.revised")) return false
         val ev = e.str("event")
         if (ev != null && !seen.add(ev)) return false
         when (type) {
