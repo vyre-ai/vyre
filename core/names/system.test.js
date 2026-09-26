@@ -159,16 +159,18 @@ test("system: detect reads units, the device and the operator through injected p
 
 // --- the installer script, run against stub commands ---
 
-/** A folder of stub executables that log each call; `extra` overrides a stub's body. */
+/** A folder of stub executables that log each call; `extra` overrides a stub's body (null removes it). */
 function stubs(dir, log, extra = {}) {
   const body = {
     uname: `echo Linux`,
-    id: `case "$1" in -u) echo 1000 ;; -un) echo alex ;; alex) echo "uid=1000(alex)" ;; *) exit 1 ;; esac`,
-    node: `echo v22.9.0`,
-    npm: `case "$1" in view) echo 0.3.0 ;; ls) exit 1 ;; esac`,
-    tailscale: `exit 0`, claude: `exit 0`, systemctl: `exit 0`, curl: `exit 0`, useradd: `exit 0`,
+    id: `case "$1" in -u) echo 1000 ;; -un) echo alex ;; -gn) echo alex ;; alex) echo "uid=1000(alex)" ;; *) exit 1 ;; esac`,
+    docker: `case "$1 $2" in
+  "compose version") echo 2.29.1 ;;
+  "volume ls") echo vyre_vyre-home; echo vyre_vyre-work; echo vyre_tailscale-state ;;
+esac
+exit 0`,
+    curl: `exit 0`,
     sudo: `while [ $# -gt 0 ]; do case "$1" in -u) shift 2 ;; -H|-E|--) shift ;; *) break ;; esac; done; exec "$@"`,
-    vyre: `echo "vyre $*"`,
     ...extra,
   };
   fs.mkdirSync(dir, { recursive: true });
@@ -178,17 +180,25 @@ function stubs(dir, log, extra = {}) {
   }
 }
 
-function runScript(t, args, extra) {
+/** Runs the installer with stubs on PATH, the stack in a temp folder and the wrapper in another. */
+function runScript(t, args, extra, prepare = () => {}) {
   const base = tempHome(t);
   const bin = path.join(base, "bin"), log = path.join(base, "calls.log");
+  fs.mkdirSync(path.join(base, "srv"));
+  const dir = path.join(base, "srv", "vyre"), wrapper = path.join(base, "usr-local-bin", "vyre");
+  fs.mkdirSync(path.dirname(wrapper), { recursive: true });
   stubs(bin, log, extra);
   fs.writeFileSync(log, "");
+  prepare({ dir, wrapper });
   const r = spawnSync("sh", [SCRIPT, ...args], {
     encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: base },
+    // /dev/null stands in for /dev/net/tun: a character device on every system.
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null" },
   });
-  return { ...r, calls: fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean) };
+  return { ...r, dir, wrapper, calls: fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean) };
 }
+
+const READ_ONLY = /^(uname|id|docker (compose version|info|volume ls))/;
 
 test("install-box.sh: parses with sh -n", () => {
   execFileSync("sh", ["-n", SCRIPT]);
@@ -199,61 +209,107 @@ test("install-box.sh: shellcheck is clean when available", t => {
   execFileSync("shellcheck", ["-s", "sh", SCRIPT], { stdio: "pipe" });
 });
 
-test("install-box.sh: dry run prints every change and makes none", t => {
-  const r = runScript(t, ["--dry-run", "--yes", "--user", "alex"]);
+test("install-box.sh: dry run lists every change and makes none", t => {
+  const r = runScript(t, ["--dry-run", "--yes"]);
   assert.equal(r.status, 0, r.stderr);
-  const out = r.stdout.split("\n");
-  assert.ok(out.includes("would run: sudo npm install -g vyre@0.3.0"), r.stdout);
-  assert.ok(out.includes("vyre up --system --user alex --dry-run"), r.stdout);
-  assert.ok(out.includes("vyre up --dry-run"), r.stdout);
-  // Only read-only calls reached the stubs.
-  for (const c of r.calls) {
-    assert.ok(/^(uname|id|node --version|npm (view|ls)|vyre .*--dry-run$)/.test(c), `mutating call in a dry run: ${c}`);
+  assert.match(r.stdout, /^dry run: nothing on this box will change$/m);
+  for (const f of ["compose.yml", "compose.chat.yml", "vyre.env.example", "vyre", "chat/compose.yml"]) {
+    assert.ok(r.stdout.split("\n").includes(`would download: https://vyre.run/box/${f}`), `${f}: ${r.stdout}`);
   }
+  assert.match(r.stdout, new RegExp(`^would run: mkdir -p ${r.dir}$`, "m"));
+  assert.match(r.stdout, /^ {2}COMPOSE_PROJECT_NAME=vyre$/m);
+  assert.match(r.stdout, /^ {2}COMPOSE_FILE=compose\.yml$/m);
+  assert.match(r.stdout, new RegExp(`^would run: sudo install -m 0755 .*/vyre ${r.wrapper}$`, "m"));
+  assert.match(r.stdout, new RegExp(`^would run: env VYRE_DIR=${r.dir} SSH_CONNECTION= ${r.wrapper} up$`, "m"));
+  assert.ok(!fs.existsSync(r.dir), "the stack folder was created");
+  assert.ok(!fs.existsSync(r.wrapper), "the wrapper was installed");
+  for (const c of r.calls) assert.match(c, READ_ONLY, `mutating call in a dry run: ${c}`);
 });
 
-test("install-box.sh: missing tools are offered, and --yes installs them (dry run shows how)", t => {
-  const r = runScript(t, ["--dry-run", "--yes", "--user", "alex"], { tailscale: null, claude: null });
+test("install-box.sh: missing Docker is offered, and --yes installs it (dry run shows how)", t => {
+  const r = runScript(t, ["--dry-run", "--yes"], { docker: null });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^would run: sudo sh -c 'curl -fsSL https:\/\/tailscale.com\/install.sh \| sh'$/m);
-  assert.match(r.stdout, /^would run: sudo sh -c 'npm install -g @anthropic-ai\/claude-code'$/m);
-});
-
-test("install-box.sh: without --yes and no terminal, it prints the install command and stops", t => {
-  const r = runScript(t, ["--dry-run", "--user", "alex"], { tailscale: null });
-  assert.equal(r.status, 1);
-  assert.match(r.stdout, /curl -fsSL https:\/\/tailscale.com\/install.sh \| sh/);
+  assert.match(r.stdout, /^would run: sudo sh -c 'curl -fsSL https:\/\/get\.docker\.com \| sh'$/m);
   assert.ok(!r.calls.some(c => c.startsWith("curl")));
 });
 
-test("install-box.sh: old Node stops the install with the generic line off Debian", t => {
-  const r = runScript(t, ["--dry-run", "--yes", "--user", "alex"], { node: `echo v20.11.0` });
-  if (fs.existsSync("/etc/debian_version")) { assert.match(r.stdout, /deb\.nodesource\.com\/setup_22\.x/); return; }
+test("install-box.sh: without --yes and no terminal, it prints the Docker command and stops", t => {
+  const r = runScript(t, ["--dry-run"], { docker: null });
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /Install Node 22\.5\+/);
+  assert.match(r.stdout, /^ {2}curl -fsSL https:\/\/get\.docker\.com \| sh$/m);
+  assert.ok(!r.calls.some(c => c.startsWith("curl")));
 });
 
-test("install-box.sh: refuses root as the user, and says what to do on a Mac", t => {
-  const root = runScript(t, ["--dry-run", "--yes", "--user", "root"]);
-  assert.equal(root.status, 1);
-  assert.match(root.stderr, /does not run as root/);
+test("install-box.sh: an old Compose stops the install", t => {
+  const r = runScript(t, ["--dry-run", "--yes"], { docker: `[ "$1 $2" = "compose version" ] && echo 2.20.0; exit 0` });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /Compose 2\.24 or newer; this box has 2\.20\.0/);
+});
+
+test("install-box.sh: says what to do on a Mac", t => {
   const mac = runScript(t, ["--dry-run"], { uname: `echo Darwin` });
   assert.equal(mac.status, 0);
   assert.match(mac.stdout, /on a Mac: npm install -g vyre && vyre up/);
+  assert.deepEqual(mac.calls, ["uname -s"]);
 });
 
-test("install-box.sh: as root with no SUDO_USER it creates the vyre login", t => {
-  const r = runScript(t, ["--dry-run", "--yes"], { id: `case "$1" in -u) echo 0 ;; -un) echo root ;; *) exit 1 ;; esac` });
+test("install-box.sh: --from DIR copies the checkout's files and builds from it", t => {
+  const r = runScript(t, ["--dry-run", "--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^would run: useradd --create-home --home-dir \/home\/vyre --shell \/bin\/bash vyre$/m);
-  assert.match(r.stdout, /vyre up --system --user vyre --dry-run/);
-  assert.match(r.stdout, /would run \(as vyre\): vyre up/);
-  assert.match(r.stdout, /ssh as vyre/);
+  assert.match(r.stdout, new RegExp(`^would run: install -m 0644 ${REPO}/box/compose\\.build\\.yml ${r.dir}/compose\\.build\\.yml$`, "m"));
+  assert.match(r.stdout, new RegExp(`^would run: install -m 0644 ${REPO}/modules/chat/compose\\.yml ${r.dir}/chat/compose\\.yml$`, "m"));
+  assert.match(r.stdout, /^ {2}COMPOSE_FILE=compose\.yml:compose\.build\.yml$/m);
+  assert.match(r.stdout, new RegExp(`^ {2}VYRE_SOURCE=${REPO}$`, "m"));
+  assert.match(r.stdout, new RegExp(`^would run: sudo install -m 0755 ${REPO}/box/vyre ${r.wrapper}$`, "m"));
+  assert.ok(!r.stdout.includes("would download"));
 });
 
-test("install-box.sh: uninstall dry run", t => {
-  const r = runScript(t, ["--dry-run", "--uninstall", "--purge"]);
+test("install-box.sh: a real run writes the stack, never overwrites .env, and starts it", t => {
+  const mine = "COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:chat/compose.yml:compose.chat.yml\n";
+  const r = runScript(t, ["--yes", "--from", REPO], {}, ({ dir }) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, ".env"), mine);
+  });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(fs.readFileSync(path.join(r.dir, ".env"), "utf8"), mine);
+  assert.match(r.stdout, /\.env exists; leaving it as it is/);
+  assert.match(r.stdout, /does not list compose\.build\.yml/);
+  for (const f of ["compose.yml", "compose.chat.yml", "compose.build.yml", "vyre.env.example", "chat/compose.yml"]) {
+    assert.ok(fs.existsSync(path.join(r.dir, f)), f);
+  }
+  assert.equal(fs.readFileSync(r.wrapper, "utf8"), fs.readFileSync(path.join(REPO, "box", "vyre"), "utf8"));
+  // The wrapper ran: the stack came up and the CLI's `vyre up` ran in the container.
+  assert.ok(r.calls.includes("docker compose up -d"), r.calls.join("\n"));
+  assert.ok(r.calls.some(c => /^docker compose exec .*-e VYRE_HOST_USER=alex vyre vyre up$/.test(c)), r.calls.join("\n"));
+});
+
+test("install-box.sh: a wrapper that is not ours is not replaced without asking", t => {
+  const r = runScript(t, ["--dry-run"], {}, ({ wrapper }) => fs.writeFileSync(wrapper, "#!/bin/sh\necho npm vyre\n"));
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /left .* alone/);
+});
+
+test("install-box.sh: uninstall dry run, and --purge lists the volumes and asks", t => {
+  const r = runScript(t, ["--dry-run", "--uninstall"]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^vyre uninstall --system --purge --dry-run$/m);
-  assert.match(r.stdout, /^would run: sudo npm rm -g vyre$/m);
+  assert.match(r.stdout, /^would run: docker compose -p vyre down --remove-orphans$/m);
+  assert.match(r.stdout, /volumes stay too/);
+
+  const kept = runScript(t, ["--dry-run", "--uninstall", "--purge"], {}, ({ dir, wrapper }) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "compose.yml"), "");
+    fs.copyFileSync(path.join(REPO, "box", "vyre"), wrapper);
+  });
+  assert.equal(kept.status, 0, kept.stderr);
+  assert.match(kept.stdout, new RegExp(`^would run: sh -c 'cd "\\$1" && docker compose down --remove-orphans' sh ${kept.dir}$`, "m"));
+  assert.match(kept.stdout, new RegExp(`^would run: sudo rm -f ${kept.wrapper}$`, "m"));
+  assert.match(kept.stdout, /^ {2}vyre_vyre-home$/m);
+  // No terminal to ask on, so the answer is no.
+  assert.match(kept.stdout, /^kept the volumes$/m);
+  assert.ok(!kept.stdout.includes("docker volume rm"));
+  for (const c of kept.calls) assert.match(c, READ_ONLY, `mutating call in a dry run: ${c}`);
+
+  const gone = runScript(t, ["--dry-run", "--yes", "--uninstall", "--purge"]);
+  assert.match(gone.stdout, /^would run: docker volume rm vyre_vyre-home vyre_vyre-work vyre_tailscale-state$/m);
+  assert.ok(fs.existsSync(path.join(REPO, "box", "vyre")));
 });

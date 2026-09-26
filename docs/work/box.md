@@ -71,8 +71,14 @@ certificate, and from off the tailnet it does not resolve to anything reachable.
   `x-vyre-caller` can no longer claim `module:*` or `tailnet:*`; the loopback session moved from
   a cookie to the `x-vyre-onboard` header; self is checked by stable ID too.
 
+- Docker Compose box (`box/`): a `tailscale` sidecar is the only way in, vyred runs as uid 1000
+  in its network namespace so whois identity holds, volumes `vyre-home` and `vyre-work`, and the
+  `vyre` host wrapper. On a real Ubuntu box `vyre up` built and started it and printed the
+  onboarding link and the `ssh -L` line. ADR 0002 amended; systemd is now the no-Docker path.
+
 ## Doing
-- Waiting for a Linux box (Next 1).
+- `scripts/install-box.sh` and `docs/INSTALL.md` rewritten for Docker (`/srv/vyre`,
+  `vyre update`, volume backup, `--uninstall [--purge]`, Chat and `computers`); not yet run on a box.
 
 ## Next
 1. On a real Linux box: run the installer, then the socket unit and fd 3, `tailscale up` as
@@ -88,7 +94,7 @@ certificate, and from off the tailnet it does not resolve to anything reachable.
   Make the assistant at `onboard.finish` once `agents.create` exists.
 - gate: approvals should require a `tailnet:*` caller, since socket callers include Claude's own
   processes (ADR 0002, caller classes).
-- user: a Linux box on the tailnet (not the test box), `CLOUDFLARE_VYRE_TOKEN` in its `~/.vyre/env`,
+- user: a Linux box on the tailnet (not the development Mac), `CLOUDFLARE_VYRE_TOKEN` in its `~/.vyre/env`,
   and the name to claim.
 
 ## Changed contracts

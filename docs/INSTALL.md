@@ -3,6 +3,10 @@
 How Vyre lays itself out on a Linux server, and why. The network and identity side is in
 [ADR 0002](adr/0002-network-and-identity.md).
 
+A box runs Vyre in Docker Compose: two containers, `tailscale` and `vyre`, and nothing else
+unless you add it. The host needs Docker and nothing more. Tailscale, Node and Claude Code all
+live in the containers.
+
 ## The one line
 
 ```
@@ -11,175 +15,242 @@ curl -fsSL https://vyre.run/install.sh | sh
 
 That is `scripts/install-box.sh`. It is safe to run again; every run converges on the same
 state. Flags: `--dry-run` prints every change and makes none, `--yes` answers yes to its
-questions, `--user NAME` picks the account, `--uninstall [--purge]` reverses it.
+questions, `--from DIR` builds from a local checkout, `--uninstall [--purge]` reverses it.
+`VYRE_DIR` moves the stack folder (default `/srv/vyre`), `VYRE_BOX_URL` the place the box files
+come from (default `https://vyre.run/box/`).
 
 What it does, in order:
 
-1. Checks this is Linux with systemd. On a Mac it prints `npm install -g vyre && vyre up` and stops.
-2. Picks the account vyred runs as (see [Users](#users)).
-3. Checks Node 22.5 or newer, Tailscale and Claude Code. For each one that is missing it asks
-   before installing anything, and without a terminal to ask on it prints the command and stops:
-   - Node: `curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs`
-     on Debian and Ubuntu;
-   - Tailscale: `curl -fsSL https://tailscale.com/install.sh | sh`;
-   - Claude Code: `npm install -g @anthropic-ai/claude-code`.
-4. `npm install -g vyre`.
-5. `vyre up --system --user <account>` as root: the systemd units and the Tailscale operator setting.
-6. `vyre up` as the account, which prints the onboarding link, plus the `ssh -L` line when you
-   are connected over SSH.
+1. Checks this is Linux. On a Mac it prints `npm install -g vyre && vyre up` and stops.
+2. Checks Docker with Compose 2.24 or newer. If Docker is missing it asks before running
+   `curl -fsSL https://get.docker.com | sh`; without a terminal to ask on, or with a no, it
+   prints the command and stops. An old Compose gets the same message and a stop.
+3. Checks `/dev/net/tun`, which the Tailscale container needs. On a VPS or an LXC container
+   without it, enable TUN in the provider's panel.
+4. Creates `/srv/vyre`, owned by you (the account that ran `sudo`, if you did), and writes the
+   box files into it: `compose.yml`, `compose.chat.yml`, `vyre.env.example` and
+   `chat/compose.yml`. With `--from DIR` they are copied from the checkout instead, along with
+   `compose.build.yml`.
+5. Writes `/srv/vyre/.env` (mode 0600) with `COMPOSE_PROJECT_NAME=vyre` and `COMPOSE_FILE`, only
+   if it is not there. It never overwrites it: that file is yours.
+6. Installs the host wrapper to `/usr/local/bin/vyre`. If something else already has that name
+   it asks first.
+7. Runs `vyre up`.
 
-Everything after that happens in the browser (spec section 1).
+sudo is used only for Docker's own install, for `/srv/vyre` when `/srv` is root's, and for
+`/usr/local/bin/vyre`. If your account is not in the `docker` group the installer runs the stack
+through sudo and says so. Joining that group saves typing `sudo vyre`, and makes your account
+root-equivalent on the box.
 
-## Users
+## What `vyre up` prints
 
-**vyred runs as the box owner's own login account, not a dedicated `vyre` system user.**
-
-- Claude Code keeps its sign-in in `~/.claude/` and its transcripts in `~/.claude/projects/`.
-  Vyre's history, Recall and projects are built from those. A separate system user would have
-  its own `~/.claude`, so the person's `claude` and Vyre's sessions would never see each other.
-- The `vyre` CLI finds vyred at `~/.vyre/vyred.sock`, mode 0600. Under one account that just
-  works. With a separate user the socket would need a shared group, and anyone in the group
-  would be the owner.
-- A system user would not isolate Claude from the owner's own files anyway: Claude works on
-  those files. Untrusted code (agents' work) runs in containers (spec 7.9), not as a Unix user.
-
-The installer uses `--user`, else the account that ran `sudo`, else the logged-in non-root user.
-When it runs as root on a fresh server with no other account, it creates a regular login user
-`vyre` and tells you to add your SSH key to it. vyred never runs as root; `vyre up --system`
-refuses `--user root`.
-
-## Folders
+The host's `vyre` is a small shell script. `vyre up` starts the stack if it is not running,
+waits for vyred to answer, then runs `vyre up` inside the container. Before onboarding that
+prints a one-time link and, when you are connected over SSH, the line to reach it:
 
 ```
-~/.vyre/                     0700, all of it the owner's
-  config.json                settings (0600); the onboarding writes name, network, onboard
-  vyre.db, -wal, -shm        the store (SQLite, WAL)
-  vault/                     sealed vault items
-  certs/                     0600 files: acme-production.key, <name>.crt, <name>.key
-  names/                     the name directory key, once the hosted directory exists
-  modules/                   modules the user installed
-  watchers/                  watchers Claude wrote
-  models/                    embedding weights (about 23 MB), a cache: safe to delete
-  logs/                      YYYY-MM-DD.log from vyred, vyred.out from a detached start
-  env                        optional (0600), read by the systemd unit: CLOUDFLARE_VYRE_TOKEN=...
+  Open this link to set up Vyre (it works once, for an hour):
+
+    http://127.0.0.1:7300/onboard?t=...
+
+  This box is headless. On your own computer, run this first, then open the link there:
+    ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4
+```
+
+The onboarding page listens only on the box's loopback, so a headless box needs the tunnel. Run
+the `ssh` line on your laptop, leave it open, and open the link there. Port 7300 is the same on
+both ends on purpose: the page checks its `Host` header against the port it binds. Everything
+after that happens in the browser (spec section 1): Claude's credential, Tailscale sign-in, the
+name, the certificate.
+
+After onboarding, `vyre up` prints the address instead: `your address: https://alex.vyre.run`.
+
+Any other `vyre` command (`vyre status`, `vyre name`, `vyre backup`) runs the CLI inside the
+container. `vyre logs` follows vyred's output.
+
+## Who can reach it
+
+- **The `tailscale` container is the only way in.** It runs the official image with kernel
+  networking and publishes one port: 7300, on the host's `127.0.0.1`.
+- **vyred has no network of its own.** The `vyre` container shares the `tailscale` container's
+  network namespace, so vyred sees the real `tailscale0` interface. It binds the tailnet
+  addresses on 443 itself and serves them with its own `vyre.run` certificate. There is no
+  `tailscale serve` in the path.
+- **Callers are identified by `tailscale whois` of the WireGuard source address**, never a
+  header. A process on the host, or in another container, cannot produce a tailnet source
+  address, so it cannot pose as the owner on a phone.
+- **The onboarding listener binds only a container address that Docker publishes on the host's
+  loopback**, never `0.0.0.0`, which would include `tailscale0`. It needs the one-time token
+  besides.
+- **vyred runs as uid 1000 (`vyre`), not root.** It is Tailscale's operator, so it can run
+  `tailscale up` and `tailscale cert` from the onboarding page.
+
+The reasoning is in [ADR 0002](adr/0002-network-and-identity.md).
+
+## Folders and volumes
+
+```
+/srv/vyre/                    yours, not root's
+  compose.yml                 the stack: tailscale, vyre, docker-api (profile computers)
+  compose.build.yml           only with --from: build the image from VYRE_SOURCE
+  compose.chat.yml            run.vyre labels for Chat
+  chat/compose.yml            Mattermost and Postgres, off until listed in COMPOSE_FILE
+  vyre.env.example            copy to vyre.env for CLOUDFLARE_VYRE_TOKEN and similar
+  vyre.env                    optional, yours, read by the vyre container
+  .env                        COMPOSE_PROJECT_NAME, COMPOSE_FILE, TS_AUTHKEY, Chat's settings
+/usr/local/bin/vyre           the host wrapper
+```
+
+The data lives in Docker volumes, all labeled `run.vyre=1`:
+
+| Volume | Mounted at | Holds |
+|---|---|---|
+| `vyre_vyre-home` | `/home/vyre` | `.vyre/` (config, store, vault, certs, names, modules, watchers, logs) and `.claude/`, `.claude.json` (Claude Code's own state and transcripts) |
+| `vyre_vyre-work` | `/work` | projects |
+| `vyre_tailscale-state` | `/var/lib/tailscale` | the node's identity; delete it and the box is a new node |
+| `vyre_tailscale-sock` | `/var/run/tailscale` | tailscaled's socket, shared with the vyre container |
+
+A container can be recreated at any time; nothing in it matters but the volumes.
+
+`~/.vyre` inside the volume has the same layout as on any other install:
+
+```
+/home/vyre/.vyre/             0700
+  config.json                 settings (0600); the onboarding writes name, network, onboard
+  vyre.db, -wal, -shm         the store (SQLite, WAL)
+  vault/                      sealed vault items
+  certs/                      0600 files: acme-production.key, <name>.crt, <name>.key
+  names/                      the name directory key, once the hosted directory exists
+  modules/, watchers/         what the user installed and what Claude wrote
+  models/                     embedding weights (about 23 MB), a cache: safe to delete
+  logs/                       YYYY-MM-DD.log from vyred
   vyred.sock, vyred.pid
 ```
 
-Under systemd, vyred's stdout and stderr also go to the journal: `journalctl -u vyre`.
-
-Nothing is written outside `~/.vyre` and the two unit files. The program itself is wherever
-`npm install -g` puts it (`/usr/lib/node_modules/vyre` or `/usr/local/lib/node_modules/vyre`).
-
 ## Claude Code and its credentials
 
-- The binary is a normal global install (`npm install -g @anthropic-ai/claude-code`), on the PATH
-  of the owner's account.
-- **Your own `claude` in a terminal** keeps using its own sign-in in `~/.claude/`, which Vyre never
-  reads or changes.
+- Claude Code is installed in the image (`npm install -g @anthropic-ai/claude-code` at build).
+  Its state, `~/.claude/` and `~/.claude.json`, lives in `vyre_vyre-home`, so a new image keeps it.
 - **Sessions Vyre runs headless** (the assistant, agents) use the credential from onboarding
   step 2, which lives in the Vault: `claude-setup-token` (a subscription token from
   `claude setup-token`) or `anthropic-api-key`. The Switchboard hands it to each session in its
   environment at start. It is never written to a file, a log or an event.
-- Transcripts from both land in `~/.claude/projects/`, which is how Vyre's history sees them.
-
-## systemd
-
-Two units in `/etc/systemd/system/`, written by `vyre up --system`:
-
-`vyre.socket` owns port 443 on the tailnet interface only, and hands it to vyred as fd 3. vyred
-needs no capability to hold port 443, and no child process (Claude, a watcher) can take it first.
-
-```ini
-[Unit]
-Description=Vyre tailnet listener
-After=tailscaled.service
-Wants=tailscaled.service
-
-[Socket]
-ListenStream=443
-BindToDevice=tailscale0
-FileDescriptorName=tailnet
-NoDelay=true
-
-[Install]
-WantedBy=sockets.target
-```
-
-`vyre.service` runs vyred as the owner.
-
-```ini
-[Unit]
-Description=Vyre
-After=network-online.target tailscaled.service vyre.socket
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=alex
-Group=alex
-Environment=VYRE_SUPERVISOR=systemd
-Environment=VYRE_HOME=/home/alex/.vyre
-EnvironmentFile=-/home/alex/.vyre/env
-WorkingDirectory=/home/alex
-ExecStart=/usr/bin/node /usr/lib/node_modules/vyre/core/daemon/main.js
-Restart=always
-RestartSec=2
-NoNewPrivileges=yes
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-```
-
-- `Restart=always` is what upgrades rely on: vyred exits, and systemd starts the new code.
-- `NoNewPrivileges=yes` means nothing vyred starts, Claude included, can gain privileges
-  through `sudo` or setuid binaries.
-- If Tailscale was not installed yet, the socket unit is not enabled (its interface does not
-  exist). Run the installer again after installing Tailscale.
-- `vyre up --system` also runs `tailscale set --operator=<account>`, so vyred can run
-  `tailscale up` and `tailscale cert` from the onboarding page without root.
-
-`vyre down` on a systemd box stops vyred, and systemd starts it again. To stop it for real:
-`sudo systemctl stop vyre`.
+- To use `claude` by hand on the box, run it in the container:
+  `docker compose -f /srv/vyre/compose.yml exec vyre claude`, or `cd /srv/vyre && docker compose
+  exec vyre claude`. Its transcripts land in the same `~/.claude/projects/`, which is how Vyre's
+  history sees them.
 
 ## Upgrades
 
 ```
-sudo npm install -g vyre@latest
-vyre up
+vyre update
 ```
 
-`vyre up` sees that the running vyred is older than the installed code, asks it to exit, and
-waits for systemd to start the new one. If a new version changes the units, the output says to
-run `sudo vyre up --system` too, which rewrites them only when they differ. Data migrations run
-at start, per module (spec 7.1). There is no separate upgrade command.
-
-## Uninstall
-
-```
-vyre name release                   # frees <you>.vyre.run
-sudo vyre uninstall --system        # stops and removes the units
-sudo npm rm -g vyre
-```
-
-or `curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall`. `~/.vyre` stays, so a
-reinstall picks up where it left off. `--purge` also deletes `~/.vyre`, and the vault with it.
-The installer never uninstalls Node, Tailscale or Claude Code, and leaves the Tailscale operator
-setting alone (`sudo tailscale set --operator=` clears it).
+That pulls new images (or, with `compose.build.yml` in `COMPOSE_FILE`, rebuilds from
+`VYRE_SOURCE` with fresh base images), recreates what changed, waits for vyred and prints what
+`vyre up` prints. The volumes carry over. Data migrations run at start, per module (spec 7.1).
+To update the box files themselves, run the installer again: it rewrites them and leaves `.env`
+and `vyre.env` alone.
 
 ## Backup
 
 ```
-vyre backup                         # vyre-backup-YYYY-MM-DD.tar.gz, mode 0600
-vyre restore <file>                 # with vyred stopped
+vyre backup                   # vyre-backup-YYYY-MM-DD.tar.gz, mode 0600, in /home/vyre
+```
+
+The file lands in `/home/vyre`, inside the `vyre_vyre-home` volume. Copy it out with
+`cd /srv/vyre && docker compose cp vyre:/home/vyre/<file> .`. Restore needs vyred stopped, and
+vyred is the container's main process, so restore runs in a one-off container:
+
+```
+cd /srv/vyre
+docker compose cp <file> vyre:/home/vyre/
+docker compose stop vyre
+docker compose run --rm vyre vyre restore /home/vyre/<file>
+vyre up
 ```
 
 A backup holds `config.json`, a consistent copy of the store (`VACUUM INTO`, taken while vyred
-runs), `vault/`, `watchers/`, `modules/`, `certs/` and `names/`. It leaves out `models/` (it
-comes back on its own), `logs/`, the socket and the pid file.
+runs), `vault/`, `watchers/`, `modules/`, `certs/` and `names/`. It leaves out `models/`,
+`logs/`, the socket and the pid file. It contains the sealed vault. Keep it somewhere only you
+can read, or encrypt it (`age -r <key> file`).
 
-The backup contains the sealed vault. Keep it somewhere only you can read, or encrypt it
-(`age -r <key> file`). Restore refuses while vyred is running, refuses to overwrite a store
-unless `--force`, and rejects archives with absolute paths or `..`.
+To back up everything, Claude's state and `/work` included, copy the volumes with the stack
+stopped:
 
-Claude Code's own `~/.claude/` is not in the backup. Back it up with the rest of your home.
+```
+cd /srv/vyre && docker compose stop
+for v in vyre-home vyre-work tailscale-state; do
+  docker run --rm -v vyre_$v:/v:ro -v "$PWD":/out alpine tar czf /out/vyre_$v.tgz -C /v .
+done
+docker compose start
+```
+
+Restore is the same with `tar xzf` into a fresh volume of the same name.
+
+## Uninstall
+
+```
+vyre name release             # frees <you>.vyre.run
+curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall
+```
+
+That runs `docker compose down` in `/srv/vyre` and removes `/usr/local/bin/vyre`. The volumes
+and `/srv/vyre` stay, so a reinstall picks up where it left off. `--purge` also deletes every
+volume labeled `run.vyre=1` in project `vyre`, after listing them and asking: that is the vault,
+Claude's sign-in and `/work`. The installer never uninstalls Docker, and leaves the images
+(`docker image rm` them if you like).
+
+## Adding Chat
+
+Chat is Mattermost and Postgres (`modules/chat/compose.yml`, copied to `/srv/vyre/chat/`), joined
+to the `vyre` network where vyred answers as `vyred`. Add it by listing the files in `.env`:
+
+```
+COMPOSE_FILE=compose.yml:chat/compose.yml:compose.chat.yml
+VYRE_CHAT_URL=https://chat.alex.vyre.run
+VYRE_CHAT_DB_PASSWORD=<a long random string>
+```
+
+With a from-source build, keep `compose.build.yml` in the list after `compose.yml`.
+`compose.chat.yml` only adds the `run.vyre=1` labels, so `--purge` finds Chat's volumes too.
+Then `vyre up`, and the one-time setup in [modules/chat/SETUP.md](../modules/chat/SETUP.md) (the
+owner, the team, the bot and `/vyre`, run from `/srv/vyre`). Mattermost is published on the
+host's `127.0.0.1:8065`.
+
+## The agents' computers
+
+Agents get their own containers (spec 7.9) through `docker-api`, a socket proxy that exposes only
+containers, images and exec. It is off until the `computers` profile is on; add to `.env`:
+
+```
+COMPOSE_PROFILES=computers
+```
+
+then `vyre up`. The host's Docker socket is mounted read-only into the proxy and nowhere else, and
+vyred reaches it at `tcp://docker-api:2375` on an internal network. The proxy filters endpoints,
+not request bodies, so the computers module is what decides what an agent's container may mount
+or run as.
+
+## Without Docker
+
+A Mac, or a Linux box without Docker, installs from npm:
+
+```
+npm install -g vyre
+vyre up                       # on a Mac: role local, or --box to make the Mac the box
+sudo vyre up --system --user alex   # Linux without Docker: systemd units
+```
+
+This needs Node 22.5 or newer, Tailscale on the host and Claude Code
+(`npm install -g @anthropic-ai/claude-code`). vyred runs as the owner's own login account, never
+root, with `~/.vyre` in that account's home, and Vyre's history reads the same `~/.claude/` as
+the person's own `claude`.
+
+On Linux, `vyre up --system` writes two units in `/etc/systemd/system/`. `vyre.socket` owns port
+443 on `tailscale0` only (`ListenStream=443`, `BindToDevice=tailscale0`) and hands it to vyred as
+fd 3, so vyred needs no capability for 443 and no child process can take the port first.
+`vyre.service` runs vyred as the owner with `Restart=always` and `NoNewPrivileges=yes`, reading
+optional environment from `~/.vyre/env`. `vyre up --system` also runs
+`tailscale set --operator=<account>`. Upgrade with `sudo npm install -g vyre@latest && vyre up`;
+remove with `sudo vyre uninstall --system && sudo npm rm -g vyre`.

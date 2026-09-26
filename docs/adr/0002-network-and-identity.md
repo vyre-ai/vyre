@@ -191,3 +191,37 @@ then everything above applies, except the tailnet listener binds its addresses d
   user uses the Capsule and the CLI.
 - vyred must reach `tailscale whois`. On Linux that works for any local user.
 - No login screen, no passwords, no sessions on the tailnet address.
+
+## Amendment, 26 Sep 2026 · Docker Compose on Linux
+
+**A Linux box runs Vyre in Docker Compose, not under systemd.** The host needs only Docker; the
+installer (`scripts/install-box.sh`) writes the stack to `/srv/vyre` and a small `vyre` wrapper
+to `/usr/local/bin`. The reasons are install and upgrade: one prerequisite instead of Node,
+Tailscale and Claude Code on the host, `vyre update` is a pull and a recreate, and the agents'
+containers (spec 7.9) come from the same Docker. The systemd socket unit described above stays
+as the no-Docker alternative (`vyre up --system`), and a Mac is unchanged.
+
+The decision above holds as written, because of how the two containers share a network:
+
+- **The `tailscale` container is the only way in.** It runs the official image with kernel
+  networking (`TS_USERSPACE=false`), so `tailscale0` is a real interface, and it publishes no
+  port but the onboarding one.
+- **vyred shares its network namespace** (`network_mode: service:tailscale`). vyred sees
+  `tailscale0` as it would on the host, binds the tailnet addresses on 443 itself with its
+  `vyre.run` certificate (the "binds each address from `tailscale status`" path, not fd 3), and
+  identifies every connection by `tailscale whois` of its WireGuard source address. No header,
+  no `tailscale serve`, no proxy hop between the WireGuard packet and vyred's `accept`.
+  `net.ipv4.ip_unprivileged_port_start=0` in that namespace only lets vyred bind 443 as uid 1000.
+- **Other containers and the host are strangers.** They reach the namespace from a bridge or
+  loopback address, never a tailnet one, so whois refuses them like any other non-tailnet peer.
+  The same holds for Mattermost on the `vyre` network.
+- **The onboarding listener binds the container's address on the `vyre` network** (the alias
+  `vyred`), never `0.0.0.0`, which in this namespace would include `tailscale0`. Docker publishes
+  it on the host's `127.0.0.1:7300` only, and the `ssh -L` line reaches it as before.
+- **vyred is Tailscale's operator** (`--operator=vyre`, uid 1000), so it can run `tailscale up`
+  and `tailscale cert` through the shared socket volume without root.
+
+What changes: the Unix-user boundary is now the container. Claude's processes run as uid 1000 in
+the `vyre` container beside vyred, as they did under the owner's account, so the caller classes
+are the same. Root on the host is still out of scope, and so is anyone who can reach the Docker
+socket, which is root-equivalent.
