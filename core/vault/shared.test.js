@@ -7,13 +7,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { verifyChain, signManifest, signRecord, signReceipt } from "./shared.js";
 import { openFrom, openItemV2, keyObject, canonical } from "./crypto.js";
 import { fingerprint } from "./share.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 
@@ -21,7 +21,7 @@ const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")
 const HOMES = new Map();
 
 function mk(t, name) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-shared-"));
+  const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-shared-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const events = [], logs = [];

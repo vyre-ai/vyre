@@ -3,7 +3,13 @@
 // shared EventSource), and renders them the way the terminal would have shown them — a turn's
 // text growing as deltas arrive, a tool call as a chip that expands to its input/output, a file
 // edit as a diff, an ask or a held Gate item inline and editable, a memory fact in gold next to
-// the turn it came from. Nothing here uses innerHTML: text is untrusted (it is the model's own
+// the turn it came from.
+//
+// A Claude Code session the Switchboard never ran (the user's own, in a terminal) has no record
+// for threads.get, only its transcript: it is read from recall.thread and followed through
+// session.indexed, which Recall emits when that session's turn completes. Once a send adopts it
+// (threads.send resumes it headless), thread.* events arrive for it and the view follows those
+// instead, so no turn shows twice. Nothing here uses innerHTML: text is untrusted (it is the model's own
 // output, or another person's), so it goes through lib/markdown.js, which never parses it as
 // markup, or through document.createTextNode directly.
 
@@ -18,7 +24,8 @@ import { mountComposer } from "./composer.js";
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, onBack: () => void }} opts
+ * @param {{ thread: string, project: string|null, recorded?: boolean, onBack: () => void }} opts
+ * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
  * @returns {() => void} cleanup
  */
 export function mountSession(container, opts) {
@@ -38,6 +45,8 @@ export function mountSession(container, opts) {
   const head = h("div", { class: "session-head" });
   const leaseBar = h("div", { class: "lease-bar" });
   const record = { current: /** @type {any} */ (null) };
+  /** A recorded session: the transcript's next turn to read, while no thread.* event has come. */
+  const recorded = { on: false, next: 0, session: /** @type {any} */ (null), busy: false, again: false };
 
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
 
@@ -45,8 +54,19 @@ export function mountSession(container, opts) {
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   async function boot() {
-    const r = await attempt("threads.get", { thread, since: 0, limit: 500 });
-    if (r.error) { timeline.replaceChildren(empty(`Could not load this session.`, r.error)); return; }
+    const r = opts.recorded ? { error: null } : await attempt("threads.get", { thread, since: 0, limit: 500 });
+    if (opts.recorded || r.error) {
+      const t = await attempt("recall.thread", { session: thread, limit: 400 });
+      if (t.error) { timeline.replaceChildren(empty("Could not open this session.", t.error.missing ? t.error : r.error)); drawHead(); return; }
+      recorded.on = true;
+      recorded.session = t.data.session;
+      drawHead();
+      timeline.replaceChildren();
+      if (!t.data.turns.length) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
+      appendTurns(t.data.turns);
+      timeline.scrollTop = timeline.scrollHeight;
+      return;
+    }
     record.current = r.data.thread;
     drawHead();
     timeline.replaceChildren();
@@ -58,19 +78,53 @@ export function mountSession(container, opts) {
 
   function drawHead() {
     const rec = record.current;
+    const ses = recorded.on ? recorded.session : null;
     put(head,
-      h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("right", 16)),
+      h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
       h("div", { style: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: "1", minWidth: "0" } },
-        h("div", { class: "title ellipsis" }, rec?.name || thread.slice(0, 12)),
-        h("div", { class: "sub ellipsis" }, [rec?.agent, rec?.cwd].filter(Boolean).join(" · ") || "session"),
+        h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
+        h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Claude Code session"),
       ),
       rec?.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null,
     );
     put(leaseBar,
       icon("lock", 12),
-      rec?.holder ? h("span", null, h("span", { class: "who" }, rec.holder), " has the keyboard") : h("span", null, "No one is typing"),
+      rec?.holder ? h("span", null, h("span", { class: "who" }, rec.holder), " has the keyboard")
+        : ses ? h("span", { class: "lease-note" }, "Sending resumes this session here.")
+        : h("span", null, "No one is typing"),
       rec?.holder && rec.holder !== "chat" ? h("button", { class: "btn btn-ghost btn-sm", onclick: take }, "Take") : null,
     );
+  }
+
+  /** A transcript's turns, in the same shapes the live events draw. */
+  function appendTurns(turns) {
+    for (const t of turns) {
+      recorded.next = Math.max(recorded.next, (t.seq ?? 0) + 1);
+      if (!t.text) continue;
+      maybeDayRule(t.ts || Date.now());
+      if (t.role === "user") { timeline.append(personMsg("you", t.text, t.ts)); continue; }
+      const el = agentMsg("claude", t.ts);
+      add(/** @type {any} */ (el).querySelector(".msg-text"), renderMarkdown(t.text));
+      timeline.append(el);
+    }
+  }
+  /** Recall indexed this session again: read what is new. One read at a time; a second ask during one reads again after. */
+  async function readMore() {
+    if (!recorded.on) return;
+    if (recorded.busy) { recorded.again = true; return; }
+    recorded.busy = true;
+    try {
+      do {
+        recorded.again = false;
+        const r = await attempt("recall.thread", { session: thread, from: recorded.next, limit: 400 });
+        if (!recorded.on || r.error) break;
+        const stick = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 40;
+        if (r.data.turns.length) timeline.querySelector(".th-wait")?.remove();
+        if (r.data.session) { recorded.session = r.data.session; drawHead(); }
+        appendTurns(r.data.turns);
+        if (stick) timeline.scrollTop = timeline.scrollHeight;
+      } while (recorded.again);
+    } finally { recorded.busy = false; }
   }
   async function take() { await attempt("threads.lease", { thread }); }
 
@@ -98,6 +152,11 @@ export function mountSession(container, opts) {
 
   function applyEvent(e, live) {
     const p = e.payload || {};
+    // The first live event for a recorded session: a send adopted it, so the Switchboard has it now.
+    if (live && recorded.on && /^(thread|lease)\./.test(e.type)) {
+      recorded.on = false;
+      attempt("threads.get", { thread, since: 0, limit: 1 }).then(r => { if (r.data) { record.current = r.data.thread; drawHead(); } });
+    }
     if (e.type === "thread.started") return;
     if (e.type === "thread.sent") {
       maybeDayRule(e.at);
@@ -234,6 +293,14 @@ export function mountSession(container, opts) {
     // memory.curated {nodes, edges, ms, updated} carries no thread (intelligence): it only says
     // the graph changed, so refetch this open thread and let fetchMemory's id-dedup filter it.
     on("memory.curated", () => fetchMemory()),
+    on("session.indexed", e => { if ((e.thread || e.payload?.session) === thread) readMore(); }),
   ];
   return () => { for (const off of offs) off(); };
+}
+
+/** The last two folders of a path, which is what tells sessions apart: …/alex/Work. */
+function shortDir(d) {
+  if (!d) return "";
+  const parts = String(d).split("/").filter(Boolean);
+  return (parts.length > 2 ? "…/" : "/") + parts.slice(-2).join("/");
 }

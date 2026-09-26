@@ -14,6 +14,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { upPresent } from "./helpers.js";
 import { exitFor } from "../core/cli/commands/vault.js";
+import { SCRATCH } from "./scratch.mjs";
 
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BIN = path.join(REPO, "bin", "vyre");
@@ -34,7 +35,7 @@ function spawnIt(bin, args, env, input) {
 const vyre = (home, args, input) => spawnIt(process.execPath, [BIN, ...args], { ...process.env, VYRE_HOME: home, NO_COLOR: "1" }, input);
 
 function home(t, config) {
-  const h = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-"));
+  const h = fs.mkdtempSync(path.join(SCRATCH, "vyre-test-"));
   if (path.resolve(h) === path.resolve(os.homedir(), ".vyre")) throw new Error("a test tried to use the real ~/.vyre");
   fs.writeFileSync(path.join(h, "config.json"), JSON.stringify(config));
   t.after(async () => { await vyre(h, ["down"]); fs.rmSync(h, { recursive: true, force: true }); });
@@ -161,7 +162,7 @@ test("vault op parity: the ssh agent through ssh-add, and git credential fill th
   // git, in a temp repo, with a temp global config naming bin/git-credential-vyre.
   const pw = fake("git");
   await vyre(h, ["call", "vault.put", JSON.stringify({ name: "git-example", kind: "login", fields: { username: "alex", password: pw }, url: "https://git.example.com" })]);
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-git-"));
+  const repo = fs.mkdtempSync(path.join(SCRATCH, "vyre-git-"));
   t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
   const gitconfig = path.join(repo, "gitconfig");
   fs.writeFileSync(gitconfig, `[credential]\n\thelper = ${path.join(REPO, "bin", "git-credential-vyre")}\n`);

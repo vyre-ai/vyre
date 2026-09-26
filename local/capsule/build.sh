@@ -23,8 +23,11 @@ fi
 mkdir -p "$here/bin"
 # local asks for Contacts, and macOS refuses that ask without a usage string from an Info.plist.
 # When local is its own responsible process, the plist it reads is the one linked into it.
-plist="$(mktemp -t vyre-local-plist)"
+# Under $TMPDIR (so a caller can move it), and removed however the script ends: plain sh runs an
+# EXIT trap on a normal exit only, so a signal exits through it too.
+plist="$(mktemp "${TMPDIR:-/tmp}/vyre-local-plist.XXXXXX")"
 trap 'rm -f "$plist"' EXIT
+trap 'exit 130' INT TERM HUP
 cat > "$plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

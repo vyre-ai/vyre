@@ -14,6 +14,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { upPresent } from "./helpers.js";
 import { request } from "../core/daemon/client.js";
+import { SCRATCH } from "./scratch.mjs";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -31,7 +32,7 @@ function vyre(home, args, input) {
 }
 
 function home(t, config) {
-  const h = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-"));
+  const h = fs.mkdtempSync(path.join(SCRATCH, "vyre-test-"));
   if (path.resolve(h) === path.resolve(os.homedir(), ".vyre")) throw new Error("a test tried to use the real ~/.vyre");
   fs.writeFileSync(path.join(h, "config.json"), JSON.stringify(config));
   t.after(async () => { await vyre(h, ["down"]); fs.rmSync(h, { recursive: true, force: true }); });

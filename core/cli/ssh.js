@@ -69,6 +69,10 @@ export function validTarget(target) {
   return Boolean(m && !m[1].startsWith("-") && !m[2].startsWith("-"));
 }
 
+/** Control folders not yet closed. A run that exits without close() (an error, process.exit) still removes them. */
+const unclosed = new Set();
+process.on("exit", () => { for (const d of unclosed) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} } });
+
 /**
  * A server reached as `user@host`.
  * @param {string} target
@@ -80,6 +84,7 @@ export function remote(target, { env = process.env } = {}) {
   const bin = env.VYRE_SSH_BIN || "ssh";
   const dir = fs.mkdtempSync(path.join("/tmp", "vyre-ssh-"));
   fs.chmodSync(dir, 0o700);
+  unclosed.add(dir);
   // Every call names the control socket, so it rides on the master when there is one. Only
   // open() may become the master; a later call never forks a second one behind our back.
   const ctl = ["-o", `ControlPath=${dir}/%C`];
@@ -181,6 +186,7 @@ export function remote(target, { env = process.env } = {}) {
       closed = true;
       await ssh([...quiet, "-O", "exit", ...to]);
       fs.rmSync(dir, { recursive: true, force: true });
+      unclosed.delete(dir);
     },
   };
 }

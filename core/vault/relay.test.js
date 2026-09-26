@@ -6,10 +6,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { newIdentity } from "./crypto.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 import {
   encodeCard, decodeCard, encodeTicket, decodeTicket, envelope, checkEnvelope, dbNonces, secureTarget, isLoopback,
   requestAllowed, checkBind, allowedOrigin, substitute, scrub, send, serve, callRelay,
@@ -106,7 +106,7 @@ test("envelope verifies for its audience; tampering, another audience, v1, an ol
 });
 
 test("nonces in vyre.db survive a restart and expire after 120 s", t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-nonce-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-nonce-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "vyre.db");
   const open = () => { const db = new DatabaseSync(file); db.exec("CREATE TABLE IF NOT EXISTS vault_relay_nonces (nonce TEXT PRIMARY KEY, ts INTEGER NOT NULL)"); return db; };

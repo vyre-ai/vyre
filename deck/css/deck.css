@@ -173,6 +173,8 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
     background: var(--beacon-dot); color: var(--graphite); font-size: 10px; line-height: 16px; letter-spacing: 0; text-align: center; }
   .phone-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 0; }
 }
+/* Five tabs at 320px: the labels keep their size and lose some tracking. */
+@media (max-width: 360px) { .tabbar { padding-left: 4px; padding-right: 4px; } .tabbar a { letter-spacing: 0.06em; } }
 @media (min-width: 761px) { .phone-head { display: none; } }
 @media (max-width: 1100px) { .address { display: none; } }
 

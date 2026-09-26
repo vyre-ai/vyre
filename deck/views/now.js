@@ -148,7 +148,7 @@ export default async function now(ctx) {
       h("div", { class: "work-row" },
         h("span", { class: "initial", "aria-hidden": "true" }, icon("projects", 14)),
         h("div", { class: "work-main" },
-          h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet" }, p.name)),
+          h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet ellipsis" }, p.name)),
           h("div", { class: "code ellipsis" }, plural(p.threads, "thread"))),
         h("div", { class: "code faint work-since" }, p.last ? since(p.last) : "")))));
   };
@@ -239,7 +239,7 @@ function workRow(t) {
     h("span", { class: "initial", "aria-hidden": "true" }, initial(t.agent || t.name)),
     h("div", { class: "work-agent" }, t.agent || "you"),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet" }, t.name || t.id), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, t.name || t.id), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
       h("div", { class: "code ellipsis" }, t.activity || "")),
     h("div", { class: "code faint work-since" }, since(t.started)),
     link(t.agent ? `/agents/${encodeURIComponent(t.agent)}` : href, { class: "btn btn-ghost btn-sm work-watch" }, icon("watch", 14), "Watch"),
