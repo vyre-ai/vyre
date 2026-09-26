@@ -164,7 +164,9 @@ export function on(type, fn) {
   subs.add(sub);
   if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, deliver); }
   if (!source && typeof EventSource !== "undefined") {
-    source = new EventSource("/v1/events/stream?since=latest");
+    // An EventSource cannot send headers, so the onboarding session rides as ?s=.
+    const s = headers["x-vyre-onboard"];
+    source = new EventSource("/v1/events/stream?since=latest" + (s ? `&s=${encodeURIComponent(s)}` : ""));
     for (const t of known) source.addEventListener(t, deliver);
   }
   return () => { subs.delete(sub); };

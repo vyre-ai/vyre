@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Link and the real Tailscale
+
+- `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or
+  `tailscale` on the PATH) for whois and status. A test that ran `vyre up` on a Mac could
+  therefore query the user's real Tailscale. The link now uses `VYRE_TAILSCALE_BIN` when it is
+  set. Under `node --test` it never uses the real binary unless a test opts in with
+  `VYRE_TEST_REAL_TAILSCALE=1`. Without one, whois answers "unknown peer" and the peer list is
+  empty. A test fails if the real app is resolved during tests.
+
 #### Release
 
 - `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
@@ -130,6 +139,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   can serve a raw route on the socket at `/v1/<module>/<name>` (`ctx.route`), which is what a
   stream needs. vyred's stop now closes those connections too.
 - `vyre link`: status, `pair <address>`, `approve <code>`, `deny <id>`, `unpair`.
+
+#### Push
+
+- `core/push` (module `push`, ADR 0011): Web Push to the Deck and the Capsule for `ask.raised`,
+  `gate.held`, `thread.watched` and `lesson.proposed`. The payload is `{kind, title, path, tag, at}`:
+  a fixed title and a Deck path holding only an id, never content. Tools, for people's surfaces
+  only (`cli`, `local`, `deck`, `capsule`): `push.key` -> `{public_key}`, `push.subscribe
+  {subscription, label?}` -> `{device}`, `push.unsubscribe {device|endpoint}`, `push.devices`
+  (never the endpoint), `push.settings {quiet?: {start, end, timezone?}|null, kinds?}`,
+  `push.test {device?}`.
+- VAPID (RFC 8292) and aes128gcm (RFC 8291) use node:crypto only, with no dependency. They match
+  RFC 8291 Appendix A byte for byte. The VAPID private key is made on first use and kept in the
+  Vault as `push-vapid`, granted to `push`. Endpoints must be https on a known push service host.
+  A 404 or 410, or a passed `expirationTime`, drops the device.
 
 #### Switchboard
 
@@ -623,6 +646,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Drive and watch sessions from the Capsule. "watch the intake thread" offers a row per thread it
+  could mean; picking one sets a watch (`lib/watch.js`), a filter on the event stream the Capsule
+  follows anyway. When the thread finishes, fails, stops or asks, a macOS notification says so and
+  the report (the last thing it said, and its cost) waits in the empty Capsule until read. "tell
+  the intake thread to run the tests" shows the thread and the words, sends them as the user and
+  watches the thread; a thread someone else holds says who, and only ⌘⏎ takes it.
+- In the Capsule: clipboard items rank beside apps and files, "clipboard" lists them newest first
+  with a row that clears the history, and Enter puts one back on the pasteboard and closes, for the
+  user's own ⌘V. `@` an agent opens a DM: its history, your messages from any surface, the reply
+  streaming into the list, and its asks in Beacon to click and answer. A test run watches a
+  private pasteboard, never the user's.
+- Clipboard history, on this Mac only (`lib/clips.js`, `clip.watch` in `bin/local`): the helper
+  reads the pasteboard's change count every 750 ms, the one thing that runs while the Capsule is
+  hidden. Concealed, transient and auto-generated items, password managers, Universal Clipboard,
+  and anything that looks like a secret (token prefixes, JWTs, keys, codes, card numbers,
+  high-entropy strings) are never recorded. At most 200 items for 7 days, in a 0600 file. Picking
+  one writes it to the pasteboard for the user's own ⌘V; nothing is typed for them.
+- Direct messages with agents (`bridge.openDm`, `st.applyDm`): an agent's current thread as
+  history, the user's messages from any surface marked with where they came from, a sent message
+  shown at once and reconciled when it lands, the reply streaming into the same list, and the
+  agent's asks beside it. Nothing is fetched unless a DM is open.
 - Result rows look native: each has its real picture (a 24 px box that never moves when the
   icon lands), its name, where it is, and its kind or the key that takes it, with the selected
   row in Signal. Vyre's own kinds (agents, the assistant, projects, threads, memory in Recall gold,
