@@ -24,11 +24,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   agent and the diff, keyed `gate:<id>`), the first of the Gate's learning signals (section 7.11).
 - `gate.route` (internal) tells harness.rules to deny a sending MCP tool inside an agent's thread and
   point the agent at `gate_request`; the user's own sessions keep the interim ask-first rule.
+- An item left in "sending" by a vyred that stopped mid-send goes back to held on the next start,
+  marked as possibly sent, so the person decides rather than the Gate sending twice.
+- `core/harness`: harness.rules asks `gate.route` about a floor rule 1 send when the call comes from
+  an agent's thread. Without the Gate running, the ask-first rule still applies.
 - `core/modules`: `ctx.vault.fetch` accepts any `per-<thing>` declaration, not only `per-watcher`,
   so the Gate (`per-sender`) and agents (`per-agent`) can fetch items named at run time.
 
 #### Chat
 
+- Mattermost ships as a compose fragment for the box (`modules/chat/compose.yml`: 11.7 ESR, Postgres
+  16, loopback only, sign-up and telemetry off), with an `mmctl` bootstrap in `SETUP.md` that pipes
+  the bot and slash tokens straight into the Vault. Not yet run under Docker.
 - `modules/chat`: Mattermost as a surface over the same real sessions (section 9). A channel per
   project and a thread per session; `thread.started`, finished text, what other surfaces typed,
   `ask.raised` and `gate.held` become posts, and answered or released ones are patched in place
