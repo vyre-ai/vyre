@@ -621,6 +621,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `vault_ssh_keys` and `vault_marks` are numbered migrations now, with MACed rows.
 - CLI: `vyre vault account create | unlock [--touchid] | lock | enroll-touchid | status`.
   The password is a hidden prompt (twice on create); the Secret Key is printed once.
+- No test raises a system dialog: `mac/dialogs.js` refuses a real enclave `auth`/`derive`, the
+  type helper, and any keychain call without `noUI` under node --test (unless
+  VYRE_TEST_DIALOGS=1) or with VYRE_NO_DIALOGS=1. The keychain helper labels each item with
+  the build that wrote it and has an `info` op that never reads the secret; an item from a gone
+  build is refused with `vyre vault migrate-key`, the one person-run path that may prompt.
 
 - Your other devices: a new Mac or a box joins with a code and a fingerprint you compare, and an
   approval on a device you already have. A box joins as storage: it runs agent items and keeps

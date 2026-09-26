@@ -34,6 +34,11 @@ export function register({ vault, tool }) {
     obj({ password }, ["password"]), (input, { caller }) => vault.enrollTouchId(input, caller),
     presence("Turn on Touch ID unlock", () => "Turn on Touch ID unlock of your personal vault on this Mac"));
 
+  // The keychain may ask the person to allow access here, so it is never run by an agent or a test.
+  tool("vault.migrate-key", PEOPLE, "Move the vault's keychain items to this build of the keychain helper. macOS may ask you to allow it.",
+    obj({}), (_input, { caller }) => vault.migrateKey(caller),
+    presence("Move the vault key to this build of Vyre", () => "Move the vault key to this build of Vyre's keychain helper"));
+
   tool("vault.account.status", null, "Whether this vault has an account password, whether it is unlocked, and whether Touch ID unlock is set up here.",
     obj({}), () => vault.accountStatus());
 
