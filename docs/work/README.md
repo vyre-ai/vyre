@@ -34,3 +34,7 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
 - A contract change (tool input, event payload, route) goes in "Changed contracts" before it
   merges, so dependents see it.
 - Merge to `main` only with the full suite green: `npm test`.
+
+## ADR numbers claimed
+
+- 0020: cc-plugin (Vyre as an installable Claude Code plugin, and the status line)

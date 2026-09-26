@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vyre installs as a Claude Code plugin, and shows its line in every session
+
+- `.claude-plugin/marketplace.json`: the marketplace `vyre`, one plugin `vyre` from `./harness`.
+  Install with `/plugin marketplace add vyre-ai/vyre`, then `/plugin install vyre@vyre` (ADR 0020).
+- `harness/hooks/run.js`, `harness/mcp/run.js`, `harness/lib/vyre.js`: `/plugin install` copies only
+  `harness/`, so hooks and the MCP server start from launchers that find a Vyre package
+  (`VYRE_PACKAGE`, the package they sit in, or `vyre` on PATH) and run its own `hook.js` or
+  `server.js`. With no Vyre, a fresh session gets one line on how to install it, every other hook
+  exits 0 silently in about 20 ms, and the MCP server connects with no tools.
+- `/vyre` gains `ask <agent> <text>`, `send <session> <text>` and `statusline`.
+- `core/statusline`: a module that keeps `<home>/statusline` (pid and line, such as
+  `vyre · 2 need you · box ok · juno idle`), recomputed on events and once a minute.
+  `harness/statusline/statusline.sh` prints it in about 4 ms, never touching vyred or the network.
+- `vyre statusline [install [--chain] [--yes] | uninstall]`: sets Claude Code's `statusLine` with
+  consent, never replacing one the user has (`--chain` keeps theirs above Vyre's line). `vyre up`
+  on a Mac offers it once on a terminal.
+- Learning treats running `hooks/run.js` by hand as running a hook by hand.
+
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
 - Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
