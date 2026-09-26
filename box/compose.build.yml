@@ -12,3 +12,8 @@ services:
     build:
       context: ${VYRE_SOURCE:-..}
       dockerfile: box/Dockerfile
+  # The computers' Docker proxy runs from the same image (core/dockerproxy), so it uses the one
+  # built above rather than pulling. No build of its own: vyre's build makes vyre:local.
+  docker-api:
+    image: vyre:local
+    pull_policy: never

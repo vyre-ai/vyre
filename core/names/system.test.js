@@ -228,7 +228,9 @@ function setup(t, extra) {
   stubs(bin, log, www, extra);
   fs.writeFileSync(log, "");
   // /dev/null stands in for /dev/net/tun: a character device on every system.
-  const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null" };
+  // No Docker socket unless a test makes one, so no DOCKER_GID line unless a test asks for it.
+  const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null",
+    VYRE_DOCKER_SOCK: path.join(base, "no-docker.sock") };
   const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
   return { base, dir, wrapper, site: www, env, calls };
 }
@@ -328,6 +330,33 @@ test("install-box.sh: a real run writes the stack, never overwrites .env, and st
   // The wrapper ran: the stack came up and the CLI's `vyre up` ran in the container.
   assert.ok(r.calls.includes("docker compose up -d"), r.calls.join("\n"));
   assert.ok(r.calls.some(c => /^docker compose exec .*-e VYRE_HOST_USER=alex vyre vyre up$/.test(c)), r.calls.join("\n"));
+});
+
+test("install-box.sh: DOCKER_GID is the socket's group, written fresh or added to an .env that lacks it", t => {
+  const sock = t => { const f = path.join(tempHome(t), "docker.sock"); fs.writeFileSync(f, ""); return f; };
+  const s1 = sock(t), gid = fs.statSync(s1).gid;
+  const dry = runScript(t, ["--dry-run", "--yes"], {}, () => {}, { VYRE_DOCKER_SOCK: s1 });
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.match(dry.stdout, new RegExp(`^ {2}DOCKER_GID=${gid}$`, "m"));
+  // An existing .env keeps every line of its own and gains only DOCKER_GID, once.
+  const mine = "COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml\nCOMPOSE_PROFILES=computers";
+  let dir = "";
+  const r = runScript(t, ["--yes", "--from", REPO], {}, box => {
+    dir = box.dir;
+    fs.mkdirSync(box.dir, { recursive: true });
+    fs.writeFileSync(path.join(box.dir, ".env"), mine);
+  }, { VYRE_DOCKER_SOCK: s1, VYRE_NO_UP: "1" });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /adding DOCKER_GID/);
+  assert.equal(fs.readFileSync(path.join(dir, ".env"), "utf8"), `${mine}\nDOCKER_GID=${gid}\n`);
+  const kept = "COMPOSE_PROJECT_NAME=vyre\nDOCKER_GID=4242\n";
+  const again = runScript(t, ["--yes", "--from", REPO], {}, box => {
+    dir = box.dir;
+    fs.mkdirSync(box.dir, { recursive: true });
+    fs.writeFileSync(path.join(box.dir, ".env"), kept);
+  }, { VYRE_DOCKER_SOCK: s1, VYRE_NO_UP: "1" });
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(fs.readFileSync(path.join(dir, ".env"), "utf8"), kept, "a DOCKER_GID of theirs is left alone");
 });
 
 test("install-box.sh: VYRE_NO_UP=1 installs everything and starts nothing", t => {

@@ -212,17 +212,21 @@ Claude's sign-in and `/work`. The installer never uninstalls Docker, and leaves 
 
 ## The agents' computers
 
-Agents get their own containers (spec 7.9) through `docker-api`, a socket proxy that exposes only
-containers, images and exec. It is off until the `computers` profile is on; add to `.env`:
+Agents get their own containers (spec 7.9) through `docker-api`, Vyre's own Docker proxy
+(`core/dockerproxy`, run from the same image). It is off until the `computers` profile is on; add
+to `.env`:
 
 ```
 COMPOSE_PROFILES=computers
 ```
 
-then `vyre up`. The host's Docker socket is mounted read-only into the proxy and nowhere else, and
-vyred reaches it at `tcp://docker-api:2375` on an internal network. The proxy filters endpoints,
-not request bodies, so the computers module is what decides what an agent's container may mount
-or run as.
+then `vyre up`. The host's Docker socket is mounted into the proxy and nowhere else, and vyred
+reaches it at `http://docker-api:2375` on an internal network. The proxy allows only what agents'
+computers use (create, start, stop, pause, unpause, inspect, list, remove, exec, volume inspect)
+and refuses every other endpoint. It checks request bodies too: a create must match
+`core/computers/driver/policy.js` and the box's `VYRE_COMPUTERS_*` settings, and every
+per-container op is checked against the labels the Engine itself reports. It runs as uid 1000 in
+the socket's group, `DOCKER_GID` in `.env`, which the installer fills in from the socket.
 
 ## Without Docker
 
