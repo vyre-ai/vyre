@@ -77,21 +77,66 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
     Image: "vyre/computer:0.1",
     Hostname: "kit",
     Env: ["VNC_PASSWORD=abcdefgh", "COMPUTERD_TOKEN=t0ken", "SCREEN=1440x900"],
-    Labels: { "vyre.computer": "kit", "vyre.managed": "true" },
+    Labels: { "vyre.computer": "kit", "vyre.managed": "true", "run.vyre": "1" },
     ExposedPorts: { "5900/tcp": {}, "9223/tcp": {}, "7000/tcp": {} },
     HostConfig: {
       NetworkMode: "vyre-computers",
+      PidMode: "container",
       NanoCpus: 2_000_000_000,
       Memory: 3072 * 1024 * 1024,
       PortBindings: {},
       PublishAllPorts: false,
+      Privileged: false,
       CapDrop: ["ALL"],
+      Devices: [],
       SecurityOpt: ["no-new-privileges"],
+      ReadonlyRootfs: true,
+      Tmpfs: { "/tmp": "mode=1777,exec", "/run": "mode=0755", "/var/run": "mode=0755" },
       ShmSize: 1024 * 1024 * 1024,
-      Mounts: [{ Type: "volume", Source: "vyre-home-kit", Target: "/home/agent", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit" } } }],
+      Mounts: [{ Type: "volume", Source: "vyre-home-kit", Target: "/home/agent", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit", "run.vyre": "1" } } }],
       RestartPolicy: { Name: "no" },
     },
   });
+});
+
+test("docker: never privileged, never a host mount, never host network or PID, always read-only", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  await d.create(spec);
+  const body = e.seen[0].body;
+  assert.equal(body.HostConfig.Privileged, false);
+  assert.equal(body.HostConfig.PidMode, "container");
+  assert.notEqual(body.HostConfig.NetworkMode, "host");
+  assert.deepEqual(body.HostConfig.CapDrop, ["ALL"]);
+  assert.deepEqual(body.HostConfig.Devices, []);
+  assert.equal(body.HostConfig.ReadonlyRootfs, true);
+  assert.ok(body.HostConfig.Tmpfs && Object.keys(body.HostConfig.Tmpfs).length > 0, "a read-only root needs somewhere to write");
+  // The only mount is the agent's own named volume: never a bind, and never the docker socket.
+  assert.equal(body.HostConfig.Mounts.length, 1);
+  for (const m of body.HostConfig.Mounts) {
+    assert.equal(m.Type, "volume", "no bind mount ever reaches a create body");
+    assert.doesNotMatch(String(m.Source), /docker\.sock/);
+    assert.doesNotMatch(String(m.Target), /docker\.sock/);
+  }
+  assert.doesNotMatch(JSON.stringify(body), /\/var\/run\/docker\.sock/, "the docker socket must never appear anywhere in a create body");
+});
+
+test("docker: a computer is refused the host network, whatever config or a caller asks for", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre" });
+  await assert.rejects(d.create({ ...spec, network: "host" }), /never runs on the host network/);
+  const onHost = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "host" });
+  await assert.rejects(onHost.create({ ...spec, network: undefined }), /never runs on the host network/);
+});
+
+test("docker: run.vyre=1 marks every container and its volume, alongside the prefix labels", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
+  await d.create({ ...spec, labels: { "run.vyre.computers.computer": "kit", "run.vyre.computers.managed": "true" } });
+  const body = e.seen[0].body;
+  assert.equal(body.Labels["run.vyre"], "1");
+  assert.equal(body.Labels["run.vyre.computers.computer"], "kit");
+  assert.equal(body.HostConfig.Mounts[0].VolumeOptions.Labels["run.vyre"], "1");
 });
 
 test("docker: every operation reads the labels first, then acts", async t => {
