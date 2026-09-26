@@ -1,5 +1,5 @@
 // @ts-check
-// cron — five-field schedules: minute, hour, day of month, month, day of week.
+// cron: five-field schedules: minute, hour, day of month, month, day of week.
 //
 // Each field takes `*`, a number, a range `a-b`, a step `*/n` or `a-b/n`, and lists of those
 // separated by commas. Day of week is 0 to 7, where both 0 and 7 are Sunday. As in classic cron,

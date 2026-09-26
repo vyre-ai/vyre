@@ -1,5 +1,5 @@
 // @ts-check
-// watchers — the watcher runtime, as a module (docs/SPEC.md, section 7.6).
+// watchers: the watcher runtime, as a module (docs/SPEC.md, section 7.6).
 //
 // A runtime, not a set of integrations: Claude writes each watcher through the write-a-watcher
 // skill, and this runs it. Projects, the vault and Memory are used through ctx and are not listed

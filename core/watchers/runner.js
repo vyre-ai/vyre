@@ -1,5 +1,5 @@
 // @ts-check
-// runner — the child side of one watcher run. vyred forks this file per run, under Node's
+// runner: the child side of one watcher run. vyred forks this file per run, under Node's
 // permission model where the Node version has it, so a watcher can read only its own folder,
 // write nothing, start no processes and see no environment.
 //

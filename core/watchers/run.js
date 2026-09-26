@@ -1,5 +1,5 @@
 // @ts-check
-// run — one watcher run in a child process, from the parent's side.
+// run: one watcher run in a child process, from the parent's side.
 //
 // The child gets no environment, a hard timeout, and (on Node with a permission model) read
 // access to its own folder and the runner and nothing else: no writes, no child processes, no

@@ -1,5 +1,5 @@
 // @ts-check
-// folder — one watcher on disk: ~/.vyre/watchers/<name>/watcher.json and watch.js.
+// folder: one watcher on disk: ~/.vyre/watchers/<name>/watcher.json and watch.js.
 //
 // Claude writes these two files (the write-a-watcher skill); this reads and checks them. The
 // checks are written for whoever made the mistake to fix it from the message alone, because

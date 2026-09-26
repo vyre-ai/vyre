@@ -1,5 +1,5 @@
 // @ts-check
-// runtime — schedules, runs and files watchers. The module's tools are thin wrappers over this.
+// runtime: schedules, runs and files watchers. The module's tools are thin wrappers over this.
 //
 // A watcher's life: Claude writes its folder (a draft), watchers.test dry-runs it, and
 // watchers.create turns on exactly what was dry-run (the hash of both files is recorded). From
