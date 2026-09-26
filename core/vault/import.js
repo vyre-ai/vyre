@@ -2,11 +2,11 @@
 // vault/import: turn another password manager's export, or a .env file, into vault items.
 //
 // People leave a password manager only when leaving costs them nothing, so this reads the files
-// they already have: .env, 1Password CSV, Bitwarden CSV and JSON, Chrome CSV and Safari CSV
-// (ADR 0001, decision 10). vyred reads the file itself and hands the text here, so values never
-// pass through Claude.
+// they already have: .env, 1Password CSV and .1pux, Bitwarden CSV and JSON, Chrome CSV and Safari
+// CSV (ADR 0001, decision 10). vyred reads the file itself and hands the bytes to parseFile, so
+// values never pass through Claude.
 //
-// Everything here is pure: text in, items out, no disk writes. Sealing and storing belong to
+// Everything here is pure: bytes or text in, items out, no disk writes. Sealing and storing belong to
 // the vault. Two rules follow from decision 4, where an item's name and description are
 // listable and its field values are sealed:
 //   - A name or description is built only from a title, a variable name, a host or a username,
@@ -15,12 +15,13 @@
 //     carry a value. JSON.parse's own message quotes the input, so it is not passed on.
 
 import path from "node:path";
+import { unzip } from "./zip.js";
 
-/** @typedef {"env"|"1password-csv"|"bitwarden-csv"|"bitwarden-json"|"chrome-csv"|"safari-csv"|"csv"} Format */
+/** @typedef {"env"|"1password-csv"|"1password-1pux"|"bitwarden-csv"|"bitwarden-json"|"chrome-csv"|"safari-csv"|"csv"} Format */
 /**
  * @typedef {object} Item
  * @property {string} name
- * @property {"secret"|"login"|"note"|"card"} kind
+ * @property {"secret"|"api-key"|"login"|"note"|"card"} kind
  * @property {string} description
  * @property {Record<string,string>} fields
  * @property {string} [url]
@@ -29,7 +30,7 @@ import path from "node:path";
  */
 /** @typedef {{ format: Format|null, items: Item[], skipped: string[], error?: string }} Result */
 
-export const FORMATS = /** @type {const} */ (["env", "1password-csv", "bitwarden-csv", "bitwarden-json", "chrome-csv", "safari-csv", "csv"]);
+export const FORMATS = /** @type {const} */ (["env", "1password-csv", "1password-1pux", "bitwarden-csv", "bitwarden-json", "chrome-csv", "safari-csv", "csv"]);
 export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /**
@@ -43,6 +44,7 @@ export function parse(text, { format, filename } = {}) {
   if (format && !FORMATS.includes(format)) return fail(null, `unknown format "${String(format).slice(0, 40)}"; expected one of ${FORMATS.join(", ")}`);
   text = text.replace(/^﻿/, "");
   const fmt = format ?? detect(text, filename);
+  if (fmt === "1password-1pux") return fail(fmt, "a .1pux file is a zip archive; read it as bytes with parseFile");
   if (!fmt) return fail(null, "could not tell what kind of export this is; pass a format (" + FORMATS.join(", ") + ")");
   try {
     if (fmt === "env") return parseEnv(text, filename);
@@ -52,6 +54,27 @@ export function parse(text, { format, filename } = {}) {
     // A parser bug must not surface a message built from the input.
     return fail(fmt, `the ${fmt} file could not be read`);
   }
+}
+
+/**
+ * Parse an export from its raw bytes. A zip (or a name ending .1pux) is read as a 1Password .1pux;
+ * anything else is decoded as UTF-8 and handed to `parse`.
+ * @param {Uint8Array} buffer
+ * @param {{ format?: Format, filename?: string }} [opts]
+ * @returns {Result}
+ */
+export function parseFile(buffer, { format, filename } = {}) {
+  if (!(buffer instanceof Uint8Array)) return fail(format ?? null, "the file could not be read");
+  if (format && !FORMATS.includes(format)) return fail(null, `unknown format "${String(format).slice(0, 40)}"; expected one of ${FORMATS.join(", ")}`);
+  const zipped = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+  const named = !!filename && /\.1pux$/i.test(filename);
+  if (format === "1password-1pux" || (!format && (zipped || named))) {
+    try { return parse1pux(buffer); } catch { return fail("1password-1pux", "the .1pux file could not be read"); }
+  }
+  if (zipped) return fail(format ?? null, "this is a zip archive; the only zip export read is a 1Password .1pux");
+  let text;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(buffer); } catch { return fail(format ?? null, "the file is not UTF-8 text"); }
+  return parse(text, { format, filename });
 }
 
 /**
@@ -370,10 +393,212 @@ function parseBitwardenJSON(text) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// 1Password .1pux: a zip holding export.data (JSON) and attachments under files/
+
+const CATEGORY = { login: "001", card: "002", note: "003", password: "005", api: "112" };
+
+/** @param {Uint8Array} buffer @returns {Result} */
+function parse1pux(buffer) {
+  const F = "1password-1pux";
+  /** @type {Map<string, Buffer>} */
+  let entries;
+  try { entries = unzip(buffer); } catch (e) {
+    // zip.js errors name entries and problems, never contents.
+    return fail(F, `the .1pux file could not be read (${e instanceof Error ? e.message : "not a zip archive"})`);
+  }
+  const data = entries.get("export.data");
+  if (!data) return fail(F, "the .1pux file has no export.data; export again from 1Password");
+  let j;
+  try { j = JSON.parse(data.toString("utf8")); } catch { return fail(F, "export.data is not valid JSON"); }
+  if (!j || !Array.isArray(j.accounts)) return fail(F, "export.data has no accounts list");
+
+  const names = new Names();
+  /** @type {Item[]} */
+  const items = [];
+  /** @type {string[]} */
+  const skipped = [];
+  let idx = 0;
+  for (const account of j.accounts) {
+    for (const vault of Array.isArray(account?.vaults) ? account.vaults : []) {
+      for (const it of Array.isArray(vault?.items) ? vault.items : []) {
+        idx++;
+        if (!it || typeof it !== "object") { skipped.push(`item ${idx}: not an object`); continue; }
+        const one = onePuxItem(it, idx, names, skipped);
+        if (one) items.push(one);
+      }
+    }
+  }
+  for (const name of entries.keys()) {
+    if (name.startsWith("files/") && name.length > 6) skipped.push(`attachment ${short(printableName(name.slice(6)))} not imported`);
+  }
+  return { format: F, items, skipped };
+}
+
+/**
+ * @param {any} it
+ * @param {number} idx
+ * @param {Names} names
+ * @param {string[]} skipped
+ * @returns {Item|null}
+ */
+function onePuxItem(it, idx, names, skipped) {
+  const ov = it.overview && typeof it.overview === "object" ? it.overview : {};
+  const d = it.details && typeof it.details === "object" ? it.details : {};
+  const title = str(ov.title).trim();
+  const label = title ? `item ${idx} (${short(title)})` : `item ${idx}`;
+  const state = str(it.state);
+  if (state === "archived") { skipped.push(`${label}: archived`); return null; }
+  if (state && state !== "active") { skipped.push(`${label}: ${short(state)} items are not imported`); return null; }
+
+  const cat = str(it.categoryUuid);
+  const tags = Array.isArray(ov.tags) ? ov.tags.map(str).map((/** @type {string} */ s) => s.trim()).filter(Boolean) : [];
+  const urls = [str(ov.url), ...(Array.isArray(ov.urls) ? ov.urls.map((/** @type {any} */ u) => str(u?.url)) : [])].map(s => s.trim()).filter(Boolean);
+  const url = urls[0] ?? "";
+  const notes = str(d.notesPlain);
+  const fields = sectionFields(d, label, skipped);
+  const fmt = /** @type {Format} */ ("1password-1pux");
+  const totp = fields.find(f => f.kind === "totp")?.value ?? "";
+
+  /** Section fields as extra fields, minus those already used. @param {Set<SectionField>} used @param {string[]} reserved */
+  const extras = (used, reserved) => {
+    /** @type {Record<string,string>} */
+    const out = {};
+    const taken = new Set(reserved);
+    for (const f of fields) {
+      if (used.has(f) || f.kind === "totp") continue;
+      let k = f.key;
+      if (taken.has(k)) k = `field-${k}`;
+      for (let n = 2; taken.has(k); n++) k = `${f.key}-${n}`;
+      taken.add(k);
+      out[k] = f.value;
+    }
+    return out;
+  };
+  /** @param {Item} x */
+  const withHosts = x => {
+    const hosts = [...new Set(urls.map(originOf).filter(Boolean))];
+    if (hosts.length) x.hosts = hosts;
+    return x;
+  };
+
+  if (cat === CATEGORY.login) {
+    const lf = Array.isArray(d.loginFields) ? d.loginFields : [];
+    const pick = (/** @type {string} */ des) => str(lf.find((/** @type {any} */ f) => f?.designation === des && str(f?.value))?.value);
+    const username = pick("username").trim();
+    const f = compact({ username, password: pick("password"), totp, notes, ...extras(new Set(), ["username", "password", "totp", "notes"]) });
+    if (!Object.keys(f).length && !url) { skipped.push(`${label}: nothing to import`); return null; }
+    return withHosts(item(names, { title, kind: "login", fields: f, url, username, tags, fmt }));
+  }
+
+  if (cat === CATEGORY.card) {
+    /** @type {Set<SectionField>} */
+    const used = new Set();
+    const take = (/** @type {(f: SectionField) => boolean} */ p) => { const f = fields.find(x => !used.has(x) && p(x)); if (f) used.add(f); return f; };
+    const holder = take(f => f.id === "cardholder" || /card ?holder|name on card/i.test(f.title))?.value.trim() ?? "";
+    const number = take(f => f.kind === "creditCardNumber" || f.id === "ccnum")?.value.replace(/\s+/g, "") ?? "";
+    const exp = take(f => f.kind === "monthYear" && (f.id === "expiry" || /expir/i.test(f.title))) ?? take(f => f.kind === "monthYear" && f.id !== "validFrom");
+    const cvv = take(f => f.id === "cvv" || /^(cvv|cvc|verification number)$/i.test(f.title))?.value.trim() ?? "";
+    const brand = take(f => f.kind === "creditCardType")?.value.trim() ?? "";
+    const f = compact({ holder, number, expiry: exp?.value ?? "", cvv, notes, ...extras(used, ["holder", "number", "expiry", "cvv", "notes"]) });
+    if (!Object.keys(f).length) { skipped.push(`${label}: empty card`); return null; }
+    return withHosts(item(names, { title, kind: "card", fields: f, url, tags, fmt, description: brand ? `${title || "card"} (${short(brand)})` : undefined }));
+  }
+
+  if (cat === CATEGORY.note) {
+    const f = compact({ text: notes, ...extras(new Set(), ["text"]) });
+    if (!Object.keys(f).length) { skipped.push(`${label}: empty note`); return null; }
+    return withHosts(item(names, { title, kind: "note", fields: f, url, tags, fmt }));
+  }
+
+  if (cat === CATEGORY.password) {
+    const value = str(d.password);
+    if (!value) { skipped.push(`${label}: empty password`); return null; }
+    return withHosts(item(names, { title, kind: "secret", fields: compact({ value, notes }), url, tags, fmt }));
+  }
+
+  if (cat === CATEGORY.api) {
+    const cred = fields.find(f => f.id === "credential");
+    if (!cred) { skipped.push(`${label}: no credential field`); return null; }
+    const f = compact({ value: cred.value, notes, ...extras(new Set([cred]), ["value", "notes"]) });
+    return withHosts(item(names, { title, kind: "api-key", fields: f, url, tags, fmt }));
+  }
+
+  const f = compact({ text: notes, ...extras(new Set(), ["text"]) });
+  if (totp) f.totp = totp;
+  if (!Object.keys(f).length) { skipped.push(`${label}: nothing to import`); return null; }
+  return withHosts(item(names, { title, kind: "note", fields: f, url, tags, fmt }));
+}
+
+/** @typedef {{ key: string, id: string, title: string, kind: string, value: string }} SectionField */
+
+/**
+ * Every section field with a value readable as text. A monthYear becomes "MM/YY" and a date
+ * "YYYY-MM-DD"; a shape this importer cannot read is reported by title, never by value.
+ * @param {any} d
+ * @param {string} label
+ * @param {string[]} skipped
+ * @returns {SectionField[]}
+ */
+function sectionFields(d, label, skipped) {
+  /** @type {SectionField[]} */
+  const out = [];
+  for (const sec of Array.isArray(d.sections) ? d.sections : []) {
+    for (const f of Array.isArray(sec?.fields) ? sec.fields : []) {
+      const v = f?.value;
+      if (!v || typeof v !== "object") continue;
+      const kind = Object.keys(v)[0] ?? "";
+      const id = str(f.id);
+      const title = str(f.title).trim();
+      const text = fieldText(kind, v[kind]);
+      if (text === null) { skipped.push(`${label}: field ${short(title || id || kind)} (${short(kind)}) not imported`); continue; }
+      if (text === "") continue;
+      const key = slug(title) || slug(id) || slug(kind) || "field";
+      out.push({ key, id, title, kind, value: text });
+    }
+  }
+  return out;
+}
+
+/**
+ * A field value as text, "" for empty, null for a shape this importer does not read.
+ * @param {string} kind
+ * @param {unknown} v
+ * @returns {string|null}
+ */
+function fieldText(kind, v) {
+  if (v === null || v === undefined) return "";
+  if (kind === "monthYear") {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n <= 0) return "";
+    const year = Math.floor(n / 100);
+    const month = n % 100;
+    if (month < 1 || month > 12) return String(n);
+    return `${String(month).padStart(2, "0")}/${String(year % 100).padStart(2, "0")}`;
+  }
+  if (kind === "date") {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n === 0) return "";
+    const t = new Date(n * 1000);
+    return Number.isNaN(t.getTime()) ? "" : t.toISOString().slice(0, 10);
+  }
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    const o = /** @type {any} */ (v);
+    if (kind === "email" && typeof o.email_address === "string") return o.email_address;
+    if (kind === "sshKey" && typeof o.privateKey === "string") return o.privateKey;
+  }
+  return null;
+}
+
+/** An attachment name for a reason line. @param {string} s */
+const printableName = s => s.replace(/[^\x20-\x7e]/g, "?");
+
+// ---------------------------------------------------------------------------------------------
 // Items and names
 
 const LABELS = {
-  "1password-csv": "1Password", "bitwarden-csv": "Bitwarden", "bitwarden-json": "Bitwarden",
+  "1password-csv": "1Password", "1password-1pux": "1Password", "bitwarden-csv": "Bitwarden", "bitwarden-json": "Bitwarden",
   "chrome-csv": "Chrome", "safari-csv": "Safari", csv: "CSV", env: ".env",
 };
 

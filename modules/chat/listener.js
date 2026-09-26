@@ -1,5 +1,5 @@
 // @ts-check
-// listener — the three routes Mattermost calls back on: button presses, dialog submissions and
+// listener: the routes Mattermost calls back on, for button presses, the Edit dialog's submission and
 // the /vyre slash command. Nothing else is served.
 //
 // It binds where config says (on the box, the address the Mattermost container reaches vyred
