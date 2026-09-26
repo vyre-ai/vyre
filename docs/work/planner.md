@@ -45,16 +45,42 @@ the contract in ADR 0025.
 - Tests on the test box: 58 of 58 across core/planner, push, the Deck panel and the CLI.
 
 ## Doing
-- Waiting on surface teams' replies (pwa, capsule-pro, capsule-apps) and on the user's two decisions below.
+- Nothing in flight (session saved 2026-09-27). Resume from Next.
 
 ## Next
-1. Follow up on surface teams' contract replies.
-2. If the user wants it: email/SMS fallback after the last ring (off by default, through the Gate).
-3. If the user wants it: an opt-in to show the alarm label in push.
+1. Agent rule (the user's decision, replaces the lead's earlier one and slice 1's code): anyone,
+   person or agent, may add notes, reminders, todos AND alarms with no permission or Touch ID.
+   No visible limit; a silent runaway cap of about 200 adds an hour per agent. Store source =
+   caller; show it only when the caller is not the user or their own assistant/session (caller
+   `mcp:agent:<name>` whose kind isn't assistant); show the agent's real name. Editing,
+   completing, snoozing and deleting the person's own items: person-only, no prompt. Agents may
+   edit only items they added. Today's code (AGENT_KINDS, snooze person-only) must change; tests
+   for each rule.
+2. pwa asks: (a) confirm planner.done and planner.snooze are not on the presence list and work
+   from the SW with x-vyre-caller: deck; (b) on an ack, send a tiny push {kind: "planner-ack",
+   tag} so the SW closes that tag with no page open (content-free, ADR 0011 compatible);
+   (c) planner.get takes {firing} (it already does; tell pwa).
+3. capsule-apps: planner.parse is the single parser. (a) run planner.parse locally on a Mac,
+   never forwarded (pure, under 10 ms); only writes forward; (b) port their hardened rules from
+   origin work/capsule-apps local/apps/route.js (parseDuration number words and caps, fixed(),
+   reminderParts middle-of-sentence rule, "tonight at 12/1-4", current minute, "today" after
+   09:00, trailing "please") and reuse route.test.js cases as fixtures; (c) return {kind, title,
+   at (UTC ms), tz, duration?, repeat?} or {ambiguous, reason}; accept a `kind` hint. Then send
+   them branch and hash.
+4. cc-plugin: answer their contract. Real shapes: planner.add {text | kind+title, at (ISO, ms or
+   words via text), project?, thread?} returns the item {id, kind, title, at, ...}; planner.agenda
+   {from?, to?, next?, busy?} returns {tz, from, to, entries, todos}. Consider accepting their
+   {day, days} on agenda as sugar. Delivery of a due reminder: push + Capsule + Deck (planner.fired),
+   not a Claude session.
+5. Push label on lock screen: an opt-in setting, off by default (lead's default until the user
+   answers). Email/SMS fallback: later.
+6. After merge: draft docs/using/planner.md for docs (format in docs/CONTRIBUTING-DOCS.md on
+   work/docs; describe merged behaviour only; the new agent rule; no runaway-cap mention).
 
-## Needs from the user (via the lead)
-- Push label opt-in (ADR 0011 keeps typed text out of push; today the lock screen shows "Alarm").
-- Build the email/SMS fallback now or later.
+## Contracts owed
+- cc-plugin: confirm planner.add / planner.agenda shapes (Next 4).
+- capsule-apps: parse.js with their rules, local parse on the Mac, branch + hash (Next 3).
+- pwa: presence-list confirmation, planner-ack push, planner.get {firing} (Next 2).
 
 ## Decisions made in slice 1 (not in the ADR text)
 - escalate_max counts rings after the first: 3 means 4 rings in all.
