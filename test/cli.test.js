@@ -27,7 +27,7 @@ test("cli: up, status, call, down against a temp home", async t => {
   assert.match(bad.out, /bad_input/);
   assert.match((await run(["down"], env)).out, /vyred stopped/);
   const after = await run(["status"], env);
-  assert.equal(after.code, 1);
+  assert.equal(after.code, 5, "vyred not running is exit 5");
   assert.match(after.out, /not running/);
 });
 
@@ -36,7 +36,7 @@ test("cli: help lists commands found in the commands folder; unknown commands sa
   const h = await run(["help"], env);
   for (const c of ["vyre up", "vyre status", "vyre call"]) assert.ok(h.out.includes(c), `help is missing ${c}`);
   const u = await run(["frobnicate"], env);
-  assert.equal(u.code, 1);
+  assert.equal(u.code, 2, "an unknown command is a usage error");
   assert.match(u.out, /not a command/);
 });
 
@@ -54,7 +54,7 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
   assert.match(list.out, /1 Never use em dashes\. \[block\]/);
   assert.match(list.out, /checks an em dash .* applied 0 · caught 0 · broken 0/);
   assert.match((await run(["learn", "level", "1", "remind"], env)).out, /\[remind\]/);
-  assert.equal((await run(["learn", "level", "1", "loud"], env)).code, 1);
+  assert.equal((await run(["learn", "level", "1", "loud"], env)).code, 2);
   assert.match((await run(["learn", "retire", "1"], env)).out, /retired lesson 1/);
   assert.match((await run(["learn"], env)).out, /no lessons yet/);
   const bad = await run(["learn", "accept", "9"], env);

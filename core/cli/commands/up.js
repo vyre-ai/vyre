@@ -15,6 +15,7 @@ import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, signal, beacon } from "../style.js";
+import { json, emit, failTool, usage } from "../kit.js";
 import * as config from "../../config/index.js";
 import * as system from "../../names/system.js";
 import { backup, restore } from "../../names/backup.js";
@@ -375,7 +376,7 @@ export default [
     name: "uninstall", order: 95, hidden: true, usage: "vyre uninstall --system [--purge] [--dry-run]", summary: "remove the systemd units (the data stays unless --purge)",
     async run(args) {
       const { flags } = parse(args);
-      if (!flags.system) { out("  vyre uninstall --system [--purge] [--dry-run]"); return 1; }
+      if (!flags.system) return usage("vyre uninstall needs --system", "vyre uninstall --system [--purge] [--dry-run]");
       const dryRun = Boolean(flags["dry-run"]);
       if (!dryRun && (typeof process.getuid !== "function" || process.getuid() !== 0)) { out(beacon("  run it with sudo, or add --dry-run")); return 1; }
       const user = String(flags.user || process.env.SUDO_USER || os.userInfo().username);
@@ -391,9 +392,11 @@ export default [
   },
   {
     name: "backup", order: 80, usage: "vyre backup [file]", summary: "copy config, store, vault, watchers and certificates into one file",
-    async run([file]) {
+    async run(args) {
+      const [file] = args.filter(a => a !== "--json");
       const target = path.resolve(file || `vyre-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
       const r = await backup({ root: config.home(), file: target });
+      if (json()) return emit(r);
       out(`  ${signal(r.file)} ${dim(`· ${Math.round(r.bytes / 1024)} KB · ${r.included.join(", ")}`)}`);
       out(dim("  it holds the sealed vault: keep it somewhere only you can read"));
       return 0;
@@ -403,7 +406,7 @@ export default [
     name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force]", summary: "put a backup back (vyred must be stopped)",
     async run(args) {
       const { flags, rest } = parse(args);
-      if (!rest[0]) { out("  vyre restore <file> [--force]"); return 1; }
+      if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
       try { await restore({ root: config.home(), file: path.resolve(rest[0]), force: Boolean(flags.force) }); }
       catch (e) { out(beacon("  " + /** @type {Error} */ (e).message)); return 1; }
       out("  restored · vyre up to start");
@@ -411,12 +414,17 @@ export default [
     },
   },
   {
-    name: "name", order: 30, usage: "vyre name [check <n>|claim <n>|ts.net|release]", summary: "this box's address: <you>.vyre.run",
-    async run([action, name]) {
-      const tool = { check: "names.check", claim: "names.claim", "ts.net": "names.fallback", release: "names.release" }[action || ""] || "names.status";
+    name: "name", order: 30, usage: "vyre name [check <n>|claim <n>|ts.net|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    async run(args) {
+      const [action, name] = args.filter(a => a !== "--json");
+      const TOOLS = { check: "names.check", claim: "names.claim", "ts.net": "names.fallback", release: "names.release" };
+      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [check <n>|claim <n>|ts.net|release]");
+      if ((action === "check" || action === "claim") && !name) return usage(`vyre name ${action} needs a name`, `vyre name ${action} alex`);
+      const tool = TOOLS[/** @type {keyof typeof TOOLS} */ (action || "")] || "names.status";
       const r = await call(tool, name ? { name } : {});
-      if (r.error) { out(beacon(`  ${r.error.code}: `) + r.error.message); return 1; }
+      if (r.error) return failTool(r.error);
       const d = r.data;
+      if (json()) return emit(d);
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));
       else out(`  ${d.address ? signal(d.address) : dim("no address")} ${dim(`· ${d.phase}${d.owner ? " · owner " + d.owner : ""}${d.why ? " · " + d.why : ""}`)}`);
       return 0;
@@ -427,7 +435,7 @@ export default [
     async run([login]) {
       if (!login) { const s = await call("names.status"); out(`  ${s.data ? s.data.owner || "no owner yet" : s.error.message}`); return 0; }
       const r = await call("names.owner", { login });
-      if (r.error) { out(beacon("  " + r.error.message)); return 1; }
+      if (r.error) return failTool(r.error);
       out(`  owner: ${signal(login)}`);
       return 0;
     },

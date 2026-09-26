@@ -21,6 +21,7 @@ import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, bold, signal, recall, beacon } from "../style.js";
 import { untilde } from "../../config/index.js";
+import { fail as kitFail, failTool, json, emit, usage, parse as kitParse } from "../kit.js";
 
 // ------------------------------------------------------------ small helpers
 
@@ -33,27 +34,18 @@ const ago = t => {
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 /** A path keeps its end, where the folder's own name is. */
 const tail = (s, n) => { const t = String(s || ""); return t.length > n ? "…" + t.slice(t.length - n + 1) : t; };
-const fail = msg => { out(beacon("  " + msg)); return 1; };
+/** A failure with what to do next. */
+const fail = (msg, next) => kitFail(msg, { next });
 
 /**
  * Flags: `--home x`, `--thread a --thread b`, `--no-pick`. Everything else is positional.
+ * `values` names the flags that take one value; given, any other flag is a usage error.
+ * Kept here, over kit.parse, because other command files import it from this one.
  * @param {string[]} args
- * @param {{ multi?: string[], bool?: string[] }} [spec]
+ * @param {{ multi?: string[], bool?: string[], values?: string[], cmd?: string }} [spec]
  */
-export function parse(args, { multi = [], bool = [] } = {}) {
-  /** @type {Record<string, any>} */
-  const flags = {};
-  const pos = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (!a.startsWith("--")) { pos.push(a); continue; }
-    const [k, inline] = a.slice(2).split(/=(.*)/s);
-    if (bool.includes(k)) { flags[k] = true; continue; }
-    const v = inline !== undefined ? inline : args[++i];
-    if (v === undefined) throw new Error(`--${k} needs a value`);
-    if (multi.includes(k)) (flags[k] ||= []).push(v); else flags[k] = v;
-  }
-  return { flags, pos };
+export function parse(args, spec = {}) {
+  return kitParse(args, spec);
 }
 
 /** "Dana Reyes <dana@harlowlegal.com>", or a bare name or address. */
@@ -81,16 +73,17 @@ async function prompter() {
   return { ask: async q => { const a = (lines[i++] ?? "").trim(); out(q + a); return a; }, close: () => {} };
 }
 
+/** vyred, started when it is not running. False after saying why not (the caller exits 5). */
 export async function up() {
   const r = await ensureUp();
-  if (!r.ok) { out(beacon("  vyred did not start") + dim(r.log ? ` · see ${r.log}` : "")); return false; }
+  if (!r.ok) { kitFail("vyred did not start", { code: "unreachable", exit: 5, next: r.log ? `its output is in ${r.log}` : "vyre up" }); return false; }
   return true;
 }
 
 /** A tool call that prints its error and returns null on failure. */
 export async function tool(name, input) {
   const r = await call(name, input);
-  if (r.error) { out(beacon(`  ${r.error.message}`)); return null; }
+  if (r.error) { failTool(r.error); return null; }
   return r.data;
 }
 
@@ -169,9 +162,10 @@ async function findThread(ref, projectSlug) {
 
 async function openProject(ref) {
   const [ctx, threads] = await Promise.all([call("projects.context", { project: ref }), call("projects.threads", { project: ref })]);
-  if (threads.error) return fail(threads.error.message);
+  if (threads.error) return failTool(threads.error, "vyre projects lists them");
   const list = await call("projects.list", {});
   const p = list.data.projects.find(x => x.slug === ctx.data.project);
+  if (json()) return emit({ project: p, brief: ctx.data.text, threads: threads.data });
   showProject(p, threads.data, ctx.data.text);
   return 0;
 }
@@ -199,12 +193,14 @@ export function claude(args, cwd, brief, project) {
   // VYRE_PROJECT tells the Harness hook which project was chosen, for a thread picked into several.
   const env = plugin && project ? { ...process.env, VYRE_PROJECT: project } : process.env;
   const r = spawnSync("claude", full, { cwd, stdio: "inherit", env });
-  if (r.error) return fail(/** @type {any} */ (r.error).code === "ENOENT" ? "Claude Code is not installed: no claude on PATH" : r.error.message);
+  if (r.error) return /** @type {any} */ (r.error).code === "ENOENT"
+    ? fail("Claude Code is not installed: no claude on PATH", "npm install -g @anthropic-ai/claude-code, then try again")
+    : fail(r.error.message);
   return r.status ?? 1;
 }
 
 export async function resume(t, { project, name } = {}) {
-  if (!t.cwd || !fs.existsSync(t.cwd)) return fail(`${t.label} ran in ${tilde(t.cwd) || "an unknown folder"}, which is gone; Claude Code can only resume it there`);
+  if (!t.cwd || !fs.existsSync(t.cwd)) return fail(`${t.label} ran in ${tilde(t.cwd) || "an unknown folder"}, which is gone; Claude Code can only resume it there`, "vyre start begins a new thread instead");
   const ctx = await call("projects.context", { ...(project ? { project } : {}), cwd: t.cwd, session: t.id });
   const brief = ctx.data?.text || "";
   const args = ["--resume", t.id];
@@ -233,8 +229,8 @@ async function pickLoop(ask, chosen) {
 }
 
 async function newProject(args) {
-  const { flags, pos } = parse(args, { multi: ["thread", "workspace", "person"], bool: ["no-pick"] });
-  if (!(await up())) return 1;
+  const { flags, pos } = parse(args, { multi: ["thread", "workspace", "person"], bool: ["no-pick"], values: ["name", "home", "org"], cmd: "new" });
+  if (!(await up())) return 5;
   const needsPrompt = !(flags.name || pos.length) || (!flags.thread && !flags["no-pick"]);
   const pr = needsPrompt ? await prompter() : null;
   try {
@@ -247,7 +243,7 @@ async function newProject(args) {
     const chosen = new Map();
     for (const ref of flags.thread || []) {
       const f = await findThread(ref);
-      if (f.error) return fail(f.error);
+      if (f.error) return fail(f.error, "vyre threads <words> finds one");
       chosen.set(f.thread.id, f.thread.label);
     }
     if (pr && !flags.thread && !flags["no-pick"]) await pickLoop(pr.ask, chosen);
@@ -275,11 +271,13 @@ async function newProject(args) {
 
 export default [
   {
-    name: "projects", order: 20, summary: "every project",
-    async run() {
-      if (!(await up())) return 1;
+    name: "projects", order: 20, usage: "vyre projects [--json]", summary: "every project",
+    async run(args) {
+      parse(args, { values: [], cmd: "projects" });
+      if (!(await up())) return 5;
       const list = await tool("projects.list", {});
       if (!list) return 1;
+      if (json()) return emit(list);
       showList(list);
       return 0;
     },
@@ -289,26 +287,29 @@ export default [
     run: newProject,
   },
   {
-    name: "open", order: 22, usage: "vyre open <project>", summary: "a project: what its threads are told, and its threads",
+    name: "open", order: 22, usage: "vyre open <project> [--json]", summary: "a project: what its threads are told, and its threads",
     async run(args) {
-      if (!args.length) return fail("vyre open <project>");
-      if (!(await up())) return 1;
-      return openProject(args.join(" "));
+      const { pos } = parse(args, { values: [], cmd: "open" });
+      if (!pos.length) return usage("vyre open needs a project", "vyre projects lists them");
+      if (!(await up())) return 5;
+      return openProject(pos.join(" "));
     },
   },
   {
-    name: "threads", order: 23, usage: "vyre threads [search]", summary: "every session on this machine, searched by what was said (--project, --all)",
+    name: "threads", order: 23, usage: "vyre threads [search] [--project p] [--all] [--json]", summary: "every session on this machine, searched by what was said",
     async run(args) {
-      const { flags, pos } = parse(args, { bool: ["all"] });
-      if (!(await up())) return 1;
+      const { flags, pos } = parse(args, { bool: ["all"], values: ["project"], cmd: "threads" });
+      if (!(await up())) return 5;
       if (flags.project) {
         const ts = await tool("projects.threads", { project: flags.project });
         if (!ts) return 1;
+        if (json()) return emit(ts);
         ts.forEach((t, i) => threadRow(t, i, { extra: dim("  " + t.how.join("+")) }));
         return 0;
       }
       const c = await tool("projects.catalog", { q: pos.join(" "), limit: flags.all ? 100000 : 30 });
       if (!c) return 1;
+      if (json()) return emit(c);
       if (c.note) out(dim("  " + c.note));
       for (const r of c.sessions) {
         out(`  ${dim(r.id.slice(0, 8))}  ${cut(r.label, 44).padEnd(44)} ${dim(((r.said ? r.said + "×" : "").padStart(4)) + " " + ago(r.last).padStart(4) + "  " + tail(tilde(r.cwd), 28))}${r.projects.length ? dim("  [" + r.projects.join(", ") + "]") : ""}`);
@@ -320,11 +321,12 @@ export default [
   {
     name: "resume", order: 24, usage: "vyre resume <thread>", summary: "open a thread in Claude Code where it ran, with its project's brief (--project, --name)",
     async run(args) {
-      const { flags, pos } = parse(args);
-      if (!(await up())) return 1;
+      const { flags, pos } = parse(args, { values: ["project", "name"], cmd: "resume" });
+      if (!pos.length) return usage("vyre resume needs a thread", "vyre threads lists them · vyre resume <number, name or id>");
+      if (!(await up())) return 5;
       const here = await hereProject();
       const f = await findThread(pos.join(" "), flags.project || here?.slug);
-      if (f.error) return fail(f.error);
+      if (f.error) return fail(f.error, "vyre threads <words> finds one");
       const t = f.thread;
       // The folder's project wins when the thread is in it; otherwise the thread's own.
       const inHere = here && (t.projects ? t.projects.includes(here.slug) : true);
@@ -336,13 +338,15 @@ export default [
     run: args => startThread(args),
   },
   {
-    name: "context", order: 26, usage: "vyre context [project]", summary: "what a new thread in a project is told",
+    name: "context", order: 26, usage: "vyre context [project] [--json]", summary: "what a new thread in a project is told",
     async run(args) {
-      if (!(await up())) return 1;
-      const input = args.length ? { project: args.join(" ") } : { cwd: process.cwd() };
+      const { pos } = parse(args, { values: [], cmd: "context" });
+      if (!(await up())) return 5;
+      const input = pos.length ? { project: pos.join(" ") } : { cwd: process.cwd() };
       const r = await tool("projects.context", input);
       if (!r) return 1;
-      if (!r.project) return fail("this folder is in no project · vyre context <project>");
+      if (json()) { emit(r); return r.project ? 0 : 1; }
+      if (!r.project) return fail("this folder is in no project", "vyre context <project> · vyre projects lists them");
       out(r.text);
       return 0;
     },
@@ -358,17 +362,19 @@ export default [
 ];
 
 async function pickCmd(args, name) {
-  const [project, ...refs] = args;
-  if (!project || !refs.length) return fail(`vyre ${name.endsWith("add-threads") ? "pick" : "unpick"} <project> <thread>...`);
-  if (!(await up())) return 1;
+  const verb = name.endsWith("add-threads") ? "pick" : "unpick";
+  const [project, ...refs] = parse(args, { values: [], cmd: verb }).pos;
+  if (!project || !refs.length) return usage(`vyre ${verb} <project> <thread>...`, "vyre projects and vyre threads list what to give it");
+  if (!(await up())) return 5;
   const ids = [];
   for (const ref of refs) {
     const f = await findThread(ref, project);
-    if (f.error) return fail(f.error);
+    if (f.error) return fail(f.error, "vyre threads <words> finds one");
     ids.push(f.thread.id);
   }
   const r = await tool(name, { project, threads: ids });
   if (!r) return 1;
+  if (json()) return emit(r);
   if (r.added) out(`  ${r.added.length} picked into ${r.project}${r.added.length < ids.length ? dim(" · the rest were already there") : ""}`);
   if (r.removed) out(`  ${r.removed.length} unpicked from ${r.project}`);
   if (r.stillByFolder?.length) out(dim(`  ${r.stillByFolder.length} still in it: they ran in its folders`));
@@ -377,10 +383,10 @@ async function pickCmd(args, name) {
 
 /** A new thread: Claude Code in the project's home, named when a name is given, with the brief. */
 export async function startThread(args) {
-  const { flags, pos } = parse(args);
-  if (!(await up())) return 1;
+  const { flags, pos } = parse(args, { values: ["project", "name"], cmd: "start" });
+  if (!(await up())) return 5;
   const ref = flags.project || (await hereProject())?.slug;
-  if (!ref) return fail("this folder is in no project · vyre start --project <project> [name]");
+  if (!ref) return fail("this folder is in no project", "vyre start --project <project> [name] · vyre projects lists them");
   const ctx = await tool("projects.context", { project: ref });
   if (!ctx) return 1;
   const list = await call("projects.list", {});
