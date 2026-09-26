@@ -35,27 +35,36 @@ Claude Code itself:
 ### Install and onboarding
 
 Installed like a self-hosted server app (n8n, a media server): one line from the landing page,
-then a visual onboarding in the browser. The terminal does as little as possible.
+then a visual onboarding in the browser. The terminal does as little as possible. The whole
+journey, and why, is ADR 0008; the one page for users is `docs/JOURNEY.md`.
 
 ```
 npm install -g vyre
 vyre up
 ```
 
-`vyre up` starts vyred and prints one link: `http://127.0.0.1:<port>/onboard?t=<one-time token>`
-(on a headless server, the same link over an SSH tunnel, printed with the exact `ssh -L` line).
-The onboarding is the Deck's first screen, and walks through, one step a screen:
+On a Mac, `vyre up` finds the box on the tailnet, or asks where Vyre should run. The recommended
+answer is a server, which is `vyre box add user@host`: it installs Docker and the box over SSH,
+opens the tunnel and the browser itself, and waits, so the person never opens a shell on the
+server. On a server, `curl -fsSL https://vyre.run/install.sh | sh` does the same from the inside.
+Either way the box's `vyre up` makes one link: `http://127.0.0.1:<port>/onboard?t=<one-time
+token>` (on a headless server, reached over an SSH tunnel; the `ssh -L` line is printed). The
+onboarding is the Deck's first screen, and walks through, one step a screen:
 
-1. **You.** Your name, which becomes `<you>.vyre.run`, checked for availability.
+1. **You.** Your name, and your assistant's name.
 2. **Claude Code.** Detects `claude`; signs in with your subscription (`claude setup-token`) or
    an API key, stored in the Vault. Nothing is typed into a terminal.
 3. **Tailscale.** Detects it, or shows the one install command for this OS; then "Connect" opens
    Tailscale's own sign-in and waits until this machine is on your tailnet.
-4. **Your address.** Reserves the name, points it at the tailnet address, gets the certificate,
-   then switches the page to `https://<you>.vyre.run`. From here the loopback link stops working.
+4. **Your address.** Gets the certificate for `https://vyre.<tailnet>.ts.net` (asking the person
+   to turn on HTTPS for their tailnet the first time), then switches the page to it. Your own
+   domain is an option; `<you>.vyre.run` waits for the name directory (ADR 0008 section 4).
 5. **Your history.** Finds existing Claude Code sessions, indexes them in the background with a
    progress bar, and lets you make your first projects by picking sessions from the catalogue.
-6. **Your devices.** A QR code for the phone, and the Mac download for the Capsule.
+6. **Your devices.** QR codes for the phone (Tailscale, then the address), and the Mac.
+
+Finishing creates the assistant, which greets you on the last screen. The Mac's terminal ends
+with the same words: "Vyre is ready." and the address.
 
 Every step can be skipped and finished later from Settings; each is also a `vyre` command for
 people who prefer the terminal. The loopback onboarding link is single-use, expires after an
