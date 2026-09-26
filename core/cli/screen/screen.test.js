@@ -146,10 +146,12 @@ test("model: typing filters everything, sessions of closed projects included; q 
 });
 
 test("model: a and d answer the selected ask, a and r the selected draft; Enter asks first; ? shows help", () => {
-  const st0 = model.initial(data());
+  // One data(): it stamps Date.now(), which may tick between two calls.
+  const d = data();
+  const st0 = model.initial(d);
   const onAsk = press(st0, "home").st;
   assert.equal(onAsk.cursor, "ask:ask-1");
-  assert.deepEqual(press(onAsk, "a").effect, { type: "answer", ask: data().asks[0], decision: "allow" });
+  assert.deepEqual(press(onAsk, "a").effect, { type: "answer", ask: d.asks[0], decision: "allow" });
   assert.equal(press(onAsk, "d").effect?.decision, "deny");
   const line = press(onAsk, "enter").st;
   assert.equal(line.action, "ask");
