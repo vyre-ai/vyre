@@ -13,7 +13,7 @@ const SOURCE = path.join(path.dirname(fileURLToPath(import.meta.url)), "touchid.
 const SWIFTC = "/usr/bin/swiftc";
 
 /** @typedef {{ path: string, hash: string }} Helper */
-/** @typedef {{ dir?: string, swiftc?: string, platform?: string }} BuildOptions */
+/** @typedef {{ dir?: string, swiftc?: string, platform?: string, source?: string }} BuildOptions */
 
 /** @type {Required<Omit<BuildOptions, "dir">> & { dir?: string }} */
 let config = { swiftc: SWIFTC, platform: process.platform };
@@ -53,10 +53,11 @@ async function compile(c) {
   if (c.platform !== "darwin") throw new Error("Touch ID needs macOS");
   if (!fs.existsSync(c.swiftc)) throw new Error(`${c.swiftc} not found`);
   const dir = privateDir(c.dir);
-  const source = fs.readFileSync(SOURCE);
-  const target = path.join(dir, `vyre-touchid-${sha256(source).slice(0, 16)}`);
+  const file = c.source || SOURCE;
+  const source = fs.readFileSync(file);
+  const target = path.join(dir, `vyre-${path.basename(file, ".swift")}-${sha256(source).slice(0, 16)}`);
   const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
-  const r = await run(c.swiftc, ["-O", "-o", tmp, SOURCE], 300_000);
+  const r = await run(c.swiftc, ["-O", "-o", tmp, file], 300_000);
   if (r.code !== 0) { fs.rmSync(tmp, { force: true }); throw new Error(`swiftc failed (${r.code})`); }
   fs.renameSync(tmp, target);
   const st = fs.lstatSync(target);
@@ -138,4 +139,30 @@ export async function authenticate(reason, { timeout = 60 } = {}) {
   } catch (e) {
     return { ok: false, reason: "unavailable: " + /** @type {Error} */ (e).message };
   }
+}
+
+/**
+ * Another Swift helper under the same rules: built privately on first use, hash-checked before
+ * every run, rebuilt if the binary changed. For modules that need their own (the vault's unlock).
+ * @param {string} source absolute path of the .swift file
+ * @param {Omit<BuildOptions, "source">} [opts]
+ * @returns {{ run(args: string[], ms: number): Promise<{ changed: boolean, code: number | null, killed: boolean, stdout: string }> }}
+ */
+export function swiftHelper(source, { dir, swiftc = SWIFTC, platform = process.platform } = {}) {
+  const c = { dir, swiftc, platform, source };
+  /** @type {Promise<Helper> | null} */
+  let built = null;
+  const ready = () => {
+    if (!built) { built = compile(c); built.catch(() => { built = null; }); }
+    return built;
+  };
+  return {
+    async run(args, ms) {
+      const h = await ready();
+      let now = "";
+      try { now = sha256(fs.readFileSync(h.path)); } catch {}
+      if (now !== h.hash) { built = null; return { changed: true, code: null, killed: false, stdout: "" }; }
+      return { changed: false, ...(await run(h.path, args, ms)) };
+    },
+  };
 }

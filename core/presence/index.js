@@ -19,9 +19,17 @@ import { migrate } from "../store/index.js";
  * list with `presence: true` on a tool, never take away from it (principle 7).
  */
 export const HUMAN_ONLY = new Set([
+  // Floor rules 1 and 2: nothing goes out, and no permission is given, unseen.
   "gate.approve", "gate.revise", "gate.reject", "threads.answer",
-  "vault.put", "vault.approve", "vault.unlock", "vault.offboard",
-  "learn.accept", "learn.retire",
+  // Floor rule 8: every way a value, or the power to release one, leaves the vault.
+  "vault.put", "vault.approve", "vault.unlock", "vault.offboard", "vault.inject", "vault.totp",
+  "vault.backup", "vault.restore", "vault.delete", "vault.device.code", "vault.device.unlock",
+  "vault.unlock-passphrase", "vault.reveal", "vault.copy", "vault.resolve", "vault.render",
+  "vault.session.open", "vault.export", "vault.kit",
+  // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
+  "learn.accept", "learn.retire", "learn.relax", "learn.skill_install",
+  // A person's hands on an agent's computer, and a new machine joined to this one.
+  "computers.takeover", "computers.giveback", "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code",
 ]);
 
@@ -130,11 +138,12 @@ function writeTty(file, text) {
 export class Presence {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events?: any, log?: (m: string) => void, platform?: string,
-   *           who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
+   *           role?: string, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
    *           touchid?: any, webauthn?: any, now?: () => number }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, who: whoFn, writeTty: write, statTty, touchid, webauthn, now }) {
+  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", who: whoFn, writeTty: write, statTty, touchid, webauthn, now }) {
     this.db = db;
+    this.role = role;
     this.events = events;
     this.log = log;
     this.platform = platform;
@@ -192,7 +201,7 @@ export class Presence {
       const within = new Promise(r => setTimeout(r, 3000, false).unref());
       try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
     }
-    out.push("tty");
+    if (this.ttyAllowed()) out.push("tty");
     const kinds = new Set(this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all().map(r => String(r.kind)));
     if (kinds.has("capsule")) out.push("capsule");
     if (kinds.has("passkey")) out.push("passkey");
@@ -210,6 +219,18 @@ export class Presence {
    * WebAuthn options. Returns { challenge, ... } or { error: { code, message } }.
    * @param {{ tool: string, input: any, method: string, tty?: string, def?: any }} a
    */
+  /**
+   * A code on a login terminal proves a person only where a model cannot open a login terminal
+   * of its own. On the box it can: the Mac it runs on usually holds SSH keys to the box. So on the
+   * box a terminal proves presence only to enroll the first passkey; after that, passkeys do.
+   * @param {string} [tool]
+   */
+  ttyAllowed(tool) {
+    if (this.role !== "box") return true;
+    const any = this.db.prepare("SELECT 1 FROM presence_keys WHERE kind = 'passkey' LIMIT 1").get();
+    return !any && (tool === undefined || tool === "presence.enroll" || tool === "presence.code");
+  }
+
   async challenge({ tool, input, method, tty, def }) {
     this.prune();
     if (this.challenges.size >= MAX_OPEN) return { error: { code: "denied", message: "too many presence challenges are open; wait for them to expire" } };
@@ -217,6 +238,7 @@ export class Presence {
     const id = b64url(16);
     const expires = this.now() + CHALLENGE_TTL;
     if (method === "tty") {
+      if (!this.ttyAllowed(tool)) return { error: { code: "denied", message: "on the box, prove it with a passkey from the Deck" } };
       if (typeof tty !== "string" || !TTY.test(tty)) return { error: { code: "bad_input", message: "tty must be a terminal device such as /dev/ttys003 or /dev/pts/3" } };
       let st;
       try { st = this.statTty(tty); } catch { return { error: { code: "denied", message: `${tty} is not a terminal` } }; }
@@ -259,7 +281,7 @@ export class Presence {
     if (!method) return refuse(`${tool} needs a person to prove they are here`);
     this.prune();
     const hash = inputHash(input);
-    const proved = () => { this.emit("presence.proved", { tool, method, caller }); return { ok: /** @type {true} */ (true), method }; };
+    const proved = (keyId = null) => { this.emit("presence.proved", { tool, method, caller }); return { ok: /** @type {true} */ (true), method, keyId }; };
 
     if (method === "touchid") {
       if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
@@ -281,6 +303,7 @@ export class Presence {
     }
 
     if (method === "tty") {
+      if (!this.ttyAllowed(tool)) return refuse("on the box, prove it with a passkey from the Deck");
       const c = this.challenges.get(String(proof.id || ""));
       if (!c || c.method !== "tty") return refuse("no such terminal challenge, or it expired");
       if (c.tool !== tool || c.hash !== hash) return refuse("the terminal challenge was for a different call");
@@ -308,7 +331,7 @@ export class Presence {
       if (!good) return refuse("the Capsule signature does not check out");
       this.nonces.set(nonce, this.now() + 2 * CAPSULE_SKEW + 1000);
       this.db.prepare("UPDATE presence_keys SET last_used = ? WHERE id = ?").run(this.now(), row.id);
-      return proved();
+      return proved(row.id);
     }
 
     if (method === "passkey") {
@@ -331,7 +354,7 @@ export class Presence {
       const count = Number(r.signCount || 0);
       if (count !== 0 && count <= Number(row.sign_count || 0)) return refuse("the passkey's signature counter went backwards");
       this.db.prepare("UPDATE presence_keys SET sign_count = ?, last_used = ? WHERE id = ?").run(count, this.now(), row.id);
-      return proved();
+      return proved(row.id);
     }
 
     if (method === "code") {

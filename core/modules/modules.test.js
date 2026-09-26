@@ -260,3 +260,18 @@ test("modules: ctx.remote says no_link without a link, and a listener's peer rea
   assert.equal(r.data.remote.error.code, "no_link");
   assert.ok(reg.routes.has("/v1/notes/feed"));
 });
+
+test("modules: a tool learns how presence was proved, and never sees the proof itself", async t => {
+  const presence = { required: () => true, verify: async () => ({ ok: true, method: "capsule", keyId: "k1" }), challenge: async () => ({}) };
+  const home = tempHome(t);
+  writeModule(path.join(home, "mods"), "notes", good, `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async (input, meta) => ({ meta }) });
+    return {};
+  } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: {}, log: () => {}, presence });
+  await reg.start(discover([path.join(home, "mods")]), { role: "local" });
+  const r = await reg.call("notes.add", {}, "cli", { proof: { method: "capsule", sig: "secret" }, thread: "t1" });
+  assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
+});

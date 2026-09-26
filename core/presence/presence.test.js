@@ -40,7 +40,7 @@ const APPROVE = { tool: "gate.approve", input: { id: "a1" } };
 test("presence: the floor's list holds every human-only tool", () => {
   for (const t of ["gate.approve", "gate.revise", "gate.reject", "threads.answer", "vault.put", "vault.approve", "vault.unlock",
     "vault.offboard", "learn.accept", "learn.retire", "presence.enroll", "presence.remove", "presence.code"]) assert.ok(HUMAN_ONLY.has(t), t);
-  assert.equal(HUMAN_ONLY.size, 13);
+  assert.ok(HUMAN_ONLY.size >= 13);
 });
 
 test("presence: canonical JSON sorts keys at every depth, and the hash follows it", () => {
@@ -83,7 +83,7 @@ test("presence: tty writes the summary and a code to a login terminal, and the c
   const code = codeFrom(written[0].text);
   assert.match(code, /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}$/);
   const ok = await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: c.challenge, code: code.toLowerCase() } });
-  assert.deepEqual(ok, { ok: true, method: "tty" });
+  assert.deepEqual(ok, { ok: true, method: "tty", keyId: null });
   const again = await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: c.challenge, code } });
   assert.equal(again.ok, false, "a tty proof was used twice");
   const ev = events.since(0).filter(e => e.source === "presence");
@@ -143,7 +143,7 @@ test("presence: a Capsule signature proves one call, within 60 seconds, with a f
   const { p, db, now } = setup(t);
   const k = capsuleKey(p);
   const proof = k.sign(APPROVE.tool, APPROVE.input, now());
-  assert.deepEqual(await p.verify({ ...APPROVE, caller: "capsule", proof }), { ok: true, method: "capsule" });
+  assert.deepEqual(await p.verify({ ...APPROVE, caller: "capsule", proof }), { ok: true, method: "capsule", keyId: k.id });
   assert.ok(db.prepare("SELECT last_used FROM presence_keys WHERE id = ?").get(k.id).last_used);
   assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof })).message, /nonce was already used/);
   assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof: k.sign(APPROVE.tool, APPROVE.input, now() - 61_000) })).message, /too old/);
@@ -182,7 +182,7 @@ test("presence: a passkey assertion proves one call, over vyred's challenge, and
   assert.equal(c.webauthn.userVerification, "required");
   assert.deepEqual(c.webauthn.allowCredentials, [{ type: "public-key", id: "cred-0001" }]);
   const proof = { method: "passkey", id: c.challenge, cred: "cred-0001", ad: "AA", cd: "BB", sig: "good" };
-  assert.deepEqual(await p.verify({ ...APPROVE, caller: "deck", proof }), { ok: true, method: "passkey" });
+  assert.deepEqual(await p.verify({ ...APPROVE, caller: "deck", proof }), { ok: true, method: "passkey", keyId: "cred-0001" });
   assert.equal(seen[0].challenge, c.webauthn.challenge);
   assert.equal(seen[0].publicKey, ec);
   assert.equal(seen[0].alg, -7);
@@ -212,7 +212,7 @@ test("presence: Touch ID shows the summary, one dialog at a time, and cools down
   const second = await p.verify({ ...APPROVE, caller: "cli", proof: { method: "touchid" } });
   assert.match(second.message, /already open/);
   release();
-  assert.deepEqual(await first, { ok: true, method: "touchid" });
+  assert.deepEqual(await first, { ok: true, method: "touchid", keyId: null });
   assert.deepEqual(reasons, ["Vyre: Send email to a@example.com"]);
 
   answer = { ok: false, reason: "cancelled" };
@@ -247,7 +247,7 @@ test("presence: a one-time code enrolls and does nothing else, once, for 10 minu
   assert.ok(expires > 0);
   assert.equal((await p.verify({ ...APPROVE, caller: "deck", proof: { method: "code", code } })).ok, false, "a code approved a gate item");
   assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "deck", proof: { method: "code", code: "WRONG234" } })).ok, false);
-  assert.deepEqual(await p.verify({ tool: "presence.enroll", input: {}, caller: "deck", proof: { method: "code", code } }), { ok: true, method: "code" });
+  assert.deepEqual(await p.verify({ tool: "presence.enroll", input: {}, caller: "deck", proof: { method: "code", code } }), { ok: true, method: "code", keyId: null });
   assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "deck", proof: { method: "code", code } })).ok, false, "a code was used twice");
   const late = p.mintCode();
   tick(10 * 60_000 + 1);
@@ -277,4 +277,16 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   assert.deepEqual(await reg.call("chat.press", { id: "a1" }, "cli"), { data: { approved: "a1" } });
   assert.ok(reg.listTools().find(x => x.name === "gate.approve").presence);
   assert.equal(reg.listTools().find(x => x.name === "chat.press").presence, undefined);
+});
+
+test("presence: on the box a terminal proves presence only to enroll the first passkey", async t => {
+  const { p } = setup(t);
+  p.role = "box";
+  assert.ok((await p.methods()).includes("tty"), "before any passkey, the terminal bootstraps one");
+  assert.equal((await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/pts/3" })).error.code, "denied", "never for an approval");
+  assert.equal((await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: "x", code: "y" } })).ok, false);
+  const ec = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  p.enroll({ kind: "passkey", name: "Phone", public_key: ec, alg: -7, rp_id: "box.example.com", credential_id: "cred-0002" });
+  assert.ok(!(await p.methods()).includes("tty"), "after one, passkeys only");
+  assert.equal((await p.challenge({ tool: "presence.enroll", input: {}, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
 });

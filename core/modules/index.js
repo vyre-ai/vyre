@@ -304,6 +304,8 @@ export class Registry {
     if (presence && callerKind(caller) !== "module" && presence.required(tool, def)) {
       const v = await presence.verify({ tool, input, caller, proof, def });
       if (!v.ok) return { error: { code: "presence_required", message: v.message, methods: v.methods } };
+      // The tool learns how the person proved it (and with which enrolled key), never the proof.
+      meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
     try { return { data: await def.run(input, { ...meta, caller }) }; }
