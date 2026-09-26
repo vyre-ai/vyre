@@ -42,6 +42,9 @@ Files: see CHANGELOG; the shapes were sent to capsule.
 
 ## Known limits
 
+- Approving a pairing needs a passkey from the Deck (security, ADR 0004). A code typed at the
+  box's terminal only enrolls the first passkey, because a model on the Mac can ssh to the box.
+
 - Any of the owner's devices can call box tools directly, as ADR 0002 decides. On the box,
   pairing gates only the link's own tools. What it adds is consent, a pin on the Mac and
   revocation.

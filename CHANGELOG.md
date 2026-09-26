@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Pairing needs the owner's presence
+
+- Security's review found that the box's terminal is not proof of presence. Claude's processes
+  share the box's socket. Worse, a model on the Mac can read the pairing code the Mac shows and
+  run `ssh box vyre link approve <code>`. So `link.pair.approve` is on the floor's presence list
+  (ADR 0004): approving takes a passkey from the Deck, whoever calls. The link's own checks stay
+  as a second line: never approved from the requesting node, and the key goes only to that node.
+  The approval prompt names the Mac that asked ("Pair the Mac \"work laptop\" (node) with this
+  box") and never shows the code. Refusals for missing presence do not use up the request.
+- `link.find` reads a peer's certificate on a connection that skips verification. A test now
+  checks that nothing is ever written on that connection.
+
 #### Files: in step with Glass
 
 - The files guard also refuses a browser's `Cookies`, `Login Data` and `Web Data` files and any

@@ -79,6 +79,15 @@ export function boxSide(ctx, { now = Date.now } = {}) {
   ctx.tool("link.pair.approve", {
     description: "Approve a Mac's pairing with the code shown on the Mac, e.g. `vyre link approve 123-456` on the box.",
     input: { type: "object", properties: { code: { type: "string" } }, required: ["code"] },
+    // Approving is on the floor's presence list: the owner proves they are there (a passkey from
+    // the Deck), whoever the caller is, since a model on the Mac can read the code and ssh here.
+    // The prompt names the Mac asking, never the code. Looking it up is not a guess: it never
+    // counts toward the wrong-code limit.
+    presence: { summary: ({ code }) => {
+      const want = mac(cleanCode(code));
+      const p = [...pending.values()].find(x => !x.key && !x.denied && x.expires >= now() && crypto.timingSafeEqual(x.code, want));
+      return p ? `Pair the Mac "${p.name}"${p.peer && p.peer.node ? ` (${p.peer.node})` : ""} with this box` : "Pair a new Mac with this box";
+    } },
     run: async ({ code }, meta) => {
       sweep();
       const want = mac(cleanCode(code));
