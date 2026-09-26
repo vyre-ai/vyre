@@ -1,5 +1,5 @@
 // @ts-check
-// ending — the block the Mac's terminal ends with (ADR 0008 section 6). `vyre box add` prints it
+// ending: the block the Mac's terminal ends with (ADR 0008 section 6). `vyre box add` prints it
 // when onboarding finishes and `vyre up` prints it every time after, so "is it done?" always has
 // the same answer in the same words.
 

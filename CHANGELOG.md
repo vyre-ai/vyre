@@ -6,6 +6,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `vyre box add <user@host>` (ADR 0008 section 2): checks the Mac is on its tailnet, reaches the
+  server over SSH (a password is asked once, then one held connection), reads the server in one
+  call, shows the plan and asks once (`--yes` skips; no terminal and no `--yes` changes nothing),
+  copies this package's `install-box.sh` over and runs it with `-t` so sudo can ask, takes the
+  link from `vyre up --json` (or its text), forwards the port through the held connection, opens
+  the browser, prints each onboarding step as it is done, then saves `box.ssh` and `network.box`,
+  starts this Mac's vyred, pairs when `link.pair` exists, and prints the ready block. A box that
+  is already there carries on from where it stands; Ctrl-C leaves it as it is.
+- `vyre box` (status), `update`, `backup [file]` (the three volumes in one 0600 `.tar.gz`),
+  `move <user@newhost>` (installs with `VYRE_NO_UP=1`, streams the volumes through the Mac, runs
+  `--uninstall` on the old host) and `remove [--purge]`, all over the saved `box.ssh`.
+- `core/cli/ssh.js`: a small client over the system `ssh`: a ControlMaster in a 0700 folder under
+  `/tmp`, `run`, `json`, `put` (cat, no scp), `tunnel` (`-O forward` on the master; a taken port
+  is named with what holds it), and a tested shell `quote`.
 - `vyre up` on a Mac: with no box known it finds one among the tailnet's peers (one answer is
   saved; several are listed and asked about), otherwise asks "Where should Vyre run?" (a server
   through `vyre box add`, this Mac, or an address). Without a terminal it prints the three
