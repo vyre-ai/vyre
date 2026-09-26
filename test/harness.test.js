@@ -234,3 +234,55 @@ test("sessions: an MCP call says which session it is in, and gate.request files 
   assert.match((await call("threads.bind", { session, pid: process.pid }, { root, caller: "harness" })).error.message, /not a running claude/);
   assert.equal((await call("threads.bind", { session, pid: process.pid }, { root, caller: "mcp" })).error.code, "denied");
 });
+
+test("mcp: the hub's tools are offered through the one vyre entry; a read reaches the server and a send is held", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const log = path.join(root, "fake-mcp.log");
+  const fakeMcp = path.join(PLUGIN, "..", "core", "mcp", "testing", "fake-mcp.js");
+  const added = await d.registry.call("mcp.add", { name: "issues", transport: "stdio", command: process.execPath, args: [fakeMcp, "--stdio"], vars: { FAKE_MCP_LOG: log } }, "cli");
+  assert.equal(added.data?.test?.ok, true, JSON.stringify(added));
+
+  const p = spawn(process.execPath, [path.join(PLUGIN, "mcp", "server.js")], { env: { ...process.env, VYRE_HOME: root, VYRE_AGENT: "", VYRE_AGENT_KEY: "" } });
+  t.after(() => p.kill());
+  const replies = new Map();
+  let buf = "";
+  p.stdout.on("data", c => {
+    buf += c;
+    for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.get(m.id)?.(m); }
+  });
+  const rpc = (id, method, params) => new Promise(r => { replies.set(id, r); p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
+
+  const init = await rpc(1, "initialize", { protocolVersion: "2025-06-18" });
+  assert.equal(init.result.capabilities.tools.listChanged, false);
+  const tools = (await rpc(2, "tools/list", {})).result.tools;
+  const byName = new Map(tools.map(x => [x.name, x]));
+  assert.ok(byName.has("system_echo"), "module tools are still offered");
+  assert.ok(byName.has("issues__list_issues"));
+  assert.equal(byName.get("issues__list_issues").description, "List open issues.");
+  assert.match(byName.get("issues__send_message").description, /^\(held for approval\) Send a message/);
+  assert.deepEqual(byName.get("issues__send_message").inputSchema.required, ["to", "text"]);
+  for (const x of tools) assert.match(x.name, /^[A-Za-z0-9_-]{1,64}$/);
+
+  const read = (await rpc(3, "tools/call", { name: "issues__list_issues", arguments: {} })).result;
+  assert.equal(read.structuredContent.issues.length, 2, JSON.stringify(read));
+  const echo = (await rpc(4, "tools/call", { name: "system_echo", arguments: { text: "still here" } })).result;
+  assert.equal(JSON.parse(echo.content[0].text).text, "still here");
+
+  const send = (await rpc(5, "tools/call", { name: "issues__send_message", arguments: { to: "dana@harlowlegal.com", text: "Friday works" } })).result;
+  assert.ok(!send.isError, JSON.stringify(send));
+  assert.match(send.content[0].text, /Held at the Gate|approve/i);
+  assert.ok(send.structuredContent.held);
+  const held = (await d.registry.call("gate.held", {}, "local")).data;
+  assert.equal(held.length, 1);
+  assert.equal(held[0].via, "mcp:issues");
+  const calls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("call "));
+  assert.ok(calls.some(l => l.startsWith("call list_issues")));
+  assert.ok(!calls.some(l => l.startsWith("call send_message")), "a held send never reaches the server");
+
+  const unknown = (await rpc(6, "tools/call", { name: "nowhere__list_things", arguments: {} })).result;
+  assert.equal(unknown.isError, true);
+  assert.match(unknown.content[0].text, /^denied: /);
+});

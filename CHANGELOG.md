@@ -6,6 +6,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0015)
 
+- The Vyre MCP server (`harness/mcp/server.js`) now offers every hub tool beside the module
+  tools, as `<server>__<tool>`, so a session sees its connected servers through the one `vyre`
+  entry and no server needs its own line in a Claude config. Listing reads the hub's cache and
+  never starts a server. Both the listing and each call carry the session key, so the hub scopes
+  them by the session's project. A tool the hub will hold says "(held for approval)" first, and a
+  held call answers with the Gate item and a plain sentence rather than an error. With no `mcp`
+  module running, nothing extra is offered and module tools behave as before.
 - The MCP hub (`core/mcp/`, module `mcp`) puts any number of MCP servers behind one tool list,
   so a person can plug in a tracker, a CRM and a docs tool without a token in any config file. A
   server row names vault items, never values: `mcp.add` refuses a header, env value, argument or
