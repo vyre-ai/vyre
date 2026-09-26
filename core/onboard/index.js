@@ -303,6 +303,15 @@ export default {
       return c.__error || !c.code ? null : `${String(address).replace(/\/$/, "")}/onboard/passkey#e=${encodeURIComponent(c.code)}`;
     }
 
+    ctx.tool("onboard.passkey", {
+      description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
+      input: obj(),
+      run: async (_, { caller }) => {
+        const address = (await status(caller)).address || net().address || null;
+        return { address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null };
+      },
+    });
+
     ctx.tool("onboard.finish", {
       description: "Finish the onboarding.",
       input: obj(),
