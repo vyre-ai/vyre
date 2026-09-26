@@ -63,5 +63,7 @@ In `~/.vyre/config.json`:
 
 `url` is how vyred reaches Mattermost (`http://127.0.0.1:8065` when vyred runs on the host).
 `callback` is how Mattermost reaches vyred, and its host must be in
-`AllowedUntrustedInternalConnections` in `compose.yml`. Then `vyre down && vyre up`, and
+`AllowedUntrustedInternalConnections` in `compose.yml`. Mattermost posts button presses to
+`<callback>/chat/action`, the Edit dialog to `<callback>/chat/dialog` and `/vyre` to
+`<callback>/chat/slash`. Then `vyre down && vyre up`, and
 `vyre call chat.status` says whether Chat is connected.
