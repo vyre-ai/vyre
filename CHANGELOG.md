@@ -4,6 +4,68 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Capsule
+
+- `local/capsule/`: the Capsule. Press Control twice anywhere on the Mac, and a command bar
+  opens over the current app with the caret in it. By default you talk to the assistant.
+  `@` completes agents, projects and threads from the running vyred, and a "Sends to" row shows
+  the destination before anything is sent (floor rule 2). A question gets an answer from memory
+  as you type, in Recall gold, with its sources; Enter shows the source turn (floor rule 7).
+  Gate holds and open permission asks wait in one Beacon list, oldest first (press ↑). A hold
+  opens for review: send, edit, discard, allow or deny. A reply streams back from the thread it
+  went to. Ported from the prototype's floating panel and rebuilt against the Capsule board.
+  The prototype's workbench window is left behind: the Capsule is the command bar.
+- The Capsule talks to vyred only through its API over the socket (`lib/vyred.js`, the same
+  `{ data } | { error }` shape as `core/daemon/client.js`), in the main process. The window is
+  sandboxed with no Node. Everything that decides meaning (what `@` completes, where Enter sends,
+  how a destination reads) is in `lib/route.js`, and the page asks for it, because the
+  prototype's second decision path made one sentence mean two things.
+- The switchboard's `agents.*` and `threads.*` and the Gate's `gate.*` are used by their spec
+  names. Which of them exist is read from `/v1/tools`, and each missing feature says so in words
+  before Enter, not after. Open asks come from `threads.asks` when it exists, and otherwise from
+  the event log.
+- Lessons carried over from the prototype: the window is an NSPanel at screen-saver level on
+  every Space, so it opens over a fullscreen app. An agent's question never opens the Capsule or
+  takes the keyboard; it turns the menu-bar dot Beacon (floor rule 6). Escape hides the window
+  and hands the keyboard back to the app that had it. The event stream is followed in the main
+  process, because a hidden window's timers are throttled. When vyred goes away, everything from
+  it is cleared and the Capsule says it is offline. There are no infinite animations.
+- Fix, found on this Mac: with another app active, focusing the panel alone did not make it
+  key, so typed keys reached neither app. On the user's gesture the Capsule now takes the
+  keyboard (`app.focus({ steal: true })`), and `app.hide()` gives it back on close. Verified with
+  real key events over TextEdit.
+- `swift/hotkey.swift`: the double-Control listener, run as a child of the Capsule and read over
+  stdout, so the gesture works with vyred down. It re-arms a tap macOS disables, exits when its
+  parent dies, and reports a missing Input Monitoring grant in words. `--check` prints what
+  macOS allows; `--simulate` posts a real double-Control through the system, for tests.
+- `swift/launcher.swift` (`vyre-launcher`): one macOS identity for vyred, so Accessibility is
+  granted to Vyre alone rather than to every shell. `build.sh` compiles both into
+  `local/capsule/bin/`, ad-hoc signed.
+- `vyre capsule` opens it and starts vyred if needed. `vyre capsule --dev` runs it from source in
+  the terminal. `vyre capsule build [--app]` builds the helpers, and with `--app` packages
+  Vyre.app with a stamp of its source hash. `vyre capsule` runs the package only while that
+  stamp matches the source, and otherwise runs the source and says why, because a packaged app
+  runs `app.asar` and ignores every edit silently.
+- The `capsule` module (role `local`): `capsule.status`, and `capsule.show {action}`, which emits
+  `capsule.requested` so the assistant, the CLI or a phone can open the Capsule. `capsule.autostart:
+  true` in config.json starts the app hidden with vyred. It is off by default, so a vyred started
+  for a test or over SSH never opens a window.
+- Dev only: `VYRE_CAPSULE_DRIVE=1` with `--dev` reads JSON commands on stdin and sends keys into
+  the Capsule's own window, and saves window-only screenshots. Typing through System Events goes
+  to whatever app is in front; during testing it typed four characters into a terminal.
+- Dependencies: `electron` and `@electron/packager`, devDependencies of `local/capsule/` only,
+  never the root package. Fonts: Instrument Sans and JetBrains Mono (both SIL OFL 1.1, licences
+  beside them) are bundled in the app, so it looks the same with no network (floor rule 9).
+- `local/hands-mac/`: computer use on macOS through the accessibility tree, as the module
+  `hands` with `hands.observe` and `hands.act`. Every act is verified by observing again. An
+  action the accessibility API accepted is not counted as done until the re-read shows it.
+  Secure fields never show their value, and `hands.acted` events carry the action and selector,
+  never the typed text. Verified for real on TextEdit (set and type) and Calculator (press).
+- Shared core, kept small: `GET /v1/health` returns `last_event`, so a surface can follow the
+  stream from now. `since=0` replays the whole log, and a guessed cursor past the end drops live
+  events. `npm test` now runs `local/` tests. The hygiene scan now covers `.swift` and skips build
+  output (`dist/`, `bin/`).
+
 ### Shared core for the parallel workstreams (2026-09-26)
 
 - `ctx.vault.fetch(name)`: a module gets only the vault items its manifest declares, through the
