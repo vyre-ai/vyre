@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyWaiting, fromHeld, reply, applyReply, replyText, cancel, dm, applyDm, dmPending, dmDrop, dmHistory, dmCarry, dmView, sentText } from "./state.js";
+import { applyWaiting, fromHeld, fromLesson, loud, reply, applyReply, replyText, cancel, dm, applyDm, dmPending, dmDrop, dmHistory, dmCarry, dmView, sentText } from "./state.js";
 
 const ev = (id, type, payload, extra = {}) => ({ id, at: 1000 * id, type, source: "x", project: null, thread: null, payload, ...extra });
 
@@ -25,6 +25,36 @@ test("state: asks and holds wait together, oldest first, until answered", () => 
 test("state: a repeated event does not add a second row", () => {
   const e = ev(1, "ask.raised", { ask: "a1", summary: "x" });
   assert.equal(applyWaiting(applyWaiting([], e), e).length, 1);
+});
+
+test("state: a proposed lesson waits quietly, oldest first, and goes when learned or retired", () => {
+  let w = [];
+  w = applyWaiting(w, ev(3, "lesson.proposed", { lesson: 7, rule: "Never use em dashes.", checked: true, scope: "all", source: { kind: "prompt", session: "s1" } }));
+  w = applyWaiting(w, ev(1, "ask.raised", { ask: "a1", agent: "pax", summary: "run npm publish" }, { thread: "t1" }));
+  w = applyWaiting(w, ev(2, "lesson.proposed", { lesson: 8, rule: "Update CHANGELOG.md whenever you change code.", scope: { project: "harlow-legal" } }), () => "Harlow Legal");
+  assert.deepEqual(w.map(x => `${x.source}:${x.id}`), ["ask:a1", "lesson:8", "lesson:7"], "oldest first, lessons among the rest");
+  const l = /** @type {any} */ (w[2]);
+  assert.deepEqual([l.title, l.sub, l.rule, l.scope, l.quiet], ['Vyre proposes: "Never use em dashes."', "everywhere · from what you said", "Never use em dashes.", "all", true]);
+  assert.equal(w[1].sub, "in Harlow Legal", "a project scope reads as its name; no source, nothing said of it");
+  assert.equal(fromLesson({ lesson: 9, rule: "x" }).sub, "", "neither scope nor source: an empty line");
+  assert.equal(loud(w), 1, "only the ask counts toward the dot and the badge");
+  assert.equal(w[0].quiet, undefined);
+  w = applyWaiting(w, ev(4, "lesson.learned", { lesson: 7, rule: "Never use em dashes.", level: "block", checked: true }));
+  assert.deepEqual(w.map(x => x.id), ["a1", "8"]);
+  const same = applyWaiting(w, ev(5, "lesson.learned", { lesson: 99, rule: "added by hand" }));
+  assert.equal(same, w, "a lesson that was never waiting changes nothing");
+  w = applyWaiting(w, ev(6, "lesson.retired", { lesson: 8 }));
+  assert.deepEqual(w.map(x => x.id), ["a1"]);
+  assert.equal(loud(w), 1);
+});
+
+test("state: a lesson from learn.lessons reads the same as one from its event", () => {
+  const row = fromLesson({ id: 4, rule: "Run the tests before every git commit.", scope: { agent: "juno" }, source: { kind: "edited", session: "s2", draft: "g1" }, status: "proposed", created: 500 });
+  assert.deepEqual([row.source, row.id, row.at, row.title, row.sub, row.thread, row.quiet],
+    ["lesson", "4", 500, 'Vyre proposes: "Run the tests before every git commit."', "for juno · from a draft you edited", "s2", true]);
+  const e = applyWaiting([], ev(1, "lesson.proposed", { lesson: 4, rule: "Run the tests before every git commit.", scope: { agent: "juno" }, source: { kind: "edited", session: "s2" } }));
+  assert.equal(e[0].title, row.title);
+  assert.equal(applyWaiting(e, ev(2, "lesson.proposed", { lesson: 4, rule: "Run the tests before every git commit." })).length, 1, "one row per lesson");
 });
 
 test("state: a hold reads as a sentence, whatever it carries", () => {

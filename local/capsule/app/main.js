@@ -253,13 +253,13 @@ let images = null;
 
 function paintTray() {
   if (!tray || !images) return;
-  const n = bridge.waiting.length;
+  const n = bridge.waiting.filter(w => !w.quiet).length; // lessons wait quietly
   tray.setImage(n ? images.needs : images.idle);
   tray.setToolTip(!bridge.up ? "Vyre: vyred is not running" : n ? `Vyre: ${n} waiting on you` : "Vyre: press Control twice");
 }
 
 function trayMenu() {
-  const n = bridge.waiting.length;
+  const n = bridge.waiting.filter(w => !w.quiet).length; // lessons wait quietly
   return Menu.buildFromTemplate([
     { label: "Open the Capsule", click: () => show("menu") },
     { label: n ? `Waiting on you · ${n}` : "Nothing waiting", enabled: n > 0, click: () => show("menu") },

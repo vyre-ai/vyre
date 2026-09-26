@@ -190,3 +190,8 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .dm .x.empty { font-size: 13px; color: var(--ash); }
 .dm .caret { display: inline-block; width: 2px; height: 16px; background: var(--signal); vertical-align: -2px; margin-left: 1px; }
 .dm .tools { padding: 0; }
+/* A proposed lesson: quiet, never Beacon. */
+.badge.quiet { background: var(--raised); color: var(--stone); }
+.held .body.lesson { border-top: 0; padding-top: 0; font-size: 15px; }
+.srcm { margin-left: 6px; font-family: var(--mono); font-size: 11px; color: var(--ash); }
+.wait .b.quiet { background: var(--rule-strong); }

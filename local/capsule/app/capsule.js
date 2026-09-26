@@ -270,8 +270,9 @@ window.addEventListener("keydown", e => {
   if (S.mode === "review") {
     // No single-letter keys here: every line of a draft takes typing, and a letter that
     // discarded the draft would fire mid-word.
-    if (k === "Enter" && e.metaKey) { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "allow" : "send"); }
-    if (k === "Enter" && S.review.source === "ask" && !inField()) { e.preventDefault(); return decide(S.review, "allow"); }
+    const yesNo = S.review.source === "ask" || S.review.source === "lesson";
+    if (k === "Enter" && e.metaKey) { e.preventDefault(); return decide(S.review, yesNo ? "allow" : "send"); }
+    if (k === "Enter" && yesNo && !inField()) { e.preventDefault(); return decide(S.review, "allow"); }
     return;
   }
   if (S.mode === "waiting") {
@@ -349,7 +350,9 @@ function paint() {
   const hint = $("hint");
   const kids = [];
   const nWait = snap.waiting.length;
-  $("dot").setAttribute("fill", nWait ? "#FF7A59" : "#C6F36B");
+  // A proposed lesson waits quietly: it never turns the dot Beacon on its own.
+  const loud = snap.waitingLoud ?? nWait;
+  $("dot").setAttribute("fill", loud ? "#FF7A59" : "#C6F36B");
   $("chip").hidden = !S.chip;
   if (S.chip) $("chip").textContent = "@" + S.chip.label;
   hint.replaceChildren();
@@ -371,7 +374,7 @@ function paint() {
   if (S.mode === "waiting" && nWait) {
     kids.push(h("div", { class: "sect waithead" }, h("span", { class: "lbl" }, `Waiting on you · ${nWait}`), h("span", { class: "s" }, "oldest first")));
     kids.push(h("div", { class: "pad" }, snap.waiting.map((w, i) => h("div", { class: "wait" + (i === S.waitIndex ? " on" : ""), onclick: () => { S.waitIndex = i; openReview(w); } },
-      h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null),
+      h("span", { class: "b" + (w.quiet ? " quiet" : "") }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null),
       h("span", { class: "a" }, w.age), i === S.waitIndex ? h("span", { class: "kbd" }, "⏎") : null))));
     keys("↑↓ move", "⏎ review", "A allow", "esc close");
     return done(panel, kids);
@@ -383,7 +386,7 @@ function paint() {
     // only its note changes; the words are the user's until they send or leave.
     const key = `${w.source}:${w.id}:${S.loading ? "loading" : "ready"}`;
     if (panel.dataset.review === key) { const n = panel.querySelector(".heldnote"); if (n) n.textContent = S.note; return; }
-    hint.append(h("span", { class: "badge" }, h("i"), "HELD FOR YOU"));
+    hint.append(w.source === "lesson" ? h("span", { class: "badge quiet" }, "VYRE PROPOSES") : h("span", { class: "badge" }, h("i"), "HELD FOR YOU"));
     box.hidden = true;
     $("chip").hidden = true;
     const field = /** @type {HTMLElement} */ (box.parentElement);
@@ -404,15 +407,20 @@ function paint() {
       body.push(h("div", { class: "grid" }, w.to ? [h("span", { class: "k" }, "To"), h("span", { class: "v mono" }, w.to)] : null,
         w.via ? [h("span", { class: "k" }, "Via"), h("span", { class: "v mono" }, w.via)] : null));
       if (S.summary) body.push(h("div", { class: "body" }, S.summary));
+    } else if (w.source === "lesson") {
+      body.push(h("div", { class: "body lesson" }, w.rule || ""));
+      body.push(h("div", { class: "grid" }, w.scope ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.scope)] : null,
+        w.sub ? [h("span", { class: "k" }, "From"), h("span", { class: "v" }, w.sub)] : null));
     } else {
       body.push(h("div", { class: "grid" }, w.tool ? [h("span", { class: "k" }, "Tool"), h("span", { class: "v mono" }, w.tool)] : null, w.sub ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.sub)] : null));
     }
     kids.push(h("div", { class: "sect held" }, body));
-    const ask = w.source === "ask";
+    const ask = w.source === "ask" || w.source === "lesson";
+    const yes = w.source === "lesson" ? "Accept" : ask ? "Allow" : "Send", no = w.source === "lesson" ? "Decline" : ask ? "Deny" : "Discard";
     kids.push(h("div", { class: "sect actions" },
-      h("button", { type: "button", class: "btn btn-primary", onclick: () => decide(w, ask ? "allow" : "send") }, ask ? "Allow" : "Send", h("span", { class: "k" }, ask ? "⏎" : "⌘⏎")),
-      h("button", { type: "button", class: "btn btn-ghost quiet", onclick: () => decide(w, ask ? "deny" : "discard") }, ask ? "Deny" : "Discard"),
-      w.rule ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : w.why ? h("span", { class: "rule" }, w.why) : null));
+      h("button", { type: "button", class: "btn btn-primary", onclick: () => decide(w, ask ? "allow" : "send") }, yes, h("span", { class: "k" }, ask ? "⏎" : "⌘⏎")),
+      h("button", { type: "button", class: "btn btn-ghost quiet", onclick: () => decide(w, ask ? "deny" : "discard") }, no),
+      w.rule && w.source !== "lesson" ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : w.why ? h("span", { class: "rule" }, w.why) : null));
     kids.push(h("div", { class: "heldnote note warn" }, S.note));
     $("keys").hidden = true;
     done(panel, kids);
@@ -445,7 +453,7 @@ function paint() {
     const mem = r && r.memory && (r.memory.answer || (r.memory.sources || []).length) ? r.memory : null;
     if (mem) kids.push(h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, "From memory"),
       mem.answer ? h("div", { class: "answer" }, mem.answer) : null,
-      (mem.sources || []).length ? h("div", { class: "srcs" }, mem.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name))) : null));
+      (mem.sources || []).length ? h("div", { class: "srcs" }, mem.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name, srcMeta(s)))) : null));
     if (r && r.tools.length) kids.push(h("div", { class: "tools" }, r.tools.map(t => h("span", { class: "tl" + (t.error ? " fail" : "") }, `${t.done ? (t.error ? "failed" : "done") : "running"} · ${t.summary}`))));
     kids.push(h("div", { class: "reply md" }, r && r.text ? md(r.text) : null, r && !r.finished ? h("span", { class: "caret" }) : null));
     if (r && r.finished && r.text) kids.push(h("div", { class: "sect replyacts" },
@@ -578,7 +586,7 @@ function entryRows(E) {
   });
   const out = [];
   if (rc) out.push(h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, "From memory · no model used"), h("div", { class: "answer" }, rc.answer),
-    rc.sources.length ? h("div", { class: "srcs" }, rc.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name))) : null));
+    rc.sources.length ? h("div", { class: "srcs" }, rc.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name, srcMeta(s)))) : null));
   out.push(h("div", { class: "sect pad" }, rows));
   return out;
 }
@@ -694,6 +702,12 @@ function dmView(d) {
   if (d.asks.length) out.push(h("div", { class: "sect pad" }, d.asks.map(w => h("div", { class: "wait", onclick: () => openReview(w) },
     h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null), h("span", { class: "a" }, w.age || "")))));
   return out;
+}
+
+/** How old a memory is and how sure it is, beside its source: "3 days · 82%". */
+function srcMeta(s) {
+  const bits = [s.age || null, s.confidence != null ? `${Math.round(Number(s.confidence) * 100)}%` : null].filter(Boolean);
+  return bits.length ? h("span", { class: "srcm" }, bits.join(" · ")) : null;
 }
 
 // ------------------------------------------------------------------ answers

@@ -4,15 +4,19 @@
 // Two kinds of thing wait: a Gate hold (a draft or a send that needs a yes, spec 7.7) and a
 // permission question from a running session (ask.raised, spec 7.8). The Capsule shows both in
 // one Beacon list, oldest first, because whoever has waited longest should be answered first.
-// Only an explicit question asks for attention (floor rule 6), so nothing else lands here.
+// Only an explicit question asks for attention (floor rule 6).
+//
+// A third kind waits quietly: a lesson Vyre proposes (lesson.proposed, core/learn). It sits in
+// the same list for the user to accept or decline, marked quiet, and never raises attention on
+// its own: it does not count toward the Beacon dot or the tray badge (loud() counts what does).
 //
 // Pure: events in, plain objects out. The main process owns the one copy and sends it to the
 // window, so a hidden window that wakes up is shown the truth rather than what it last saw.
 
 /**
- * @typedef {{ source: "gate"|"ask", id: string, title: string, sub: string, at: number, thread?: string|null,
+ * @typedef {{ source: "gate"|"ask"|"lesson", id: string, title: string, sub: string, at: number, thread?: string|null,
  *   project?: string|null, to?: string, via?: string|null, kind?: string, why?: string|null, rule?: string|null,
- *   tool?: string|null }} Waiting
+ *   tool?: string|null, scope?: any, quiet?: boolean }} Waiting
  */
 
 const s = v => (v == null ? "" : String(v));
@@ -48,6 +52,46 @@ export function fromAsk(e, name = slug => slug) {
   });
 }
 
+/** How a lesson's scope reads: "all", {project} or {agent}. */
+function scopeWords(scope, name) {
+  if (scope == null || scope === "") return null;
+  if (scope === "all") return "everywhere";
+  if (typeof scope === "string") return scope;
+  if (scope.project) return `in ${name(s(scope.project))}`;
+  if (scope.agent) return `for ${s(scope.agent)}`;
+  return null;
+}
+
+/** Where a lesson came from, in words: its source's kind ({kind, session, ...}) or a string. */
+function sourceWords(source) {
+  if (source == null || source === "") return null;
+  const kind = typeof source === "string" ? source : source.kind;
+  if (kind === "prompt") return "from what you said";
+  if (kind === "edited") return "from a draft you edited";
+  if (kind === "remember" || kind === "user") return "you wrote it";
+  return kind ? s(kind) : null;
+}
+
+/**
+ * A proposed lesson as a row, from learn.lessons ({id, rule, scope, source, created}) or from a
+ * lesson.proposed payload ({lesson, rule, checked, scope, source}, with the event's `at`). Quiet:
+ * it waits in the list and never asks for attention.
+ */
+export function fromLesson(l, name = slug => slug) {
+  const id = s(l.lesson ?? l.id);
+  const rule = s(l.rule);
+  return /** @type {Waiting} */ ({
+    source: "lesson", id, at: Number(l.at || l.created || Date.now()),
+    title: `Vyre proposes: "${rule}"`,
+    sub: [scopeWords(l.scope, name), sourceWords(l.source)].filter(Boolean).join(" · "),
+    thread: (l.source && typeof l.source === "object" && l.source.session) || null, project: (l.scope && l.scope.project) || null,
+    rule, scope: l.scope ?? null, quiet: true, why: null, tool: null,
+  });
+}
+
+/** How many waiting items ask for attention: the quiet ones (proposed lessons) do not. */
+export const loud = list => list.filter(w => !w.quiet).length;
+
 /** Oldest first, one row per id. */
 export function waiting(list) {
   const byId = new Map();
@@ -69,6 +113,8 @@ export function applyWaiting(list, e, name = slug => slug) {
   if (e.type === "gate.held") return waiting([...list, fromHeld({ ...p, at: e.at, thread: e.thread, project: e.project })]);
   if (e.type === "gate.released" || e.type === "gate.rejected") return drop(list, "gate", p.id);
   // A send that failed is held again, with its error, for the user to send again or discard.
+  if (e.type === "lesson.proposed") return waiting([...list, fromLesson({ ...p, at: e.at }, name)]);
+  if (e.type === "lesson.learned" || e.type === "lesson.retired") return drop(list, "lesson", p.lesson ?? p.id);
   if (e.type === "gate.failed") return list.map(w => (w.source === "gate" && w.id === s(p.id) ? { ...w, sub: [w.sub.replace(/ · last send failed$/, ""), "last send failed"].filter(Boolean).join(" · ") } : w));
   return list;
 }
@@ -90,7 +136,7 @@ const drop = (list, source, id) => {
  * `cancelled` is the user's Stop: nothing that arrives after it changes the reply.
  * @typedef {{ thread: string, order: string[], text: Record<string, string>, tools: { id: string, summary: string, done: boolean, error: boolean }[],
  *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null, cost: number|null, ms: number|null,
- *   cancelled?: boolean, model?: string|null, memory?: { answer: string|null, sources: any[] }|null }} Reply
+ *   cancelled?: boolean, model?: string|null, memory?: { answer: string|null, sources: any[], confidence?: number|null, answerAge?: string|null }|null }} Reply
  */
 export function reply(thread) {
   return /** @type {Reply} */ ({ thread, order: [], text: {}, tools: [], finished: false, ok: null, error: null, lease: null, cost: null, ms: null });

@@ -589,6 +589,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Proposed lessons wait in the Capsule, quietly: "Vyre proposes: <rule>" joins the waiting list
+  from `learn.lessons {status: "proposed"}` and `lesson.proposed`, leaves on `lesson.learned` or
+  `lesson.retired`, and never turns the dot or the tray Beacon. Accept is `learn.accept`, Decline
+  `learn.retire`. Memory sources show how old they are and how sure memory is.
 - Quick answers start lean (`threads.start {lean: true, append}`): no plugin, tools, MCP servers
   or settings, about half the cost of a full thread. Watches set from the Capsule use the
   switchboard's `threads.watch {notify: "capsule"}`, which outlives restarts, and any

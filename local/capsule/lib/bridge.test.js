@@ -78,6 +78,30 @@ test("bridge: memory answers with its sources, and no model", async t => {
   assert.match(String(r.answer), /dana@harlowlegal\.com/);
   assert.ok(r.sources.length >= 1);
   assert.equal(typeof r.ms, "number");
+  // memory.relevant gives every fact a confidence and an age; the answer carries both.
+  assert.ok(typeof r.confidence === "number" && r.confidence > 0 && r.confidence <= 1, `confidence ${r.confidence}`);
+  assert.equal(typeof r.answerAge, "string");
+});
+
+test("bridge: memory sources carry confidence and age, transcript quotes carry none, and the reply keeps them", async t => {
+  const { c } = await vyred(t, { bare: true });
+  const root = fs.mkdtempSync(path.join(path.dirname(c.socket), "home-"));
+  const fc = withFakes(c, {
+    // memory.relevant's shape (core/memory graph.relevant): confidence 0..1 and age in words.
+    "memory.relevant": () => [{ text: "Dana Reyes's email is dana@harlowlegal.com.", matched: "Dana Reyes", confidence: 0.82, age: "3 weeks", score: 0.9, ref: { session: "s1", seq: 4, name: "Harlow intake" } }],
+    "recall.search": () => [{ session: "s2", seq: 1, name: "Q3 numbers", snippet: "«Dana» wants the Q3 numbers", ts: Date.now() - 60_000 }],
+    "threads.start": i => ({ id: "q2", ...i }),
+  });
+  const b = new Bridge(fc, { home: root });
+  await b.refresh();
+  const r = await b.recall("what is Dana's email?");
+  assert.deepEqual([r.answer, r.confidence, r.answerAge], ["Dana Reyes's email is dana@harlowlegal.com.", 0.82, "3 weeks"]);
+  assert.deepEqual(r.sources.map(x => [x.session, x.confidence, x.age]), [["s1", 0.82, "3 weeks"], ["s2", null, r.sources[1].age]]);
+  assert.ok(r.sources[1].age, "a transcript quote still says how old it is");
+  const d = (await b.destinations(null, "what is Dana's email?")).options.find(o => o.kind === "quick");
+  await b.send(/** @type {any} */ (d), "what is Dana's email?");
+  const m = b.snapshot().reply?.memory;
+  assert.deepEqual([m?.confidence, m?.answerAge, m?.sources[0].confidence, m?.sources[1].confidence], [0.82, "3 weeks", 0.82, null]);
 });
 
 test("bridge: without the switchboard it says so before Enter, and sending explains why not", async t => {
@@ -199,6 +223,51 @@ test("bridge: held items and open asks wait in one list, and answering goes thro
   assert.deepEqual(b.waiting.map(w => w.id), ["a1"], "re-read from the Gate, not removed on optimism");
   await b.answer(b.waiting[0], "allow");
   assert.deepEqual(fc.calls.find(x => x[0] === "threads.answer"), ["threads.answer", { ask: "a1", decision: "allow", surface: "capsule" }]);
+});
+
+test("bridge: a proposed lesson waits quietly, and accept and decline go to learn.accept and learn.retire", async t => {
+  const { c } = await vyred(t, { bare: true });
+  let proposed = [{ id: 4, scope: "all", when: "always", rule: "Never use em dashes.", level: "block", status: "proposed", source: { kind: "prompt", session: "s1" }, created: 1000 },
+    { id: 5, scope: "all", when: "always", rule: "Run the tests before every git commit.", level: "block", status: "proposed", source: { kind: "prompt", session: "s1" }, created: 3000 }];
+  const fc = withFakes(c, {
+    "learn.lessons": ({ status }) => (status === "proposed" ? proposed : []),
+    "learn.accept": ({ id }) => { proposed = proposed.filter(l => l.id !== id); return { id, status: "active" }; },
+    "learn.retire": ({ id }) => { proposed = proposed.filter(l => l.id !== id); return { id, status: "retired" }; },
+    "threads.asks": () => [{ id: "a1", thread: "t9", tool: "Bash", summary: "push to main", state: "open", at: 2000 }],
+  });
+  const b = new Bridge(fc);
+  let attention = 0;
+  b.on("attention", () => attention++);
+  await b.refresh();
+  assert.deepEqual(fc.calls.find(x => x[0] === "learn.lessons"), ["learn.lessons", { status: "proposed" }]);
+  const snap = b.snapshot();
+  assert.deepEqual(snap.waiting.map(w => `${w.source}:${w.id}`), ["lesson:4", "ask:a1", "lesson:5"]);
+  assert.equal(snap.waiting[0].title, 'Vyre proposes: "Never use em dashes."');
+  assert.equal(snap.waitingLoud, 1, "lessons never count toward the dot or the badge");
+  b.onEvent({ id: 1, at: 4000, type: "lesson.proposed", payload: { lesson: 6, rule: "Never write \"circle back\".", checked: true } });
+  assert.equal(b.waiting.length, 4);
+  assert.equal(attention, 0, "a proposal raises no attention of its own");
+  assert.equal(b.snapshot().waitingLoud, 1);
+  assert.deepEqual(await b.answer(b.waiting[0], "allow"), { ok: true });
+  assert.deepEqual(fc.calls.find(x => x[0] === "learn.accept"), ["learn.accept", { id: 4 }], "allow means accept");
+  assert.ok(!b.waiting.some(w => w.id === "4"), "gone on the re-read");
+  const five = /** @type {any} */ (b.waiting.find(w => w.id === "5"));
+  assert.deepEqual(await b.answer(five, "discard"), { ok: true });
+  assert.deepEqual(fc.calls.find(x => x[0] === "learn.retire"), ["learn.retire", { id: 5 }], "discard means decline");
+  b.onEvent({ id: 2, at: 5000, type: "lesson.retired", payload: { lesson: 6 } });
+  assert.deepEqual(b.waiting.map(w => w.id), ["a1"]);
+});
+
+test("bridge: a lesson the tool refuses for want of presence says so in words and stays waiting", async t => {
+  const { c } = await vyred(t, { bare: true });
+  const fc = withFakes(c, { "learn.lessons": () => [{ id: 4, scope: "all", rule: "Never use em dashes.", status: "proposed", source: { kind: "prompt" }, created: 1 }], "learn.retire": () => ({}) });
+  const refusing = { ...fc, call: async (tool, input = {}, o) => (tool === "learn.accept"
+    ? { error: { code: "denied", message: "learn.accept needs presence: a signed click from a person" } } : fc.call(tool, input, o)) };
+  const b = new Bridge(refusing);
+  await b.refresh();
+  const r = await b.answer(b.waiting[0], "accept");
+  assert.match(String(r.error), /proof that a person accepted.*vyre learn accept 4.*still waiting/);
+  assert.deepEqual(b.waiting.map(w => w.id), ["4"], "nothing removed on optimism");
 });
 
 test("bridge: a send the sender refused stays held and says why", async t => {
@@ -650,4 +719,46 @@ test("real switchboard: an ask in the DM's thread shows in dm.asks and in the wa
   b.closeDm();
   assert.equal(b.snapshot().dm, null);
   await b.releaseLease();
+});
+
+// ------------------------------------------------------------ lessons with the real core/learn
+
+test("real learn: a proposed lesson waits in the Capsule, quietly, and accepting it through the Bridge takes it away", async t => {
+  const { d, c } = await vyred(t);
+  const b = new Bridge(c);
+  await b.refresh();
+  if (!b.has("learn.lessons")) return t.skip("core/learn is not running in this vyred");
+  assert.ok(b.has("learn.accept") && b.has("learn.retire"), "learn.accept and learn.retire are open to the capsule caller");
+  // No cli tool proposes a lesson (learn.add makes one active): a correction heard in a prompt
+  // does, through learn.signal, which only modules may call. The Harness calls it; so does this.
+  const sig = await d.registry.call("learn.signal", { session: "s1", prompt: "never use em dashes in anything you write" }, "module:harness");
+  assert.ok(sig.data && sig.data.proposed, JSON.stringify(sig));
+  await b.refresh();
+  const first = b.waiting.find(w => w.source === "lesson");
+  assert.ok(first, "read back from learn.lessons on refresh");
+  assert.match(first.title, /^Vyre proposes: ".+"$/);
+  assert.equal(first.quiet, true);
+
+  const last = (await c.get("/v1/health")).data.last_event;
+  let attention = 0;
+  b.on("attention", () => attention++);
+  const s = stream(c.socket, { since: last, onEvent: e => b.onEvent(e) });
+  t.after(() => s.stop());
+  await new Promise(r => setTimeout(r, 100));
+  const two = await d.registry.call("learn.signal", { session: "s1", prompt: "always run the tests before you commit" }, "module:harness");
+  const id2 = String(two.data.proposed);
+  for (let i = 0; i < 40 && !b.waiting.some(w => w.id === id2); i++) await new Promise(r => setTimeout(r, 25));
+  assert.ok(b.waiting.some(w => w.source === "lesson" && w.id === id2), "lesson.proposed folds in live");
+  assert.equal(b.snapshot().waitingLoud, 0, "nothing loud waits");
+  assert.equal(attention, 0);
+
+  assert.deepEqual(await b.answer(first, "accept"), { ok: true });
+  assert.ok(!b.waiting.some(w => w.id === first.id), "accepted: it leaves");
+  const lessons = (await c.call("learn.lessons", { status: "all" })).data;
+  assert.equal(lessons.find(l => String(l.id) === first.id).status, "active");
+  const w2 = /** @type {any} */ (b.waiting.find(w => w.id === id2));
+  assert.deepEqual(await b.answer(w2, "decline"), { ok: true });
+  for (let i = 0; i < 40 && b.waiting.some(w => w.source === "lesson"); i++) await new Promise(r => setTimeout(r, 25));
+  assert.deepEqual(b.waiting.filter(w => w.source === "lesson"), []);
+  assert.equal((await c.call("learn.lessons", { status: "retired" })).data.length, 1);
 });

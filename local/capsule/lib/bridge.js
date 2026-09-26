@@ -64,7 +64,7 @@ export class Bridge extends EventEmitter {
     this.reap = false;
     /** Stop was pressed before the reply's thread was known. */
     this.cancelWanted = false;
-    /** @type {{ text: string, answer: string|null, sources: any[] }|null} the last memory answer, for the reply beside it */
+    /** @type {{ text: string, answer: string|null, sources: any[], confidence: number|null, answerAge: string|null }|null} the last memory answer, for the reply beside it */
     this.lastRecall = null;
     /** @type {Set<string>} */
     this.tools = new Set();
@@ -212,26 +212,30 @@ export class Bridge extends EventEmitter {
       .map(x => ({ x, s: (x.score ?? x.confidence ?? 0) + 0.5 * route.words(x.text).filter(w => asked.includes(w) && !route.words(x.matched).includes(w)).length }))
       .sort((a, b) => b.s - a.s).map(({ x }) => x);
     const h = hits.data || [];
+    // memory.relevant gives each fact a confidence (0..1) and an age ("3 weeks"); the page shows
+    // both beside a memory answer. A transcript hit is only a quote: it has no confidence.
     const out = {
       ms: Math.max(1, this.now() - t0),
       answer: f[0] ? f[0].text : null,
+      confidence: f[0] ? confidenceOf(f[0]) : null,
+      answerAge: f[0] ? s(f[0].age) || null : null,
       more: f.slice(1).map(x => x.text),
       sources: [
-        ...f.filter(x => x.ref).map(x => ({ session: x.ref.session, seq: x.ref.seq, name: x.ref.name || x.source, quote: x.text, age: x.age || "" })),
-        ...h.map(x => ({ session: x.session, seq: x.seq, name: x.name || x.title || x.session.slice(0, 8), quote: plain(x.snippet || x.text), age: route.age(x.ts, this.now()) })),
+        ...f.filter(x => x.ref).map(x => ({ session: x.ref.session, seq: x.ref.seq, name: x.ref.name || x.source, quote: x.text, age: x.age || "", confidence: confidenceOf(x) })),
+        ...h.map(x => ({ session: x.session, seq: x.seq, name: x.name || x.title || x.session.slice(0, 8), quote: plain(x.snippet || x.text), age: route.age(x.ts, this.now()), confidence: null })),
       ].filter((x, i, all) => all.findIndex(y => y.session === x.session) === i).slice(0, 3),
       error: facts.error && hits.error ? explain(hits.error) : null,
     };
     // Kept for the reply to the same words, which the page shows beside what memory said. None of
     // it is sent to a model: only the assistant, which reads memory itself, sees the user's past.
-    this.lastRecall = { text: String(text).trim(), answer: out.answer, sources: out.sources };
+    this.lastRecall = { text: String(text).trim(), answer: out.answer, sources: out.sources, confidence: out.confidence, answerAge: out.answerAge };
     return out;
   }
 
   /** A new reply, carrying the model it runs on and what memory said about the same words. */
   fresh(thread, text, model = null) {
     const m = this.lastRecall && this.lastRecall.text === String(text).trim() && (this.lastRecall.answer || this.lastRecall.sources.length)
-      ? { answer: this.lastRecall.answer, sources: this.lastRecall.sources } : null;
+      ? { answer: this.lastRecall.answer, sources: this.lastRecall.sources, confidence: this.lastRecall.confidence, answerAge: this.lastRecall.answerAge } : null;
     return { ...st.reply(thread), model, memory: m };
   }
 
@@ -462,6 +466,12 @@ export class Bridge extends EventEmitter {
       const done = new Set(((answered.data) || []).map(e => String((e.payload || {}).ask || (e.payload || {}).id)));
       for (const e of raised.data || []) if (!done.has(String((e.payload || {}).ask || (e.payload || {}).id))) rows.push(st.fromAsk(this.named(e), s => this.projectName(s)));
     }
+    // Lessons Vyre proposed and the user has not answered (core/learn). Quiet: they wait here and
+    // never ask for attention. No learn module, no lessons, and nothing pretends otherwise.
+    if (this.has("learn.lessons")) {
+      const l = await this.client.call("learn.lessons", { status: "proposed" });
+      for (const x of Array.isArray(l.data) ? l.data : []) if (x && (!x.status || x.status === "proposed")) rows.push(st.fromLesson(x, s => this.projectName(s)));
+    }
     this.waiting = st.waiting(rows);
   }
 
@@ -486,13 +496,25 @@ export class Bridge extends EventEmitter {
 
   /**
    * Answer a waiting item. Nothing is removed on optimism: the item goes when vyred says it was
-   * answered (ask.answered, gate.approved), so a yes that never arrived still shows as waiting.
-   * @param {st.Waiting} w @param {"allow"|"deny"|"send"|"discard"} decision
+   * answered (ask.answered, gate.approved, lesson.learned, lesson.retired), so a yes that never
+   * arrived still shows as waiting.
+   *
+   * A proposed lesson is accepted (learn.accept) or declined (learn.retire). "allow" and "send"
+   * mean accept, "deny" and "discard" decline, so the card's usual buttons work. Both are meant to
+   * need a person's signed click (ADR 0004); a refusal for want of one is said in words and the
+   * lesson stays waiting.
+   * @param {st.Waiting} w @param {"allow"|"deny"|"send"|"discard"|"accept"|"decline"} decision
    * @param {{ to?: string[], subject?: string, body?: string }} [edited] what the user changed in a draft
    */
   async answer(w, decision, edited) {
     let r;
-    if (w.source === "gate") {
+    if (w.source === "lesson") {
+      const yes = decision === "accept" || decision === "allow" || decision === "send";
+      const tool = yes ? "learn.accept" : "learn.retire";
+      if (!this.has(tool)) return { error: "Lessons come from core/learn, which this vyred is not running." };
+      r = await this.client.call(tool, { id: Number(w.id) });
+      if (r.error) return { error: lessonRefused(r.error, yes, w.id) };
+    } else if (w.source === "gate") {
       // `by` is left to the Gate: it records the caller, which is this surface.
       if (decision === "send" || decision === "allow") r = await this.client.call("gate.approve", { id: w.id, ...(edited ? { edited } : {}) });
       else r = await this.client.call("gate.reject", { id: w.id });
@@ -644,6 +666,8 @@ export class Bridge extends EventEmitter {
         quick: this.has("threads.start"), stop: this.has("threads.stop") },
       assistant: ((this.catalog.agents || []).find(a => a.kind === "assistant") || {}).name || null,
       waiting: this.waiting.map(w => ({ ...w, age: route.age(w.at, this.now()) })),
+      // What counts toward the Beacon dot and the tray badge: proposed lessons are quiet.
+      waitingLoud: st.loud(this.waiting),
       reply: this.reply ? { thread: this.reply.thread, text: st.replyText(this.reply), tools: this.reply.tools, finished: this.reply.finished,
         ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease, model: this.reply.model || null,
         cost: this.reply.cost, ms: this.reply.ms, memory: this.reply.memory || null } : null,
@@ -654,6 +678,22 @@ export class Bridge extends EventEmitter {
 
 /** Whether a fold changed anything the page draws (not only the event cursor). */
 const dmVisible = (a, b) => a.messages !== b.messages || a.asks !== b.asks || a.busy !== b.busy || a.holder !== b.holder || a.thread !== b.thread;
+
+/** A fact's confidence as 0..1, or null when memory gave none. */
+const confidenceOf = x => (typeof x.confidence === "number" && Number.isFinite(x.confidence) ? Math.max(0, Math.min(1, x.confidence)) : null);
+
+/**
+ * Why accepting or declining a lesson did not happen, in words. learn.accept and learn.retire are
+ * meant to need presence, a signed proof that a person clicked (ADR 0004); a refusal for want of
+ * it says where the click can be made instead.
+ */
+function lessonRefused(err, yes, id) {
+  const m = String((err && err.message) || "");
+  if (/presence|signed|passkey|person/i.test(m) || (err && err.code === "presence")) {
+    return `Vyre needs proof that a person ${yes ? "accepted" : "declined"} this, which the Capsule cannot give yet. Do it in the Deck, or with vyre learn ${yes ? "accept" : "retire"} ${id}. It is still waiting.`;
+  }
+  return explain(err);
+}
 
 /** The tool a destination needs. */
 function needs(d) {
