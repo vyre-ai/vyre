@@ -120,24 +120,14 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - Composer hint no longer says "Claude Code's commands" (f857520).
 - Slice 1 screenshots: <team-dir>/chat-shots/ (reported to main).
 
-## Doing (stopped mid-step at the account switch; each subagent WIP-committed by path)
-- session.js: port main's session.js changes (scratchpad patch is gone; regenerate with
-  `git diff $(git merge-base 48f8a01 main) main -- deck/chat/session.js`: WINDOW/Show earlier,
-  parallel reads, OURS, federation's read-only Mac threads + machine chip, reading the known/turns/
-  source/machine opts index.js now passes), the names helper deck/chat/lib/names.js
-  (labelFor: assistant name from system.info.assistant.name, else "Vyre"; agents their names;
-  user "you"), the ?at=<ms> deep link (scroll + flash; prefer ask anchor), deck-design's card specs
-  (vyre.css at work/deck-design 62c7934).
-- recall.watch: DONE in 10604b9 (104/106 pass, 0 fail on testbox); shapes sent to capsule-sight.
-  session.turn ids are String(recall seq) or "tool:<tool_use_id>"; seq is the transcript line.
-- Phone contracts: DONE in 10604b9 (switchboard + gate 69/69). Shapes sent to phone-design, pwa, mobile.
-  Rule destination: localSettings (project's .claude/settings.local.json, never committed); chosen
-  over projectSettings. gate anchors carry tool_use_id null for MCP calls until harness/mcp forwards
-  params._meta["claudecode/toolUseId"] (not ours; unverified on 2.1.283).
-- Known red: deck/chat/cards.test.js "tool cards: the checklist, a short diff and a run open on their
-  own" fails in the 10604b9 snapshot (session view port was mid-edit). Fix first next session.
+## Doing
+- Nothing in flight. 2254e34: session.js port (Mac read-only rows, parallel reads), labelFor in
+  deck/chat/lib/names.js, deep links ?at= / ?ask= / ?tool=, deck-design card specs. Chat +
+  pwa + switchboard tests 124/124 on testbox (the cards.test.js red is fixed).
 
 ## Next
+- newsession.js: the "Vyre" choice should read the assistant's name (labelFor / readNames).
+- Real-browser screenshot pass and deck/test/pwa-perf.js (Back under 100 ms) after 2254e34.
 - Diff summary for phone-design's Changes row: permission asks for Edit/MultiEdit/Write get
   detail.changes [{file, added, removed}]; gate.held for a git push gets changes [...] + totals
   {files, added, removed} from `git diff --numstat` of the pushed range. Promised to phone-design.
