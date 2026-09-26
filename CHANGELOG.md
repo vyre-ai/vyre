@@ -4,6 +4,41 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Release
+
+- `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
+  modules, box) plus SPEC, MODULES, INSTALL, GETTING-STARTED and the ADRs. It leaves out tests,
+  fixtures, `testing` helpers, design boards, working notes and Capsule build output: 186 files,
+  about 570 KB packed. The embedder stays an optional dependency. npm -g still installs it
+  (about 480 MB), because npm ignores `--omit=optional` for a global package's own optional deps.
+- `scripts/build-site.sh --src <checkout> [--mac-zip <zip>]` puts what the box installer downloads
+  under `site/box/`: the compose files, the host wrapper, the Dockerfile, `install-box.sh`,
+  `vyre.tgz` (npm pack, until the package is on npm), `Vyre-mac.zip`, `VERSION` and `SHA256SUMS`.
+  It also copies the installer to `site/install.sh`. All generated and gitignored. The Capsule
+  zip (about 120 MB) is over Pages' 25 MiB file limit. It goes to the R2 bucket `vyre-downloads`
+  (`dl.vyre.run`) under a key named by its hash, and the generated `site/_redirects` sends
+  `/box/Vyre-mac.zip` there. Before zipping, the whole Vyre.app is ad-hoc signed
+  (`codesign --force --deep -s -`). Packager signs only the Electron binary, which fails
+  `codesign --verify`, and a downloaded app in that state is refused as damaged.
+- `scripts/release-check.sh [--skip-tests] [--claude] [--live]`: the suite, then the pack and what
+  the tarball may and may not hold. Then a global install into a temp prefix, and `vyre up`,
+  `status`, `modules`, `call` and `down` in a temp HOME. Then the Harness MCP server from the
+  installed folder, and with `--claude` a real `claude -p --plugin-dir` call. Then `site/box`
+  against its checksums, and with `--live` the bytes vyre.run actually serves.
+- `vyre up` on a Mac (role `local`) now finishes the Mac's setup once the box answers. If the
+  Mac is not paired, it starts pairing and prints the `vyre link approve <code>` line to run on
+  the box, or shows the code of a pairing already waiting. Then it opens the Capsule
+  (`vyre capsule`), or points at the Vyre-mac.zip download when no Capsule is installed.
+  `--no-capsule` skips the Capsule.
+  With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
+- `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,
+  zip, and a signature check after unzipping; the build output is deleted afterwards.
+  `release-check --perf` runs perf-check too (opt-in: it fails on a loaded machine).
+- `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
+  `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
+  finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
+  with 200.
+
 #### Link heartbeat
 
 - The Mac's link heartbeat ran every 30 seconds on every Mac, paired or not, which broke the
