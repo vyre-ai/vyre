@@ -1,0 +1,127 @@
+package sh.vyre.app.design
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+/** Engraved label: mono 11 uppercase +0.16em, ash unless it names a role (Beacon, Recall). */
+@Composable
+fun Label(text: String, modifier: Modifier = Modifier, color: Color = V.c.label) {
+    Text(text.uppercase(), modifier = modifier.semantics { heading() }, style = Type.label, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+/** A row of two engraved labels, left and right, above a section. */
+@Composable
+fun SectionHead(left: String, right: String? = null, color: Color = V.c.label, rightColor: Color = V.c.label, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(top = Space.xl, bottom = Space.s), verticalAlignment = Alignment.CenterVertically) {
+        Label(left, Modifier.weight(1f), color)
+        if (right != null) Label(right, color = rightColor)
+    }
+}
+
+@Composable
+fun Hairline(modifier: Modifier = Modifier, strong: Boolean = false) {
+    Box(modifier.fillMaxWidth().height(1.dp).background(if (strong) V.c.ruleStrong else V.c.rule))
+}
+
+enum class ButtonKind { Primary, Secondary, Quiet, Beacon }
+
+/** Mono 12 uppercase +0.12em. Primary is Signal: one per screen. */
+@Composable
+fun VButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true, leading: String? = null) {
+    val c = V.c
+    val shape = RoundedCornerShape(Radius.button)
+    val (fill, ink, border) = when (kind) {
+        ButtonKind.Primary -> Triple(c.primaryFill, c.primaryInk, Color.Transparent)
+        ButtonKind.Secondary -> Triple(c.ground, c.text, c.ruleStrong)
+        ButtonKind.Quiet -> Triple(Color.Transparent, c.secondary, Color.Transparent)
+        ButtonKind.Beacon -> Triple(c.beaconWash, c.beacon, Color.Transparent)
+    }
+    Row(
+        modifier.heightIn(min = Space.target).widthIn(min = 64.dp).clip(shape).background(if (enabled) fill else c.raised)
+            .border(1.dp, border, shape).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = Space.l),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+    ) {
+        Text((if (leading != null) "$leading  " else "") + text.uppercase(), style = Type.button, color = if (enabled) ink else c.label, textAlign = TextAlign.Center, maxLines = 1)
+    }
+}
+
+/** The Lead mark, drawn from its 24 grid: one wire bent into a v, the dot leaving its end. */
+@Composable
+fun Mark(size: Dp = 24.dp, wire: Color = V.c.text, dot: Color = V.c.dot, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(size)) {
+        val u = this.size.width / 24f
+        val p = Path().apply { moveTo(3.5f * u, 5.5f * u); lineTo(12f * u, 19.5f * u); lineTo(17.96f * u, 9.69f * u) }
+        drawPath(p, wire, style = Stroke(width = 2.4f * u, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawCircle(dot, radius = 2.3f * u, center = Offset(20.5f * u, 5.5f * u))
+    }
+}
+
+/** The monoline wordmark "vyre", drawn in the mark's wire. Ratio 62:26. */
+@Composable
+fun Wordmark(height: Dp = 22.dp, color: Color = V.c.text, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(width = height * (62f / 26f), height = height)) {
+        val u = this.size.height / 26f
+        fun x(v: Float) = (v + 2f) * u
+        fun y(v: Float) = (v - 3f) * u
+        val st = Stroke(width = 2.6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val p = Path().apply {
+            moveTo(x(0f), y(6f)); lineTo(x(6f), y(20f)); lineTo(x(12f), y(6f))
+            moveTo(x(16f), y(6f)); lineTo(x(22f), y(20f))
+            moveTo(x(28f), y(6f)); lineTo(x(19.4f), y(26f))
+            moveTo(x(33f), y(6f)); lineTo(x(33f), y(20f))
+            moveTo(x(33f), y(13f)); quadraticBezierTo(x(33f), y(6f), x(40f), y(6f))
+            moveTo(x(43f), y(13f)); lineTo(x(57f), y(13f))
+            // A 7 7 0 1 0 55.36 17.5: the e's bowl, from (57,13) round to (55.36,17.5).
+            arcTo(androidx.compose.ui.geometry.Rect(x(43f), y(6f), x(57f), y(20f)), 0f, -320f, false)
+        }
+        drawPath(p, color, style = st)
+    }
+}
+
+/** A small filled dot, Beacon for needs-you, red-free elsewhere. */
+@Composable
+fun Dot(color: Color, size: Dp = 6.dp, modifier: Modifier = Modifier) {
+    Box(modifier.size(size).clip(RoundedCornerShape(50)).background(color))
+}
+
+@Composable
+fun Chip(text: String, onClick: () -> Unit, selected: Boolean = false, modifier: Modifier = Modifier, style: TextStyle = Type.monoSmall) {
+    val c = V.c
+    val shape = RoundedCornerShape(Radius.chip)
+    Box(
+        modifier.heightIn(min = 36.dp).clip(shape).background(if (selected) c.signalWash else Color.Transparent)
+            .border(1.dp, if (selected) c.focus else c.rule, shape).clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = Space.m, vertical = Space.s), contentAlignment = Alignment.Center,
+    ) { Text(text, style = style, color = c.text, maxLines = 1) }
+}
