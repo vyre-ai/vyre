@@ -1,0 +1,58 @@
+#!/bin/sh
+# vyre on a Docker box: the host's `vyre` runs the CLI inside the box's container, so `vyre up`
+# on the host is the same one command as on a Mac. Installed to /usr/local/bin/vyre by
+# scripts/install-box.sh. The stack lives in VYRE_DIR (default /srv/vyre).
+#
+#   vyre up        start the stack if needed, then print the onboarding link or the address
+#   vyre update    pull (or rebuild) the images and recreate what changed
+#   vyre logs      follow vyred's output
+#   vyre ...       anything else goes to the vyre CLI in the container
+set -eu
+
+DIR=${VYRE_DIR:-/srv/vyre}
+[ -f "$DIR/compose.yml" ] || { echo "vyre: no box in $DIR (set VYRE_DIR)" >&2; exit 1; }
+
+# COMPOSE_FILE in $DIR/.env is relative, and compose resolves it against the working folder.
+cd "$DIR"
+compose() { docker compose "$@"; }
+
+# Wait for vyred to answer on its socket, up to a minute.
+ready() {
+  i=0
+  while [ $i -lt 60 ]; do
+    compose exec -T vyre vyre status >/dev/null 2>&1 && return 0
+    i=$((i + 1)); sleep 1
+  done
+  echo "vyre: vyred did not come up; see: vyre logs" >&2
+  return 1
+}
+
+cli() {
+  tty=-T
+  if [ -t 0 ] && [ -t 1 ]; then tty=""; fi
+  # The container's account is not the person's, so the ssh line needs the host's.
+  exec docker compose exec $tty \
+    -e SSH_CONNECTION="${SSH_CONNECTION:-}" -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre "$@"
+}
+
+case "${1:-}" in
+  up)
+    compose up -d --wait tailscale >/dev/null 2>&1 || compose up -d tailscale
+    compose up -d
+    ready
+    cli "$@"
+    ;;
+  update)
+    if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then compose build --pull; else compose pull; fi
+    compose up -d
+    ready
+    cli up
+    ;;
+  logs)
+    shift
+    compose logs -f "$@" vyre
+    ;;
+  *)
+    cli "$@"
+    ;;
+esac

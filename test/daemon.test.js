@@ -142,6 +142,17 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
   }
 });
 
+test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", async t => {
+  const root = tempHome(t);
+  let seen = [];
+  const d = await start({ root, log: () => {}, rules: async c => { seen.push(c.caller); return { allow: true }; } });
+  t.after(() => d.stop());
+  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "cli", "capsule"]) {
+    await call("system.echo", { text: "x" }, { root, caller: forged });
+  }
+  assert.deepEqual(seen, ["local", "local", "local", "local", "cli", "capsule"]);
+});
+
 test("client: the first call after vyred restarts reaches the new vyred", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });

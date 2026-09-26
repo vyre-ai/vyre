@@ -1,0 +1,11 @@
+# Builds the vyre image from source instead of pulling it. For development, and for
+# installing before an image is published:
+#
+#   docker compose -f box/compose.yml -f box/compose.build.yml up -d --build
+
+services:
+  vyre:
+    image: vyre:local
+    build:
+      context: ${VYRE_SOURCE:-..}
+      dockerfile: box/Dockerfile

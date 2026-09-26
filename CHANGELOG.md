@@ -4,6 +4,86 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+### M5 · the box (2026-09-26)
+
+#### Box
+
+- Shared core, kept small: `ctx.handler(policy)` gives a module that opens its own listener
+  vyred's router, with the caller the module established and limits on which tools, paths and
+  event types it can reach. The router never takes a caller from a listener's headers.
+  `config.save(patch, root, live)` writes config.json atomically at 0600 and updates the loaded
+  config every module shares. `paths()` gains `certs`, `names`, `models` and `env`. `/v1/health`
+  reports `supervisor` ("systemd" or null), so `vyre up` knows who restarts vyred.
+- `core/names`, the parts that reach the outside world, each with a fake-server test:
+  - an RFC 8555 ACME client for DNS-01 (ES256 JWS, nonce retry, and TXT records always cleared);
+  - a hand-rolled PKCS#10 CSR;
+  - a Cloudflare client that refuses any name outside the configured zone, because the user's
+    token may cover other zones;
+  - a 0600 certificate store.
+
+  None of these add a dependency. Exercised live once: records under `_vyre-test.vyre.run` were
+  created, updated in place and deleted (0 left), and a Let's Encrypt staging account was
+  created. Staging refused the `_vyre-test` order with `rejectedIdentifier`, as expected for an
+  underscore label, so issuance itself still needs a real name.
+- The `names` module (role box). vyred serves the Deck on the box's tailnet addresses with its
+  own certificate. It identifies each connection by `tailscale whois` of its source address and
+  serves only `network.owner`, from a node that is not the box itself and is not tagged. Headers
+  are never trusted (ADR 0002). Tools:
+  - `names.status`, `names.check`, `names.claim` (A record, then DNS-01 certificate, then serve,
+    in the background);
+  - `names.fallback` (ts.net with `tailscale cert`), `names.release`, `names.connect`
+    (`tailscale up`), `names.owner`;
+  - the internal `names.claim-code`, a one-time link for a tagged box.
+
+  Renewal runs daily at 30 days left. Under systemd the listener takes fd 3 from the socket unit.
+  Exercised on a Mac against real Tailscale (read-only): the listener bound only the two tailnet
+  addresses, loopback could not reach it, and a request from the box itself with forged
+  `Tailscale-User-Login` and `x-vyre-caller` headers got 403. Real `whois` passed the owner's
+  other devices and refused a node of another login.
+- The `onboard` module (role box): the six steps of spec section 1.
+  - Tools: `onboard.status`, `onboard.name`, `onboard.claude` (the token goes to the vault and
+    never comes back), `onboard.tailscale`, `onboard.history`, `onboard.skip` and
+    `onboard.finish`, plus the socket-only `onboard.link`.
+  - Before the owner is seen on the tailnet, a loopback listener on 127.0.0.1:7300 serves only
+    `/onboard/...`, those tools (plus `projects.catalog`, `projects.create` and
+    `recall.status`) and `onboard.*` events.
+  - Everything sits behind a one-time token that becomes an HttpOnly, SameSite=Strict cookie.
+    The token is hashed, single use, and expires after an hour.
+  - The listener checks for a loopback Host (against DNS rebinding) and a JSON body with a
+    loopback Origin. It closes when the owner first reaches the tailnet address.
+- Installing on a box: `scripts/install-box.sh` sits behind
+  `curl -fsSL https://vyre.run/install.sh | sh`. It asks before installing Node, Tailscale or
+  Claude Code, and prints every change with `--dry-run`.
+  - `core/names/system.js` plans the systemd units and the Tailscale operator setting, and
+    `apply` changes nothing unless asked. `vyre.socket` binds port 443 on `tailscale0` and
+    `vyre.service` runs as the owner's own account, never root (docs/INSTALL.md).
+  - `core/names/backup.js` backs up config, a consistent store copy, vault, watchers, modules
+    and certificates, and restores them with traversal checks.
+  - No Linux box was used: the Linux paths are proven by unit tests and a dry run against stub
+    binaries.
+- `vyre up` moved to `core/cli/commands/up.js` and grew. It starts vyred, or restarts it when
+  it runs an older version or the wrong role; under systemd it lets `Restart=always` bring the
+  new code up. Then it prints:
+  - on a box: the onboarding link, plus the `ssh -N -L` line over SSH, or the address once
+    set up;
+  - on a Mac: the box it connects to.
+
+  `--box` makes a Mac the box, and `--connect <addr>` points a Mac at one. Also new:
+  `vyre up --system` / `vyre uninstall --system` (with `--dry-run`), `vyre name`, `vyre owner`,
+  `vyre backup`, `vyre restore` and `vyre daemon`.
+- Security fixes from a review of the listeners:
+  - The tailnet listener refused no cross-site POST. A page the owner visited could have made
+    their browser call any tool as the owner. Every POST there must now be JSON with this
+    box's own `Origin`, and `Host` must be the box's.
+  - `x-vyre-caller` on the socket could claim `module:*` (past the internal-tool gate, so
+    `vault.release`) or `tailnet:*`. Only plain labels pass now, and anything else becomes
+    `local`.
+  - The onboarding session was a cookie, which browsers share with every port on 127.0.0.1.
+    It is now a header the page holds in memory.
+  - The box's own addresses are read before the first connection under systemd too, and whois
+    naming this node is refused.
+  - `onboard.link` allows only terminal callers.
+
 #### Switchboard
 
 - `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they

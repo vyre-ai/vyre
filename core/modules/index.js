@@ -114,7 +114,8 @@ export const callerKind = caller => {
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
-   *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }> }} deps
+   *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
+   *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -222,6 +223,9 @@ export class Registry {
       // Another module's tool, through the same path as every caller: input checked, rules run.
       // This is the only way one module uses another; never import its files.
       call: (tool, input) => this.call(tool, input, `module:${m.name}`),
+      // vyred's router, for a module that opens a listener of its own (names, onboard). The module
+      // establishes the caller; the policy limits what that listener can reach. See ADR 0002.
+      handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);

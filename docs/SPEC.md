@@ -153,7 +153,10 @@ Runtime data never lives in the repo. It lives in `~/.vyre/` (override with `VYR
   vault/                   sealed vault items
   modules/                 third-party modules the user installed
   watchers/                watchers Claude wrote, one folder each
+  certs/                   ACME account key and each name's certificate and key
+  models/                  the embedding weights, a cache
   logs/                    vyred logs, one file per day
+  env                      optional environment for the systemd unit
   vyred.sock               the local API socket
 ```
 
@@ -276,7 +279,8 @@ The plumbing every module uses. The store opens SQLite with WAL and a 10-second 
 every connection; migrations are numbered SQL files per module.
 
 `vyred` listens on `~/.vyre/vyred.sock` for local clients and, when networking is on, on the
-tailnet address through `tailscale serve`. HTTP API: `/v1/...`, JSON, responses are
+box's tailnet addresses with its own TLS certificate, identifying each connection by its source
+address (ADR 0002). HTTP API: `/v1/...`, JSON, responses are
 `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 
 ### 7.2 Projects
@@ -398,9 +402,11 @@ frozen. Glass streams a screen to the Deck and supports take-over.
 ### 7.10 Names and network · workstream
 
 `<you>.vyre.run` points at your box's Tailscale address, so only your devices can reach it.
-Certificates are issued by DNS challenge, which works for a private address. The Deck is served
-with `tailscale serve`, and the user is identified by Tailscale's identity headers, so there is
-no separate login. The name directory at vyre.run holds only the DNS record.
+Certificates are issued by DNS challenge, which works for a private address. vyred serves the
+Deck itself on the tailnet interface and identifies the person by `tailscale whois` of the
+connection's source address, never by a header, so there is no separate login and no local
+process can pose as the owner (`docs/adr/0002-network-and-identity.md`; `tailscale serve` cannot
+present a vyre.run certificate). The name directory at vyre.run holds only the DNS record.
 
 ### 7.11 Learning · workstream
 
