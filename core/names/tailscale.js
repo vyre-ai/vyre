@@ -1,7 +1,7 @@
 // @ts-check
 // tailscale — the one place Vyre runs the tailscale CLI.
 //
-// Reads (status, whois) are safe anywhere. `up` and `cert` change the machine's Tailscale state,
+// Reads (status, whois, lock status) are safe anywhere. `up` and `cert` change the machine's Tailscale state,
 // so only the names module calls them, and only when the user pressed Connect or claimed a name.
 // Which binary is link's one gate: VYRE_TAILSCALE_BIN wins, and under node --test there is none
 // unless VYRE_TEST_REAL_TAILSCALE=1, so no test can reach the real Tailscale on this machine.
@@ -89,6 +89,36 @@ export function parseWhois(w) {
     tagged,
     node: String(w.Node.Name || w.Node.ComputedName || "").replace(/\.$/, ""),
     stableId: String(w.Node.StableID || w.Node.ID || ""),
+  };
+}
+
+/**
+ * Tailnet Lock as this machine sees it, from `tailscale lock status --json`. Read-only: that is
+ * the one lock command Vyre runs. `lock init`, `sign`, `add`, `remove` and `disable` change the
+ * whole tailnet, so the person runs them, never Vyre.
+ * @returns {Promise<{ enabled: boolean, nodeKey: string|null, trusted: number|null, signed: boolean|null, why: string|null }>}
+ */
+export async function lockStatus() {
+  const r = await run(["lock", "status", "--json"], { timeout: 5000 });
+  if (r.code === 127) return { ...parseLock({}), why: "Tailscale is not installed" };
+  try { return parseLock(JSON.parse(r.out)); }
+  catch { return { ...parseLock({}), why: (r.err || r.out).trim().split("\n")[0] || "tailscale lock status failed" }; }
+}
+
+/**
+ * Pure, for tests. nodeKey is this machine's tailnet lock key (tlpub:...), the one `lock init`
+ * and `lock add` take; it exists whether or not the lock is on. trusted and signed mean something
+ * only while the lock is on, so they are null otherwise, and null for any field this Tailscale
+ * version leaves out.
+ */
+export function parseLock(j) {
+  const enabled = Boolean(j && j.Enabled === true);
+  return {
+    enabled,
+    nodeKey: j && typeof j.PublicKey === "string" && j.PublicKey ? j.PublicKey : null,
+    trusted: enabled && Array.isArray(j.TrustedKeys) ? j.TrustedKeys.length : null,
+    signed: enabled && typeof j.NodeKeySigned === "boolean" ? j.NodeKeySigned : null,
+    why: null,
   };
 }
 
