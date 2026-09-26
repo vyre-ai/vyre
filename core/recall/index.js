@@ -30,6 +30,7 @@ import { search, thread, sessions } from "./search.js";
 import { evaluate } from "./eval.js";
 import { load as loadModel, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { Dense } from "./dense.js";
+import { blocks } from "../transcripts/index.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -51,6 +52,22 @@ export function readable(folders) {
   if (!process.env.NODE_TEST_CONTEXT) return folders;
   const real = path.join(os.homedir(), ".claude") + path.sep;
   return folders.filter(f => !(path.resolve(f) + path.sep).startsWith(real));
+}
+
+/**
+ * A session's row by id or an unambiguous prefix of one, the way recall.thread finds it.
+ * @param {import("node:sqlite").DatabaseSync} db @param {string} session
+ * @returns {any}
+ */
+function sessionRow(db, session) {
+  let row = db.prepare("SELECT id, file, cwd, name, title FROM recall_sessions WHERE id = ?").get(session);
+  if (!row) {
+    const like = db.prepare("SELECT id, file, cwd, name, title FROM recall_sessions WHERE substr(id, 1, ?) = ? LIMIT 2").all(session.length, session);
+    if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
+    row = like[0];
+  }
+  if (!row) throw new Error(`no session ${session}`);
+  return row;
 }
 
 export default {
@@ -178,6 +195,19 @@ export default {
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" } } },
       run: async input => thread(db, input),
+    });
+    ctx.tool("recall.transcript", {
+      description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",
+      input: { type: "object", required: ["session"], properties: {
+        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" } } },
+      // A person's surfaces only: tool output can hold anything the session read, so it is never
+      // handed to Claude over MCP or to an agent. callers is an allowlist, so every "mcp" is out.
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      run: async input => {
+        const row = sessionRow(db, input.session);
+        const { id, cwd, name, title } = row;
+        return { session: { id, cwd, name, title }, ...blocks(String(row.file), { from: input.from, limit: input.limit, before: input.before }) };
+      },
     });
     ctx.tool("recall.sessions", {
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, or started by a person.",
