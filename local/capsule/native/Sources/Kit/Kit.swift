@@ -1,6 +1,6 @@
 // Kit: the types every part of the Capsule shares, and the seam other teams build into.
 //
-// The Capsule is one Swift process (ADR 0015). Everything that puts something in it (a result
+// The Capsule is one Swift process (ADR 0017). Everything that puts something in it (a result
 // row, a command, a side panel) goes through the types in this folder, whether it is the
 // Capsule's own launcher or an extension another team owns (Sources/Extensions/<name>/). The rules
 // that keep it light and honest live here too, because an extension inherits them by using these

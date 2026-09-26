@@ -1,6 +1,6 @@
 # capsule-pro
 
-Branch: work/capsule-pro · Worktree: ../vyre-capsule-pro · Owner session: capsule-pro · ADR 0015
+Branch: work/capsule-pro · Worktree: ../vyre-capsule-pro · Owner session: capsule-pro · ADR 0017
 
 ## Scope
 

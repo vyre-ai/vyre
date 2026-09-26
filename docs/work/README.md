@@ -41,4 +41,7 @@ Claim the next number here before writing the ADR, so two teams never take the s
 
 - 0013 box sessions (box)
 - 0014 tailnet (tailnet)
-- 0015 native Capsule (capsule-pro)
+- 0015 capsule-sight: screen context and computer use on the Mac
+- 0016 connectors: the MCP hub and native accounts
+- 0017 native Capsule (capsule-pro; was claimed as 0015 here, which capsule-sight had written)
+- 0020 cc-plugin: Vyre as an installable Claude Code plugin

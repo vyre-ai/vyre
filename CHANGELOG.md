@@ -64,7 +64,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### The native Capsule, built on first run
 
-- `vyre capsule` on a Mac now opens the native Swift Capsule (ADR 0015). The first run builds it
+- `vyre capsule` on a Mac now opens the native Swift Capsule (ADR 0017). The first run builds it
   with swiftc into `<home>/capsule/Vyre.app` (about 35 s), signs it (with a "Vyre Local" identity
   when the keychain has one, ad hoc otherwise) and launches it; it rebuilds only when its source
   changes. Without the Command Line Tools it says, in one line, to run `xcode-select --install`.
@@ -76,6 +76,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   under the bar. Hot keys: ⌥Space with no permission, Control twice once Input Monitoring is
   allowed (asked only from the menu-bar item). `local/capsule/native/Sources/Host`, `Sources/UI`.
 - Fixed a race in the apps scan: a waiting refresh now waits out a scan already running.
+#### Side view and voice from the terminal (ADR 0015)
+
+- Side view on macOS (`local/sideview`, `vyre sideview`): the front terminal session on the left at
+  29% of the display and Chrome filling the rest, edge to edge, in one call; `--glass` opens the
+  box's Glass page; `vyre sideview close` puts the windows back. The helper runs once per call and
+  never moves a password manager or a system dialog.
+- voice: `vyre voice` gives push-to-talk from the terminal (Enter to talk, words shown live,
+  `--send <thread>`), `vyre voice key` saves the speech key through the vault as a person without
+  echoing it, and `vyre voice status` prints the provider, key and online state.
+- capsule-sight: the session panel. "Side view" slides the Capsule's own window in at the left
+  29% of the display with the assistant (or "Side view: <name>" for any session): tabs, the
+  conversation live from its events, a prompt that sends, the mic (Option-Return) and a status
+  line. Chrome or the box's Glass is fitted beside it through the new `sideview.open` `panel`
+  input, which moves only Chrome. "Close side view" slides it out and puts Chrome back.
+- capsule-sight: the sight extension for the native Capsule (`Sources/Extensions/sight`): Side
+  view, Side view with Glass and Close side view; Ask about my screen, with a side panel and the
+  window put in the box, blind places shown as off limits; Option-Return push-to-talk through
+  vyre-mic and the voice listen stream, words live in the box, stopped when the Capsule hides.
+  `voice.status` returns the built mic helper's path. Push-to-talk opens its stream through
+  `VyredLink.stream`, the Capsule's own WebSocket client.
+- screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
 #### CI on GitHub's free runners
 
 - Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the

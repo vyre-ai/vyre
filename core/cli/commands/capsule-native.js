@@ -1,5 +1,5 @@
 // @ts-check
-// The native Capsule (local/capsule/native, Swift, ADR 0015): built on this Mac the first time
+// The native Capsule (local/capsule/native, Swift, ADR 0017): built on this Mac the first time
 // `vyre capsule` runs, and again whenever its source changes. No extra command, no Xcode project,
 // no download: swiftc from the Command Line Tools, then a signature, then launch.
 //
