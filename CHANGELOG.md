@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+### M2 · the Harness (2026-09-26)
+
+- `harness/`: a Claude Code plugin. Load with `claude --plugin-dir harness`. Verified in real
+  headless Claude Code sessions: the brief reaches Claude at SessionStart, MCP tools are callable
+  (`mcp__plugin_vyre_vyre__<tool>`), and the vault rule denies a Read even when `--allowedTools`
+  allowed it.
+- Hooks are one runner (`harness/hooks/hook.js <piece>`) that calls vyred and prints Claude Code's
+  JSON. With vyred down they print nothing, except the security floor, which runs in-process.
+- `core/harness` module: `harness.brief`, `harness.enrich`, `harness.rules`, `harness.learn`,
+  `harness.touched`, `harness.stop`. Brief and enrich compose `projects.*` and `memory.relevant`
+  through `ctx.call` and return nothing when those modules are absent.
+- Floor rules now enforced at PreToolUse: rule 8 (nothing reads the vault folder, by any path,
+  relative or not) and rules 1 and 2 (an MCP tool that sends as the user asks first and names
+  the destination; drafts and reads pass).
+- MCP server with no dependencies: lists vyred's tools live (dots become underscores), forwards
+  calls, starts vyred if needed.
+- Skills: `write-a-watcher`, `use-the-vault`, `work-in-a-project`. Command: `/vyre`.
+- Fix: a long `VYRE_HOME` made vyred fail with EINVAL (unix socket paths are capped near 104
+  bytes). Such homes now use a private per-user `/tmp/vyre-<uid>/` folder, checked for owner and
+  mode 0700 so no one else can plant a socket that poses as vyred.
+
 ### M1 · projects and memory
 
 #### Contracts (main)
