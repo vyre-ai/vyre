@@ -12,6 +12,7 @@ import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { setupCard } from "../js/phone-setup.js";
+import { pairRequests } from "../js/pair.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 
 /** @param {any} ctx */
@@ -25,12 +26,17 @@ export default async function now(ctx) {
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
   const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
 
+  // A Mac asking to pair waits on the person, so it sits above everything else.
+  const pairing = pairRequests();
+  ctx.cleanup(pairing.stop);
+
   put(ctx.root, h("div", { class: "now" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
       // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
       setupCard(),
+      pairing.el,
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, working, learned, recentProjects)));
 
