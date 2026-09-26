@@ -29,7 +29,20 @@ targets:
         excludes: ["Info.plist"]
       - path: Shared
     info:
+      # XcodeGen writes Vyre/Info.plist from these on every generate: edit here, not the plist.
       path: Vyre/Info.plist
+      properties:
+        CFBundleDisplayName: Vyre
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIAppFonts: [InstrumentSans.ttf, JetBrainsMono.ttf]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CFBundleURLTypes:
+          - CFBundleURLName: sh.vyre.app
+            CFBundleURLSchemes: [vyre]
+        NSCameraUsageDescription: Vyre uses the camera only to scan the QR code on your Deck's setup page.
+        NSFaceIDUsageDescription: Face ID approves what you send, answers sessions and opens the Vault on this phone.
     entitlements:
       path: Vyre/Vyre.entitlements
     settings:

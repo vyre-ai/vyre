@@ -9,7 +9,8 @@ IOS="$(cd "$(dirname "$0")/.." && pwd)"
 DD="${DERIVED_DATA:-$IOS/build/dd}"
 cd "$IOS"
 xcodegen generate --quiet --spec project.yml
-common=(-project Vyre.xcodeproj -scheme Vyre -derivedDataPath "$DD" CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation)
+# Ad-hoc signed ("-"): no team needed, and the simulator then grants the app its Keychain.
+common=(-project Vyre.xcodeproj -scheme Vyre -derivedDataPath "$DD" CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -skipPackagePluginValidation)
 if [ "${1:-}" = test ]; then
   xcodebuild "${common[@]}" -destination "platform=iOS Simulator,name=${SIM:-iPhone 17}" test
 else

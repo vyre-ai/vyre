@@ -52,7 +52,14 @@ final class DeviceKey: Sendable {
 
     /// Make and store a new key, replacing any old one.
     static func create() throws -> DeviceKey {
-        if SecureEnclave.isAvailable {
+        // The simulator on Apple silicon reports an Enclave but refuses biometry-bound keys
+        // (LocalAuthentication -1020), so it always takes the software key below.
+        #if targetEnvironment(simulator)
+        let enclave = false
+        #else
+        let enclave = SecureEnclave.isAvailable
+        #endif
+        if enclave {
             var err: Unmanaged<CFError>?
             guard let ac = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
                                                            [.privateKeyUsage, .biometryCurrentSet], &err) else {

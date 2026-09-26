@@ -64,7 +64,8 @@ struct WordmarkShape: Shape {
         let c = pt(50, 13)
         let start = Angle.degrees(0)
         let end = Angle(radians: atan2(Double(17.5 - 13), Double(55.36 - 50)))
-        p.addArc(center: c, radius: 7 * s, startAngle: start, endAngle: end, clockwise: false)
+        // SwiftUI's clockwise flag is flipped in a y-down space: true draws the long way round, as sweep 0 does.
+        p.addArc(center: c, radius: 7 * s, startAngle: start, endAngle: end, clockwise: true)
         return p
     }
 }
