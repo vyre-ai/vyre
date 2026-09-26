@@ -103,5 +103,9 @@ test("recall cli: up, index, recall, down against a temp home", async t => {
   assert.match(r.out, /intake form/);
   assert.match((await run(["recall", "zygomorphic"], env)).out, /nothing matching/);
   assert.match((await run(["recall"], env)).out, /6 sessions · 16 turns/);
+  const ev = await run(["recall", "eval", path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "test", "fixtures", "recall-eval.json")], env);
+  assert.equal(ev.code, 0);
+  assert.match(ev.out, /14 questions/);
+  assert.match(ev.out, /keyword +MRR@10 \d\.\d{3}/);
   assert.match((await run(["down"], env)).out, /vyred stopped/);
 });

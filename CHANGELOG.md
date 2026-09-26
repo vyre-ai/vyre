@@ -4,6 +4,64 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Switchboard
+
+- `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
+  outlive every surface. A thread's id is its Claude Code session id, fixed with `--session-id`.
+  Tools: `threads.start`, `send`, `list`, `get`, `lease`, `release`, `asks`, `answer`, `stop`.
+  Events: `thread.started`, `thread.sent`, `thread.text` (partial text throttled to 20 a second),
+  `thread.tool`, `thread.finished`, `thread.stopped`, `ask.raised`, `ask.answered`, `lease.changed`.
+  Events stay small: no tool outputs, no thinking, and no hook output, because the user's own
+  hooks print whatever they like.
+- Permissions: Claude Code 2.1.283 sends `can_use_tool` requests only when given
+  `--permission-prompt-tool stdio` as well as `--permission-prompts host`. The second flag alone
+  denied every question on the spot. Open asks are rows as well as events, so a surface that
+  reconnects can see what is open now. Ask ids are 72 random bits, because an ask id works as
+  a capability. A model can never answer one: `threads.answer` refuses MCP callers.
+- The lease (floor rule 4) ports the prototype's lessons: a 90-second expiry, a take-over that
+  records who went quiet and for how long, and re-taking your own lease is not a conflict.
+- `core/agents`: the assistant and agents. The tools are `agents.list`, `create`, `update`, `ask`,
+  `threads` and `stop`. Credentials come from the Vault through `vault.release` and are set
+  only in that agent's child process. The rule is a setup token first, then the API key when
+  the subscription's limit is reached, within `budget_usd`, and the thread says so. Only the
+  assistant can drive other sessions from inside its own thread.
+- An agent's scope reaches the Harness: `harness.brief` and `harness.enrich` take `projects`, and
+  the MCP server tags calls `mcp:agent:<name>`. It hides `threads.*`/`agents.*` from non-assistant
+  agents and holds `recall.search` inside the agent's project folders.
+- Agents fetch credentials from the real vault through `ctx.vault.fetch(name)`, declared as
+  `needs.vault: ["per-agent"]`, which the loader now accepts the way it accepts `per-watcher`.
+  Each item needs a grant to module `agents` (`vyre vault grant <item> agents`). Without one,
+  `agents.ask` fails with `<agent> cannot start: <item> is not granted to agents · vyre vault
+  grant <item> agents`. The switchboard tests put and grant items in the real vault.
+- `threads.answer` declares `callers: ["cli", "local", "module", "deck", "capsule"]`, so the loader
+  refuses `mcp` and `mcp:agent:<name>` with `denied` and leaves it out of their `/v1/tools`.
+- Agent identity is checked. Each agent thread gets `VYRE_AGENT_KEY`, 24 random bytes new per
+  process, held only in the Switchboard's memory. Inside the thread the MCP server calls as
+  `mcp:agent:<name>` and the hooks as `harness:agent:<name>`, and the client sends the key as
+  `x-vyre-agent-key`. vyred refuses (403 `denied`) any caller that names an agent unless the
+  internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
+  Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
+  `agent:<name>` after a space or a colon.
+- `callerKind` (and the vault's rules) drop the agent part: `mcp:agent:kit` is an `mcp` caller to
+  every allowlist, so an agent's `vault.grant` waits as pending like any model's.
+- Tests: the vault's per-agent stub is module `roster`, not `agents`; Memory's graph test and the
+  gate + chat test use the real `agents` and `threads` modules (the latter over the fake
+  `claude`), and call as an agent in-process, since no test holds a thread's key.
+- A turn's partial text (`thread.text` with `delta`) is deleted from the event log 60 seconds after
+  its `thread.finished` (`VYRE_TEXT_PRUNE_MS`); the `done` text stays. Modules get
+  `ctx.events.prune(type, { before, thread, has })` for their own event types only.
+- CLI: `vyre threads start|send|watch|lease|release|asks|answer|stop` (other `vyre threads`
+  arguments still search the catalogue) and `vyre agents [create|update|ask|threads|stop]`.
+- Verified with real Claude Code on haiku: a thread started from the CLI streamed to two curl SSE
+  clients, a Write permission was answered from one of them, the lease moved between them, and
+  `agents.ask` got a reply from a test agent.
+- A terminal `claude --resume <id>` on a thread vyred is running headless is now visible (floor
+  rule 4). The Harness SessionStart hook passes `headless` (true only inside vyred's own child),
+  and `harness.brief` asks the internal `threads.claimed {session}` ->
+  `{headless, holder, status}`. When the thread is live, the brief opens with a warning naming the
+  holder and `vyre threads stop <id8>`, and the internal `threads.contend` emits
+  `thread.contended {thread, session, holder}`. The session still starts: the hook never blocks.
+
 #### Gate
 
 - `core/gate`: the only way out for an agent (sections 7.7 and 11, floor rules 1 and 2). An agent
@@ -76,6 +134,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   message.
 - Fix: a command run in the same millisecond as a file change counted as after it, so a test
   run could clear a commit it did not follow. Commands now count only when strictly later.
+- Fix: offline, "strictly later" by the clock dropped a test run made in the same millisecond as
+  the edit before it, so a commit after fresh tests was denied (the flaky "tests from before the
+  last change" test: 358 of 2000 probe runs, 15 of 60 file runs, alone or in the suite). The
+  offline state now orders edits and commands by a counter it keeps (`n`), not by `Date.now()`;
+  a state file from before the counter starts over rather than letting its timestamp outrank it.
+  The online check still compares the Harness's timestamps with Learning's.
 - Lessons are checked with vyred down, as the floor is. Learning keeps the accepted lessons in
   `<home>/lessons.json` (mode 0600), rewritten on every change. When vyred does not answer,
   `hook.js` runs the tool and Stop checks in-process from it (`core/learn/offline.js`), keeping
@@ -128,6 +192,42 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the Deck, so thread text cannot become markup), and one API client. Tools that other streams
   have not merged answer from `deck/fixtures/*.json`, only with `?fixtures=1` and only when the
   live tool is missing; otherwise the view names the module that is not running.
+- The shell and **Now**: header with the address, search over every turn (Recall, with ⌘K and
+  arrow keys), the needs-you pill; the rail with pinned or recent projects and the machine it runs
+  on; a bottom tab bar under 760 px. Now shows drafts held at the Gate and open asks in Beacon with
+  their actions, running threads, and what memory learned today in gold with pin and mute. When
+  nothing runs it lists the latest sessions, so Now is never empty. Views load one at a time from
+  `deck/views/`, each with its own stylesheet.
+- The Deck installs as an app on a phone: a manifest, the app icon, and a service worker that
+  caches only the Deck's own files, network first, and never an API response.
+- **Projects**: every project with pins, a new-project form, and the project board: threads
+  (recorded sessions from Recall merged with live switchboard threads), the brief, and the thread
+  itself, with tool lines, recalled memory in gold, held calls in Beacon with their answers, and a
+  composer that takes the keyboard lease first and goes read-only when another screen holds it.
+  The files pane lists what a thread touched; file contents have no API yet, and it says so.
+- **Memory**: a map of each project's facts drawn as inline SVG, a list, and a fact panel with
+  its source turns quoted from the threads they came from, pin, mute and forget (mute everywhere,
+  with undo). Everything on it came from memory, so it is the one view where gold is the norm.
+- **Agents**: the assistant and every agent, a new-agent form that picks credentials by Vault
+  item name only, and the agent page: its job, what wakes it (watchers with on/off switches), its
+  model and effort, a way to talk to it (`agents.ask`), and its computer with the pool screen and
+  limits. Each part says which module is not running when it is missing.
+- **Vault**: items by name, who holds each, what used it today, passes to and from other
+  people's Vyre, and offboarding. No value is ever shown: values only go in, through password
+  inputs that are read once and cleared before the call is sent, and the view keeps only the named
+  fields it draws from every response.
+- **Settings**: every onboarding step with its state and a way to finish it, the assistant,
+  Claude Code and network status, history and memory with re-index and rebuild, lessons from
+  Learning with edit and retire, the modules vyred runs, dark or paper, and this machine.
+- **Phone views**, checked at 360 and 390 px: one held item full screen (`/needs/:id`), either a
+  question with what it changes and Allow once / Always in this project / Deny, or a draft held
+  at the Gate with its recipient, subject, the words that came from memory numbered against their
+  sources, and Send / Edit / Discard fixed above the tab bar. **Ask** (`/ask`) talks to the
+  assistant or any agent with @-chips, and shows an answer that came from memory as memory, with
+  its sources and the time it took, and an "Ask a model" to go further. Every view fits 360 px
+  without sideways scrolling.
+- `/agents/:name/glass` loads Glass from `deck/glass/`, which the computers workstream builds, and
+  says plainly that it is not here until then.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
@@ -229,6 +329,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Webhooks: a watcher with schedule `webhook` gets `POST /v1/watchers/<name>/hook` with a token
   made at create, checked in constant time; the JSON body reaches `watch` as `hook`. Calls that
   arrive mid-run are queued, not dropped.
+- On the real vault: every fetch names the watcher, so the vault releases only against a grant
+  for that one watcher; a grant to one watcher is not a grant to another listing the same item
+  (tested). `vault.fetch(name, { field })` inside a watcher picks a field (a login's username,
+  an env set's key), passed through as `ctx.vault.fetch(name, { watcher, field })`.
 - `vyre watchers [test|create|pause|resume|logs|items] [name]`.
 - Shared core, kept minimal: the registry gains `hook: true` tools (reachable only as caller
   `hook` through vyred's new `POST /v1/<module>/<name>/hook` route, never listed or offered to
@@ -237,10 +341,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   it now loads before Claude asks questions, beats `/loop`, calls `watchers_list` for the folder
   instead of guessing `~/.vyre` (one session wrote there), calls the MCP tools directly rather
   than from a shell, never runs `watch.js` with plain `node`, fetches in parallel, logs what it
-  read, and does not widen a filter to manufacture items.
+  read, and does not widen a filter to manufacture items. When a watcher needs a vault item, it
+  gives the user the exact `vyre vault grant <item> watchers --watcher <name>` before the dry run,
+  since a grant can only come from a person.
+  A grant Claude asks for through `vault_grant` stays pending until a person runs
+  `vyre vault approve <id>` (listed by `vyre vault pending`); the skill says so. It also warns that
+  a ranked list such as a front page has no id cursor: skipping ids below the highest seen drops
+  older stories that climb onto it, which Haiku wrote in a real session.
 
 #### Capsule
 
+- Held drafts are edited in place, with no Edit button: To, Subject and body read as text and
+  show an underline when focused. Send (⌘⏎) sends what the card shows through `gate.approve
+  {id, edited}` with every field; Discard is `gate.reject`. Esc leaves a field, then the card. The
+  words come from `gate.get` when the card opens; a send the sender refused stays up with its error.
+- Sending follows the switchboard's shapes: `agents.ask {wait: false}` streams the reply,
+  `threads.send` into a thread another screen holds says who has it, and only the user's ⌘⏎ takes
+  the keyboard (`threads.lease`). Answered asks leave the list; `thread.stopped` ends a reply.
 - `local/capsule/`: the Capsule. Press Control twice anywhere on the Mac, and a command bar
   opens over the current app with the caret in it. By default you talk to the assistant.
   `@` completes agents, projects and threads from the running vyred, and a "Sends to" row shows
@@ -397,6 +514,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   moves. Without that, a stale snapshot scored a (session, seq) that now held different text.
 - `recall.status` and `vyre status` say "downloading the search model (23 MB, once)" while the
   first download runs.
+- An eval harness: `recall.eval` and `vyre recall eval <file>`. It runs a labelled set (each
+  question with the turns that answer it) three ways, keyword, dense and hybrid, and reports
+  MRR@10 and recall@10. It also checks the dense floor from both sides: nonsense that clears it,
+  and answers that fall under it. `test/fixtures/recall-eval.json` is a fictional set on the
+  fixture corpus. A set built from someone's own sessions stays outside the repo.
+- New vectors are appended to the dense index in place. Rebuilding it after every pass that
+  wrote anything cost a full read of every vector, one to six seconds, every few minutes for an
+  active session. Only a rewrite, which deletes turns, still rebuilds.
 - Dependency: `@huggingface/transformers`, optional, because it is the only way to run the
   embedding model locally from Node; without it search is full-text and says so.
 

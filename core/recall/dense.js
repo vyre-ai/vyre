@@ -10,11 +10,10 @@
 // 25,000 chunks is about 10 million multiply-adds, a few milliseconds, and there is no
 // approximate index to build, tune or let drift. It costs 1.5KB of memory a chunk.
 //
-// The index is a snapshot. Recall drops it after any pass that wrote turns or vectors, and it is
-// rebuilt on the next hybrid search. It also rebuilds itself whenever the indexer's generation
-// has moved, which happens when a rewrite deleted turns: then a (session, seq) it holds may now
-// be different text, and its score would be attached to words it was never computed from.
-// Appends and new vectors only make a snapshot incomplete, and the keyword half covers the gap.
+// It is built once, then each newly embedded turn is appended in place (add()). It rebuilds
+// itself only when the indexer's generation has moved, which happens when a rewrite deleted
+// turns: then a (session, seq) it holds may now be different text, and its score would be
+// attached to words it was never computed from. New turns only ever add.
 
 import { DIM } from "./embed.js";
 
@@ -31,8 +30,13 @@ export class Dense {
     /** @type {Promise<any> | null} */
     this.building = null;
     /** @type {null | { n: number, vecs: Float32Array, rid: Int32Array, off: Int32Array, sess: Int32Array, seq: Int32Array, role: Uint8Array,
-     *   sessions: string[], cwds: (string|null)[], ms: number, bytes: number, gen: string }} */
+     *   sessions: string[], cwds: (string|null)[], sid: Map<string, number>, has: Set<number>, ms: number, bytes: number, gen: string }} */
     this.index = null;
+    /** Vectors that arrived while a build was reading, applied when it finishes. */
+    /** @type {any[]} */
+    this.queued = [];
+    /** How many full builds have run: appends must not add to it. */
+    this.builds = 0;
   }
 
   invalidate() { this.index = null; }
@@ -48,8 +52,48 @@ export class Dense {
    * vyred must keep answering meanwhile. Two searches that arrive during a build share it.
    */
   build() {
-    if (!this.building) this.building = this.read().finally(() => { this.building = null; });
+    if (!this.building) {
+      this.building = this.read().then(x => {
+        const q = this.queued; this.queued = [];
+        for (const item of q) this.add(item);
+        return this.index || x;
+      }).finally(() => { this.building = null; });
+    }
     return this.building;
+  }
+
+  /**
+   * Add one newly embedded turn in place, instead of rebuilding.
+   *
+   * The dense index was dropped and rebuilt after every pass that wrote anything. An active
+   * session grows on every pass, so that was a whole read of every vector, one to six seconds,
+   * every few minutes, to add a handful of turns. New vectors only ever ADD to the index; what
+   * would make it wrong is turns being deleted, and that moves the generation, which still
+   * forces a rebuild. Arrays grow by doubling, so appends are amortised constant time.
+   * @param {{ rid: number, session: string, seq: number, role: string, chunks: { off: number, v: ArrayLike<number> }[] }} item
+   */
+  add(item) {
+    if (this.building) { this.queued.push(item); return; }
+    const x = this.index;
+    if (!x) return;                                         // nothing built yet; a build reads it
+    if (x.gen !== this.generation()) { this.index = null; return; }
+    if (x.has.has(item.rid)) return;
+    const chunks = item.chunks.filter(c => c.v && c.v.length === DIM);
+    if (!chunks.length) return;
+    if (x.n + chunks.length > x.rid.length) grow(x, Math.max(x.rid.length * 2, x.n + chunks.length, 64));
+    let si = x.sid.get(item.session);
+    if (si === undefined) {
+      const row = /** @type {any} */ (this.db.prepare("SELECT cwd FROM recall_sessions WHERE id = ?").get(item.session));
+      si = x.sessions.length; x.sid.set(item.session, si); x.sessions.push(item.session); x.cwds.push(row?.cwd ?? null);
+    }
+    for (const c of chunks) {
+      x.vecs.set(c.v, x.n * DIM);
+      x.rid[x.n] = item.rid; x.off[x.n] = c.off; x.sess[x.n] = si; x.seq[x.n] = item.seq;
+      x.role[x.n] = item.role === "user" ? 1 : 2;
+      x.n++;
+    }
+    x.has.add(item.rid);
+    x.bytes = x.n * (DIM * 4 + 4 * 4 + 1);
   }
 
   async read() {
@@ -110,7 +154,10 @@ export class Dense {
       page = next.all(last.session, last.seq, last.chunk, PAGE);
     }
     const bytes = n * (DIM * 4 + 4 * 4 + 1);
-    this.index = { n, vecs, rid, off, sess, seq, role, sessions, cwds, ms: Date.now() - t0, bytes, gen };
+    const has = new Set();
+    for (let i = 0; i < n; i++) has.add(rid[i]);
+    this.builds++;
+    this.index = { n, vecs, rid, off, sess, seq, role, sessions, cwds, sid, has, ms: Date.now() - t0, bytes, gen };
     return this.index;
   }
 
@@ -155,4 +202,11 @@ export class Dense {
     }
     return [...best.values()].sort((a, b) => b.score - a.score).slice(0, k);
   }
+}
+
+/** Move an index into arrays that hold `cap` chunks. */
+function grow(/** @type {any} */ x, /** @type {number} */ cap) {
+  const more = (/** @type {any} */ a, /** @type {number} */ size) => { const b = new a.constructor(size); b.set(a); return b; };
+  x.vecs = more(x.vecs, cap * DIM);
+  for (const k of ["rid", "off", "sess", "seq", "role"]) x[k] = more(x[k], cap);
 }

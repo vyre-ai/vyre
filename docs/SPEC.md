@@ -30,7 +30,7 @@ Claude Code itself:
   Vyre steps aside and uses theirs.
 - **Not a hosted service.** Vyre AI runs one thing: the name directory for `<you>.vyre.run`. It
   holds no user data.
-- **Not an IDE or a chat app.** It uses Claude Code for coding and Mattermost for chat.
+- **Not an IDE.** It uses Claude Code for coding; its own Chat is a window onto real Claude Code sessions, not a separate assistant.
 
 ### Install and onboarding
 
@@ -72,6 +72,10 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    `--append-system-prompt`, `-n`, `--resume`, `-p` with `stream-json`, `--permission-prompts`).
    Reading transcript files on disk is the one exception. It lives in a single adapter
    (`core/transcripts`), is best effort, and must degrade to "no history" rather than fail.
+   One flag is a known risk: the Switchboard passes `--permission-prompt-tool stdio` so a
+   headless thread's permission questions come to vyred. It is the flag the Agent SDK passes,
+   but `claude --help` does not list it, so a release could change it without notice. It lives
+   in one place (`core/switchboard/runner.js`), and a thread without it denies every question.
 2. **Local first.** Everything runs on machines the user owns. Nothing leaves them except
    through the Gate, and nothing about the user reaches Vyre AI beyond a DNS record.
 3. **One process per machine.** `vyred` runs every service on that machine. On the box it runs
@@ -83,7 +87,18 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    SQLite through the built-in `node:sqlite`. Tests with the built-in `node:test`.
 6. **The terminal is first class.** Anything the Deck can do, `vyre` can do.
 7. **The security floor cannot be configured away** (section 11).
-8. **Nothing personal in the repo.** No names, folders, domains, clients or keys. Personal
+8. **Light by default.** Vyre runs all day on the user's own machines, so idle must cost almost
+   nothing. Budgets, checked by `scripts/perf-check` and in CI:
+   - vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
+     once a minute when nothing is happening; work is driven by events and file-system notice.
+   - Capsule hidden: under 0.2% CPU, no GPU use, under 250 MB resident for all its processes;
+     shown and idle, under 2% CPU. It wakes in under 100 ms.
+   - Deck in a background tab: no timers faster than a minute; the event stream only.
+   - Heavy work (indexing, embedding, curation) runs at low priority, yields, pauses on battery
+     and when the user is active, and never blocks a hook or the Capsule.
+   - Memory that grows with the corpus (search indexes, caches) is bounded and measured.
+   A change that breaks a budget is a bug, like a failing test.
+9. **Nothing personal in the repo.** No names, folders, domains, clients or keys. Personal
    settings live in `~/.vyre/config.json`. A test fails if the source names a real person.
 
 ---
@@ -445,7 +460,7 @@ The Harness also ships:
 | Capsule | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
 | Deck | The web app at `<you>.vyre.run`: Now, Projects, Memory, Agents, Vault, Settings | `deck/` |
 | Glass | An agent's screen, live, with take-over | `deck/` + `core/computers` |
-| Chat | A better interface over real sessions: Mattermost on your box, a thread per session, driving the same Claude Code sessions as the terminal | `modules/chat` |
+| Chat | Vyre's own chat layer: projects, then sessions, each session the terminal mirrored as a readable conversation (tool calls folded, diffs, asks and held items inline), on phone and computer, driving the same Claude Code sessions as the terminal. No third-party chat server. | `deck/chat` |
 | Phone | Now, approvals, drafts, Glass, Ask | later; a Deck view first |
 
 Every surface talks to vyred's API. None reads the store directly.
@@ -521,7 +536,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M6** | Switchboard and Deck | Headless threads streamed to the Deck; Now and Projects working. |
 | **M7** | Capsule | Ported from the current Mac app onto vyred's API. |
 | **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
-| **M9** | Chat, Gate, phone | Mattermost wired to threads; the Gate holding sends; the phone view. |
+| **M9** | Chat, Gate, phone | Vyre Chat (projects, sessions, the terminal mirrored) on phone and computer; the Gate holding sends. |
 
 ---
 

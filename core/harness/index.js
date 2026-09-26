@@ -34,33 +34,72 @@ export default {
       return r && "data" in r ? r.data : null;
     };
 
+    /**
+     * An agent's scope, as the hook passes it: "*" or a comma list of project slugs. Absent means
+     * a person's own session, which sees whatever its folder's project is.
+     * @param {string|undefined} projects @param {string|null} slug
+     */
+    const inScope = (projects, slug) => !projects || projects === "*" || (slug != null && projects.split(",").includes(slug));
+
+    /**
+     * The agent a hook speaks for. The caller "harness:agent:<name>" is checked by vyred against
+     * the thread's key; input.agent is only a fallback for callers that name none (tests, modules).
+     * @param {string|undefined} agent @param {string|undefined} caller
+     */
+    const agentOf = (agent, caller) => /^harness:agent:(.+)$/.exec(String(caller || ""))?.[1] || agent || undefined;
+
     /** The project a folder is in, if Projects is running and knows one. */
     const projectOf = async cwd => (cwd ? ask("projects.of", { cwd }) : null);
 
+    /**
+     * A session that is not our own headless child, whose id is a live headless thread here: a
+     * terminal `claude --resume` of a conversation vyred is running (floor rule 4). Two processes
+     * would append to one transcript. The warning is all this does; the session still starts,
+     * because a hook that stops people working gets turned off. No switchboard, no warning.
+     * @param {string} session
+     */
+    const secondWriter = async session => {
+      const c = await ask("threads.claimed", { session });
+      if (!c || !c.headless) return "";
+      await ask("threads.contend", { session });
+      return `Warning from Vyre: this conversation is also running headless under Vyre right now (holder: ${c.holder || "none"}). ` +
+        `Two processes writing one transcript lose work. Stop the headless one with \`vyre threads stop ${session.slice(0, 8)}\` ` +
+        `before going on here, or leave this session and keep working there. Tell the user this before anything else.`;
+    };
+
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
-      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" } } },
-      run: async ({ cwd, session, source, project }) => {
+      input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
+      run: async ({ cwd, session, source, project, projects, headless }) => {
         if (session) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
+        const warning = session && !headless ? await secondWriter(session) : "";
+        const withWarning = (/** @type {string} */ t) => [warning, t].filter(Boolean).join("\n\n");
         // Projects decides which project this is: from the folder first, then from the session's
         // single pick. A session picked into several projects gets no brief rather than a guess.
         const brief = await ask("projects.context", project ? { project, session } : { cwd, session });
         const text = typeof brief === "string" ? brief : brief && typeof brief.text === "string" ? brief.text : "";
+        const slug = brief && brief.project ? String(brief.project) : null;
         // The lessons the user taught apply in every thread, in a project or not.
         const lessons = await ask("learn.check", { stage: "brief", cwd, session });
-        return { text: [text, lessons && lessons.text].filter(Boolean).join("\n\n"), project: brief && brief.project ? String(brief.project) : null };
+        const lessonText = lessons && lessons.text ? lessons.text : "";
+        // An agent outside its projects gets no brief, only the lessons.
+        if (!inScope(projects, slug)) return { text: withWarning(lessonText), project: null };
+        return { text: withWarning([text, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
-      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" } } },
-      run: async ({ prompt, cwd, session, prompt_id, agent }) => {
+      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" } } },
+      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects }, { caller } = {}) => {
+        const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
         if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: lessons };
         const project = await projectOf(cwd);
+        // An agent outside its projects gets no memory at all, not memory from elsewhere.
+        if (!inScope(projects, project ? project.slug : null)) return { text: lessons };
         const folders = project && (Array.isArray(project.folders) ? project.folders : project.home ? [project.home] : null);
         const project_cwds = folders || (cwd ? [cwd] : undefined);
         const facts = await ask("memory.relevant", { text: prompt, project_cwds, limit: 5 });
@@ -72,7 +111,8 @@ export default {
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" } } },
-      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent }) => {
+      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named }, { caller } = {}) => {
+        const agent = agentOf(named, caller);
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
         let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
         // A send inside an agent's thread goes through the Gate instead, where the user can edit
@@ -116,8 +156,9 @@ export default {
     ctx.tool("harness.stop", {
       description: "Stop: the lessons' output checks, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" } } },
-      run: async ({ session, ...turn }) => {
-        const check = session ? await ask("learn.check", { stage: "stop", session, ...turn }) : null;
+      run: async ({ session, ...turn }, { caller } = {}) => {
+        const agent = agentOf(turn.agent, caller);
+        const check = session ? await ask("learn.check", { stage: "stop", session, ...turn, ...(agent ? { agent } : {}) }) : null;
         if (check && check.decision === "block") return { decision: "block", reason: String(check.reason) };
         if (session) ctx.events.emit("turn.completed", { session });
         return { ok: true };

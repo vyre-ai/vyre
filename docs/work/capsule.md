@@ -59,13 +59,24 @@ answered. Screen-recorded or screenshotted against the boards.
   Electron panel replaces it; the prototype's own note says XProtect quarantined the unsigned
   Swift panel), `cursor.swift` and `axwatch.swift` (see Next).
 
+- Held drafts are edited inline (no Edit button): To, Subject and body read as text and show one
+  underline when focused. Send and Discard are the only actions; ⌘⏎ sends, Esc leaves a field.
+  Send calls `gate.approve {id, edited}` with every field on screen, so a revision made elsewhere
+  since the card opened never goes out unseen. Verified against the real Gate in a temp home with
+  a fake gmail: the subject edited in the Capsule is the subject that went.
+- Switchboard shapes from its branch doc: `agents.ask {wait:false}` with the thread named by the
+  first `thread.sent` if the stream wins, `threads.send` returning `{sent:false, holder}` and the
+  user's ⌘⏎ to take the lease, `threads.answer {surface}`, `thread.text {delta}`, `thread.stopped`.
+  Tested against fakes only until the switchboard merges.
+
 ## Doing
-- Nothing in progress. Waiting for the switchboard to merge, to run against real sessions.
+- Nothing in progress.
 
 ## Next
 1. Run against the real switchboard once it merges: `agents.ask`, `threads.send` with the lease,
    `threads.answer`, and `thread.text` deltas. Adjust `lib/state.js` if its payloads differ.
-2. Run against the real Gate once it exists; `fromHeld` reads its fields defensively.
+2. An open card does not yet repaint on `gate.revised` from another surface (Send still sends what
+   the card shows). Fill a login into the front app with `vault.fill`.
 3. hands-mac: port `cursor.swift`, so each act shows where it landed, and `axwatch.swift`, to
    observe on change rather than on call.
 4. `vyre-launcher` as a signed `.app` with a launchd plist, so vyred on the Mac keeps one
@@ -86,9 +97,7 @@ answered. Screen-recorded or screenshotted against the boards.
   - `threads.answer {ask, decision: allow|deny}`
   - `thread.text {message, text, done}`, where `done:false` is a piece to append
   - `ask.raised {ask, agent?, tool, summary, destination, reason}`, and `ask.answered {ask}`
-- gate: `gate.held` → `[{id, agent, to, subject, body, rule, title?, project, projectName?, at}]`,
-  `gate.approve {id, text?}` (an edited draft), `gate.reject {id}`, and events `gate.held`,
-  `gate.approved` and `gate.rejected` with `{id}`.
+- gate: met by `42e199a` (the `capsule` caller on gate.get/approve/reject).
 
 ## Changed contracts
 - `GET /v1/health` also returns `last_event` (the newest event id).
