@@ -199,3 +199,56 @@ Two residual risks in the terminal method, both of which still need a person:
   calls.
 - New events: `presence.proved` and `presence.refused`, holding the tool, method and caller, and
   never a code or key.
+
+## Addendum, 26 Sep 2026: after review with the other workstreams
+
+**The floor's list grew.** It now includes the vault's value-out tools (`vault.inject`,
+`vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`,
+`vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`,
+`vault.render`, `vault.session.open`, `vault.export`, `vault.kit`), `learn.relax`,
+`learn.skill_install`, `computers.takeover`, `computers.giveback` and `link.pair.approve`.
+
+Tools with a pending flow for Claude stay off the list, because their approval step is on it:
+`vault.grant` and `vault.pass.create` wait for `vault.approve`. `vault.import` stays off too. An
+owner who wants presence on any of these declares it. The list is the minimum the floor needs,
+and a declaration only ever adds to it.
+
+**What a tool sees.** `run(input, { caller, thread, agent, peer, presence })`, where
+`presence = { method, keyId }`. `keyId` is the enrolled Capsule key or passkey, or null. The
+proof itself never reaches a tool.
+
+**The terminal method on the box.** The Mac that Claude runs on usually holds the user's SSH keys
+to the box, and `ssh -t box` gives a model a login terminal that `who` lists. Whoever holds the
+client end of that terminal reads the code vyred writes to it. So on the box (`role: "box"`), a
+terminal code proves presence only for `presence.code` and `presence.enroll`, and only until the
+first passkey is enrolled. After that, the box takes passkeys. On a Mac, `ssh localhost` works
+the same way when Remote Login is on. That is one more reason `vyre` uses Touch ID first.
+
+**Box identity.** `tailnet:<login>` is an owner device, not a person. Claude on the Mac shares
+that login. A tailnet caller may read what the owner may read, but it gets no presence.
+
+**What presence cannot fix on the box.** Claude's sessions run as uid 1000 in vyred's container
+and network namespace. From there they can:
+- read `~/.vyre`, including a file keystore;
+- drive the tailscale CLI as operator;
+- reach the Docker API proxy (`docker-api:2375`).
+
+The proxy filters endpoints, not bodies. A `POST /containers/create` with `Privileged` or a bind
+of `/` is root on the host, whatever `DockerDriver.create()` refuses to build. The floor now
+denies these by command text. The real fix is separation:
+- Run Claude's sessions as a separate uid with no read access to `~/.vyre`, as tailscale's
+  non-operator, and outside the `docker-api` network.
+- Or put a body-checking proxy that vyred owns in front of the Engine. It should allow only the
+  create body ADR 0009 describes, and exec only into `run.vyre.computers` containers.
+
+**Sessions, for the Deck.** A person revealing or copying items one after another should not
+need a passkey on every click. Planned, not built: a `session` method. After a passkey
+assertion, vyred issues a secret that lasts a few minutes, bound to that passkey and to a list of
+tools the owner declared as session-able (`vault.reveal`, `vault.copy`, `vault.totp`). A tool-side
+`skip` hook that reads headers is not accepted. Headers are the thing a model forges.
+
+**Accepting a lesson by reply.** A lesson changes what Claude is told in every later session, so
+a forged "yes" is a persistent prompt injection, not only a stricter rule. Learning may accept by
+reply only when the prompt came from a person. That means an interactive Claude Code prompt, or a
+`threads.send` whose surface proved presence. A prompt that an agent or the assistant typed into
+a thread never counts, and neither does `-p` input.
