@@ -9,7 +9,7 @@
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules } from "../js/api.js";
+import { attempt, modules, canProve, callWithCode } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
 
@@ -22,6 +22,7 @@ const SECTIONS = [
   ["history", "History and memory"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
+  ["security", "Security"],
   ["modules", "Modules"],
   ["appearance", "Appearance"],
   ["machine", "This machine"],
@@ -85,7 +86,7 @@ export default async function settings(ctx) {
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
     drawNetwork(body.network), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
-    drawNotifications(body.notifications, ctx), drawModules(body.modules),
+    drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
   // A push notification's path is a query (?section=lessons, a plain fetchable link), not a hash.
@@ -505,6 +506,60 @@ async function drawNotifications(el, ctx) {
       } }, "Send a test")) : null);
   };
   draw();
+}
+
+// ---- security (passkeys, ADR 0004) -------------------------------------------------------------
+
+/** WebAuthn's own base64url, for the enrollment call (api.js's is not exported; this one is
+ * small enough to keep local rather than widen api.js's surface for one call site). */
+const b64url = buf => btoa(String.fromCharCode(.../** @type {any} */ (new Uint8Array(buf)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+/**
+ * Add a passkey: proves a person is here for a Gate approval or a Glass take-over (ADR 0004).
+ * The first one needs a one-time code from `vyre presence code`, typed on the box, since there
+ * is no passkey yet to prove with.
+ */
+function drawSecurity(el, ctx) {
+  if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet.")); return; }
+  const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "off", spellcheck: "false",
+    placeholder: "from vyre presence code, on the box" }));
+  const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: "e.g. My MacBook" }));
+  const st = status();
+  const btn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: enroll }, "Add a passkey"));
+  async function enroll() {
+    const code = codeIn.value.trim();
+    if (!code) { put(st, "Paste the code first."); return; }
+    btn.disabled = true;
+    put(st, "Waiting for your passkey…");
+    /** @type {any} */ let cred;
+    try {
+      cred = await navigator.credentials.create({ publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: "Vyre", id: location.hostname },
+        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: nameIn.value.trim() || "you", displayName: nameIn.value.trim() || "you" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { userVerification: "required" }, timeout: 60_000,
+      } });
+    } catch (e) { btn.disabled = false; put(st, `The passkey was not created: ${/** @type {any} */ (e)?.message || e}`); return; }
+    if (!cred) { btn.disabled = false; put(st, "The passkey was cancelled."); return; }
+    const r = cred.response;
+    try {
+      await callWithCode("presence.enroll", {
+        kind: "passkey", name: nameIn.value.trim() || "This device",
+        public_key: b64url(r.getPublicKey()), alg: r.getPublicKeyAlgorithm(),
+        rp_id: location.hostname, credential_id: b64url(cred.rawId),
+      }, code);
+    } catch (e) { btn.disabled = false; put(st, errText(e)); return; }
+    codeIn.value = "";
+    btn.disabled = false;
+    put(st, "Passkey added.");
+  }
+  put(el,
+    note("A passkey (Touch ID, Face ID, a security key) proves you're the one approving a Gate item or taking over a session in Glass — never typed, never phished."),
+    h("div", { class: "rows" },
+      row("Code", codeIn),
+      row("Name this device", nameIn)),
+    foot(btn), st);
 }
 
 // ---- 8. Modules ----------------------------------------------------------------------------
