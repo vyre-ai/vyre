@@ -2,7 +2,7 @@
 // Word-level diff for showing what changed: a Gate item's draft vs. what the user actually sent,
 // or a file edit's before vs. after. Same LCS-over-words shape as core/gate/gate.js's `diff`, but
 // where that one only needs the removed/added snippets for a one-line memory note, this one
-// reconstructs the whole sequence — equal runs included — so it can be rendered inline. Pure:
+// reconstructs the whole sequence, equal runs included, so it can be rendered inline. Pure:
 // two strings in, one DOM node out.
 
 import { h, add } from "../../js/dom.js";
@@ -52,4 +52,45 @@ function diffTokens(xs, ys) {
     else { push("removed", xs[i]); i++; }
   }
   return out;
+}
+
+// ---- a unified, line-level diff (a file edit: Edit/MultiEdit's old_string vs new_string) ----
+
+const MAX_LINES = 2000; // past this, the whole old block removed and the whole new block added
+
+/**
+ * Line-level LCS: ordered { type: " " | "-" | "+", text } rows, the way `diff -u` prints a hunk.
+ * @param {string} before @param {string} after
+ * @returns {{ type: " "|"-"|"+", text: string }[]}
+ */
+export function lineDiff(before, after) {
+  const xs = before == null || before === "" ? [] : String(before).split("\n");
+  const ys = after == null || after === "" ? [] : String(after).split("\n");
+  if (xs.length > MAX_LINES || ys.length > MAX_LINES) return [...xs.map(text => ({ type: /** @type {"-"} */ ("-"), text })), ...ys.map(text => ({ type: /** @type {"+"} */ ("+"), text }))];
+  const n = xs.length, m = ys.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = xs[i] === ys[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  /** @type {{ type: " "|"-"|"+", text: string }[]} */
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && xs[i] === ys[j]) { out.push({ type: " ", text: xs[i] }); i++; j++; }
+    else if (i < n && (j === m || L[i + 1][j] >= L[i][j + 1])) { out.push({ type: "-", text: xs[i] }); i++; }
+    else { out.push({ type: "+", text: ys[j] }); j++; }
+  }
+  return out;
+}
+
+/**
+ * A unified diff as DOM: one row per line, a +/- gutter, removed rows before added ones.
+ * @param {string} before @param {string} after
+ * @returns {HTMLElement}
+ */
+export function renderUnified(before, after) {
+  const el = h("div", { class: "cv-diff" });
+  for (const r of lineDiff(before, after)) {
+    add(el, h("div", { class: "cv-dl" + (r.type === "-" ? " cv-dl-del" : r.type === "+" ? " cv-dl-add" : "") },
+      h("span", { class: "cv-dl-g" }, r.type), h("span", { class: "cv-dl-t" }, r.text || " ")));
+  }
+  return el;
 }
