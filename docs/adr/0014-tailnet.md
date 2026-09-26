@@ -1,6 +1,6 @@
 # ADR 0014 · Using the tailnet fully
 
-Status: accepted for parts 1 to 6, proposed for parts 7 to 10, 27 Sep 2026 · Workstream: tailnet ·
+Status: accepted, 27 Sep 2026 (parts 7 to 10 accepted the same day, when the user asked for all ten) · Workstream: tailnet ·
 Builds on ADR 0002 (network and identity), ADR 0009 (container hardening), ADR 0012 (cdp-proxy).
 
 ## Context
@@ -174,71 +174,107 @@ Why not run it: `lock init` changes every device on the tailnet and can lock the
 changes if they lose their signing devices and secrets. That trade is theirs, made where they
 can see it.
 
-## 7. Grants with app capabilities (proposed, needs the user's decision)
+## Caller classes after parts 7 to 9
 
-Tailscale grants can carry application capabilities, which `whois` returns in the peer's
-`CapMap`. Vyre could read two of its own:
+The box's tailnet listener now tells four kinds of peer apart. whois stays the only source.
 
-- `vyre.run/cap/vault`: `[{ "items": ["northwind-*"], "mode": "pass" }]` lets a named device or
-  person receive a vault pass (ADR 0006) for matching items.
-- `vyre.run/cap/share`: `[{ "threads": ["harlow-*"], "mode": "read" }]` lets them read a shared
-  thread.
+| Peer | Caller | Served when |
+|---|---|---|
+| the owner, on any device | `tailnet:<login>` | the login is `network.owner` (unchanged) |
+| a person from another tailnet | `tailnet-guest:<login>` | guests are on, and the login is listed or holds `vyre.run/cap/guest` |
+| an agent's own node | `tailnet:agent:<name>` | agent nodes are on, the node has the agent tag, and the computers module maps its stable ID to a running computer |
+| anything else | refused, `403 not_owner` | never |
 
-Vyre would only read these, never write them. They widen who may ask, never what may be shown: a
-vault value still needs presence on the owner's device and still never reaches a model (floor
-rule 8), and a guest caller is its own class (`tailnet-guest:<login>`), never the owner.
+Tools see `meta.peer = { node, stableId, login, tags, caps, kind, agent? }`. `caps` is the whois
+CapMap, as the policy wrote it; Vyre reads it and never writes it. An app capability only ever
+narrows or names what Vyre already allows. It never widens a pass, never shows a vault value and
+never makes anyone an approver.
 
-**Trade-off.** It moves part of Vyre's authority into the tailnet policy. On a personal tailnet
-that is the owner. On a company tailnet it is whoever administers it, who is then able to grant
-access to the owner's box. **Recommendation:** adopt, but only for a tailnet whose policy the
-owner alone edits, checked at onboarding, and with each grant shown to the owner once before it
-is honoured.
+## 7. Grants with app capabilities
 
-## 8. Sharing the box with another person's tailnet (proposed, needs the user's decision)
+**Decision.** Vyre reads two of its own app capabilities from whois, each behind its own switch.
 
-Tailscale's machine sharing invites someone from another tailnet to reach one node. Today ADR 0002
-serves only `network.owner`, so a shared-in person gets `403 not_owner`. To serve them:
+- `vyre.run/cap/vault`: `[{ "items": ["northwind-*"], "mode": "relayed"|"sealed"|"any" }]`. With
+  `vault.relay.grants: "require"` (default `"off"`, and only with `vault.relay.identity: "whois"`),
+  a relayed request needs everything it needed before, then also a grant covering its item and
+  mode. The check runs after every existing pass check, so it can only add a refusal: a revoked,
+  expired or unapproved pass stays refused whatever the policy says. A new relayed pass carries a
+  warning when the holder's login is not covered yet. `vault.grants.status` shows, per holder,
+  whether the policy covers their passes.
+- `vyre.run/cap/guest`: `[{ "tools": ["glass.open"] }]`. See part 8.
 
-- a `guests` list in config (logins from other tailnets), each with the tools they may call;
-- a caller class `tailnet-guest:<login>`, from whois, which no tool treats as the owner, the
-  Gate never accepts as an approver, and presence never accepts as a person proving they are there;
-- the useful first case: one view-only Glass session, or reading one thread.
+Item and tool patterns are an exact name or a trailing `*` prefix, nothing else.
 
-**Recommendation:** wait for part 7's decision, since grants would express the same thing with
-less config. Decide first whether Vyre ever serves anyone but its owner.
+**Trade-off, still true.** On a company tailnet, whoever edits the policy can grant these. That
+is why each switch is off by default, owner only, and why a grant narrows rather than grants.
 
-## 9. An ephemeral tagged node for each agent container (proposed, needs the user's decision)
+## 8. Guests from another tailnet
 
-Each computer could join the tailnet as its own ephemeral node (`tag:vyre-agent`, userspace
-tailscaled in the container). Gains: whois can tell agents apart, the policy can give each agent
-its own reach (one agent to a court portal via the Mac, another to nothing), and part 5's egress
-becomes per agent.
+**Decision.** A person the owner shares the box with through Tailscale machine sharing can be
+served as a guest, off by default (`network.guests.enable`, presence).
 
-Costs: an auth key inside a container where a model has a shell. It would have to be one-use,
-ephemeral, pre-approved and tag-only, and the tag must reach none of the owner's devices. Node
-counts grow with agents (plan limits). The container gains a tailscaled, against ADR 0009's small
-image. **Recommendation:** not yet. Revisit once part 5 has run for real and a second tag is
-wanted.
+- A guest calls only tools that are both allowed for them (listed in `network.guests.people`,
+  or granted by `vyre.run/cap/guest`) and in the fixed `GUEST_SAFE` set: `glass.open`,
+  `glass.close` (only sessions the guest opened) and `threads.list`. Every other tool, and every
+  route but the Deck's static files, answers `404` as if it did not exist, so a guest learns
+  nothing about the rest of the box.
+- A guest is never an approver: presence refuses them whatever proof they carry, the Gate's
+  `person()` refuses them, link pairing refuses them, and `glass.take` is out of reach.
+- The tools are in a new module, `network` (`network.guests.list|add|remove|enable|check`),
+  because a module's tools must start with its name. Adding, removing and enabling are on the
+  floor's human-only list. `network.guests.check` shows who would be served, from whois of every
+  online shared-in peer.
 
-## 10. Funnel for inbound webhooks (proposed, needs the user's decision)
+## 9. A tagged node for each agent's computer
 
-This is the only part that faces the public internet. Some tools only report by webhook (a
-payment processor, a form service). Funnel can publish a node's HTTPS port to the internet.
+**Decision.** When `computers.tailnet.enabled` is on (`computers.tailnet.set`, presence), a
+computer joins the tailnet as its own ephemeral node tagged `tag:vyre-agent`, and the names
+listener maps that node to `tailnet:agent:<name>` through `computers.node.agent`, which answers
+only for a stable ID recorded at join and only while that computer runs.
 
-If adopted:
+**whois strengthens the agent key and never replaces it.** Over the tailnet, a request from an
+agent's node must also carry the `x-vyre-agent-key` that `threads.vouch` accepts for that same
+agent: the node proves which container, the key proves which thread. Off the tailnet, the key
+alone works as before. Neither can stand in for the other, because an agent's shell can read its
+own key, and a node with no running thread behind it has nothing to act for.
 
-- **Off by default, opened per route.** Each route is named (`/hooks/<name>`), has its own secret,
-  and checks the sender's own signature (an HMAC over the body) before anything else. A route with
-  no signature scheme is not allowed.
-- **Its own listener and caller class.** Funnel terminates at `tailscale serve`, which ADR 0002
-  rejects for identity. That does not matter here, because a webhook has no identity to forge: its
-  caller class is `internet:<route>`, which can only append an event (`hook.received`), never call
-  a tool, reach the Gate or touch the vault. A small body limit and a rate limit apply.
-- **The person turns it on.** Vyre prints the exact `tailscale funnel` command and the policy's
-  `funnel` node attribute; it never runs them. `vyre hooks` lists open routes, and closing the
-  last one prints the command to turn Funnel off.
+- The auth key is a vault item (`tailscale-agent-authkey`, reusable, ephemeral, pre-approved,
+  tagged), fetched by the computers module with a grant. It never goes in the container's env,
+  labels, arguments, logs or events. It goes in a request body, only to a separate tailnet port
+  that the driver names, never to computerd's port, because computerd runs as the agent's own
+  user and the agent could take that port over.
+- **Not live yet.** The image runs everything as the agent's user with every capability dropped,
+  so nothing in it can start a root tailscaled that the agent cannot read. The computer's side is
+  written and tested (`core/computers/image/computerd/tailnet.js`) but not wired in. The minimal
+  image change, which amends ADR 0009, is: tini as root, a root-only process on port 7001 with its
+  own token, then `setpriv` down to uid 1000 with every capability gone before any agent process
+  runs. That needs SETUID and SETGID at start. Until it lands, the switch reports this as its
+  `problem`, and nothing is sent.
 
-**Recommendation:** build only when a concrete integration needs it, and then one route at a time.
+## 10. Funnel for inbound webhooks
+
+**Decision.** A new module, `hooks`, off by default (`hooks.enable`, presence), takes signed
+webhooks from the public internet through Funnel. It is the only part of Vyre that faces the
+internet.
+
+- **Its own listener**, on `127.0.0.1:7310` only. tailscaled shares the box's network namespace
+  and reaches loopback, which is what Funnel proxies to. Funnel uses port 8443, because vyred binds
+  443 on the tailnet addresses itself.
+- **One route at a time.** `hooks.open { name, verify: { scheme, header?, secret } }` and
+  `hooks.close`, both human-only. Every route checks the sender's own signature (hmac-sha256,
+  GitHub, or Stripe with a five-minute tolerance) against a secret the vault holds, in constant
+  time; a route without a scheme is refused. Anything else is a bare 404.
+- **Never straight to a tool.** A verified request is stored (bounded: newest 500, seven days) and
+  announced as `hook.received { route, id, bytes, at }`, without its body. That is all it can do:
+  it cannot call a tool, reach the Gate or read any vault item but its route's secret. Watchers
+  now run on an event, filtered by payload (`{ "on": "hook.received", "where": { "route": "..." } }`),
+  and the runtime hands the watcher the stored delivery. What a watcher then does goes through the
+  Gate like anything else.
+- Body limit 256 KB, 30 a minute per route and 120 a minute in all, repeats of the same body
+  dropped.
+- **The person turns Funnel on.** `hooks.status` reads `tailscale funnel status --json`, flags
+  routes Funnel does not serve and paths Vyre has no route for, and prints the exact commands.
+  Vyre never runs `tailscale funnel`.
 
 ## Consequences
 
@@ -251,10 +287,16 @@ If adopted:
 
 ## Decisions needed
 
-1. Taildrive read-only or read-write (default ro), and whether a share should refuse a folder
-   holding `.env` or key files. Whether the box's `projectsDir` moves to `/work/projects`, since
-   today it sits in `vyre-home` and the `projects` share falls back to `/work`.
+1. Taildrive read-only or read-write (default ro); whether a share refuses a folder holding `.env`
+   or key files; whether the box's `projectsDir` moves to `/work/projects`.
 2. Taildrop to a tagged box: sign the box in as the owner, or grant file sharing to its tag.
-3. Egress: accept the sidecar design, how its auth key is renewed (keys expire; an OAuth client
-   is the alternative), and that any process in any computer can reach `egress:1055`.
-4. Parts 7 to 10, as recommended above.
+3. Egress: the sidecar design, its key renewal, and that any process in any computer can reach it.
+4. Part 9: the image change above (root at start, SETUID and SETGID, `setpriv` down), and whether
+   the root side must prove itself (an HMAC over a nonce) before vyred sends the key.
+5. Part 8: whether a guest may read one thread (`threads.get`), and whether `threads.list`, which
+   shows every headless thread, is narrowed for guests.
+6. Part 10: keep dropping repeated bodies (it also merges two identical legitimate ones); a
+   route's secret grant is module-wide today, not per route.
+7. Part 7: whether a policy grant naming a user of another tailnet reaches that user's shared-in
+   node's whois caps. Until checked on a real tailnet, `vault.relay.grants: "require"` may refuse
+   every shared-in holder.
