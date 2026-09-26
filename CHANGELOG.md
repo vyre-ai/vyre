@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### e2e: a real install walked from main
+
+- The onboarding page kept Continue off on step 1 whenever the box had no vyre.run zone token,
+  which is every box: "That name is not free: could not check". A name the check cannot run for
+  is fine now, since the address is the ts.net one, chosen in step 4. The name field also gets the
+  same `input` style as the assistant's.
 #### No Touch ID prompt, or anything else on screen, under tests
 
 - A test run raised a real Touch ID dialog ("Relax Vyre lesson 1") on the user's screen: presence's

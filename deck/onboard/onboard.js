@@ -154,7 +154,7 @@ const SCREENS = {
       // name they cannot have is caught early; it just isn't shown as a domain here).
       h("p", { class: "lead" }, "Just your name and your assistant's. Only your own devices will be able to reach it."));
     const status = h("div", { class: "check-line", "aria-live": "polite" });
-    const nameIn = h("input", { id: "name", value: state.name, autocomplete: "off", spellcheck: "false", autocapitalize: "none",
+    const nameIn = h("input", { class: "input", id: "name", value: state.name, autocomplete: "off", spellcheck: "false", autocapitalize: "none",
       "aria-describedby": "name-status", placeholder: "alex" });
     status.id = "name-status";
     const asst = h("input", { class: "input", id: "assistant", value: state.assistant, autocomplete: "off", placeholder: "juno" });
@@ -172,6 +172,8 @@ const SCREENS = {
       if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the box module runs.")); }
       else if (r.error) put(status, String(r.error.message));
       else if (r.data.available) { ok = true; put(status, icon("check", 14), "Available."); }
+      // No vyre.run token (the usual box): the address is the ts.net one, chosen in step 4.
+      else if (r.data.valid && /^could not check/.test(r.data.why || "")) { ok = true; put(status); }
       else put(status, `That name is not free${r.data.why ? ": " + r.data.why : "."} Try another.`);
       sync();
     };
