@@ -53,6 +53,9 @@ export async function start(opts = {}) {
  * @param {Parameters<typeof start>[0] & {}} opts @param {string} root @param {any} p @param {() => void} release
  */
 async function startLocked(opts, root, p, release) {
+  // Which build this process runs, read now: after an upgrade in place, build.json on disk is the
+  // new one, and a vyred that read it later would claim the new commit while running old code.
+  build();
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");
   const log = opts.log || ((msg, extra) => {

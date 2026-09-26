@@ -23,7 +23,8 @@ import { backup, restore } from "../../names/backup.js";
 import * as tailnet from "../tailnet.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
-import { build } from "../../daemon/build.js";
+import { findAssistant } from "./assistant.js";
+import { build, label } from "../../daemon/build.js";
 
 /** Pull --flags out of argv: { flags: { user: "alex", "dry-run": true }, rest: [...] }. */
 export function parse(args, valued = ["user", "connect"]) {
@@ -56,25 +57,33 @@ const systemdManaged = () => process.platform === "linux" && fs.existsSync(UNIT)
 
 async function health() { const h = await request("GET", "/v1/health"); return h.error ? null : h.data; }
 
-/** Wait for vyred to answer with the wanted version (after systemd restarts it). */
-async function waitFor(version, ms = 15_000) {
+/** Wait for vyred to answer with the wanted version and build (after systemd restarts it). */
+async function waitFor(version, ms = 15_000, commit = null) {
   for (let t = 0; t < ms; t += 250) {
     const h = await health();
-    if (h && h.version === version) return h;
+    if (h && h.version === version && (!commit || h.commit === commit)) return h;
     await new Promise(r => setTimeout(r, 250));
   }
   return null;
 }
 
 /** Start vyred, or restart it when it runs an older version or the wrong role. */
-async function bring(role) {
+async function bring(role, mineOf = build) {
   const h = await health();
-  if (h && h.version === VERSION && h.role === role) return { ok: true, note: null };
+  // A release is stamped with its commit (build.json). An upgrade that keeps the version number
+  // still changes the commit, and the vyred started before it runs the old code: that one is
+  // restarted, as is one whose build is dirty or unknown. A checkout (no stamp) compares versions.
+  const mine = mineOf();
+  const sameBuild = !mine.stamped || (h && h.commit === mine.commit && h.dirty === false && mine.dirty === false);
+  if (h && h.version === VERSION && h.role === role && sameBuild) return { ok: true, note: null };
+  const was = h ? label({ version: h.version, commit: h.commit ?? null, dirty: h.dirty ?? null }) : "";
+  const now = label(mine);
+  const restarted = h && h.version === VERSION && !sameBuild ? `updated · restarted vyred (${was} → ${now})` : `restarted ${was} → ${now}`;
   if (h && h.supervisor === "systemd") {
     // systemd restarts it (Restart=always) with the code npm just installed.
     try { process.kill(h.pid, "SIGTERM"); } catch {}
-    const back = await waitFor(VERSION);
-    return back ? { ok: true, note: `restarted ${h.version} → ${VERSION}` } : { ok: false, note: "vyred did not come back; see journalctl -u vyre" };
+    const back = await waitFor(VERSION, 15_000, mine.stamped ? mine.commit : null);
+    return back ? { ok: true, note: restarted } : { ok: false, note: "vyred did not come back; see journalctl -u vyre" };
   }
   if (process.env.VYRE_SUPERVISOR === "docker") {
     // In the box's container vyred is the container's main process: the image is the version, and
@@ -83,10 +92,13 @@ async function bring(role) {
       : { ok: false, note: "vyred is not answering in its container: docker compose -p vyre logs vyre" };
   }
   if (!h && systemdManaged()) return { ok: false, note: "vyred is installed as a service and is stopped: sudo systemctl start vyre" };
-  if (h) await stop();
+  if (h) {
+    const s = await stop({ pid: h.pid });
+    if (!s.ok) return { ok: false, note: s.why || "the running vyred did not stop; vyre down, then vyre up" };
+  }
   const r = await ensureUp();
   if (!r.ok) return { ok: false, note: `vyred did not start; its output is in ${r.log}` };
-  return { ok: true, note: h ? `restarted ${h.version} → ${VERSION}` : `started · pid ${r.pid}` };
+  return { ok: true, note: h ? restarted : `started · pid ${r.pid}` };
 }
 
 /**
@@ -167,7 +179,7 @@ async function run(args, deps) {
   const v = cfg.vault || {};
   if (process.platform === "darwin" && isRealHome(config.home()) && dialogsAllowed() && v.keychain === undefined && !v.keystore) config.save({ vault: { keychain: true } });
 
-  const b = await (deps.bring || bring)(role);
+  const b = await (deps.bring || bring)(role, deps.build);
   if (!b.ok) return fail("vyred_down", b.note || "vyred did not start");
   if (first) {
     say("");
@@ -210,7 +222,10 @@ async function run(args, deps) {
     const n = await callTool("names.status");
     const ready = Boolean(d.address && n.data && n.data.phase === "serving");
     if (json) return done({ address: d.address || null, ready, passkeyUrl: d.passkeyUrl || null });
-    if (d.address) printEnding({ address: d.address, assistant: config.load().onboard?.assistant || null });
+    if (d.address) {
+      const f = await findAssistant(callTool).catch(() => ({}));
+      printEnding({ address: d.address, assistant: f.agent ? f.agent.name : config.load().onboard?.assistant || null });
+    }
     else say("  set up is done; there is no address yet (vyre name)");
     // No passkey yet: on a box it is the only way to prove it is you, so offer a fresh link to make one.
     if (d.passkeyUrl) say(`\n  Make your passkey ${dim("(from a device on your tailnet; the link works once, for 10 minutes)")}:\n    ${signal(d.passkeyUrl)}`);
@@ -323,7 +338,13 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     say(dim("\n  Once you approve it, run vyre up again to finish."));
     return 0;
   }
-  printEnding({ address: box, assistant: (h && h.assistant) || null });
+  // The box's health does not name the assistant; the box does, over the link, once paired.
+  let assistant = (h && h.assistant) || null;
+  if (!assistant && paired === "linked") {
+    const f = await findAssistant((name, input = {}) => tool("link.call", { tool: name, input })).catch(() => ({}));
+    assistant = f.agent ? f.agent.name : null;
+  }
+  printEnding({ address: box, assistant });
   return 0;
 }
 

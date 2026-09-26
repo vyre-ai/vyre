@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre up` after an upgrade restarts the old vyred; the assistant is one command away
+
+- On a user's Mac, `npm i -g` over an install and then `vyre up` printed "vyred is already
+  running" and left the 44-minute-old vyred on the old code: both said 0.0.1. Now a release's
+  build.json commit is compared too; a vyred on another build, or a dirty or unknown one, is
+  restarted: "updated · restarted vyred (0.0.1 → 0.0.1 · 1a2b3c4)". vyred reads its build when it
+  starts, so a vyred left running over a new install cannot claim the new commit. A checkout with
+  no stamp still compares versions. `vyre up` stops only the pid that both the pid file and the
+  running vyred's health name; a mismatch stops nothing and says so. `core/cli/commands/up.js`,
+  `core/cli/daemonctl.js`, `core/daemon/build.js`.
+- "your assistant  not set up yet" was a dead end, and on a Mac it was always shown: the box's
+  health never names the assistant. The Mac now asks the box over the link, and when there is
+  none the ending says `vyre assistant <name>`. New `vyre assistant [name] [--json]`: who your
+  assistant is, or make it with the same input as the Deck's "Create your assistant" card; on a
+  paired Mac it asks the box. `core/cli/commands/assistant.js`, `core/cli/ending.js`,
+  `test/upgrade.test.js`.
+
 #### `vyre vault` and `vyre memory` ask for the person, as `vyre learn` does
 
 - `vyre vault put/grant/get --copy/...` and `vyre memory correct/merge/split/uncorrect/pin/mute`
