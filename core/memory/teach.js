@@ -11,7 +11,10 @@
 //     rel?: "works_at" | "has_email" | "has_domain" | "owned_by" | <snake_case>,
 //     object?: same shape as subject,
 //     text?: "one readable line", at?: <ms when it became true>, key?: "<the module's id>",
-//     forget?: true }
+//     project_cwds?: ["<the project's folders>"], forget?: true }
+//
+// project_cwds scopes a fact to a project: memory.facts for that project's folders includes it,
+// and another project's never does. A fact without it belongs everywhere.
 //
 // A subject with both a name and an email also says that person has that address. Teaching the
 // same fact again changes nothing; teaching under the same key replaces it; forget removes it.
@@ -53,8 +56,14 @@ export function ref(x, where = "subject") {
 
 /**
  * Check a taught fact and turn it into claims about nodes. Throws with a readable reason.
- * @returns {{ key: string, text: string|null, at: number, forget: boolean, claims: Claim[], stored: string }}
+ * @returns {{ key: string, text: string|null, at: number, forget: boolean, claims: Claim[], stored: string, project: string[]|null }}
  */
+/** Is folder `cwd` one of these folders or under one? The rule sessions are scoped by, too. */
+export function within(cwd, folders) {
+  const c = String(cwd).replace(/\/+$/, "");
+  return folders.some(f => { const base = String(f).replace(/\/+$/, ""); return c === base || c.startsWith(base + "/"); });
+}
+
 export function lesson(fact) {
   if (!fact || typeof fact !== "object" || Array.isArray(fact)) throw new Error("fact must be an object");
   const key = fact.key == null ? null : String(fact.key);
@@ -64,9 +73,18 @@ export function lesson(fact) {
     subject: fact.subject, rel: fact.rel ?? null, object: fact.object ?? null,
     text: fact.text == null ? null : String(fact.text).slice(0, 400), at: Number.isFinite(fact.at) ? Math.trunc(fact.at) : 0,
   };
+  // Only present when given, so facts taught before scoping existed keep their stored form and key.
+  if (fact.project_cwds != null) {
+    if (!Array.isArray(fact.project_cwds) || fact.project_cwds.length > 20 || fact.project_cwds.some(c => typeof c !== "string" || !c.trim())) {
+      throw new Error("fact.project_cwds must be a list of folders");
+    }
+    const cwds = [...new Set(fact.project_cwds.map(c => c.trim().replace(/\/+$/, "") || "/"))].sort();
+    if (cwds.length) clean.project_cwds = cwds;
+  }
   const stored = JSON.stringify(clean);
   const k = key ?? createHash("sha256").update(stored).digest("hex").slice(0, 24);
-  if (fact.forget) return { key: k, text: null, at: 0, forget: true, claims: [], stored };
+  const project = clean.project_cwds || null;
+  if (fact.forget) return { key: k, text: null, at: 0, forget: true, claims: [], stored, project };
   const src = ref(clean.subject, "subject");
   const claims = [];
   if (clean.rel !== null) {
@@ -83,5 +101,5 @@ export function lesson(fact) {
   if (s && s.name && s.email && src.id.startsWith("name:")) {
     claims.push({ src: { ...src, kind: src.kind || "person" }, rel: "has_email", dst: ref({ email: s.email }, "subject.email") });
   }
-  return { key: k, text: clean.text, at: clean.at, forget: false, claims, stored };
+  return { key: k, text: clean.text, at: clean.at, forget: false, claims, stored, project };
 }

@@ -79,6 +79,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- A taught fact can carry `project_cwds`, the project's folders. `memory.facts {project_cwds}`
+  includes facts taught for that project (a folder equal to or under one asked for, the rule
+  sessions follow) even when no session of the project names their subject, and leaves out
+  facts taught only for other projects; `memory.relevant` applies the same rule. A fact taught
+  without folders belongs everywhere and keeps the stored form and key it had before.
+
 - Short forms are measured per identity, not per spelling. One firm written several ways
   ("Harlow Legal", "Harlow Legal Group") shares a domain, so its spellings are pooled and the
   result is credited to the most-seen one. On the real index one firm's spellings measured 0.57,
