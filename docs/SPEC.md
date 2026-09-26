@@ -536,7 +536,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M6** | Switchboard and Deck | Headless threads streamed to the Deck; Now and Projects working. |
 | **M7** | Capsule | Ported from the current Mac app onto vyred's API. |
 | **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
-| **M9** | Chat, Gate, phone | Mattermost wired to threads; the Gate holding sends; the phone view. |
+| **M9** | Chat, Gate, phone | Vyre Chat (projects, sessions, the terminal mirrored) on phone and computer; the Gate holding sends. |
 
 ---
 
