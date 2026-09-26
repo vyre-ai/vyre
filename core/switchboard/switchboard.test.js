@@ -658,3 +658,18 @@ test("agents: the assistant's brief says how to watch and drive threads for the 
   assert.match(brief, /Do not poll threads_get/);
   assert.doesNotMatch(preamble({ name: "scout", kind: "agent", projects: ["harlow"] }), /threads_watch/);
 });
+
+test("agents.delete: a person removes a stopped agent and its spend; never the assistant, a running one, or by a model", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  await tool("agents.create", { name: "probe", projects: [] });
+  await tool("agents.ask", { agent: "probe", text: "hi" });
+  assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /has 1 running thread; stop it first: vyre agents stop probe/);
+  assert.equal((await tool("agents.delete", { agent: "probe" }, "mcp")).error.code, "denied", "a model never deletes an agent");
+  assert.match((await tool("agents.delete", { agent: "juno" })).error.message, /is the assistant/);
+  await tool("agents.stop", { agent: "probe" });
+  assert.deepEqual((await tool("agents.delete", { agent: "probe" }, "deck")).data, { agent: "probe", deleted: true });
+  assert.deepEqual((await tool("agents.list", {})).data.map(a => a.name), ["juno"]);
+  assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
+  assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
+});

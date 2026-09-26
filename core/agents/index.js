@@ -321,6 +321,22 @@ export default {
       },
     });
 
+    // Deleting is a person's decision: no model, not even the assistant, removes an agent.
+    ctx.tool("agents.delete", {
+      description: "Remove an agent's record and its spend. Refused while one of its threads is running (agents.stop first), and for the assistant. Its threads' transcripts and events stay.",
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+      callers: ["cli", "local", "deck", "capsule"],
+      run: async ({ agent }) => {
+        const a = must(agent);
+        if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
+        const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");
+        if (running.length) throw new Error(`${a.name} has ${running.length} running thread${running.length === 1 ? "" : "s"}; stop ${running.length === 1 ? "it" : "them"} first: vyre agents stop ${a.name}`);
+        db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
+        db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
+        return { agent: a.name, deleted: true };
+      },
+    });
+
     ctx.tool("agents.stop", {
       description: "Stop every running thread of an agent. Its record and transcripts stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
