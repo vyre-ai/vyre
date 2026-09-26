@@ -11,6 +11,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `registry.call` as `meta.peer`. The box can now tie a pairing and a link key to the Mac's node,
   and it lets the owner approve a pairing from another of their devices. A `peer` in tool input
   is still only input.
+- A test drives pairing through the real names listener, with whois simulated. The Mac's node
+  starts the request. Approving from that node is refused, and approving from the phone works.
+  Only the Mac's node collects the key, and the key is refused from any other node.
 - `link.find` on the Mac lists online tailnet peers that answer as a Vyre box. For each one it
   reads the name on the peer's certificate, because the box answers at `<you>.vyre.run` and
   checks Host. It pins the connection to that peer's stable ID. `vyre up` can offer pairing from
