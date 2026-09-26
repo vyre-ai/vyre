@@ -78,9 +78,9 @@ Start vyred if needed with `ensureUp()` from `core/cli/daemonctl.js`.
 ## Needs from others
 - recall: `recall.search {q, limit}` returning an array (or `{hits}`) of `{session}`. A
   subagent's session id is folded to its parent here.
-- memory: `memory.facts {project_cwds, limit}` returning an array (or `{facts}`) of objects with
-  `text` (or `fact`, `summary`, `label`) and an optional numeric `confidence`. The memory
-  session has been told.
+- memory: confirmed (work/memory 04da97f). `memory.facts {project_cwds, limit}` returns
+  `{about, facts: [{text, confidence 0..1, source, age, until, ref}]}`. The brief reads `.facts`
+  and uses `text` and `confidence`. Nothing more is needed.
 - main: macOS caps unix socket paths at 104 bytes. A long `VYRE_HOME` (the scratchpad path, for
   one) makes vyred fail with `listen EINVAL`. Worth a clear error in `core/daemon`.
 
