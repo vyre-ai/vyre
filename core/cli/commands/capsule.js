@@ -4,6 +4,7 @@
 //   vyre capsule            open it (starting vyred and the app when they are not running)
 //   vyre capsule --dev      run it from source in this terminal, with its log here; ctrl-C quits
 //   vyre capsule build      build the Swift helpers; --app also packages Vyre.app
+//   vyre capsule install    download the packaged app into ~/Applications (capsule-install.js)
 //
 // The trap this command exists to close: a packaged Electron app runs app.asar, so an edit to
 // the source does nothing until the app is packaged again, and nothing says so. The prototype
@@ -204,11 +205,12 @@ export function sign(app, run = (/** @type {string[]} */ a) => spawnSync("codesi
 }
 
 export default {
-  name: "capsule", order: 30, usage: "vyre capsule [--dev] | build [--app]", summary: "the Mac command bar: Control twice, anywhere",
+  name: "capsule", order: 30, usage: "vyre capsule [--dev] | build [--app] | install", summary: "the Mac command bar: Control twice, anywhere",
   /** @param {string[]} args */
   async run(args) {
     const flags = { dev: args.includes("--dev"), hidden: args.includes("--hidden"), app: args.includes("--app") };
     if (args[0] === "build") return build(flags);
+    if (args[0] === "install") return (await import("./capsule-install.js")).install(args.slice(1));
     return open(flags);
   },
 };

@@ -93,6 +93,87 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   folder named `secrets`, as Glass's guard does. On a Mac the default root is the home folder,
   which holds every Chrome profile.
 
+#### Install (ADR 0008)
+
+- `vyre box add` opens the owner's first-passkey link (`onboard.link`'s `passkeyUrl`, handed
+  only to the box's own terminal) before it starts pairing, since that passkey is what approves the
+  Mac in the Deck. Both doors print one approval line; there is no terminal approval on a box.
+- Pairing follows the presence floor: `vyre box add` and `vyre up` on a Mac start pairing and ask
+  for the approval in the Deck, with the passkey onboarding enrolled. `vyre box add` no longer
+  approves over SSH: anything in the box's container could run the same command.
+- From the first real run on a Linux server: a box that finished onboarding without an address
+  opens the browser again on the next `vyre box add`, so the address can be finished there; the
+  plan names the wrapper it will really write; a pairing that SSH cannot approve (a box with a
+  passkey) points at the Deck on the phone.
+- `vyre box add` forwards `VYRE_WRAPPER` with `VYRE_DIR` and `VYRE_BOX_URL`, so a second stack on
+  one server can be installed without replacing the host's own `/usr/local/bin/vyre`.
+- `vyre box` hardening: a `user@host` whose user or host starts with `-` is refused, and every ssh
+  call puts `--` before the target; calls after the master use `BatchMode` and `ServerAlive`.
+  When sudo needs a password and the account is not in the docker group, the plan says so and
+  the install adds it in the same terminal session, then reconnects. The wait gives up after 65
+  minutes and says how to carry on. `backup` checks the volumes first, arms the restart before
+  stopping, writes through `.partial` and needs `--force` to replace a file. `move` refuses a
+  server with old Vyre volumes, clears the installer's fresh stack before copying, checks the new
+  box answers from the Mac before uninstalling the old one, and starts the old stack again on any
+  failure. Ctrl-C in `add`, `move` or `backup` closes the SSH master and its `/tmp` folder.
+- The npm package carries `scripts/install-box.sh`, which `vyre box add` copies to the server so
+  the box files match the Mac's version, and `docs/JOURNEY.md`. `release-check.sh` checks the
+  installer is in the tarball.
+- `vyre box add` approves its own pairing: the Mac asks `link.pair`, and the code is approved as
+  `vyre link approve` on the box over the SSH connection that just proved the person owns it. A
+  box that already finished onboarding skips the link, tunnel and browser. Onboarding finished
+  without an address ends with "Almost there" and what is left, instead of "Vyre is ready."
+- `test/journey.test.js`: the install journey end to end on one machine. A fresh Mac and a fresh
+  Linux server are two temp homes (`test/journey/rig.js`) with fake ssh, docker, tailscale, claude
+  and browser; both vyreds, `vyre box add`, `vyre up --json`, the installer, the host wrapper and
+  the onboarding page are real. Six scenarios: door A through the browser to the ready block,
+  door A resumed, door A refused, door B with the Mac looking for the box, a signed-out Mac, and
+  `vyre up --json` on a finished box. Gaps against ADR 0008 stay as todo subtests naming the code.
+- The journey harness follows `box add` pairing over SSH and the finished-box resume: door A runs
+  the real installer, a resume opens no browser and no tunnel, and the Mac's discovery step is
+  skipped where the real Tailscale app is installed, since the link module would run it.
+- The journey harness follows pairing approved in the Deck, `--` before ssh targets, the preflight's
+  read-only volume check, and a resume that reopens the browser only while the address is unset.
+  The Mac's discovery step runs again now that the link module honours VYRE_TAILSCALE_BIN.
+- `test/helpers.js` points `VYRE_TAILSCALE_BIN` at a path that does not exist, so no test runs the
+  machine's real `tailscale` when `vyre up` looks for a box.
+- `vyre box add <user@host>` (ADR 0008 section 2): checks the Mac is on its tailnet, reaches the
+  server over SSH (a password is asked once, then one held connection), reads the server in one
+  call, shows the plan and asks once (`--yes` skips; no terminal and no `--yes` changes nothing),
+  copies this package's `install-box.sh` over and runs it with `-t` so sudo can ask, takes the
+  link from `vyre up --json` (or its text), forwards the port through the held connection, opens
+  the browser, prints each onboarding step as it is done, then saves `box.ssh` and `network.box`,
+  starts this Mac's vyred, pairs when `link.pair` exists, and prints the ready block. A box that
+  is already there carries on from where it stands; Ctrl-C leaves it as it is.
+- `vyre box` (status), `update`, `backup [file]` (the three volumes in one 0600 `.tar.gz`),
+  `move <user@newhost>` (installs with `VYRE_NO_UP=1`, streams the volumes through the Mac, runs
+  `--uninstall` on the old host) and `remove [--purge]`, all over the saved `box.ssh`.
+- `core/cli/ssh.js`: a small client over the system `ssh`: a ControlMaster in a 0700 folder under
+  `/tmp`, `run`, `json`, `put` (cat, no scp), `tunnel` (`-O forward` on the master; a taken port
+  is named with what holds it), and a tested shell `quote`.
+- `vyre up` on a Mac: with no box known it finds one among the tailnet's peers (one answer is
+  saved; several are listed and asked about), otherwise asks "Where should Vyre run?" (a server
+  through `vyre box add`, this Mac, or an address). Without a terminal it prints the three
+  commands. With a box known it checks the box answers from here, pairs through `link.status` /
+  `link.pair` when those tools exist, and prints the "Vyre is ready." block. A box after
+  onboarding prints the same block. `vyre up --box` on a Mac also opens the link in the browser.
+- `vyre up --json`: one object `{ role, version, url, port, ssh, address, box, ready }` on exit 0,
+  or `{ error: { code, message } }` on exit 1.
+- `vyre capsule install`: downloads `Vyre-mac.zip`, checks it against `SHA256SUMS`, unpacks it
+  with ditto into `~/Applications/Vyre.app` (asks before replacing one; `--yes`). Never
+  `/Applications`, never sudo.
+- `vyre capsule install` checks the zip against `box/Vyre-mac.sha256` in the npm package when
+  release ships it (SHA256SUMS then only cross-checks), and refuses a zip holding anything but
+  one real `Vyre.app` folder (no entries beside it, no symlinked app).
+- `vyre up`: `--connect` with no address is refused (`no_address`), `--json --system` is refused
+  (`bad_input`), and any throw under `--json` is one `{ error: { code: "failed" } }` object.
+- `core/cli/ending.js`: the "Vyre is ready." block (ADR 0008 section 6), shared by `vyre box add`
+  and `vyre up`.
+- `core/cli/tailnet.js`: the Mac's own view of its tailnet, read-only (`tailscale status --json`
+  through PATH or the Mac app's CLI), and `probe()` for a box's `/v1/health`. Finding the box
+  among the peers is `link.find`.
+- ADR 0008 and `docs/JOURNEY.md`: the install journey from one command to the assistant's hello.
+
 #### Link and the real Tailscale
 
 - `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or

@@ -8,6 +8,11 @@ import os from "node:os";
 import path from "node:path";
 import { SCRATCH } from "./scratch.mjs";
 
+// No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
+// the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
+// that needs Tailscale sets its own fake, which replaces this.
+if (!process.env.VYRE_TAILSCALE_BIN) process.env.VYRE_TAILSCALE_BIN = path.join(os.tmpdir(), "vyre-no-tailscale", "tailscale");
+
 export function tempHome(t) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-test-"));
   const real = path.join(os.homedir(), ".vyre");
