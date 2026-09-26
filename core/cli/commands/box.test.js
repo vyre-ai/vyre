@@ -214,10 +214,13 @@ test("box add: the Mac's pairing code is approved on the box over SSH, so nobody
   assert.match(text, /paired/);
 });
 
-test("box add: onboarding finished without an address says what is left, and pairs nothing", async t => {
+test("box add: onboarding finished without an address reopens the browser, says what is left, and pairs nothing", async t => {
   const r = rig(t);
   fs.mkdirSync(r.stack, { recursive: true });
   fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  // Its address is still to set up, so the browser opens again, and the ending says what is left.
+  const port = await freePort();
+  r.upOut(JSON.stringify({ role: "box", url: `http://127.0.0.1:${port}/onboard?t=again`, port, ssh: null, address: null, box: null }) + "\n");
   r.setStatuses([status(3, { finished: true, steps: { ...steps(3), name: "skipped" } })]);
   const asked = [];
   const { code, text } = await capture(() => add("alex@203.0.113.9", { call: async tool => { asked.push(tool); return { data: {} }; } }));

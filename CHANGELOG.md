@@ -6,6 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- From the first real run on a Linux server: a box that finished onboarding without an address
+  opens the browser again on the next `vyre box add`, so the address can be finished there; the
+  plan names the wrapper it will really write; a pairing that SSH cannot approve (a box with a
+  passkey) points at the Deck on the phone.
 - `vyre box add` forwards `VYRE_WRAPPER` with `VYRE_DIR` and `VYRE_BOX_URL`, so a second stack on
   one server can be installed without replacing the host's own `/usr/local/bin/vyre`.
 - `vyre box` hardening: a `user@host` whose user or host starts with `-` is refused, and every ssh

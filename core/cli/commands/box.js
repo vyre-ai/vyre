@@ -7,6 +7,7 @@
 // running `vyre box add` again after a Ctrl-C carries on from where the box stands.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { spawn } from "node:child_process";
@@ -86,11 +87,11 @@ export function needsGroup(p) {
 }
 
 /** What installing will do, in the words the person is asked about. */
-export function plan(p) {
+export function plan(p, env = process.env) {
   return [
     p.docker ? `use the Docker already there (Compose ${p.docker})` : "install Docker with get.docker.com",
     `create ${p.dir} and put Vyre's stack in it`,
-    "add /usr/local/bin/vyre",
+    `add ${env.VYRE_WRAPPER || "/usr/local/bin/vyre"}`,
     "start Vyre, which waits for you to finish setting it up in your browser",
     ...(p.sudo === "no" ? ["sudo will ask for your password on this terminal"] : []),
     ...(needsGroup(p) ? [`add ${p.user || "your account"} to the docker group (root-equivalent on this server; lets Vyre manage the stack without your password)`] : []),
@@ -275,7 +276,7 @@ async function finish(r, target, s, t, env, tool = call) {
   config.save({ box: { ssh: target }, network: { box: s.address || undefined } });
   if (!s.address) {
     // Onboarding finished with the address step skipped: nothing on the tailnet to pair with yet.
-    out(beacon("  your box has no address yet.") + ` Finish ${signal("Your address")} in the Deck's Settings, then run ${signal(`vyre box add ${target}`)} again.`);
+    out(beacon("  your box has no address yet.") + ` Run ${signal(`vyre box add ${target}`)} again to finish ${signal("Your address")} in the browser.`);
     printEnding({ address: null, assistant: s.assistant });
     return 0;
   }
@@ -296,7 +297,8 @@ async function pairOver(r, address, env, tool) {
   if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
   const a = await r.run(vyre(["link", "approve", String(p.data.code)], env));
   if (a.code === 0) out(`  ${signal("paired")} ${dim("· this Mac and your box work as one")}`);
-  else out(beacon("  pairing is waiting for approval: ") + `on the box, run ${signal("vyre link approve " + p.data.code)}`);
+  // Once the box has a passkey, approving needs a person on a device (the presence floor), not SSH.
+  else out(beacon("  pairing is waiting for approval: ") + `approve "${os.hostname()}" in the Deck on your phone ${dim(`(code ${p.data.code})`)}`);
 }
 
 /**
@@ -320,7 +322,7 @@ export async function add(target, opts = {}) {
     if (p.box) out(`  Vyre is already on ${r.target}; carrying on from where it stands.`);
     else {
       out(`\n  Vyre will, on ${r.target}:`);
-      const no = await agree(plan(p), "Go ahead?", opts.yes);
+      const no = await agree(plan(p, env), "Go ahead?", opts.yes);
       if (no !== null) return no;
       const code = await install(r, ["--yes"], env, needsGroup(p));
       if (code !== 0) { out(beacon(`  the installer stopped (exit ${code}). Fix what it said, then run this again.`)); return 1; }
@@ -336,7 +338,8 @@ export async function add(target, opts = {}) {
 async function onboard(r, target, t, env, tool) {
   // A finished box needs no browser: go straight to the end (resuming, or a box set up by curl).
   const before = await r.json(vyre(["call", "onboard.status"], env)).catch(() => ({}));
-  if (before.finished) return finish(r, target, before, t, env, tool);
+  // An address still to set up is finished in the browser, so only a box with one skips it.
+  if (before.finished && before.address) return finish(r, target, before, t, env, tool);
   const l = await link(r, env);
   if (!l.url) return finish(r, target, await r.json(vyre(["call", "onboard.status"], env)), t, env, tool);
   const tunnel = await r.tunnel(/** @type {number} */ (l.port), /** @type {number} */ (l.port));
