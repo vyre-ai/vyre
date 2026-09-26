@@ -78,6 +78,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   event `session.indexed`; commands `vyre recall <query>` and `vyre index`.
 - Under `node --test`, Recall refuses to read the real `~/.claude`, whatever the config says, so
   a test that starts vyred with default settings cannot index someone's conversations.
+- Dense retrieval (`core/recall/dense.js`). Search could only re-rank turns that shared a word
+  with the question, so "making it easier for blind visitors" never reached an accessibility
+  audit, which contradicted the measurement the spec quotes (dense retrieval won). Every vector
+  now sits in one in-memory array, built on the first hybrid search and dropped after a pass
+  writes. A brute-force dot product adds the nearest 200 turns to the pool, filtered by role and
+  project folder.
+- A dense hit needs a minimum cosine, so nonsense still returns nothing, and the minimum rises
+  with the corpus because the best score noise reaches does (about sqrt(2 ln n)). A fixed 0.25,
+  right for the 16-turn fixture, let every nonsense query through on the real corpus: "asdf
+  qwerty" had 287 chunks above it. Measured with the real model: fixture nonsense at most 0.186
+  against real matches 0.339 and 0.473; the real corpus (36,878 chunks) nonsense at most 0.413
+  against the weakest real question's best 0.476. The floor is 0.276 and 0.444 there, capped at
+  0.45. On the real corpus every test question gets dense candidates and no nonsense query does.
+- The dense index builds in pages in the background once embedding finishes. The first hybrid
+  search on the real corpus went from 3.3s to 83ms.
+- Rankings now merge by reciprocal rank. A blend of keyword position and cosine let hundreds of
+  one-common-word matches bury a turn that meaning alone had found. The pinned half now comes
+  from the strict keyword pass (the query as typed), which is where exact matches live.
+- A rewrite bumps a generation number in `recall_meta`, and the dense index rebuilds when it
+  moves. Without that, a stale snapshot scored a (session, seq) that now held different text.
+- `recall.status` and `vyre status` say "downloading the search model (23 MB, once)" while the
+  first download runs.
 - Dependency: `@huggingface/transformers`, optional, because it is the only way to run the
   embedding model locally from Node; without it search is full-text and says so.
 
