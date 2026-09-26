@@ -30,7 +30,14 @@ struct CapsuleView: View {
     private var bar: some View {
         HStack(spacing: 12) {
             MarkView(size: 22)
-            TextField("", text: $model.text, prompt: Text("Search, calculate or ask").foregroundColor(Theme.ash))
+            if let c = model.target {
+                Text("@" + c.label).font(.system(size: 13, design: .monospaced)).foregroundColor(Theme.bone).lineLimit(1)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Theme.raised))
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                    .frame(maxWidth: 220, alignment: .leading)
+            }
+            TextField("", text: $model.text, prompt: Text(model.target == nil ? "Search, calculate, ask, or @ a session" : "Message").foregroundColor(Theme.ash))
                 .textFieldStyle(.plain)
                 .font(Theme.query)
                 .foregroundColor(Theme.bone)

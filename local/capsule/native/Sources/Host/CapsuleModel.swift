@@ -33,6 +33,9 @@ public final class CapsuleModel: ObservableObject {
     @Published public private(set) var askedMemory: MemoryAnswer?
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
+    /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
+    @Published public var target: VyreCandidate? { didSet { if target != oldValue { search() } } }
+    public private(set) var catalog = VyreCatalog.empty
 
     public var front: FrontApp?
     public let icons = IconCache()
@@ -66,6 +69,12 @@ public final class CapsuleModel: ObservableObject {
         providers.forEach { $0.warm() }
         vyred.follower.setShown(true)
         if !vyred.follower.started { vyred.follower.start() }
+        Task { @MainActor [vyred] in
+            _ = await vyred.refreshTools()
+            guard vyred.isUp else { return }
+            self.catalog = await CatalogLoader.load(vyred)
+            if Route.mention(self.text).completing != nil { self.search() }
+        }
         if !text.isEmpty { search() }
     }
 
@@ -81,7 +90,7 @@ public final class CapsuleModel: ObservableObject {
     /// A fresh open starts with an empty box, unless a reply is still streaming.
     public func reset() {
         if let r = reply, !r.finished { return }
-        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil
+        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; target = nil
         replySub?.cancel(); replySub = nil
     }
 
@@ -94,6 +103,21 @@ public final class CapsuleModel: ObservableObject {
         confirming = nil
         partial = [:]
         let q = Query(text, front: front)
+        // `@` being typed: the list is what it can name, nothing else.
+        if target == nil, let m = Route.mention(text).completing {
+            recallTask?.cancel(); memory = nil
+            let rows = Route.complete(m, catalog).map(candidateItem)
+            groups = rows.isEmpty ? [] : [Group(section: .vyre, items: rows)]
+            selected = 0
+            if rows.isEmpty { line = vyred.isUp ? "Nothing called that in Vyre." : "vyred is not running. Start it with vyre up." }
+            return
+        }
+        if target != nil {
+            recallTask?.cancel(); memory = nil
+            groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: [askItem(q)])]
+            selected = 0
+            return
+        }
         recall(q.text, token: t)
         if q.normalized.isEmpty { groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [c] }
@@ -140,8 +164,32 @@ public final class CapsuleModel: ObservableObject {
         return r
     }
 
+    func candidateItem(_ c: VyreCandidate) -> ResultItem {
+        let symbol = c.kind == .agent ? "person.crop.circle" : c.kind == .project ? "folder" : "text.bubble"
+        return ResultItem(id: "at:\(c.kind.rawValue):\(c.id)", kind: "mention", title: c.label, subtitle: c.sub, icon: .symbol(symbol, .bone),
+                          section: .vyre, score: 1, actions: [ResultAction(id: "pick", title: "Pick", symbol: "at") { [weak self] _, _ in
+                              await self?.pick(c) ?? .failed("The Capsule closed.")
+                          }])
+    }
+
+    /// The `@` row was picked: it becomes the chip, and the `@...` leaves the box.
+    func pick(_ c: VyreCandidate) -> ActionOutcome {
+        let m = Route.mention(text)
+        var chars = Array(text)
+        if m.start >= 0 { chars.removeSubrange(m.start..<m.end) }
+        target = c
+        return .replaceQuery(String(chars).trimmingCharacters(in: .whitespaces))
+    }
+
     func askItem(_ q: Query) -> ResultItem {
         let words = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let c = target {
+            let to = c.kind == .project ? "a new thread in \(c.label)" : c.label
+            return ResultItem(id: "send", kind: "ask", title: "Send to \(to)", subtitle: words, icon: .mark, section: .vyre, score: 0,
+                              actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
+                                  await self?.send(words, to: c) ?? .failed("The Capsule closed.")
+                              }], sendsTo: c.label)
+        }
         return ResultItem(id: "ask", kind: "ask", title: "Ask", subtitle: words, icon: .mark, section: .vyre, score: 0,
                           actions: [ResultAction(id: "ask", title: "Ask", symbol: "sparkle") { [weak self] _, _ in
                               await self?.ask(words) ?? .failed("The Capsule closed.")
@@ -269,11 +317,79 @@ public final class CapsuleModel: ObservableObject {
         return .said("")
     }
 
+    // MARK: sending to an agent, a project or a thread
+
+    /// Follow a thread's events into `reply`, from before the words go (the answer can beat the call).
+    private func follow(_ thread: @escaping () -> String?) {
+        replySub?.cancel()
+        replySub = vyred.on("thread.*") { [weak self] e in
+            guard let self, let r = self.reply else { return }
+            let t = thread() ?? (r.thread.isEmpty ? nil : r.thread)
+            if r.thread.isEmpty, e.type == "thread.sent", VJ.str(e.payload["surface"]) == "capsule", let et = e.thread {
+                var x = r; x.thread = et; self.reply = VyState.applyReply(x, e); return
+            }
+            if let t, e.thread == t { self.reply = VyState.applyReply(r, e) }
+        }
+    }
+
+    func send(_ words: String, to c: VyreCandidate) async -> ActionOutcome {
+        guard !words.isEmpty else { return .said("Type what to send first.") }
+        asked = words
+        askedMemory = nil
+        pending = true
+        switch c.kind {
+        case .thread:
+            reply = VyState.reply(c.id)
+            follow { c.id }
+            let r = await vyred.call("threads.send", ["thread": c.id, "text": words, "surface": "capsule"], presence: false)
+            pending = false
+            if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
+            let d = (r.data as? [String: Any]) ?? [:]
+            // capsule-now rule 5: busy in a terminal, the words wait for its turn to end.
+            if VJ.truthy(d["queued"]) {
+                let name = VJ.nonEmpty(d["name"]) ?? c.label
+                reply?.queued = QueuedSend(name: name, note: VJ.nonEmpty(d["note"]))
+                return .said(VJ.nonEmpty(d["note"]) ?? "\(name) is busy in your terminal. I'll hand it your message when this turn ends.")
+            }
+            if VJ.bool(d["sent"]) == false {
+                reply = nil; asked = nil
+                if let h = VJ.nonEmpty(d["holder"]) { return .failed("\(h) has the keyboard in this thread.") }
+                return .failed(VJ.nonEmpty(d["note"]) ?? "This thread could not be typed into.")
+            }
+            return .said("")
+        case .agent:
+            reply = VyState.reply("")
+            var thread: String?
+            follow { thread }
+            let r = await vyred.call("agents.ask", ["agent": c.id, "text": words, "surface": "capsule", "wait": false], presence: false)
+            pending = false
+            let d = (r.data as? [String: Any]) ?? [:]
+            if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
+            if VJ.bool(d["ok"]) == false { reply = nil; asked = nil; return .failed(VJ.nonEmpty(d["note"]) ?? "\(c.label) did not get it.") }
+            thread = VJ.nonEmpty(d["thread"]) ?? reply?.thread
+            if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            return .said("")
+        case .project:
+            reply = VyState.reply("")
+            var thread: String?
+            follow { thread }
+            let r = await vyred.call("threads.start", ["project": c.id, "prompt": words, "surface": "capsule"], presence: false)
+            pending = false
+            if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
+            thread = (r.data as? [String: Any]).flatMap { VJ.nonEmpty($0["id"]) }
+            if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            return .said("")
+        }
+    }
+
     public var replyText: String { reply.map(VyState.replyText) ?? "" }
 
     public func stopReply() {
         guard let r = reply, !r.finished else { return }
         reply = VyState.cancel(r)
+        // A queued message has no interrupt path into a terminal session: stop following only.
+        if r.queued != nil { line = "Stopped following. \(r.queued!.name) still gets the message when its turn ends."; return }
+        if r.thread.isEmpty { return }
         let t = r.thread
         Task { _ = await vyred.call("threads.stop", ["id": t], presence: false) }
     }
