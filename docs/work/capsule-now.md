@@ -38,7 +38,7 @@ them, one per fix.
 ## Done
 - 1ffb28a fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
 - 4e559d3 fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
-- (next commit) feat: queued messages for sessions busy in a terminal (switchboard, harness,
+- 975436c feat: queued messages for sessions busy in a terminal (switchboard, harness,
   Capsule, CLI).
 
 ## Doing
