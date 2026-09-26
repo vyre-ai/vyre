@@ -34,3 +34,11 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
 - A contract change (tool input, event payload, route) goes in "Changed contracts" before it
   merges, so dependents see it.
 - Merge to `main` only with the full suite green: `npm test`.
+
+## ADR numbers claimed
+
+Claim the next number here before writing the ADR, so two teams never take the same one.
+
+- 0013 box sessions (box)
+- 0014 tailnet (tailnet)
+- 0015 native Capsule (capsule-pro)
