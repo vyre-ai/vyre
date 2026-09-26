@@ -55,6 +55,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   stream needs. vyred's stop now closes those connections too.
 - `vyre link`: status, `pair <address>`, `approve <code>`, `deny <id>`, `unpair`.
 
+#### Push
+
+- `core/push` (module `push`, ADR 0011): Web Push to the Deck and the Capsule for `ask.raised`,
+  `gate.held`, `thread.watched` and `lesson.proposed`. The payload is `{kind, title, path, tag, at}`:
+  a fixed title and a Deck path holding only an id, never content. Tools, for people's surfaces
+  only (`cli`, `local`, `deck`, `capsule`): `push.key` -> `{public_key}`, `push.subscribe
+  {subscription, label?}` -> `{device}`, `push.unsubscribe {device|endpoint}`, `push.devices`
+  (never the endpoint), `push.settings {quiet?: {start, end, timezone?}|null, kinds?}`,
+  `push.test {device?}`.
+- VAPID (RFC 8292) and aes128gcm (RFC 8291) use node:crypto only, with no dependency. They match
+  RFC 8291 Appendix A byte for byte. The VAPID private key is made on first use and kept in the
+  Vault as `push-vapid`, granted to `push`. Endpoints must be https on a known push service host.
+  A 404 or 410, or a passed `expirationTime`, drops the device.
+
 #### Switchboard
 
 - `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
