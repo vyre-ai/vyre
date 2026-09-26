@@ -25,10 +25,10 @@ test("fake: state transitions follow Docker's", async () => {
 });
 
 test("fake: local mode points every computer at one real address", async () => {
-  const d = new FakeDriver({ local: { host: "127.0.0.1", ports: { cdp: 9222, helper: 7123 } } });
+  const d = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: 7123 } } });
   const { id } = await d.create(spec);
   await d.start(id);
-  assert.deepEqual(await d.inspect(id), { state: "running", host: "127.0.0.1", ports: { vnc: 5900, cdp: 9222, helper: 7123 } });
+  assert.deepEqual(await d.inspect(id), { state: "running", host: "127.0.0.1", ports: { vnc: 5900, helper: 7123 } });
 });
 
 test("fake: one driver per key, kept across restarts in the process", () => {

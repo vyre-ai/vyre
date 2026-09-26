@@ -119,7 +119,7 @@ test("computers: an agent's hands get their own computer; only the assistant may
 test("computers: endpoint checks out and thaws; may-act touches", async t => {
   const s = await boot(t);
   const e = await s.module("computers.endpoint", { agent: "kit", thread: s.kitThread });
-  assert.equal(e.data.cdp, "http://fake-kit:9223");
+  assert.equal(e.data.cdp, undefined, "Chrome's raw address is never handed out; only computerd's authenticated proxy is");
   assert.equal(e.data.helper.url, "http://fake-kit:7000");
   assert.equal(typeof e.data.helper.token, "string");
   assert.equal((await s.cli("computers.get", { agent: "kit" })).data.thread, s.kitThread);
@@ -181,6 +181,20 @@ test("computers: take-over through the lease, chatting that does not pause, and 
   assert.deepEqual(over.map(e => e.payload.surface), ["glass:laptop", "phone:pocket", "glass:laptop", "glass:laptop"]);
   assert.ok(over.every(e => e.thread === s.kitThread), "take-over events should carry the thread");
   assert.match((await s.cli("computers.takeover", { agent: "kit", surface: "cli" })).error.message, /person's screen/);
+});
+
+test("computers: an agent cannot claim a surface, so it cannot end someone else's take-over", async t => {
+  const s = await boot(t);
+  await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
+  // kit's own hands, refused mid-take-over, try to give the keyboard back to itself.
+  const gone = await s.kit("computers.giveback", { surface: "glass:laptop" });
+  assert.match(gone.error.message, /is an agent, not a person's screen/);
+  assert.equal(s.h.keyboard.canType("kit", "glass:laptop"), true, "the take-over is still held");
+  // Same for taking over in the first place, and for watching as a surface it is not.
+  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  assert.match((await s.kit("computers.watch", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  // The real surface can still give it back.
+  assert.deepEqual((await s.cli("computers.giveback", { agent: "kit", surface: "glass:laptop" })).data, { agent: "kit", handed_back: true });
 });
 
 test("computers: watch hands out a one-use ticket that expires", async t => {

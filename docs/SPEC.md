@@ -139,7 +139,7 @@ vyre/
     capsule/               the Capsule                             (workstream: capsule)
     hands-mac/             computer use on macOS                   (workstream: capsule)
   deck/                    the web app, served by vyred             (workstream: deck)
-  modules/                 first-party optional modules (hands-desktop, hands-chrome, chat)
+  modules/                 first-party optional modules (hands-desktop, hands-chrome)
   docs/                    this spec, the module guide, ADRs, workstream notes
   test/                    cross-module tests; unit tests sit beside their code
   CHANGELOG.md
@@ -573,7 +573,7 @@ through `ctx` or the API, never by importing its files.
 | deck | `deck/` | the API only | M6 |
 | capsule | `local/capsule/`, `local/hands-mac/` | the API only | M7 |
 | computers | `core/computers/`, `modules/hands-desktop/`, `modules/hands-chrome/` | switchboard | M8 |
-| gate + chat | `core/gate/`, `modules/chat/` | switchboard, vault | M9 |
+| gate + chat | `core/gate/`, `deck/chat/` | switchboard, vault, deck | M9 |
 
 How to start them, and the order (wave 1 now, wave 2 after the switchboard and vault merge), is
 in `docs/work/LAUNCH.md`.

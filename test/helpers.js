@@ -6,9 +6,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { SCRATCH } from "./scratch.mjs";
 
 export function tempHome(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-test-"));
   const real = path.join(os.homedir(), ".vyre");
   if (path.resolve(dir) === path.resolve(real)) throw new Error("a test tried to use the real ~/.vyre");
   const prev = process.env.VYRE_HOME;
