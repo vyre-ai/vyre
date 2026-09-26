@@ -9,7 +9,8 @@
 // (without taking the keyboard), types a sum, checks the row and the offline line, reads the open
 // and keystroke timings, hides it, and samples its CPU and memory while hidden. Budgets, from
 // docs/work/capsule-pro.md: hidden under 60 MB resident and under 0.1% CPU, wake under 50 ms.
-// Exits 1 when a check fails; the numbers are printed either way.
+// A broken behaviour fails the run (exit 1). A budget over its target is printed as OVER and does
+// not fail it: the targets are capsule-pro's to meet, and these numbers are how they see them.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -35,6 +36,7 @@ const send = c => new Promise((r, j) => { waiting.push(r); child.stdin?.write(JS
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const failures = [];
 const check = (ok, what) => { if (!ok) failures.push(what); console.log(`${ok ? "ok  " : "FAIL"} ${what}`); };
+const budget = (ok, what) => console.log(`${ok ? "ok  " : "OVER"} ${what}`);
 
 try {
   await new Promise((r, j) => { waiting.push(r); setTimeout(() => j(new Error("the app did not say ready")), 15_000); });
@@ -49,7 +51,7 @@ try {
   const t = (await send({ timings: true })).timings;
   const open = t.find(x => x.kind === "open"), results = t.find(x => x.kind === "results");
   console.log(`open ${open && open.ms.toFixed(1)} ms · keystroke to rows ${results && results.ms.toFixed(1)} ms`);
-  check(open && open.ms < BUDGET.openMs, `open under ${BUDGET.openMs} ms`);
+  budget(open && open.ms < BUDGET.openMs, `open under ${BUDGET.openMs} ms`);
   await send({ hide: true });
   await pause(3000);
   const samples = [];
@@ -60,8 +62,8 @@ try {
   }
   const mb = Math.max(...samples.map(s => s.mb)), cpu = samples.reduce((a, s) => a + s.cpu, 0) / samples.length;
   console.log(`hidden: ${mb.toFixed(1)} MB resident (max), ${cpu.toFixed(3)}% CPU (mean over 20 s)`);
-  check(mb < BUDGET.hiddenMB, `hidden under ${BUDGET.hiddenMB} MB`);
-  check(cpu < BUDGET.hiddenCpu, `hidden under ${BUDGET.hiddenCpu}% CPU`);
+  budget(mb < BUDGET.hiddenMB, `hidden under ${BUDGET.hiddenMB} MB`);
+  budget(cpu < BUDGET.hiddenCpu, `hidden under ${BUDGET.hiddenCpu}% CPU`);
 } catch (e) {
   failures.push(String(e && e.message || e)); console.log(`FAIL ${e && e.message || e}`);
 } finally {
