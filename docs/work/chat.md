@@ -101,20 +101,37 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
   arrow keys move, space toggles, Enter answers, 1-9 pick an option, Esc steps back.
 
 ## Done
-- (nothing yet)
+- d763ad2 switchboard: question asks, permission detail, always-allow, fake claude `ask`/`demo` + transcripts.
+- 4f288d2 recall.transcript + transcripts.blocks (tail by default, `before`/`first` paging, `open` turns).
+- 7379d39 core/term + deck/chat/term.js + vendored xterm 6.0.0 / addon-fit 0.11.0.
+- ca1fc20 files.dirs, files.recent. a1ebf20 New session sheet, folder browser, entry points.
+- a18e934 session view from blocks, raw toggle, question card, permission card.
+- 2bdb6f2 sample world: CHAT_DEMO=1 (a finished demo session, live question + permission asks),
+  alex's folders beside the Vyre home (the guard hides the home), WebSocket proxy.
+- a8ca577 ADR 0024, CHANGELOG.
 
 ## Doing
-- Tasks A to E dispatched to subagents (see Next for the order they land).
+- Fixes from the first screenshots: squashed tool cards, unindexed live sessions in recall.transcript.
 
 ## Next
-- A switchboard asks, B transcript blocks, C term module, D folders + new session, E session view.
-- Then: screenshots in the sample world on testbox, report to main, restyle with deck-design.
+- Reshoot on testbox (CHAT_DEMO=1 node deck/test/world.js 4791; deck/test/shoot.js with
+  CHROME=/usr/local/bin/vyre-chrome), report to main, restyle with deck-design.
+- Terminal screenshot needs a presence proof in a world: not possible yet (no passkey in headless).
 
 ## Needs from others
 - deck-design: visual direction for the cards and the terminal; behaviour is built first.
 - pwa: owns deck views generally; this team owns deck/chat/** and deck/views/chat.js only.
 
+- box/tailnet (reported to main): the tailnet listener (core/names/service.js) and the loopback
+  listener carry no WebSocket upgrades, so the terminal (and Glass) only work on vyred's socket.
+- pwa: deck/sw.js shell list needs Chat's new modules (asked).
+
 ## Changed contracts
 - threads.answer: `answers`, decision `always`. threads.asks / ask.raised: `kind`, `questions`,
   `detail`, `always`. New tools recall.transcript, files.dirs, files.recent, term.*. New stream
   /v1/streams/term/pty. New events term.opened, term.closed.
+- term.attach and term.open take `surface`; term.unlock (presence) grants 12 h per caller, node and surface.
+- recall.transcript / transcripts.blocks: no `from` means the tail; `before`, `first`; turn blocks
+  may be `open: true`; user blocks may be `command: true`; tool blocks may carry `patch`.
+- files.dirs adds `limit`, `truncated`; files.recent returns an array. files `forward()` passes arrays through.
+- ask.answered adds `answers`. answerLine takes a fifth argument { answers, permissions }.
