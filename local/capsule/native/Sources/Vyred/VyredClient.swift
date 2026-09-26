@@ -24,10 +24,19 @@ import Foundation
 public protocol VyredTransport: VyredLink {
     func get(_ route: String, timeout: TimeInterval) async -> VyredResult
     func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult
+    /// A route's `data` with object keys in the order vyred wrote them (a module's shows.capsule
+    /// lists its actions in key order), or the error's words.
+    func getOrdered(_ route: String, timeout: TimeInterval) async -> (data: OJ?, error: String?)
 }
 
 public extension VyredTransport {
     func get(_ route: String) async -> VyredResult { await get(route, timeout: 10) }
+    func getOrdered(_ route: String, timeout: TimeInterval) async -> (data: OJ?, error: String?) {
+        switch await get(route, timeout: timeout) {
+        case .success(let d): return (OJ(any: d), nil)
+        case .failure(_, let m): return (nil, m)
+        }
+    }
 }
 
 /// Where vyred listens. `vyre capsule` and the capsule module always pass VYRE_SOCKET.
@@ -352,6 +361,17 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
 
     public func get(_ route: String, timeout: TimeInterval = 10) async -> VyredResult {
         await send("GET", route, nil, timeout: timeout)
+    }
+
+    public func getOrdered(_ route: String, timeout: TimeInterval) async -> (data: OJ?, error: String?) {
+        let socket = self.socket
+        let r = await withCheckedContinuation { (k: CheckedContinuation<Result<(Int, Data), VyHTTP.Failure>, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async { k.resume(returning: VyHTTP.exchange(socket: socket, method: "GET", path: route, body: nil, timeout: timeout)) }
+        }
+        guard case .success(let (_, body)) = r else { return (nil, VyHTTP.result(r, timeout: timeout).error) }
+        guard let j = OJ.parse(body) else { return (nil, "vyred's answer was not JSON") }
+        if let e = j["error"] { return (nil, e["message"]?.string ?? e.string ?? "It did not work.") }
+        return (j["data"] ?? .null, nil)
     }
 
     public func call(_ tool: String, _ input: [String: Any], presence: Bool) async -> VyredResult {

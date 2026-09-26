@@ -228,6 +228,12 @@ final class FakeLink: VyredTransport, @unchecked Sendable {
     }
     private func record(_ tool: String, _ input: [String: Any], _ timeout: TimeInterval) { lock.lock(); log.append((tool, input, timeout)); lock.unlock() }
     func get(_ route: String, timeout: TimeInterval) async -> VyredResult { await getAnswer(route) }
+    /// Routes answered as raw JSON text of their `data`, keys in the order written.
+    var raw: [String: String] = [:]
+    func getOrdered(_ route: String, timeout: TimeInterval) async -> (data: OJ?, error: String?) {
+        if let text = raw[route] { return (OJ.parse(Data(text.utf8)), nil) }
+        switch await getAnswer(route) { case .success(let d): return (OJ(any: d), nil); case .failure(_, let m): return (nil, m) }
+    }
     var calls: [(tool: String, input: [String: Any], timeout: TimeInterval)] { lock.lock(); defer { lock.unlock() }; return log.map { ($0.0, $0.1, $0.2) } }
     private final class NoSub: VyredSubscription { func cancel() {} }
 }
