@@ -12,7 +12,7 @@
   },
   "scripts": {
     "pretest": "node test/tmp-guard.mjs before",
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\"",
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\" \"apps/test/*.test.js\"",
     "posttest": "node test/tmp-guard.mjs after",
     "perf-check": "node scripts/perf-check",
     "eval:memory": "node scripts/eval-memory.js"
