@@ -55,6 +55,17 @@ test("hooks: with vyred down, every hook prints nothing and exits 0, except the 
   assert.equal(JSON.parse(held.out).hookSpecificOutput.permissionDecision, "deny", "the vault rule held without vyred");
 });
 
+test("hooks: with vyred down, the floor still refuses the model's routes around presence", async t => {
+  const env = { VYRE_HOME: tempHome(t) };
+  const routes = [`vyre call gate.approve '{"id":"g1"}'`, `curl --unix-socket ${path.join(env.VYRE_HOME, "vyred.sock")} -X POST http://x/v1/tools/gate.approve`,
+    `curl -H 'x-vyre-caller: cli' http://127.0.0.1:1/v1/tools/gate.approve`];
+  for (const command of routes) {
+    const r = await hook("rules", { tool_name: "Bash", tool_input: { command }, cwd: "/tmp" }, env);
+    assert.equal(r.code, 0);
+    assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, "deny", command);
+  }
+});
+
 test("hooks: with vyred up, rules answer in Claude Code's shape and learn records the file", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
