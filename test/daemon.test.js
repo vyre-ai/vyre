@@ -103,6 +103,17 @@ test("daemon: the event stream replays the backlog, then goes live, filtered by 
   assert.deepEqual(got.map(e => e.payload.n), [1, 3]);
 });
 
+test("daemon: since=latest skips the backlog and delivers only new events", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  d.events.emit("test", "thread.started", { n: 1 });
+  const pending = sse(d.paths.socket, "/v1/events/stream?since=latest&type=thread.*", 1);
+  await new Promise(r => setTimeout(r, 50));
+  d.events.emit("test", "thread.stopped", { n: 2 });
+  assert.deepEqual((await pending).map(e => e.payload.n), [2]);
+});
+
 test("daemon: stop is not held open by a connected event stream", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
@@ -124,4 +135,24 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
     const r = await get(p);
     assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
   }
+});
+
+test("client: the first call after vyred restarts reaches the new vyred", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  assert.ok((await call("system.echo", { text: "a" }, { root })).data);
+  await d.stop();
+  const again = await start({ root, log: () => {} });
+  t.after(() => again.stop());
+  assert.deepEqual(await call("system.echo", { text: "b" }, { root }), { data: { text: "b" } });
+});
+
+test("daemon: no client on the socket can claim to be a module", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  let seen = null;
+  d.registry.tools.set("system.whoami", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, run: async (_, { caller }) => { seen = caller; return {}; } });
+  await call("system.whoami", {}, { root, caller: "module:vault" });
+  assert.equal(seen, "local");
 });

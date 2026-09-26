@@ -46,3 +46,45 @@ In a real Claude Code session with the Harness: the user says "never use em dash
 you write"; a lesson is proposed and accepted; the next reply that contains one is sent back by
 the Stop hook and comes back without it; a second lesson ("update CHANGELOG.md whenever you
 change code") blocks a turn that edited code without it. Tested with a fake transcript as well.
+
+## Done
+- `core/learn` module, `vyre learn`, `/vyre remember` and `/vyre lessons`; Harness wiring in
+  enrich, rules, stop and brief; 24 new tests (203 in the suite, all green).
+- Verified in real headless Claude Code 2.1.283 (haiku, temp `VYRE_HOME`): "never use em dashes"
+  proposed, accepted by Claude through `learn_accept` after the user's yes; a reply with an em
+  dash sent back once by the Stop hook, final reply clean. "Update CHANGELOG.md whenever you
+  change code" accepted with `vyre learn accept`; a turn that wrote `src/add.js` only was sent
+  back and then edited the changelog. `learn_retire` held (ask, denied headless) although
+  `--allowedTools` allowed it.
+
+## Doing
+- Nothing; waiting for review.
+
+## Next
+1. Hooks with vyred down: Stop and the lesson tool checks skip, as every hook does. A snapshot
+   of active lessons that `hook.js` checks in-process, as it does the floor, would close that.
+2. Turning free text into a check with a model, off the hot path, through the switchboard.
+3. Signals not read yet: reverted changes (`harness_files` plus git), `draft.edited` from the
+   Gate, and denials the user makes in Claude Code's own prompt (hooks do not see those).
+4. Deck panel: lessons with counts; accept, narrow, level, retire.
+5. Seq is Learning's own turn count per session, not the transcript seq; line them up once
+   Recall exposes it.
+
+## Needs from others
+- deck: a lessons panel over `learn.lessons`, `learn.accept`, `learn.edit`, `learn.retire`.
+- switchboard: a headless `claude -p` to distill free-text corrections; `VYRE_AGENT` in the env
+  of agents' sessions, so lessons can be scoped to an agent.
+
+## Changed contracts
+- New tools: `learn.lessons {status?}`, `learn.add {text | rule, when?, level?, scope?, check?}`,
+  `learn.accept {id}`, `learn.edit {id, rule?, when?, level?, scope?, check?}`,
+  `learn.retire {id}`, `learn.check {stage: "tool"|"stop"|"brief", ...}`, internal `learn.signal`.
+  A lesson is `{ id, scope, when, rule, check, level, status: proposed|active|retired, source,
+  applied, caught, broken, created, updated }`.
+- New events: `lesson.proposed`, `lesson.learned`, `lesson.caught`, `lesson.broken`,
+  `lesson.escalated`, `lesson.retired` (`lesson.proposed` and `lesson.caught` added to the
+  brief's list: the Deck needs to show a pending proposal and a caught reply).
+- `harness.enrich`, `harness.rules` and `harness.stop` accept `prompt_id` and `agent`;
+  `harness.stop` also takes `text` and `stop_hook_active`, and may return `{decision: "block",
+  reason}`. `harness.brief` text now ends with the active lessons, in a project or not.
+- `tool.held` payload gains `lesson` (null for a floor hold); `rule` is null for a lesson hold.

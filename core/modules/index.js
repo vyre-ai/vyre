@@ -101,6 +101,9 @@ export function checkInput(schema, value, where = "input") {
   return out;
 }
 
+/** "module:notes" is a module; every other caller is its own kind: "cli", "local", "mcp". */
+export const callerKind = caller => (String(caller).startsWith("module:") ? "module" : String(caller));
+
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
@@ -170,13 +173,17 @@ export class Registry {
       },
       // Vault items, one at a time, only those the manifest declares under needs.vault. The value
       // comes from the vault module's internal vault.release tool, which only modules can call,
-      // and which sees which module asked. "per-watcher" is the watcher runtime's declaration: it
-      // fetches on behalf of each watcher and must itself check that watcher's own `needs`.
+      // and which sees which module asked. "per-watcher" and "per-agent" are the declarations of
+      // the watcher runtime and the agents module: their item names are dynamic, one set per
+      // watcher or agent, so they must check those names themselves. The vault's grant still
+      // decides, per item and per module.
+      // `field` picks one field of an item (a login's password, say); `watcher` is for the
+      // watcher runtime, whose grants are per watcher.
       vault: {
-        fetch: async name => {
+        fetch: async (name, { field, watcher } = {}) => {
           const declared = (m.needs && m.needs.vault) || [];
-          if (!declared.includes(name) && !declared.includes("per-watcher")) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
-          const r = await this.call("vault.release", { name }, `module:${m.name}`);
+          if (!declared.includes(name) && !declared.includes("per-watcher") && !declared.includes("per-agent")) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
+          const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
         },
@@ -200,9 +207,12 @@ export class Registry {
         if (typeof def.run !== "function") throw new Error(`tool ${name} needs a run function`);
         // internal: only other modules may call it (never Claude, the CLI or a surface), and it is
         // left out of every listing. vault.release is the reason this exists.
+        // callers: the kinds of caller that may use it ("cli", "local", "mcp", "module"); a
+        // tool is refused to, and left out of the listing for, any other. Omitted means all.
         // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
         // "hook"), and left out of every listing. The tool checks its own secret.
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal), hook: Boolean(def.hook) });
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal),
+          callers: Array.isArray(def.callers) ? def.callers : null, hook: Boolean(def.hook) });
       },
     };
   }
@@ -215,7 +225,8 @@ export class Registry {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-    if (def.hook !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    if (def.callers && !def.callers.includes(callerKind(caller))) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
     if (this.deps.rules) {
@@ -231,8 +242,9 @@ export class Registry {
     return [...this.modules.entries()].map(([name, r]) => ({ name, version: r.manifest && r.manifest.version, state: r.state, error: r.error }));
   }
 
-  listTools() {
-    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
+  /** Tools the given caller may use. Without a caller, every tool that is not internal or a hook. */
+  listTools(caller) {
+    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || !d.callers || d.callers.includes(callerKind(caller)))).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
   }
 
   async stop() {

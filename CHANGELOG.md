@@ -34,15 +34,118 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Webhooks: a watcher with schedule `webhook` gets `POST /v1/watchers/<name>/hook` with a token
   made at create, checked in constant time; the JSON body reaches `watch` as `hook`. Calls that
   arrive mid-run are queued, not dropped.
+- On the real vault: every fetch names the watcher (`ctx.vault.fetch(name, { watcher, field? })`),
+  so the vault releases only against a grant for that one watcher; a grant to one watcher is
+  not a grant to another listing the same item (tested). `vault.fetch(name, { field })` inside
+  a watcher picks a field. The stub vault in the tests is gone; they use the real one with a
+  file keystore, never the keychain.
 - `vyre watchers [test|create|pause|resume|logs|items] [name]`.
 - Shared core, kept minimal: the registry gains `hook: true` tools (reachable only as caller
   `hook` through vyred's new `POST /v1/<module>/<name>/hook` route, never listed or offered to
-  Claude). Nothing else outside `core/watchers/` changed.
+  Claude). A socket client claiming caller `hook` is treated as `local`, as one claiming
+  `module:x` already was. Nothing else outside `core/watchers/` changed.
 - The write-a-watcher skill, rewritten from five real Claude Code sessions (Haiku, Harness loaded):
-  it now loads before Claude asks questions, beats `/loop`, calls `watchers_list` for the folder
+  it now asks for a per-watcher grant (pending until `vyre vault approve <id>`), loads before
+  Claude asks questions, beats `/loop`, calls `watchers_list` for the folder
   instead of guessing `~/.vyre` (one session wrote there), calls the MCP tools directly rather
   than from a shell, never runs `watch.js` with plain `node`, fetches in parallel, logs what it
   read, and does not widen a filter to manufacture items.
+
+#### Learning
+
+- `core/learn`: lessons Vyre learns from corrections and enforces with hooks, so a lesson is code
+  rather than advice (section 7.11). Tools `learn.lessons`, `learn.add`, `learn.accept`,
+  `learn.edit`, `learn.retire`, `learn.check {stage: tool|stop|brief}` and the internal
+  `learn.signal`. Events `lesson.proposed`, `lesson.learned`, `lesson.caught`, `lesson.broken`,
+  `lesson.escalated`, `lesson.retired`.
+- A correction in a prompt ("never use em dashes", "update CHANGELOG.md whenever you change code",
+  "run the tests before you commit", never say "X") is only proposed. Claude is told to ask, and
+  the lesson is in force once the user says yes (`learn_accept`, or `vyre learn accept <id>`).
+  Nothing becomes a lesson unseen. A free-text rule with no known shape becomes a reminder.
+- Three check kinds: forbidden text (in the final reply at Stop, and in what Write or Edit is
+  about to write), a required file changed in the same turn as code, and a command that must run
+  before another. The Stop hook returns `{"decision":"block","reason"}` naming the lesson, at most
+  twice a turn; then the turn ends and the lesson counts as broken, is repeated in the next
+  prompt, and moves up a level (remind, ask, block) the second time.
+- Hard to get around: retiring or editing a lesson from inside a turn, a command that reaches
+  `vyre.db` or the socket directly, and `vyre down` all ask the user first, even when Claude
+  Code's own permissions allow them.
+- Harness changes, kept minimal: `harness.enrich` calls `learn.signal` (slash commands too, since
+  every prompt starts a turn); `harness.rules` asks `learn.check` after the floor, which it can
+  never loosen; `harness.stop` runs the Stop checks and returns the block; `harness.brief`
+  appends active lessons. `hook.js` passes `prompt_id`, `stop_hook_active` and
+  `last_assistant_message` (sent by Claude Code 2.1.283, confirmed with a probe) and prints
+  Stop's answer at the top level. `tool.held` now carries `lesson`.
+- `vyre learn [add|accept|retire|level]`, `/vyre remember <text>` and `/vyre lessons`.
+- Verified in real headless Claude Code (haiku): an em dash reply was sent back once and the
+  final reply had none; a turn that wrote code without the changelog was sent back and then
+  updated it; `learn_retire` was held although `--allowedTools` allowed it.
+- Fix during review: a correction without a check matched every other lesson without one, so a
+  second free-text rule was never proposed.
+
+#### Deck
+
+- The onboarding (`deck/onboard/`), the first screen after `vyre up`: six steps, one a screen,
+  each skippable, with live progress for the Claude sign-in, Tailscale sign-in, the address and
+  history indexing, and a project picker over the session catalogue. It calls `onboard.*` (box
+  stream) and answers from fixtures until those land. The one-time token is taken out of the
+  address bar and kept for the tab only. Its board, `docs/design/boards/Onboard.dc.html`, is
+  built from the rendered steps so the two cannot drift.
+- The Deck's foundation: one stylesheet of the tokens (dark, and paper for the light theme), a
+  small `h()` helper that only ever makes text nodes from strings (there is no `innerHTML` in
+  the Deck, so thread text cannot become markup), and one API client. Tools that other streams
+  have not merged answer from `deck/fixtures/*.json`, only with `?fixtures=1` and only when the
+  live tool is missing; otherwise the view names the module that is not running.
+- Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
+  phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
+  a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
+- `deck/test/world.js` and `deck/test/shoot.js`, test helpers only: a temp `VYRE_HOME` seeded with
+  the fictional corpus, a real vyred, a loopback proxy to its socket, and headless Chrome
+  screenshots that can click through a flow.
+
+#### Vault
+
+- `core/vault`: credentials sealed at rest, released one item at a time to a module holding a
+  grant, and shared with other people's Vyre by pass, so a teammate who leaves has nothing to
+  walk off with. How and why: `docs/adr/0001-vault-crypto.md`. No new dependencies: everything
+  is `node:crypto` (AES-256-GCM, HKDF, scrypt, Ed25519, X25519).
+- Sealing: a master key in the macOS keychain, a 0600 key file, or wrapped by a passphrase; a
+  key per item, bound to the item's id and name so a sealed file moved to another item's slot
+  fails to open. Values live in `vault/items/`; names, kinds, field names and hosts in vyre.db.
+- Items: `secret`, `api-key`, `login` (with TOTP), `card`, `note`, `env-set`. Tools: `vault.put`,
+  `list`, `delete`, `grant`, `revoke`, `pending`, `approve`, `inject`, `totp`, `generate`,
+  `import`, `audit`, `match`, `unlock`, `lock`, `identity`, `pass.create`, `pass.list`,
+  `pass.revoke`, `pass.accept`, `relay`, `offboard`, and the internal `vault.release`.
+- Who may call what: giving access needs a person, taking it away never does. `vault.put`,
+  `inject`, `approve` and `unlock` refuse Claude and are left out of its tool list; Claude's
+  grants and passes wait as pending until `vyre vault approve`. A module may `vault.put` new
+  items or its own (`{name, value}` is shorthand for one field) and grant only those, which is
+  how onboarding stores the Claude credential. Every release, refusal and relay
+  is an audit row with names only.
+- Passes: relayed by default (the holder's signed request goes to the owner's relay listener,
+  which adds the value, only for the item's own hosts, with redirects off, and scrubs the value
+  from the reply); sealed on request (encrypted to the holder's device key; revoking marks the
+  items "rotate"). `vault.offboard` revokes everything a person holds and lists exactly what they
+  received sealed. Verified between two vyred processes in two temp homes.
+- Import from `.env`, 1Password CSV, Bitwarden CSV and JSON, Chrome and Safari CSV. vyred reads
+  the file itself, so values never pass through Claude; the file is left alone and the user is
+  told to delete it.
+- `vyre vault`: `put` prompts without echo (and refuses a value on the command line), `run <item>
+  -- <cmd>` puts values in one child's environment and scrubs them from its output, plus `list`,
+  `grant`, `pass create/accept/revoke`, `relay`, `offboard`, `totp`, `generate`, `import`,
+  `audit`, `card`, `unlock`.
+- Tests prove no value appears in events, logs, `vault.list`, the audit trail, the MCP server's
+  tool list, the HTTP API or any file under either home. Under `node --test` the keychain
+  keystore refuses the login keychain; its own test uses a temporary keychain.
+- Shared core, kept small:
+  - vyred no longer trusts a `module:` caller claimed over HTTP, which let anything on the socket
+    call internal tools such as `vault.release`.
+  - A tool may declare `callers`; other callers are refused and do not see it in `/v1/tools`.
+  - `ctx.vault.fetch(name, { field, watcher })`, and `needs.vault: ["per-agent"]` alongside
+    "per-watcher", for the agents module, whose item names differ per agent.
+  - The daemon client no longer pools connections: the first call after a vyred restart failed
+    as "unreachable".
+  - Rule 8 also denies shell commands that print the Vault's keychain item.
 
 ### Shared core for the parallel workstreams (2026-09-26)
 
@@ -118,6 +221,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   event `session.indexed`; commands `vyre recall <query>` and `vyre index`.
 - Under `node --test`, Recall refuses to read the real `~/.claude`, whatever the config says, so
   a test that starts vyred with default settings cannot index someone's conversations.
+- Dense retrieval (`core/recall/dense.js`). Search could only re-rank turns that shared a word
+  with the question, so "making it easier for blind visitors" never reached an accessibility
+  audit, which contradicted the measurement the spec quotes (dense retrieval won). Every vector
+  now sits in one in-memory array, built on the first hybrid search and dropped after a pass
+  writes. A brute-force dot product adds the nearest 200 turns to the pool, filtered by role and
+  project folder.
+- A dense hit needs a minimum cosine, so nonsense still returns nothing, and the minimum rises
+  with the corpus because the best score noise reaches does (about sqrt(2 ln n)). A fixed 0.25,
+  right for the 16-turn fixture, let every nonsense query through on the real corpus: "asdf
+  qwerty" had 287 chunks above it. Measured with the real model: fixture nonsense at most 0.186
+  against real matches 0.339 and 0.473; the real corpus (36,878 chunks) nonsense at most 0.413
+  against the weakest real question's best 0.476. The floor is 0.276 and 0.444 there, capped at
+  0.45. On the real corpus every test question gets dense candidates and no nonsense query does.
+- The dense index builds in pages in the background once embedding finishes. The first hybrid
+  search on the real corpus went from 3.3s to 83ms.
+- Rankings now merge by reciprocal rank. A blend of keyword position and cosine let hundreds of
+  one-common-word matches bury a turn that meaning alone had found. The pinned half now comes
+  from the strict keyword pass (the query as typed), which is where exact matches live.
+- A rewrite bumps a generation number in `recall_meta`, and the dense index rebuilds when it
+  moves. Without that, a stale snapshot scored a (session, seq) that now held different text.
+- `recall.status` and `vyre status` say "downloading the search model (23 MB, once)" while the
+  first download runs.
 - Dependency: `@huggingface/transformers`, optional, because it is the only way to run the
   embedding model locally from Node; without it search is full-text and says so.
 

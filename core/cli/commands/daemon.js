@@ -37,6 +37,9 @@ export default [
       const d = h.data;
       out(`  vyred ${signal("running")} ${dim(`· ${d.version} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
+      // The first model download is the one slow thing a fresh install does; say so once.
+      const why = (await call("recall.status")).data?.vectors?.why;
+      if (typeof why === "string" && why.startsWith("downloading")) out(dim(`  ${why}`));
       return 0;
     },
   },
