@@ -18,14 +18,14 @@ const STEPS = [
   { id: "devices", title: "Your devices" },
 ];
 
-// The one-time token from `vyre up`'s link. Kept for this tab only and taken out of the address
-// bar, so it is not left in history or shown over a shoulder.
+// The session vyred gave for `vyre up`'s one-time link: the server redeems ?t= itself and
+// redirects to /onboard#s=<session>. Kept for this tab only and taken out of the address bar, so
+// it is not left in history or shown over a shoulder.
 const ss = (() => { try { return window.sessionStorage; } catch { return null; } })();
-const url = new URL(location.href);
-if (url.searchParams.get("t")) {
-  try { ss?.setItem("vyre.onboard", url.searchParams.get("t") || ""); } catch {}
-  url.searchParams.delete("t");
-  history.replaceState(null, "", url.pathname + url.search + url.hash);
+const sid = new URLSearchParams(location.hash.slice(1)).get("s");
+if (sid) {
+  try { ss?.setItem("vyre.onboard", sid); } catch {}
+  history.replaceState(null, "", location.pathname + location.search);
 }
 setHeader("x-vyre-onboard", (() => { try { return ss?.getItem("vyre.onboard"); } catch { return null; } })());
 
