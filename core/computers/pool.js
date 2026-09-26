@@ -454,12 +454,15 @@ export class Pool {
 
   size(_agent) { return { ...this.opts.size }; }
 
-  /** A one-use ticket for opening Glass, bound to one agent and one surface. */
-  ticket(agent, surface) {
+  /**
+   * A one-use ticket for opening Glass, bound to one agent and one surface. slow: the viewer is
+   * on a relayed or slow link, and the relay paces its frame requests (glass.js).
+   */
+  ticket(agent, surface, { slow = false } = {}) {
     const now = this.now();
     for (const [k, t] of this.tickets) if (t.expires <= now) this.tickets.delete(k);
     const ticket = crypto.randomBytes(24).toString("base64url");
-    this.tickets.set(ticket, { agent, surface, expires: now + TICKET_MS });
+    this.tickets.set(ticket, { agent, surface, slow: Boolean(slow), expires: now + TICKET_MS });
     return ticket;
   }
 
@@ -469,7 +472,7 @@ export class Pool {
     if (!t) return null;
     this.tickets.delete(String(ticket));
     if (t.expires <= this.now()) return null;
-    return { agent: t.agent, surface: t.surface };
+    return { agent: t.agent, surface: t.surface, slow: Boolean(t.slow) };
   }
 
   // ---- views -----------------------------------------------------------------------------

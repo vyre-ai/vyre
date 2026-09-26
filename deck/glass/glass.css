@@ -59,6 +59,7 @@
   text-transform: uppercase; color: var(--text-2); pointer-events: none; }
 .gl-badge-live { color: var(--text); }
 .gl-badge .dot { width: 6px; height: 6px; border-radius: 3px; background: var(--gl-accent); }
+.gl-badge-note { color: var(--label); font-size: 10px; padding-left: 6px; border-left: 1px solid currentColor; }
 
 .gl-caption { display: flex; align-items: baseline; gap: 16px; padding: 0 4px; }
 .gl-cap-lbl { color: var(--gl-accent); width: 36px; flex-shrink: 0; }

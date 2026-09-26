@@ -215,7 +215,7 @@ test("pool: a Glass ticket works once and expires after 30 s", async t => {
   const { pool, clock } = setup(t);
   const a = pool.ticket("kit", "glass:laptop");
   assert.ok(a.length >= 32);
-  assert.deepEqual(pool.redeem(a), { agent: "kit", surface: "glass:laptop" });
+  assert.deepEqual(pool.redeem(a), { agent: "kit", surface: "glass:laptop", slow: false });
   assert.equal(pool.redeem(a), null, "a ticket worked twice");
   const b = pool.ticket("kit", "glass:laptop");
   clock.t += TICKET_MS;

@@ -232,7 +232,7 @@ test("computers: watch hands out a one-use ticket that expires", async t => {
   assert.equal(w.width, 1440);
   assert.equal(w.height, 900);
   assert.equal(w.path, `/v1/streams/computers/glass?ticket=${encodeURIComponent(w.ticket)}`);
-  assert.deepEqual(s.h.pool.redeem(w.ticket), { agent: "kit", surface: "glass:laptop" });
+  assert.deepEqual(s.h.pool.redeem(w.ticket), { agent: "kit", surface: "glass:laptop", slow: false });
   assert.equal(s.h.pool.redeem(w.ticket), null);
   const late = (await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" })).data;
   s.clock.t += 30_000;

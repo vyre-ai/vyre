@@ -10,6 +10,7 @@
 // store never holds anything a guess could be checked against.
 
 import crypto from "node:crypto";
+import { createHealth, unknown } from "./health.js";
 
 const TTL = 10 * 60_000;
 const MAX_PENDING = 5;
@@ -28,9 +29,9 @@ const tailnetLogin = caller => (String(caller).startsWith("tailnet:") ? String(c
 
 /**
  * @param {any} ctx the module's context
- * @param {{ now?: () => number }} [opts]
+ * @param {{ now?: () => number, health?: { check: (which: any) => Promise<any> } }} [opts]
  */
-export function boxSide(ctx, { now = Date.now } = {}) {
+export function boxSide(ctx, { now = Date.now, health = createHealth() } = {}) {
   const db = ctx.store.db;
   ctx.store.migrate([
     `CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT,
@@ -160,7 +161,23 @@ export function boxSide(ctx, { now = Date.now } = {}) {
   ctx.tool("link.peers", {
     description: "The Macs paired with this box.",
     input: { type: "object", properties: {} },
-    run: async () => db.prepare("SELECT id, name, login, node, paired_at, last_seen FROM link_peers ORDER BY paired_at").all(),
+    run: async () => db.prepare("SELECT id, name, login, node, stable_id, paired_at, last_seen FROM link_peers ORDER BY paired_at").all(),
+  });
+
+  ctx.tool("link.health", {
+    description: "How this box reaches a node right now: direct or relayed, latency, last handshake. By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.",
+    input: { type: "object", properties: { node: { type: "string" } } },
+    run: async ({ node }, meta) => {
+      const own = peerOf(meta);
+      const asked = node ? String(node) : own && own.stableId ? String(own.stableId) : null;
+      if (!asked) return unknown("say which node: a paired Mac's node id (vyre link peers)", now());
+      // Any caller may ask about itself or a paired Mac. A module may name any node: Glass asks
+      // about the viewer the tailnet listener identified, which may be a phone rather than a Mac.
+      const mayName = String(meta.caller).startsWith("module:") || (own && own.stableId === asked)
+        || db.prepare("SELECT 1 FROM link_peers WHERE stable_id = ?").get(asked);
+      if (!mayName) throw new Error("that node is not a paired Mac");
+      return health.check({ stableId: asked });
+    },
   });
 
   ctx.tool("link.unpair", {

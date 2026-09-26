@@ -16,7 +16,7 @@ import { start } from "../../../core/daemon/index.js";
 import { paths } from "../../../core/config/index.js";
 import { call } from "../../../core/daemon/client.js";
 import { client, stream } from "./vyred.js";
-import { Bridge, explain } from "./bridge.js";
+import { Bridge, explain, linkLine } from "./bridge.js";
 
 /** `bare` turns the core switchboard (`threads`) and `agents` off, for the tests about their absence. */
 async function vyred(t, { bare = false } = {}) {
@@ -761,4 +761,40 @@ test("real learn: a proposed lesson waits in the Capsule, quietly, and accepting
   for (let i = 0; i < 40 && b.waiting.some(w => w.source === "lesson"); i++) await new Promise(r => setTimeout(r, 25));
   assert.deepEqual(b.waiting.filter(w => w.source === "lesson"), []);
   assert.equal((await c.call("learn.lessons", { status: "retired" })).data.length, 1);
+});
+
+test("bridge: the box's connection is asked on open at most once a minute, and read as a line", async t => {
+  const { c } = await vyred(t, { bare: true });
+  const clock = { t: Date.parse("2026-09-27T10:00:00Z") };
+  let answer = { path: "relay", relay: "fra", latencyMs: 80, lastHandshake: clock.t - 3 * 60_000, online: true, checkedAt: clock.t, cached: false };
+  const f = withFakes(c, {
+    "link.status": async () => ({ role: "local", linked: true, box: { address: "https://box.tail0000.ts.net", name: "box", node: "box" }, reachable: true }),
+    "link.health": async () => answer,
+  });
+  const b = new Bridge(f, { now: () => clock.t });
+  await b.refresh();
+  assert.equal(b.snapshot().link, null, "nothing is asked until the Capsule opens");
+  await b.linkHealth();
+  assert.deepEqual(b.snapshot().link, { path: "relayed via fra 80 ms", handshake: "last handshake 3 min ago", relayed: true });
+  answer = { ...answer, path: "direct", relay: null, latencyMs: 12 };
+  clock.t += 59_000;
+  await b.linkHealth();
+  assert.equal(f.calls.filter(([tool]) => tool === "link.health").length, 1, "a second open inside the minute asks nothing");
+  clock.t += 1_000;
+  await b.linkHealth();
+  assert.equal(b.snapshot().link?.path, "direct 12 ms");
+  assert.equal(f.calls.filter(([tool]) => tool === "link.health").length, 2);
+});
+
+test("bridge: no paired box, no connection line", async t => {
+  const { c } = await vyred(t, { bare: true });
+  const f = withFakes(c, { "link.health": async () => ({ path: "unknown", why: "this Mac is not paired with a box" }) });
+  const b = new Bridge(f);
+  await b.refresh();
+  await b.linkHealth();
+  assert.equal(b.snapshot().link, null);
+  assert.equal(f.calls.length, 0, "link.health is not asked without a box");
+  assert.equal(linkLine({ path: "peer-relay", latencyMs: 30, lastHandshake: null }, 0)?.path, "peer relay 30 ms");
+  assert.equal(linkLine({ path: "unknown", why: "the node is offline" }, 0)?.path, "offline");
+  assert.equal(linkLine(null, 0), null);
 });
