@@ -21,11 +21,15 @@
 .nd-btn { height: 52px; width: 100%; }
 .nd-status:not(:empty) { margin-top: 10px; }
 .nd-note { text-align: center; margin-top: 10px; }
+/* Send was approved and the sender failed: still needs the user, so it takes the Beacon colour. */
+.nd-error { margin-top: 16px; color: var(--beacon-ink); }
 
 .nd-body { margin-top: 20px; padding: 16px; background: var(--panel); border-radius: var(--r-3); font-size: 16px; line-height: 25px; }
 .nd-body p { white-space: pre-wrap; }
-/* The held item's own fields (js/editable.js): a bit more room than the compact Now card. */
-.nd-form .ed-row { grid-template-columns: 76px minmax(0, 1fr); }
+/* The held item's own fields (js/editable.js): a bit more room than the compact Now card.
+   Body keeps its own single-column row (deck.css .ed-row.ed-body) so the growing textarea still
+   spans full width; only the labelled rows get the wider label column here. */
+.nd-form .ed-row:not(.ed-body) { grid-template-columns: 76px minmax(0, 1fr); }
 .nd-form .ed-in { font-size: 16px; line-height: 25px; }
 .nd-form .ed-in.ed-mono { font-size: 13px; line-height: 20px; }
 .nd-memhead { display: flex; justify-content: space-between; margin: 24px 0 8px; }

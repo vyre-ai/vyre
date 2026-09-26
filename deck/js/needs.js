@@ -29,7 +29,7 @@ const got = new Map();
 export async function load() {
   const [held, asks, threads, projects] = await Promise.all([attempt("gate.held"), attempt("threads.asks"), attempt("threads.list"), attempt("projects.list")]);
   const thread = new Map((threads.data || []).map(t => [t.id, t]));
-  const project = new Map((projects.data || []).map(p => [p.slug, p]));
+  const project = new Map((projects.data?.projects || []).map(p => [p.slug, p]));
   const names = (/** @type {any} */ x) => {
     const t = x.thread ? thread.get(x.thread) : null;
     const slug = x.project || t?.project || null;
@@ -41,13 +41,18 @@ export async function load() {
   const out = [];
   for (const d of held.data || []) {
     const full = got.get(d.id) || {};
+    // gate.get gives the original draft and, once a revision exists, `final`: the last words the
+    // user (or another surface) settled on. That is what every surface shows and Send sends.
+    const current = full.data?.final || full.data?.draft || null;
     const n = names(d);
     const to = [d.to].flat().filter(Boolean).map(String);
     const who = full.data?.toName || to.join(", ");
     const verb = d.kind === "send" ? `wrote to ${who}` : d.kind === "spend" ? `wants to spend through ${d.via}` : `wants to delete through ${d.via}`;
     out.push({ id: d.id, kind: "draft", at: d.at, ...n, thread: d.thread || null,
       title: `${n.agent || "An agent"} ${verb}. It is held at the Gate.`, why: d.why || "",
-      gate: { kind: d.kind || "send", via: d.via || "", to, summary: d.summary || "", draft: full.data?.draft || null, error: full.error || null,
+      // full.data?.error is the item's own stored error (a previous Send was approved and the
+      // sender failed); full.error is a failure to read the item at all (gate.get itself refused).
+      gate: { kind: d.kind || "send", via: d.via || "", to, summary: d.summary || "", draft: current, error: full.data?.error || full.error || null,
         sources: full.data?.sources || [], recalled: full.data?.recalled, toName: full.data?.toName },
       options: [{ label: d.kind === "send" ? "Send" : "Approve", decision: "approve", primary: true }, { label: "Discard", decision: "reject" }] });
   }
@@ -81,8 +86,9 @@ export async function answer(n, opt, edited) {
     if (opt.decision === "reject") await call("gate.reject", { id: n.id });
     else {
       const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id });
-      // Approved, but the sender failed: the item stays held and can be sent again.
-      if (r && r.state === "failed") throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true });
+      // Approved, but the sender failed: the item stays held and can be sent again. gate.js keeps
+      // the edit as `final` even on failure, so the next gate.get must be re-read, not reused.
+      if (r && r.state === "failed") { got.delete(n.id); throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true }); }
     }
   } else {
     await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" });

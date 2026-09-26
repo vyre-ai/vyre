@@ -17,6 +17,8 @@
 .need h3 { font-size: 17px; line-height: 24px; font-weight: 600; }
 .need-cmd { font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: var(--r-1); background: var(--code-bg); }
 .need-why { margin-top: 4px; font-size: 14px; line-height: 20px; color: var(--text-2); }
+/* Send was approved and the sender failed: still needs the user, so it takes the Beacon colour. */
+.need-error { margin-top: 0; color: var(--beacon-ink); }
 .need-body:not(:empty) { margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--beacon-rule); border-bottom: 1px solid var(--beacon-rule);
   display: flex; flex-direction: column; gap: 8px; }
 .need-meta { display: flex; gap: 20px; flex-wrap: wrap; }

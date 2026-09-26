@@ -155,7 +155,10 @@ function heldBody(n, f) {
       g?.summary ? h("p", { class: "need-text" }, g.summary) : null,
       h("p", { class: "small muted" }, g?.error ? `The full draft cannot be shown here: ${problem(g.error)}` : "The full draft cannot be shown here."));
   }
-  return h("div", { class: "need-body" }, f.el,
+  // A previous Send was approved but the sender failed: it came back held, with the edit kept.
+  return h("div", { class: "need-body" },
+    g?.error ? h("p", { class: "need-why need-error" }, `Held again: ${problem(g.error)}`) : null,
+    f.el,
     recalled ? h("div", { class: "need-recalled" }, h("span", { class: "dot recall", "aria-hidden": "true" }),
       h("span", null, g.recalled ? g.recalled : `From memory: ${recalled}`)) : null);
 }

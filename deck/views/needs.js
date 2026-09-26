@@ -112,7 +112,9 @@ function draft(n) {
   return h("div", { class: "nd nd-draft" }, top(n),
     h("h1", { class: "nd-title" }, title),
     h("p", { class: "small muted" }, `${n.agent || "An agent"} wrote this ${since(n.at)} ago. It waits here until you send it.`),
-    f ? h("div", { class: "nd-body nd-form" }, f.el) : h("div", { class: "nd-body" },
+    f ? [g.error ? h("p", { class: "small nd-error" }, `Held again: ${problem(g.error)}`) : null,
+        h("div", { class: "nd-body nd-form" }, f.el)]
+      : h("div", { class: "nd-body" },
       g.summary ? h("p", null, g.summary) : null,
       h("p", { class: "small muted" }, g.error ? `The full draft cannot be shown here: ${problem(g.error)}` : "The full draft cannot be shown here.")),
     g.sources?.length ? [
