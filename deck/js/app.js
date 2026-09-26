@@ -29,6 +29,7 @@ const ROUTES = [
   ["/agents", "agents"],
   ["/agents/:name", "agents"],
   ["/agents/:name/glass", "glass"],
+  ["/glass/:name", "glass"],
   ["/chat", "chat"],
   ["/chat/:project", "chat"],
   ["/chat/:project/:thread", "chat"],
