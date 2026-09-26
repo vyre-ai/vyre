@@ -109,8 +109,12 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 - Slice 2 Kit (branch work/capsule-apps-native, worktree ../vyre-capsule-apps-native):
   708b533 (nested + async mentions) and ff82b8f (all 11 review fixes; CI not rechecked after it).
   Merging origin/work/capsule-pro c778f56 was aborted at logout: conflicts in CHANGELOG.md and
-  Sources/Host/{CapsuleModel,ExtensionHost,Panel}.swift. Redo the merge (never rebase, never
-  force-push), push, run capsule-mac CI, then send the hash to capsule-pro to merge.
+  Sources/Host/{CapsuleModel,ExtensionHost,Panel}.swift. Redo the merge against origin/work/capsule-pro, now at 07af5e5 (never rebase, never
+  force-push). How the aborted merge resolved it (it compiled, extension filter 16/16): Panel.key keeps agentKey
+  plus the Cmd-Delete attachment case and calls dropChip; target's didSet does the parent sync and
+  calls targetChanged; appSendItem passes targetParent; send takes in: and model: together;
+  ExtensionHost keeps attachers beside the new closures; CHANGELOG keeps both entries. ff82b8f local
+  extension filter: 16 pass, push, run capsule-mac CI, then send the hash to capsule-pro to merge.
 
 ## Next
 1. Finish T4 (run local/apps tests on the testbox, fix, commit, push), then review it.
