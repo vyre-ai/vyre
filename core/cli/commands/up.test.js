@@ -16,27 +16,45 @@ test("up: over SSH, the tunnel line points at the address the person connected t
 });
 
 /** mac() with a fake box and link; returns what it called and printed. */
-async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, capsule = true, platform = "darwin", opened = true } = {}) {
-  const calls = [], lines = [];
+async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true } = {}) {
+  const calls = [], lines = [], saved = [];
   const log = console.log;
   console.log = (...a) => lines.push(a.join(" "));
   let code;
   try {
     code = await mac(box, { capsule }, {
       health: async () => healthy,
-      tool: async (name, input) => { calls.push([name, input]); return name === "link.status" ? { data: status } : { data: pair }; },
+      tool: async (name, input) => {
+        calls.push([name, input]);
+        return name === "link.status" ? { data: status } : name === "link.find" ? { data: { boxes: found, paired: null } } : { data: pair };
+      },
+      save: c => saved.push(c),
       platform,
       openCapsule: async () => { calls.push(["capsule"]); return opened; },
     });
   } finally { console.log = log; }
-  return { code, calls, text: lines.join("\n") };
+  return { code, calls, saved, text: lines.join("\n") };
 }
 
-test("up on a Mac: no box yet says how to point at one, and does nothing else", async () => {
+test("up on a Mac: no box given and none found says how to point at one, and does nothing else", async () => {
   const r = await runMac(undefined);
   assert.equal(r.code, 0);
-  assert.deepEqual(r.calls, []);
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.find"]);
+  assert.deepEqual(r.saved, []);
   assert.match(r.text, /vyre up --connect/);
+});
+
+test("up on a Mac: the one box found on the tailnet is saved and paired with", async () => {
+  const r = await runMac(undefined, { found: [{ address: "https://alex.vyre.run", node: "box" }] });
+  assert.deepEqual(r.saved, [{ network: { box: "https://alex.vyre.run" } }]);
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.find", "link.status", "link.pair", "capsule"]);
+});
+
+test("up on a Mac: two boxes found are listed, and neither is picked", async () => {
+  const r = await runMac(undefined, { found: [{ address: "https://a.vyre.run" }, { address: "https://b.vyre.run" }] });
+  assert.deepEqual(r.saved, []);
+  assert.match(r.text, /a\.vyre\.run[\s\S]*b\.vyre\.run/);
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.find"]);
 });
 
 test("up on a Mac: an unreachable box stops before pairing or the Capsule", async () => {

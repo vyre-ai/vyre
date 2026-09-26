@@ -85,7 +85,8 @@ vyre up --connect <you>.vyre.run
 ```
 
 `vyre up` on a Mac sets its role to `local`, starts vyred for this Mac, and checks that your
-box answers (the Mac must be on your tailnet). Then it pairs this Mac with the box and prints a
+box answers (the Mac must be on your tailnet). Plain `vyre up` also works: it looks for your
+box on the tailnet and takes it when there is exactly one. Then it pairs this Mac with the box and prints a
 code:
 
 ```

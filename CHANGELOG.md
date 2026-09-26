@@ -30,6 +30,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the box, or shows the code of a pairing already waiting. Then it opens the Capsule
   (`vyre capsule`), or points at the Vyre-mac.zip download when no Capsule is installed.
   `--no-capsule` skips the Capsule.
+  With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
 - `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
   `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
   finished. `site/404.html`: missing files now answer 404, where Pages served the landing page

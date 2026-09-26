@@ -145,13 +145,26 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     health = b => fetch(b + "/v1/health", { signal: AbortSignal.timeout(5000) }).then(r => r.ok).catch(() => false),
     tool = call,
     platform = process.platform,
+    save = config.save,
     openCapsule = async () => {
       const c = await import("./capsule.js");
       if (!c.installed() && !c.packaged().bin && !c.electron()) return false;
       return (await c.default.run([])) === 0;
     },
   } = deps;
-  if (!box) { out(`  this machine is local. Point it at your box: ${dim("vyre up --connect <you>.vyre.run")}`); return 0; }
+  if (!box) {
+    // No address given: look for the box on the tailnet. Exactly one is taken; more are listed.
+    const f = await tool("link.find");
+    const boxes = (f.data && f.data.boxes) || [];
+    if (boxes.length !== 1) {
+      for (const b of boxes) out(`  found a box: ${signal(b.address)} ${dim(b.node || "")}`);
+      out(`  this machine is local. Point it at your box: ${dim("vyre up --connect <you>.vyre.run")}`);
+      return 0;
+    }
+    box = boxes[0].address;
+    save({ network: { box } });
+    out(`  found your box on the tailnet: ${signal(box)}`);
+  }
   const ok = await health(box);
   out(ok ? `  your box: ${signal(box)}` : beacon(`  your box ${box} did not answer from here`) + dim(" · is this machine on your tailnet?"));
   if (!ok) return 1;
