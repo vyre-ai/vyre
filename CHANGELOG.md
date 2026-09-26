@@ -172,6 +172,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Every thread Vyre launches loads the Harness with `--plugin-dir` when this install has one,
   and then leaves the brief to its SessionStart hook, so Claude never reads it twice.
 - `projects.of` returns `{slug, name, home, folders}`, the shape the Harness calls it with.
+- The `vyre` home (spec section 10): `vyre` with no arguments, from any folder, lists every
+  project (threads, last activity), New session without a project (`claude` with the Harness in
+  this folder), and every agent from `agents.list` ("agents arrive with the switchboard" until
+  that tool exists). A project opens to its sessions, newest first, plus New session in it; a
+  session resumes. Inside a project's folder that project is preselected, not opened. It is an
+  arrow-key list with type-to-filter on raw-mode stdin, with no dependencies and plain ANSI, so
+  it works over SSH. Enter picks, Esc clears the filter or goes back, and q quits (while
+  filtering, q is a letter). Piped, it prints the same list and exits. The list logic is pure
+  and tested directly; the flow is tested through stand-in terminal streams with a fake
+  `claude`, and was run once through a real pseudo-terminal.
 - The catalogue was taking 2.6 seconds per call on a real 614-session index, with or without a
   search, because it resolved every session's folder through realpath. Most of those folders no
   longer exist, so each lookup walked up the parents failing at every step. Session folders are
