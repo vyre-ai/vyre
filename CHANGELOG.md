@@ -13,6 +13,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - voice: `vyre voice` gives push-to-talk from the terminal (Enter to talk, words shown live,
   `--send <thread>`), `vyre voice key` saves the speech key through the vault as a person without
   echoing it, and `vyre voice status` prints the provider, key and online state.
+- capsule-sight: the sight extension for the native Capsule (`Sources/Extensions/sight`): Side
+  view, Side view with Glass and Close side view; Ask about my screen, with a side panel and the
+  window put in the box, blind places shown as off limits; Option-Return push-to-talk through
+  vyre-mic and the voice listen stream, words live in the box, stopped when the Capsule hides.
+  `voice.status` returns the built mic helper's path.
 - screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
 
 #### The Capsule is Spotlight's size
