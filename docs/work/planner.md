@@ -45,14 +45,16 @@ the contract in ADR 0025.
 - Tests on the test box: 58 of 58 across core/planner, push, the Deck panel and the CLI.
 
 ## Doing
-- Nothing in flight. The calendar slice is committed.
+- Waiting on surface teams' replies (pwa, capsule-pro, capsule-apps) and on the user's two decisions below.
 
 ## Next
-1. CLI: `vyre alarm`, `vyre remind`, `vyre todo`, `vyre notes`, `vyre agenda` (on planner.add/parse/agenda).
-2. Deck and CLI: label calendar entries by `e.source !== "planner"` (source is now the account
-   name, not "calendar"): deck/views/planner.js line 146, core/cli/commands/planner.js line 294.
-3. Minimal Deck view (panel:planner).
-4. Later: email/SMS fallback after the last ring (off, through the Gate).
+1. Follow up on surface teams' contract replies.
+2. If the user wants it: email/SMS fallback after the last ring (off by default, through the Gate).
+3. If the user wants it: an opt-in to show the alarm label in push.
+
+## Needs from the user (via the lead)
+- Push label opt-in (ADR 0011 keeps typed text out of push; today the lock screen shows "Alarm").
+- Build the email/SMS fallback now or later.
 
 ## Decisions made in slice 1 (not in the ADR text)
 - escalate_max counts rings after the first: 3 means 4 rings in all.
