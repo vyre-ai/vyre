@@ -5,8 +5,8 @@
 //
 // Every section loads on its own and shows its own empty state, so one missing module never
 // blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box, also its read-only "lock"), agents.list and
-// agents.update (switchboard), link.health (link), files.drive.status and files.drive.audit (files), hooks.status (hooks),
-// network.guests.list (names), computers.tailnet.status and computers.egress.status (computers), recall.status, recall.index, memory.stats, memory.curate,
+// agents.update (switchboard), link.health (link), files.drive.status and files.drive.audit (files), hooks.list and hooks.status (hooks),
+// network.guests.list (network), computers.tailnet.status and computers.egress.status (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 
 import { h, put, link, head, empty } from "../js/dom.js";
@@ -316,27 +316,37 @@ function drawShares(el, ctx) {
 }
 
 /**
- * Webhooks: off, or the open routes and whether Funnel serves each. Opening and closing a route
- * needs you there (presence), so the Deck shows the command rather than doing it; the Funnel
- * command is Tailscale's, which Vyre never runs.
+ * Webhooks: off, or the open routes (hooks.list) and where Funnel and Vyre disagree
+ * (hooks.status). Turning hooks on and opening a route need you there (presence), so the Deck
+ * shows the command rather than doing it; the Funnel commands are Tailscale's, which Vyre never runs.
  */
-function drawHooks(el) {
-  return optional(el, "Webhooks", "hooks.status", d => {
+async function drawHooks(el) {
+  const st = attempt("hooks.status");
+  await optional(el, "Webhooks", "hooks.list", d => {
     const routes = listOf(d.routes, "name");
-    const open = routes.filter(x => x.open !== false);
-    const mism = Array.isArray(d.mismatches) ? d.mismatches : [];
-    const openCmd = cmd(`vyre call --tty hooks.open '{"name":"<name>","verify":"<scheme>"}'`);
     if (!d.enabled) return row("Webhooks", onOff(false),
-      faint("A webhook lets a service such as a payment processor tell Vyre that something happened. It is the one part of Vyre open to the internet, so it stays off until you set hooks.enabled in the box's config."));
-    return row("Webhooks", h("span", null, open.length ? `On, ${plural(open.length, "open route")}` : "On, no open routes"),
-      open.length ? plainList(open, x => [
-        h("div", null, mono(x.path || `/hooks/${x.name}`), h("span", { class: "small " + (x.funnel ? "muted" : "faint") }, x.funnel ? " Funnel serves it" : " Funnel does not serve it yet")),
-        x.command ? cmd(x.command) : null]) : null,
-      mism.length ? [h("div", { class: "small set-warn" }, "Funnel and Vyre disagree:"),
-        plainList(mism, x => h("span", { class: "small" }, [x.route ? `${x.route}: ` : "", x.why || x.message || "does not match"].join("")))] : null,
-      faint("Vyre never runs tailscale funnel. Run the command yourself, on the box."),
-      faint("Open a route from the box's terminal:"), openCmd,
-      open.length ? [faint("Close one:"), cmd(`vyre call --tty hooks.close '{"name":"${open[0].name}"}'`)] : null);
+      faint("A webhook lets a service such as a payment processor tell Vyre that something happened. It is the one part of Vyre open to the internet, so it stays off until you turn it on from the box's terminal:"),
+      cmd("vyre hooks on"));
+    const mism = h("div");
+    st.then(r => {
+      const m = Array.isArray(r.data?.mismatches) ? r.data.mismatches : [];
+      put(mism, m.length ? [h("div", { class: "small set-warn" }, "Funnel and Vyre disagree:"),
+        plainList(m, x => [h("div", { class: "small" + (x.harmless ? " faint" : "") }, x.harmless ? `${x.message}. Harmless.` : `${x.message}.`),
+          x.fix ? cmd(x.fix) : null])] : null);
+    });
+    return row("Webhooks", h("span", null, routes.length ? `On, ${plural(routes.length, "open route")}` : "On, no open routes"),
+      d.listening === false ? h("div", { class: "small set-warn" }, `The hooks listener is not answering${d.error ? ` (${d.error})` : ""}.`) : null,
+      routes.length ? plainList(routes, x => [
+        h("div", null, mono(x.path || `/hooks/${x.name}`), h("span", { class: "small faint" },
+          ` ${x.verify?.scheme || ""}${typeof x.deliveries === "number" ? `, ${plural(x.deliveries, "delivery", "deliveries")} kept` : ""}`)),
+        x.funnel?.open ? [faint("Publish it with Funnel:"), cmd(x.funnel.open)] : null,
+        x.funnel?.close ? [faint("Stop publishing it:"), cmd(x.funnel.close)] : null]) : null,
+      mism,
+      faint("Vyre never runs tailscale funnel. Run these yourself, on the box."),
+      faint("Open a route from the box's terminal:"),
+      cmd("vyre hooks open <name> --scheme hmac-sha256 --header <header> --secret <vault item>"),
+      routes.length ? [faint("Close one:"), cmd(`vyre hooks close ${routes[0].name}`)] : null,
+      faint("Turn webhooks off:"), cmd("vyre hooks off"));
   });
 }
 
@@ -344,28 +354,42 @@ function drawHooks(el) {
 function drawGuests(el) {
   return optional(el, "Guests", "network.guests.list", d => {
     const people = listOf(d.people, "login");
+    const safe = Array.isArray(d.safe) ? d.safe : [];
+    const safeLine = safe.length ? faint(`A guest can only ever call these: ${safe.join(", ")}.`) : null;
     if (!d.enabled) return row("Guests", onOff(false),
-      faint("A guest is someone on another tailnet you shared this box with. They may call only the tools you list for them, and never act as you. Set network.guests.enabled in the box's config to turn it on."));
+      faint("A guest is someone on another tailnet you shared this box with. They may call only the tools you list for them, and never act as you."),
+      safeLine, faint("Turn guests on from the box's terminal:"), cmd(`vyre call --tty network.guests.enable '{"on":true}'`));
     return row("Guests", h("span", null, people.length ? `On, ${plural(people.length, "person", "people")}` : "On, no one yet"),
-      people.length ? plainList(people, x => [mono(x.login),
-        h("div", { class: "set-tags" }, (Array.isArray(x.tools) ? x.tools : []).map(t => h("span", { class: "tag" }, t)))]) : null,
+      people.length ? plainList(people, x => {
+        const allowed = Array.isArray(x.allowed) ? x.allowed : Array.isArray(x.tools) ? x.tools : [];
+        const asked = Array.isArray(x.tools) ? x.tools.filter(t => !allowed.includes(t)) : [];
+        return [mono(x.login), h("div", { class: "set-tags" }, allowed.map(t => h("span", { class: "tag" }, t))),
+          asked.length ? faint(`Listed but not guest-safe, so refused: ${asked.join(", ")}.`) : null];
+      }) : null,
+      safeLine,
       faint("Add someone from the box's terminal:"),
       cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["glass.open"]}'`),
-      people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null);
+      people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null,
+      faint("Turn guests off:"), cmd(`vyre call --tty network.guests.enable '{"on":false}'`));
   });
 }
 
 /** Agent nodes: whether each agent's computer joins the tailnet as its own tagged node. */
 function drawAgentNodes(el) {
   return optional(el, "Agent nodes", "computers.tailnet.status", d => {
-    const nodes = listOf(d.nodes, "agent");
+    const comps = listOf(d.computers, "agent");
     const tag = d.tag || "tag:vyre-agent";
+    const v = d.vault || null;
+    // Whether the auth key is in the Vault and granted: never its value.
+    const key = v ? faint(`Auth key ${v.item || ""} in the Vault: ${v.exists == null ? "not known" : v.exists ? (v.granted ? "there, and granted" : "there, not granted yet") : "not there yet"}${v.why ? ` (${v.why})` : ""}.`) : null;
+    const problem = d.problem ? h("div", { class: "small set-warn" }, d.problem) : null;
     if (!d.enabled) return row("Agent nodes", onOff(false),
       faint(`With this on, each agent's computer joins your tailnet as its own node, tagged ${tag}, so your tailnet policy can tell agents apart.`),
-      cmd(`vyre call --tty computers.tailnet.set '{"enabled":true}'`));
-    return row("Agent nodes", h("span", null, "On"), faint(`Tagged ${tag}.`),
-      nodes.length ? plainList(nodes, x => [h("span", null, x.agent || "an agent"), " ", mono(x.node || ""),
-        h("span", { class: "small faint" }, x.online === false ? " offline" : x.online ? " online" : "")]) : faint("No agent's computer is on the tailnet now."),
+      problem, key, cmd(`vyre call --tty computers.tailnet.set '{"enabled":true}'`));
+    return row("Agent nodes", h("span", null, "On"), faint(`Tagged ${tag}.`), problem, key,
+      comps.length ? plainList(comps, x => [h("span", null, x.agent || "an agent"), x.node ? [" ", mono(x.node)] : null,
+        h("span", { class: "small faint" }, x.running ? " running" : " not running")]) : faint("No agent has a computer yet."),
+      d.applies ? faint(`This ${d.applies}.`) : null,
       cmd(`vyre call --tty computers.tailnet.set '{"enabled":false}'`));
   });
 }

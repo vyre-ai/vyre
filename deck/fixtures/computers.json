@@ -12,10 +12,28 @@
   "computers.restart": { "ok": true },
   "computers.limits": { "ok": true },
   "computers.tailnet.status": {
-    "enabled": true, "tag": "tag:vyre-agent",
-    "nodes": [
-      { "agent": "kit", "node": "vyre-agent-kit.tail0000.ts.net", "stableId": "nKit0000CNTRL", "online": true },
-      { "agent": "juno", "node": "vyre-agent-juno.tail0000.ts.net", "stableId": "nJuno000CNTRL", "online": false }
+    "enabled": true,
+    "tag": "tag:vyre-agent",
+    "applies": "applies to computers that start or thaw after the change; one already running keeps what it has until computers.stop, and turning it off never logs a running node out early",
+    "problem": "the computer image does not carry the tailnet side yet, so no computer joins the tailnet even with this on",
+    "vault": {
+      "item": "tailscale-agent-authkey",
+      "exists": true,
+      "granted": false
+    },
+    "computers": [
+      {
+        "agent": "kit",
+        "running": true,
+        "node": null,
+        "stableId": null
+      },
+      {
+        "agent": "juno",
+        "running": false,
+        "node": null,
+        "stableId": null
+      }
     ]
   },
   "computers.egress.status": {
