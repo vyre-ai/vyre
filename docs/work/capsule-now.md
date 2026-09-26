@@ -65,31 +65,45 @@ them, one per fix.
 - 9c9514a fix(capsule): the memory box ranks for the question (lib/said.js), rule 7.
 
 ## Doing
-- Full-screen fix: waiting for the lead's word that the user has stepped away, then run
-  `VYRE_FULLSCREEN_OK=1 ELECTRON_BIN=<main tree>/local/capsule/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron <team-dir>/buildlock.sh capsule-now node scripts/capsule-spaces/run.js`.
-  It prints, per variant (default, stay, stay-then-steal): stayedOnFullScreenSpace, panelKey,
-  frontApp. If "stay" stays and is key, check typing by hand over the full-screen window and over a
-  normal app; if both work, make it the default (drop the flag). If typing over a normal app fails
-  with "stay", keep activation for normal apps and use "stay" only when a full-screen app is in
-  front (that needs the hotkey helper to report it, which means a rebuild and a permission re-grant:
-  ask the lead first).
+- Nothing in flight. Saved 2026-09-27 at logout.
+- The native agent half (the 10 retire blockers in capsule-parity.md) is done on work/capsule-agent,
+  head 74b2f6e, and capsule-pro has merged it into work/capsule-pro (fcfcef0). See
+  docs/work/capsule-agent.md on that branch.
 
-## Next
-- Esc on a queued reply only stops following; the message still goes. A `threads.unqueue` for an
-  undelivered message would let Esc withdraw it.
-- The reply arrives whole at the turn's end (the Stop hook's `last_assistant_message`), not
-  streamed: streaming from the transcript would need a file watch or polling faster than 60 s.
-- A queued message for a session that is later resumed headless is delivered at that child's Stop.
-- `threads.unqueue` (withdraw an undelivered message; the phone wants it too) and streaming the
-  reply live.
+## Next (open requests, in order)
+- capsule-pro (via the lead): add `live: true` to projects.catalog and threads.list rows for a
+  session a terminal has open with a live bound pid (reuse switchboard elsewhere()/sessions.boundPid),
+  with a test. capsule-pro then drops its 15-minute guess for the badge.
+- tailnet (design review, not answered yet): sending to Mac sessions from the box. My answers:
+  1 yes: a separate WRITE allowlist (threads.send, later threads.unqueue), person callers only, and
+    `as: "person"` checked on the Mac.
+  2 yes, with an explicit caller kind "link" in guard() and surfaceOf() instead of relying on the
+    `/^(mcp|harness)/` regex. The queued note names the Mac ("<name> is busy in your terminal on
+    alex-mac. ...").
+  3 Events: thread.queued, thread.sent{queued, via}, thread.text (done), thread.finished. For a
+    queued message the stop signal is the thread.finished that follows its thread.sent{queued}, not
+    the first thread.finished (which may be the turn it interrupted). Keep the 30-minute cap.
+  4 Always queue when anything on the Mac holds the lease; never take it from the Capsule.
+  Misses: the Stop hook hand-over (harness.stop -> threads.inbox / threads.replied) runs on the Mac
+  unchanged; an idle terminal session only gets the words on its next prompt (no nudge).
+  threads.unqueue does not exist yet.
+- polish-cli: the Capsule calls capsule.report {ok, message} as caller "capsule" when its hotkey
+  state changes (only on change). Their tool is on work/polish-cli 5d77d2c. Needed in the native app
+  (Hotkeys.swift state) more than in Electron's main.js, since the native Capsule is the default.
+- threads.unqueue (withdraw an undelivered message; Esc on a queued reply, the phone), and streaming a
+  queued session's reply live.
+- Watched-thread reports on the empty native Capsule (Electron listed up to 4).
+
+## Standing rule (user, 2026-09-27)
+- Vyre does not nag: the user runs on bypass permissions. No prompts and no Touch ID for the
+  person's own actions. Touch ID only for pairing a new device, vault secrets, and sending, posting
+  or paying outside; one Touch ID lasts about 30 minutes per device.
 
 ## Needs from others
-- capsule-pro: carry rules 1 to 6 into the Swift Capsule.
-- lead: confirm typing over normal apps, then the stay-by-default patch (scratch
-  `stay-default.patch`, not committed) goes in.
-- lead: say when the Mac is free for the full-screen check (it takes over the display for ~15 s).
-- switchboard: a new migration (`threads_inbox`) was appended to `MIGRATIONS`; if work/switchboard
-  also appends one, order them at merge.
+- capsule-pro: rules 1 to 7 are carried by the native Capsule (merged). A popover row for
+  "Waiting on you · N".
+- lead: the trust decision on presence from the box (tailnet item 5).
+- switchboard: the threads_inbox migration was appended to MIGRATIONS; order it at merge if needed.
 
 ## Changed contracts
 - `threads.send`: new result `{sent:false, queued:true, open_elsewhere:true, thread, name, note}`
