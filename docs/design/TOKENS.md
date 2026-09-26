@@ -1,4 +1,12 @@
-# Vyre tokens
+---
+title: Design tokens
+summary: The colour, type, shape and mark tokens every Vyre surface uses, with the values to paste verbatim.
+audience: builders
+owner: docs
+status: stable
+---
+
+# Design tokens
 
 Direction: Instrument, reduced. Mark: **Lead** (one wire bent into a v, with the signal dot leaving its end).
 Paste values verbatim. Do not add colours. Artboards: `project/IdMarks`, `IdSystem`, `IdVoice`.

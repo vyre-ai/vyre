@@ -119,7 +119,7 @@ test("docs-check: the nav and redirect stubs", async t => {
 
 test("docs-check: em dashes and section signs, in pages and the files they include", async t => {
   const root = tree(t, {
-    "a.md": FM() + "# A\n\nOne \u2014 two.\n\nSee \u00a7 5.\n\n<!-- include: ../CHANGELOG.md -->\n\n<!-- include: ../MISSING.md -->\n\n[into the include](#from-the-changelog)\n",
+    "a.md": FM() + "# A\n\nOne \u2014 two.\n\nSee \u00a7 5.\n\n<!-- include: ../CHANGELOG.md -->\n\n<!-- include: ../MISSING.md -->\n\n[into the include](#from-the-changelog)\n\n```md\n<!-- include: ../ALSO-MISSING.md -->\n```\n",
     "../CHANGELOG.md": "# Changelog\n\n## From the changelog\n\nfine\nnot \u2014 fine\n",
   });
   const lines = await run(root);
@@ -128,6 +128,7 @@ test("docs-check: em dashes and section signs, in pages and the files they inclu
   assert.ok(lines.includes("CHANGELOG.md:6: em dash; use a colon, a comma or two sentences"));
   assert.ok(lines.includes("docs/a.md:17: includes ../MISSING.md, which does not exist"));
   assert.deepEqual(only(lines, /from-the-changelog/), [], "an included file's headings are anchors on the page");
+  assert.deepEqual(only(lines, /ALSO-MISSING/), [], "an include line inside fenced code is an example, not an include");
 });
 
 test("docs-check: names, secrets, emails and IP addresses", async t => {

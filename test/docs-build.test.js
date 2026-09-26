@@ -258,7 +258,7 @@ function fixture(/** @type {string} */ root) {
     "# The vault\n\nkit uses the Harlow Legal login by name. Internal notes: [work](../work/docs.md).\n");
   w("docs/adr/0004-presence.md", "# ADR 0004 · Presence\n\n## Decision\n\njuno proves presence.\n");
   w("docs/changelog.md", fm({ title: "Changelog", summary: "Every change.", audience: "users", owner: "integrator", status: "stable" }) +
-    "<!-- include: ../CHANGELOG.md -->\n");
+    "<!-- include: ../CHANGELOG.md -->\n\nTo add a changelog page:\n\n```md\n<!-- include: ../CHANGELOG.md -->\n```\n");
   w("docs/SPEC.md", "---\ntitle: Specification\nredirect: adr/0004-presence.md\n---\n\nMoved.\n");
   w("docs/work/docs.md", "# Internal\n\nsecret plans\n");
   w("docs/work/old.md", "---\ntitle: Old\nredirect: index.md\n---\n");
@@ -326,7 +326,9 @@ test("build: a fixture tree produces the expected site", t => {
   assert.match(read("changelog.html"), /<h2 id="unreleased">Unreleased/);
   assert.match(read("changelog.html"), /<a href="\/adr\/0004-presence">ADR 0004<\/a>/);
   assert.match(read("changelog.md"), /## Unreleased/);
-  assert.doesNotMatch(read("changelog.md"), /include:/);
+  assert.equal(read("changelog.md").match(/include:/g)?.length, 1, "an include line inside fenced code is shown, not spliced");
+  assert.equal(read("changelog.html").match(/<h2 id="unreleased">/g)?.length, 1);
+  assert.match(read("changelog.html"), /&lt;!-- include: \.\.\/CHANGELOG\.md --&gt;/);
 
   // Redirects: pretty and .md, only for stubs outside unpublished folders.
   assert.equal(read("_redirects"), "/SPEC /adr/0004-presence 301\n/SPEC.md /adr/0004-presence.md 301\n");

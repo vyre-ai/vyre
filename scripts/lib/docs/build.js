@@ -190,13 +190,19 @@ function packageDescription(root) {
   try { return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).description || ""; } catch { return ""; }
 }
 
-/** Replace each include line with the file it names (front matter stripped). */
+/** Replace each include line outside fenced code with the file it names (front matter stripped). */
 function spliceIncludes(/** @type {string} */ text, /** @type {string} */ base, /** @type {any} */ read, depth = 0) {
-  return text.replace(/^ {0,3}<!--\s*include:\s*(\S+?)\s*-->[ \t]*$/gm, (all, rel) => {
+  let fence = "";
+  return text.split("\n").map(line => {
+    const f = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !line.trim().slice(f[1].length).trim()) fence = ""; return line; }
+    if (f) { fence = f[1]; return line; }
+    const m = line.match(/^ {0,3}<!--\s*include:\s*(\S+?)\s*-->[ \t]*$/);
+    if (!m) return line;
     if (depth > 3) return "";
-    const got = read(rel, base);
+    const got = read(m[1], base);
     return got ? spliceIncludes(got.text.trim(), got.base, read, depth + 1) : "";
-  });
+  }).join("\n");
 }
 
 /** Rendered HTML to searchable text. @param {string} html */

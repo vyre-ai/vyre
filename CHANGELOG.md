@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Every page of docs.vyre.run is written (ADR 0019)
+
+- The 57 pages in `docs/nav.json` exist, each with front matter and an owner: get-started,
+  using, concepts, build, architecture, security, contributing, and ADR 0019 for the site itself.
+  Pages other teams own are seeded from the code on main for them to refine.
+- `docs/SPEC.md`, `INSTALL.md`, `GETTING-STARTED.md`, `JOURNEY.md`, `MODULES.md` and `PERF.md`
+  moved to `architecture/spec.md`, `get-started/install.md` and `without-docker.md`,
+  `get-started/onboarding.md` (GETTING-STARTED and JOURNEY merged), `build/writing-a-module.md`
+  and `architecture/performance.md`. Each old path is a redirect stub, so `docs/SPEC.md section N`
+  in code comments still resolves. The ADRs and `design/TOKENS.md` have front matter.
+- The npm package ships all of `docs/` except `work/`, `proposals/` and `design/boards/`, instead
+  of five named files that are now stubs.
+- An include line inside fenced code is an example: the build and docs-check leave it alone.
+  docs-check's list of built files names `/search-index.json`, which is what the build writes.
+
 #### docs-check and the generated reference pages (ADR 0019)
 
 - `scripts/docs-check` (`npm run docs:check`, and `test/docs-check.test.js` under `npm test`)
