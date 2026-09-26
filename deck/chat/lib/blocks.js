@@ -4,26 +4,18 @@
 // blocks print the way Claude Code's own terminal prints them (the raw view).
 //
 // Blocks are recall.transcript's (docs/work/chat.md, contract 2): user, text, thinking, tool,
-// turn. Labels never say "claude": the model is "Vyre" (or the agent's name), the person is "you",
+// turn. Labels (lib/names.js) never say "claude": a reply is the assistant's name (or the agent's), the person is "you",
 // and another surface is its own name.
 
-/** The Deck's own surface names: a message from these is this screen's, so it reads "you". */
-export const OURS = new Set(["deck", "chat"]);
+import { labelFor } from "./names.js";
+export { OURS } from "./names.js";
 
 /**
- * Who a row is from, in the words the view shows.
+ * Who a row is from: lib/names.js's labelFor, kept under this name for the view's callers.
  * @param {{ role: "assistant"|"user", agent?: string|null, surface?: string|null }} o
+ * @param {{ assistant?: string|null, owner?: string|null }} [names]
  */
-export function whoLabel(o) {
-  if (o.role === "assistant") {
-    const a = o.agent ? String(o.agent).trim() : "";
-    return a && !/claude/i.test(a) ? a : "Vyre";
-  }
-  const s = o.surface ? String(o.surface).trim() : "";
-  if (!s || OURS.has(s)) return "you";
-  if (/claude/i.test(s)) return "terminal";
-  return s;
-}
+export const whoLabel = (o, names) => labelFor(o, names);
 
 /** Which side of the conversation a block is on. @param {{ kind: string }} b */
 export const sideOf = b => b.kind === "user" ? "user" : b.kind === "turn" ? "turn" : "assistant";

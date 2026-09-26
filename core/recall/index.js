@@ -34,6 +34,7 @@ import { evaluate } from "./eval.js";
 import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
+import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
@@ -265,6 +266,33 @@ export default {
         return { session: { id, cwd, name, title }, ...blocks(String(row.file), { from: input.from, limit: input.limit, before: input.before }) };
       },
     });
+    // Live tails (watch.js). Times are settings so tests need not wait minutes.
+    const watches = new Watches({
+      emit: (type, payload, where) => ctx.events.emit(type, payload, where),
+      log: ctx.log,
+      ttlMs: opts.watchTtlMs, idleMs: opts.watchIdleMs, sweepMs: opts.watchSweepMs,
+      resolve: session => {
+        const row = sessionRow(db, session);
+        if (row) return { id: String(row.id), file: String(row.file) };
+        const e = find(folders, session);
+        return e ? { id: e.id, file: e.file } : null;
+      },
+    });
+    // The same people as recall.transcript: the text of every turn goes by, redacted.
+    const own = ["cli", "local", "deck", "capsule", "module"];
+    ctx.tool("recall.watch", {
+      description: "Follow one session live: each completed turn arrives as a session.turn event (thread = the session id) and session.state says whether a reply is under way. from is a turn id to replay after first; without it, only new turns. Call again with the same watch id to renew it: a watch nobody renews ends after 3 minutes, and one whose session is quiet for 30 minutes ends too.",
+      input: { type: "object", required: ["session"], properties: {
+        session: { type: "string" }, from: { type: "string" }, watch: { type: "string" } } },
+      callers: own,
+      run: async input => watches.watch(input),
+    });
+    ctx.tool("recall.unwatch", {
+      description: "Stop following a session (a watch id from recall.watch).",
+      input: { type: "object", required: ["watch"], properties: { watch: { type: "string" } } },
+      callers: own,
+      run: async input => watches.unwatch(input),
+    });
     ctx.tool("recall.sessions", {
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
@@ -294,6 +322,7 @@ export default {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
           progress: { sessions: progress.total ? { done: progress.done, total: progress.total } : null, paused: g ? g.why : null, priority: "low" },
+          watches: watches.stats(),
           vectors: { on: vec.on, ready: Boolean(vec.embedder), why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
       },
@@ -340,7 +369,8 @@ export default {
         chain = chain.then(() => { if (!stopped) indexer.session(folders, id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
       }, SOON_MS));
     };
-    const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon)];
+    const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),
+      ctx.events.on("turn.completed", (/** @type {any} */ e) => { const id = e?.payload?.session; if (typeof id === "string" && id) watches.stopped(id); })];
 
     // After start returns, so vyred's startup never waits on a pass.
     const first = setTimeout(() => { pass().catch(() => {}); }, 0);
@@ -350,6 +380,7 @@ export default {
     return {
       async stop() {
         stopped = true;
+        watches.close();
         clearTimeout(first);
         clearTimeout(retry);
         for (const off of offs) if (typeof off === "function") off();

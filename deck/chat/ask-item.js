@@ -2,9 +2,9 @@
 // A permission ask, inline (contract 1, kind "permission"): exactly what will run, from the
 // ask's detail (Bash: the full command and its description; Edit: a diff of old and new; Write:
 // the file and a preview; WebFetch: the URL; anything else: the input as keys and values), why
-// (the reason Claude Code gave), and three answers: Allow once (Enter), Always for this (only
-// when the ask offers it; decision "always"), Deny (Esc, with an optional "tell Vyre why" sent as
-// `message`). threads.answer is on the floor's human-only list, so the answer carries a passkey
+// (the reason Claude Code gave), and three answers: Allow once (Enter), Always in <project> (when
+// the ask offers `always_project`: decision "always", scope "project"; "Always for this" when only
+// `always` is offered), Deny (Esc, with an optional "tell <assistant> why" sent as `message`). threads.answer is on the floor's human-only list, so the answer carries a passkey
 // proof. Once answered, here or on another screen (session.js calls .answered on ask.answered),
 // the card loses its buttons and says what was decided; a failure says why and gives them back.
 //
@@ -20,6 +20,13 @@ import { outputEl, kvGrid } from "./blocks.js";
 import { langOf } from "./lib/blocks.js";
 
 const WORDS = { allow: "Allowed once", always: "Always allowed", deny: "Denied", cancelled: "Withdrawn" };
+
+/** The "always" answer on offer: in a project (always_project), for this (always), or none. */
+export function alwaysChoice(ask) {
+  if (ask.always_project) return { label: `Always in ${ask.always_project}`, input: { decision: "always", scope: "project" } };
+  if (ask.always) return { label: "Always for this", input: { decision: "always" } };
+  return null;
+}
 
 /** What the ask wants, in a few words: "run a command", "edit app.js". */
 export function askVerb(ask) {
@@ -74,10 +81,10 @@ export function askCard(ask) {
   const state = { busy: false, decided: /** @type {string|null} */ (null), error: /** @type {any} */ (null), denying: false, why: "" };
   const who = ask.agent || "Vyre";
 
-  const answer = async decision => {
+  const answer = async (decision, extra = {}) => {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
-    const input = { ask: ask.id, decision, surface: "deck", ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}) };
+    const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}) };
     const r = await attempt("threads.answer", input, { presence: true });
     state.busy = false;
     if (r.error) state.error = r.error; else state.decided = decision;
@@ -85,13 +92,13 @@ export function askCard(ask) {
   };
 
   function draw() {
-    const title = h("div", { class: "gate-row" }, h("span", { class: "ask-title" }, `${who} wants to ${askVerb(ask)}`));
+    const title = h("div", { class: "gate-row cv-ask-top" }, h("span", { class: "cv-ask-dot", "aria-hidden": "true" }), h("span", { class: "ask-title" }, `${who} wants to ${askVerb(ask)}`));
     if (state.decided) {
       put(el, title, h("div", { class: "gate-resolved" }, icon(state.decided === "deny" || state.decided === "cancelled" ? "close" : "check", 14), WORDS[state.decided] || state.decided));
       el.classList.add("answered");
       return;
     }
-    const whyInput = state.denying ? h("input", { class: "cv-why", type: "text", placeholder: "Tell Vyre why (optional)", value: state.why,
+    const whyInput = state.denying ? h("input", { class: "cv-why", type: "text", placeholder: `Tell ${who} why (optional)`, value: state.why,
       oninput: e => { state.why = e.target.value; },
       onkeydown: e => {
         if (e.key === "Enter") { e.preventDefault(); answer("deny"); }
@@ -105,12 +112,17 @@ export function askCard(ask) {
         h("button", { class: "btn btn-ghost btn-sm", disabled: state.busy, onclick: () => { state.denying = false; draw(); } }, "Back"))
       : h("div", { class: "gate-actions" },
         h("button", { class: "btn btn-primary", disabled: state.busy, onclick: () => answer("allow") }, "Allow once", h("span", { class: "kbd" }, "⏎")),
-        ask.always ? h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => answer("always") }, "Always for this") : null,
+        alwaysBtn(),
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => { state.denying = true; draw(); } }, "Deny", h("span", { class: "kbd" }, "esc")),
       ),
       state.error ? problemLine(state.error) : null,
     );
     if (whyInput) whyInput.focus?.();
+  }
+
+  function alwaysBtn() {
+    const c = alwaysChoice(ask);
+    return c ? h("button", { class: "btn btn-ghost cv-always", disabled: state.busy, onclick: () => answer(c.input.decision, c.input.scope ? { scope: c.input.scope } : {}) }, c.label) : null;
   }
 
   el.update = a => { Object.assign(ask, a); if (!state.decided) draw(); };

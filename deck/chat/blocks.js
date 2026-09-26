@@ -14,7 +14,7 @@ import { h, add, put } from "../js/dom.js";
 import { icon, mark } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { renderMarkdown } from "./lib/markdown.js";
-import { renderUnified } from "./lib/diff.js";
+import { renderUnified, renderRows, patchRows } from "./lib/diff.js";
 import { highlight } from "./lib/highlight.js";
 import { clip, commandText, duration, langOf, rawLines, toolState, toolTitle, turnParts } from "./lib/blocks.js";
 
@@ -42,9 +42,9 @@ export function personAv(who, me) {
   return h("span", { class: "av-person msg-av cv-av" + (letter ? "" : " cv-av-dot"), title: who === "you" && me ? me : who }, letter || h("span", { class: "cv-dot" }));
 }
 
-/** The chip beside a reply: the Vyre mark, or an agent's two letters. */
-export function agentAv(who) {
-  if (who === "Vyre") return h("span", { class: "av-agent msg-av cv-av cv-av-vyre", title: "Vyre" }, mark(16));
+/** The chip beside a reply: the Vyre mark for the assistant (whatever it is called), an agent's two letters. */
+export function agentAv(who, assistant = who === "Vyre") {
+  if (assistant) return h("span", { class: "av-agent msg-av cv-av cv-av-vyre", title: who }, mark(16));
   return h("span", { class: "av-agent msg-av cv-av", title: who }, String(who).slice(0, 2).toLowerCase());
 }
 
@@ -61,10 +61,10 @@ export function userRow(who, text, ts, me = null) {
   ), "user", ts);
 }
 
-/** The header an assistant run starts with: "Vyre" (or the agent's name) and the time. */
-export function headRow(who, ts) {
+/** The header an assistant run starts with: the assistant's name (or the agent's) and the time. */
+export function headRow(who, ts, assistant = who === "Vyre") {
   return tag(h("div", { class: "cv-row cv-head" },
-    agentAv(who),
+    agentAv(who, assistant),
     h("span", { class: "msg-who" }, who),
     ts ? h("span", { class: "msg-when" }, clock(ts)) : null,
   ), "assistant", ts);
@@ -168,11 +168,14 @@ function toolBody(b) {
       break;
     case "Edit":
       parts.push(fileLine(i.file_path));
-      if (i.old_string != null || i.new_string != null) parts.push(renderUnified(i.old_string ?? "", i.new_string ?? ""));
+      // The file's own line numbers when the result carried its patch; the strings alone otherwise.
+      if (Array.isArray(b.patch) && b.patch.length) parts.push(renderRows(patchRows(b.patch)));
+      else if (i.old_string != null || i.new_string != null) parts.push(renderUnified(i.old_string ?? "", i.new_string ?? ""));
       if (err && out) parts.push(outputEl(out, { err }));
       break;
     case "MultiEdit":
       parts.push(fileLine(i.file_path));
+      if (Array.isArray(b.patch) && b.patch.length) { parts.push(renderRows(patchRows(b.patch))); if (err && out) parts.push(outputEl(out, { err })); break; }
       for (const e of Array.isArray(i.edits) ? i.edits : []) parts.push(renderUnified(e.old_string ?? "", e.new_string ?? ""));
       if (err && out) parts.push(outputEl(out, { err }));
       break;
@@ -236,16 +239,27 @@ export function toolCard(b) {
     const d = duration(b.duration_ms);
     el.setAttribute("data-tool", String(b.tool || ""));
     el.setAttribute("data-state", state);
-    const body = h("div", { class: "cv-tool-body", hidden: !open }, toolBody(b));
-    const head = h("button", { class: "cv-tool-head", type: "button", "aria-expanded": String(!!open), onclick: () => {
-      open = !open; body.hidden = !open; head.setAttribute("aria-expanded", String(open));
-    } },
+    // The body is built the first time it opens, so a long session's closed cards cost nothing.
+    // It stays in the DOM once built, and CSS expands and collapses it (grid rows, 180 ms).
+    const inner = h("div", { class: "cv-tool-inner" });
+    const body = h("div", { class: "cv-tool-body", "aria-hidden": String(!open) }, inner);
+    let built = false;
+    const fill = () => { if (!built) { built = true; add(inner, toolBody(b)); } };
+    const show = () => {
+      if (open) { fill(); el.setAttribute("data-open", ""); } else el.removeAttribute("data-open");
+      body.setAttribute("aria-hidden", String(!open));
+      head.setAttribute("aria-expanded", String(!!open));
+    };
+    const head = h("button", { class: "cv-tool-head", type: "button", onclick: () => { open = !open; show(); } },
+      h("span", { class: "cv-chev", "aria-hidden": "true" }, icon("right", 12)),
       h("span", { class: "cv-tool-name" }, displayName(b.tool)),
       h("span", { class: "cv-tool-title" }, title),
-      d ? h("span", { class: "cv-tool-time" }, d) : null,
-      h("span", { class: "cv-tool-state cv-" + state }, state),
+      h("span", { class: "cv-tool-meta" },
+        d ? h("span", { class: "cv-tool-time" }, d) : null,
+        h("span", { class: "cv-tool-state cv-" + state }, state)),
     );
     put(el, head, body);
+    show();
   };
   el.update(b);
   return el;

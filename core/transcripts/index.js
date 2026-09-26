@@ -588,3 +588,106 @@ function nextOf(r, from, stop, truncated, eof) {
   if (truncated && back <= from) return stop;
   return Math.max(from, back);
 }
+
+// ---------------------------------------------------------------------------------------------
+// follow: a transcript read as it grows, one line at a time, for Recall's live watch.
+//
+// Each line becomes the turns it holds: a user or assistant turn with text, exactly as read()
+// counts and redacts them (so a live turn's id is the seq recall.thread will give it), and a
+// "tool" turn per tool call, carried as a one-line summary and never its input or output.
+
+/** A tool call as one line: the command, the file, the query. Redacted and cut to 200. */
+export function toolSummary(/** @type {string} */ tool, /** @type {any} */ input) {
+  const i = input && typeof input === "object" ? input : {};
+  const one = (/** @type {unknown} */ v, n = 200) => {
+    const s = String(v ?? "").replace(/\s+/g, " ").trim();
+    return s.length > n ? s.slice(0, n - 1) + "…" : s;
+  };
+  let s;
+  if (tool === "Bash") s = one(i.command);
+  else if (["Write", "Edit", "MultiEdit", "Read", "NotebookEdit"].includes(tool)) s = `${tool} ${one(i.file_path || i.notebook_path)}`;
+  else if (tool === "WebFetch") s = `fetch ${one(i.url)}`;
+  else if (tool === "WebSearch") s = `search ${one(i.query)}`;
+  else if (tool === "Glob" || tool === "Grep") s = `${tool} ${one(i.pattern)}${i.path ? " in " + one(i.path, 80) : ""}`;
+  else if (tool === "TodoWrite") s = `${Array.isArray(i.todos) ? i.todos.length : 0} todos`;
+  else if (tool === "Task" || tool === "Agent") s = `${tool} ${one(i.description || i.subagent_type)}`;
+  else {
+    const first = Object.entries(i).find(([, v]) => typeof v === "string");
+    s = `${tool}${first ? ` ${first[0]}: ${first[1]}` : ""}`;
+  }
+  return redact(one(s)).text;
+}
+
+/**
+ * @typedef {{ id: string, seq: number, turn?: number, role: "user"|"assistant"|"tool", text: string,
+ *   tool?: { name: string, summary: string }, at: number }} LiveTurn
+ * @typedef {{ texts: number, pending: Set<string>, busy: boolean, last: "human"|"text"|"tool"|null }} FollowState
+ */
+
+/** @returns {FollowState} */
+export const followState = () => ({ texts: 0, pending: new Set(), busy: false, last: null });
+
+/**
+ * The turns one parsed line holds, updating the state: how many text turns so far (the next
+ * one's seq), which tool calls wait for a result, and whether a person is waiting on a reply.
+ * @param {any} o @param {number} line @param {FollowState} st
+ * @returns {LiveTurn[]}
+ */
+export function follow(o, line, st) {
+  /** @type {LiveTurn[]} */
+  const out = [];
+  if (!o || typeof o !== "object") return out;
+  const at = Date.parse(o.timestamp || "") || 0;
+  const t = turnOf(o);
+  if (t) {
+    const seq = st.texts++;
+    const text = redact(t.text.length > CLIP ? t.text.slice(0, CLIP) : t.text).text;
+    out.push({ id: String(seq), seq: line, turn: seq, role: t.role, text, at });
+  }
+  const side = o.isSidechain === true || o.parent_tool_use_id;
+  const c = o.message && Array.isArray(o.message.content) ? o.message.content : [];
+  if (o.type === "assistant" && !o.isMeta) {
+    for (const p of c) {
+      if (!p || p.type !== "tool_use" || typeof p.id !== "string") continue;
+      // A subagent's calls are its own business; the session shows the Task that ran it.
+      if (side) continue;
+      const name = String(p.name || "tool");
+      const summary = toolSummary(name, p.input);
+      out.push({ id: `tool:${p.id}`, seq: line, role: "tool", text: summary, tool: { name, summary }, at });
+      st.pending.add(p.id); st.last = "tool";
+    }
+    if (!side && t) st.last = "text";
+  } else if (o.type === "user") {
+    for (const p of c) if (p && p.type === "tool_result") st.pending.delete(p.tool_use_id);
+    // A person asked for something: busy until the reply ends. A command echo is not a request.
+    if (t && !side && !/^\s*<(command-|local-command-)/.test(t.text)) { st.busy = true; st.last = "human"; }
+  }
+  return out;
+}
+
+/**
+ * Whether a person is still waiting, judged at the end of what has been read: the last thing is
+ * the model's text with no tool call left open. Returns the new value.
+ * @param {FollowState} st
+ */
+export function settle(st) {
+  if (st.busy && st.last === "text" && st.pending.size === 0) st.busy = false;
+  return st.busy;
+}
+
+/**
+ * Read complete lines from a buffer that starts at a line boundary, calling fn for each parsed
+ * one. Returns how many bytes were consumed (a half-written last line is left) and lines seen.
+ * @param {Buffer} buf @param {number} line @param {(o: any, line: number) => void} fn
+ */
+export function eachLine(buf, line, fn) {
+  let pos = 0, n = line;
+  while (pos < buf.length) {
+    const end = buf.indexOf(0x0a, pos);
+    if (end < 0) break;
+    const o = parse(buf, pos, end);
+    if (o) fn(o, n);
+    pos = end + 1; n++;
+  }
+  return { bytes: pos, line: n };
+}

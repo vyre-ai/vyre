@@ -106,10 +106,10 @@ export function questionCard(ask) {
     const list = h("div", { class: "cv-q-opts", role: q.multiSelect ? "group" : "radiogroup" },
       q.options.map((o, n) => {
         const on = pick.chosen.includes(o.label);
-        return h("button", { class: "cv-q-opt" + (n === focusRow ? " cv-focus" : ""), type: "button", role: q.multiSelect ? "checkbox" : "radio",
+        return h("button", { class: "cv-q-opt cv-choice" + (on ? " cv-choice-on" : "") + (n === focusRow ? " cv-focus" : ""), type: "button", role: q.multiSelect ? "checkbox" : "radio",
           "aria-checked": String(on), onclick: () => pickAt(i, n, false) },
           h("span", { class: "cv-q-num" }, n < 9 ? String(n + 1) : ""),
-          h("span", { class: "cv-q-mark" + (q.multiSelect ? " cv-q-box" : " cv-q-dot") }, on ? (q.multiSelect ? "✓" : "") : ""),
+          h("span", { class: "cv-q-mark" + (q.multiSelect ? " cv-q-box cv-chk" + (on ? " cv-chk-on" : "") : " cv-q-dot cv-radio" + (on ? " cv-radio-on" : "")) }, on && q.multiSelect ? "✓" : ""),
           h("span", { class: "cv-q-txt" }, h("span", { class: "cv-q-label" }, o.label), o.description ? h("span", { class: "cv-q-desc" }, o.description) : null),
         );
       }),
@@ -126,10 +126,10 @@ export function questionCard(ask) {
   function otherRow(i) {
     const q = questions[i], pick = picks[i];
     const n = q.options.length;
-    const row = h("button", { class: "cv-q-opt cv-q-other" + (cursor[i] === n ? " cv-focus" : ""), type: "button", role: q.multiSelect ? "checkbox" : "radio",
+    const row = h("button", { class: "cv-q-opt cv-choice cv-q-other" + (pick.other ? " cv-choice-on" : "") + (cursor[i] === n ? " cv-focus" : ""), type: "button", role: q.multiSelect ? "checkbox" : "radio",
       "aria-checked": String(pick.other), onclick: () => pickAt(i, n, false) },
       h("span", { class: "cv-q-num" }, n < 9 ? String(n + 1) : ""),
-      h("span", { class: "cv-q-mark" + (q.multiSelect ? " cv-q-box" : " cv-q-dot") }, pick.other && q.multiSelect ? "✓" : ""),
+      h("span", { class: "cv-q-mark" + (q.multiSelect ? " cv-q-box cv-chk" + (pick.other ? " cv-chk-on" : "") : " cv-q-dot cv-radio" + (pick.other ? " cv-radio-on" : "")) }, pick.other && q.multiSelect ? "✓" : ""),
       h("span", { class: "cv-q-txt" }, h("span", { class: "cv-q-label" }, "Other")));
     if (!pick.other) return row;
     otherInput = /** @type {any} */ (h("input", { class: "cv-q-input", type: "text", placeholder: "Type your answer", value: pick.text,

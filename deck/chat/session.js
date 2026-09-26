@@ -1,6 +1,6 @@
 // @ts-check
 // The session view. On open it reads the session as blocks (recall.transcript, contract 2):
-// what you said, Vyre's replies as markdown, thinking folded, every tool call as a card that
+// what you said, the assistant's replies as markdown, thinking folded, every tool call as a card that
 // knows its tool, and a quiet footer per turn. Then it follows thread.* over SSE (api.js's shared
 // EventSource): text streams into a live reply with a cursor, thread.tool starts and finishes a
 // live card from its summary, and on thread.finished or session.indexed the view reads the
@@ -11,7 +11,8 @@
 // A "Raw" toggle in the header prints the same blocks the way Claude Code's terminal does
 // ("⏺ Bash(npm test)" then "  ⎿  output"); the choice is remembered on this device.
 //
-// Labels never say "claude": replies read "Vyre" (an agent's thread: the agent's name), your own
+// Labels come from lib/names.js and never say "claude": replies read the assistant's name from
+// onboarding (an agent's thread: the agent's name; "Vyre" when none is set), your own
 // messages read "you", another surface's read that surface's name.
 //
 // Question and permission asks are cards (question.js, ask-item.js) filled from threads.asks,
@@ -35,7 +36,9 @@ import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
 import { mountComposer } from "./composer.js";
-import { OURS, whoLabel, plan, sideOf, mergeBlocks, blockKey } from "./lib/blocks.js";
+import { plan, sideOf, mergeBlocks, blockKey } from "./lib/blocks.js";
+import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
+import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, toolCard, turnRow, rawView } from "./blocks.js";
 
 const PAGE = 400;
@@ -43,12 +46,21 @@ const KEEP = 1200; // blocks kept when a long session has to be paged forward to
 const RAW_KEY = "vyre.chat.raw";
 const readRaw = () => { try { return localStorage.getItem(RAW_KEY) === "1"; } catch { return false; } };
 const saveRaw = on => { try { localStorage.setItem(RAW_KEY, on ? "1" : "0"); } catch {} };
+/** A long transcript read the older way (recall.thread) opens at its last WINDOW turns; "Show earlier" reads the rest. */
+const WINDOW = 60;
+/** How long a deep-linked row flashes. */
+const FLASH_MS = 1600;
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, recorded?: boolean, onBack: () => void }} opts
+ * @param {{ thread: string, project: string|null, recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null,
+ *   at?: number|null, ask?: string|null, tool?: string|null, onBack: () => void }} opts
  * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
+ * known: the list had a row for it. turns: its turn count, so an older box's read opens at its end.
+ * source, machine: the list's label for it; "mac" opens it read-only (a paired Mac's session).
+ * at, ask, tool: a deep link (?at=<ms>&ask=<id>&tool=<tool_use_id>; read from the address when not
+ * given): the row to scroll to and flash. An ask's anchor (its tool call) wins over `at`.
  * @returns {() => void} cleanup
  */
 export function mountSession(container, opts) {
@@ -88,30 +100,38 @@ export function mountSession(container, opts) {
   const rawBox = h("div", { class: "cv-raw-box", hidden: !raw });
   const earlier = h("div", { class: "cv-earlier", hidden: true });
   const health = healthDot();
+  /** Where it lives when that is the paired Mac: then nothing here may send to it, lease it or take it. */
+  const where = { source: opts.source || null, machine: opts.machine || null };
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
 
-  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, composer.el);
+  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, isMac(where) ? null : composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
-  /** The owner's name, when the box knows it (system.info), for the chip beside "you". */
+  /** The assistant's and the owner's names (system.info, read once per page): replies are labelled with the first, "you" wears the second's initial. */
+  let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
   let me = /** @type {string|null} */ (null);
   let replaying = false;
-  const agentName = () => whoLabel({ role: "assistant", agent: record.current?.agent });
+  const agentName = () => labelFor({ role: "assistant", agent: record.current?.agent }, names);
+  const headFor = ts => headFor(ts, isAssistant({ agent: record.current?.agent }, names));
 
   // ---- open -----------------------------------------------------------------------
 
   async function boot() {
-    const [r, t, info] = await Promise.all([
+    // A paired Mac's session is only ever a transcript the box asks the Mac for, read the older way.
+    if (isMac(where)) { names = await readNames(attempt); me = names.owner; return legacyBoot({ error: { message: "on the Mac" } }); }
+    // Everything at once: one round trip from a phone, not three.
+    const [r, t, nm] = await Promise.all([
       opts.recorded ? { error: { message: "not a Switchboard session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
       readTail(),
-      attempt("system.info"),
+      readNames(attempt),
     ]);
-    me = /** @type {any} */ (info).data?.owner?.name || null;
+    names = nm; me = nm.owner;
     if (!r.error) record.current = /** @type {any} */ (r).data.thread;
     // Only a box without the tool gets the earlier view: api.js calls any 404 "missing", and a
     // transcript not found yet (code not_found) is a live thread that still reads as blocks.
     if (t.error && t.error.missing && t.error.code !== "not_found") return legacyBoot(r);
-    if (t.error && r.error) { timeline.replaceChildren(empty("Could not open this session.", t.error)); drawHead(); return; }
+    // Neither the Switchboard nor this box's transcripts have it: recall.thread asks the paired Mac.
+    if (t.error && r.error) return legacyBoot(r);
     recorded.on = !!r.error;
     if (t.data?.session) recorded.session = t.data.session;
     drawHead();
@@ -139,6 +159,7 @@ export function mountSession(container, opts) {
     }
     if (raw) drawRaw();
     toBottom();
+    seek();
     fetchMemory();
   }
 
@@ -173,11 +194,13 @@ export function mountSession(container, opts) {
         h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
       ),
+      machineChip(where),
       rec?.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null,
       mode === "blocks" ? h("button", { class: "btn btn-ghost btn-sm cv-raw-toggle", type: "button", "aria-pressed": String(raw), title: "Show it the way the terminal prints it",
         onclick: () => setRaw(!raw) }, raw ? "Rich" : "Raw") : null,
       health.el,
     );
+    if (isMac(where)) { put(leaseBar, icon("lock", 12), h("span", { class: "lease-note" }, readOnlyNote(where))); return; }
     put(leaseBar,
       icon("lock", 12),
       rec?.holder && OURS.has(rec.holder) ? h("span", null, "You have the keyboard here")
@@ -187,7 +210,9 @@ export function mountSession(container, opts) {
       rec?.holder && !OURS.has(rec.holder) ? h("button", { class: "btn btn-ghost btn-sm", onclick: take }, "Take") : null,
     );
   }
-  async function take() { await attempt("threads.lease", { thread }); }
+  async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
+  /** A Mac session: no composer at all, so nothing typed here can reach threads.send or threads.lease. */
+  function readOnly() { composer.el.remove(); }
 
   function setRaw(v) {
     raw = v; saveRaw(v);
@@ -219,7 +244,7 @@ export function mountSession(container, opts) {
     const h0 = timeline.scrollHeight;
     const at = rawBox.nextSibling; // the first row after the top controls
     for (const op of plan(older, null)) {
-      const el = op.op === "head" ? headRow(agentName(), op.ts) : rowFor(op.block);
+      const el = op.op === "head" ? headFor(op.ts) : rowFor(op.block);
       timeline.insertBefore(el, at);
     }
     blocks = mergeBlocks(older, blocks);
@@ -244,7 +269,7 @@ export function mountSession(container, opts) {
   /** Blocks on first read: appended in order, with an assistant header per run and day rules. */
   function appendBlocks(list) {
     for (const op of plan(list.filter(b => !seen.has(blockKey(b))), kindBefore(null))) {
-      if (op.op === "head") { maybeDayRule(op.ts || Date.now()); timeline.append(headRow(agentName(), op.ts)); continue; }
+      if (op.op === "head") { maybeDayRule(op.ts || Date.now()); timeline.append(headFor(op.ts)); continue; }
       if (op.block.kind === "user") maybeDayRule(op.block.ts || Date.now());
       const el = rowFor(op.block);
       timeline.append(el);
@@ -265,7 +290,7 @@ export function mountSession(container, opts) {
     const ref = cursorEl && cursorEl.parentNode === timeline ? cursorEl.nextSibling : firstLive();
     if (sideOf(b) === "assistant" && kindBefore(ref) !== "assistant") {
       if (ref && ref._liveHead) { cursorEl = ref; return placeRich(el, b); } // adopt the live header already there
-      const hd = headRow(agentName(), b.ts);
+      const hd = headFor(b.ts);
       timeline.insertBefore(hd, ref);
     }
     timeline.insertBefore(el, ref);
@@ -383,7 +408,7 @@ export function mountSession(container, opts) {
   /** An assistant header at the end, unless the last row is already the assistant's. */
   function ensureHead(ts) {
     if (kindBefore(null) === "assistant") return;
-    const el = /** @type {any} */ (headRow(agentName(), ts));
+    const el = /** @type {any} */ (headFor(ts));
     el._liveHead = true;
     const key = "live:h:" + (++liveN);
     pending.set(key, { row: el, block: { kind: "head" } });
@@ -395,7 +420,7 @@ export function mountSession(container, opts) {
     const p = e.payload || {};
     if (e.type === "thread.sent") {
       maybeDayRule(e.at);
-      const who = whoLabel({ role: "user", surface: p.surface });
+      const who = labelFor({ role: "user", surface: p.surface }, names);
       const el = /** @type {any} */ (userRow(who, p.text, e.at, me));
       el._who = who;
       const key = "live:u:" + (++liveN);
@@ -467,15 +492,24 @@ export function mountSession(container, opts) {
   async function legacyBoot(r) {
     mode = "legacy";
     if (opts.recorded || r.error) {
-      const t = await attempt("recall.thread", { session: thread, limit: 400 });
+      const mac = isMac(where);
+      const src = mac ? { source: "mac" } : {};
+      let from = (opts.recorded || mac) && (opts.turns || 0) > WINDOW ? /** @type {number} */ (opts.turns) - WINDOW : 0;
+      let t = await attempt("recall.thread", { session: thread, from, limit: 400, ...src });
+      // The list's count and the transcript's numbering disagree: read it from the start.
+      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400, ...src }); from = 0; }
       if (t.error) { timeline.replaceChildren(empty("Could not open this session.", t.error)); drawHead(); return; }
       recorded.on = true;
       recorded.session = t.data.session;
+      // A session the list did not know may turn out to be the Mac's from the answer itself.
+      if (isMac(t.data)) { where.source = "mac"; where.machine = t.data.machine || where.machine; readOnly(); }
       drawHead();
       timeline.replaceChildren();
+      if (from > 0) timeline.append(earlierTurns(from));
       if (!t.data.turns.length) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
       appendTurns(t.data.turns);
       toBottom();
+      seek();
       return;
     }
     drawHead();
@@ -483,19 +517,40 @@ export function mountSession(container, opts) {
     for (const e of r.data.events) applyEvent(e, false);
     for (const a of r.data.asks) upsertAsk(a);
     toBottom();
+    seek();
     fetchMemory();
   }
-  function appendTurns(turns) {
+  /** "Show earlier" (the older read): the turns before `upto`, read and put above what is on screen. */
+  function earlierTurns(/** @type {number} */ upto) {
+    const btn = h("button", { type: "button", class: "btn btn-ghost btn-sm th-earlier" }, "Show earlier");
+    btn.addEventListener("click", async () => {
+      btn.setAttribute("disabled", "");
+      const start = Math.max(0, upto - WINDOW * 2);
+      const t = await attempt("recall.thread", { session: thread, from: start, limit: upto - start, ...(isMac(where) ? { source: "mac" } : {}) });
+      if (t.error) { btn.removeAttribute("disabled"); return; }
+      const holder = h("div", { class: "cv-earlier-turns" });
+      const keep = timeline.scrollHeight - timeline.scrollTop;
+      const saveNext = recorded.next, saveDay = lastDay;
+      lastDay = null;
+      appendTurns(t.data.turns, holder);
+      recorded.next = saveNext; lastDay = saveDay;
+      if (start > 0) holder.insertBefore(earlierTurns(start), holder.firstChild);
+      btn.replaceWith(holder);
+      timeline.scrollTop = timeline.scrollHeight - keep;
+    });
+    return btn;
+  }
+  function appendTurns(turns, /** @type {any} */ into = timeline) {
     for (const t of turns) {
       recorded.next = Math.max(recorded.next, (t.seq ?? 0) + 1);
       if (!t.text) continue;
-      maybeDayRule(t.ts || Date.now());
-      if (t.role === "user") { timeline.append(userRow("you", t.text, t.ts, me)); continue; }
-      timeline.append(headRow(agentName(), t.ts), blockRow({ kind: "text", text: t.text, ts: t.ts }));
+      maybeDayRule(t.ts || Date.now(), into);
+      if (t.role === "user") { into.append(userRow("you", t.text, t.ts, me)); continue; }
+      into.append(headFor(t.ts), blockRow({ kind: "text", text: t.text, ts: t.ts }));
     }
   }
   async function readMoreLegacy() {
-    if (!recorded.on) return;
+    if (!recorded.on || isMac(where)) return;
     if (recorded.busy) { recorded.again = true; return; }
     recorded.busy = true;
     try {
@@ -514,7 +569,7 @@ export function mountSession(container, opts) {
     const p = e.payload || {};
     if (e.type === "thread.sent") {
       maybeDayRule(e.at);
-      timeline.append(userRow(whoLabel({ role: "user", surface: p.surface }), p.text, e.at, me));
+      timeline.append(userRow(labelFor({ role: "user", surface: p.surface }, names), p.text, e.at, me));
       lastMessageEl = null; lastMessageId = null;
       return;
     }
@@ -523,7 +578,7 @@ export function mountSession(container, opts) {
       if (p.notice) { timeline.append(noticeMsg(p.text, e.at)); return; }
       if (p.message !== lastMessageId) {
         lastMessageId = p.message;
-        timeline.append(headRow(agentName(), e.at));
+        timeline.append(headFor(e.at));
         lastMessageEl = liveTextRow(e.at);
         timeline.append(lastMessageEl);
       }
@@ -604,8 +659,9 @@ export function mountSession(container, opts) {
     const key = "ask:" + a.id;
     const full = { ...a, agent: agentName() };
     let el = rows.get(key);
-    if (el) { el.update(full); return el; }
+    if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return el; }
     el = a.kind === "question" ? questionCard(full) : askCard(full);
+    el._ask = full;
     rows.set(key, el);
     timeline.append(el);
     if (!editable(document.activeElement)) el.focus?.({ preventScroll: true });
@@ -626,7 +682,8 @@ export function mountSession(container, opts) {
     return null;
   }
   const onKey = (/** @type {KeyboardEvent} */ e) => {
-    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || !container.isConnected) return;
+    // The shell keeps pages mounted while away (deck/js/app.js): keys belong to the page on screen.
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || !container.isConnected || container.closest?.(".away")) return;
     const t = /** @type {any} */ (e.target);
     if (editable(t)) return; // the composer, the "Other" field, the deny reason: their own keys
     if (t && (t.tagName === "BUTTON" || t.tagName === "A") && (e.key === "Enter" || e.key === " ")) return; // the focused control's own press
@@ -634,6 +691,34 @@ export function mountSession(container, opts) {
     if (card && card.onKey(e)) e.preventDefault();
   };
   document.addEventListener("keydown", onKey);
+
+  // ---- a deep link: /chat/thread/<id>?at=<ms>&ask=<id>&tool=<tool_use_id> ---------------------
+
+  function linkTarget() {
+    let q = null;
+    try { q = new URLSearchParams(location.search); } catch {}
+    const num = v => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
+    return { at: opts.at ?? num(q?.get("at")), ask: opts.ask ?? (q?.get("ask") || null), tool: opts.tool ?? (q?.get("tool") || null) };
+  }
+  /** Scroll to the linked row and flash it: an ask's card (or its anchored tool call), a tool call, else the first row at or after `at`. */
+  let sought = false;
+  function seek() {
+    if (sought) return;
+    const want = linkTarget();
+    if (want.at == null && !want.ask && !want.tool) return;
+    sought = true;
+    const card = want.ask ? rows.get("ask:" + want.ask) : null;
+    const anchor = card?._ask?.anchor?.tool_use_id || want.tool;
+    let el = card && card.isOpen?.() ? card : null;
+    if (!el && anchor) el = rows.get("tool:" + anchor) || null;
+    if (!el && card) el = card;
+    if (!el && want.at != null) for (const n of timeline.children) { if (n._ts && n._ts >= want.at) { el = n; break; } }
+    if (!el) return;
+    following = false;
+    el.scrollIntoView?.({ block: "center" });
+    el.classList.add("cv-flash");
+    setTimeout(() => el.classList.remove("cv-flash"), FLASH_MS);
+  }
 
   // ---- shared pieces ------------------------------------------------------------------------
 
@@ -649,11 +734,11 @@ export function mountSession(container, opts) {
     return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   }
   let lastDay = null;
-  function maybeDayRule(at) {
+  function maybeDayRule(at, /** @type {any} */ into = timeline) {
     const d = dayLabel(at);
     if (d === lastDay) return;
     lastDay = d;
-    timeline.append(h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" })));
+    into.append(h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" })));
   }
   function noticeMsg(text, at) {
     return h("div", { class: "gate-note cv-notice" }, icon("clock", 12), " ", text, " ", h("span", { class: "msg-when" }, clock(at)));

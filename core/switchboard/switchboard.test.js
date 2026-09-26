@@ -19,7 +19,7 @@ import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
 import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
-import { MIGRATIONS, answerSummary } from "./index.js";
+import { MIGRATIONS, answerSummary, projectRules } from "./index.js";
 import { Sessions, claudeCommand } from "./sessions.js";
 import { migrate } from "../store/index.js";
 
@@ -850,6 +850,14 @@ test("switchboard: a question is raised small, read whole, answered (single and 
   const [ask] = (await tool("threads.asks", { thread: id })).data;
   assert.equal(ask.kind, "question");
   assert.equal(ask.always, false);
+  assert.equal(ask.always_project, null);
+  const call = of(s.got, id, "thread.tool").find(e => e.payload.tool === "AskUserQuestion");
+  assert.deepEqual(ask.anchor, { tool_use_id: call.payload.id, event: raised.id }, "the ask points at its tool call and its ask.raised event");
+  assert.equal(ask.agent, null);
+  assert.equal(ask.thread_name, null);
+  assert.deepEqual((await tool("threads.asks", { kind: "question" })).data.map(a => a.id), [ask.id]);
+  assert.deepEqual((await tool("threads.asks", { kind: "permission" })).data, []);
+  assert.equal((await tool("threads.get", { thread: id })).data.asks[0].request_id, undefined, "request_id stays inside vyred");
   assert.match(ask.questions[0].options[0].preview, /Northwind Bakery/, "the card reads previews from threads.asks");
   assert.equal(ask.questions[1].multiSelect, true);
   assert.deepEqual((await tool("threads.get", { thread: id })).data.asks[0].questions, ask.questions);
@@ -986,4 +994,44 @@ test("queue: a person's words are queued for a terminal-busy session, the owner'
   const { queuesFor } = await import("./index.js");
   for (const c of ["deck", "capsule", "cli", "local", "tailnet:alex@example.com"]) assert.equal(queuesFor(c), true, c);
   for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "tailnet:agent:kit", "cli agent:kit", "tailnet:"]) assert.equal(queuesFor(c), false, c);
+});
+
+test("projectRules: Claude Code's addRules suggestions keep their rules; a mode becomes a rule for the whole tool", () => {
+  assert.deepEqual(projectRules("Bash", [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "session" }]),
+    [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }]);
+  assert.deepEqual(projectRules("Edit", [{ type: "setMode", mode: "acceptEdits", destination: "session" }]),
+    [{ type: "addRules", rules: [{ toolName: "Edit" }], behavior: "allow", destination: "localSettings" }]);
+  const sb = /** @type {any} */ ({ asks: { get: () => ({ thread: "t1", kind: "permission", tool: "Bash", summary: "npm test", destination: null }) },
+    record: () => ({ name: "Menu", project: "harlow" }), scopes: new Map([["t1", { slug: "harlow", name: "Harlow Legal", cwd: "/w" }]]) });
+  assert.equal(answerSummary(sb, { ask: "p1", decision: "always", scope: "project" }), "Always allow Bash in Harlow Legal: npm test (thread Menu)");
+});
+
+test("always in <project>: offered for a thread in its project's folder, sent as a localSettings rule; refused elsewhere", async t => {
+  const { root, work, tool } = await boot(t);
+  const got = responses(t, root);
+  assert.ok(!(await tool("projects.create", { name: "Harlow Legal", home: work })).error);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { project: "harlow-legal", name: "Menu", prompt: "demo", surface: "deck" })).data.id;
+  const edit = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.always_project), "always_project on the Edit ask");
+  assert.equal(edit.always_project, "Harlow Legal");
+  assert.equal(edit.thread_name, "Menu");
+  assert.equal(of(s.got, id, "ask.raised")[0].payload.thread_name, "Menu");
+  assert.equal((await tool("threads.answer", { ask: edit.id, decision: "always", scope: "project", surface: "deck" })).data.answered, true);
+  const bash = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.tool === "Bash" && a.always_project), "the Bash ask");
+  await tool("threads.answer", { ask: bash.id, decision: "always", scope: "project", surface: "deck" });
+  await until(() => of(s.got, id, "thread.finished")[0], "the turn");
+  const [re, rb] = got();
+  assert.deepEqual(re.updatedPermissions, [{ type: "addRules", rules: [{ toolName: "Edit" }], behavior: "allow", destination: "localSettings" }]);
+  assert.deepEqual(rb.updatedPermissions, [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }]);
+  assert.equal(of(s.got, id, "ask.answered")[0].payload.scope, "project");
+
+  // A thread outside every project: no project control, and asking for one is refused.
+  const loose = fs.mkdtempSync(path.join(root, "loose-"));
+  const other = (await tool("threads.start", { cwd: loose, prompt: "demo", surface: "deck" })).data.id;
+  const ask = await until(async () => (await tool("threads.asks", { thread: other })).data[0], "the loose Edit ask");
+  assert.equal(ask.always, true);
+  assert.equal(ask.always_project, null);
+  assert.match((await tool("threads.answer", { ask: ask.id, decision: "always", scope: "project", surface: "deck" })).error.message, /project/);
+  assert.equal((await tool("threads.asks", { thread: other })).data.length, 1, "still open after the refusal");
 });
