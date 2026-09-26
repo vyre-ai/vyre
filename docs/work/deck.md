@@ -212,6 +212,13 @@ end to end — worth a real device test before this ships.
   WebAuthn's own error (this environment has no real hostname or authenticator) rather than
   crashing. Not verified end to end (a real ts.net/vyre.run origin and an actual authenticator
   are needed for that) — worth a real device test before relying on it.
+- The first-passkey page (box, ADR 0004): `onboard.finish` gained `passkeyUrl` (or null); the
+  ending sends the person there instead of straight to `/now` when it's set, with a "Skip for
+  now" fallback. `deck/onboard/passkey/` is a standalone page (not the wizard, not the Deck's
+  router) at `https://<addr>/onboard/passkey#e=<code>` — the code rides in the hash, stripped at
+  once. Same enrollment shape as Settings → Security, reusing `callWithCode`. Same verification
+  caveat: the missing-code and enroll screens render correctly, the WebAuthn ceremony itself needs
+  a real device to exercise end to end.
 
 ## Done (continued)
 - `agents.history` turned out to already be a real tool by the time I checked (switchboard added
