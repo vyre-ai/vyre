@@ -78,7 +78,8 @@ export function privateSocketDir() {
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
- *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any } }} Config */
+ *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
+ *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> } }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
@@ -97,6 +98,8 @@ function defaults() {
     // Off: no computer joins the tailnet as its own node until the owner turns it on
     // (core/computers/tailnet.js, ADR 0014 part 9).
     computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
+    // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
+    hooks: { enabled: false, port: 7310, routes: {} },
   };
 }
 
@@ -120,6 +123,7 @@ export function load(root = home()) {
     network: { ...d.network, ...(user.network || {}) },
     glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
     computers: { ...d.computers, ...(user.computers || {}), tailnet: { ...d.computers.tailnet, ...((user.computers && user.computers.tailnet) || {}) } },
+    hooks: { ...d.hooks, ...(user.hooks || {}) },
   };
   c.projectsDir = untilde(c.projectsDir);
   c.roots = (c.roots || []).map(untilde);
