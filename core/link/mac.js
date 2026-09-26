@@ -5,18 +5,26 @@
 // The Mac keeps working when the box is away (floor rule 9). Every call to the box fails fast
 // with `box_unreachable` once the box is known to be down, and is retried with a growing pause,
 // so a module that asked for box results gets the Mac's own instead of a hang.
+//
+// The box reads this Mac the other way round, without a port open here: while paired, the Mac
+// holds one request to the box's link.serve open, runs the question it gets (only the read tools
+// in allow.js), answers with link.reply and asks again. When the box is away the loop stops, and
+// the next call that reaches the box (the minute's heartbeat, at the latest) starts it again.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
+import { ALLOW } from "./allow.js";
 
 const MAX_BACKOFF = 30_000;
+/** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
+const HOLD = 60_000;
 
 /**
  * @param {any} ctx the module's context
  * @param {{ verify?: (ip: string) => Promise<any>, insecure?: boolean, heartbeat?: number, pollMs?: number,
- *   hostname?: string, timeout?: number, ttl?: number }} seam test seams; production passes nothing
+ *   hostname?: string, timeout?: number, ttl?: number, hold?: number }} seam test seams; production passes nothing
  */
 export function macSide(ctx, seam = {}) {
   const file = path.join(ctx.paths.root, "link.json");
@@ -44,6 +52,9 @@ export function macSide(ctx, seam = {}) {
   const up = () => {
     state.failures = 0; state.nextTry = 0; state.lastSeen = Date.now(); state.reachable = true; state.error = null;
     if (state.announced !== true) { state.announced = true; emit("link.connected", { box: saved && saved.box.address }); }
+    // The box answered, so the serve loop can run, if it is not already. On the next turn, so a
+    // heartbeat that just learned the box forgot this Mac marks it revoked first.
+    setImmediate(serveLoop);
   };
   const down = why => {
     state.failures++; state.reachable = false; state.error = why;
@@ -51,16 +62,22 @@ export function macSide(ctx, seam = {}) {
     if (state.announced !== false) { state.announced = false; emit("link.lost", { box: saved && saved.box.address, error: why }); }
   };
 
-  /** One tool call on the box. Never throws: { data } or { error }, as registry.call does. */
-  async function boxCall(tool, input, c = conn) {
+  /**
+   * One tool call on the box. Never throws: { data } or { error }, as registry.call does.
+   * @param {string} tool @param {any} input @param {any} [c] the connection, the paired box's by default
+   * @param {{ timeout?: number, signal?: AbortSignal }} [opts] a longer timeout for link.serve, and a way to cancel it
+   */
+  async function boxCall(tool, input, c = conn, { timeout, signal } = {}) {
     if (!c) return { error: { code: "no_link", message: "this Mac is not paired with a box (vyre link pair <address>)" } };
     try {
-      const r = await c.json("POST", "/v1/tools/" + encodeURIComponent(tool), input, { timeout: seam.timeout || 10_000 });
+      const r = await c.json("POST", "/v1/tools/" + encodeURIComponent(tool), input, { timeout: timeout || seam.timeout || 10_000, signal });
       if (c === conn) up();
       if (r.status === 403 && r.body && r.body.error && r.body.error.code === "not_owner") return { error: { code: "not_owner", message: "the box does not recognise this device as its owner" } };
       return r.body;
     } catch (e) {
       const err = /** @type {any} */ (e);
+      // Cancelled here, not lost there: the box's state is not known from this.
+      if (signal && signal.aborted) return { error: { code: "cancelled", message: "the call was cancelled" } };
       const why = err.code === "not_box" ? err.message : `the box is not reachable (${err.code || err.message})`;
       if (c === conn) down(why);
       return { error: { code: err.code === "not_box" ? "not_box" : "box_unreachable", message: why } };
@@ -92,6 +109,39 @@ export function macSide(ctx, seam = {}) {
     if (!on && beat) { clearInterval(beat); beat = null; }
   };
   if (saved && !saved.revoked) { beating(true); setImmediate(() => { if (!stopped) hello(); }); }
+
+  // The serve loop: the box's questions for this Mac. Request-driven, never on a timer: each turn
+  // waits on the box (up to its hold), and a failure ends the loop until up() starts it again.
+  let serving = false;
+  /** @type {AbortController | null} */
+  let serveStop = null;
+  async function serveLoop() {
+    if (serving || stopped || !saved || saved.revoked || !conn) return;
+    serving = true;
+    const c = conn, key = saved.key, ac = new AbortController();
+    serveStop = ac;
+    const live = () => !stopped && !ac.signal.aborted && c === conn && Boolean(saved) && !(/** @type {any} */ (saved).revoked);
+    try {
+      while (live()) {
+        const r = await boxCall("link.serve", { key }, c, { timeout: (seam.hold || HOLD) + 15_000, signal: ac.signal });
+        if (!live() || r.error) return;
+        const q = r.data;
+        if (q === null) continue;
+        // { paired: false } or anything else unexpected: stop; the heartbeat finds out why.
+        if (!q || typeof q.id !== "string" || typeof q.tool !== "string") return;
+        const result = ALLOW.includes(q.tool)
+          ? await ctx.call(q.tool, q.input && typeof q.input === "object" ? q.input : {})
+          : { error: { code: "denied", message: `${q.tool} is not answered through the link` } };
+        if (!live()) return;
+        const sent = await boxCall("link.reply", { key, id: q.id, result: result.error ? { error: result.error } : { data: result.data } }, c, { signal: ac.signal });
+        if (sent.error || (sent.data && sent.data.paired === false)) return;
+      }
+    } finally {
+      serving = false;
+      if (serveStop === ac) serveStop = null;
+    }
+  }
+  const stopServing = () => { if (serveStop) serveStop.abort(); };
 
   function poll() {
     const p = pairing;
@@ -167,7 +217,7 @@ export function macSide(ctx, seam = {}) {
     run: async () => ({
       role: "local", linked: Boolean(saved && !saved.revoked),
       box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null } : null,
-      reachable: state.reachable, lastSeen: state.lastSeen,
+      reachable: state.reachable, lastSeen: state.lastSeen, serving,
       pending: pairing ? { id: pairing.id, code: pairing.code, expires: pairing.expires } : null,
       ...(state.error ? { error: state.error } : {}),
     }),
@@ -181,7 +231,7 @@ export function macSide(ctx, seam = {}) {
       if (!saved) return { unpaired: false };
       const told = saved.revoked ? { data: true } : await boxCall("link.unpair", { key: saved.key });
       const was = saved.box.address;
-      save(null); beating(false); conn = null; state.reachable = false; state.announced = null;
+      save(null); beating(false); stopServing(); conn = null; state.reachable = false; state.announced = null;
       ctx.events.emit("link.unpaired", { box: was });
       return { unpaired: true, boxForgot: !told.error };
     },
@@ -255,7 +305,7 @@ export function macSide(ctx, seam = {}) {
 
   return {
     async stop() {
-      stopped = true; beating(false);
+      stopped = true; beating(false); stopServing();
       if (pairing && pairing.timer) clearTimeout(pairing.timer);
       for (const end of streams) end();
     },

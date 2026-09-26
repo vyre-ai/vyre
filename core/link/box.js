@@ -8,12 +8,22 @@
 // request, because it is the requesting node. Codes and request secrets are held only in memory,
 // as HMACs under a key made when vyred starts, so a restart voids every pending request and the
 // store never holds anything a guess could be checked against.
+//
+// The box also reads its paired Macs, through the same link run the other way. The Mac opens no
+// port: it holds a request to link.serve open, and the box answers it with the next question when
+// a module asks (link.macs.call). The Mac runs it and answers with link.reply. Nothing a Mac
+// answers is written to the store; it goes back to the module that asked and is forgotten.
 
 import crypto from "node:crypto";
+import { ALLOW } from "./allow.js";
 
 const TTL = 10 * 60_000;
 const MAX_PENDING = 5;
 const MAX_WRONG = 5;
+/** How long link.serve holds a Mac's request open when there is nothing to ask. */
+const HOLD = 60_000;
+/** A Mac with no request held and none in this long is offline: link.macs.call does not wait for it. */
+const FRESH = 3000;
 
 const sha = s => crypto.createHash("sha256").update(s).digest("hex");
 
@@ -28,9 +38,10 @@ const tailnetLogin = caller => (String(caller).startsWith("tailnet:") ? String(c
 
 /**
  * @param {any} ctx the module's context
- * @param {{ now?: () => number }} [opts]
+ * @param {{ now?: () => number, hold?: number, allow?: readonly string[] }} [opts] test seams: the clock, how long
+ *   link.serve holds a request, and the tools the box may ask a Mac for. Production passes nothing.
  */
-export function boxSide(ctx, { now = Date.now } = {}) {
+export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW } = {}) {
   const db = ctx.store.db;
   ctx.store.migrate([
     `CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT,
@@ -172,6 +183,7 @@ export function boxSide(ctx, { now = Date.now } = {}) {
       else if (id && (SOCKET.has(String(meta.caller)) || tailnetLogin(meta.caller))) row = db.prepare("SELECT * FROM link_peers WHERE id = ?").get(id);
       if (!row) throw new Error("no such paired Mac");
       db.prepare("DELETE FROM link_peers WHERE id = ?").run(/** @type {any} */ (row).id);
+      forget(/** @type {any} */ (row).id);
       ctx.events.emit("link.unpaired", { peer: /** @type {any} */ (row).id, name: /** @type {any} */ (row).name });
       return { unpaired: /** @type {any} */ (row).id };
     },
@@ -183,5 +195,124 @@ export function boxSide(ctx, { now = Date.now } = {}) {
     run: async () => { sweep(); return { role: "box", peers: db.prepare("SELECT COUNT(*) AS n FROM link_peers").get().n, pending: [...pending.values()].filter(p => !p.key && !p.denied).length }; },
   });
 
-  return { async stop() { pending.clear(); } };
+  // The reverse channel. Per paired Mac: the request it holds open (at most one), when it last
+  // asked, and the questions queued for it. Every question waits by id for its answer. All of it
+  // lives in memory only, and holds nothing but the one answer in flight.
+  /** @type {Map<string, { resolve: (q: any) => void, timer: any }>} */
+  const waiting = new Map();
+  /** @type {Map<string, number>} */
+  const lastServe = new Map();
+  /** @type {Map<string, string[]>} */
+  const queues = new Map();
+  /** @type {Map<string, { id: string, mac: string, tool: string, input: any, sent: boolean, done: (r: any) => void }>} */
+  const asks = new Map();
+
+  /** Answer the Mac's held request, if it has one. */
+  const release = (macId, q) => {
+    const w = waiting.get(macId);
+    if (!w) return false;
+    waiting.delete(macId); clearTimeout(w.timer); w.resolve(q);
+    return true;
+  };
+  /** The next question for a Mac, marked as sent, or null. */
+  const next = macId => {
+    const queue = queues.get(macId) || [];
+    while (queue.length) {
+      const a = asks.get(/** @type {string} */ (queue.shift()));
+      if (a) { a.sent = true; return { id: a.id, tool: a.tool, input: a.input }; }
+    }
+    return null;
+  };
+  /** A Mac was unpaired: let go of its held request and fail what was waiting on it. */
+  const forget = macId => {
+    release(macId, null);
+    lastServe.delete(macId); queues.delete(macId);
+    for (const a of [...asks.values()]) if (a.mac === macId) a.done({ ok: false, error: { code: "unpaired", message: "this Mac was unpaired" } });
+  };
+  // A Mac counts as there when it holds a request, asked within FRESH, or is working on a question
+  // right now (it answers one at a time, so a slow search must not make it look gone).
+  const online = macId => waiting.has(macId) || (lastServe.get(macId) ?? -Infinity) >= now() - FRESH
+    || [...asks.values()].some(a => a.mac === macId && a.sent);
+
+  ctx.tool("link.serve", {
+    description: "A paired Mac waits here for the box's next question. Answers { id, tool, input }, or null when there was none for a while.",
+    input: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
+    run: async ({ key }, meta) => {
+      const row = byKey(key, meta);
+      if (!row) return { paired: false };
+      lastServe.set(row.id, now());
+      // One held request per Mac: a newer one means the older is gone or abandoned.
+      release(row.id, null);
+      const q = next(row.id);
+      if (q) return q;
+      return new Promise(resolve => {
+        const timer = setTimeout(() => { if (waiting.get(row.id)?.resolve === resolve) waiting.delete(row.id); resolve(null); }, hold);
+        timer.unref();
+        waiting.set(row.id, { resolve, timer });
+      });
+    },
+  });
+
+  ctx.tool("link.reply", {
+    description: "A paired Mac answers one of the box's questions: result is { data } or { error }.",
+    input: { type: "object", properties: { key: { type: "string" }, id: { type: "string" }, result: { type: "object" } }, required: ["key", "id", "result"] },
+    run: async ({ key, id, result }, meta) => {
+      const row = byKey(key, meta);
+      if (!row) return { paired: false };
+      const a = asks.get(id);
+      // Only the Mac that was asked can answer, and an answer that came too late is dropped.
+      if (!a || a.mac !== row.id || !a.sent) return { ok: false };
+      const e = result && result.error;
+      a.done(e ? { ok: false, error: { code: String(e.code || "failed").slice(0, 40), message: String(e.message || "the Mac could not answer").slice(0, 500) } }
+        : { ok: true, data: result ? result.data : undefined });
+      return { ok: true };
+    },
+  });
+
+  ctx.tool("link.macs.call", {
+    description: "Ask every paired Mac for one of its read tools. Answers [{ mac, name, ok, data?, error? }], one per Mac.",
+    input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" } }, required: ["tool"] },
+    internal: true,
+    run: async ({ tool, input = {}, timeout = 5000 }) => {
+      if (!allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
+      const wait = Math.min(15_000, Math.max(100, Number(timeout) || 5000));
+      const macs = /** @type {any[]} */ (db.prepare("SELECT id, name FROM link_peers ORDER BY paired_at").all());
+      return Promise.all(macs.map(m => new Promise(resolve => {
+        const who = { mac: m.id, name: m.name };
+        if (!online(m.id)) return resolve({ ...who, ok: false, error: { code: "mac_offline", message: `the Mac "${m.name}" is offline` } });
+        const id = crypto.randomUUID();
+        const timer = setTimeout(() => a.done({ ok: false, error: { code: "timeout", message: `the Mac "${m.name}" did not answer in time` } }), wait);
+        timer.unref();
+        const a = { id, mac: m.id, tool, input, sent: false, done: r => {
+          if (!asks.delete(id)) return;
+          clearTimeout(timer);
+          const queue = queues.get(m.id);
+          if (queue && queue.includes(id)) queue.splice(queue.indexOf(id), 1);
+          resolve({ ...who, ...r });
+        } };
+        asks.set(id, a);
+        if (!queues.has(m.id)) queues.set(m.id, []);
+        /** @type {string[]} */ (queues.get(m.id)).push(id);
+        // A Mac holding a request gets the question now; otherwise it is waiting in the queue for its next serve.
+        if (waiting.has(m.id)) release(m.id, next(m.id));
+      })));
+    },
+  });
+
+  ctx.tool("link.macs", {
+    description: "The paired Macs and whether each is online for the box to read now.",
+    input: { type: "object", properties: {} },
+    run: async () => /** @type {any[]} */ (db.prepare("SELECT id, name, node FROM link_peers ORDER BY paired_at").all()).map(m => ({
+      mac: m.id, name: m.name, node: m.node || null,
+      online: waiting.has(m.id) || (lastServe.get(m.id) ?? -Infinity) >= now() - hold - 5000,
+      lastServe: lastServe.get(m.id) ?? null })),
+  });
+
+  return {
+    async stop() {
+      pending.clear();
+      for (const id of [...waiting.keys()]) release(id, null);
+      for (const a of [...asks.values()]) a.done({ ok: false, error: { code: "stopped", message: "the box is stopping" } });
+    },
+  };
 }

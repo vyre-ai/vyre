@@ -107,9 +107,13 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
   /**
    * Open a request once the peer is checked. `onResponse` gets the response; the returned promise
    * resolves with the peer node and the request, or rejects when the box cannot be reached.
+   * `signal` ends the request early, as when the Mac stops while it holds a link.serve open.
+   * @param {string} method @param {string} path
+   * @param {{ body?: any, headers?: Record<string, any>, timeout?: number, signal?: AbortSignal, onResponse: (res: any) => void }} opts
    */
-  function open(method, path, { body, headers = {}, timeout = 10_000, onResponse }) {
+  function open(method, path, { body, headers = {}, timeout = 10_000, signal, onResponse }) {
     return new Promise((resolve, reject) => {
+      if (signal && signal.aborted) return reject(Object.assign(new Error("the request was cancelled"), { code: "aborted" }));
       const data = body === undefined ? undefined : JSON.stringify(body);
       const req = lib.request({ protocol: base.protocol, hostname: base.hostname, port: base.port || undefined, path, method, timeout, agent: false,
         headers: { accept: "application/json", ...(data ? { "content-type": "application/json", "content-length": Buffer.byteLength(data) } : {}), ...headers } });
@@ -125,6 +129,11 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
       req.on("response", res => { onResponse(res); resolve({ who, req }); });
       req.on("timeout", () => req.destroy(Object.assign(new Error("the box did not answer in time"), { code: "timeout" })));
       req.on("error", reject);
+      if (signal) {
+        const abort = () => req.destroy(Object.assign(new Error("the request was cancelled"), { code: "aborted" }));
+        signal.addEventListener("abort", abort, { once: true });
+        req.on("close", () => signal.removeEventListener("abort", abort));
+      }
     });
   }
 

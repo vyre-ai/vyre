@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box reads the paired Mac through the link
+
+- The link runs box to Mac as well, with no port open on the Mac. While paired, the Mac holds one
+  request to the box's new `link.serve` open (60 s, then it asks again), runs the question it gets
+  and answers with `link.reply`. When a call to the box fails the loop stops, and the next call
+  that reaches the box (the minute's heartbeat at the latest) starts it again, so nothing polls
+  faster than a minute. Both tools check the pairing key and the Mac's pinned node.
+- `link.macs.call { tool, input, timeout? }` (box, modules only) asks every paired Mac and answers
+  `[{ mac, name, ok, data?, error? }]`: `mac_offline` at once for a Mac that is not polling,
+  `timeout` after up to 15 s (5 s by default), or the Mac's own error. `link.macs` lists the paired
+  Macs with `online` and `lastServe`, for surfaces. The Mac's `link.status` says `serving`.
+- Only `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread` and
+  `threads.list` cross (`core/link/allow.js`), refused at the box before queueing and again at the
+  Mac before running. The Mac runs them as `module:link`. Nothing a Mac answers is stored on the box.
+- The link's test harness (`pair`, the simulated tailnet) moved to `test/link-harness.js`;
+  `test/link-federation.test.js` covers the reverse channel.
+
 #### Journey 1 no longer races box add for the tunnel
 
 - `vyre box add` takes the onboarding tunnel down as soon as the address step is done, so the
