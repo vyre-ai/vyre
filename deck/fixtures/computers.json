@@ -10,5 +10,17 @@
     }
   },
   "computers.restart": { "ok": true },
-  "computers.limits": { "ok": true }
+  "computers.limits": { "ok": true },
+  "computers.tailnet.status": {
+    "enabled": true, "tag": "tag:vyre-agent",
+    "nodes": [
+      { "agent": "kit", "node": "vyre-agent-kit.tail0000.ts.net", "stableId": "nKit0000CNTRL", "online": true },
+      { "agent": "juno", "node": "vyre-agent-juno.tail0000.ts.net", "stableId": "nJuno000CNTRL", "online": false }
+    ]
+  },
+  "computers.egress.status": {
+    "enabled": true, "sites": ["portal.northwind.example", "*.harlow.example"], "proxy": "egress:1055",
+    "applies": "applies to computers started after the change: a stopped computer is made again with it on its next start (its home stays); a running or frozen one keeps its old setting until computers.stop",
+    "sidecar": { "answers": false, "why": "the Mac is asleep or away" }
+  }
 }

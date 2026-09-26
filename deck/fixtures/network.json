@@ -1,0 +1,15 @@
+{
+  "network.guests.list": {
+    "enabled": true,
+    "people": [
+      {
+        "login": "office@harlow.example",
+        "tools": [
+          "glass.open",
+          "threads.read"
+        ],
+        "online": true
+      }
+    ]
+  }
+}
