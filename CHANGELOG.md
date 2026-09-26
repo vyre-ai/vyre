@@ -18,6 +18,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Docs and comments call the test server "the test box", the prototype's folder "the
   prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
   comments only).
+#### The Deck installs on a phone as an app
+
+- Add to Home Screen gives a full-screen app: a manifest with maskable icons, an Apple touch
+  icon, launch screens for twelve iPhone sizes, and a status bar in the theme's colour. The shell
+  keeps clear of the notch and the home indicator, never rubber-bands, and fills 100dvh.
+- Find is the phone's Capsule, a tab in place of Ask and a pull down from the top of any screen:
+  one box for asking juno, sessions (titles and what was said), box files, agents, memory and
+  projects. Vault items are never offered there.
+- Chat on the phone: a session fills the screen above the tab bar, a reply keeps the view at the
+  bottom or shows Jump to latest, and a session another keyboard has says so and keeps the draft.
+  Asks and held drafts answer inline with a passkey, and say Allowed, Denied or Sent after.
+- Now, the Deck's approvals (Send, Discard, Allow, Deny) prove a person with the passkey, as the
+  floor already required; before, they were refused with presence_required.
+- Set up this phone, on Now: install, notifications (asks and held drafts, iOS 16.4 and later from
+  the Home Screen app) and a passkey. Settings uses the same code for push and passkeys.
+- Offline: the service worker keeps the shell and the five phone tabs at install, a cold launch
+  reopens the last screen, and one line says when the phone is offline or the box is not answering.
 
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
