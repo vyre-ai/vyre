@@ -26,6 +26,7 @@ import {
 import * as relay from "./relay.js";
 import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
+import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, merge as mergeImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
@@ -74,6 +75,7 @@ export const MIGRATIONS = [
    ALTER TABLE vault_passes ADD COLUMN mac TEXT;
    ALTER TABLE vault_devices ADD COLUMN mac TEXT;`,
   ...SHARE_MIGRATIONS,
+  history.HISTORY_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -92,6 +94,7 @@ export const MACED = {
   vault_grants: ["id", "item", "module", "watcher", "status"],
   vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
   vault_devices: ["id", "name", "token_hash", "revoked"],
+  vault_history: ["id", "item", "ver", "name", "vault", "at", "by", "changed", "fh"],
 };
 
 const ACCOUNT = "account.json";
@@ -534,11 +537,100 @@ export class Vault {
     const k = cls === PERSONAL ? this.pvk : await this.key();
     if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
     writeSealed(this.dir, r.id + STAGED, sealItemV2(k, this.at(next), { meta, fields }));
+    const hist = await this.historyStep(r, r, next, fields, "vault", now());
     this.tx(() => {
       this.db.prepare("UPDATE vault_items SET ver=?, vault=? WHERE id=?").run(next.ver, cls, r.id);
       this.sign("vault_items", r.id);
+      hist.commit();
     });
     promoteSealed(this.dir, r.id);
+    hist.prune();
+  }
+
+  // ---- history ----------------------------------------------------------------------------
+
+  /**
+   * Before a new version replaces an item: keep the current sealed file as history, and make
+   * the new version's history row. `commit` runs inside the put's transaction, `prune` after.
+   * @param {any} raw the row now (or null) @param {any} old the same row if it passed its MAC
+   * @param {any} next the new row values @param {Record<string,string>} fields the new fields
+   */
+  async historyStep(raw, old, next, fields, by, at) {
+    const mkey = /** @type {any} */ (this.mkey);
+    const fh = history.fieldHashes(mkey, next.id, fields);
+    let prev = null;
+    if (old) {
+      const h = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? AND ver = ?").get(old.id, Number(old.ver || 0)));
+      if (h && this.rowOk("vault_history", h)) prev = json(h.fh, null);
+      else { try { prev = history.fieldHashes(mkey, next.id, (await this.open(old)).fields); } catch { prev = null; } }
+      const sealed = readSealed(this.dir, old.id);
+      if (sealed && sealed.v === 2) {
+        history.keepVersion(this.dir, old.id, Number(old.ver || 0), sealed);
+        // A version made before history existed gets its row now, so it can be listed and read.
+        if (!h) {
+          const hid = `${old.id}:${Number(old.ver || 0)}`;
+          this.db.prepare("INSERT OR REPLACE INTO vault_history (id, item, ver, name, vault, at, by, changed, fh) VALUES (?,?,?,?,?,?,?,?,?)")
+            .run(hid, old.id, Number(old.ver || 0), old.name, old.vault || AGENTS, Number(old.updated || at), "", "[]", JSON.stringify(prev || {}));
+          this.sign("vault_history", hid);
+        }
+      }
+    }
+    const changed = raw && !old ? Object.keys(fields).sort() : history.changedFields(prev, fh);
+    const hid = `${next.id}:${next.ver}`;
+    return {
+      commit: () => {
+        this.db.prepare("INSERT OR REPLACE INTO vault_history (id, item, ver, name, vault, at, by, changed, fh) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(hid, next.id, next.ver, next.name, next.vault, at, String(by), JSON.stringify(changed), JSON.stringify(fh));
+        this.sign("vault_history", hid);
+      },
+      prune: () => {
+        const floor = Number(next.ver) - history.KEEP;
+        for (const h of /** @type {any[]} */ (this.db.prepare("SELECT ver FROM vault_history WHERE item = ? AND ver < ?").all(next.id, floor))) history.dropVersion(this.dir, next.id, h.ver);
+        this.db.prepare("DELETE FROM vault_history WHERE item = ? AND ver < ?").run(next.id, floor);
+      },
+    };
+  }
+
+  /** An item's versions, newest first: when, who, which fields changed. Never a value. */
+  history({ name, field }) {
+    const r = this.mustRow(name);
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? ORDER BY ver DESC").all(r.id))
+      .filter(h => this.rowOk("vault_history", h) && h.ver <= r.ver);
+    const entries = rows.map(h => ({ version: h.ver, at: h.at, by: h.by, changed: json(h.changed, []), current: h.ver === r.ver,
+      readable: h.ver === r.ver || Boolean(history.readVersion(this.dir, r.id, h.ver)) }));
+    const shown = field ? entries.filter(e => e.changed.includes(String(field))) : entries;
+    return {
+      name, entries: shown,
+      // The Deck's shape: versions, and the passwords this login has had before the current one.
+      versions: shown.map(e => ({ ver: e.version, at: e.at, by: e.by, fields: e.changed })),
+      passwords: entries.filter(e => e.version > 1 && e.changed.includes("password")).map(e => ({ at: e.at })),
+    };
+  }
+
+  /** One version's fields: the current one, or a kept older one, under the key it was sealed with. */
+  async versionFields(r, ver) {
+    const v = Number(ver);
+    if (!Number.isInteger(v) || v < 1) throw new Error("a version is a whole number from vault.history");
+    if (v === Number(r.ver)) return this.fields(r);
+    const vk = await this.key();
+    if (!this.rowOk("vault_items", r)) throw new Error(`the record for ${r.name} failed its check and is ignored`);
+    const h = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? AND ver = ?").get(r.id, v));
+    if (!h || !this.rowOk("vault_history", h) || v > Number(r.ver)) throw new Error(`${r.name} has no version ${v} kept`);
+    const sealed = history.readVersion(this.dir, r.id, v);
+    if (!sealed) throw new Error(`version ${v} of ${r.name} is no longer kept`);
+    const k = h.vault === PERSONAL ? this.pvk : vk;
+    if (!k) throw locked(`version ${v} of ${r.name} was sealed in your personal vault, which is locked · vyre vault account unlock`);
+    try { return openItemV2(k, { vault: h.vault, kv: KV, id: r.id, ver: v, name: h.name }, sealed).fields; }
+    catch { this.audit("open", r.name, "vault", false, `kept version ${v} did not open`); throw new Error(`version ${v} of ${r.name} does not open`); }
+  }
+
+  /** Put an older version's fields back, as a new version. The item's details stay as they are now. */
+  async revert({ name, version }, who) {
+    const r = this.mustRow(name);
+    const fields = await this.versionFields(r, version);
+    await this.put({ name, kind: r.kind, description: r.description, fields, url: r.url || undefined, hosts: json(r.hosts, []), origin: r.origin || undefined, apps: json(r.apps, []), reprompt: Boolean(r.reprompt) }, who);
+    this.audit("revert", name, who, true, `to version ${version}`);
+    return { name, version: this.row(name).ver, from: Number(version) };
   }
 
   // ---- audit ----------------------------------------------------------------------------
@@ -645,6 +737,7 @@ export class Vault {
     };
     writeSealed(this.dir, id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields: clean }));
     const t = now();
+    const hist = await this.historyStep(raw, old, next, clean, who, t);
     this.tx(() => {
       if (raw) {
         // Putting an item again is how it is rotated, so the rotate mark goes.
@@ -655,8 +748,10 @@ export class Vault {
           .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt);
       }
       this.sign("vault_items", id);
+      hist.commit();
     });
     promoteSealed(this.dir, id);
+    hist.prune();
     this.audit(old ? "change" : "add", name, who);
     this.emit(old ? "vault.item-changed" : "vault.item-added", { name, kind });
     return { name, kind, created: !old };
@@ -685,6 +780,8 @@ export class Vault {
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
+    history.dropHistory(this.dir, r.id);
+    this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_grants WHERE item = ?").run(name);
     this.audit("delete", name, who);

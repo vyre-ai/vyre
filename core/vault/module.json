@@ -69,7 +69,9 @@
       "vault.update",
       "vault.clipboard.clear",
       "vault.account.enroll-touchid",
-      "vault.account.status"
+      "vault.account.status",
+      "vault.history",
+      "vault.revert"
     ]
   },
   "watches": {

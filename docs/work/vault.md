@@ -217,3 +217,8 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - `vault.account.unlock {password? , method?: "password"|"touchid"}`, `vault.account.enroll-touchid
   {password}` (presence), `vault.account.status` to `{account, unlocked, touchid, acct?}`.
   `vault.caps` reports `reveal: true`.
+- `vault.history {name, field?}` returns `{name, entries: [{version, at, by, changed, current,
+  readable}], versions: [{ver, at, by, fields}], passwords: [{at}]}` (the Deck's shape too).
+  `vault.revert {name, version}` (cli, local, deck, capsule; presence) returns `{name, version,
+  from}`. `vault.reveal` and `vault.copy` take `version`. `vault.versionFields(row, ver)` is the
+  method behind them.

@@ -20,6 +20,7 @@ import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
 import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
+import * as historyTools from "./tools/history.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -231,6 +232,7 @@ export default {
       (input, { caller }) => vault.relayOut(input, caller));
 
     account.register({ ctx, vault, tool });
+    historyTools.register({ ctx, vault, tool });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

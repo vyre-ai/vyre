@@ -327,6 +327,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The keychain keystore writes through `mac/keychain.swift`, so only that helper is on the
   item's access list (`security find-generic-password -w` no longer returns the key without
   asking). Items the old path wrote are moved on first read.
+- Item history: the last 10 older sealed versions per item under `vault/history/<id>/`, and
+  `vault_history` rows (MACed) naming the changed fields, computed from per-field HMACs.
+  `vault.history {name, field?}` (names only, Claude may call it), `vault.revert {name,
+  version}` (presence), and `version` on `vault.reveal` and `vault.copy`.
 
 - Sharing, hardened (ADR 0006, findings 4, 5 and 12): pass tickets are signed by the owner and
   checked against the owner's pinned card, for this holder only, and a held pass can never be

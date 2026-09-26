@@ -106,8 +106,8 @@ export function register({ ctx, vault }) {
   };
 
   /** One field's value, or an error that names the field and never a value. */
-  const valueOf = async (r, want) => {
-    const f = await vault.fields(r);
+  const valueOf = async (r, want, version) => {
+    const f = version === undefined || version === null ? await vault.fields(r) : await vault.versionFields(r, version);
     if (!f || typeof f[want] !== "string") throw new Error(`${r.name} has no field ${want}`);
     return f[want];
   };
@@ -157,10 +157,10 @@ export function register({ ctx, vault }) {
 
   ctx.tool("vault.reveal", {
     description: "Show one field of an item to the person, on their own device. Hide it again after concealAfter seconds.",
-    input: obj({ name: str, field: str, session: str }, ["name"]),
+    input: obj({ name: str, field: str, session: str, version: { type: "integer" } }, ["name"]),
     callers: PEOPLE,
-    presence: { summary: async ({ name, field }) => `Show the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"`, skip },
-    run: async ({ name, field, session }, { caller }) => {
+    presence: { summary: async ({ name, field, version }) => `Show the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""}`, skip },
+    run: async ({ name, field, session, version }, { caller }) => {
       const surface = surfaceFor(session, caller);
       // Floor rule 8 (SPEC 11): a value may be shown to a person who has just proved presence on
       // their own device, for that one value. prove.js asks for that proof before this runs.
@@ -168,7 +168,7 @@ export function register({ ctx, vault }) {
       try {
         const p = pick(name, field);
         want = p.want;
-        const value = await valueOf(p.r, want);
+        const value = await valueOf(p.r, want, version);
         vault.audit("reveal", name, caller, true, `field ${want} on ${surface}`);
         ctx.events.emit("vault.revealed", { name, field: want, surface });
         return { value, concealAfter: CONCEAL_AFTER_S };
@@ -181,10 +181,10 @@ export function register({ ctx, vault }) {
 
   ctx.tool("vault.copy", {
     description: "Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Never returns the value.",
-    input: obj({ name: str, field: str, session: str }, ["name"]),
+    input: obj({ name: str, field: str, session: str, version: { type: "integer" } }, ["name"]),
     callers: PEOPLE,
-    presence: { summary: async ({ name, field }) => `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}" to the clipboard`, skip },
-    run: async ({ name, field, session }, { caller }) => {
+    presence: { summary: async ({ name, field, version }) => `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""} to the clipboard`, skip },
+    run: async ({ name, field, session, version }, { caller }) => {
       const surface = surfaceFor(session, caller);
       if (guardedClipboard) throw new Error("under tests the clipboard needs vault.testHelpers (a private pasteboard or fake pbcopy)");
       let want = field || "value";
@@ -194,7 +194,8 @@ export function register({ ctx, vault }) {
         const no = clipboard.refusal();
         if (no) throw new Error(no);
         // "totp" copies the current one-time code, not the seed.
-        const text = want === "totp" ? String((await vault.code({ name }, caller)).code) : await valueOf(p.r, want);
+        if (version && want === "totp") throw new Error("an older version's one-time code is not copied; revert it first");
+        const text = want === "totp" ? String((await vault.code({ name }, caller)).code) : await valueOf(p.r, want, version);
         const out = await clipboard.copy(text);
         watch.ensure().catch(() => {});
         vault.audit("copy", name, caller, true, `field ${want} on ${surface} via ${out.via}`);
