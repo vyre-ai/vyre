@@ -1,0 +1,31 @@
+{
+  "written": "2026-09-26",
+  "metrics": {
+    "leakage": 0,
+    "identity.precision": 1,
+    "identity.recall": 0.893,
+    "works_at.precision": 1,
+    "works_at.recall": 0.727,
+    "rel.works_at.precision": 1,
+    "rel.works_at.recall": 0.727,
+    "rel.has_email.precision": 1,
+    "rel.has_email.recall": 1,
+    "rel.has_domain.precision": 1,
+    "rel.has_domain.recall": 0.818,
+    "rel.at_domain.precision": 1,
+    "rel.at_domain.recall": 1,
+    "rel.owned_by.recall": 0,
+    "room.project:harlow.precision": 1,
+    "room.project:harlow.recall": 0.875,
+    "room.project:northwind.precision": 1,
+    "room.project:northwind.recall": 1,
+    "room.project:keel-ash.precision": 1,
+    "room.project:keel-ash.recall": 0.667,
+    "room.*.precision": 1,
+    "room.*.recall": 0.857,
+    "enrich.p_at_3": 0.778,
+    "enrich.hit_at_3": 0.81,
+    "irrelevant.empty_rate": 1,
+    "relevant.p95_ms": 0.503
+  }
+}
