@@ -35,8 +35,8 @@ export default async function now(ctx) {
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
       // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
-      setupCard(),
       pairing.el,
+      setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, working, learned, recentProjects)));
 

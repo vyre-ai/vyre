@@ -60,7 +60,7 @@ for (const dev of DEVICES) {
       else { await tab.go(base + "/now", 300); await tab.run(`localStorage.removeItem("vyre.theme"); localStorage.removeItem("vyre.last");`); }
       if (s.stub) await tab.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
         const stub = ${JSON.stringify(s.stub)}, real = window.fetch;
-        window.fetch = (u, o) => { const m = /\/v1\/tools\/([^?]+)$/.exec(String(u)); const d = m && stub[decodeURIComponent(m[1])];
+        window.fetch = (u, o) => { const name = String(u).split("/v1/tools/")[1]; const d = name && stub[decodeURIComponent(name)];
           if (!d) return real(u, o);
           const data = JSON.parse(JSON.stringify(d), (k, v) => k === "in" ? undefined : v).map((x, i) => ({ ...x, expires: Date.now() + (d[i].in || 0) }));
           return Promise.resolve(new Response(JSON.stringify({ data }), { headers: { "content-type": "application/json" } })); };
