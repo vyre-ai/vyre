@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import { start } from "../../core/daemon/index.js";
 import { call } from "../../core/daemon/client.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
 
 const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -53,37 +53,10 @@ async function launchChrome(t) {
   return { port, dir };
 }
 
-const AGENTS_SRC = `
-const AGENTS = [
-  { name: "juno", kind: "assistant", computer: false },
-  { name: "kit", kind: "agent", computer: true },
-];
-export default { async start(ctx) {
-  ctx.tool("agents.list", { input: { type: "object" }, run: async () => AGENTS });
-  ctx.tool("agents.threads", { input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-    run: async ({ agent }) => (agent === "kit" ? [{ id: "th-kit" }] : []) });
-  return { async stop() {} };
-} };`;
-
-const THREADS_SRC = `
-export default { async start(ctx) {
-  const held = new Map();
-  const obj = { type: "object", required: ["thread"], properties: { thread: { type: "string" }, surface: { type: "string" } } };
-  ctx.tool("threads.lease", { input: obj, run: async ({ thread, surface }, { caller }) => {
-    const s = surface || caller, previous = held.get(thread) || null;
-    held.set(thread, s);
-    if (previous !== s) ctx.events.emit("lease.changed", { holder: s, previous }, { thread });
-    return { thread, holder: s, previous };
-  } });
-  ctx.tool("threads.release", { input: obj, run: async ({ thread, surface }, { caller }) => {
-    const s = surface || caller;
-    if (held.get(thread) !== s) return { thread, released: false, holder: held.get(thread) || null };
-    held.delete(thread);
-    ctx.events.emit("lease.changed", { holder: null, previous: s }, { thread });
-    return { thread, released: true, holder: null };
-  } });
-  return { async stop() {} };
-} };`;
+// agents and threads are core modules now (core/agents, core/switchboard) and win any
+// same-named fake under core/modules/index.js's "first found wins" rule, so real agents are
+// made through agents.create below. Neither test here exercises a real thread's lease (only
+// computers.takeover/giveback, called as "cli"), so no thread needs to be launched.
 
 /** A vyred with computers (fake driver, local mode pointed at the given CDP port) and hands-chrome. */
 async function boot(t, { port }) {
@@ -93,9 +66,6 @@ async function boot(t, { port }) {
     role: "box",
     computers: { driver: "fake", sweepMs: 0, waitMs: 200, local: { host: "127.0.0.1", ports: { cdp: port } } },
   }));
-  const mods = path.join(root, "modules");
-  writeModule(mods, "agents", { does: { tools: ["agents.list", "agents.threads"] } }, AGENTS_SRC);
-  writeModule(mods, "threads", { does: { tools: ["threads.lease", "threads.release"] }, watches: { emits: ["lease.changed"] } }, THREADS_SRC);
   const d = await start({ root, log: () => {} });
   let stopped = false;
   t.after(async () => { if (!stopped) { stopped = true; await d.stop(); } });
@@ -103,8 +73,16 @@ async function boot(t, { port }) {
   assert.equal(computers?.state, "running", `computers did not start: ${computers?.error}`);
   const chrome = d.registry.modules.get("chrome");
   assert.equal(chrome?.state, "running", `hands-chrome did not start: ${chrome?.error}`);
+  for (const [name, kind] of [["juno", "assistant"], ["kit", "agent"]]) {
+    const r = await d.registry.call("agents.create", { name, kind, projects: kind === "assistant" ? undefined : [], computer: kind === "agent" }, "local");
+    if (r.error) throw new Error(`agents.create ${name}: ${r.error.message}`);
+  }
   const as = caller => async (tool, input = {}) => call(tool, input, { root, caller });
-  return { root, d, as, kit: as("mcp:agent:kit"), juno: as("mcp:agent:juno"), cli: as("cli"),
+  // "mcp:agent:*" claims over HTTP now need the switchboard's own vouch key from a live thread
+  // (core/daemon/index.js); what this file tests is hands-chrome's own caller resolution, so an
+  // agent's hands call straight through the registry, as a module would.
+  const asAgent = agent => async (tool, input = {}) => d.registry.call(tool, input, `mcp:agent:${agent}`);
+  return { root, d, as, kit: asAgent("kit"), juno: asAgent("juno"), cli: as("cli"),
     events: () => d.events.since(0, { limit: 1000 }).filter(e => e.type === "chrome.acted") };
 }
 
