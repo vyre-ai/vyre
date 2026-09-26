@@ -12,7 +12,7 @@ const id8 = s => String(s || "").slice(0, 8);
 const fail = msg => { out(beacon("  " + msg)); return 1; };
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
-const USAGE = "vyre agents [create|update|ask|threads|stop] …";
+const USAGE = "vyre agents [create|update|ask|threads|usage|stop] …";
 const FLAGS = "--assistant --projects a,b|* --model m --vault item --fallback item --budget 20 --instructions text";
 
 /**
@@ -106,6 +106,22 @@ async function threads(args) {
   return 0;
 }
 
+/** What each agent has used: turns, time, tokens, dollars against its budget, and the last rate-limit report. */
+async function usage(args) {
+  const name = args.join(" ").trim();
+  const rows = await tool("agents.usage", name ? { agent: name } : {});
+  if (!rows) return 1;
+  if (!rows.length) { out(dim("  no agents yet")); return 0; }
+  const k = n => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n));
+  for (const u of rows) {
+    const tokens = u.tokens.input + u.tokens.output + u.tokens.cache_read + u.tokens.cache_write;
+    const money = u.budget_usd != null ? `$${u.spent_usd.toFixed(2)} of $${u.budget_usd.toFixed(2)}` : u.api_cost_usd ? `$${u.api_cost_usd.toFixed(2)} on the API key` : "no API spend";
+    const limit = u.limit && u.limit.status !== "allowed" ? beacon(` limit ${u.limit.status}${typeof u.limit.utilization === "number" ? " " + Math.round(u.limit.utilization * 100) + "%" : ""}`) : "";
+    out(`  ${bold(String(u.agent ?? "(no agent)").padEnd(12))} ${String(u.turns).padStart(4)} turns  ${dim((Math.round(u.duration_ms / 1000) + "s").padStart(6))}  ${dim(k(tokens).padStart(6) + " tokens")}  ${money}${limit}`);
+  }
+  return 0;
+}
+
 async function stop(args) {
   const name = args.join(" ").trim();
   if (!name) return fail("vyre agents stop <name>");
@@ -118,7 +134,7 @@ async function stop(args) {
 
 export default {
   name: "agents", order: 30, usage: USAGE,
-  summary: "agents: list, create, update, ask, threads, stop",
+  summary: "agents: list, create, update, ask, threads, usage, stop",
   /** @param {string[]} args */
   async run(args) {
     const [sub, ...rest] = args;
@@ -128,6 +144,7 @@ export default {
       if (sub === "create" || sub === "update") return await createOrUpdate(sub, rest);
       if (sub === "ask") return await ask(rest);
       if (sub === "threads") return await threads(rest);
+      if (sub === "usage") return await usage(rest);
       if (sub === "stop") return await stop(rest);
       return fail(`vyre agents ${sub}: not a subcommand · ${USAGE}`);
     } catch (err) { return fail(/** @type {Error} */ (err).message); }
