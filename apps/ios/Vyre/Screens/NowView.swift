@@ -98,7 +98,7 @@ struct NowView: View {
                 .padding(.bottom, Space.s)
             Hairline()
             if running.isEmpty {
-                EmptyLine(text: app.needs.loaded ? "Nothing is running. Start a session from Chat or the Capsule." : "")
+                EmptyLine(text: app.needs.loaded ? "Nothing is running. Start one from a project, or ask in Find." : "")
             } else {
                 ForEach(running, id: \.self) { t in
                     Button { app.open(.thread(t["id"].text)) } label: {

@@ -26,7 +26,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildHome, makeProjects, heldItems } from "../../deck/test/world.js";
+import { buildHome, makeProjects, makeAgents, heldItems } from "../../deck/test/world.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -92,12 +92,16 @@ const handle = d.registry.deps.handler({});
     const grant = await person("vault.grant", { name, module: "gate" });
     if (put.error || grant.error) console.error(`mobile world: could not set up ${name}: ${(put.error || grant.error).message}`);
   }
+  // The token juno and kit are recorded with; nothing here starts either of them.
+  const token = await person("vault.put", { name: "claude-setup-token", kind: "secret", fields: { value: "fixture-" + crypto.randomBytes(8).toString("hex") } });
+  if (token.error) console.error(`mobile world: could not set up claude-setup-token: ${token.error.message}`);
   presence.remove(key.id);
 }
 
 // Let the first Recall pass land so search sees the corpus, then the projects and held items.
 await new Promise(r => setTimeout(r, 1500));
 await makeProjects(w);
+await makeAgents(root);
 // An agent's item names it by caller. One that names a thread comes in as the Deck world's does,
 // with no caller at all: vyred confirms a thread only for a session it launched.
 const agentCaller = body => (body && typeof body.thread === "string" ? "anonymous" : body && typeof body.agent === "string" ? `mcp:agent:${body.agent}` : "mcp");
