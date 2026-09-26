@@ -32,8 +32,9 @@ export function isTailnet(ip) {
   return net.isIPv4(a) ? V4.check(a, "ipv4") : net.isIPv6(a) ? V6.check(a, "ipv6") : false;
 }
 
-/** The tailscale CLI: on the PATH, or inside the Mac app. */
+/** The tailscale CLI: VYRE_TAILSCALE_BIN (tests' fake), on the PATH, or inside the Mac app. */
 function tailscaleBin() {
+  if (process.env.VYRE_TAILSCALE_BIN) return process.env.VYRE_TAILSCALE_BIN;
   const app = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
   return process.platform === "darwin" && fs.existsSync(app) ? app : "tailscale";
 }

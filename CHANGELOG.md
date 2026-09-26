@@ -6,6 +6,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `core/link/transport.js` honours `VYRE_TAILSCALE_BIN` like the rest of Vyre, so no test that runs
+  `vyre up` on a Mac reaches the real Tailscale app.
 - The npm package carries `scripts/install-box.sh`, which `vyre box add` copies to the server so
   the box files match the Mac's version, and `docs/JOURNEY.md`. `release-check.sh` checks the
   installer is in the tarball.
