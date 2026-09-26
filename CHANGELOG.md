@@ -198,7 +198,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   resets_at, utilization?}`, is kept on the thread (`last_limit`), and a warning or a refusal is
   said in the thread once per status.
 - Learned skills: `<home>/learned/account/` loads into every thread with the Harness, and
-  `<home>/learned/projects/<slug>/` into that project's threads, each only if it holds
+  `<home>/learned/projects/<slug>/` into that project's threads, `<home>/learned/agents/<name>/`
+  into that agent's threads, each only if it holds
   `.claude-plugin/plugin.json`. Lean threads and jobs load none of them. `threads.launch
   {plugins: [dirs]}` adds folders explicitly, even with `plugin: false`.
 - `agents.list` rows carry `computer` again; without it core/computers refused every agent a

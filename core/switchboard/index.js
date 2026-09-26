@@ -58,13 +58,15 @@ export const MIGRATIONS = [
 
 
 /**
- * Learned skills (written by Learning): the account's folder for every thread, and a project's
- * for that project's threads. Each is a Claude Code plugin, and loads only if it is complete.
- * @param {string} root @param {string|null} project
+ * Learned skills (written by Learning): the account's folder for every thread, a project's for
+ * that project's threads, and an agent's for that agent's threads. Each is a Claude Code plugin,
+ * and loads only if it is complete.
+ * @param {string} root @param {string|null} project @param {string|null} [agent]
  */
-export function learnedDirs(root, project) {
+export function learnedDirs(root, project, agent = null) {
   const dirs = [path.join(root, "learned", "account")];
   if (project) dirs.push(path.join(root, "learned", "projects", project));
+  if (agent) dirs.push(path.join(root, "learned", "agents", agent));
   return dirs.filter(d => fs.existsSync(path.join(d, ".claude-plugin", "plugin.json")));
 }
 
@@ -278,7 +280,7 @@ export class Switchboard {
     else { delete env.VYRE_PROJECTS; delete env.VYRE_SCOPE_CWDS; }
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
-    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project)), ...(o.plugins || [])];
+    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
     const args = argsFor({ id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined });
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };

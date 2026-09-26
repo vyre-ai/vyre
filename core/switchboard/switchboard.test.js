@@ -648,6 +648,12 @@ test("learned skills: the account's and the project's folders load as plugins; l
   const own = plugin(path.join(root, "job-skills"));
   await d.registry.call("threads.launch", { cwd: work, prompt: "distil", plugin: false, tools: "none", once: true, plugins: [own] }, "module:learn");
   assert.deepEqual(dirsOf((await until(() => launches()[3], "the job")).argv), [own]);
+
+  // An agent's own folder loads into its threads only.
+  const scoutDir = plugin(path.join(root, "learned", "agents", "scout"));
+  await tool("agents.create", { name: "scout", projects: ["harlow"] });
+  await tool("agents.ask", { agent: "scout", text: "hi" });
+  assert.deepEqual(dirsOf((await until(() => launches()[4], "scout's launch")).argv).slice(1), [account, harlow, scoutDir]);
 });
 
 test("agents: the assistant's brief says how to watch and drive threads for the user; an agent's does not", async () => {
