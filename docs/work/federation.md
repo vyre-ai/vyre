@@ -295,9 +295,9 @@ box.
   thread, project, at, payload }] }` answering `{ ok, taken }` or `{ paired: false }`; the link
   manifest declares it and emits the seven thread types it re-emits. On the Mac a WRITE runs only
   with `as: "person"`, as the caller `link:box`, with `surface` forced to `box:<surface or
-  deck>`. `ctx.call(tool, input, { as })` (core/modules/index.js): calls as a caller label the
-  manifest declares under `needs.callAs` (never a `module:` label), else throws; the link
-  declares `link:box`. `threads.send` takes `machine` and, on the box for the person, forwards a
+  deck>`. `ctx.call(tool, input, { as })` (core/modules/index.js): calls as another caller label only
+  for a module under core/ and only a label the registry's fixed `CALL_AS` map gives it (today
+  `link` -> `link:box`); a manifest cannot grant it, so a module installed into a home never can. `threads.send` takes `machine` and, on the box for the person, forwards a
   thread the box does not have; the answer gains `source: "mac"` and `machine`; new errors
   `mac_offline` and `timeout`. New `Switchboard.knows(id)`. Re-emitted events' payloads gain
   `source: "mac"` and `machine`. The Mac's `link.status` gains `following`.

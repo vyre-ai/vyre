@@ -70,7 +70,8 @@ phone.
    the Mac; the Mac runs a write only when the request says `as: "person"`. Writes wait 15 s,
    since a send that resumes a stopped session headless takes a moment.
 3. **The Mac runs it as the person's.** The Mac calls `threads.send` as the caller `link:box`
-   (declared in the link manifest's `needs.callAs`), so the switchboard's `queuesFor` treats it
+   (a label only core modules can use, and only the ones the registry's fixed `CALL_AS` map
+   gives them; no manifest can grant it), so the switchboard's `queuesFor` treats it
    as a person: a session busy in a terminal gets the words queued and handed over at its next
    Stop, exactly as for the person on the Mac. Its `surface` is `box:<surface>` (`box:deck`), so
    the Mac's lease and inbox rows show the words came from the box.

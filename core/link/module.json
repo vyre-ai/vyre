@@ -10,6 +10,6 @@
   "watches": { "emits": ["link.pair-requested", "link.paired", "link.unpaired", "link.connected", "link.lost",
     "thread.queued", "thread.sent", "thread.text", "thread.finished", "thread.stopped", "thread.contended", "thread.limit"] },
   "shows": { "deck": [], "capsule": [], "cli": ["link"] },
-  "needs": { "callAs": ["link:box"] },
+  "needs": {},
   "teaches": {}
 }

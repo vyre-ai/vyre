@@ -19,8 +19,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   every 250 ms while they flow, until the answer finishes (a finish while queued words wait does
   not count), 30 minutes pass, or the link ends; the box re-emits them with `source: "mac"` and
   `machine` for threads it sent to, from the Mac it sent to.
-- `ctx.call(tool, input, { as })` calls as a caller label the manifest declares under
-  `needs.callAs` (core/modules/index.js).
+- `ctx.call(tool, input, { as })` calls as another caller label only for a core module and only
+  a label the registry's fixed map gives it (today the link, as `link:box`). A manifest cannot
+  grant it, so a module installed into a home can never act as the person (core/modules/index.js).
 - Tests: test/federation-send.test.js. Decision: ADR 0021, "Sending to a Mac session".
 
 #### The Deck on a box with a paired Mac, in a browser
