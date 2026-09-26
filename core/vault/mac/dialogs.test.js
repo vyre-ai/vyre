@@ -5,10 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { dialogsAllowed, checkDialog, NO_DIALOGS } from "./dialogs.js";
 import { Helper } from "./helper.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 test("dialogsAllowed: off under tests unless asked for, and off whenever VYRE_NO_DIALOGS=1", () => {
   assert.equal(dialogsAllowed({}), true);
@@ -35,7 +35,7 @@ test("checkDialog: which requests would ask a person", () => {
 
 test("the real enclave, type and keychain helpers refuse before spawn under tests", async t => {
   assert.ok(!process.env.VYRE_TEST_DIALOGS, "run without VYRE_TEST_DIALOGS");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-dlg-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-dlg-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   // swiftc is pointed at /usr/bin/false: had the check come after the build, this would say so.
   const h = name => new Helper({ name: /** @type {any} */ (name), dir: path.join(dir, "helpers"), swiftc: "/usr/bin/false", platform: "darwin" });

@@ -109,3 +109,31 @@ test("recall cli: up, index, recall, down against a temp home", async t => {
   assert.match(ev.out, /keyword +MRR@10 \d\.\d{3}/);
   assert.match((await run(["down"], env)).out, /vyred stopped/);
 });
+
+test("recall module: a completed turn indexes that session soon, without waiting for a pass", async t => {
+  const { root } = home(t, { vectors: false, soonMs: 50 });
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await call("recall.index", {}, { root });
+  const id = "11111111-aaaa-4000-8000-000000000001";
+  const before = (await call("recall.thread", { session: id }, { root })).data;
+  assert.equal(before.turns.length, 4);
+
+  // The terminal session answers once more: a user line and an assistant line land in its transcript.
+  const file = before.session.file;
+  const at = new Date(before.session.ended + 60_000).toISOString();
+  const base = { sessionId: id, cwd: before.session.cwd, userType: "external", entrypoint: "cli", isSidechain: false };
+  fs.appendFileSync(file, JSON.stringify({ ...base, type: "user", timestamp: at, uuid: "soon-1", message: { role: "user", content: "Add a map to the contact page." } }) + "\n"
+    + JSON.stringify({ ...base, type: "assistant", timestamp: at, uuid: "soon-2", message: { role: "assistant", content: [{ type: "text", text: "Added the map to /contact." }] } }) + "\n");
+  // What the harness's Stop hook reports.
+  assert.deepEqual((await call("harness.stop", { session: id }, { root })).data, { ok: true });
+
+  let after = before;
+  for (let i = 0; i < 50 && after.turns.length < 6; i++) {
+    await new Promise(r => setTimeout(r, 50));
+    after = (await call("recall.thread", { session: id }, { root })).data;
+  }
+  assert.deepEqual(after.turns.slice(4).map(x => x.text), ["Add a map to the contact page.", "Added the map to /contact."]);
+  const ev = (await request("GET", "/v1/events?type=session.indexed", undefined, { root })).data.filter(e => e.thread === id);
+  assert.deepEqual(ev.at(-1).payload, { session: id, from: 4, to: 5, rewritten: false });
+});

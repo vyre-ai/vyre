@@ -5,7 +5,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["link.status", "link.find", "link.pair", "link.unpair", "link.call", "link.remote",
-    "link.pair.request", "link.pair.poll", "link.pair.approve", "link.pair.deny", "link.pending", "link.peers", "link.hello"] },
+    "link.pair.request", "link.pair.poll", "link.pair.approve", "link.pair.deny", "link.pending", "link.peers", "link.hello", "link.health"] },
   "watches": { "emits": ["link.pair-requested", "link.paired", "link.unpaired", "link.connected", "link.lost"] },
   "shows": { "deck": [], "capsule": [], "cli": ["link"] },
   "needs": {},

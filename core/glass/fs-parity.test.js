@@ -7,12 +7,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import * as glass from "./guard.js";
 import * as computerd from "../computers/image/computerd/fs.js";
 import { ComputerProvider } from "./providers/computer.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const PATHS = [
   "", ".", "notes.txt", "a/b/c.md", ".ssh", "x/.SSH/known_hosts", ".config/gcloud/creds", ".config/app.json", ".env", ".env.local",
@@ -37,7 +37,7 @@ test("fs parity: computerd's DENY list and rules equal core/glass/guard.js", () 
 });
 
 test("fs parity: the computer provider round-trips through the real computerd handler", async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-parity-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-parity-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, "todo.txt"), "buy milk\n");
   fs.mkdirSync(path.join(dir, ".ssh"));

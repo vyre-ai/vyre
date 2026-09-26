@@ -19,6 +19,116 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   vyre-mic and the voice listen stream, words live in the box, stopped when the Capsule hides.
   `voice.status` returns the built mic helper's path.
 - screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
+#### CI on GitHub's free runners
+
+- Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the
+  apps on their own Mac. `node.yml`: the suite and the perf gate on Node 22 and 24 (ubuntu).
+  `capsule-mac.yml`: the Swift helpers, the native Capsule's tests and app once they land, and the
+  Mac-only Node tests (macos). `ios.yml`: xcodegen, then build and unit tests on a simulator.
+  `android.yml`: gradle build and unit tests on JDK 17. The app workflows skip while their folder
+  is absent. Each uploads what it built (Capsule zips, the iOS simulator app, the debug APK), and
+  every workflow can also be run by hand (workflow_dispatch). Replaces `test.yml`, which ran the
+  whole suite on two macOS runners without installing dependencies. `.github/workflows/`, README
+  badges.
+- Docs and comments call the test server "the test box", the prototype's folder "the
+  prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
+  comments only).
+
+#### The suite passes on the test box (Linux, node 22) as it does on the Mac
+
+- Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
+  code. The vault tests' cheap KDF is Argon2id only where node has it (24.7+), else scrypt at its
+  test floor (`core/vault/testing.js` TEST_KDF). `vyre` drops node 22's "SQLite is an
+  experimental feature" line, which broke output read as JSON (`core/quiet.js`, loaded first by
+  `bin/vyre`; the box image already sets NODE_OPTIONS for it). The installer tests hide a real
+  Docker when a test takes it away, box add's rig answers `id -nG` without the docker group, the
+  presence challenge test pins `role: local` (Linux defaults to the box), the bypass test reads
+  the hook's stdout only, and the real Capsule helper tests skip off macOS.
+
+#### The vault writes nothing after it stops
+
+- 200 ms after start the vault pulls its shared vaults, and with none it still asked for this
+  device's identity, which made a key, the agent vault key and an identity item. When that timer
+  fired after a test had removed its home, it put `vault/` back: the intermittent leaked
+  `vyre-test-*` home holding only `vault/` (three in one full run on the test box, from `link`,
+  `computers` and `switchboard` tests, any in-process vyred). With no shared vaults the pull now
+  does nothing (`core/vault/shared.js`). Both start-up syncs go through `vault.later()`, and
+  `vault.stop()` cancels the waiting ones, awaits the running ones and refuses to open or make a
+  key from then on (`core/vault/vault.js`, `index.js`, `devices.js`). `core/vault/stop.test.js`.
+- `tempHome` records which test made each home in `<SCRATCH>.homes`, beside SCRATCH so it
+  survives the home's removal, and `test/tmp-guard.mjs` names that test next to a leaked folder.
+
+#### Journey 1 no longer races box add for the tunnel
+
+- `vyre box add` takes the onboarding tunnel down as soon as the address step is done, so the
+  journey's last loopback calls (onboard.status, onboard.finish) failed now and then with
+  ECONNREFUSED. Once the address serves, the journey finishes from the box's own terminal
+  (`vyre call` through the host wrapper, `test/journey/rig.js` terminal), since the harness cannot
+  reach the address as the owner. The fake box tailscale now names this account as its operator,
+  so the journey also runs on Linux. Journeys 1 to 6 pass together, three runs in a row, on the test box.
+#### Tailnet: more of Tailscale, and still never a change to the tailnet (ADR 0014)
+
+- Vyre now knows how the box and a device reach each other. `link.health` says whether the
+  connection is direct or relayed, its latency and the last handshake. Each node is checked at
+  most once a minute and only when something asks, so it costs nothing while nobody looks. The
+  Deck's Network settings and the Capsule show "direct 12 ms" or "relayed via fra 80 ms", so a
+  slow screen has a visible reason.
+- Glass uses that answer. A viewer on a relayed or slow link gets at most five frame updates a
+  second at lower quality, and taps and keys still go through at once, so a phone on a relay sees
+  a steady picture instead of a stalled one.
+- Files go from the Mac to the box with Taildrop: `vyre send <file>` and `files.send`. Only what
+  the files guard passes is sent, so a key or an `.env` never leaves the Mac, and when Taildrop
+  cannot reach the box (a tagged box is the usual case) it says why. The box keeps one
+  `tailscale file get --loop` blocked in tailscaled, so idle costs nothing, and announces each
+  arrival in `files.inbox` as `files.received`. Nothing opens or runs a received file.
+- The box can share chosen folders with the paired Mac through Taildrive, so Finder and the
+  Capsule open box files where they live instead of pulling a copy. Only named shares that pass
+  the guard can be shared, and only by the owner. Vyre cannot edit the policy that decides who
+  reaches a share, so `files.drive.audit` checks it and reports any node that is not a paired Mac.
+  tailscaled now sees `/work`, read-only unless the owner opts in.
+- `vyre box add` and `vyre box move` reach a server on the tailnet over Tailscale SSH first, so no
+  key or password is needed, and fall back to the address as typed. A check-mode sign-in link is
+  shown on the terminal rather than hidden.
+- Onboarding and Settings explain Tailnet Lock and show the exact commands to turn it on from the
+  Mac, with the box's key filled in. Vyre only reads the lock's state and never turns it on or
+  signs anything, because those commands change the whole tailnet.
+- An agent's Chrome can send a chosen list of sites through the owner's Mac, off by default, for
+  sites that refuse a datacenter address. The box's own tailscaled never uses an exit node (that
+  would route everything); an optional sidecar (`box/compose.egress.yml`) does, in userspace, on
+  the computers network only. The listed sites have no direct fallback, so when the Mac is away
+  they fail instead of showing the box's address. Only the owner can change the list.
+- whois now carries a peer's tags and the app capabilities the tailnet policy grants it, through
+  one parser. Every feature below reads them; none writes them.
+- The box's tailnet listener tells three peers apart: the owner, a guest from another tailnet
+  (`tailnet-guest:<login>`) and an agent's own node (`tailnet:agent:<name>`). Tailscale machine
+  sharing used to leave a shared-in person at 403. A guest now reaches only the view-only tools
+  the owner listed or the policy granted, within a fixed safe set, and every other tool reads as
+  absent. A guest never approves, proves presence or pairs a device. Guests are off until the
+  owner turns them on with presence (`network.guests.*`, a new `network` module).
+- An agent's node still needs its agent key over the tailnet: whois proves which container, the key
+  proves which thread, and neither replaces the other.
+- The Vault can ask the tailnet policy before it relays. With `vault.relay.grants: "require"` a
+  relayed request also needs a `vyre.run/cap/vault` grant for its item. A grant only narrows: a
+  revoked or expired pass stays refused, and no grant shows a value. `vault.grants.status` shows
+  who the policy covers.
+- Each agent's computer can join the tailnet as its own ephemeral `tag:vyre-agent` node, off by
+  default. The key stays in the vault and goes only to a root-only tailnet port, never into the
+  container's env or computerd's port, which the agent's own user could take over. The image does
+  not carry that side yet, so turning it on reports why and sends nothing.
+- Signed webhooks from the internet through Funnel (`core/hooks`, `vyre hooks`), off by default,
+  one route at a time, on loopback only. Every route checks the sender's signature against a
+  vault secret. A verified delivery is stored and announced as `hook.received` without its body,
+  and can do nothing else: it never calls a tool. Watchers can now run on an event filtered by
+  payload, so a watcher on one route gets that route's deliveries. Vyre never runs
+  `tailscale funnel`; `vyre hooks status` prints the commands and flags mismatches.
+- Sharing a folder, adding a guest, opening a webhook route and the tailnet switches are on the
+  floor's human-only list, so no model can do them.
+- The Deck's Network settings show shares (with a check of who the policy lets in), webhooks,
+  guests, agent nodes and egress. Chat and Glass carry a connection dot. Onboarding shows the
+  HTTPS switch a ts.net address needs as plain steps, then offers Tailnet Lock. The Capsule sends
+  a file to the box with option-return.
+- `scripts/perf-check` waits for Memory's startup pass to finish before it measures idle, so a
+  slow start on a loaded host is no longer counted as idle CPU.
 
 #### The Capsule is Spotlight's size
 
@@ -53,6 +163,60 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   same `input` style as the assistant's.
 - `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
   still starting (6s on a loaded Mac). It waits up to 15s now.
+#### Chat lists your Claude Code sessions and follows them live
+
+- Chat lists every Claude Code session on this machine (`projects.catalog`, from the transcripts)
+  merged with the Switchboard's headless threads (`threads.list`), one row per session. Before,
+  it listed only headless threads, so a project with three sessions read "No sessions".
+- A session the Switchboard never ran opens from its transcript (`recall.thread`) and follows it
+  live: Recall emits `session.indexed` for it after each turn, and the view reads only the new
+  turns. After a send adopts it, the view follows `thread.*` events instead, so no turn shows twice.
+- Recall indexes one session about 1.5 s after the harness reports `turn.completed` or
+  `thread.started` for it (`Indexer.session`), so no timer and no full pass is needed.
+- On a phone, /chat lists the projects and recent sessions, a project page has a Back link and its
+  name, and the session header's back arrow points left. The composer keeps one error note and
+  gives back the words a refused send held.
+
+#### Deck: Chat on the phone tab bar, Glass with no box, Memory loads at once
+
+- The phone tab bar has five tabs: Now, Projects, Chat, Ask and Agents. Ask has its own icon, and
+  the labels lose some tracking below 360 px so all five fit at 320 px.
+- Long thread and project titles on Now truncate with an ellipsis on the phone instead of running
+  off the right edge.
+- Memory starts its first read at once. It used to wait up to 800 ms for the fonts first and could
+  sit on "Reading memory". A draw made before the fonts land is redone once when they do, and an
+  error shows a Try again button.
+- Glass on a machine with no box (the glass module is off or vyred does not answer) says where the
+  agent's computer runs and how to pair one (`vyre box add you@your-server`), and offers no Take
+  over, no Sign in privately and no activity rail.
+- `agents.list` returns each agent's instructions, so an agent's page shows its job instead of "No
+  instructions yet".
+- The box's Chromium starts with `--test-type`, which keeps its `--no-sandbox` warning bar out of
+  the Glass stream. Takes effect when the computer image is rebuilt.
+- `deck/test/world.js` makes its home under `SCRATCH`, uses a key-file vault (never the login
+  keychain), and seeds juno, kit and six fictional vault items. The items go in through a
+  short-lived vyred with the test presence verifier, which stops before the real vyred starts.
+  `test/fixtures/vyred-present.js` compares real paths, so a realpath'd temp home on macOS passes.
+
+#### Tests keep their temp folders under SCRATCH
+
+- Test runs kept leaving folders bare in `$TMPDIR` (`vyre-local-*`, `vyre-frec-*`, `vyre-clip-*`
+  and others). Every test that made a temp folder with `os.tmpdir()` now makes it under `SCRATCH`
+  (`test/scratch.mjs`, one folder per checkout) and removes it when the test ends.
+- The leaks at the source: `local/capsule/lib/local.test.js` never removed its folders (five a
+  run); the frecency tests there and in `launcher.test.js` removed the folder, then the 500 ms save
+  timer fired and made it again. Both now save before removing.
+- Product code that makes its own temp folders, backup staging (`core/names/backup.js`, used by
+  `vyre backup`) and image thumbnails (`core/files/index.js`), puts them under `VYRE_TMPDIR` when
+  it is set. `test/scratch.mjs` sets it to `SCRATCH`, so tests and every vyre or vyred they spawn
+  stay inside it. Both already removed their folder in a `finally`.
+- `vyre box` keeps its ssh control folder in `/tmp` (a socket path must be short), and now also
+  removes it when the process exits without calling close().
+- `local/capsule/build.sh` makes its plist under `$TMPDIR` and removes it on a signal as well
+  as on a normal exit.
+- The `npm test` leak guard (`test/tmp-guard.mjs`) also fails on new `vyre-*`, `vy-*`, `vssh-*`
+  and `computerd-*` entries left bare in `$TMPDIR`, counting only ones that did not exist before
+  the run and were changed after it began, so a sibling worktree's older leftovers do not count.
 
 #### No Touch ID prompt, or anything else on screen, under tests
 
