@@ -15,7 +15,8 @@
     "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\"",
     "posttest": "node test/tmp-guard.mjs after",
     "perf-check": "node scripts/perf-check",
-    "eval:memory": "node scripts/eval-memory.js"
+    "eval:memory": "node scripts/eval-memory.js",
+    "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^4.3.0"
