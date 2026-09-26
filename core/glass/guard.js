@@ -28,6 +28,16 @@ export const DENY = Object.freeze([
   "Cookies", "Login Data", "Login Data For Account", "Web Data", "secrets", ".vnc",
 ]);
 
+/**
+ * A private key, whatever the file is called: PEM, OpenSSH and PuTTY all say so in their first
+ * line. The same test link's files module applies (core/files/safety.js).
+ */
+export const KEY_HEAD = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|PuTTY-User-Key-File-/;
+export const KEY_SNIFF = 512;
+
+/** Do these first bytes of a file say it is a private key? */
+export const isKeyBytes = buf => KEY_HEAD.test(Buffer.from(buf).subarray(0, KEY_SNIFF).toString("latin1"));
+
 /** Glass's own working files: never listed, and never the name of something a person makes. */
 export const TRASH = ".vyre-trash";
 export const UPLOAD_PREFIX = ".vyre-upload-";

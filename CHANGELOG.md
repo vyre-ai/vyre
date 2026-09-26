@@ -149,17 +149,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   sign-in: it raises the computers shield, and undoes the take-over when the shield is missing.
   Hand-back leaves a note in the agent's thread (who, how long, the person's note), never what
   was typed.
+- The Deck proves presence with a passkey for `glass.take` and `glass.release`: it asks
+  `/v1/presence/challenge` for WebAuthn options, gets Touch ID or Face ID, and repeats the same
+  call with `x-vyre-presence`, through `attempt(name, input, { presence: true })` in `js/api.js`.
+  With no passkey enrolled, it links to Settings to add one.
 - Files: one guard for every path. Paths are relative, no `..`, no NUL, symlinks must stay
   inside the root, and secret places (`.vyre`, `.ssh`, `.env*`, keys, Chrome's cookie and
   login stores) are refused and hidden at any depth. Bytes move only on ticketed
   `/v1/glass/raw` and `/v1/glass/put` (one use, 60 s, size-bound), served `nosniff` with a
   sandboxing CSP; only raster images and PDFs are shown inline. An agent reaches only its own
   computer's files through Glass.
+- A file whose first 512 bytes are a PEM, OpenSSH or PuTTY private key is refused whatever its
+  name: no preview, no download, and an upload of one stops before it lands (the test link's
+  files module applies).
 - `ctx.route(name, fn)`: a raw HTTP route at `/v1/<module>/<name>`, the same shape link uses.
 - `deck/glass`: Screen, Files and a disabled Terminal tab, the take-over bar, Sign in privately,
   a phone layout with touch gestures, drag and drop upload, and drag-out download. noVNC 1.7.0 is
   vendored under `deck/glass/vendor/novnc` (MPL 2.0, as separate files); Glass needs an RFB client
   in the browser and noVNC is the maintained one.
+- `computers.helper` (thaws without a screen slot) and `computers.shield` (the hands refuse reads
+  as well as input, hands-chrome drops its CDP connection, computerd answers 423 on its eyes and
+  hands and cuts CDP pipes), both module-only. computerd serves `/fs` for Glass behind the same
+  deny list, with a parity test. `capsule:<device>` is a person's surface.
+- Fixed in the first live run on the box: an invalid `PidMode` failed every container create;
+  the image lacked `vncpasswd`; a take-over expired at 90 s while the person typed (the relay now
+  pings every 30 s and renews on the holder's input and pongs); `.vnc/passwd` was browsable. The
+  image no longer sends the clipboard to viewers, refuses resizes and caps at 24 fps.
+- Capsule: "Open Glass" for an agent with a computer or a thread of one, and `glass <agent>` /
+  `glass box`, opening the paired box's `/glass/<target>` in the default browser.
 
 #### Link heartbeat
 

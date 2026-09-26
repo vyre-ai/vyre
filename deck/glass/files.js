@@ -8,7 +8,7 @@ import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { gicon, errText, size, stamp } from "./util.js";
-import { upload as putBytes } from "./transfer.js";
+import { upload as putBytes } from "../js/api.js";
 
 const join = (...parts) => parts.filter(Boolean).join("/").replace(/\/+/g, "/");
 const parent = p => p.split("/").slice(0, -1).join("/");

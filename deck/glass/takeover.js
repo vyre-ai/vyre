@@ -4,10 +4,11 @@
 // bar counts the time. Hand-back is the button, Ctrl+Enter, or the lease lapsing on the box.
 //
 // Both glass.take and glass.release need a presence proof. When the box asks for one
-// (presence_required), the view shows a "Confirm it's you" step with what it would accept.
+// (presence_required), the view shows a "Confirm it's you" step; its button makes a passkey
+// proof (api.js, { presence: true }) and repeats the same call with it.
 
-import { h, put } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { h, put, link } from "../js/dom.js";
+import { attempt, canProve } from "../js/api.js";
 import { gicon, errText, clock, surfaceKind } from "./util.js";
 
 /**
@@ -44,13 +45,14 @@ export function takeover(s, hooks) {
   }
 
   /** @param {boolean} priv */
-  async function take(priv) {
+  async function take(priv, proved = false) {
     if (busy || mine()) return;
     busy = true; hooks.changed();
-    const r = await attempt("glass.take", { target: s.target, surface: s.surface, ...(priv ? { private: true } : {}) });
+    const input = { target: s.target, surface: s.surface, ...(priv ? { private: true } : {}) };
+    const r = await attempt("glass.take", input, proved ? { presence: true } : {});
     busy = false;
     if (r.error) {
-      hooks.notice(r.error.code === "presence_required" ? confirm(r.error, () => take(priv)) : failed(priv ? "Private sign-in did not start" : "Take-over did not start", r.error));
+      hooks.notice(r.error.code === "presence_required" && !proved ? confirm(r.error, () => take(priv, true)) : failed(priv ? "Private sign-in did not start" : "Take-over did not start", r.error));
       hooks.changed();
       return;
     }
@@ -59,14 +61,15 @@ export function takeover(s, hooks) {
     hooks.changed();
   }
 
-  async function release() {
+  async function release(proved = false) {
     if (busy || !mine()) return;
     busy = true; hooks.changed();
     const text = note.value.trim();
-    const r = await attempt("glass.release", { target: s.target, surface: s.surface, ...(text ? { note: text } : {}) });
+    const input = { target: s.target, surface: s.surface, ...(text ? { note: text } : {}) };
+    const r = await attempt("glass.release", input, proved === true ? { presence: true } : {});
     busy = false;
     if (r.error) {
-      hooks.notice(r.error.code === "presence_required" ? confirm(r.error, release) : failed("Hand-back did not go through", r.error));
+      hooks.notice(r.error.code === "presence_required" && proved !== true ? confirm(r.error, () => release(true)) : failed("Hand-back did not go through", r.error));
       hooks.changed();
       return;
     }
@@ -77,10 +80,12 @@ export function takeover(s, hooks) {
     hooks.changed();
   }
 
-  /** The "Confirm it's you" step. The Deck cannot make a passkey proof yet, so it says what the box asked for. */
+  /** The "Confirm it's you" step: its button makes a passkey proof and repeats the call with it. */
   function confirm(err, retry) {
-    const methods = Array.isArray(err.methods) ? err.methods : Array.isArray(err.data?.methods) ? err.data.methods : [];
-    const how = methods.length ? `The box accepts: ${methods.join(", ")}.` : "The box asks for a passkey (Touch ID or Face ID) on this device.";
+    const methods = [err.methods, err.detail?.methods, err.data?.methods].find(Array.isArray) || [];
+    const passkey = canProve() && (!methods.length || methods.includes("passkey"));
+    const how = passkey ? "Use your passkey: Touch ID or Face ID on this device."
+      : methods.length ? `This device cannot make that proof. The box accepts: ${methods.join(", ")}.` : "This browser cannot use a passkey.";
     return h("div", { class: "gl-notice gl-notice-hold", role: "alert" },
       h("div", { class: "gl-notice-text" },
         h("div", { class: "lbl beacon" }, "Confirm it's you"),
@@ -88,12 +93,15 @@ export function takeover(s, hooks) {
         h("p", { class: "code" }, err.message || err.code)),
       h("div", { class: "gl-notice-acts" },
         h("button", { type: "button", class: "btn btn-ghost", onclick: () => hooks.notice(null) }, "Cancel"),
-        h("button", { type: "button", class: "btn", onclick: retry }, "Try again")));
+        passkey ? h("button", { type: "button", class: "btn btn-primary", onclick: retry }, gicon("shield"), "Confirm with passkey") : null));
   }
 
   function failed(title, err) {
+    // No passkey on the box yet: enrolling one is in Settings, so say where.
+    const enroll = /no passkey is enrolled/i.test(String(err?.message || ""))
+      ? h("p", null, link("/settings?section=security", { class: "link" }, "Add a passkey in Settings"), ", then take over again.") : null;
     return h("div", { class: "gl-notice gl-notice-hold", role: "alert" },
-      h("div", { class: "gl-notice-text" }, h("div", { class: "lbl beacon" }, title), h("p", null, errText(err))),
+      h("div", { class: "gl-notice-text" }, h("div", { class: "lbl beacon" }, title), h("p", null, errText(err)), enroll),
       h("div", { class: "gl-notice-acts" }, h("button", { type: "button", class: "btn btn-ghost", onclick: () => hooks.notice(null) }, "Dismiss")));
   }
 
@@ -142,14 +150,14 @@ export function takeover(s, hooks) {
     const n = s.name;
     const rows = s.holder.private
       ? [["The page on " + n + "'s screen", "receives it", true], [`${n}'s hands and eyes`, "stopped"], [`${n}'s thread`, "never"], ["Memory", "never"], ["Other viewers", "no input"]]
-      : [["The page on " + n + "'s screen", "receives it", true], [`${n}'s hands`, "paused"], [`${n}'s eyes`, "can still read the page"], ["Other viewers", "no input"]];
+      : [["The page on " + n + "'s screen", "receives it", true], [`${n}'s hands`, "paused"], [`${n}'s Chrome link`, "stays open"], ["Other viewers", "no input"]];
     return h("div", { class: "gl-side-hold" },
       h("div", { class: "gl-side-top" },
         h("span", { class: "lbl" }, "While you type"),
         h("h2", { class: "h3" }, s.holder.private ? "What you type goes to the page. Nowhere else." : `${n} is paused while you drive.`),
         h("p", { class: "small muted" }, s.holder.private
           ? `Your keystrokes travel from this browser over your tailnet into ${n}'s screen. ${n} cannot read the page until you hand back.`
-          : `${n}'s hands stop until you hand back, but it can still read the page. For a password, hand back and use Sign in privately.`)),
+          : `${n}'s hands stop until you hand back. Its link to Chrome stays open, so for a password, hand back and use Sign in privately, which cuts it.`)),
       h("div", { class: "gl-side-rows" }, rows.map(([a, b, on]) => h("div", { class: "gl-side-row" },
         h("span", { class: on ? "" : "muted" }, a), h("span", { class: "code" + (on ? " gl-on" : "") }, b)))),
       h("div", { class: "gl-side-top" },

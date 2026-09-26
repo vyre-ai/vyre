@@ -14,6 +14,7 @@
 
 import crypto from "node:crypto";
 import { INLINE, mimeOf } from "./mime.js";
+import { keySniff } from "./bytes.js";
 
 export const TICKET_MS = 60_000;
 
@@ -82,7 +83,7 @@ function sendError(res, status, code, message, extra = {}) {
 
 const statusOf = e => {
   const c = e && e.code;
-  return c === "exists" ? 409 : c === "too_large" ? 413 : c === "wrong_size" ? 400 : c === "range" ? 416
+  return c === "denied" ? 403 : c === "exists" ? 409 : c === "too_large" ? 413 : c === "wrong_size" ? 400 : c === "range" ? 416
     : /does not exist/.test(String(e && e.message)) ? 404 : /private|outside|climbs|absolute/.test(String(e && e.message)) ? 403 : 500;
 };
 
@@ -128,7 +129,9 @@ export function register(ctx, { tickets, providerFor, emit }) {
       return sendError(res, 400, "wrong_size", `the upload was announced as ${t.size} bytes and this request says ${declared}`, { connection: "close" });
     }
     try {
-      const r = await providerFor(t.target).write(t.path, req, { size: t.size, overwrite: t.overwrite });
+      const body = req.pipe(keySniff());
+      req.on("error", e => body.destroy(e));
+      const r = await providerFor(t.target).write(t.path, body, { size: t.size, overwrite: t.overwrite });
       emit("file.uploaded", { target: t.target, path: t.path, size: r.size, by: t.caller });
       res.writeHead(200, { "content-type": "application/json", ...SAFE });
       res.end(JSON.stringify({ data: { path: t.path, size: r.size } }));
