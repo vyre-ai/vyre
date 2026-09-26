@@ -53,7 +53,7 @@ export function mountComposer(opts) {
       h("span", { class: "composer-queued-text ellipsis" }, [...waiting.values()].at(-1) || ""));
   }
   const note = h("div", { class: "composer-note", role: "status" });
-  const root = h("div", { class: "composer" }, queued, note, wrap, h("div", { class: "composer-hint" }, h("span", { class: "kbd" }, "Enter"), " to send · ", h("span", { class: "kbd" }, "Shift+Enter"), " for a new line · @ to mention · / for Claude Code's commands"));
+  const root = h("div", { class: "composer" }, queued, note, wrap, h("div", { class: "composer-hint" }, h("span", { class: "kbd" }, "Enter"), " to send · ", h("span", { class: "kbd" }, "Shift+Enter"), " for a new line · @ to mention · / for commands"));
 
   function grow() { ta.style.height = "auto"; ta.style.height = Math.min(200, ta.scrollHeight) + "px"; }
 
