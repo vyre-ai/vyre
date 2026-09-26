@@ -52,7 +52,8 @@ const PLACES = [
 const TABS = [
   { href: "/now", label: "Now", icon: "clock", view: "now" },
   { href: "/projects", label: "Projects", icon: "projects", view: "projects" },
-  { href: "/ask", label: "Ask", icon: "chat", view: "ask" },
+  { href: "/chat", label: "Chat", icon: "chat", view: "chat" },
+  { href: "/ask", label: "Ask", icon: "ask", view: "ask" },
   { href: "/agents", label: "Agents", icon: "agents", view: "agents" },
 ];
 

@@ -4,7 +4,7 @@
 // /chat/:thread can't coexist with /chat/:project, since match() picks a route by segment count
 // only, so "thread" is a literal prefix segment instead.
 
-/** @param {{ id: string, project?: string|null }} t */
-export const threadHref = t => t.project ? `/chat/${encodeURIComponent(t.project)}/${encodeURIComponent(t.id)}` : `/chat/thread/${encodeURIComponent(t.id)}`;
+/** A session in two projects opens under the one it was picked from, when given. @param {{ id: string, project?: string|null }} t @param {string|null} [project] */
+export const threadHref = (t, project) => (project || t.project) ? `/chat/${encodeURIComponent(project || t.project || "")}/${encodeURIComponent(t.id)}` : `/chat/thread/${encodeURIComponent(t.id)}`;
 /** @param {string} slug */
 export const projectHref = slug => `/chat/${encodeURIComponent(slug)}`;

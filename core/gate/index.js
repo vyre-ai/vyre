@@ -60,6 +60,8 @@ export default {
     const person = caller => {
       const c = String(caller || "");
       if (c.startsWith("mcp")) throw new Error("only the user approves what goes out, never a model");
+      // A guest from another tailnet, and an agent's own node, are never the user.
+      if (c.startsWith("tailnet-guest:") || c.startsWith("tailnet:agent:")) throw new Error("only the user approves what goes out, never a guest or an agent");
       if (c.startsWith("module:") && !approvers.includes(c.slice(7))) throw new Error(`${c.slice(7)} may not approve for the user · add it to gate.approvers in config.json`);
       return c;
     };

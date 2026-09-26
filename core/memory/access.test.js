@@ -106,7 +106,8 @@ test("tailnet: the user's other devices read as the owner, and never correct", a
   // Only the reads named: Enrich's read is for sessions, which name their room.
   assert.equal((await call("memory.relevant", { text: "email Dana Reyes" }, TAILNET)).code, "denied");
   // A caller that merely looks like one, or names an agent, is not the owner.
-  for (const caller of ["tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex"]) assert.equal((await call("memory.stats", {}, caller)).code, "denied", caller);
+  // An agent's own tailnet node, and a guest from another tailnet, are not the user either.
+  for (const caller of ["tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex", "tailnet:agent:kit", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.stats", {}, caller)).code, "denied", caller);
   assert.equal((await call("memory.corrections", {}, "tailnet:alex@example.com agent:kit")).code, "denied");
   assert.equal((await call("memory.corrections", {}, "mcp")).code, "denied");
 });

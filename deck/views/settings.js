@@ -4,8 +4,9 @@
 // Setup list. Route /settings, with an optional #section.
 //
 // Every section loads on its own and shows its own empty state, so one missing module never
-// blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box), agents.list and
-// agents.update (switchboard), recall.status, recall.index, memory.stats, memory.curate,
+// blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box, also its read-only "lock"), agents.list and
+// agents.update (switchboard), link.health (link), files.drive.status and files.drive.audit (files), hooks.list and hooks.status (hooks),
+// network.guests.list (network), computers.tailnet.status and computers.egress.status (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 // Connections is drawn by views/connections.js (the connectors workstream, ADR 0016).
 
@@ -13,6 +14,8 @@ import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt, modules, canProve, callWithCode } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
+import { LOCK, lockState, lockSteps } from "../js/lock.js";
+import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -89,7 +92,7 @@ export default async function settings(ctx) {
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
     // Imported on its own, so a problem in that file shows here and never blanks Settings.
     import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
-    drawNetwork(body.network), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -221,16 +224,216 @@ async function drawClaude(el) {
 
 // ---- 5. Network ----------------------------------------------------------------------------
 
-async function drawNetwork(el) {
+async function drawNetwork(el, ctx) {
   const r = await attempt("onboard.tailscale", { action: "detect" });
-  if (r.error) { put(el, empty("Tailscale is checked by the box module.", r.error), foot(toOnboard("tailscale", "Connect"))); return; }
   const t = r.data || {};
-  const on = t.state === "connected" && t.node;
-  put(el, h("div", { class: "rows" },
-      row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
+  const on = !r.error && t.state === "connected" && t.node;
+  const conn = h("div");
+  const lockRow = h("div");
+  // The tailnet features below each load on their own; a tool not on this vyred leaves its row out.
+  const extra = ["shares", "hooks", "guests", "agents", "egress"].map(() => h("div"));
+  put(el, r.error ? empty("Tailscale is checked by the box module.", r.error) : null,
+    h("div", { class: "rows" },
+      r.error ? null : row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
       on ? row("Node", mono(t.node.dns || t.node.name || "")) : null,
-      on ? row("Tailnet IP", mono(t.node.ip || "")) : null),
+      on ? row("Tailnet IP", mono(t.node.ip || "")) : null,
+      conn,
+      on ? lockRow : null,
+      extra),
     on ? null : foot(toOnboard("tailscale", "Connect")));
+  if (on) drawLink(conn, ctx);
+  const [shares, hooks, guests, agents, egress] = extra;
+  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress)]);
+}
+
+/** How the box reaches this device (link.health, the calling node), kept current by deck/js/health.js. */
+function drawLink(el, ctx) {
+  ctx.cleanup(watchHealth(x => {
+    if (!ctx.alive()) return;
+    // No link module on this vyred: the row is left out rather than shown empty.
+    if (!x) { put(el); return; }
+    const shook = handshakeLine(x);
+    put(el, row("This device", h("span", { class: "set-inline" }, h("span", { class: `dot health-${linkDot(x)}` }),
+      h("span", x.path === "unknown" ? { class: "muted" } : null, linkLine(x))),
+      shook ? h("div", { class: "small faint" }, shook) : null));
+  }));
+}
+
+/** A command the person runs themselves, with a copy button. */
+function cmd(text) {
+  const b = h("button", { type: "button", class: "ibtn", "aria-label": "Copy command", title: "Copy", onclick: async () => {
+    try { await navigator.clipboard.writeText(text); put(b, icon("check", 14)); setTimeout(() => put(b, icon("copy", 14)), 1500); } catch {}
+  } }, icon("copy", 14));
+  return h("div", { class: "set-cmd" }, h("code", { class: "set-mono" }, text), b);
+}
+const faint = (...s) => h("div", { class: "small faint" }, s);
+const plainList = (items, draw) => h("ul", { class: "set-plain" }, items.map(x => h("li", null, draw(x))));
+/** A tool's list, whether it came as an array or an object keyed by name. */
+const listOf = (v, key) => Array.isArray(v) ? v : v && typeof v === "object" ? Object.entries(v).map(([k, x]) => ({ [key]: k, ...(x || {}) })) : [];
+
+/**
+ * One optional row: ask its tool, and draw it. A tool this vyred does not have leaves nothing
+ * (its module may not be merged yet); any other failure is said in the row.
+ */
+async function optional(el, label, tool, draw) {
+  const r = await attempt(tool);
+  if (r.error) { put(el, r.error.missing ? null : row(label, h("span", { class: "muted" }, errText(r.error)))); return; }
+  put(el, draw(r.data || {}));
+}
+
+const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "Off");
+
+/**
+ * Box shares (Taildrive): each folder the box offers, shared or not, and who the tailnet policy
+ * lets reach them. The check runs on demand, and a drive.exposed event (after any share) shows
+ * its findings here too. Sharing stays with the owner's terminal and the Capsule.
+ */
+function drawShares(el, ctx) {
+  const found = h("div");
+  const st = status();
+  const showAudit = (/** @type {any} */ a) => {
+    const f = Array.isArray(a?.findings) ? a.findings : [];
+    put(found, f.length
+      ? [h("div", { class: "small set-warn" }, `${plural(f.length, "device")} outside your paired Macs can reach these shares:`),
+        plainList(f, x => [mono(x.node || "a device"), x.login ? h("span", { class: "small faint" }, ` ${x.login}`) : null]),
+        faint("Only the tailnet policy decides this. Remove them in the Tailscale admin console, Access controls. Vyre does not change it.")]
+      : a ? faint(`Only your paired Macs can reach them. ${a.checked != null ? `Checked ${plural(a.checked, "online device")}.` : ""}`.trim()) : null);
+  };
+  ctx.on("drive.exposed", (/** @type {any} */ e) => { if (ctx.alive()) showAudit(e.payload); });
+  const check = h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
+    check.disabled = true; put(st, "Checking…");
+    const a = await attempt("files.drive.audit");
+    check.disabled = false; put(st);
+    if (a.error) put(st, errText(a.error)); else showAudit(a.data);
+  } }, "Check who can reach them");
+  return optional(el, "Box shares", "files.drive.status", d => {
+    const shares = listOf(d.shares, "name");
+    if (!d.enabled) return row("Box shares", onOff(false),
+      faint("Your box's folders, open in Finder on your Mac through Taildrive."), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
+    return row("Box shares", h("span", null, d.access === "rw" ? "Read and write" : "Read only"),
+      shares.length ? plainList(shares, x => [mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
+        x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null]) : faint("The box offers no folders (files.drive.shares)."),
+      d.error ? faint(d.error) : null,
+      shares.some(x => !x.shared) ? [faint("Share one from the box's terminal:"), cmd(`vyre call files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null,
+      foot(check), st, found);
+  });
+}
+
+/**
+ * Webhooks: off, or the open routes (hooks.list) and where Funnel and Vyre disagree
+ * (hooks.status). Turning hooks on and opening a route need you there (presence), so the Deck
+ * shows the command rather than doing it; the Funnel commands are Tailscale's, which Vyre never runs.
+ */
+async function drawHooks(el) {
+  const st = attempt("hooks.status");
+  await optional(el, "Webhooks", "hooks.list", d => {
+    const routes = listOf(d.routes, "name");
+    if (!d.enabled) return row("Webhooks", onOff(false),
+      faint("A webhook lets a service such as a payment processor tell Vyre that something happened. It is the one part of Vyre open to the internet, so it stays off until you turn it on from the box's terminal:"),
+      cmd("vyre hooks on"));
+    const mism = h("div");
+    st.then(r => {
+      const m = Array.isArray(r.data?.mismatches) ? r.data.mismatches : [];
+      put(mism, m.length ? [h("div", { class: "small set-warn" }, "Funnel and Vyre disagree:"),
+        plainList(m, x => [h("div", { class: "small" + (x.harmless ? " faint" : "") }, x.harmless ? `${x.message}. Harmless.` : `${x.message}.`),
+          x.fix ? cmd(x.fix) : null])] : null);
+    });
+    return row("Webhooks", h("span", null, routes.length ? `On, ${plural(routes.length, "open route")}` : "On, no open routes"),
+      d.listening === false ? h("div", { class: "small set-warn" }, `The hooks listener is not answering${d.error ? ` (${d.error})` : ""}.`) : null,
+      routes.length ? plainList(routes, x => [
+        h("div", null, mono(x.path || `/hooks/${x.name}`), h("span", { class: "small faint" },
+          ` ${x.verify?.scheme || ""}${typeof x.deliveries === "number" ? `, ${plural(x.deliveries, "delivery", "deliveries")} kept` : ""}`)),
+        x.funnel?.open ? [faint("Publish it with Funnel:"), cmd(x.funnel.open)] : null,
+        x.funnel?.close ? [faint("Stop publishing it:"), cmd(x.funnel.close)] : null]) : null,
+      mism,
+      faint("Vyre never runs tailscale funnel. Run these yourself, on the box."),
+      faint("Open a route from the box's terminal:"),
+      cmd("vyre hooks open <name> --scheme hmac-sha256 --header <header> --secret <vault item>"),
+      routes.length ? [faint("Close one:"), cmd(`vyre hooks close ${routes[0].name}`)] : null,
+      faint("Turn webhooks off:"), cmd("vyre hooks off"));
+  });
+}
+
+/** Guests: people from another tailnet this box is shared with, and the tools each may call. */
+function drawGuests(el) {
+  return optional(el, "Guests", "network.guests.list", d => {
+    const people = listOf(d.people, "login");
+    const safe = Array.isArray(d.safe) ? d.safe : [];
+    const safeLine = safe.length ? faint(`A guest can only ever call these: ${safe.join(", ")}.`) : null;
+    if (!d.enabled) return row("Guests", onOff(false),
+      faint("A guest is someone on another tailnet you shared this box with. They may call only the tools you list for them, and never act as you."),
+      safeLine, faint("Turn guests on from the box's terminal:"), cmd(`vyre call --tty network.guests.enable '{"on":true}'`));
+    return row("Guests", h("span", null, people.length ? `On, ${plural(people.length, "person", "people")}` : "On, no one yet"),
+      people.length ? plainList(people, x => {
+        const allowed = Array.isArray(x.allowed) ? x.allowed : Array.isArray(x.tools) ? x.tools : [];
+        const asked = Array.isArray(x.tools) ? x.tools.filter(t => !allowed.includes(t)) : [];
+        return [mono(x.login), h("div", { class: "set-tags" }, allowed.map(t => h("span", { class: "tag" }, t))),
+          asked.length ? faint(`Listed but not guest-safe, so refused: ${asked.join(", ")}.`) : null];
+      }) : null,
+      safeLine,
+      faint("Add someone from the box's terminal:"),
+      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["glass.open"]}'`),
+      people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null,
+      faint("Turn guests off:"), cmd(`vyre call --tty network.guests.enable '{"on":false}'`));
+  });
+}
+
+/** Agent nodes: whether each agent's computer joins the tailnet as its own tagged node. */
+function drawAgentNodes(el) {
+  return optional(el, "Agent nodes", "computers.tailnet.status", d => {
+    const comps = listOf(d.computers, "agent");
+    const tag = d.tag || "tag:vyre-agent";
+    const v = d.vault || null;
+    // Whether the auth key is in the Vault and granted: never its value.
+    const key = v ? faint(`Auth key ${v.item || ""} in the Vault: ${v.exists == null ? "not known" : v.exists ? (v.granted ? "there, and granted" : "there, not granted yet") : "not there yet"}${v.why ? ` (${v.why})` : ""}.`) : null;
+    const problem = d.problem ? h("div", { class: "small set-warn" }, d.problem) : null;
+    if (!d.enabled) return row("Agent nodes", onOff(false),
+      faint(`With this on, each agent's computer joins your tailnet as its own node, tagged ${tag}, so your tailnet policy can tell agents apart.`),
+      problem, key, cmd(`vyre call --tty computers.tailnet.set '{"enabled":true}'`));
+    return row("Agent nodes", h("span", null, "On"), faint(`Tagged ${tag}.`), problem, key,
+      comps.length ? plainList(comps, x => [h("span", null, x.agent || "an agent"), x.node ? [" ", mono(x.node)] : null,
+        h("span", { class: "small faint" }, x.running ? " running" : " not running")]) : faint("No agent has a computer yet."),
+      d.applies ? faint(`This ${d.applies}.`) : null,
+      cmd(`vyre call --tty computers.tailnet.set '{"enabled":false}'`));
+  });
+}
+
+/** Glass egress: the listed sites leave an agent's Chrome through your Mac, when the sidecar answers. */
+function drawEgress(el) {
+  return optional(el, "Glass egress", "computers.egress.status", d => {
+    const sites = Array.isArray(d.sites) ? d.sites : [];
+    const side = d.sidecar || {};
+    if (!d.enabled) return row("Glass egress", onOff(false),
+      faint("Some sites refuse a datacenter address. The sites you list leave an agent's Chrome through your own Mac instead."),
+      cmd(`vyre call --tty computers.egress.set '{"enabled":true,"sites":["portal.northwind.example"]}'`));
+    return row("Glass egress", h("span", null, sites.length ? `On, ${plural(sites.length, "site")}` : "On, no sites yet"),
+      sites.length ? h("div", { class: "set-tags" }, sites.map(x => h("span", { class: "tag" }, String(x)))) : null,
+      side.answers ? faint("The egress sidecar answers.")
+        : h("div", { class: "small set-warn" }, `The egress sidecar does not answer${side.why ? ` (${side.why})` : ""}. The listed sites fail until it does, rather than show the box's address.`),
+      d.problem ? h("div", { class: "small set-warn" }, d.problem) : null,
+      d.applies ? faint(`This ${d.applies}.`) : null,
+      cmd(`vyre call --tty computers.egress.set '{"enabled":false}'`));
+  });
+}
+
+/** Tailnet Lock: on or off, read only. While it is off, the commands the person runs on their Mac. */
+async function drawLock(el) {
+  const r = await attempt("onboard.tailscale", { action: "lock" });
+  if (r.error) { put(el, row("Tailnet Lock", h("span", { class: "muted" }, errText(r.error)))); return; }
+  const d = r.data || {};
+  const on = lockState(d);
+  if (on) { put(el, row("Tailnet Lock", h("span", null, "On"), h("div", { class: "small faint" }, on))); return; }
+  const steps = h("div");
+  const toggle = h("button", { type: "button", class: "btn btn-sm" }, LOCK.show);
+  toggle.addEventListener("click", () => {
+    const open = !steps.childNodes.length;
+    put(steps, open ? [
+      h("ol", { class: "set-lock-steps" }, lockSteps(d).map(x => h("li", null, h("div", { class: "small" }, x.text), x.copy ? h("code", { class: "set-mono" }, x.copy) : null))),
+      h("div", { class: "small faint" }, LOCK.never)] : null);
+    put(toggle, open ? LOCK.hide : LOCK.show);
+  });
+  put(el, row("Tailnet Lock", h("span", { class: "muted" }, "Off"),
+    h("div", { class: "small faint" }, LOCK.what), h("div", { class: "small faint" }, LOCK.cost), foot(toggle), steps));
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------

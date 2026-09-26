@@ -10,7 +10,8 @@ import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
 import * as config from "../../config/index.js";
 import { ending } from "../ending.js";
-import box, { add, move, parsePreflight, parseLink, plan, unfit, settled, newer, needsGroup } from "./box.js";
+import box, { add, move, parsePreflight, parseLink, plan, unfit, settled, newer, needsGroup, viaTailnet } from "./box.js";
+import { parse as parseTailnet } from "../tailnet.js";
 
 const FAKE_SSH = `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_SSH_LOG"
@@ -27,6 +28,8 @@ done
 export FAKE_TARGET="$1"
 shift
 [ -n "$op" ] && exit 0
+# A target named in FAKE_SSH_REFUSE turns every login away, as a Tailscale SSH policy would.
+if [ -n "\${FAKE_SSH_REFUSE:-}" ] && [ "$FAKE_TARGET" = "$FAKE_SSH_REFUSE" ]; then echo "tailscale: access denied by policy" >&2; exit 255; fi
 exec sh -c "$*"
 `;
 
@@ -405,4 +408,83 @@ test("box move: a failed copy starts the old box again and says which side faile
   assert.match(r.read("docker.log"), new RegExp(`${OLD} compose start`));
   assert.match(text, /running again on/);
   assert.equal(/** @type {any} */ (config.load()).box.ssh, OLD);
+});
+
+// ---- Tailscale SSH ----
+
+const HOST_KEYS = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleOnlyNotARealKey"];
+/** A tailnet whose peer "box" is at 100.64.0.5, with Tailscale SSH unless told otherwise. */
+const withPeer = (peer = {}) => ({ ...TAILNET, Peer: { n1: { HostName: "box", DNSName: "box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.5", "fd7a:115c:a1e0::5"],
+  Online: true, UserID: 7, OS: "linux", sshHostKeys: HOST_KEYS, ...peer } } });
+const tailscaleSays = (r, s) => fs.writeFileSync(path.join(r.root, "bin", "tailscale"), `#!/bin/sh\ncat <<'J'\n${JSON.stringify(s)}\nJ\n`, { mode: 0o755 });
+const TS_TARGET = "alex@box.tail0000.ts.net";
+/** Masters opened, by target, in order. */
+const masters = r => ssh(r).split("\n").filter(l => l.includes("ControlMaster=auto")).map(l => l.trim().split(" ").slice(-2)[0]);
+
+test("box: viaTailnet names the MagicDNS name only for an online peer that runs Tailscale SSH", () => {
+  const t = parseTailnet(withPeer());
+  assert.equal(t.peers[0].ssh, true, "sshHostKeys present");
+  for (const host of ["box", "box.tail0000.ts.net", "BOX.tail0000.ts.net.", "100.64.0.5", "fd7a:115c:a1e0::5"]) assert.equal(viaTailnet(`alex@${host}`, t), TS_TARGET, host);
+  assert.equal(viaTailnet("alex@203.0.113.9", t), null, "not on the tailnet");
+  assert.equal(viaTailnet("alex@box", parseTailnet(withPeer({ sshHostKeys: undefined }))), null, "no Tailscale SSH");
+  assert.equal(parseTailnet(withPeer({ sshHostKeys: [] })).peers[0].ssh, false);
+  assert.equal(viaTailnet("alex@box", parseTailnet(withPeer({ Online: false }))), null, "offline");
+  const two = { ...TAILNET, Peer: { ...withPeer().Peer, n2: { ...withPeer().Peer.n1, DNSName: "box-1.tail0000.ts.net.", TailscaleIPs: ["100.64.0.6"] } } };
+  assert.equal(viaTailnet("alex@box", parseTailnet(two)), TS_TARGET, "the first label of a MagicDNS name wins over a shared HostName");
+  const shared = { ...TAILNET, Peer: { a: { ...withPeer().Peer.n1, DNSName: "box-1.tail0000.ts.net." }, b: { ...withPeer().Peer.n1, DNSName: "box-2.tail0000.ts.net." } } };
+  assert.equal(viaTailnet("alex@box", parseTailnet(shared)), null, "a HostName two peers share names neither");
+});
+
+/** A box already set up and finished, so add goes straight from reaching it to the ending. */
+function finishedBox(t) {
+  const r = rig(t);
+  fs.mkdirSync(r.stack, { recursive: true });
+  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  r.setStatuses([status(6, { finished: true })]);
+  return r;
+}
+const noPair = { call: async () => ({ error: { code: "no_such_tool", message: "" } }) };
+
+test("box add: a host on the tailnet with Tailscale SSH is reached by its MagicDNS name, which is saved", async t => {
+  const r = finishedBox(t);
+  tailscaleSays(r, withPeer());
+  const { code, text } = await capture(() => add("alex@100.64.0.5", noPair));
+  assert.equal(code, 0, text);
+  assert.match(text, /reaching alex@box\.tail0000\.ts\.net over Tailscale SSH/);
+  assert.deepEqual(masters(r), [TS_TARGET], "one master, to the tailnet name");
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, TS_TARGET);
+});
+
+test("box add: when Tailscale SSH turns the Mac away, it falls back to the target as typed and saves that", async t => {
+  const r = finishedBox(t);
+  tailscaleSays(r, withPeer());
+  process.env.FAKE_SSH_REFUSE = TS_TARGET;
+  t.after(() => { delete process.env.FAKE_SSH_REFUSE; });
+  const { code, text } = await capture(() => add("alex@box", noPair));
+  assert.equal(code, 0, text);
+  assert.match(text, /Tailscale SSH did not let this Mac in \(tailscale: access denied by policy\); trying alex@box as typed/);
+  assert.deepEqual(masters(r), [TS_TARGET, "alex@box"]);
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@box");
+});
+
+test("box add: a host not on the tailnet, or a peer without Tailscale SSH, is reached as typed", async t => {
+  for (const [target, s] of [["alex@203.0.113.9", withPeer()], ["alex@box", withPeer({ sshHostKeys: undefined })]]) {
+    const r = finishedBox(t);
+    tailscaleSays(r, s);
+    const { code, text } = await capture(() => add(target, noPair));
+    assert.equal(code, 0, text);
+    assert.doesNotMatch(text, /Tailscale SSH/);
+    assert.deepEqual(masters(r), [target]);
+    assert.equal(/** @type {any} */ (config.load()).box.ssh, target);
+  }
+});
+
+test("box move: a new server on the tailnet with Tailscale SSH is reached and saved by its MagicDNS name", async t => {
+  const r = moving(t);
+  tailscaleSays(r, withPeer());
+  const { code, text } = await capture(() => move("alex@box", { yes: true }, { probe: async () => ({}) }));
+  assert.equal(code, 0, text);
+  assert.match(text, /reaching alex@box\.tail0000\.ts\.net over Tailscale SSH/);
+  assert.deepEqual(masters(r).slice(0, 2), [OLD, TS_TARGET], "the old box as saved, the new one over the tailnet");
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, TS_TARGET);
 });

@@ -23,14 +23,21 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   tmp-guard names it. Plus the test box test fixes. Full suite on the test box: 1449 tests, 1406 pass,
   0 fail, 42 skipped, `npm test` exit 0, tmp-guard clean.
 
+- 1b3a457 merge polish-surfaces: world.js theirs; scratch/tmp-guard/vault tests/helper test kept
+  both sides; the dialog-fix touchid gate test moved under SCRATCH (os import was gone). Full
+  suite on the test box: 1453 tests, 1409 pass, 0 fail.
+- a8b6520 merge tailnet (tailnet-surfaces included): policy.test imports, entrypoint egress PAC
+  plus --test-type, Chat session head plus health dot, all kept both sides. Full suite on the test box:
+  1578 tests, 1535 pass, 0 fail, 42 skipped, 1 todo, exit 0, tmp-guard clean.
+
 ## Doing
 
-- Merging, in order: work/polish-surfaces (deck/test/world.js: take polish-surfaces'), work/polish-cli,
-  work/tailnet (with its merged sub-branches), work/connectors when its lead says ready.
+- Waiting on the lead: merge work/polish-cli now or after its lock work and stress run (asked).
+  work/connectors waits for its lead's ready.
 
 ## Next
 
-- After each merge: targeted tests on the test box, report sha and numbers to the lead.
+- polish-cli, then connectors: one at a time, full suite on the test box, report sha and numbers.
 
 ## Needs from others
 

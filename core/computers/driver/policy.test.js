@@ -6,15 +6,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
 import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels } from "./policy.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
+import { chromeEnv } from "../egress.js";
 
 /** A one-request fake Engine: capture the create body it was actually sent, nothing else. */
 async function capture(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-policy-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-policy-"));
   const socket = path.join(dir, "d.sock");
   /** @type {any} */
   let body = null;
@@ -172,4 +173,17 @@ test("policy: allowCreate needs the box's own network, image and labelPrefix, an
   assert.throws(() => allowCreate({}, {}), /computers\.network|computers\.image|computers\.labelPrefix/);
   assert.throws(() => allowCreate({}, { network: "vyre-computers", image: "vyre/computer:0.1" }), /labelPrefix/);
   assert.throws(() => allowCreate({}, undefined));
+});
+
+test("policy: a create carrying the egress PAC passes unchanged, with no other field widened", async t => {
+  const e = await capture(t);
+  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
+  const env = { ...SPEC.env, ...chromeEnv({ enabled: true, sites: ["bank.example.com", "*.harlow.example"] }) };
+  await d.create({ ...SPEC, env });
+  const body = e.body();
+  assert.ok(body.Env.some(x => x.startsWith("VYRE_PROXY_PAC=data:application/x-ns-proxy-autoconfig;base64,")));
+  assert.deepEqual(allowCreate(body, CONFIG), { ok: true });
+  // The PAC travels in Env alone: the rest of the body is what a create without it sends.
+  const plain = await realBody(t);
+  assert.deepEqual({ ...body, Env: null }, { ...plain, Env: null });
 });

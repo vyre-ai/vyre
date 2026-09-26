@@ -8,7 +8,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS, PERSONAL, AGENTS, ensureMacColumns } from "./vault.js";
@@ -18,13 +17,14 @@ import {
 } from "./crypto.js";
 import { readSealed, writeSealed } from "./store.js";
 import { TEST_KDF } from "./testing.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 /** A cheap Argon2id for tests only; the Vault accepts it only because the constructor is told to. */
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const PASSWORD = fake("password");
 
 function home(t) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-v2-"));
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-v2-"));
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
   return tmp;
 }

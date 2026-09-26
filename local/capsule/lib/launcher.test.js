@@ -2,14 +2,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Apps, Frecency } from "./local.js";
-import { Launcher, defineWord } from "./launcher.js";
+import { Launcher, defineWord, SEND_TIMEOUT } from "./launcher.js";
 import { rank, intent, questionLike } from "./route.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 function appsIn(t, names) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-apps-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-apps-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   for (const n of names) fs.mkdirSync(path.join(dir, n + ".app"));
   return new Apps({ dirs: [dir] });
@@ -59,10 +59,12 @@ test("launcher: apps, settings and the calculator answer offline, ranked", async
 });
 
 test("launcher: frecency lifts what the user picks, from a file under the Capsule's own home", async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-frec-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-frec-"));
+  const frecency = new Frecency(path.join(dir, "frecency.json"));
+  // pick() saves on a 500 ms debounce; write it now, or the timer fires after the rm and makes the folder again.
+  t.after(() => { frecency.flush(); fs.rmSync(dir, { recursive: true, force: true }); });
   const opened = [];
-  const l = new Launcher({ apps: appsIn(t, ["Notes", "Notability"]), frecency: new Frecency(path.join(dir, "frecency.json")),
+  const l = new Launcher({ apps: appsIn(t, ["Notes", "Notability"]), frecency,
     open: async r => (opened.push(r.target), { ok: true }), files: async () => [] });
   await l.warm();
   const before = await l.quick("not", null);
@@ -140,8 +142,8 @@ test("launcher: pick opens only what it made, and copies a sum", async t => {
 /** A fake vyred: `answers[tool]` is a value or (input) => value, each after `delay[tool]` ms. */
 function fakeVyred(answers, delay = {}) {
   const calls = [];
-  const fn = (tool, input) => {
-    calls.push([tool, input]);
+  const fn = (tool, input, opts) => {
+    calls.push(opts ? [tool, input, opts] : [tool, input]);
     const a = answers[tool];
     const v = typeof a === "function" ? a(input) : a ?? { error: { code: "unknown_tool", message: tool } };
     return new Promise(res => setTimeout(() => res(v), delay[tool] || 0));
@@ -218,8 +220,25 @@ test("launcher: picking a box file fetches it, then opens the local copy", async
   assert.deepEqual(await gone.pick(row, "bud"), { error: "Could not fetch it from studio: no such file." });
 });
 
+test("launcher: a box file inside a mounted Taildrive share opens there, without fetching", async t => {
+  const opened = [];
+  const v = fakeVyred({ "files.drive.local": { data: { local: "/Users/x/Vyre/Box/projects/docs/budget 0.pdf", share: "projects" } } });
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: v.fn, boxName: "studio", open: async r => (opened.push(r.target), { ok: true }) });
+  const row = { kind: "boxfile", id: "box:/work/docs/budget 0.pdf", label: "budget 0.pdf", sub: "", last: 0, target: "/work/docs/budget 0.pdf", source: "box" };
+  assert.deepEqual(await l.pick(row, "bud"), { ok: true, close: true });
+  assert.deepEqual(v.calls, [["files.drive.local", { path: "/work/docs/budget 0.pdf" }]]);
+  assert.deepEqual(opened, ["/Users/x/Vyre/Box/projects/docs/budget 0.pdf"]);
+  // The mounted copy will not open (the share dropped): fetch as before.
+  const w = fakeVyred({ "files.drive.local": { data: { local: "/Users/x/Vyre/Box/projects/a.pdf" } }, "files.fetch": { data: { local: "/Users/x/.vyre/files/fetched/a.pdf" } } });
+  const tried = [];
+  const l2 = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: w.fn, boxName: "studio",
+    open: async r => (tried.push(r.target), r.target.includes("/Vyre/Box/") ? { error: "gone" } : { ok: true }) });
+  assert.deepEqual(await l2.pick({ ...row, target: "/work/a.pdf" }, "a"), { ok: true, close: true, note: "Fetched from studio." });
+  assert.deepEqual(tried, ["/Users/x/Vyre/Box/projects/a.pdf", "/Users/x/.vyre/files/fetched/a.pdf"]);
+});
+
 test("launcher: preview reads a text file's first 4 kB, asks the box for box files, else null", async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-prev-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-prev-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, "a.txt"), "é".repeat(3000));
   fs.writeFileSync(path.join(dir, "b.bin"), Buffer.from([1, 0, 2]));
@@ -232,4 +251,18 @@ test("launcher: preview reads a text file's first 4 kB, asks the box for box fil
   assert.equal(await l.preview({ kind: "folder", id: "d", label: "x", sub: "", target: dir }), null);
   assert.deepEqual(await l.preview({ kind: "boxfile", id: "box:/a", label: "a", sub: "", target: "/a" }), { kind: "text", mime: "text/plain", text: "hi", truncated: false });
   assert.deepEqual(v.calls, [["files.preview", { path: "/a", source: "box" }]]);
+});
+
+test("launcher: send hands a Mac file to files.send and says what vyred said", async t => {
+  const v = fakeVyred({ "files.send": ({ path: p }) => p.endsWith(".env") ? { error: { code: "not_available", message: "not available" } }
+    : { data: { sent: path.basename(p), bytes: 5, to: "box.tail0000.ts.net" } } });
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: v.fn });
+  const file = { kind: "file", id: "file:/h/budget.md", label: "budget.md", sub: "~", last: 1, target: "/h/budget.md" };
+  assert.deepEqual(await l.send(file), { ok: true, note: "Sent budget.md to box.tail0000.ts.net." });
+  assert.deepEqual(v.calls.find(c => c[0] === "files.send")?.[1], { path: "/h/budget.md" });
+  assert.match((await l.send({ ...file, target: "/h/.env" })).error || "", /not available/);
+  assert.match((await l.send({ ...file, kind: "boxfile" })).error || "", /only a file on this Mac/);
+  assert.equal(v.calls.filter(c => c[0] === "files.send").length, 2, "a box file never reaches files.send");
+  assert.deepEqual(v.calls.find(c => c[0] === "files.send")?.[2], { timeout: SEND_TIMEOUT }, "a send waits as long as vyre send does");
+  assert.ok(SEND_TIMEOUT > 60 * 60_000, "longer than files.send's own hour for Taildrop");
 });

@@ -7,18 +7,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Fill, serveFill } from "./fill.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const EXT = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
 const canary = () => `fixture-canary-${crypto.randomBytes(12).toString("hex")}`;
 const SEED = "JBSWY3DPEHPK3PXP";
 
 async function setup(t) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-fillsave-"));
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-fillsave-"));
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const events = [];
