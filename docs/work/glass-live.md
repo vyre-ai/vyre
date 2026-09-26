@@ -22,6 +22,11 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   reaching the computer, hand back (input dropped, hands resume), Chrome to the Google sign-in
   page, Files tab, idle release, freeze, thaw, vyred restart reconcile, stop and start.
 - `test/deck-contract.test.js` guards Deck-to-tool calls.
+- Tests (the test box, targeted): 372 run, 365 pass, 0 fail, 7 skipped (computers, computerd, glass,
+  names, modules, switchboard, daemon, dockerproxy, hands-chrome, deck glass, deck-contract).
+- perf-check (the test box, host load 6.9): CPU p95 0.00%, RSS mean 116.4 MB, max 149.7 MB, no timer
+  under 60 s. The only new wait is the boot check (250 ms steps, only while a computer starts).
+- Throwaway stack torn down (containers, volumes, networks); /srv/vyre-glass keeps compose.yml.
 
 ## Doing
 - Nothing. Waiting on the integrator to merge.
