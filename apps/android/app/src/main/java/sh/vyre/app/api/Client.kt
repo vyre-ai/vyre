@@ -86,6 +86,10 @@ class Client(
         return callProved(tool, input, reason)
     }
 
+    /** A plain JSON POST to a path that is not a tool (the debug test world's /__test/code). */
+    suspend fun post(path: String, body: JsonObject = JsonObject(emptyMap())): JsonElement =
+        send(Request.Builder().url(base() + path).post(Canonical.encode(body).toRequestBody(JSON)).header("accept", "application/json").build(), 15)
+
     private suspend fun get(path: String): JsonElement = send(Request.Builder().url(base() + path).get().header("accept", "application/json").build(), 15)
 
     private suspend fun send(req: Request, timeoutSec: Long): JsonElement = withContext(Dispatchers.IO) {

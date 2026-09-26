@@ -43,6 +43,20 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="vyre" android:host="enrolled" />
             </intent-filter>
+            <!-- Links into the app: vyre://needs/<id>, vyre://threads/<id>, vyre://settings, vyre://capsule -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vyre" android:host="needs" />
+                <data android:scheme="vyre" android:host="threads" />
+                <data android:scheme="vyre" android:host="settings" />
+                <data android:scheme="vyre" android:host="now" />
+                <data android:scheme="vyre" android:host="chat" />
+                <data android:scheme="vyre" android:host="capsule" />
+                <data android:scheme="vyre" android:host="files" />
+                <data android:scheme="vyre" android:host="more" />
+            </intent-filter>
             <!-- Share a file to the box. Until files.put exists the app says so. -->
             <intent-filter android:label="Send to the box">
                 <action android:name="android.intent.action.SEND" />

@@ -2,6 +2,9 @@ package sh.vyre.app.ui
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -203,3 +206,54 @@ fun rememberTick(periodMs: Long = 1000): Int {
 
 @Composable
 fun Gap(h: androidx.compose.ui.unit.Dp) = Box(Modifier.size(1.dp, h))
+
+/**
+ * A one-line field on carbon: a label above, Signal only on the focus ring. `onGo` runs on the
+ * keyboard's action key. `trailing` sits inside the field at the right (a voice button, a clear).
+ */
+@Composable
+fun InputBox(
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    mono: Boolean = false,
+    imeAction: androidx.compose.ui.text.input.ImeAction = androidx.compose.ui.text.input.ImeAction.Go,
+    keyboard: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
+    onGo: () -> Unit = {},
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val c = V.c
+    var focused by remember { mutableStateOf(false) }
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(sh.vyre.app.design.Radius.panel)
+    Row(
+        modifier.fillMaxWidth().heightIn(min = Space.target + 4.dp)
+            .background(c.panel, shape)
+            .then(Modifier.border(if (focused) 2.dp else 1.dp, if (focused) c.focus else c.ruleStrong, shape))
+            .padding(start = Space.m, end = if (trailing != null) 4.dp else Space.m),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f).padding(vertical = Space.m)) {
+            val style = (if (mono) Type.code else Type.body).copy(color = c.text)
+            androidx.compose.foundation.text.BasicTextField(
+                value, onChange, textStyle = style, singleLine = true,
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(c.focus),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = imeAction, keyboardType = keyboard, autoCorrectEnabled = !mono,
+                    capitalization = if (mono) androidx.compose.ui.text.input.KeyboardCapitalization.None else androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onAny = { onGo() }),
+                modifier = Modifier.fillMaxWidth()
+                    .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                    .onFocusChanged { focused = it.isFocused }
+                    .semantics { contentDescription = placeholder },
+                decorationBox = { inner -> if (value.isEmpty()) Text(placeholder, style = style.copy(color = c.label), maxLines = 1); inner() },
+            )
+        }
+        if (trailing != null) trailing()
+    }
+}
+
+/** A line of mono under a title: `a · b · c`, leaving out the empty parts. */
+fun dots(vararg parts: String?): String = parts.filterNot { it.isNullOrBlank() }.joinToString(" · ")

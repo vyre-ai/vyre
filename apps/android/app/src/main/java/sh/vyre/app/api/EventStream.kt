@@ -50,14 +50,18 @@ class SseParser {
 
     /** Feed a chunk that may hold several lines or part of one. */
     private val partial = StringBuilder()
+    /** The last chunk ended in CR: an LF opening the next chunk is the rest of that CRLF, not a blank line. */
+    private var skipLf = false
     fun feed(chunk: String): List<SseFrame> {
         val out = mutableListOf<SseFrame>()
         partial.append(chunk)
+        if (skipLf && partial.isNotEmpty()) { if (partial[0] == '\n') partial.deleteCharAt(0); skipLf = false }
         while (true) {
             val i = partial.indexOfFirst { it == '\n' || it == '\r' }
             if (i < 0) break
-            val crlf = partial[i] == '\r' && i + 1 < partial.length && partial[i + 1] == '\n'
-            if (partial[i] == '\r' && i + 1 == partial.length) break // wait: it may be CRLF split across chunks
+            val cr = partial[i] == '\r'
+            val crlf = cr && i + 1 < partial.length && partial[i + 1] == '\n'
+            if (cr && i + 1 == partial.length) skipLf = true
             val l = partial.substring(0, i)
             partial.delete(0, i + if (crlf) 2 else 1)
             line(l)?.let(out::add)

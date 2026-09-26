@@ -36,6 +36,7 @@ class VyreApp : Application() {
 
     /** Sign out, local half: the key, the cache, the push key, the address. */
     fun wipe() {
+        client.presenceSession = null
         key.delete()
         cache.wipe()
         sh.vyre.app.push.PushRegistration.wipe(this)
