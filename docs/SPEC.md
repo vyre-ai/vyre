@@ -524,7 +524,9 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 5. Every file change is visible, including changes a command made without saying so.
 6. Only an explicit question from an agent asks for the user's attention.
 7. Anything Vyre tells the user, it can show the source of.
-8. No value from the Vault appears on any screen, log or event.
+8. No value from the Vault appears on any screen, log or event, except to a person who has just
+   proved presence on their own device, for that one value (ADR 0004, ADR 0006). Never to a model,
+   an agent, a log or an event.
 9. The Capsule works offline for the user's own Mac.
 
 ---
