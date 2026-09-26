@@ -42,8 +42,9 @@ export async function start(opts = {}) {
 
   const db = open(p.db);
   const events = new Events(db);
-  // vyred always checks presence; a test may swap in a verifier with fake OS touch points.
-  const presence = opts.presence || new Presence({ db, events, log });
+  // vyred always checks presence. A test may pass a verifier, or a function that builds one on
+  // this store (to give the real one fake OS touch points).
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log });
   const registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, presence });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
 
