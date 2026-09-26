@@ -240,14 +240,14 @@ export class Presence {
 
   /**
    * A code on a login terminal proves a person only where a model cannot open a login terminal
-   * of its own. On the box it can: the Mac it runs on usually holds SSH keys to the box. So on the
-   * box a terminal proves presence only until the first passkey is enrolled (onboarding, and the
-   * first pairing); after that, passkeys do.
+   * of its own. On the box it can: the Mac it runs on usually holds SSH keys to the box. And in
+   * the box's container, `vyre` reaches vyred through `docker compose exec`, whose terminal no
+   * `who` lists, so nothing there could tell the person's terminal from Claude's. The box never
+   * takes a terminal code; its first passkey comes from onboarding's one-time code.
    * @param {string} [tool]
    */
   ttyAllowed(tool) {
-    if (this.role !== "box") return true;
-    return !this.db.prepare("SELECT 1 FROM presence_keys WHERE kind = 'passkey' LIMIT 1").get();
+    return this.role !== "box";
   }
 
   /**

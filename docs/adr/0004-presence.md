@@ -217,14 +217,18 @@ and a declaration only ever adds to it.
 `presence = { method, keyId }`. `keyId` is the enrolled Capsule key or passkey, or null. The
 proof itself never reaches a tool.
 
-**The terminal method on the box.** The Mac that Claude runs on usually holds the user's SSH
-keys to the box, and `ssh -t box` gives a model a login terminal that `who` lists. Whoever holds
-the client end of that terminal reads the code vyred writes to it. So on the box (`role: "box"`),
-a terminal code proves presence only until the first passkey is enrolled: that covers
-onboarding and the first pairing, when nothing stronger exists. After that, the box takes
-passkeys only. Onboarding should end with a passkey, enrolled through `presence.code`, which the
-onboarding module can mint as a module caller. On a Mac, `ssh localhost` works the same way when
-Remote Login is on. That is one more reason `vyre` uses Touch ID first.
+**The terminal method on the box.** The box never takes a terminal code (`role: "box"`), for two
+reasons:
+- The Mac that Claude runs on usually holds the user's SSH keys, and `ssh -t box` gives a model a
+  login terminal whose client end it holds.
+- In the box's container, `vyre` reaches vyred through `docker compose exec`, whose terminal no
+  `who` lists. Nothing the wrapper could pass in would be more trustworthy than what Claude
+  inside the container could pass.
+
+The first passkey comes from onboarding instead. `onboard.finish` mints a `presence.code` as a
+module caller and hands the person a Deck link carrying it. Pairing and every later approval on
+the box use a passkey. On a Mac, `ssh localhost` gives a model a login terminal in the same way
+when Remote Login is on. That is one more reason `vyre` uses Touch ID first.
 
 **Box identity.** `tailnet:<login>` is an owner device, not a person. Claude on the Mac shares
 that login. A tailnet caller may read what the owner may read, but it gets no presence.

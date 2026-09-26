@@ -279,16 +279,15 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   assert.equal(reg.listTools().find(x => x.name === "chat.press").presence, undefined);
 });
 
-test("presence: on the box a terminal proves presence only until the first passkey", async t => {
+test("presence: the box never takes a terminal code; its first passkey comes from a one-time code", async t => {
   const { p } = setup(t);
   p.role = "box";
-  assert.ok((await p.methods()).includes("tty"), "before any passkey, the terminal is all there is");
-  const ec = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  p.enroll({ kind: "passkey", name: "Phone", public_key: ec, alg: -7, rp_id: "box.example.com", credential_id: "cred-0002" });
-  assert.ok(!(await p.methods()).includes("tty"), "after one, passkeys only");
+  assert.ok(!(await p.methods()).includes("tty"));
   assert.equal((await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
   assert.equal((await p.challenge({ tool: "presence.enroll", input: {}, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
   assert.equal((await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: "x", code: "y" } })).ok, false);
+  const { code } = p.mintCode();
+  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "tailnet:me@example.com", proof: { method: "code", code } })).ok, true);
 });
 
 test("presence: a session proves reveal, copy and TOTP for a while, on one device, for items that allow it", async t => {
