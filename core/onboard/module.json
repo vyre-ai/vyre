@@ -1,0 +1,11 @@
+{
+  "name": "onboard",
+  "version": "0.1.0",
+  "roles": ["box"],
+  "requires": [],
+  "does": { "tools": ["onboard.status", "onboard.name", "onboard.claude", "onboard.tailscale", "onboard.history", "onboard.skip", "onboard.finish", "onboard.link"] },
+  "watches": { "emits": ["onboard.stepped", "onboard.finished"] },
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

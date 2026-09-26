@@ -40,6 +40,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   addresses, loopback could not reach it, and a request from the box itself with forged
   `Tailscale-User-Login` and `x-vyre-caller` headers got 403. Real `whois` passed the owner's
   other devices and refused a node of another login.
+- The `onboard` module (role box): the six steps of spec section 1.
+  - Tools: `onboard.status`, `onboard.name`, `onboard.claude` (the token goes to the vault and
+    never comes back), `onboard.tailscale`, `onboard.history`, `onboard.skip` and
+    `onboard.finish`, plus the socket-only `onboard.link`.
+  - Before the owner is seen on the tailnet, a loopback listener on 127.0.0.1:7300 serves only
+    `/onboard/...`, those tools (plus `projects.catalog`, `projects.create` and
+    `recall.status`) and `onboard.*` events.
+  - Everything sits behind a one-time token that becomes an HttpOnly, SameSite=Strict cookie.
+    The token is hashed, single use, and expires after an hour.
+  - The listener checks for a loopback Host (against DNS rebinding) and a JSON body with a
+    loopback Origin. It closes when the owner first reaches the tailnet address.
 
 ### Shared core for the parallel workstreams (2026-09-26)
 
