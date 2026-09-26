@@ -469,7 +469,7 @@ test("learn: learn.edit refuses every weakening and names learn.relax; tightenin
   assert.equal((await two({ level: "block" })).data.level, "block", "raised");
   assert.equal((await two({ when: "always" })).data.when, "always", "widened to always");
   assert.ok((await two({ check: { kind: "text", pattern: "Regards", label: "Regards" } })).data.check, "a check added where there was none");
-  assert.equal((await reg.call("learn.edit", { id: 1, scope: { agent: "kit" } }, "mcp")).error.code, "failed");
+  assert.ok(["presence_required", "failed"].includes((await reg.call("learn.edit", { id: 1, scope: { agent: "kit" } }, "mcp")).error.code));
   assert.deepEqual((await reg.call("learn.relax", { id: 1, scope: { agent: "kit" }, pinned: true }, "cli")).data.scope, { agent: "kit" });
   assert.deepEqual((await reg.call("learn.edit", { id: 1, scope: "all", pinned: false }, "mcp")).data.scope, "all", "widening back is free");
 });
@@ -514,8 +514,10 @@ test("learn: guards ask at every level, online, even for a lesson scoped elsewhe
   const { reg } = await learning(t, home, fakeProjects(home));
   await reg.call("learn.add", { text: "never use em dashes", level: "remind", scope: { project: "harlow-site" } });
   const rules = (tool_name, tool_input) => reg.call("harness.rules", { tool_name, tool_input, cwd: "/w/other", session: "s1" });
-  assert.equal((await rules("Write", { file_path: path.join(home, "lessons.json"), content: "{}" })).data.decision, "ask");
-  assert.equal((await rules("Bash", { command: "vyre call learn.retire '{\"id\":1}'" })).data.decision, "ask");
+  // The floor (ADR 0004) denies Vyre's own state and the human-only vyre commands outright,
+  // which is stricter than the lesson guards' ask.
+  assert.equal((await rules("Write", { file_path: path.join(home, "lessons.json"), content: "{}" })).data.decision, "deny");
+  assert.equal((await rules("Bash", { command: "vyre call learn.retire '{\"id\":1}'" })).data.decision, "deny");
   assert.equal((await rules("Bash", { command: "npm test" })).data.decision, null);
 });
 
@@ -599,13 +601,14 @@ test("learn: a yes that is not a person's accepts nothing: -p input, a headless 
 test("learn: guards hold online with no lesson active; the lesson files wait for one", async t => {
   const { reg, home } = await learning(t);
   const rules = (tool_name, tool_input, extra = {}) => reg.call("harness.rules", { tool_name, tool_input, cwd: "/w/other", session: "s1", ...extra });
-  assert.equal((await rules("Bash", { command: `rm ${home}/vyre.db` })).data.decision, "ask");
-  assert.equal((await rules("Write", { file_path: path.join(home, "learned", "skills", "x", "SKILL.md"), content: "x" })).data.decision, "ask");
+  // Vyre's own state is the floor's (ADR 0004): denied outright, stricter than an ask.
+  assert.equal((await rules("Bash", { command: `rm ${home}/vyre.db` })).data.decision, "deny");
+  assert.equal((await rules("Write", { file_path: path.join(home, "learned", "skills", "x", "SKILL.md"), content: "x" })).data.decision, "deny");
   assert.equal((await rules("Bash", { command: "echo '{}' | node /p/harness/hooks/hook.js enrich" }, { plugin_root: "/p/harness" })).data.decision, "ask");
   assert.equal((await rules("Edit", { file_path: "/p/harness/hooks/hooks.json" }, { plugin_root: "/p/harness" })).data.decision, "ask");
   assert.equal((await rules("Edit", { file_path: "/p/harness/hooks/hooks.json" })).data.decision, null, "a checkout that is not the loaded plugin");
   assert.equal((await rules("Bash", { command: "claude plugin disable vyre" })).data.decision, "ask");
-  assert.equal((await rules("Bash", { command: `rm ${home}/lessons.json` })).data.decision, null);
+  assert.equal((await rules("Bash", { command: `rm ${home}/lessons.json` })).data.decision, "deny", "no lesson guards it, but the floor guards Vyre's home");
   assert.equal((await rules("Bash", { command: "npm test" })).data.decision, null);
 });
 

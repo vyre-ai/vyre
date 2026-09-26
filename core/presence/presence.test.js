@@ -336,3 +336,26 @@ test("presence: under tests the real Touch ID is never offered or tried; the ref
   assert.equal((await faked.verify({ ...APPROVE, caller: "cli", proof: { method: "touchid" } })).ok, true);
   assert.equal(asked, 1);
 });
+
+test("presence: every tool on the floor's list is one a shipped module declares", () => {
+  // A name no module registers guards nothing: learn.skill_install once sat here while the tool
+  // was learn.skill-install. The registry refuses a tool its manifest does not declare, so the
+  // manifests are the whole set.
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  const declared = new Set(discover(["core", "local", "modules"].map(d => path.join(repo, d)))
+    .flatMap(m => (m.manifest && m.manifest.does && m.manifest.does.tools) || []));
+  assert.ok(declared.has("gate.approve") && declared.size > 50, "the manifests were found");
+  // Held ahead of the tool on purpose, so it is human-only from its first day (core/vault/prove.js
+  // lists it too). Anything else unregistered is a typo.
+  const reserved = new Set(["vault.export"]);
+  assert.deepEqual([...HUMAN_ONLY].filter(t => !declared.has(t) && !reserved.has(t)), []);
+  for (const t of reserved) assert.ok(!declared.has(t), `${t} exists now: drop it from reserved`);
+});
+
+test("presence: under tests the real terminal code is never written; tty is not offered", async t => {
+  // writeTty left undefined is the real one, which writes into a login terminal the user holds.
+  const { p } = setup(t, { writeTty: undefined });
+  assert.ok(!(await p.methods()).includes("tty"));
+  const c = await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/ttys003" });
+  assert.equal(c.error.code, "no_dialog");
+});

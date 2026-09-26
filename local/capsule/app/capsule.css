@@ -22,7 +22,7 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 [hidden] { display: none !important; }
 .mono { font-family: var(--mono); }
 
-.cap { width: 560px; background: var(--carbon); border: 1px solid var(--rule-strong); border-radius: 10px; overflow: hidden;
+.cap { width: 680px; background: var(--carbon); border: 1px solid var(--rule-strong); border-radius: 10px; overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); }
 
 .lbl { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ash); }
@@ -30,7 +30,7 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .kbd.live { color: var(--bone); border-color: var(--ash); }
 
 /* The bar: mark, chip, the box, and one hint on the right. */
-.bar { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px; -webkit-app-region: drag; }
+.bar { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 14px 0 16px; -webkit-app-region: drag; }
 .mark { flex-shrink: 0; }
 .field { flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
 .chip { font-family: var(--mono); font-size: 13px; line-height: 18px; padding: 2px 6px; border-radius: 4px; background: var(--raised); border: 1px solid var(--rule-strong); color: var(--bone); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }

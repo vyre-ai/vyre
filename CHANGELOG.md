@@ -19,6 +19,40 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The hygiene rules (forbidden names, the secret pattern) moved to `scripts/lib/hygiene.js`,
   shared by `test/hygiene.test.js` (unchanged behaviour) and docs-check.
 
+#### The Capsule is Spotlight's size
+
+- The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it
+  replaces. `local/capsule/app/main.js`, `capsule.css`.
+
+#### The login keychain and every dialog belong to ~/.vyre alone
+
+- A dev world (`deck/test/world.js`), a demo and a stress run each started a real vyred on a temp
+  `VYRE_HOME` outside `node --test`, so the vault's test guard did not apply: with no
+  `vault.keystore` a Mac defaulted to the login keychain, and 32 `vyre-vault` items built up in the
+  user's login keychain while prompts kept reaching their screen. All 32 are deleted.
+- The vault now uses the login keychain only for `~/.vyre` (the account's home from the user
+  database, not `$HOME`) or a home whose config says `vault.keychain: true`. Any other home that
+  picks no keystore gets the file keystore; one that asks for `keychain` is refused with a message
+  naming both fixes, before any helper is built or `security` runs. `vault.keychain` as a string is
+  still a keychain file for tests. `vyre up` on a real Mac install writes `vault.keychain: true`.
+- `dialogsAllowed()` (and the Capsule's copy) is false for a `VYRE_HOME` other than `~/.vyre`, and
+  vyred started in-process on such a root sets `VYRE_NO_DIALOGS=1` outside tests.
+  `VYRE_ALLOW_DIALOGS=1` is the override for a person who keeps Vyre in a custom home on purpose:
+  it never applies under `node --test`, and `VYRE_NO_DIALOGS=1` still wins.
+- `deck/test/world.js`, `deck/test/vault-shots.js`, `test/fixtures/vyred-present.js` and
+  `scripts/release-check.sh` pass `VYRE_NO_DIALOGS=1` and the file keystore.
+- `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and
+  `osascript` that record calls, keeps its key in a file, builds no keychain helper and calls
+  neither; a temp home that asks for the keychain is refused; the world scripts set the flags.
+#### e2e: a real install walked from main
+
+- The onboarding page kept Continue off on step 1 whenever the box had no vyre.run zone token,
+  which is every box: "That name is not free: could not check". A name the check cannot run for
+  is fine now, since the address is the ts.net one, chosen in step 4. The name field also gets the
+  same `input` style as the assistant's.
+- `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
+  still starting (6s on a loaded Mac). It waits up to 15s now.
+
 #### No Touch ID prompt, or anything else on screen, under tests
 
 - A test run raised a real Touch ID dialog ("Relax Vyre lesson 1") on the user's screen: presence's
@@ -34,6 +68,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   autostart in vyred, the Capsule's own `/usr/bin/open` (a copy of the rule in
   `local/capsule/lib/dialogs.js`, since the packaged app carries no `core`), the hands-mac
   Accessibility helper, and `security` on the login keychain (a test keychain file still works).
+- Nor does presence write its terminal code under tests: it would land in a login terminal the
+  user holds. `tty` is not offered then, and a challenge for it answers `no_dialog`.
+
+#### Learning meets presence
+
+- The `confirm.js` stopgap is gone. `vyre learn` asks for the human-only learn tools through
+  `callAsPerson`, as `vyre call` does, and vyred checks the proof (ADR 0004). The CLI tests assert
+  refusals against the real verifier and approvals with `upPresent`.
+- The floor's list named `learn.skill_install`, a tool that does not exist; it is
+  `learn.skill-install`, and the Deck's Install button called the same wrong name. A test fails
+  when the list names a tool no shipped module declares (`vault.export` is held in reserve).
 
 #### Presence: a person proves they are there (ADR 0004)
 
@@ -67,7 +112,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `test/fixtures/vyred-present.js` for CLI tests. That fixture refuses any home outside the temp folder.
 - After review with the other workstreams:
   - The floor's list now covers the vault's value-out tools, `learn.relax` and
-    `learn.skill_install`, `computers.takeover` and `computers.giveback`, and `link.pair.approve`.
+    `learn.skill-install`, `computers.takeover` and `computers.giveback`, and `link.pair.approve`.
   - Tools get `presence: { method, keyId }` in run()'s context, never the proof.
   - On the box, a terminal code only enrolls the first passkey, since a model on the Mac can
     usually SSH into a login terminal there.
@@ -97,8 +142,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   forwards its own re-serialisation, never the caller's bytes. Attached (upgraded) exec is
   refused. The proxy runs from the vyre image as uid 1000 in the socket's group, with a read-only
   root and no capabilities. `install-box.sh` writes that group to `/srv/vyre/.env` as
-  `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It needs `policy.js` from
-  work/computers: until that merges, `main.js` stops at start with a clear error.
+  `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It checks creates with
+  Computers' own `policy.js`.
 
 #### `vyre link` points to the Deck
 

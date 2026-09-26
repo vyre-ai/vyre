@@ -28,7 +28,7 @@ export const HUMAN_ONLY = new Set([
   "vault.unlock-passphrase", "vault.reveal", "vault.copy", "vault.resolve", "vault.render",
   "vault.session.open", "vault.export", "vault.kit",
   // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
-  "learn.accept", "learn.retire", "learn.relax", "learn.skill_install",
+  "learn.accept", "learn.retire", "learn.relax", "learn.skill-install",
   // A person's hands on an agent's computer, and a new machine joined to this one.
   "computers.takeover", "computers.giveback", "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
@@ -180,6 +180,8 @@ export class Presence {
     // The real helper shows a system dialog, so it never runs under tests (core/config/dialogs.js).
     // An injected stand-in shows nothing, so it always may.
     this.noDialogs = touchid === undefined && !dialogsAllowed(env);
+    // Nor does the real terminal code: it would land in the user's own terminal window.
+    this.noTtyWrites = write === undefined && !dialogsAllowed(env);
     this.webauthnImpl = webauthn;
     this.now = now || Date.now;
     migrate(db, "presence", MIGRATIONS);
@@ -230,7 +232,7 @@ export class Presence {
       const within = new Promise(r => setTimeout(r, 3000, false).unref());
       try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
     }
-    if (this.ttyAllowed()) out.push("tty");
+    if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
     const kinds = new Set(this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all().map(r => String(r.kind)));
     if (kinds.has("capsule")) out.push("capsule");
     if (kinds.has("passkey")) out.push("passkey");
@@ -276,6 +278,7 @@ export class Presence {
       // script, expect, Python pty and tmux panes are not login sessions, so who does not list them.
       const logins = await this.who();
       if (!logins.includes(tty.slice("/dev/".length))) return { error: { code: "denied", message: `${tty} is not a login terminal; run the command in a terminal window or over SSH` } };
+      if (this.noTtyWrites) return { error: { code: NO_DIALOG, message: "no terminal code is written under tests" } };
       const code = randomCode(6);
       const summary = await this.summary(tool, input, def);
       try { this.writeTty(tty, `\r\n  Vyre · ${summary}\r\n  To allow it, type this code where you ran the command: ${code}\r\n\r\n`); }

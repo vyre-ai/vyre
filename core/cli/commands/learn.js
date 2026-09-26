@@ -3,13 +3,12 @@
 // accepting, retiring and re-levelling a lesson are the user's calls, so they live here too.
 // Raising a level or widening a scope is learn.edit, which anyone may do; lowering one or
 // narrowing one is learn.relax, which needs the user. So do accepting, installing, retiring and
-// dismissing. Until ADR 0004's presence registry checks that in vyred, each of these asks the
-// person at the terminal to type the id back first (confirm.js, a stopgap), which a script or
-// Claude's own shell cannot do.
+// dismissing: vyred asks for a person's proof (ADR 0004), which callAsPerson gets from this
+// terminal and which a script or Claude's own shell cannot give.
 
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { confirm, HUMAN_TOOLS } from "../confirm.js";
+import { callAsPerson } from "../presence.js";
 
 const LEVELS = ["remind", "ask", "block"];
 const USAGE = "vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills]";
@@ -38,20 +37,9 @@ const idOf = (args, usage) => {
   return id;
 };
 
-/** A human-only tool asks the person at the terminal first; false after saying why not. */
-function present(tool, id, summary) {
-  if (!HUMAN_TOOLS.includes(tool)) return true;
-  const c = confirm({ token: id, summary, what: `${tool} ${id}` });
-  if (!c.ok) out(beacon("  ") + c.why);
-  return c.ok;
-}
-/** What the person reads before typing the id back. */
-const about = (verb, l) => `${verb} lesson ${l.id}: "${l.rule}" [${l.level}]`;
-
-/** Run a tool that returns one lesson, and show it. `summary` is what a human-only tool shows first. */
-async function one(tool, input, said, summary = `${tool} ${input.id}`) {
-  if (!present(tool, input.id, summary)) return 1;
-  const r = await call(tool, input);
+/** Run a tool that returns one lesson, and show it. A human-only tool asks for the person's proof. */
+async function one(tool, input, said) {
+  const r = await callAsPerson(tool, input);
   if (r.error) return fail(r);
   out(`  ${said} ${bold(String(r.data.id))}`);
   line(r.data);
@@ -186,15 +174,13 @@ async function skills(args) {
     else if (flags.includes("--account")) Object.assign(input, { scope: "account" });
     else if (flags.includes("--project")) Object.assign(input, { scope: "project" });
     if (flags.includes("--private")) Object.assign(input, { private: true });
-    if (!present("learn.skill-install", id, `Install Vyre skill ${id} (${input.scope || "its own scope"}${input.agent ? ` ${input.agent}` : ""}): every future session there follows it`)) return 1;
-    const r = await call("learn.skill-install", input);
+    const r = await callAsPerson("learn.skill-install", input);
     if (r.error) return fail(r);
     out(`  installed skill ${bold(String(r.data.id))} ${dim(r.data.path)}`);
     return 0;
   }
   const tool = sub === "retire" ? "learn.skill-retire" : "learn.skill-dismiss";
-  if (!present(tool, id, `${sub === "retire" ? "Retire" : "Dismiss"} Vyre skill ${id}`)) return 1;
-  const r = await call(tool, { id });
+  const r = await callAsPerson(tool, { id });
   if (r.error) return fail(r);
   out(`  ${sub === "retire" ? "retired" : "dismissed"} skill ${bold(String(r.data.id))}`);
   return 0;
@@ -226,7 +212,7 @@ export default {
       if (id === null) return 1;
       const l = await current(id);
       if (!l) return 1;
-      return one(`learn.${sub}`, { id }, sub === "accept" ? "accepted lesson" : "retired lesson", about(sub === "accept" ? "Accept" : "Retire", l));
+      return one(`learn.${sub}`, { id }, sub === "accept" ? "accepted lesson" : "retired lesson");
     }
     if (sub === "show") {
       const id = idOf(rest, "vyre learn show <id>");
@@ -250,7 +236,7 @@ export default {
       if (all.error) return fail(all);
       const now = all.data.find(l => l.id === id);
       const lower = now && LEVELS.indexOf(rest[1]) < LEVELS.indexOf(now.level);
-      return one(lower ? "learn.relax" : "learn.edit", { id, level: rest[1] }, "changed lesson", now ? `${about("Relax", now)}: lower it to ${rest[1]}` : undefined);
+      return one(lower ? "learn.relax" : "learn.edit", { id, level: rest[1] }, "changed lesson");
     }
     if (sub === "scope") {
       const id = idOf(rest, "vyre learn scope <id> all|project [slug]|agent <name>");
@@ -261,7 +247,7 @@ export default {
       if (scope === "all") return one("learn.edit", { id, scope }, "changed lesson");
       const l = await current(id);
       if (!l) return 1;
-      return one("learn.relax", { id, scope }, "changed lesson", `${about("Relax", l)}: hold it only for ${where(scope)}`);
+      return one("learn.relax", { id, scope }, "changed lesson");
     }
     if (sub === "relax") {
       const id = idOf(rest, "vyre learn relax <id> <what>");
@@ -270,7 +256,7 @@ export default {
       if (!l) return 1;
       const change = await relaxOf(l, rest.slice(1));
       if (!change) return 1;
-      return one("learn.relax", { id, ...change }, "relaxed lesson", `${about("Relax", l)}: ${JSON.stringify(change)}`);
+      return one("learn.relax", { id, ...change }, "relaxed lesson");
     }
     if (sub === "stats") return stats();
     if (sub === "signals") return signals();
