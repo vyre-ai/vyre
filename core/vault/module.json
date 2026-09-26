@@ -135,7 +135,8 @@
         "title": "Vault"
       },
       "action:vault.fill.native": {
-        "title": "Fill in the front app"
+        "title": "Fill in the front app",
+        "hide": true
       },
       "action:vault.copy": {
         "title": "Copy the password or key"

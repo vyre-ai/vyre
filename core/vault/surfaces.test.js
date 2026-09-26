@@ -83,6 +83,8 @@ test("surfaces: only people reach reveal, copy, fill and sessions; Claude and mo
   assert.deepEqual(Object.keys(manifest.shows.capsule), ["results:vault.search", "action:vault.fill.native", "action:vault.copy",
     "action:vault.copy#username", "action:vault.copy#totp", "action:vault.totp", "action:vault.lock"]);
   for (const v of Object.values(manifest.shows.capsule)) assert.equal(typeof v.title, "string");
+  // fill.native checks that the app in front is the one the Capsule recorded, so the Capsule hides first.
+  assert.equal(manifest.shows.capsule["action:vault.fill.native"].hide, true);
 });
 
 test("surfaces: a session opens, reports, and closes; its token is in no event", async t => {
