@@ -71,7 +71,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `pass.revoke`, `pass.accept`, `relay`, `offboard`, and the internal `vault.release`.
 - Who may call what: giving access needs a person, taking it away never does. `vault.put`,
   `inject`, `approve` and `unlock` refuse Claude and are left out of its tool list; Claude's
-  grants and passes wait as pending until `vyre vault approve`. Every release, refusal and relay
+  grants and passes wait as pending until `vyre vault approve`. A module may `vault.put` new
+  items or its own (`{name, value}` is shorthand for one field) and grant only those, which is
+  how onboarding stores the Claude credential. Every release, refusal and relay
   is an audit row with names only.
 - Passes: relayed by default (the holder's signed request goes to the owner's relay listener,
   which adds the value, only for the item's own hosts, with redirects off, and scrubs the value
@@ -92,7 +94,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   - vyred no longer trusts a `module:` caller claimed over HTTP, which let anything on the socket
     call internal tools such as `vault.release`.
   - A tool may declare `callers`; other callers are refused and do not see it in `/v1/tools`.
-  - `ctx.vault.fetch(name, { field, watcher })`.
+  - `ctx.vault.fetch(name, { field, watcher })`, and `needs.vault: ["per-agent"]` alongside
+    "per-watcher", for the agents module, whose item names differ per agent.
   - The daemon client no longer pools connections: the first call after a vyred restart failed
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
