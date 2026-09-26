@@ -14,6 +14,7 @@ if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep) || path
   console.error("vyred-present: only for a temp VYRE_HOME");
   process.exit(1);
 }
+process.env.VYRE_NO_DIALOGS = "1";
 const d = await start({ root, presence: present }).catch(e => { console.error("vyred: " + e.message); process.exit(1); });
 const quit = async () => { await d.stop(); process.exit(0); };
 process.on("SIGTERM", quit);

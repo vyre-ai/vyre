@@ -18,7 +18,9 @@ export async function ensureUp() {
     detached: true, stdio: ["ignore", fd, fd], env: process.env,
   });
   child.unref();
-  for (let i = 0; i < 50; i++) {
+  // A first start makes the store and starts every module: about 3s on an idle Mac, and past 5s
+  // on a busy one, where a shorter wait said "did not start" about a vyred that was starting.
+  for (let i = 0; i < 150; i++) {
     await new Promise(r => setTimeout(r, 100));
     if (await ping(p.socket)) return { ok: true, started: true, pid: child.pid };
     if (child.exitCode !== null) break;
