@@ -1,5 +1,5 @@
 // @ts-check
-// dirs — the box's folders, for starting a session or opening a terminal in one (ADR 0024).
+// dirs: the box's folders, for starting a session or opening a terminal in one (ADR 0024).
 //
 // files.dirs lists the folders directly inside a folder (by default, inside every root), or
 // finds folders by name under the roots with a small, bounded walk. files.recent lists the

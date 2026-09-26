@@ -234,3 +234,66 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 }
 /* A touch screen sends with the button, so the keyboard line has nothing to say. */
 @media (pointer: coarse) { .composer-hint { display: none; } }
+
+/* new session + folders */
+/* The New session sheet (newsession.js), the folder browser (folders.js) and Chat's ways into
+   them. Same tokens as the rest of Chat; no new colors. */
+.chat-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+.chat-count + .chat-actions { margin-left: 12px; }
+.chat-start { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.chat-rail-actions { display: flex; flex-direction: column; gap: 4px; }
+.chat-rail-actions .chat-new { width: 100%; }
+
+.ns-sheet { display: flex; flex-direction: column; gap: 20px; max-width: 640px; }
+.ns-sheet .chat-head .ibtn { margin-left: auto; }
+.ns-section { display: flex; flex-direction: column; gap: 8px; }
+.ns-choices { display: flex; flex-direction: column; gap: 2px; }
+.ns-sub { margin: 8px 0 2px; }
+.ns-choice { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid transparent;
+  border-radius: var(--r-2); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.ns-choice:hover:not(:disabled) { background: var(--hover); }
+.ns-choice[aria-checked="true"] { background: var(--signal-wash); border-color: var(--rule-strong); }
+.ns-choice:disabled { opacity: 0.45; cursor: default; }
+.ns-radio { width: 14px; height: 14px; border-radius: 7px; border: 1.5px solid var(--rule-strong); flex-shrink: 0; box-sizing: border-box; }
+.ns-choice[aria-checked="true"] .ns-radio { border: 4px solid var(--signal); }
+.ns-choice-text { display: flex; flex-direction: column; min-width: 0; }
+.ns-choice-label { font-size: 14px; line-height: 20px; }
+.ns-browse { align-self: flex-start; margin: 2px 0; }
+.ns-note { font-size: 13px; line-height: 18px; }
+.ns-text { height: auto; min-height: 96px; padding: 10px 12px; resize: vertical; font: inherit; line-height: 20px; }
+.ns-error { color: var(--beacon-ink); font-size: 14px; line-height: 20px; }
+.ns-error[hidden] { display: none; }
+.ns-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ns-hint { margin-left: auto; font-size: 12px; }
+
+.fb { display: flex; flex-direction: column; gap: 14px; }
+.fb .chat-head .btn { margin-left: auto; }
+.fb-search { width: auto; }
+.fb-crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; min-height: 28px; }
+.fb-crumb { background: none; border: none; padding: 0; font: inherit; color: var(--text-2); }
+.fb-crumb[aria-current="page"] { color: var(--text); font-weight: 600; }
+.fb-here, .fb-choose-here { margin-left: auto; display: inline-flex; gap: 6px; }
+.fb-note { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.fb-note[hidden] { display: none; }
+.fb-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: var(--r-2); }
+.fb-row:hover, .fb-row[aria-selected="true"] { background: var(--hover); }
+.fb-row[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--signal); }
+.fb-row:focus { outline: none; }
+.fb-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.fb-open { display: flex; align-items: center; gap: 10px; flex-grow: 1; min-width: 0; min-height: 36px; padding: 0 6px;
+  background: none; border: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.fb-name { font-size: 14px; line-height: 20px; font-weight: 500; flex-shrink: 1; }
+.fb-path { flex-shrink: 2; }
+.fb-git, .fb-project { gap: 4px; flex-shrink: 0; }
+.fb-project { color: var(--signal); }
+.fb-when { font-size: 12px; flex-shrink: 0; margin-left: auto; }
+.fb-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.fb-hint { font-size: 12px; }
+@media (max-width: 760px) {
+  .fb-row { flex-wrap: wrap; }
+  .fb-actions { width: 100%; padding-left: 30px; }
+  .fb-actions .btn { height: 36px; }
+  .fb-path { display: none; }
+  .ns-hint, .fb-hint { display: none; }
+  .chat-actions .btn { height: 36px; }
+}

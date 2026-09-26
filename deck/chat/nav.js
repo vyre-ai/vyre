@@ -10,7 +10,7 @@
 // and the session's own SSE subscription) just to flip one arrow (perf flagged this). It now
 // calls the onChange index.js passes in, which redraws only ctx.rail() from data already in hand.
 
-import { h, link } from "../js/dom.js";
+import { h, link, go } from "../js/dom.js";
 import { icon } from "../js/icons.js";
 import { threadHref, projectHref } from "./lib/routes.js";
 import { groupSessions, title } from "./lib/sessions.js";
@@ -27,6 +27,11 @@ export function renderNav({ projects, rows, route, err, onChange }) {
     oninput: e => { list.replaceChildren(); for (const k of [groups(projects, rows, route, /** @type {any} */ (e.target).value, onChange)].flat(Infinity)) if (k) list.append(k); } });
 
   return h("div", { style: { display: "flex", flexDirection: "column", gap: "14px" } },
+    // New session and the folder browser (ADR 0024): /chat?new and /chat?folders, "n" from anywhere in Chat.
+    h("div", { class: "chat-rail-actions" },
+      h("button", { class: "btn btn-primary btn-sm chat-new", type: "button", title: "New session (n)",
+        onclick: () => go(route.project ? `/chat?new&project=${encodeURIComponent(route.project)}` : "/chat?new") }, icon("plus", 14), "New session"),
+      link("/chat?folders", { class: "rail-a chat-folders-a" }, icon("projects", 14), h("span", null, "Folders"))),
     h("label", { class: "search", style: { width: "auto" } }, icon("search", 14), q),
     err ? h("div", { class: "empty" }, "Some sessions may be missing.", h("span", { class: "code" }, err.missing ? `The ${err.module} module is not running.` : String(err.message || err))) : null,
     list,
