@@ -445,6 +445,36 @@ test("jobs: at most `learn.distill.daily` a day; an invalid check is refused", a
   assert.match(parseAnswer("here: {}").error, /not a JSON object/);
 });
 
+test("jobs: read exactly the Switchboard's one-shot sequence: deltas and notices are not the answer; done text, then stopped {reason: done}", async t => {
+  const { say, db, lessons, of } = await learning(t, { switchboard: true });
+  await say("from now on keep every function under forty lines", "s1", "p1");
+  await tick();
+  const [launch] = sb().launched;
+  assert.equal(launch.settings, false, "none of the user's settings");
+  const answer = JSON.stringify({ rule: "Keep every function under 40 lines.", level: "remind", check: null });
+  sb().emit("thread.text", { message: "m1", delta: answer.slice(0, 10) }, launch.id);
+  sb().emit("thread.text", { message: "vyre", text: "Claude's usage limit is close.", done: true, notice: true }, launch.id);
+  await tick();
+  assert.equal(db.prepare("SELECT status FROM learn_jobs WHERE id = 1").get().status, "running", "a delta or a notice answers nothing");
+  // The whole text, then the stop at once, before the answer's handler has finished.
+  sb().emit("thread.text", { message: "m1", text: answer, done: true }, launch.id);
+  sb().emit("thread.stopped", { code: 0, reason: "done" }, launch.id);
+  await tick(); await tick();
+  assert.equal(db.prepare("SELECT status FROM learn_jobs WHERE id = 1").get().status, "done", "the stop waited for the answer");
+  assert.deepEqual(of("distill.finished").map(e => [e.payload.job, e.payload.ok]), [[1, true]], "finished once, not failed first");
+  assert.ok((await lessons()).some(l => l.source.kind === "model" && l.status === "proposed"));
+
+  // A job that stops with no answer failed.
+  db.prepare("UPDATE learn_jobs SET started = started - 11 * 60000 WHERE started IS NOT NULL").run();
+  await say("always cc Dana Reyes on client emails", "s1", "p2");
+  await tick();
+  const second = sb().launched[1];
+  assert.ok(second);
+  sb().emit("thread.stopped", { code: 1, reason: "exited 1" }, second.id);
+  await tick();
+  assert.equal(db.prepare("SELECT status, result FROM learn_jobs WHERE thread = ?").get(second.id).status, "failed");
+});
+
 test("stats: before and after per 100 turns, and a verdict", async t => {
   const { reg, say, stop, db } = await learning(t);
   const DAY = 86_400_000;

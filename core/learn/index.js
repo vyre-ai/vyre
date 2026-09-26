@@ -654,10 +654,13 @@ export default {
       },
     });
     // What a job thread answered, and when it ends; any other thread finishing may free the queue.
+    // The Switchboard's one-shot thread (once: true) sends its reply as thread.text {done: true}
+    // (partial deltas and its own notices, message "vyre" or notice true, are not the answer),
+    // then thread.stopped {reason: "done"}; the stop waits for the answer's handler.
     const offText = ctx.events.on("thread.text", e => {
       const p = e.payload || {};
       const thread = e.thread || p.thread;
-      if (!p.done || p.message === "vyre" || !thread || !jobs.owns(thread)) return;
+      if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !jobs.owns(thread)) return;
       jobs.answered(thread, String(p.text || "")).then(r => { if (r && r.skill == null && !r.ok) return skillFallback(); }).catch(err => ctx.log("job answer not read: " + err.message));
     });
     const offStopped = ctx.events.on("thread.stopped", e => {

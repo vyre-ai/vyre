@@ -92,11 +92,29 @@ export function createJobs(deps) {
   /** Threads this queue started: never "a user thread working", and their answers are ours. */
   const mine = new Map(db.prepare("SELECT id, thread FROM learn_jobs WHERE status = 'running' AND thread IS NOT NULL").all().map(r => [String(r.thread), Number(r.id)]));
   let pumping = false;
+  /** Answers being handled, by thread: the thread.stopped that follows at once waits for them. */
+  const answering = new Map();
 
   const finish = async (job, status, result, extra = {}) => {
     db.prepare("UPDATE learn_jobs SET status = ?, finished = ?, result = ? WHERE id = ?").run(status, now(), String(result).slice(0, 200), job.id);
     if (job.thread) mine.delete(job.thread);
     emit("distill.finished", { job: job.id, kind: job.kind, ok: status === "done", lesson: extra.lesson ?? null, skill: extra.skill ?? null });
+  };
+
+  /** A job thread's answer: validated, then handed to the handler. */
+  const answerJob = async (thread, id, text) => {
+    const job = get(id);
+    if (!job || job.status !== "running") { mine.delete(String(thread)); return null; }
+    const a = parseAnswer(text);
+    if (a.error) { await finish(job, "failed", a.error); return { job: id, ok: false }; }
+    try {
+      const r = await deps.handle(job, a.value);
+      await finish(job, "done", r.note || (r.lesson ? `lesson ${r.lesson}` : r.skill ? `skill ${r.skill}` : "nothing to propose"), r);
+      return { job: id, ok: true, ...r };
+    } catch (e) {
+      await finish(job, "failed", "invalid: " + /** @type {Error} */ (e).message);
+      return { job: id, ok: false };
+    }
   };
 
   return {
@@ -168,24 +186,21 @@ export function createJobs(deps) {
 
     /** A thread said something: if it is a job's answer, validate it and hand it to the handler. */
     async answered(thread, text) {
-      const id = mine.get(String(thread));
+      const t = String(thread);
+      if (answering.has(t)) return null;                       // the first done text is the answer
+      const id = mine.get(t);
       if (id == null) return null;
-      const job = get(id);
-      if (!job || job.status !== "running") { mine.delete(String(thread)); return null; }
-      const a = parseAnswer(text);
-      if (a.error) { await finish(job, "failed", a.error); return { job: id, ok: false }; }
-      try {
-        const r = await deps.handle(job, a.value);
-        await finish(job, "done", r.note || (r.lesson ? `lesson ${r.lesson}` : r.skill ? `skill ${r.skill}` : "nothing to propose"), r);
-        return { job: id, ok: true, ...r };
-      } catch (e) {
-        await finish(job, "failed", "invalid: " + /** @type {Error} */ (e).message);
-        return { job: id, ok: false };
-      }
+      const p = answerJob(t, id, text);
+      answering.set(t, p);
+      try { return await p; } finally { answering.delete(t); }
     },
 
     /** A thread stopped: a job that never answered failed. */
     async stopped(thread) {
+      // A one-shot job stops right after its answer (thread.stopped {reason: "done"}); the answer
+      // may still be in the handler, so wait for it before calling the job failed.
+      const pending = answering.get(String(thread));
+      if (pending) await pending.catch(() => {});
       const id = mine.get(String(thread));
       if (id == null) return;
       const job = get(id);
