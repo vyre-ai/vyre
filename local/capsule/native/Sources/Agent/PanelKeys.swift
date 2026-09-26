@@ -2,6 +2,7 @@
 //
 //   ↑ in an empty box            opens the list, when anything waits
 //   ⌘C in an empty box            copies the answer on screen
+//   ⌘K                            the highlighted row's verbs, to pick one (↑↓ ⏎, Esc back)
 //   Tab                           sends the words to the first destination, whatever is highlighted
 //   list: ↑↓ move, ⏎ open, A allow (yes to the row), Esc closes the list; ↑ on the first row goes back
 //   card: ⌘⏎ yes (Send, Allow, Accept); ⏎ yes for an ask or a lesson, which have no fields;
@@ -14,6 +15,20 @@ extension PanelController {
     func agentKey(_ e: NSEvent) -> Bool {
         let desk = model.desk
         let f = e.modifierFlags.intersection([.command, .option, .control, .shift])
+        // ⌘K lists the highlighted row's verbs; in the list, ↑↓ ⏎ and Esc.
+        let menu = model.actionMenu
+        if menu.isOpen {
+            switch e.keyCode {
+            case 125: menu.move(1); return true
+            case 126: menu.move(-1); return true
+            case 36, 76: let i = menu.index; menu.close(); model.run(actionAt: i); return true
+            case 53: menu.close(); return true
+            default: menu.close(); return false
+            }
+        }
+        if f == .command, e.charactersIgnoringModifiers?.lowercased() == "k", desk.mode == .none, let r = model.current, r.actions.count > 1 {
+            menu.open(r); return true
+        }
         switch desk.mode {
         case .none:
             if e.keyCode == 126, f.isEmpty, model.text.isEmpty, model.target == nil, model.asked == nil, !desk.waiting.isEmpty {

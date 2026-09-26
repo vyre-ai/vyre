@@ -14,6 +14,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var panel: PanelController!
     var extensions: ExtensionHost!
     let hotkeys = Hotkeys()
+    /// Clipboard, contacts, modules, Glass and watches (Agent/Wiring.swift).
+    let wiring: AgentWiring
     var status: NSStatusItem?
     /// Repaints the mark when the waiting list changes (Agent/MenuBar.swift).
     var agentSink: AnyCancellable?
@@ -22,9 +24,10 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         let env = ProcessInfo.processInfo.environment
         home = env["VYRE_HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? (NSHomeDirectory() as NSString).appendingPathComponent(".vyre")
         vyred = VyredClient(socket: vyredSocketPath(env))
+        wiring = AgentWiring(home: home, vyred: vyred)
         model = CapsuleModel(home: home, vyred: vyred, providers: [
             AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(),
-        ])
+        ] + wiring.providers)
         super.init()
     }
 
@@ -40,6 +43,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         vyred.follower.start()
         makeStatusItem()
         followWaiting()
+        wiring.attach(model)
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }
 

@@ -157,7 +157,7 @@ struct WaitingHint: View {
 /// Where the agent views sit in the panel's fixed area (CapsuleLayout in CapsuleView.swift).
 @MainActor enum AgentLayout {
     /// The list or a card takes the whole area while it is open.
-    static func deskShown(_ m: CapsuleModel) -> Bool { m.desk.mode != .none }
+    static func deskShown(_ m: CapsuleModel) -> Bool { m.desk.mode != .none || m.actionMenu.isOpen }
     /// The conversation with the agent in the chip, above its destination rows.
     static func directShown(_ m: CapsuleModel) -> Bool { m.desk.mode == .none && m.direct.dm != nil && m.asked == nil }
     static func hintShown(_ m: CapsuleModel) -> Bool {
@@ -169,10 +169,12 @@ struct WaitingHint: View {
     static func slim(_ m: CapsuleModel) -> Bool { !opens(m) && (m.offline || hintShown(m)) }
 
     @ViewBuilder static func desk(_ m: CapsuleModel) -> some View {
+        if m.actionMenu.isOpen { ActionMenuView(menu: m.actionMenu) } else {
         switch m.desk.mode {
         case .none: EmptyView()
         case .list: ScrollView(.vertical, showsIndicators: false) { WaitingList(desk: m.desk) }
         case .card: if let w = m.desk.open { ScrollView(.vertical, showsIndicators: false) { HeldCardView(desk: m.desk, w: w) } }
+        }
         }
     }
 
@@ -200,4 +202,29 @@ struct OfflineBanner: View {
         .padding(.horizontal, 16).frame(height: OfflineBanner.height)
     }
     static let height: CGFloat = 30
+}
+
+/// The ⌘K list: the row, then its verbs.
+struct ActionMenuView: View {
+    @ObservedObject var menu: ActionMenu
+    var body: some View {
+        if let r = menu.item {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(r.title.uppercased()).font(Theme.label).tracking(1.6).foregroundColor(Theme.ash).lineLimit(1)
+                    .padding(.horizontal, 16).frame(height: Theme.headerHeight, alignment: .bottomLeading)
+                ForEach(Array(r.actions.enumerated()), id: \.offset) { i, a in
+                    HStack(spacing: 10) {
+                        Image(systemName: a.symbol).font(.system(size: 13)).foregroundColor(Theme.stone).frame(width: Theme.iconSize)
+                        Text(a.title).font(Theme.title).foregroundColor(Theme.bone)
+                        Spacer()
+                        if i == menu.index { Image(systemName: "return").font(.system(size: 11)).foregroundColor(Theme.ash) }
+                    }
+                    .padding(.horizontal, 14).frame(height: Theme.rowHeight)
+                    .background(i == menu.index ? Theme.raised : Color.clear)
+                    .overlay(alignment: .leading) { if i == menu.index { Rectangle().fill(Theme.signal).frame(width: 2) } }
+                }
+                AgentKeys(keys: ["↑↓ move", "⏎ run", "esc back"])
+            }
+        }
+    }
 }

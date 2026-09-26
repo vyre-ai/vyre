@@ -59,6 +59,8 @@ public final class CapsuleModel: ObservableObject {
         d.onError = { [weak self] why in self?.line = why }
         return d
     }()
+    /// ⌘K: the highlighted row's verbs (Agent/Wiring.swift).
+    lazy var actionMenu: ActionMenu = { let a = ActionMenu(); a.changed = { [weak self] in self?.objectWillChange.send() }; return a }()
     /// Each agent's threads, for where @agent sends (Agent/Destinations.swift).
     lazy var routes = RouteCache()
     /// What waits on the user and the card that answers it (Agent/Desk.swift).
@@ -105,6 +107,7 @@ public final class CapsuleModel: ObservableObject {
             self.catalog = await CatalogLoader.load(vyred)
             if self.mentionQuery != nil { self.search() }
             self.targetChanged()
+            await self.loadBox()
             self.desk.follow()
             await self.desk.load()
         }
@@ -119,6 +122,7 @@ public final class CapsuleModel: ObservableObject {
         keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
         desk.hidden()
         direct.close()
+        actionMenu.close()
         token += 1
         confirming = nil
     }
@@ -218,7 +222,9 @@ public final class CapsuleModel: ObservableObject {
         if let i = out.firstIndex(where: { $0.section == .answer }), i != 0 { out.insert(out.remove(at: i), at: 0) }
         // Where the words go (Agent/Destinations.swift): first for a question nothing here answers,
         // or with a chip or an answer on screen; last otherwise.
-        let asks = Group(section: .vyre, items: askItems(q))
+        var asks = Group(section: .vyre, items: askItems(q))
+        // One Vyre group: rows from Vyre's own providers (Glass, watch) join the destinations.
+        if let i = out.firstIndex(where: { $0.section == .vyre }) { asks.items += out.remove(at: i).items }
         if asksFirst(q, top: best) { out.insert(asks, at: out.first?.section == .answer ? 1 : 0) } else { out.append(asks) }
         let keep = current?.id
         groups = out
