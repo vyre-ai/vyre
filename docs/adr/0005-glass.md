@@ -158,7 +158,7 @@ A **target** is where the files are: `computer:<agent>` (the agent's home, `/hom
   Link's `files` module applies the same list; we keep the two in step with a shared test list.
 - **JSON tools never carry file bytes.** Listing, stat and text preview are tools. Downloads and
   uploads get a one-time ticket from a tool (so the Rules see the call), and the bytes move on
-  `/v1/streams/glass/raw` and `/v1/streams/glass/put`. Raw responses send `nosniff` and
+  `/v1/glass/raw` and `/v1/glass/put` (plain HTTP routes a module adds with `ctx.route`). Raw responses send `nosniff` and
   `Content-Security-Policy: default-src 'none'`, and serve only png, jpeg, gif, webp and pdf
   inline; anything else downloads, so a remote file never runs script in the Deck's origin.
 - **Writes are visible** (floor rule 5): `file.uploaded`, `file.moved`, `file.trashed` and
@@ -204,7 +204,7 @@ it, and the file browser. Computers owns the machine. No tool exists twice.
     "glass.opened", "glass.closed", "glass.taken", "glass.released",
     "file.uploaded", "file.moved", "file.trashed", "file.created"
   ] },
-  "shows": { "streams": ["raw", "put"], "deck": ["route:/glass/:target"], "capsule": ["open-glass"], "cli": ["glass"] },
+  "shows": { "deck": ["route:/glass/:target"], "capsule": ["open-glass"], "cli": ["glass"] },
   "needs": {},
   "teaches": {}
 }
