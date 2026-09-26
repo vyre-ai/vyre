@@ -14,7 +14,8 @@ import * as needs from "../js/needs.js";
 import { assistantCard } from "../js/assistant-setup.js";
 import { since, initial, count, plural, clock } from "../js/fmt.js";
 
-// agents.create and agents.update are on the floor's human-only list: each asks for the passkey.
+// agents.create, and agents.update of what an agent can reach or spend (its computer), ask for
+// the passkey. Its job and model do not.
 const AS_PERSON = { presence: true };
 
 const MODELS = [
@@ -335,7 +336,7 @@ function drawJob(sec, a, w, stub, listErr) {
     ta.value = a.instructions || "";
     const save = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const r = await attempt("agents.update", { name: a.name, instructions: ta.value.trim() }, AS_PERSON);
+      const r = await attempt("agents.update", { name: a.name, instructions: ta.value.trim() });
       /** @type {HTMLButtonElement} */ (save).disabled = false;
       if (r.error) { put(status, why(r.error)); return; }
       a.instructions = ta.value.trim();
@@ -478,7 +479,7 @@ function drawModel(sec, a, stub, listErr) {
     onclick: () => { a.effort = v; drawSeg(); save(); } }, l)));
   const save = async () => {
     put(status, "Saving…");
-    const r = await attempt("agents.update", { name: a.name, model: sel.value, effort: a.effort || "medium" }, AS_PERSON);
+    const r = await attempt("agents.update", { name: a.name, model: sel.value, effort: a.effort || "medium" });
     put(status, r.error ? why(r.error) : "Saved.");
     if (!r.error) a.model = sel.value;
   };

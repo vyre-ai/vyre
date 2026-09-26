@@ -57,6 +57,9 @@ export function preamble(a) {
 }
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/** agents.update fields that change only what an agent says or which model says it. */
+const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort", "description"]);
+
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
@@ -231,6 +234,16 @@ export default {
       // Every other agents.* tool names its agent `agent`, so update takes that too; the Deck's
       // "Give a computer" sent it and got "input.name is required".
       input: { type: "object", properties: { name: { type: "string" }, agent: { type: "string" }, ...fields } },
+      // A person's surfaces only (the owner's Deck over the tailnet included): no model, not even
+      // the assistant, changes an agent.
+      callers: ["cli", "local", "deck", "capsule"],
+      // Its words and model are a person's to change without a passkey; anything that changes what
+      // it can reach or spend (credentials, budget, projects, skills, its computer, and any field
+      // not named here) needs presence. Agents are refused either way (guard).
+      presence: {
+        when: i => Object.keys(i || {}).some(k => i[k] !== undefined && !PLAIN_UPDATE.has(k)),
+        summary: i => `Change what ${i.name ?? i.agent} can reach or spend: ${Object.keys(i).filter(k => !PLAIN_UPDATE.has(k)).join(", ")}`,
+      },
       run: async (i, { caller }) => {
         guard(caller, "change agents");
         if (i.name !== undefined && i.agent !== undefined && i.name !== i.agent) throw new Error("name and agent say different agents; give one");

@@ -216,10 +216,22 @@ test("bypass: making or changing an agent (its credentials and budget) needs a p
     assert.equal(r.body.error.code, "presence_required", caller);
   }
   assert.deepEqual((await call("agents.list", {}, { root: b.root, caller: "cli" })).data, [], "nothing was made");
-  // With a proof, it is made, and changing its budget asks again.
+  // With a proof, it is made.
   assert.ok((await b.person("agents.create", make)).data, "a person may make one");
-  const raise = { name: "kit", auth: { vault: "claude-setup-token", budget_usd: 500 } };
-  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");
-  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "mcp:agent:kit" })).status, 403);
-  assert.ok((await b.person("agents.update", raise)).data, "a person may change it");
+  // What it can reach or spend asks again: credentials and budget, projects, skills, its computer.
+  for (const change of [{ auth: { vault: "claude-setup-token", budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: true }]) {
+    const input = { name: "kit", ...change };
+    const k = Object.keys(change)[0];
+    assert.equal((await raw(b.socket, "/v1/tools/agents.update", input, { "x-vyre-caller": "cli" })).body.error.code, "presence_required", k);
+    assert.equal((await raw(b.socket, "/v1/tools/agents.update", input, { "x-vyre-caller": "mcp:agent:kit" })).status, 403, k);
+    assert.ok((await b.person("agents.update", input)).data, `a person may change ${k}`);
+  }
+  // Its job and model are a person's to change without a passkey, and still never an agent's.
+  const words = { name: "kit", instructions: "Drafts replies for Northwind Bakery.", model: "claude-sonnet-5" };
+  for (const caller of ["mcp", "mcp:agent:kit"]) assert.equal((await raw(b.socket, "/v1/tools/agents.update", words, { "x-vyre-caller": caller })).status, 403, caller);
+  const plain = await raw(b.socket, "/v1/tools/agents.update", words, { "x-vyre-caller": "deck" });
+  assert.equal(plain.status, 200, JSON.stringify(plain.body));
+  assert.equal(plain.body.data.instructions, words.instructions);
+  // Mixing a plain field with a guarded one still asks.
+  assert.equal((await raw(b.socket, "/v1/tools/agents.update", { ...words, computer: false }, { "x-vyre-caller": "deck" })).body.error.code, "presence_required");
 });

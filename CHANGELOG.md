@@ -4,14 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Making or changing an agent needs a person
+#### Making an agent, or changing what it can reach or spend, needs a person
 
-- `agents.create` and `agents.update` set an agent's credentials, budget and scope, and nothing
-  asked who was calling. Both are on the floor's human-only list now: an agent is refused, and a
-  person proves presence (the passkey in the Deck, Touch ID or a typed code for `vyre agents`).
-  The Deck's New agent sheet, agent page, assistant card and Settings ask for the passkey.
-  `core/presence/index.js`, `core/cli/commands/agents.js`, `deck/views/agents.js`,
-  `deck/views/settings.js`, `deck/js/assistant-setup.js`; test/presence-bypass.test.js.
+- `agents.create` is on the floor's human-only list. `agents.update` takes only a person's
+  surfaces (no model, the assistant included), and asks for presence when it touches credentials
+  or budget, projects, skills, the computer or any other field beyond name, job, model, effort and
+  description. A tool can now ask for presence for some inputs only (`presence.when`).
+  The Deck asks for the passkey when making an agent or giving it a computer, not for its job or
+  model. `vyre agents` proves presence at the terminal. `core/presence/index.js`,
+  `core/modules/index.js`, `core/agents/index.js`, `core/cli/commands/agents.js`, the Deck's
+  agents, settings and assistant card; test/presence-bypass.test.js.
 
 #### `vyre box add` waits for the switch, and the pairing code for the passkey
 

@@ -359,3 +359,12 @@ test("presence: under tests the real terminal code is never written; tty is not 
   const c = await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/ttys003" });
   assert.equal(c.error.code, "no_dialog");
 });
+
+test("presence: a tool can ask only for some inputs, and counts as asking when listed", () => {
+  const p = { required: Presence.prototype.required };
+  const def = { presence: { when: i => Boolean(i.auth) } };
+  assert.equal(p.required("agents.update", def, { instructions: "x" }), false);
+  assert.equal(p.required("agents.update", def, { auth: { budget_usd: 1 } }), true);
+  assert.equal(p.required("agents.update", def), true, "no input: listing tools");
+  assert.equal(p.required("agents.create", {}, { name: "kit" }), true, "on the floor's list whatever the input");
+});
