@@ -222,3 +222,7 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `vault.revert {name, version}` (cli, local, deck, capsule; presence) returns `{name, version,
   from}`. `vault.reveal` and `vault.copy` take `version`. `vault.versionFields(row, ver)` is the
   method behind them.
+- `vault.share.setRelayRules(name, rules)` is async (a new sealed version); `vault.put` takes
+  `relay: {body}` directly. `vault.setMeta(name, changes)` re-seals with new sealed columns.
+  `vault_ssh_keys` and `vault_marks` rows must be signed with `vault.sign(table, name)` after a
+  direct write (tools/cli.js does); `ensureMacColumns(db)` runs after migrate.

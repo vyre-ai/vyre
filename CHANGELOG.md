@@ -331,6 +331,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `vault_history` rows (MACed) naming the changed fields, computed from per-field HMACs.
   `vault.history {name, field?}` (names only, Claude may call it), `vault.revert {name,
   version}` (presence), and `version` on `vault.reveal` and `vault.copy`.
+- Relay rules (`relay.body`) are sealed in the item's meta and checked on open like hosts;
+  changing them makes a new version. Items whose rules predate this are re-sealed once.
+  `vault_ssh_keys` and `vault_marks` are numbered migrations now, with MACed rows.
 
 - Sharing, hardened (ADR 0006, findings 4, 5 and 12): pass tickets are signed by the owner and
   checked against the owner's pinned card, for this holder only, and a held pass can never be

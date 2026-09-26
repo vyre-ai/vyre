@@ -307,14 +307,22 @@ export class Share {
     return { body: r && r.body === true };
   }
 
-  /** Set an item's relay rules; stored beside its hosts. @param {string} name @param {any} rules */
-  setRelayRules(name, rules) {
+  /**
+   * Check relay rules and give the column value: '{"body":true}' or null. The rules are sealed
+   * in the item's meta (ADR 0006), so they cannot change without a new sealed version.
+   * @param {any} rules
+   */
+  checkRelayRules(rules) {
     if (!rules || typeof rules !== "object" || Array.isArray(rules)) throw new Error("relay must be an object such as { body: true }");
     for (const k of Object.keys(rules)) if (k !== "body") throw new Error(`relay.${k} is not a relay rule; the one rule is relay.body`);
     if (rules.body !== undefined && typeof rules.body !== "boolean") throw new Error("relay.body is true or false");
-    const r = this.vault.mustRow(name);
-    this.db.prepare("UPDATE vault_items SET relay=? WHERE id=?").run(rules.body ? JSON.stringify({ body: true }) : null, r.id);
-    this.vault.sign("vault_items", r.id);
+    return rules.body ? JSON.stringify({ body: true }) : null;
+  }
+
+  /** Set an item's relay rules: a new sealed version with them in its meta. @param {string} name @param {any} rules */
+  async setRelayRules(name, rules) {
+    const relay = this.checkRelayRules(rules);
+    await this.vault.setMeta(name, { relay }, "relay rules");
     return this.relayRules(this.vault.row(name));
   }
 

@@ -10,7 +10,7 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
-import { Vault, MIGRATIONS, KINDS, parseExpiry } from "./vault.js";
+import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
@@ -40,6 +40,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
+    ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     // Every tool that returns or moves a value asks for presence first (prove.js), until the
     // registry does it (ADR 0004). All registrations below go through this ctx.
@@ -118,8 +119,7 @@ export default {
           if (old && old.origin !== caller) throw new Error(`${input.name} was not made by ${mod}, so ${mod} cannot replace it`);
           input.origin = caller;
         }
-        const out = await vault.put(input, caller);
-        if (relayRules) vault.share.setRelayRules(input.name, relayRules);
+        const out = await vault.put({ ...input, ...(relayRules ? { relay: relayRules } : {}) }, caller);
         for (const g of grants || []) await vault.grant({ name: input.name, module: g }, caller);
         return { ...out, ...(grants ? { granted: grants } : {}) };
       }, presence("Save an item in the vault", ({ name, kind }) => {

@@ -189,11 +189,11 @@ test("relay: headers only unless relay.body, method and path allowlists, https o
   assert.match((await relayAs(x, pass.id, { url: "http://api.example.com/v1/x", headers: { a: "{{vault}}" } })).body.error.message, /https only/);
 
   // Allowing the body is the item's choice, stored with its hosts.
-  x.o.v.share.setRelayRules("api-token", { body: true });
+  await x.o.v.share.setRelayRules("api-token", { body: true });
   const allowed = await relayAs(x, pass.id, { method: "POST", url: `${up}/v1/tokens`, body: '{"k":"{{vault}}"}' });
   assert.equal(allowed.status, 200);
   assert.equal(JSON.parse(allowed.body.data.body).body, '{"k":"<concealed by vyre>"}');
-  assert.throws(() => x.o.v.share.setRelayRules("api-token", { headers: false }), /the one rule is relay.body/);
+  await assert.rejects(x.o.v.share.setRelayRules("api-token", { headers: false }), /the one rule is relay.body/);
 
   // Signed for another relay.
   const me = await x.h.v.identity();

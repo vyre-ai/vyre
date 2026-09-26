@@ -76,6 +76,9 @@ export const MIGRATIONS = [
    ALTER TABLE vault_devices ADD COLUMN mac TEXT;`,
   ...SHARE_MIGRATIONS,
   history.HISTORY_MIGRATION,
+  // Made here now, with a mac column; tools/cli.js used to make them on the fly.
+  `CREATE TABLE IF NOT EXISTS vault_ssh_keys (name TEXT PRIMARY KEY, type TEXT NOT NULL, fingerprint TEXT NOT NULL, public TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);
+   CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL, mac TEXT);`,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -95,7 +98,26 @@ export const MACED = {
   vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
   vault_devices: ["id", "name", "token_hash", "revoked"],
   vault_history: ["id", "item", "ver", "name", "vault", "at", "by", "changed", "fh"],
+  // The ssh agent's record of each key's public half (what a signing prompt names), and the
+  // marks that say a login must be rotated. Keyed by item name, made by tools/cli.js.
+  vault_ssh_keys: ["name", "type", "fingerprint", "public"],
+  vault_marks: ["name", "stale"],
 };
+/** The key column of each MACed table, where it is not `id`. */
+const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name" };
+/** Tables MACed after the v2 upgrade: their rows from before are signed once, then checked. */
+const LATE_MACED = ["vault_ssh_keys", "vault_marks"];
+
+/**
+ * Tables tools/cli.js made before they were numbered migrations have no mac column; add it.
+ * @param {import("node:sqlite").DatabaseSync} db
+ */
+export function ensureMacColumns(db) {
+  for (const t of LATE_MACED) {
+    const cols = /** @type {any[]} */ (db.prepare(`PRAGMA table_info(${t})`).all()).map(c => c.name);
+    if (cols.length && !cols.includes("mac")) db.exec(`ALTER TABLE ${t} ADD COLUMN mac TEXT`);
+  }
+}
 
 const ACCOUNT = "account.json";
 const TOUCHID = "touchid.json";
@@ -202,7 +224,9 @@ export class Vault {
       raw = await this.keys.create();
       this.log(`vault key created in the ${this.kind} keystore`);
     }
-    return this.adopt(raw);
+    const vk = this.adopt(raw);
+    await this.sealRelayRules();
+    return vk;
   }
 
   /** Take a device key (raw bytes, zeroed here), open the agent VK with it, and bring the home up to v2. */
@@ -262,13 +286,43 @@ export class Vault {
     const state = readJsonFile(this.dir, STATE);
     if (state) {
       if (!state.mac || !same(state.mac, this.stateMac())) this.flag("state", "vault", null);
+      this.relaySealed = Boolean(state.relay && same(state.relay, this.relayMac()));
+      // Tables MACed after this home went v2: their older rows are trusted once, like at upgrade.
+      if (!state.late || !same(state.late, this.lateMac())) {
+        for (const t of LATE_MACED) for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${t} WHERE mac IS NULL`).all())) this.sign(t, r.name);
+        writeJsonFile(this.dir, STATE, { ...state, late: this.lateMac() });
+      }
       return;
     }
+    this.relaySealed = true;
     for (const [table] of Object.entries(MACED)) {
-      for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${table} WHERE mac IS NULL`).all())) this.sign(table, r.id);
+      for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT * FROM ${table} WHERE mac IS NULL`).all())) this.sign(table, r[KEY_COL[table] || "id"]);
     }
     this.migrateV1(dk);
-    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac() });
+    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac(), relay: this.relayMac(), late: this.lateMac() });
+  }
+
+  lateMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { late: LATE_MACED }); }
+
+  relayMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { relaySealed: true }); }
+
+  /**
+   * Once per home: items whose relay rules were set before rules were sealed get a new version
+   * with the rules in their meta. Until that is done for every item, open() does it on the way;
+   * after, a row whose rules differ from the sealed copy is refused like any other mismatch.
+   */
+  async sealRelayRules() {
+    if (this.relaySealed !== false) return;
+    let pending = 0;
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE relay IS NOT NULL").all())) {
+      if (!this.rowOk("vault_items", r)) continue;
+      if (r.vault === PERSONAL && !this.pvk) { pending++; continue; }
+      try { await this.open(r); } catch { /* refused or missing: nothing to bring forward */ }
+    }
+    if (pending) return;
+    this.relaySealed = true;
+    const state = readJsonFile(this.dir, STATE) || { v: 2, mac: this.stateMac() };
+    writeJsonFile(this.dir, STATE, { ...state, relay: this.relayMac() });
   }
 
   stateMac() { return rowMac(/** @type {any} */ (this.mkey), "state", { v: 2 }); }
@@ -348,8 +402,9 @@ export class Vault {
   /** Sign one row as it is now. Only code that just wrote it, or verified it, calls this. */
   sign(table, id) {
     if (!this.mkey) return;
-    const r = this.db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
-    if (r) this.db.prepare(`UPDATE ${table} SET mac = ? WHERE id = ?`).run(this.macOf(/** @type {any} */ (table), r), id);
+    const col = KEY_COL[table] || "id";
+    const r = this.db.prepare(`SELECT * FROM ${table} WHERE ${col} = ?`).get(id);
+    if (r) this.db.prepare(`UPDATE ${table} SET mac = ? WHERE ${col} = ?`).run(this.macOf(/** @type {any} */ (table), r), id);
   }
 
   /**
@@ -361,7 +416,7 @@ export class Vault {
     if (!r) return false;
     if (!this.mkey) return true;
     if (r.mac && same(r.mac, this.macOf(table, r))) return true;
-    this.flag(table, r.id, r.mac);
+    this.flag(table, r[KEY_COL[table] || "id"], r.mac);
     return false;
   }
 
@@ -446,6 +501,7 @@ export class Vault {
     this.pvk = unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
     this.recoverStaged();
     const moved = await this.migratePersonal();
+    await this.sealRelayRules();
     this.audit("account-unlock", null, who, true, [method === "touchid" ? "touch id" : null, moved ? `${moved} items moved into the personal vault` : null].filter(Boolean).join(", ") || null);
     this.emit("vault.unlocked", { vault: PERSONAL });
     return { unlocked: true, acct, method };
@@ -537,9 +593,36 @@ export class Vault {
     const k = cls === PERSONAL ? this.pvk : await this.key();
     if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
     writeSealed(this.dir, r.id + STAGED, sealItemV2(k, this.at(next), { meta, fields }));
-    const hist = await this.historyStep(r, r, next, fields, "vault", now());
+    const hist = await this.historyStep(r, r, next, fields, "vault", now(), fields);
     this.tx(() => {
       this.db.prepare("UPDATE vault_items SET ver=?, vault=? WHERE id=?").run(next.ver, cls, r.id);
+      this.sign("vault_items", r.id);
+      hist.commit();
+    });
+    promoteSealed(this.dir, r.id);
+    hist.prune();
+  }
+
+  /**
+   * Change sealed details of an item (relay rules today) as a new version, so the row and the
+   * sealed meta always agree. @param {string} name @param {{ relay?: string|null }} changes
+   */
+  async setMeta(name, changes, why = "details") {
+    const r = this.mustRow(name);
+    const { fields } = await this.open(r);
+    await this.writeVersion(this.mustRow(name), changes, fields, "vault");
+    this.audit("change", name, "vault", true, why);
+  }
+
+  /** Seal the same fields again as a new version of `r` with `changes` to its sealed columns. */
+  async writeVersion(r, changes, fields, by) {
+    const next = { ...r, ...changes, ver: Number(r.ver || 0) + 1 };
+    const k = next.vault === PERSONAL ? this.pvk : await this.key();
+    if (!k) throw locked("your personal vault is locked · vyre vault account unlock");
+    writeSealed(this.dir, r.id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields }));
+    const hist = await this.historyStep(r, r, next, fields, by, now(), fields);
+    this.tx(() => {
+      this.db.prepare("UPDATE vault_items SET ver=?, relay=? WHERE id=?").run(next.ver, next.relay ?? null, r.id);
       this.sign("vault_items", r.id);
       hist.commit();
     });
@@ -555,13 +638,14 @@ export class Vault {
    * @param {any} raw the row now (or null) @param {any} old the same row if it passed its MAC
    * @param {any} next the new row values @param {Record<string,string>} fields the new fields
    */
-  async historyStep(raw, old, next, fields, by, at) {
+  async historyStep(raw, old, next, fields, by, at, prevFields = null) {
     const mkey = /** @type {any} */ (this.mkey);
     const fh = history.fieldHashes(mkey, next.id, fields);
     let prev = null;
     if (old) {
       const h = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_history WHERE item = ? AND ver = ?").get(old.id, Number(old.ver || 0)));
       if (h && this.rowOk("vault_history", h)) prev = json(h.fh, null);
+      else if (prevFields) prev = history.fieldHashes(mkey, next.id, prevFields);
       else { try { prev = history.fieldHashes(mkey, next.id, (await this.open(old)).fields); } catch { prev = null; } }
       const sealed = readSealed(this.dir, old.id);
       if (sealed && sealed.v === 2) {
@@ -656,7 +740,10 @@ export class Vault {
 
   /** What the row says about an item: exactly what is sealed as `meta` with it, and checked on open. */
   meta(r) {
-    return { kind: r.kind, url: r.url ?? null, hosts: json(r.hosts, []), apps: json(r.apps, []), reprompt: Boolean(r.reprompt) };
+    const relayRules = json(r.relay, null);
+    return { kind: r.kind, url: r.url ?? null, hosts: json(r.hosts, []), apps: json(r.apps, []), reprompt: Boolean(r.reprompt),
+      // Relay rules decide what a relayed value may be put into, so they are sealed like hosts.
+      ...(relayRules && relayRules.body === true ? { relay: { body: true } } : {}) };
   }
 
   /** Where a row's sealed copy sits in the key hierarchy. */
@@ -688,6 +775,13 @@ export class Vault {
     try { body = openItemV2(k, this.at(r), sealed); }
     catch { this.audit("open", r.name, "vault", false, "the sealed copy is not the version its record names"); throw new Error(`the sealed copy of ${r.name} does not open: it was replaced or is an older version`); }
     if (canonical(body.meta) !== canonical(this.meta(r))) {
+      // Relay rules set before they were sealed lived only in the (MACed) row. A copy whose one
+      // difference is that is brought up to date, as a new version, rather than refused.
+      const { relay: _r, ...rest } = this.meta(r);
+      if (this.relaySealed === false && !("relay" in body.meta) && _r && canonical(body.meta) === canonical(rest)) {
+        await this.writeVersion(r, {}, body.fields, "vault");
+        return { meta: this.meta(r), fields: body.fields };
+      }
       this.audit("open", r.name, "vault", false, "vyre.db details do not match the sealed copy");
       throw new Error(`the details of ${r.name} in vyre.db do not match its sealed copy, so it is refused`);
     }
@@ -698,7 +792,7 @@ export class Vault {
    * Add or replace an item. The fields arrive from the CLI's hidden prompt, an import file or a
    * sealed pass; the tool layer refuses them from Claude.
    */
-  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt }, who) {
+  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt, relay: relayRules }, who) {
     if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
     if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
     if (!fields || typeof fields !== "object" || Array.isArray(fields)) throw new Error("fields must be an object");
@@ -734,6 +828,7 @@ export class Vault {
       id, name, kind, url: u, hosts: JSON.stringify(h), vault: cls, ver: Number(raw ? raw.ver || 0 : 0) + 1,
       apps: JSON.stringify(apps ?? (old ? json(old.apps, []) : [])),
       reprompt: (reprompt ?? (old ? Boolean(old.reprompt) : kind === "card")) ? 1 : 0,
+      relay: relayRules !== undefined ? this.share.checkRelayRules(relayRules) : (old ? old.relay ?? null : null),
     };
     writeSealed(this.dir, id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields: clean }));
     const t = now();
@@ -741,11 +836,11 @@ export class Vault {
     this.tx(() => {
       if (raw) {
         // Putting an item again is how it is rotated, so the rotate mark goes.
-        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=? WHERE id=?")
-          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, id);
+        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=?, relay=? WHERE id=?")
+          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, next.relay, id);
       } else {
-        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt);
+        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt, relay) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt, next.relay);
       }
       this.sign("vault_items", id);
       hist.commit();
