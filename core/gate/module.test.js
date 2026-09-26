@@ -42,7 +42,12 @@ test("gate: an agent's email is held, edited and approved by the user, and sent 
   const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
-  const cli = as("cli"), local = as("local"), juno = as("mcp:agent:juno");
+  const cli = as("cli"), local = as("local");
+  // An agent's MCP server calls as "mcp:agent:juno" with its thread's key, which only the
+  // Switchboard hands out; vyred refuses the name without it. So juno's calls go in-process.
+  // With it, vyred tells the tool which thread the call came from; that is what juno gets here.
+  const juno = (tool, input = {}) => d.registry.call(tool, input, "mcp:agent:juno", { thread: "t-1", agent: "juno" });
+  assert.equal((await as("mcp:agent:juno")("gate.senders")).error.code, "denied", "no key, no agent");
   assert.equal(d.registry.status().find(m => m.name === "gate")?.state, "running");
 
   const value = fake("token");
@@ -64,7 +69,7 @@ test("gate: an agent's email is held, edited and approved by the user, and sent 
   assert.equal(list[0].summary, "Re: Intake form rebuild");
 
   // A model never approves: not the agent that asked, not plain Claude.
-  assert.match((await juno("gate.approve", { id })).error.message, /not available to mcp:agent:juno/);
+  assert.match((await juno("gate.approve", { id })).error.message, /not available to mcp callers/);
   assert.equal((await as("mcp")("gate.approve", { id })).error.code, "denied");
   assert.equal((await as("mcp")("gate.reject", { id })).error.code, "denied");
   assert.equal((await as("mcp")("gate.get", { id })).error.code, "denied");

@@ -14,9 +14,12 @@ import { Vault, MIGRATIONS, KINDS } from "./vault.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "./relay.js";
+import { whois } from "../names/tailscale.js";
+import { isTailnet, normalize } from "../names/identity.js";
 import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
+import { callerKind } from "../modules/index.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -32,7 +35,12 @@ export default {
     const opts = (ctx.config && ctx.config.vault) || {};
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), onRelay: (env, meta) => vault.onRelay(env, meta) });
+      // With identity "whois" no header counts: the login is the one Tailscale gives the peer address.
+      const byWhois = opts.relay.identity === "whois"
+        ? async ip => { if (!isTailnet(ip)) return null; const w = await whois(normalize(ip)); return w && !w.tagged ? w.login : null; }
+        : null;
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0),
+        onRelay: async (env, meta) => vault.onRelay(env, byWhois ? { ...meta, login: await byWhois(meta.remoteAddress) } : meta) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
@@ -126,7 +134,7 @@ export default {
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),
       (input, { caller }) => {
-        if (caller === "mcp" && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
+        if (callerKind(caller) === "mcp" && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
         return vault.generate(input, caller);
       });
 

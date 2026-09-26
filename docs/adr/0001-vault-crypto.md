@@ -208,7 +208,7 @@ command's first word.
   Safari CSV, recognised by their headers. vyred reads the file itself, so values never pass
   through Claude. The file is never modified; the result tells the user to delete it. 1Password
   `.1pux` (a zip) is next.
-- Autofill is built as designed in the addendum, `docs/adr/0001-autofill.md`. The first sketch: `vault.match {url}` returns names and hosts of
+- Autofill is built as designed in the addendum, `docs/adr/0010-vault-autofill.md`. The first sketch: `vault.match {url}` returns names and hosts of
   logins for a page (no values), and `vault.fill {name}` returns a login's username and password
   only to an unlocked surface session (Touch ID through the Capsule helper, or a passphrase on the
   Deck). Agents never get `vault.fill`.

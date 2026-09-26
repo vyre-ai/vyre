@@ -1,0 +1,16 @@
+{
+  "name": "threads",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "tools": ["threads.start", "threads.send", "threads.list", "threads.get", "threads.lease", "threads.release",
+      "threads.asks", "threads.answer", "threads.stop", "threads.launch", "threads.watch", "threads.unwatch",
+      "threads.claimed", "threads.contend", "threads.vouch", "threads.bind", "threads.history", "threads.usage", "threads.notice", "threads.halt"]
+  },
+  "watches": { "emits": ["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
+    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit"] },
+  "shows": { "cli": ["threads"] },
+  "needs": {},
+  "teaches": {}
+}

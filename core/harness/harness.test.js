@@ -93,6 +93,11 @@ test("harness: brief and enrich use projects and memory when they are running", 
   assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site" })).data.text, /Dana Reyes is at Harlow Legal/);
   assert.equal((await reg.call("harness.enrich", { prompt: "/compact", cwd: "/w/harlow-site" })).data.text, "", "slash commands get nothing");
   assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind" })).data.text, "", "outside a project, no brief");
+  // An agent's scope, as the switchboard hands it to the hooks.
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "harlow-legal,northwind" })).data.text, "Project harlow-legal. People: Dana Reyes.");
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "an agent outside its projects gets no brief");
+  assert.equal((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "northwind" })).data.text, "", "nor their memory");
+  assert.match((await reg.call("harness.enrich", { prompt: "What did Dana ask for?", cwd: "/w/harlow-site", projects: "*" })).data.text, /Dana Reyes/, "the assistant sees every project");
 });
 
 test("harness: learn records changed files; touched lists them; the vault rule emits tool.held", async t => {
@@ -104,6 +109,25 @@ test("harness: learn records changed files; touched lists them; the vault rule e
   const held = await reg.call("harness.rules", { tool_name: "Read", tool_input: { file_path: path.join(home, "vault", "x") }, session: "s1" });
   assert.equal(held.data.decision, "deny");
   assert.equal(events.since(0).find(e => e.type === "tool.held").payload.rule, 8);
+});
+
+test("harness: brief warns a terminal resume of a live headless thread, and not our own child", async t => {
+  // A stub switchboard: one live thread, s-live, whose keyboard the deck holds.
+  const threads = `export default { async start(ctx) {
+    const live = s => s === "s-live";
+    ctx.tool("threads.claimed", { internal: true, run: async ({ session }) => ({ headless: live(session), holder: live(session) ? "deck:1" : null, status: live(session) ? "idle" : null }) });
+    ctx.tool("threads.contend", { internal: true, run: async ({ session }) => { if (live(session)) ctx.events.emit("thread.contended", { session, holder: "deck:1" }); return { emitted: live(session) }; } });
+    return {};
+  } };`;
+  const { reg, events } = await harness(t, [["threads", { version: "0.1.0", does: { tools: ["threads.claimed", "threads.contend"] }, watches: { emits: ["thread.contended"] } }, threads]]);
+  const term = (await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-live", headless: false })).data.text;
+  assert.equal(term, "Warning from Vyre: this conversation is also running headless under Vyre right now (holder: deck:1). " +
+    "Two processes writing one transcript lose work. Stop the headless one with `vyre threads stop s-live` before going on here, " +
+    "or leave this session and keep working there. Tell the user this before anything else.");
+  assert.deepEqual(events.since(0).filter(e => e.type === "thread.contended").map(e => e.payload), [{ session: "s-live", holder: "deck:1" }]);
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-live", headless: true })).data.text, "", "our own child is not a second writer");
+  assert.equal((await reg.call("harness.brief", { cwd: "/w/northwind", session: "s-other" })).data.text, "", "a session vyred is not running");
+  assert.equal(events.since(0).filter(e => e.type === "thread.contended").length, 1);
 });
 
 test("harness: a send inside an agent's thread is routed to the Gate; the user's own session still asks", async t => {

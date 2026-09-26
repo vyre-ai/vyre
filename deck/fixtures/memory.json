@@ -1,0 +1,283 @@
+{
+  "memory.facts": {
+    "$by": "about",
+    "cases": {
+      "*": {
+        "about": null,
+        "facts": [
+          {
+            "id": "name:Dana Reyes|works_at|name:Harlow Legal",
+            "text": "Dana Reyes works at Harlow Legal",
+            "subject": {
+              "id": "name:Dana Reyes",
+              "label": "Dana Reyes",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "works_at",
+            "object": {
+              "id": "name:Harlow Legal",
+              "label": "Harlow Legal",
+              "kind": "org",
+              "role": null
+            },
+            "confidence": 1,
+            "since": "$ago:3h",
+            "until": null,
+            "seen": "$ago:3h",
+            "age": "today",
+            "source": "Call notes 12 Sep",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000001",
+              "seq": 1,
+              "name": "Call notes 12 Sep"
+            },
+            "evidence": 3,
+            "taught": []
+          },
+          {
+            "id": "name:Theo Grant|works_at|name:Harlow Legal",
+            "text": "Theo Grant works at Harlow Legal",
+            "subject": {
+              "id": "name:Theo Grant",
+              "label": "Theo Grant",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "works_at",
+            "object": {
+              "id": "name:Harlow Legal",
+              "label": "Harlow Legal",
+              "kind": "org",
+              "role": null
+            },
+            "confidence": 0.9,
+            "since": "$ago:2h",
+            "until": null,
+            "seen": "$ago:2h",
+            "age": "today",
+            "source": "Call notes 12 Sep",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000001",
+              "seq": 1,
+              "name": "Call notes 12 Sep"
+            },
+            "evidence": 2,
+            "taught": []
+          },
+          {
+            "id": "name:Dana Reyes|has_email|email:dana@harlowlegal.com",
+            "text": "Dana Reyes's email is dana@harlowlegal.com",
+            "subject": {
+              "id": "name:Dana Reyes",
+              "label": "Dana Reyes",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "has_email",
+            "object": {
+              "id": "email:dana@harlowlegal.com",
+              "label": "dana@harlowlegal.com",
+              "kind": "email",
+              "role": null
+            },
+            "confidence": 0.95,
+            "since": "$ago:20d",
+            "until": null,
+            "seen": "$ago:20d",
+            "age": "20 days",
+            "source": "Intake form rebuild",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000002",
+              "seq": 1,
+              "name": "Intake form rebuild"
+            },
+            "evidence": 2,
+            "taught": []
+          },
+          {
+            "id": "name:Sam Okafor|works_at|name:Northwind Bakery",
+            "text": "Sam Okafor works at Northwind Bakery",
+            "subject": {
+              "id": "name:Sam Okafor",
+              "label": "Sam Okafor",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "works_at",
+            "object": {
+              "id": "name:Northwind Bakery",
+              "label": "Northwind Bakery",
+              "kind": "org",
+              "role": null
+            },
+            "confidence": 1,
+            "since": "$ago:9d",
+            "until": null,
+            "seen": "$ago:9d",
+            "age": "9 days",
+            "source": "Northwind invoices",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000003",
+              "seq": 1,
+              "name": "Northwind invoices"
+            },
+            "evidence": 3,
+            "taught": []
+          }
+        ]
+      },
+      "name:Dana Reyes": {
+        "about": {
+          "id": "name:Dana Reyes",
+          "label": "Dana Reyes",
+          "kind": "person",
+          "role": null,
+          "sessions": 2,
+          "mentions": 5,
+          "first": "$ago:20d",
+          "last": "$ago:3h",
+          "age": "3 hours",
+          "pinned": false,
+          "muted": false
+        },
+        "facts": [
+          {
+            "id": "name:Dana Reyes|works_at|name:Harlow Legal",
+            "text": "Dana Reyes works at Harlow Legal",
+            "subject": {
+              "id": "name:Dana Reyes",
+              "label": "Dana Reyes",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "works_at",
+            "object": {
+              "id": "name:Harlow Legal",
+              "label": "Harlow Legal",
+              "kind": "org",
+              "role": null
+            },
+            "confidence": 1,
+            "since": "$ago:3h",
+            "until": null,
+            "seen": "$ago:3h",
+            "age": "today",
+            "source": "Call notes 12 Sep",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000001",
+              "seq": 1,
+              "name": "Call notes 12 Sep"
+            },
+            "evidence": 3,
+            "taught": []
+          },
+          {
+            "id": "name:Dana Reyes|has_email|email:dana@harlowlegal.com",
+            "text": "Dana Reyes's email is dana@harlowlegal.com",
+            "subject": {
+              "id": "name:Dana Reyes",
+              "label": "Dana Reyes",
+              "kind": "person",
+              "role": null
+            },
+            "rel": "has_email",
+            "object": {
+              "id": "email:dana@harlowlegal.com",
+              "label": "dana@harlowlegal.com",
+              "kind": "email",
+              "role": null
+            },
+            "confidence": 0.95,
+            "since": "$ago:20d",
+            "until": null,
+            "seen": "$ago:20d",
+            "age": "20 days",
+            "source": "Intake form rebuild",
+            "ref": {
+              "session": "22222222-bbbb-4000-8000-000000000002",
+              "seq": 1,
+              "name": "Intake form rebuild"
+            },
+            "evidence": 2,
+            "taught": []
+          }
+        ]
+      }
+    }
+  },
+  "memory.why": {
+    "fact": {
+      "id": "name:Dana Reyes|works_at|name:Harlow Legal",
+      "text": "Dana Reyes works at Harlow Legal",
+      "subject": {
+        "id": "name:Dana Reyes",
+        "label": "Dana Reyes",
+        "kind": "person",
+        "role": null
+      },
+      "rel": "works_at",
+      "object": {
+        "id": "name:Harlow Legal",
+        "label": "Harlow Legal",
+        "kind": "org",
+        "role": null
+      },
+      "confidence": 1,
+      "since": "$ago:3h",
+      "until": null,
+      "seen": "$ago:3h",
+      "age": "today",
+      "source": "Call notes 12 Sep",
+      "ref": {
+        "session": "22222222-bbbb-4000-8000-000000000001",
+        "seq": 1,
+        "name": "Call notes 12 Sep"
+      },
+      "evidence": 3,
+      "taught": []
+    },
+    "turns": [
+      {
+        "session": "22222222-bbbb-4000-8000-000000000001",
+        "seq": 1,
+        "name": "Call notes 12 Sep",
+        "role": "user",
+        "ts": "$ago:3h",
+        "age": "3 hours",
+        "text": "Dana Reyes at Harlow Legal wants a short weekly summary. A few lines is plenty for her."
+      },
+      {
+        "session": "22222222-bbbb-4000-8000-000000000002",
+        "seq": 2,
+        "name": "Intake form rebuild",
+        "role": "assistant",
+        "ts": "$ago:20d",
+        "age": "3 weeks",
+        "text": "I sent the draft to Dana Reyes at Harlow Legal for review."
+      }
+    ],
+    "taught": [],
+    "gone": 0
+  },
+  "memory.stats": {
+    "recall": true,
+    "sessions": 3,
+    "nodes": 6,
+    "edges": 8,
+    "facts": 4,
+    "evidence": 10
+  },
+  "memory.pin": {
+    "node": "name:Dana Reyes",
+    "label": "Dana Reyes",
+    "scope": "*",
+    "mode": "pin"
+  },
+  "memory.mute": {
+    "node": "name:Dana Reyes",
+    "label": "Dana Reyes",
+    "scope": "*",
+    "mode": "mute"
+  }
+}

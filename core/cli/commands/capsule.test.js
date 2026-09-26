@@ -6,13 +6,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
 import { sourceHash, packaged, electron } from "./capsule.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 function fakeCapsule(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-capsule-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-capsule-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, "app"));
   fs.mkdirSync(path.join(dir, "lib"));

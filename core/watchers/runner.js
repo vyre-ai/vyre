@@ -30,10 +30,10 @@ process.on("message", async (/** @type {any} */ msg) => {
     const watch = mod.default;
     if (typeof watch !== "function") throw new Error("watch.js has no default export function");
     const vault = {
-      fetch: name => new Promise((resolve, reject) => {
+      fetch: (name, { field } = {}) => new Promise((resolve, reject) => {
         const id = ++asked;
         waiting.set(id, { resolve, reject });
-        send({ t: "vault", id, name: String(name) });
+        send({ t: "vault", id, name: String(name), ...(field ? { field: String(field) } : {}) });
       }),
     };
     const emit = item => { send({ t: "emit", item }); };

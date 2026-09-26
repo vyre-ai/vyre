@@ -1,25 +1,13 @@
 // @ts-check
-// Commands about vyred itself.
+// Commands about vyred itself. `vyre up` lives in up.js.
 
-import fs from "node:fs";
 import { request, call } from "../../daemon/client.js";
-import { ensureUp, stop } from "../daemonctl.js";
+import { stop } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
 import { out, dim, signal, beacon } from "../style.js";
 import * as config from "../../config/index.js";
 
 export default [
-  {
-    name: "up", order: 10, summary: "start vyred on this machine",
-    async run() {
-      const r = await ensureUp();
-      if (r.ok && !r.started) { out(`  vyred is already running ${dim("· " + config.paths().socket)}`); return 0; }
-      if (r.ok) { out(`  vyred ${signal("running")} ${dim("· pid " + r.pid)}`); return 0; }
-      out(`  vyred did not start. Its output is in ${r.log}:`);
-      try { out(dim(fs.readFileSync(/** @type {string} */ (r.log), "utf8").split("\n").slice(-8).join("\n"))); } catch {}
-      return 1;
-    },
-  },
   {
     name: "down", order: 11, summary: "stop it",
     async run() {

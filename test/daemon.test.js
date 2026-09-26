@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
@@ -127,8 +128,12 @@ test("daemon: stop is not held open by a connected event stream", async t => {
   await new Promise(r => setTimeout(r, 50));
   const t0 = Date.now();
   await d.stop();
-  // Without the fix, stop() never returns; the bound is generous so a busy machine does not fail it.
-  assert.ok(Date.now() - t0 < 5000, "stop waited on the stream");
+  // Without the fix, stop() never returns at all (it hangs forever waiting on the
+  // connected stream), so the guarantee this test protects is "resolves" vs "hangs",
+  // not a particular speed. The bound stays wall-clock (there is no work counter for
+  // "an unbounded hang") but is deliberately huge (measured ~5-10ms on this machine)
+  // so a busy shared machine running many concurrent suites never trips it by accident.
+  assert.ok(Date.now() - t0 < 15000, "stop waited on the stream");
 });
 
 test("daemon: non-API paths serve the Deck and never anything outside deck/", async t => {
@@ -140,6 +145,46 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
     const r = await get(p);
     assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
   }
+});
+
+test("daemon: a real directory under deck/ with no index.html of its own still gets the shell", async t => {
+  // A view's own folder (deck/chat/, holding JS modules a view imports, not a page) is a real
+  // directory. Before this fix, a bare request for it 404'd instead of falling back to the one
+  // shell every client route shares, the way a path that is not a file at all already did.
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "deck");
+  const probe = path.join(dir, "_daemon-test-no-index");
+  fs.mkdirSync(probe, { recursive: true });
+  fs.writeFileSync(path.join(probe, "module.js"), "// not a page");
+  t.after(() => fs.rmSync(probe, { recursive: true, force: true }));
+
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
+
+  const shell = fs.readFileSync(path.join(dir, "index.html"), "utf8");
+  const r = await get("/_daemon-test-no-index");
+  assert.equal(r.status, 200);
+  assert.equal(r.body, shell);
+  // A real file in that directory is still served as itself, not the shell.
+  const mod = await get("/_daemon-test-no-index/module.js");
+  assert.equal(mod.status, 200);
+  assert.equal(mod.body, "// not a page");
+});
+
+test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", async t => {
+  const root = tempHome(t);
+  let seen = [];
+  const d = await start({ root, log: () => {}, rules: async c => { seen.push(c.caller); return { allow: true }; } });
+  t.after(() => d.stop());
+  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "cli", "capsule"]) {
+    await call("system.echo", { text: "x" }, { root, caller: forged });
+  }
+  assert.deepEqual(seen, ["local", "local", "local", "local", "cli", "capsule"]);
+  // Naming an agent without that agent's thread key is refused outright, before any rule runs.
+  const agent = await call("system.echo", { text: "x" }, { root, caller: "mcp:agent:kit" });
+  assert.equal(agent.error && agent.error.code, "denied");
+  assert.equal(seen.length, 6);
 });
 
 test("client: the first call after vyred restarts reaches the new vyred", async t => {
@@ -201,7 +246,8 @@ test("daemon: vyred checks presence, so a forged caller cannot run a human-only 
   for (const caller of ["cli", "capsule", "deck", "local", "mcp:agent:assistant"]) {
     const r = await raw(sock, "/v1/tools/held.release", input, { "x-vyre-caller": caller });
     assert.equal(r.status, 403, `${caller} got ${r.status}`);
-    assert.equal(r.body.error.code, "presence_required");
+    // An unvouched agent claim is refused before presence is asked (the Switchboard's key check).
+    assert.equal(r.body.error.code, caller.includes("agent:") ? "denied" : "presence_required", caller);
   }
   // The floor's list applies too: presence's own tools are refused without a proof.
   assert.equal((await raw(sock, "/v1/tools/presence.code", {}, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");

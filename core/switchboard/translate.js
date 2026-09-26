@@ -1,0 +1,127 @@
+// @ts-check
+// translate — what one line of Claude Code's stream-json output means to a surface.
+//
+// Claude Code with `--output-format stream-json --include-partial-messages --verbose` writes a
+// line per thing that happens: system notices, partial deltas, whole assistant messages, tool
+// results, permission requests and a result per turn. Most of it is for Claude Code's own SDK.
+// A surface needs much less: the text as it grows, which tools ran, when a turn ended, and what
+// it was asked. This file is the whole mapping, pure, so it can be tested line by line against
+// what a real `claude` printed.
+//
+// Events stay small (spec 6, the brief): no whole tool inputs or outputs, no hook output (the
+// user's own hooks print whatever they like, personal things included), no thinking.
+
+const CUT = 200;
+
+/** @param {unknown} v @param {number} [n] */
+export const cut = (v, n = CUT) => {
+  const s = String(v ?? "").replace(/\s+/g, " ").trim();
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+};
+
+/** Where a sending tool keeps its destination, in the order worth showing (as core/harness/rules.js). */
+const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "email", "thread_id", "chat_id", "user", "url"];
+
+/**
+ * A tool call as one line a person can judge, and where it goes. Never the whole input: a Write's
+ * content or an Edit's replacement can be the size of a file, and may hold anything.
+ * @param {string} tool @param {Record<string, any>} input
+ * @returns {{ summary: string, destination: string|null }}
+ */
+export function describe(tool, input = {}) {
+  const i = input || {};
+  if (tool === "Bash") return { summary: cut(i.command), destination: null };
+  if (["Write", "Edit", "MultiEdit", "Read", "NotebookEdit"].includes(tool)) {
+    const file = i.file_path || i.notebook_path || "";
+    return { summary: `${tool} ${cut(file)}`, destination: file ? String(file) : null };
+  }
+  if (tool === "WebFetch") return { summary: `fetch ${cut(i.url)}`, destination: i.url ? cut(i.url) : null };
+  if (tool === "WebSearch") return { summary: `search ${cut(i.query)}`, destination: null };
+  if (tool === "Glob" || tool === "Grep") return { summary: `${tool} ${cut(i.pattern)}${i.path ? " in " + cut(i.path, 80) : ""}`, destination: null };
+  const dest = DEST_KEYS.map(k => i[k]).find(v => v != null && v !== "");
+  const destination = dest == null ? null : cut(Array.isArray(dest) ? dest.join(", ") : dest);
+  const firstString = Object.entries(i).find(([, v]) => typeof v === "string");
+  return { summary: cut(`${tool}${firstString ? ` ${firstString[0]}: ${firstString[1]}` : ""}`), destination };
+}
+
+/**
+ * One stream-json message, as the thread events it stands for.
+ *
+ * Returns a list of { type, payload } for events, plus side notes the runner acts on:
+ * `session` and `model` (once known), `message` (a new assistant message began), `ask` (a permission request to route),
+ * `cancel` (a request Claude Code withdrew), `delta` (partial text, which the runner throttles
+ * rather than emitting one event per token), `limited` (the subscription's limit was hit) and
+ * `turn` (a turn ended, with its result).
+ * @param {any} m
+ */
+export function translate(m) {
+  /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, limited?: boolean, turn?: any,
+   *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
+  const out = { events: [] };
+  if (!m || typeof m !== "object") return out;
+
+  if (m.type === "system" && m.subtype === "init") {
+    out.session = m.session_id;
+    out.model = m.model || null;
+    return out;
+  }
+
+  if (m.type === "stream_event") {
+    const e = m.event || {};
+    // Only top-level text. A subagent's partial text carries parent_tool_use_id and is shown
+    // through its tool, not interleaved with the thread's own words.
+    // Deltas carry no message id; message_start does, and the runner keeps it for what follows.
+    if (m.parent_tool_use_id) return out;
+    if (e.type === "message_start" && e.message && e.message.id) out.message = String(e.message.id);
+    if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) out.delta = String(e.delta.text);
+    return out;
+  }
+
+  if (m.type === "assistant" && m.message && !m.parent_tool_use_id) {
+    const id = String(m.message.id || "");
+    for (const b of m.message.content || []) {
+      if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, text: String(b.text).slice(0, 20000), done: true } });
+      if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, tool: b.name, phase: "started", ...describe(b.name, b.input) } });
+    }
+    return out;
+  }
+
+  if (m.type === "user" && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
+    for (const b of m.message.content) {
+      if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, phase: "done", error: Boolean(b.is_error) } });
+    }
+    return out;
+  }
+
+  if (m.type === "control_request" && m.request && m.request.subtype === "can_use_tool") {
+    const r = m.request;
+    out.ask = { request_id: m.request_id, tool: String(r.tool_name || ""), tool_use_id: r.tool_use_id || null,
+      input: r.input || {}, reason: r.decision_reason || r.description || null, ...describe(String(r.tool_name || ""), r.input || {}) };
+    return out;
+  }
+  if (m.type === "control_cancel_request") { out.cancel = m.request_id; return out; }
+
+  // The subscription's rate limit, as Claude Code reports it: every status is passed on (a warning
+  // is worth showing), and "rejected" also means the limit was hit.
+  if (m.type === "rate_limit_event" && m.rate_limit_info) {
+    const r = m.rate_limit_info;
+    out.limit = { status: String(r.status || "unknown"), kind: r.rateLimitType || null, resets_at: typeof r.resetsAt === "number" ? r.resetsAt : null,
+      ...(typeof r.utilization === "number" ? { utilization: r.utilization } : {}) };
+    if (r.status === "rejected") out.limited = true;
+    return out;
+  }
+
+  if (m.type === "result") {
+    const text = typeof m.result === "string" ? m.result : "";
+    // A turn that failed on the subscription's limit reads as an error result naming the limit.
+    if (m.is_error && /usage limit|rate limit|limit reached|out of (extra )?usage/i.test(text)) out.limited = true;
+    out.turn = { ok: !m.is_error, text, cost_usd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : 0 };
+    const u = m.usage || {};
+    const n = v => (typeof v === "number" && v >= 0 ? v : 0);
+    const tokens = { input: n(u.input_tokens), output: n(u.output_tokens), cache_read: n(u.cache_read_input_tokens), cache_write: n(u.cache_creation_input_tokens) };
+    out.events.push({ type: "thread.finished", payload: { ok: !m.is_error, stop_reason: m.stop_reason || m.subtype || null,
+      cost_usd: out.turn.cost_usd, duration_ms: m.duration_ms || null, turns: m.num_turns || null, tokens, ...(m.is_error ? { error: cut(text) } : {}) } });
+    return out;
+  }
+  return out;
+}
