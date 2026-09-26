@@ -81,8 +81,20 @@ never will. Every one of the following is hard-coded, not merely defaulted:
   floor denies the obvious strings (`docker-api`, `:2375`, `:2376`), which helps but is not the
   real fix. The real fix, per security and box: box replaces the endpoint-filtering proxy with a
   small one it owns, holding `docker.sock` itself, that imports `driver/policy.js`'s
-  `allowCreate(body)` and `allowExec(labels, cmd)` and calls them on every request — the exact
-  shape this file builds, checked again at the one point that matters regardless of who is
-  asking. `policy.js` and `policy.test.js` are built from the same fixture as `docker.test.js`, so
-  the two can never quietly drift apart. With box's separate sessions container for Claude's own
+  `allowCreate(body, config)` and `allowExec(labels, cmd)` and calls them on every request — the
+  exact shape this file builds, checked again at the one point that matters regardless of who is
+  asking, with `config` (network, image, capAdd) always the box's own, never the request's.
+  `policy.js` and `policy.test.js` are built from the same fixture as `docker.test.js`, so the
+  two can never quietly drift apart. With box's separate sessions container for Claude's own
   work, Claude will not reach the proxy at all; `policy.js` holds even so.
+  - Security's review of the first `policy.js` (26 Sep) found five more holes a direct caller
+    could still use, all closed in the same file: `Source` could name an existing volume, whose
+    labels Docker ignores once it already exists (vyred's own home or another agent's, mounted
+    just by naming it — closed by requiring the exact derived name, though the proxy must still
+    inspect an existing volume of that name itself before reusing it, which no pure function can
+    do); `NetworkMode` accepted anything but `"host"`, including `container:<vyred>`; `CapAdd`
+    accepted any list; `Image` accepted any string. One is residual, not closed here: an exec
+    with an unrestricted `cmd` still reaches whichever agent's computer the caller names, and
+    labels cannot tell one agent's computer apart from another's, only from everything else on
+    the box — closing that needs the caller to be vyred and nothing else, true once Claude's
+    sessions have their own container.
