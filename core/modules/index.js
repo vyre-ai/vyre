@@ -247,7 +247,16 @@ export class Registry {
       },
       // Another module's tool, through the same path as every caller: input checked, rules run.
       // This is the only way one module uses another; never import its files.
-      call: (tool, input) => this.call(tool, input, `module:${m.name}`),
+      // `as` calls under another caller label, only one the manifest declares under needs.callAs:
+      // the link on a Mac types into a session for the person at the box as "link:box", so the
+      // switchboard treats the words as a person's (docs/adr/0021-box-reads-the-mac.md).
+      call: (tool, input, opts) => {
+        const as = opts && opts.as;
+        if (!as) return this.call(tool, input, `module:${m.name}`);
+        const declared = (m.needs && m.needs.callAs) || [];
+        if (!declared.includes(as) || String(as).startsWith("module:")) throw new Error(`${m.name} called ${tool} as ${as}, which its manifest does not declare under needs.callAs`);
+        return this.call(tool, input, String(as));
+      },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
       // shows.streams. The handler gets the raw upgrade (req, socket, head) and the caller, and
