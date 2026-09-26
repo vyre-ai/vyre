@@ -34,7 +34,7 @@ export const DENY = Object.freeze([
   ".vyre", ".claude", ".claude.json", ".ssh", ".gnupg", ".aws", ".docker", ".kube", ".config/gcloud",
   ".git-credentials", ".netrc", ".npmrc", ".pypirc", ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx",
   "*.kdbx", "*.keychain*", "id_*", "credentials.json", "service-account*.json",
-  "Cookies", "Login Data", "Login Data For Account", "Web Data", "secrets",
+  "Cookies", "Login Data", "Login Data For Account", "Web Data", "secrets", ".vnc",
 ]);
 
 /** Glass's own working files: never listed, and never the name of something a person makes. */

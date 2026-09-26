@@ -54,12 +54,17 @@ deck/glass/                Glass views (watch, take-over, phone), vendored noVNC
 - A full pool evicts the least recently touched checkout with no viewer and no take-over; if every
   slot is watched or taken over, the checkout waits (up to 30 s) and then fails with who holds the
   screens.
+- `freeze()` only ever looks at idle checkouts, so an actively-held one whose container vanishes
+  behind vyred's back (an operator, the box) would otherwise go unnoticed indefinitely. Every
+  `verifyMs`, `checkout()`'s "already held" path asks the driver once whether the container still
+  exists; gone releases it, so the next `checkout()` rebuilds it rather than trusting a screen
+  nobody can reach. Found on the box's first real run.
 
 ### Config (`~/.vyre/config.json`)
 
 ```json
 { "computers": { "docker": "http://docker-proxy:2375", "image": "vyre/computer:0.1", "network": "vyre-computers",
-  "labelPrefix": "vyre", "screens": 2, "idleMs": 60000, "freezeMs": 15000, "cpus": 2, "memoryMb": 3072 } }
+  "labelPrefix": "vyre", "screens": 2, "idleMs": 60000, "freezeMs": 15000, "verifyMs": 30000, "cpus": 2, "memoryMb": 3072 } }
 ```
 
 The driver only touches containers carrying the label `<labelPrefix>.computer=<agent>`, whatever
@@ -82,9 +87,11 @@ in `computers.list` (`driver: "none"`).
 | `computers.giveback` | `{agent, surface}` | `{agent, handed_back}` |
 | `computers.watch` | `{agent, surface}` | `{ticket, path: "/v1/streams/computers/glass?ticket=...", width, height}` |
 | `computers.endpoint` (internal) | `{agent}` | `{helper: {url, token}}`; checks out, thaws. Chrome is reached only through `helper`'s own `/cdp` proxy (ADR 0005), never a raw address |
-| `computers.may-act` (internal) | `{agent, tool}` | `{ok: true}` or `{ok: false, why, holder?}`; touches the checkout |
+| `computers.may-act` (internal) | `{agent, tool}` | `{ok: true}` or `{ok: false, why, holder?, shielded?}`; touches the checkout |
+| `computers.helper` (internal) | `{agent}` | `{url, token}`; thaws a frozen computer but takes no screen — for a sign-in or a file browse that only needs computerd |
+| `computers.shield` | `{agent, on}` | `{agent, shielded}`; while on, `may-act` refuses every read and action regardless of pause/take-over, and computerd is best-effort told to 423 its own routes too (defense in depth, not the source of truth) |
 
-`surface` names a person's screen: `glass:<device>`, `deck:<device>`, `phone:<device>`.
+`surface` names a person's screen: `glass:<device>`, `deck:<device>`, `phone:<device>`, `capsule:<device>`.
 An agent's own hands resolve the agent from the caller `mcp:agent:<name>`; a non-assistant agent
 can only act on its own computer. The assistant, the CLI and the Deck pass `agent` explicitly.
 
@@ -92,7 +99,8 @@ can only act on its own computer. The assistant, the CLI and the Deck pass `agen
 
 `computer.created`, `computer.checked-out {agent, thread, screen}`, `computer.released {agent, why}`,
 `computer.frozen`, `computer.thawed`, `computer.stopped`, `computer.paused`, `computer.resumed`,
-`computer.taken-over {agent, surface, thread}`, `computer.handed-back {agent, surface, why}`.
+`computer.taken-over {agent, surface, thread}`, `computer.handed-back {agent, surface, why}`,
+`computer.shielded {agent}`, `computer.unshielded {agent}`.
 `chrome.acted` and `desktop.acted` `{agent, action, summary, ok, why?}` feed Glass's action log.
 No payload ever carries the VNC password, the helper token or page content beyond a short summary.
 
@@ -108,6 +116,7 @@ No payload ever carries the VNC password, the helper token or page content beyon
 | `GET /screenshot` | `image/png` of the whole display |
 | `GET /cdp/json/version` | Chrome's own answer, `webSocketDebuggerUrl` rewritten to `ws://<host>/cdp/...` |
 | WS upgrade `/cdp/...` | an authenticated raw pipe to Chrome's loopback debugging port (token in `?token=`, a plain WebSocket cannot send a header; ADR 0005) |
+| `POST /shield` | `{on}`; while on, `/tree`, `/screenshot`, `/act` and `/input` answer 423 instead of doing anything. Set by `computers.shield`, best-effort — vyred's own `may-act` refusal is the real gate, this is defense in depth in case anything reaches computerd directly |
 
 Ports inside the container: `5900` Xvnc (VNC auth, password from `VNC_PASSWORD`), `7000`
 computerd (`COMPUTERD_TOKEN`). None is published on the host; vyred reaches them over the internal
@@ -141,9 +150,9 @@ unauthenticated port, which was a real hole).
   read from anywhere, `CapDrop` is always `ALL`, the root filesystem is read-only with tmpfs for
   the paths `entrypoint.sh` actually writes, and every container and volume carries a fixed
   `run.vyre=1` label alongside the existing `labelPrefix` pair. Tested that a create body never
-  carries any of the dangerous fields, including a scan for a `docker.sock` bind. Not yet proven
-  against a real Engine — the read-only-root/tmpfs split is the first thing to check once a
-  container actually boots on the box.
+  carries any of the dangerous fields, including a scan for a `docker.sock` bind. Proven against
+  the real Engine on the box (see the real container run below): the read-only-root/tmpfs split
+  boots and runs Xvnc, Chrome and computerd correctly under it.
 - Rebuilt `computers.test.js`, `hands-chrome`'s and `hands-desktop`'s tests on the real
   `core/agents` and `core/switchboard` modules that landed on `main`: the module loader's
   first-found-wins rule means a same-named test fake is now silently ignored, so the old
@@ -155,32 +164,117 @@ unauthenticated port, which was a real hole).
   refused every real agent regardless of its record — one line in `core/agents/index.js`, outside
   this workstream's folders, flagged to switchboard.
 
+- Chrome's debugging port is no longer reachable off `127.0.0.1` inside the container at all:
+  `computerd` proxies CDP discovery and the WebSocket session itself, authenticated the same as
+  every other route (`docs/adr/0012-cdp-proxy.md`). The old `socat` relay to a published `9223`
+  is gone.
+- `computers.helper`, `computers.shield`, and computerd's `/fs` routes: built by the `glass`
+  workstream (`core/computers/helper.js`, `shield.js`, `image/computerd/fs.js`) for their sign-in
+  mode and file browser. An earlier pass here built a duplicate, in-memory version of the same
+  two tools directly in `pool.js`/`keyboard.js` before noticing glass had already shipped theirs
+  on `main` — that duplicate is deleted; glass's is the one and only implementation now. `surface`
+  also accepts `capsule:<device>`.
+- An ordinary agent cannot claim to be a person's surface: `computers.takeover`, `.giveback` and
+  `.watch` refuse a caller identified as an agent (the assistant stays exempt), closing the
+  specific hole glass found — an agent ending a person's take-over mid-action by naming their
+  surface. Still not the full guard: a trusted channel (cli, local, a module, the assistant) can
+  still claim a surface it is not actually connected as; that needs the Rules layer's
+  caller-identity check (asked of security 26 Sep, still open).
+- **The real container run, on the box, end to end** — the first genuine proof the image design
+  works, not just passes review by inspection. Two real bugs turned up on the very first Engine
+  calls, both fixed (`ea3c2a0`, `f98d1fa`):
+  - `HostConfig.PidMode: "container"` is not a valid value on its own (Docker wants `""`, `"host"`
+    or `"container:<id>"`, and there is no other container to share a namespace with) — the
+    Engine refused the create outright. Fixed by omitting the field; the isolated default was
+    always what was meant.
+  - Debian bookworm's `tigervnc-standalone-server`/`tigervnc-common` ship `Xvnc` (via
+    `update-alternatives`) but no standalone `vncpasswd` binary at all, so the container died on
+    its first line of `entrypoint.sh`. `image/computerd/vncpasswd.mjs` writes the password file
+    itself (the standard fixed-key single-DES obfuscation), reading `VNC_PASSWORD` from the
+    environment so it never reaches `ps`.
+  - With both fixed, one real container ran the full stack and was proven live: `computerd`'s
+    `/health` answered over its bearer token and refused a wrong one; `/cdp/json/version`
+    correctly rewrote `webSocketDebuggerUrl` to point back through itself; and — the strongest
+    check — a real RFB client handshake, run from `rfb.js` itself against the container's real
+    Xvnc with the real password file, completed a real VNC authentication and reported the right
+    screen size back. Cleaned up afterward (`computers.stop`, then `docker rm` the container and
+    its home volume).
+  - `image/Dockerfile` was first fixed here with a hand-rolled `computerd/vncpasswd.mjs` (no
+    `vncpasswd` binary at all on bookworm's tigervnc packages) — superseded by `glass`'s own live
+    run finding the same two bugs and fixing them better: `tigervnc-tools` actually has the real
+    binary, just under a different package than expected. Reconciled onto glass's fix; the
+    hand-rolled script is gone.
+  - `computers.checkout`'s "already held" fast path never re-verified the container was still
+    alive, since `freeze()` only ever looks at idle checkouts — found here by hand, mid debugging,
+    when removing a container out from under vyred left `computers.get` reporting `running`
+    indefinitely. Fixed: see `verifyMs` above.
+  - `core/agents` has no delete tool at all, so a test agent made for a probe like this can only
+    be neutralized (`computer: false`), never removed. Flagged to switchboard, not fixed here.
+
+- Reconciled with glass's own live-run findings (they hit the same two real-Engine bugs
+  independently): took glass's `PidMode: ""` and `tigervnc-tools` fixes over this workstream's
+  own first attempts at the same two bugs (a hand-rolled `computerd/vncpasswd.mjs`, now deleted —
+  the real package is smaller and better-tested). Took glass's relay-side fixes as-is:
+  `keyboard.js`'s new `renew()`, called from `glass.js` on every forwarded input and every pong,
+  renews the take-over's beat and (at most every 30s) the thread's lease — this is ADR 0005
+  decision 2, and it replaces the "Glass renews every 30s" contract this doc used to describe as
+  a gap. Also took the clipboard/resize/framerate/stale-lock/password-manager `entrypoint.sh`
+  hardening, and computerd's `/fs` denying `.vnc`.
+- perf found the sweep timer running every 5s unconditionally, 12x SPEC's floor on polling an
+  idle install. It now runs at `sweepMs` only while something is checked out, idle-pending-freeze,
+  or taken over, and backs off to `idleSweepMs` (60s default) otherwise.
+- security put `computers.takeover`/`.giveback` on the presence floor (a real person, or a module
+  behind its own presence check, must prove it — closes the spoofing gap noted below as still
+  open). Tightened further per their suggestion: `takeover()` now records the verified caller,
+  `giveback()` requires the same caller or a module, so two people who each separately proved
+  presence cannot end each other's take-overs by naming the same surface. A lease-driven move (not
+  a direct `takeover()` call) has no caller to bind to and falls back to the surface-only check.
+  Declared `presence: { summary }` on both tools.
+
 ## Doing
-- Glass review (from the `glass` workstream) found real gaps to fix on this side: backpressure on
-  the Xvnc→browser relay, a server-side keepalive replacing the "renew every 30s" take-over
-  contract, RFB close codes, always dropping `SetDesktopSize`/`xvp` regardless of what the client
-  asked for, a per-computer viewer cap, and `entrypoint.sh` hardening (clipboard/cut-text off,
-  stale Chrome singleton locks, password manager off). Also building `computers.shield {agent, on}`
-  and `computers.helper {agent}` as new internal tools for glass's sign-in mode. Not started yet
-  this pass — next up.
+- Nothing in parallel right now.
 
 ## Next
-- The glass review fixes above.
-- Real container runs on the box: the stack is up (`/srv/vyre`, compose project `vyre`, label
-  prefix `run.vyre.computers`) and a restricted Docker proxy is reachable at
-  `tcp://docker-api:2375` over an internal network only vyred can reach (per box, 26 Sep). Next
-  concrete step: ask box how to point this worktree's tooling at it and run one real container —
-  first real validation of the Dockerfile, entrypoint.sh, computerd and the hardening above.
+- Deliver VNC_PASSWORD and COMPUTERD_TOKEN without Env at all (security, 26 Sep - found both
+  readable via `docker inspect`'s Config.Env and `/proc/1/environ` through exec; box is
+  stripping Config.Env from the proxy's own inspect responses, and computerd's spawned children
+  no longer inherit either, but the real secrets still sit in the container's real environment
+  for its whole life). The design security sketched: entrypoint.sh starts computerd first, with
+  only a short-lived, single-use BOOTSTRAP_TOKEN in Env; pool.js's `ensure()` calls computerd's
+  own `POST /bootstrap {token, vnc_password, helper_token}` right after start, over the network,
+  body not Env; computerd keeps `helper_token` in memory from then on (never env-sourced) and
+  writes `vnc_password` to a one-shot tmpfs file entrypoint.sh polls for, reads once, and deletes,
+  then proceeds to `vncpasswd -f` as before. This reorders container startup (computerd before
+  Xvnc) and adds a new failure mode (a bootstrap that never arrives) - a genuine architecture
+  change, not attempted here without a live container to validate the timing against. Next real
+  step once picked up: build it, then one more real run on the box to prove the ordering.
+- Glass's ADR 0005 review list, decision 1 (still mine, not yet started): backpressure on the
+  Xvnc→browser relay, RFB close codes, always dropping `SetDesktopSize`/`xvp` regardless of what
+  the client asked for, a per-computer viewer cap of 4, and the "checkout reports success when the
+  container exits at once" gap glass's live run also found. (Decision 2, the take-over keepalive,
+  is done — see above.)
+- The sealed Chrome profile design box proposed and glass agreed to (encrypt at the profile, not
+  the volume: a per-computer key from the vault, unsealed to a tmpfs at checkout/thaw, sealed back
+  at release/stop and again when a shield ends). Accepted, not started. Needs a name for the
+  sealed tarball so glass can add it to `core/glass/guard.js` and `computerd/fs.js`'s deny lists.
+  Key handling per security (26 Sep): the key is a vault item granted only to `computers`, fetched
+  at checkout with `ctx.vault.fetch` and never through the relay; it reaches computerd in one
+  bearer-authenticated request body, stays in memory only, and is never logged; seal with
+  AES-GCM, a fresh IV, the agent name as AAD; computerd refuses to unseal onto anything but the
+  tmpfs.
+- The xterm font warning seen in the real container's logs (`cannot load font
+  "-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1"`) and the `_XSERVTransmkdir`
+  warning about `/tmp/.X11-unix` under the non-root user — neither stopped the container from
+  working, but both are worth a look before this ships for real use.
 
 ## Needs from others
-- security: `computers.takeover`/`computers.giveback` only check the *named* surface matches the
-  take-over record, never that the caller *is* that surface — an agent (or anything else) can pass
-  any surface string and end a person's take-over mid-action. Asked security to gate both behind
-  whatever HUMAN_ONLY / caller-identity enforcement already exists (asked 26 Sep, unanswered).
-- box: label prefix confirmation — docker.js now sends a fixed `run.vyre: "1"` label on top of the
-  existing `labelPrefix`-based pair, and expects the box's compose config to set
-  `computers.labelPrefix` to `run.vyre.computers` so the prefix-based labels read
-  `run.vyre.computers.computer=<agent>`; flagged for box to confirm that reading is right.
+- box: build the replacement proxy that imports `driver/policy.js` (agreed with security 26 Sep,
+  `core/computers/driver/policy.js` + `policy.test.js` are ready for it to import and test
+  against). Until it exists, ADR 0009's hardening only holds for requests that go through
+  `DockerDriver.create()`, not one that reaches the current proxy directly.
+- switchboard: `agents.delete` has landed on `work/switchboard` (`b41ddd8`); once it reaches
+  `main`, clean up the box's test agent `probe` with `vyre agents stop probe && vyre agents
+  delete probe`.
 - gate: the container's egress. Until the Gate exists the network is internal plus whatever the box
   allows; consequential clicks (send, pay, delete) are refused by the hands, not held.
 

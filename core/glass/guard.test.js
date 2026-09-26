@@ -21,6 +21,7 @@ export const DENIED_EXAMPLES = {
   "*.key": "tls.key", "*.p12": "cert.p12", "*.pfx": "cert.pfx", "*.kdbx": "vault.kdbx", "*.keychain*": "login.keychain-db",
   "id_*": "id_ed25519", "credentials.json": "credentials.json", "service-account*.json": "service-account-prod.json", Cookies: "Cookies",
   "Login Data": "Login Data", "Login Data For Account": "Login Data For Account", "Web Data": "Web Data", secrets: "secrets",
+  ".vnc": ".vnc",
 };
 
 const ALLOWED = ["notes.txt", "config.json", ".config/app.json", "environment.md", "keys.txt", "tls.key.txt", "my-secrets-plan.md", ".envrc.example"];

@@ -74,11 +74,15 @@ export class Glass {
 
     let closed = false;
     let viewerHeld = false;
+    /** The keepalive: a ping every 30 s, closed after two missed pongs (ADR 0005, decision 1). */
+    let pinger = /** @type {ReturnType<typeof setInterval>|null} */ (null);
+    let missed = 0;
     /** @type {import("node:net").Socket|null} */
     let xvnc = null;
     const closeAll = (/** @type {string} */ why) => {
       if (closed) return;
       closed = true;
+      if (pinger) { clearInterval(pinger); pinger = null; }
       if (viewerHeld) { viewerHeld = false; try { this.pool.viewer(agent, -1); } catch {} }
       try { socket.destroy(); } catch {}
       if (xvnc) try { xvnc.destroy(); } catch {}
@@ -147,7 +151,11 @@ export class Glass {
       try { msgs = clientParser.push(bytes); }
       catch (e) { closeAll(/** @type {Error} */ (e).message); return; }
       for (const m of msgs) {
-        if (INPUT.has(m.type) && !this.keyboard.canType(agent, surface)) continue;
+        if (INPUT.has(m.type)) {
+          if (!this.keyboard.canType(agent, surface)) continue;
+          // The holder is at the keyboard: that keeps the take-over alive.
+          this.keyboard.renew?.(agent, surface);
+        }
         try { /** @type {import("node:net").Socket} */ (xvnc).write(m.bytes); }
         catch (e) { closeAll(/** @type {Error} */ (e).message); return; }
       }
@@ -158,6 +166,16 @@ export class Glass {
     xvnc.on("data", b => { if (!closed) try { socket.write(encodeFrame(b)); } catch (e) { closeAll(/** @type {Error} */ (e).message); } });
     const early = xvncBytes.rest();
     if (early.length && !closed) try { socket.write(encodeFrame(early)); } catch (e) { closeAll(/** @type {Error} */ (e).message); }
+
+    // Browsers answer pings on their own; a half-open socket (a phone that lost its signal) does
+    // not, and would otherwise hold the viewer, and the take-over, forever.
+    pinger = setInterval(() => {
+      if (closed) return;
+      if (missed >= 2) { closeAll("two pings went unanswered"); return; }
+      missed += 1;
+      try { socket.write(encodeFrame(Buffer.alloc(0), 0x9)); } catch (e) { closeAll(/** @type {Error} */ (e).message); }
+    }, 30_000);
+    pinger.unref();
 
     // From here on a decoded WebSocket message is client input, not more handshake: route it
     // to the gate instead of the Bytes queue the handshake read from.
@@ -171,6 +189,7 @@ export class Glass {
         if ("control" in f) {
           if (f.control === "close") { closeAll("the browser closed the stream"); return; }
           if (f.control === "ping") { try { socket.write(encodeFrame(f.payload, 0xa)); } catch {} }
+          if (f.control === "pong") { missed = 0; this.keyboard.renew?.(agent, surface); }
           continue;
         }
         forwardClient(f.message);

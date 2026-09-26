@@ -248,6 +248,17 @@ test("hands-chrome: refuses to act while paused, and while another surface has t
   const again = await s.kit("chrome.click", { selector: { role: "button", name: "Go" } });
   assert.equal(again.error, undefined);
   assert.equal(again.data.ok, true);
+
+  // Shield refuses a read too, not just an action: unlike an ordinary take-over, this is the one
+  // that must stop a screenshot from showing a person's password.
+  const on = await s.d.registry.call("computers.shield", { agent: "kit", on: true }, "module:test");
+  assert.deepEqual(on.data, { agent: "kit", shielded: true, computerd: false });
+  const shot = await s.kit("chrome.screenshot", {});
+  assert.match(shot.error.message, /signing in/);
+  const off = await s.d.registry.call("computers.shield", { agent: "kit", on: false }, "module:test");
+  assert.deepEqual(off.data, { agent: "kit", shielded: false, computerd: false });
+  const shot2 = await s.kit("chrome.screenshot", {});
+  assert.equal(shot2.error, undefined);
 });
 
 test("hands-chrome: an agent may only drive its own computer", { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {

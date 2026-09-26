@@ -68,15 +68,30 @@ export default {
     }
 
     // The real clock, only here. Tests call sweep() themselves with sweepMs 0.
+    //
+    // A computer waiting to freeze (in pool.idle) needs a check soon after its freezeMs, so the
+    // sweep runs at sweepMs while anything is checked out, held idle-pending-freeze, or taken
+    // over. Once every computer is either actively watched or already frozen/stopped, there is
+    // nothing sweep() can do, so it backs off to idleSweepMs - once a minute by default, per
+    // SPEC's floor on polling an install that isn't using computers at all (found by perf).
     const sweepMs = Number(cfg.sweepMs ?? 5_000);
+    const idleSweepMs = Number(cfg.idleSweepMs ?? 60_000);
     const sweep = async () => { keyboard.sweep(); await pool.sweep(); };
-    let sweeping = false;
-    const timer = sweepMs > 0 ? setInterval(() => {
-      if (sweeping) return;
-      sweeping = true;
-      sweep().catch(e => ctx.log(`sweep failed: ${e.message}`)).finally(() => { sweeping = false; });
-    }, sweepMs) : null;
-    if (timer) timer.unref();
+    const busy = () => pool.checkouts.size > 0 || pool.idle.size > 0 || keyboard.takeovers.size > 0;
+    let sweeping = false, timer = null;
+    const schedule = () => {
+      if (sweepMs <= 0) return;
+      timer = setTimeout(async () => {
+        if (!sweeping) {
+          sweeping = true;
+          try { await sweep(); } catch (e) { ctx.log(`sweep failed: ${e.message}`); }
+          sweeping = false;
+        }
+        schedule();
+      }, busy() ? sweepMs : idleSweepMs);
+      timer.unref();
+    };
+    schedule();
 
     /** The agents module's view of one agent, or null when it cannot say. */
     const kindOf = async name => {
@@ -162,7 +177,10 @@ export default {
       async (i, { caller }) => {
         const agent = await resolve(i, caller);
         const t = keyboard.takeovers.get(agent);
-        if (t) await keyboard.giveback(agent, t.surface);
+        // Stopping the computer ends its take-over unconditionally, whoever held it: this is
+        // the module administratively tearing the whole thing down, not one surface giving back
+        // to another, so it passes as itself rather than the (possibly different) caller here.
+        if (t) await keyboard.giveback(agent, t.surface, "module:computers");
         return pool.stop(agent);
       });
 
@@ -176,11 +194,12 @@ export default {
       obj({ agent: str, surface: str }, ["surface"]), async (i, { caller }) => {
         const agent = await resolve(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
-        return keyboard.takeover(agent, await ownSurface(i, caller));
-      });
+        return keyboard.takeover(agent, await ownSurface(i, caller), caller);
+      }, { presence: { summary: i => `Take the keyboard of ${i && i.agent ? i.agent : "an agent"}'s computer` } });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),
-      async (i, { caller }) => keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller)));
+      async (i, { caller }) => keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller), caller),
+      { presence: { summary: i => `Hand ${i && i.agent ? i.agent : "an agent"}'s computer back` } });
 
     tool("computers.watch", "A one-use ticket (30 s) to open an agent's screen in Glass.", obj({ agent: str, surface: str }, ["surface"]),
       async (i, { caller }) => {
@@ -215,7 +234,7 @@ export default {
     return {
       pool, keyboard, shield, driver, sweep,
       async stop() {
-        if (timer) clearInterval(timer);
+        if (timer) clearTimeout(timer);
         keyboard.stop();
         shield.stop();
         pool.wake();

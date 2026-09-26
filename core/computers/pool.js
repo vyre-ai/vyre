@@ -39,7 +39,7 @@ const vncPassword = () => crypto.randomBytes(6).toString("base64url");
 const helperToken = () => crypto.randomBytes(32).toString("base64url");
 
 /**
- * @typedef {{ agent: string, thread: string|null, screen: number, since: number, touched: number, viewers: number }} Checkout
+ * @typedef {{ agent: string, thread: string|null, screen: number, since: number, touched: number, viewers: number, verified?: number }} Checkout
  */
 
 export class Pool {
@@ -61,6 +61,7 @@ export class Pool {
       idleMs: Number(c.idleMs ?? 60_000),
       freezeMs: Number(c.freezeMs ?? 15_000),
       waitMs: Number(c.waitMs ?? 30_000),
+      verifyMs: Number(c.verifyMs ?? 30_000),
       image: String(c.image || "vyre/computer:0.1"),
       network: c.network ? String(c.network) : undefined,
       prefix: String(c.labelPrefix || "vyre"),
@@ -155,11 +156,15 @@ export class Pool {
   async checkout(agent, o = {}) {
     if (!this.driver) throw new Error(NO_DRIVER);
     return this.serial(agent, async () => {
-      const held = this.checkouts.get(agent);
+      let held = this.checkouts.get(agent);
       if (held) {
         if (o.thread) held.thread = o.thread;
         held.touched = this.now();
-        return { agent, screen: held.screen, thread: held.thread };
+        await this.verify(agent, held);
+        held = this.checkouts.get(agent);
+        if (held) return { agent, screen: held.screen, thread: held.thread };
+        // verify() found the container gone and released the checkout: fall through and make a
+        // fresh one, the same as if nothing had ever been checked out.
       }
       await this.allowed(agent);
       const co = await this.claim(agent, o.thread || null);
@@ -170,6 +175,35 @@ export class Pool {
       this.log(`${agent} checked out screen ${co.screen}${o.why ? ` (${o.why})` : ""}`);
       return { agent, screen: co.screen, thread: co.thread };
     });
+  }
+
+  /**
+   * A checked-out computer is trusted between calls, and freeze() only ever looks at idle ones,
+   * so nothing had ever asked whether an actively-held container was still there — found on the
+   * box's first real run, by hand, when a container removed out from under vyred mid-checkout
+   * left `computers.get` reporting "running" until the next `computers.stop` forced a look.
+   * Every `verifyMs`, an already-held checkout is asked once; a container gone releases it, so
+   * the next call rebuilds it instead of trusting a screen nobody can actually reach. Called from
+   * inside checkout()'s own `serial()`, so this never races a stop, a release or another checkout
+   * of the same agent.
+   * @param {string} agent @param {Checkout} held
+   */
+  async verify(agent, held) {
+    const now = this.now();
+    if (now - (held.verified ?? held.since) < this.opts.verifyMs) return;
+    held.verified = now;
+    const r = this.row(agent);
+    if (!r || !r.container) return;
+    let st;
+    try { st = await this.driver.inspect(r.container); }
+    catch { return; } // a network hiccup talking to the proxy is not evidence the container is gone
+    if (st.state !== "missing") return;
+    this.set(agent, { state: "none", container: null });
+    this.hosts.delete(agent);
+    this.checkouts.delete(agent);
+    this.emit("computer.released", { agent, why: "vanished" }, held.thread ? { thread: held.thread } : {});
+    this.log(`${agent}'s computer vanished while checked out; releasing so the next checkout rebuilds it`);
+    this.wake();
   }
 
   /** Free screen numbers, 1-based: "screen 1" is what a person reads on the board. */

@@ -1,4 +1,4 @@
-# ADR 0004 · Hardening an agent's container
+# ADR 0009 · Hardening an agent's container
 
 Status: accepted, 26 Sep 2026 · Workstream: computers · Spec: section 7.9
 
@@ -73,3 +73,36 @@ never will. Every one of the following is hard-coded, not merely defaulted:
   the box's first real container is also the first real check of whether that list is complete.
 - `computers.capAdd` remains the one escape hatch, and stays config, not code: a box that finds
   a capability genuinely needed adds exactly that one, never a default list.
+- **Known gap (security, 26 Sep), being closed:** none of the above held against a caller that
+  reached the restricted proxy directly instead of through `DockerDriver.create()` — a Claude
+  session's own Bash shares vyred's container and network namespace, so a raw `curl` to
+  `docker-api:2375` could ask for `Privileged: true` and a host bind mount, and the proxy (which
+  filters endpoints, not bodies) would forward it: root on the host. A text filter in the harness
+  floor denies the obvious strings (`docker-api`, `:2375`, `:2376`), which helps but is not the
+  real fix. The real fix, per security and box: box replaces the endpoint-filtering proxy with a
+  small one it owns, holding `docker.sock` itself, that imports `driver/policy.js`'s
+  `allowCreate(body, config)` and `allowExec(labels, cmd)` and calls them on every request — the
+  exact shape this file builds, checked again at the one point that matters regardless of who is
+  asking, with `config` (network, image, capAdd) always the box's own, never the request's.
+  `policy.js` and `policy.test.js` are built from the same fixture as `docker.test.js`, so the
+  two can never quietly drift apart. With box's separate sessions container for Claude's own
+  work, Claude will not reach the proxy at all; `policy.js` holds even so.
+  - Security's review of the first `policy.js` (26 Sep) found five more holes a direct caller
+    could still use, all closed in the same file: `Source` could name an existing volume, whose
+    labels Docker ignores once it already exists (vyred's own home or another agent's, mounted
+    just by naming it — closed by requiring the exact derived name, though the proxy must still
+    inspect an existing volume of that name itself before reusing it, which no pure function can
+    do); `NetworkMode` accepted anything but `"host"`, including `container:<vyred>`; `CapAdd`
+    accepted any list; `Image` accepted any string. One was left residual: an exec with an
+    unrestricted `cmd` still reaches whichever agent's computer the caller names, and labels
+    cannot tell one agent's computer apart from another's, only from everything else on the box.
+  - A second review (26 Sep) found `computerLabels` let the caller choose its own label prefix
+    (and with it, the volume `Source` derived from that prefix), and that two `*.managed`/
+    `*.computer` pairs in one body resolved ambiguously via `.find()`. `allowCreate` now requires
+    `computers.labelPrefix` in its config and refuses any label pair that isn't exactly that one,
+    body-wide. This surfaced the same class of residual on the create side that exec already
+    had: a caller naming a *different* agent still gets that agent's real, already-existing
+    computer and home volume back, since the check only asks "is this a computer" and "does the
+    claim match what is really there," never "is the caller allowed to act as this agent."
+    Closing both residuals needs the same thing: the caller is vyred and nothing else, true once
+    Claude's own sessions have their own container, off this network entirely.

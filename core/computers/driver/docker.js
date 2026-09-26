@@ -131,8 +131,10 @@ export class DockerDriver {
       ExposedPorts: { [`${PORTS.vnc}/tcp`]: {}, [`${PORTS.helper}/tcp`]: {} },
       HostConfig: {
         ...(network ? { NetworkMode: network } : {}),
-        // Never host PID: an agent's computer must never see the box's own processes.
-        PidMode: "container",
+        // Never host PID: an agent's computer must never see the box's own processes. "" is the
+        // Engine's own private namespace; "container" alone is not a mode (it needs ":<id>") and
+        // the Engine refuses the create with "invalid PID mode".
+        PidMode: "",
         NanoCpus: Math.round((spec.cpus || 2) * 1e9),
         Memory: Math.round((spec.memoryMb || 3072) * 1024 * 1024),
         PortBindings: {},

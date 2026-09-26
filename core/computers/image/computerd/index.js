@@ -50,10 +50,21 @@ let shielded = false;
 const cdpPipes = new Set();
 const SHIELDED_ROUTES = new Set(["GET /tree", "GET /screenshot", "POST /act", "POST /input"]);
 
+// node:child_process.spawn() inherits the whole environment by default, VNC_PASSWORD and
+// COMPUTERD_TOKEN included, and every one of xdotool/import/atspi.py is a child of this process.
+// None of them needs either secret; a fixed allowlist means a variable this file has never heard
+// of does not quietly start reaching every command it shells out to (security, 26 Sep - this does
+// not close the exec residual `run.vyre.computers`'s labels still leave open, since an exec'd
+// shell can read PID 1's own real environment directly from /proc/1/environ regardless of what
+// any child of computerd gets; it closes the separate, easier channel of computerd's own spawned
+// children leaking the same values if one of them ever echoes or crash-dumps its environment).
+const CHILD_ENV_ALLOW = ["PATH", "HOME", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "LANG", "LC_ALL"];
+const childEnv = () => Object.fromEntries(CHILD_ENV_ALLOW.filter(k => process.env[k] !== undefined).map(k => [k, process.env[k]]));
+
 /** Run a subprocess, collect stdout/stderr, resolve/reject on exit. Never throws synchronously. */
 function run(cmd, args, { input, timeout = 15_000, binary = false } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], env: childEnv() });
     /** @type {Buffer[]} */
     const out = [];
     /** @type {Buffer[]} */
