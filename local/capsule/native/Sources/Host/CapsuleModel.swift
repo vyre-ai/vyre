@@ -49,6 +49,8 @@ public final class CapsuleModel: ObservableObject {
     let frecency: Frecency
     let vyred: VyredClient
     let home: String
+    /// The threads the Capsule holds, released and stopped on hide (Agent/Keeper.swift).
+    lazy var keeper = Keeper(vyred: vyred)
     private var token = 0
     private var partial: [String: [ResultItem]] = [:]
     private var replySub: VyredSubscription?
@@ -73,6 +75,7 @@ public final class CapsuleModel: ObservableObject {
     public func willShow(front: FrontApp?) {
         self.front = front
         (providers + extensionProviders).forEach { $0.warm() }
+        keeper.shown()
         vyred.follower.setShown(true)
         if !vyred.follower.started { vyred.follower.start() }
         Task { @MainActor [vyred] in
@@ -89,6 +92,7 @@ public final class CapsuleModel: ObservableObject {
         icons.cool()
         frecency.flush()
         vyred.follower.setShown(false)
+        keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
         token += 1
         confirming = nil
     }
@@ -312,6 +316,7 @@ public final class CapsuleModel: ObservableObject {
         var thread: String?
         replySub = vyred.on("thread.*") { [weak self] e in
             guard let self else { return }
+            self.keeper.heard(e)
             guard let t = thread else { early.append(e); return }
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
@@ -322,6 +327,7 @@ public final class CapsuleModel: ObservableObject {
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
         guard let d = r.data as? [String: Any], let id = d["id"].map({ "\($0)" }) else { asked = nil; return .failed("vyred did not say which thread it started.") }
         thread = id
+        keeper.startedQuick(id)
         var rep = VyState.reply(id)
         rep.model = "haiku"
         for e in early where e.thread == id { rep = VyState.applyReply(rep, e) }
@@ -335,7 +341,9 @@ public final class CapsuleModel: ObservableObject {
     private func follow(_ thread: @escaping () -> String?) {
         replySub?.cancel()
         replySub = vyred.on("thread.*") { [weak self] e in
-            guard let self, let r = self.reply else { return }
+            guard let self else { return }
+            self.keeper.heard(e)
+            guard let r = self.reply else { return }
             let t = thread() ?? (r.thread.isEmpty ? nil : r.thread)
             if r.thread.isEmpty, e.type == "thread.sent", VJ.str(e.payload["surface"]) == "capsule", let et = e.thread {
                 var x = r; x.thread = et; self.reply = VyState.applyReply(x, e); return
@@ -368,6 +376,7 @@ public final class CapsuleModel: ObservableObject {
                 if let h = VJ.nonEmpty(d["holder"]) { return .failed("\(h) has the keyboard in this thread.") }
                 return .failed(VJ.nonEmpty(d["note"]) ?? "This thread could not be typed into.")
             }
+            keeper.typed(into: c.id)
             return .said("")
         case .agent:
             reply = VyState.reply("")
@@ -380,6 +389,7 @@ public final class CapsuleModel: ObservableObject {
             if VJ.bool(d["ok"]) == false { reply = nil; asked = nil; return .failed(VJ.nonEmpty(d["note"]) ?? "\(c.label) did not get it.") }
             thread = VJ.nonEmpty(d["thread"]) ?? reply?.thread
             if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            if let t = thread, !t.isEmpty { keeper.typed(into: t) }
             return .said("")
         case .project:
             reply = VyState.reply("")
@@ -390,6 +400,7 @@ public final class CapsuleModel: ObservableObject {
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             thread = (r.data as? [String: Any]).flatMap { VJ.nonEmpty($0["id"]) }
             if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            if let t = thread { keeper.typed(into: t) }
             return .said("")
         }
     }
@@ -402,8 +413,8 @@ public final class CapsuleModel: ObservableObject {
         // A queued message has no interrupt path into a terminal session: stop following only.
         if r.queued != nil { line = "Stopped following. \(r.queued!.name) still gets the message when its turn ends."; return }
         if r.thread.isEmpty { return }
-        let t = r.thread
-        Task { _ = await vyred.call("threads.stop", ["id": t], presence: false) }
+        // threads.stop takes {thread}: with {id} it was refused and the process ran on.
+        keeper.stop(r.thread)
     }
 }
 
