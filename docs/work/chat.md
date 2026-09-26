@@ -138,6 +138,9 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
   own" fails in the 10604b9 snapshot (session view port was mid-edit). Fix first next session.
 
 ## Next
+- Diff summary for phone-design's Changes row: permission asks for Edit/MultiEdit/Write get
+  detail.changes [{file, added, removed}]; gate.held for a git push gets changes [...] + totals
+  {files, added, removed} from `git diff --numstat` of the pushed range. Promised to phone-design.
 - STANDING RULE (user): Vyre must not nag; the user runs on bypass permissions. term.unlock needs
   no passkey for the owner (opening a terminal is the person's own action): drop the presence
   requirement for the owner's own surfaces, keep guests/agents/models out. Touch ID only for
