@@ -24,6 +24,31 @@ work/polish-surfaces (phone Chat, five tabs, title truncation), with main merged
 
 Android: Chrome, same address, then Install app from the menu (or the Install button on Now).
 
+## What to look at on your phone (after pairing the Mac)
+
+1. Install. Tailscale on, then Safari to your address, Share, Add to Home Screen, and open Vyre
+   from the Home Screen. You should see Vyre full screen: no Safari bars, a dark status bar, the
+   five tabs (Now, Projects, Chat, Find, Agents) clear of the home bar.
+2. Now. At the top, "Set up this phone" with Install ticked. Tap Turn on under Notifications and
+   Allow. Under Passkey, if your Mac passkey synced through iCloud Keychain, approving anything
+   will offer it with Face ID. Below, what needs you, then what is running.
+3. Chat. Your Mac's projects and sessions are listed (Recent shows the latest). Open one: the
+   conversation reads like the terminal, newest at the bottom. Type a line and send. If the
+   session is busy in your Mac's terminal, a line says "Queued for <name>" and the message goes in
+   when that turn ends.
+4. Find. Pull down from the top of any screen, or tap Find. Type part of a session name, a file
+   name or a person: sessions, box files, agents and memory show up as you type. Try
+   "watch <a session>": the line under the box says what Enter will do; press it and you should
+   get a notification when that session finishes or asks.
+5. An approval. When something is held (a draft email) or a session asks permission, it shows on
+   Now and in the Chat. Send or Allow asks for Face ID, then says Sent or Allowed.
+6. Settings, Devices. Your iPhone and Mac are listed as online, the Mac marked "Paired with this
+   box". If a device is offline in Tailscale, it says so in plain words.
+7. Notifications. With the app closed, an ask or a held draft should arrive as a notification
+   that says only that something needs you. Tapping it opens that item in Vyre.
+8. Offline. Turn on Airplane Mode and open Vyre: it still opens, shows what it last had, and one
+   line says the phone is offline. Turn it off and tap Retry: the line goes and the screen fills.
+
 ## Done
 - 2e5d78a merge main into work/pwa (CHANGELOG kept both sides, world.js kept breach: off).
 - Shell (deck/index.html, manifest.webmanifest, css/deck.css, js/pwa.js): standalone manifest with
