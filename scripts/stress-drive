@@ -221,7 +221,8 @@ async function startVyred() {
   const fd = fs.openSync(path.join(HOME, "vyred.log"), "a");
   const child = spawn("nice", ["-n", "10", process.execPath, path.join(REPO, "test", "fixtures", "vyred-present.js")], { env: ENV, stdio: ["ignore", fd, fd] });
   started.set(child.pid, "nice (vyred)");
-  for (let i = 0; i < 150; i++) {
+  // Up to a minute: on a loaded machine (other suites running) vyred's first start takes a while.
+  for (let i = 0; i < 600; i++) {
     await sleep(100);
     if (await ping(SOCKET)) {
       // nice execs node in place, so the pid is vyred's.
