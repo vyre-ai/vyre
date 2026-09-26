@@ -81,7 +81,13 @@ down after):
 4. Colours: attention is violet (one asset swap, the user may pick honey or teal), no red or
    system destructive styles; errors are text with a crossed circle and "failed"; destructive =
    outline with a 0.6 s hold. Measure text contrast on real screens in both themes.
-5. Working needs a step total from the box for a determinate bar (gap, ask chat).
+5. phone.md e4a37f7: held, ask and question cards are neutral (panel, strong rule, no tint;
+   attention only in the dot and label); drafts edit To, Subject and Body in place with only Send
+   and Discard; buttons are primary, secondary or ghost; deleted diff lines are text-2 on
+   del-wash. A repo hygiene test fails on coral (#FF7A59, #E5532F, #C2411F): still in
+   apps/ios/Vyre/Design/Tokens.swift and apps/android/.../design/Tokens.kt, so swap them to the
+   violet values before the lead merges.
+6. Working needs a step total from the box for a determinate bar (gap, ask chat).
 - Later: share sheet, Taildrop, widgets, Live Activities.
 
 ## Needs from others
