@@ -44,6 +44,12 @@ const READS = /(^|_)(draft|list|get|search|read)(_|$)/i;
  * a hub server name, then its tool. The hub holds their outward calls at the Gate itself.
  */
 const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
+/**
+ * Vyre module tools with a send word that hold at the Gate themselves, so rule 1 would only ask
+ * about a call that already waits for the person. google.mail.send is always held (ADR 0015
+ * decision 6). A Vyre tool that really sends, such as threads_send, is not listed and still asks.
+ */
+const GATED = new Set(["google_mail_send"].flatMap(t => [`mcp__vyre__${t}`, `mcp__plugin_vyre_vyre__${t}`]));
 const MAX_SNIPPETS = 12, SNIPPET = 160, MAX_WORDS = 1500;
 
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
@@ -285,7 +291,7 @@ export class Gate {
    * @param {{ tool: string, input?: any, agent?: string, session?: string }} call
    */
   route({ tool, agent }) {
-    if (!agent || !String(tool).startsWith("mcp__") || HUB.test(String(tool))) return { decision: null };
+    if (!agent || !String(tool).startsWith("mcp__") || HUB.test(String(tool)) || GATED.has(String(tool))) return { decision: null };
     const own = String(tool).split("__").pop() || "";
     if (!SENDS.test(own) || READS.test(own)) return { decision: null };
     const names = Object.keys(this.senderConfig);

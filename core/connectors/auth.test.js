@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import crypto from "node:crypto";
 import { Credentials, CredentialError, scrub, scrubAll } from "./auth.js";
 import { startFakeGoogle } from "./testing/fake-google.js";
 
@@ -32,17 +33,21 @@ function logger() {
   return { lines, log: (m, f) => lines.push(`${m} ${JSON.stringify(f || {})}`) };
 }
 
+// Fixture values are made at run time, so no literal here looks like a credential to a scanner
+// (test/hygiene.test.js) or to a person reading the file.
+const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const ALL = (creds, extra = []) => [...creds.secrets(), ...extra];
 
 test("bearer: default header and format, a custom header and format, and none", async () => {
-  const { fetchItem } = vault({ "harlow-api": "hl_live_0123456789abcdef", gh: { token: "ghp_abcdefghij0123456789" } });
+  const gh = fake("gh");
+  const { fetchItem } = vault({ "harlow-api": "hl_live_0123456789abcdef", gh: { token: gh } });
   const creds = new Credentials({ fetchItem });
   assert.deepEqual(await creds.headers({ type: "none" }), {});
   assert.deepEqual(await creds.headers({ type: "bearer", item: "harlow-api" }), { authorization: "Bearer hl_live_0123456789abcdef" });
   assert.deepEqual(await creds.headers({ type: "bearer", item: "gh", field: "token", header: "X-Api-Key", format: "token {value}" }),
-    { "x-api-key": "token ghp_abcdefghij0123456789" });
+    { "x-api-key": `token ${gh}` });
   assert.ok(creds.secrets().includes("hl_live_0123456789abcdef"));
-  assert.ok(creds.secrets().includes("ghp_abcdefghij0123456789"));
+  assert.ok(creds.secrets().includes(gh));
   await assert.rejects(creds.headers({ type: "bearer", item: "harlow-api", format: "no placeholder" }), /needs \{value\}/);
   await assert.rejects(creds.headers(/** @type {any} */ ({ type: "magic" })), /unknown auth type/);
 });
@@ -62,10 +67,11 @@ test("a vault failure is readable and scrubbed", async () => {
 });
 
 test("env: builds a stdio server's env from items and fields", async () => {
-  const { fetchItem } = vault({ "gh-token": "ghp_zzzzyyyyxxxx", kit: { api_key: "kit_secret_value_1" } });
+  const gh = fake("gh");
+  const { fetchItem } = vault({ "gh-token": gh, kit: { api_key: "kit_secret_value_1" } });
   const creds = new Credentials({ fetchItem });
   assert.deepEqual(await creds.env({ GITHUB_TOKEN: "gh-token", KIT_KEY: { item: "kit", field: "api_key" } }),
-    { GITHUB_TOKEN: "ghp_zzzzyyyyxxxx", KIT_KEY: "kit_secret_value_1" });
+    { GITHUB_TOKEN: gh, KIT_KEY: "kit_secret_value_1" });
   assert.ok(creds.secrets().includes("kit_secret_value_1"));
   await assert.rejects(creds.env({ "BAD NAME": "gh-token" }), /not an env var name/);
 });
@@ -241,7 +247,8 @@ test("token endpoint: an echoed value is scrubbed, redirects are refused, and ht
 
 test("scrub and scrubAll catch raw, base64, base64url, URL-encoded and JSON-escaped forms", () => {
   const v = "s3cr3t/value+with=chars?";
-  const pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----\n";
+  const pem = String(crypto.generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }));
+  const body = pem.split("\n")[1];
   const b64 = Buffer.from(v).toString("base64");
   const text = [v, b64, b64.replace(/=+$/, ""), Buffer.from(v).toString("base64url"), encodeURIComponent(v),
     encodeURIComponent("a b secret words").replace(/%20/g, "+")].join(" | ");
@@ -253,7 +260,7 @@ test("scrub and scrubAll catch raw, base64, base64url, URL-encoded and JSON-esca
   const obj = { ok: true, nested: [{ [v]: `key ${v}`, pem }], json: JSON.stringify({ pem }), n: 3, e: null };
   const clean = scrubAll(obj, [v, pem]);
   const flat = JSON.stringify(clean);
-  assert.ok(!flat.includes(v) && !flat.includes("MIIEvQIBADANBgkqhkiG9w0BAQEFAASC"));
+  assert.ok(!flat.includes(v) && !flat.includes(body));
   assert.equal(clean.n, 3);
   assert.equal(clean.ok, true);
   assert.equal(clean.e, null);

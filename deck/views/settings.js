@@ -7,6 +7,7 @@
 // blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box), agents.list and
 // agents.update (switchboard), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
+// Connections is drawn by views/connections.js (the connectors workstream, ADR 0015).
 
 import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt, modules, canProve, callWithCode } from "../js/api.js";
@@ -18,6 +19,7 @@ const SECTIONS = [
   ["you", "You and your address"],
   ["assistant", "The assistant"],
   ["claude", "Claude Code"],
+  ["connections", "Connections"],
   ["network", "Network"],
   ["history", "History and memory"],
   ["lessons", "Lessons"],
@@ -85,6 +87,8 @@ export default async function settings(ctx) {
 
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
+    // Imported on its own, so a problem in that file shows here and never blanks Settings.
+    import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
     drawNetwork(body.network), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),

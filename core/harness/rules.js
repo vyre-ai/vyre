@@ -29,6 +29,12 @@ const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|co
  * rule is stricter than the name rule (unknown is outward), so rule 1 steps aside for them.
  */
 const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
+/**
+ * Vyre module tools with a send word that hold at the Gate themselves, so rule 1 would only ask
+ * about a call that already waits for the person. google.mail.send is always held (ADR 0015
+ * decision 6). A Vyre tool that really sends, such as threads_send, is not listed and still asks.
+ */
+const GATED = new Set(["google_mail_send"].flatMap(t => [`mcp__vyre__${t}`, `mcp__plugin_vyre_vyre__${t}`]));
 /** Where a sending tool keeps its destination, in the order worth showing. */
 const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "email", "thread_id", "chat_id", "user", "url"];
 
@@ -59,7 +65,7 @@ export function rules({ tool, input, cwd, home, userHome }) {
   }
 
   // Rules 1 and 2. Only MCP tools: those are the ones that reach people (mail, chat, posts).
-  if (tool.startsWith("mcp__") && !HUB.test(tool)) {
+  if (tool.startsWith("mcp__") && !HUB.test(tool) && !GATED.has(tool)) {
     const own = tool.split("__").pop() || "";
     if (SENDS.test(own) && !/(^|_)(draft|list|get|search|read)(_|$)/i.test(own)) {
       const dest = DEST_KEYS.map(k => input[k]).find(v => v != null && v !== "");
