@@ -91,14 +91,18 @@ async function body(req) {
 
 async function route(req, res, { registry, events, cfg, started, streams }) {
   const url = new URL(req.url || "/", "http://vyred");
-  const caller = String(req.headers["x-vyre-caller"] || "local");
+  // The caller is the client's own claim, except that no client may claim to be a module: only
+  // the loader can say that, and a module caller is what internal tools such as vault.release
+  // trust. Anything on the socket posing as "module:x" is treated as a plain local client.
+  const claimed = String(req.headers["x-vyre-caller"] || "local");
+  const caller = claimed.startsWith("module:") ? "local" : claimed;
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
     return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started,
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
-  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools() });
+  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     const result = await registry.call(name, await body(req), caller);

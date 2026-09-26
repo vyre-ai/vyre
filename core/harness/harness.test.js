@@ -22,6 +22,15 @@ test("rules: nothing reads the vault, however it is reached", () => {
   assert.equal(deny({ tool: "Read", input: { file_path: "/home/alex/Work/vault/notes.md" } }), null, "a folder that happens to be called vault is fine");
 });
 
+test("rules: nothing reads the vault's key from the keychain", () => {
+  const deny = command => rules({ tool: "Bash", input: { command }, cwd: "/home/alex/Work", home: HOME }).decision;
+  assert.equal(deny("security find-generic-password -s vyre-vault -w"), "deny");
+  assert.equal(deny("security find-generic-password -a x -w login.keychain"), "deny", "any keychain password printed with -w");
+  assert.equal(deny("security dump-keychain -d"), "deny");
+  assert.equal(deny("security find-certificate -a"), null, "other security commands are fine");
+  assert.equal(deny("npm audit --security"), null);
+});
+
 test("rules: a tool that sends as the user asks first and names where it is going", () => {
   const r = rules({ tool: "mcp__mail__send_message", input: { to: "dana@harlowlegal.com", body: "hi" }, home: HOME });
   assert.equal(r.decision, "ask");

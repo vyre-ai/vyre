@@ -54,32 +54,46 @@ export default {
         const brief = await ask("projects.context", project ? { project, session } : { cwd, session });
         const text = typeof brief === "string" ? brief : brief && typeof brief.text === "string" ? brief.text : "";
         const slug = brief && brief.project ? String(brief.project) : null;
-        if (!inScope(projects, slug)) return { text: "", project: null };
-        return { text, project: slug };
+        // The lessons the user taught apply in every thread, in a project or not.
+        const lessons = await ask("learn.check", { stage: "brief", cwd, session });
+        const lessonText = lessons && lessons.text ? lessons.text : "";
+        // An agent outside its projects gets no brief, only the lessons.
+        if (!inScope(projects, slug)) return { text: lessonText, project: null };
+        return { text: [text, lessonText].filter(Boolean).join("\n\n"), project: slug };
       },
     });
 
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
-      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, projects: { type: "string" } } },
-      run: async ({ prompt, cwd, projects }) => {
-        if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: "" };
+      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" } } },
+      run: async ({ prompt, cwd, session, prompt_id, agent, projects }) => {
+        // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
+        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent }) : null;
+        const lessons = learned && typeof learned.text === "string" ? learned.text : "";
+        if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: lessons };
         const project = await projectOf(cwd);
         // An agent outside its projects gets no memory at all, not memory from elsewhere.
-        if (!inScope(projects, project ? project.slug : null)) return { text: "" };
+        if (!inScope(projects, project ? project.slug : null)) return { text: lessons };
         const folders = project && (Array.isArray(project.folders) ? project.folders : project.home ? [project.home] : null);
         const project_cwds = folders || (cwd ? [cwd] : undefined);
         const facts = await ask("memory.relevant", { text: prompt, project_cwds, limit: 5 });
-        return { text: formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []) };
+        const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
+        return { text: [memory, lessons].filter(Boolean).join("\n\n") };
       },
     });
 
     ctx.tool("harness.rules", {
-      description: "PreToolUse: the security floor's verdict on a tool call. null means no opinion; Claude Code's own permissions decide.",
-      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" } } },
-      run: async ({ tool_name, tool_input, cwd, session }) => {
-        const verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
-        if (verdict.decision) ctx.events.emit("tool.held", { session: session || null, tool: tool_name, decision: verdict.decision, rule: verdict.rule });
+      description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
+      input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" } } },
+      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent }) => {
+        /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
+        let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
+        // The floor first; a lesson can only add a hold, never lift one.
+        if (!verdict.decision) {
+          const l = await ask("learn.check", { stage: "tool", session, prompt_id, cwd, agent, tool_name, tool_input: tool_input || {} });
+          if (l && l.decision) verdict = { decision: l.decision, reason: l.reason, lesson: l.lesson };
+        }
+        if (verdict.decision) ctx.events.emit("tool.held", { session: session || null, tool: tool_name, decision: verdict.decision, rule: verdict.rule ?? null, lesson: verdict.lesson ?? null });
         return verdict;
       },
     });
@@ -107,9 +121,11 @@ export default {
     });
 
     ctx.tool("harness.stop", {
-      description: "Stop: the turn is complete, for every surface watching this thread.",
-      input: { type: "object", properties: { session: { type: "string" } } },
-      run: async ({ session }) => {
+      description: "Stop: the lessons' output checks, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
+      input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" } } },
+      run: async ({ session, ...turn }) => {
+        const check = session ? await ask("learn.check", { stage: "stop", session, ...turn }) : null;
+        if (check && check.decision === "block") return { decision: "block", reason: String(check.reason) };
         if (session) ctx.events.emit("turn.completed", { session });
         return { ok: true };
       },
