@@ -168,7 +168,7 @@ export function macSide(ctx, seam = {}) {
     input: { type: "object", properties: {} },
     run: async () => ({
       role: "local", linked: Boolean(saved && !saved.revoked),
-      box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null } : null,
+      box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null, stableId: saved.box.stableId || null } : null,
       reachable: state.reachable, lastSeen: state.lastSeen,
       pending: pairing ? { id: pairing.id, code: pairing.code, expires: pairing.expires } : null,
       ...(state.error ? { error: state.error } : {}),

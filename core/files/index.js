@@ -21,6 +21,7 @@ import { StringDecoder } from "node:string_decoder";
 import { guard } from "./safety.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
+import { drop } from "./drop.js";
 
 const run = promisify(execFile);
 const KIB = 1024, MIB = 1024 * KIB, GIB = 1024 * MIB;
@@ -309,6 +310,9 @@ export default {
       },
     });
 
-    return { async stop() {} };
+    // Taildrop: files.send on the Mac, the inbox receiver on the box (drop.js).
+    const dropped = drop(ctx, { role, g, cfg });
+
+    return { async stop() { await dropped.stop(); } };
   },
 };

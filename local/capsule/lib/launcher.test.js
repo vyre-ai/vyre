@@ -233,3 +233,15 @@ test("launcher: preview reads a text file's first 4 kB, asks the box for box fil
   assert.deepEqual(await l.preview({ kind: "boxfile", id: "box:/a", label: "a", sub: "", target: "/a" }), { kind: "text", mime: "text/plain", text: "hi", truncated: false });
   assert.deepEqual(v.calls, [["files.preview", { path: "/a", source: "box" }]]);
 });
+
+test("launcher: send hands a Mac file to files.send and says what vyred said", async t => {
+  const v = fakeVyred({ "files.send": ({ path: p }) => p.endsWith(".env") ? { error: { code: "not_available", message: "not available" } }
+    : { data: { sent: path.basename(p), bytes: 5, to: "box.tail0000.ts.net" } } });
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: v.fn });
+  const file = { kind: "file", id: "file:/h/budget.md", label: "budget.md", sub: "~", last: 1, target: "/h/budget.md" };
+  assert.deepEqual(await l.send(file), { ok: true, note: "Sent budget.md to box.tail0000.ts.net." });
+  assert.deepEqual(v.calls.find(c => c[0] === "files.send")?.[1], { path: "/h/budget.md" });
+  assert.match((await l.send({ ...file, target: "/h/.env" })).error || "", /not available/);
+  assert.match((await l.send({ ...file, kind: "boxfile" })).error || "", /only a file on this Mac/);
+  assert.equal(v.calls.filter(c => c[0] === "files.send").length, 2, "a box file never reaches files.send");
+});

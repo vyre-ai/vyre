@@ -310,5 +310,19 @@ export class Launcher {
     return "error" in o ? { error: o.error } : { ok: true, close: true, note: `Fetched from ${name}.` };
   }
 
+  /**
+   * Send a file on this Mac to the box with Taildrop (files.send). vyred's guard decides whether
+   * it may leave; what it says when it refuses is shown as it is.
+   * @param {Result} r a "file" result
+   * @returns {Promise<{ ok?: true, error?: string, note?: string }>}
+   */
+  async send(r) {
+    if (!r || r.kind !== "file" || typeof r.target !== "string" || !path.isAbsolute(r.target)) return { error: "only a file on this Mac can be sent" };
+    if (!this.vyred) return { error: "Vyre is not running, so nothing can be sent." };
+    const s = await this.vyred("files.send", { path: r.target }).catch(e => ({ error: e }));
+    if (s && s.data && s.data.sent) return { ok: true, note: `Sent ${s.data.sent} to ${this.boxName || s.data.to || "the box"}.` };
+    return { error: `Could not send it: ${errText(s && s.error) || "nothing came back"}.` };
+  }
+
   close() { this.pending?.abort(); this.helper?.close?.(); this.frecency?.flush?.(); }
 }
