@@ -278,8 +278,8 @@ Action area (8 between buttons, 34 bottom):
 - Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: Face ID glyph (22) +
   "Approve with Face ID" ("with Touch ID", "with fingerprint", "with passkey" by device). Under
   it, two outline buttons side by side, 46 tall, radius 12, `--rule-strong` border: "Always in
-  <project>" (approves and writes the rule, after the same presence check) and "Deny". Where the
-  tool cannot write a rule, Deny takes the full width.
+  <project>" (approves and writes the rule, after the same presence check) and "Deny". Where
+  `ask.always_project` is null, Deny takes the full width.
 - Draft: "Send with Face ID" primary; "Discard" outline.
 - Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" outline. No
   presence check unless the tool asks for one.
@@ -480,14 +480,27 @@ Nothing animates in the background.
 (`.presentationDetents([.large])`, Material bottom sheet), system swipe actions, the haptics in
 section 10, Dynamic Type, and the bundled fonts.
 
-## 15. Contracts this needs
+## 15. Contracts
 
-- **Open session at the moment** needs an anchor: `threads.asks` and `gate.held` rows should
-  carry the transcript event id (or the tool_use id) they came from, so Chat can scroll to it.
-  Until then, Chat scrolls to the first item at or after the row's `at` time.
-- **Questions** (an agent asking the user to pick) as Needs items with `options` (label, note),
-  answered through the same capability id.
-- **Always in <project>** needs the rule write the Deck's gate card uses; the scope control is
-  hidden where the tool does not offer it.
+Landed on work/chat (10604b9):
+
+- **Anchors for Open session.** `threads.asks` (and `threads.get().asks`) items carry
+  `anchor: { tool_use_id, event }`; `gate.held` items carry `anchor: { tool_use_id, event, thread,
+  at }`. Chat scrolls to `anchor.tool_use_id` when there is one, else to `anchor.event`, else to
+  the first item at or after `at` in `thread`. A model's MCP call has no tool_use_id yet, so gate
+  items land by event or time.
+- **Questions as Needs items.** `threads.asks` returns `kind: "question"` items with `questions`,
+  `agent` and `thread_name`. Answer with `threads.answer { ask, decision: "allow", answers: {
+  [question]: "label" | "a, b" | "typed text" } }`, or `decision: "deny"` for Later/decline. The
+  ask id is the capability.
+- **Always in <project>.** Show the button only when `ask.always_project` is a name (it can be null
+  for a moment after `ask.raised`; the sheet adds the button when it arrives, never reflowing
+  under the user's thumb mid-tap). It sends `threads.answer { ask, decision: "always", scope:
+  "project" }` with the same presence check; the rule is written to that project's own
+  `.claude/settings.local.json`. `ask.answered` carries `scope: "project"`, and the approval card
+  then reads "Always allowed in <project>, 12:07".
+
+Still open:
+
 - **Diff summary** for a held push or edit: files with added and removed counts, when the tool
-  can say.
+  can say. Until then the Changes row shows what `detail` gives, or is left out.

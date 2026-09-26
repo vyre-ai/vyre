@@ -11,8 +11,8 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
   carry no colour.
 - Contrast: all 15 mockup artboards rendered in both themes, 1,048 text, placeholder and icon
   checks, all at WCAG AA. The mockups are a private design canvas owned by the user (ask the lead).
-- Handed to pwa and mobile; the three contracts (transcript anchors, questions as Needs items,
-  the "Always in <project>" rule) went to the chat team.
+- Handed to pwa and mobile. The three contracts (anchors, questions, Always in <project>) landed
+  on work/chat 10604b9; phone.md section 15 names the fields.
 
 ## Doing
 - Waiting on deck-design's reduced system (2 families, neutrals, lime, one attention colour, no
@@ -27,10 +27,7 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 3. Review pwa and mobile builds against phone.md as screenshots arrive.
 
 ## Needs from others
-- chat: an anchor (event or tool_use id) on threads.asks and gate.held rows, so Open session can
-  scroll to the exact moment (phone.md section 15).
-- chat: agent questions with options as Needs items.
-- chat: the "Always in <project>" rule write for asks.
+- A diff summary (files, added and removed counts) for held pushes and edits: owner not yet named.
 - deck-design: shared chat items (gate card without a left rule, neutral deletions, author names).
 
 ## Changed contracts
