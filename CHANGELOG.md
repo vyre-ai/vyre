@@ -4,6 +4,38 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Learning
+
+- `core/learn`: lessons Vyre learns from corrections and enforces with hooks, so a lesson is code
+  rather than advice (section 7.11). Tools `learn.lessons`, `learn.add`, `learn.accept`,
+  `learn.edit`, `learn.retire`, `learn.check {stage: tool|stop|brief}` and the internal
+  `learn.signal`. Events `lesson.proposed`, `lesson.learned`, `lesson.caught`, `lesson.broken`,
+  `lesson.escalated`, `lesson.retired`.
+- A correction in a prompt ("never use em dashes", "update CHANGELOG.md whenever you change code",
+  "run the tests before you commit", never say "X") is only proposed. Claude is told to ask, and
+  the lesson is in force once the user says yes (`learn_accept`, or `vyre learn accept <id>`).
+  Nothing becomes a lesson unseen. A free-text rule with no known shape becomes a reminder.
+- Three check kinds: forbidden text (in the final reply at Stop, and in what Write or Edit is
+  about to write), a required file changed in the same turn as code, and a command that must run
+  before another. The Stop hook returns `{"decision":"block","reason"}` naming the lesson, at most
+  twice a turn; then the turn ends and the lesson counts as broken, is repeated in the next
+  prompt, and moves up a level (remind, ask, block) the second time.
+- Hard to get around: retiring or editing a lesson from inside a turn, a command that reaches
+  `vyre.db` or the socket directly, and `vyre down` all ask the user first, even when Claude
+  Code's own permissions allow them.
+- Harness changes, kept minimal: `harness.enrich` calls `learn.signal` (slash commands too, since
+  every prompt starts a turn); `harness.rules` asks `learn.check` after the floor, which it can
+  never loosen; `harness.stop` runs the Stop checks and returns the block; `harness.brief`
+  appends active lessons. `hook.js` passes `prompt_id`, `stop_hook_active` and
+  `last_assistant_message` (sent by Claude Code 2.1.283, confirmed with a probe) and prints
+  Stop's answer at the top level. `tool.held` now carries `lesson`.
+- `vyre learn [add|accept|retire|level]`, `/vyre remember <text>` and `/vyre lessons`.
+- Verified in real headless Claude Code (haiku): an em dash reply was sent back once and the
+  final reply had none; a turn that wrote code without the changelog was sent back and then
+  updated it; `learn_retire` was held although `--allowedTools` allowed it.
+- Fix during review: a correction without a check matched every other lesson without one, so a
+  second free-text rule was never proposed.
+
 ### Shared core for the parallel workstreams (2026-09-26)
 
 - `ctx.vault.fetch(name)`: a module gets only the vault items its manifest declares, through the
