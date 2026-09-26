@@ -3,6 +3,7 @@
 
 import { request, call } from "../../daemon/client.js";
 import { stop } from "../daemonctl.js";
+import { callAsPerson } from "../presence.js";
 import { out, dim, signal, beacon } from "../style.js";
 import * as config from "../../config/index.js";
 
@@ -53,12 +54,14 @@ export default [
     },
   },
   {
-    name: "call", order: 92, usage: "vyre call <tool> [json]", summary: "run any tool, e.g. vyre call system.echo '{\"text\":\"hi\"}'",
-    async run([name, json]) {
-      if (!name) { out("  vyre call <tool> [json]"); return 1; }
+    name: "call", order: 92, usage: "vyre call [--tty] <tool> [json]", summary: "run any tool, e.g. vyre call system.echo '{\"text\":\"hi\"}'",
+    async run(args) {
+      const tty = args.includes("--tty");
+      const [name, json] = args.filter(a => a !== "--tty");
+      if (!name) { out("  vyre call [--tty] <tool> [json]"); return 1; }
       let input = {};
       if (json) { try { input = JSON.parse(json); } catch { out("  the input must be JSON"); return 1; } }
-      const r = await call(name, input);
+      const r = await callAsPerson(name, input, { tty });
       if (r.error) { out(beacon(`  ${r.error.code}: `) + r.error.message); return 1; }
       out(JSON.stringify(r.data, null, 2));
       return 0;

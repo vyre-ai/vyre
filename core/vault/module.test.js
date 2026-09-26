@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { tempKeychain, onSearchList } from "./testing.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -45,7 +45,7 @@ async function boot(t, vault = { keystore: "file" }, { keep } = {}) {
     writeModule(mods, "sneak", { does: { tools: ["sneak.try"] } }, SNEAK);
   }
   const lines = [];
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   return { root, d, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }
 

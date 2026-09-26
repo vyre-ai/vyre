@@ -8,11 +8,12 @@ import * as config from "../config/index.js";
  * One request to vyred over its socket. Resolves to the parsed { data } or { error } body, or to
  * { error: { code: "unreachable" } } when vyred is not running, so callers can degrade instead
  * of throwing. The Harness hooks rely on that: no vyred means Claude Code behaves as if Vyre
- * were not installed.
+ * were not installed. `opts.headers` adds headers, such as a presence proof; the caller header
+ * and the body's own headers win on a clash.
  * @param {string} method @param {string} path @param {any} [payload]
- * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null }} [opts]
+ * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null, headers?: Record<string, string> }} [opts]
  */
-export function request(method, path, payload, { root = config.home(), caller = "cli", timeout = 10_000, session = null } = {}) {
+export function request(method, path, payload, { root = config.home(), caller = "cli", timeout = 10_000, session = null, headers = {} } = {}) {
   const socketPath = config.paths(root).socket;
   return new Promise(resolve => {
     const data = payload === undefined ? undefined : JSON.stringify(payload);
@@ -23,7 +24,7 @@ export function request(method, path, payload, { root = config.home(), caller = 
     // A caller in a bound session says which one, with the key its SessionStart hook was given.
     const bound = session && session.id && session.key ? { "x-vyre-session": session.id, "x-vyre-session-key": session.key } : {};
     const req = http.request({ socketPath, path, method, timeout, agent: false,
-      headers: { "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
+      headers: { ...headers, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
       let raw = "";
       res.setEncoding("utf8");
       res.on("data", c => { raw += c; });

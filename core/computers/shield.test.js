@@ -9,7 +9,7 @@ import http from "node:http";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "./driver/fake.js";
 import { SHIELDED } from "./shield.js";
 
@@ -39,7 +39,7 @@ async function boot(t, helperPort) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box",
     computers: { driver: "fake", sweepMs: 0, waitMs: 100, ...(local ? { local } : {}) } }));
   const logs = [];
-  const d = await start({ root, log: m => logs.push(m) });
+  const d = await start({ presence: present, root, log: m => logs.push(m) });
   t.after(() => d.stop());
   const h = d.registry.modules.get("computers").handle;
   const clock = { t: 1_000 };

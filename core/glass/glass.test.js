@@ -18,7 +18,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { fakeComputerd } from "./providers/fake.js";
 import { duration } from "./index.js";
 
@@ -444,7 +444,7 @@ test("glass: runs in vyred beside the real computers module, and serves raw byte
   fs.mkdirSync(files);
   fs.writeFileSync(path.join(files, "hello.txt"), "hi there");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", glass: { roots: [files] } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   assert.equal(d.registry.modules.get("glass")?.state, "running", d.registry.modules.get("glass")?.error);
   const targets = await call("glass.targets", {}, { root, caller: "deck" });

@@ -216,3 +216,71 @@ test("daemon: a request cannot claim the hook caller to reach a webhook-only too
   const r = await request("POST", "/v1/tools/hooky.in", {}, { root, caller: "hook" });
   assert.equal(r.error && r.error.code, "no_such_tool");
 });
+
+import crypto from "node:crypto";
+import { inputHash } from "../core/presence/index.js";
+
+/** A raw request on the socket with whatever headers a client cares to forge. */
+function raw(socketPath, pathname, payload, headers) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(payload);
+    const req = http.request({ socketPath, path: pathname, method: "POST", agent: false,
+      headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data), ...headers } }, res => {
+      let buf = "";
+      res.on("data", c => { buf += c; });
+      res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(buf) }));
+    });
+    req.on("error", reject);
+    req.end(data);
+  });
+}
+
+test("daemon: vyred checks presence, so a forged caller cannot run a human-only tool, and a Capsule signature can", async t => {
+  const root = tempHome(t);
+  writeModule(path.join(root, "modules"), "held", { does: { tools: ["held.release"] } },
+    `export default { async start(ctx) { ctx.tool("held.release", { presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const sock = d.paths.socket;
+  const input = { id: "a1" };
+  for (const caller of ["cli", "capsule", "deck", "local", "mcp:agent:assistant"]) {
+    const r = await raw(sock, "/v1/tools/held.release", input, { "x-vyre-caller": caller });
+    assert.equal(r.status, 403, `${caller} got ${r.status}`);
+    // An unvouched agent claim is refused before presence is asked (the Switchboard's key check).
+    assert.equal(r.body.error.code, caller.includes("agent:") ? "denied" : "presence_required", caller);
+  }
+  // The floor's list applies too: presence's own tools are refused without a proof.
+  assert.equal((await raw(sock, "/v1/tools/presence.code", {}, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");
+  const tools = (await request("GET", "/v1/tools", undefined, { root })).data;
+  assert.equal(tools.find(x => x.name === "held.release").presence, true);
+
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  d.registry.deps.db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)")
+    .run("capsule-test", "capsule", "Capsule", publicKey.export({ format: "der", type: "spki" }).toString("base64url"), -8, Date.now());
+  const sign = (tool, inp) => {
+    const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
+    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(inp)}\n${ts}\n${nonce}`), privateKey).toString("base64url");
+    return `capsule key=capsule-test ts=${ts} nonce=${nonce} sig=${sig}`;
+  };
+  const header = sign("held.release", input);
+  const ok = await raw(sock, "/v1/tools/held.release", input, { "x-vyre-caller": "capsule", "x-vyre-presence": header });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body, { data: { released: "a1" } });
+  const replay = await raw(sock, "/v1/tools/held.release", input, { "x-vyre-caller": "capsule", "x-vyre-presence": header });
+  assert.equal(replay.status, 403, "a Capsule proof was replayed");
+  const other = await raw(sock, "/v1/tools/held.release", { id: "b2" }, { "x-vyre-caller": "capsule", "x-vyre-presence": sign("held.release", input) });
+  assert.equal(other.status, 403, "a proof for a1 released b2");
+  const ev = d.events.since(0).filter(e => e.source === "presence").map(e => e.type);
+  assert.ok(ev.includes("presence.proved") && ev.includes("presence.refused"));
+});
+
+test("daemon: the presence challenge route refuses what it cannot start", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const sock = d.paths.socket;
+  assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "nope.none", input: {}, method: "tty", tty: "/dev/ttys003" }, {})).status, 404);
+  assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "presence.code", input: {}, method: "tty", tty: "/etc/passwd" }, {})).status, 400);
+  assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "presence.code", input: {}, method: "passkey" }, {})).status, 400);
+  assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "presence.code", input: {}, method: "tty", tty: "/dev/ttys999" }, {})).status, 403);
+});

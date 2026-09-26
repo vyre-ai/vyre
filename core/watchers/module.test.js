@@ -10,7 +10,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 
 const KEY = "feed-key-value-9f8e7d6c5b4a";
 /** Every home here keeps its vault key in a file: tests never touch the macOS keychain. */
@@ -33,7 +33,7 @@ async function boot(t) {
   t.after(() => server.close());
   const port = /** @type {any} */ (server.address()).port;
 
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const made = await call("projects.create", { name: "Harlow Legal", home }, { root });
   assert.ok(!made.error, JSON.stringify(made.error));
@@ -124,7 +124,7 @@ test("watchers module: without a vault, a watcher that needs one fails its run a
   const root = tempHome(t);
   const p = config.ensure(root);
   fs.writeFileSync(p.config, JSON.stringify({ ...CONFIG(root), modules: { disable: ["vault"] } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   writeWatcher(p, "harlow-inbox", { schedule: "@hourly", needs: ["billing-inbox"] }, `export default async function watch({ vault }) { await vault.fetch("billing-inbox"); }`);
   const r = (await call("watchers.test", { name: "harlow-inbox" }, { root })).data;

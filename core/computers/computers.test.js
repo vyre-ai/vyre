@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "./driver/fake.js";
 
 const FAKE_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
@@ -39,7 +39,7 @@ async function boot(t, o = {}) {
   t.after(() => { for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   /** @type {string[]} */
   const logs = [];
-  const d = await start({ root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ presence: present, root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
   let stopped = false;
   const stop = async () => { if (!stopped) { stopped = true; await d.stop(); } };
   t.after(stop);

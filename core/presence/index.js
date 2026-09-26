@@ -1,0 +1,492 @@
+// @ts-check
+// presence: proving a person is there before a human-only action (docs/adr/0004-presence.md).
+//
+// A caller's name is only a claim: Claude Code runs as the same user and can say "cli" on the
+// socket. So a tool that only a person may run needs a proof that vyred checks itself, bound to
+// the tool and the exact input, used once. This file is the verifier. The registry asks it
+// before such a tool runs, and the presence module (module.js) enrolls keys and mints codes.
+//
+// Every touch point with the OS (who, the terminal device, the Touch ID helper, WebAuthn) is
+// injectable, so tests never open a dialog or write to a real terminal.
+
+import crypto from "node:crypto";
+import fs from "node:fs";
+import { execFile } from "node:child_process";
+import { migrate } from "../store/index.js";
+
+/**
+ * The floor's list. These need presence whatever their owners declare; a module can add to the
+ * list with `presence: true` on a tool, never take away from it (principle 7).
+ */
+export const HUMAN_ONLY = new Set([
+  // Floor rules 1 and 2: nothing goes out, and no permission is given, unseen.
+  "gate.approve", "gate.revise", "gate.reject", "threads.answer",
+  // Floor rule 8: every way a value, or the power to release one, leaves the vault.
+  "vault.put", "vault.approve", "vault.unlock", "vault.offboard", "vault.inject", "vault.totp",
+  "vault.backup", "vault.restore", "vault.delete", "vault.device.code", "vault.device.unlock",
+  "vault.unlock-passphrase", "vault.reveal", "vault.copy", "vault.resolve", "vault.render",
+  "vault.session.open", "vault.export", "vault.kit",
+  // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
+  "learn.accept", "learn.retire", "learn.relax", "learn.skill_install",
+  // A person's hands on an agent's computer, and a new machine joined to this one.
+  "computers.takeover", "computers.giveback", "link.pair.approve",
+  "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
+]);
+
+export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
+
+/**
+ * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
+ * one after another. The floor fixes this list; a tool must also say yes for the input at hand
+ * (`presence.session(input)`), so an item that asks every time never rides a session.
+ */
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
+
+export const MIGRATIONS = [`
+  CREATE TABLE presence_keys (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('capsule', 'passkey')),
+    name TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    alg INTEGER,
+    rp_id TEXT,
+    sign_count INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL,
+    last_used INTEGER
+  );
+  CREATE TABLE presence_codes (
+    hash TEXT PRIMARY KEY,
+    expires INTEGER NOT NULL,
+    used INTEGER
+  );
+`, `
+  CREATE TABLE presence_sessions (
+    id TEXT PRIMARY KEY,
+    hash TEXT NOT NULL,
+    key_id TEXT,
+    method TEXT NOT NULL,
+    peer TEXT,
+    created INTEGER NOT NULL,
+    last_used INTEGER NOT NULL,
+    expires INTEGER NOT NULL
+  );
+`];
+
+const CHALLENGE_TTL = 120_000;
+const CAPSULE_SKEW = 60_000;
+const COOL_DOWN = 30_000;
+const CODE_TTL = 10 * 60_000;
+const SESSION_IDLE = 5 * 60_000;
+const SESSION_MAX = 30 * 60_000;
+/** The proofs strong enough to open a session: hardware or a key the model cannot read. */
+const SESSION_FROM = new Set(["touchid", "capsule", "passkey"]);
+const MAX_OPEN = 64;
+// No 0/O, 1/I/L: a code is read off a screen and typed by hand.
+const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const TTY = /^\/dev\/(ttys\d+|pts\/\d+|tty\d+)$/;
+// COSE algorithms a passkey may use, and the key type each needs.
+const ALGS = { "-7": "ec", "-8": "ed25519", "-257": "rsa" };
+
+/** JSON with object keys sorted at every depth and no spaces. What the input hash is taken over. */
+export function canonical(v) {
+  if (Array.isArray(v)) return "[" + v.map(x => (x === undefined || typeof x === "function" ? "null" : canonical(x))).join(",") + "]";
+  if (v && typeof v === "object" && typeof v.toJSON !== "function") {
+    const keys = Object.keys(v).filter(k => v[k] !== undefined && typeof v[k] !== "function").sort();
+    return "{" + keys.map(k => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}";
+  }
+  return JSON.stringify(v) ?? "null";
+}
+
+/** base64url SHA-256 of the canonical input. A proof is bound to this, so it cannot approve anything else. */
+export const inputHash = input => crypto.createHash("sha256").update(canonical(input)).digest("base64url");
+
+/**
+ * The x-vyre-presence header: "<method> k=v k=v". Returns { method, ...fields }, or null for
+ * anything else (no header, an unknown method, a malformed or repeated field).
+ * @param {unknown} header
+ */
+export function parse(header) {
+  if (typeof header !== "string" || !header.trim() || header.length > 32_768) return null;
+  const [method, ...rest] = header.trim().split(/\s+/);
+  if (!METHODS.includes(method)) return null;
+  /** @type {Record<string, string>} */
+  const out = { method };
+  for (const part of rest) {
+    const m = /^([a-z][a-z0-9_]*)=(\S*)$/.exec(part);
+    if (!m || m[1] === "method" || Object.hasOwn(out, m[1])) return null;
+    out[m[1]] = m[2];
+  }
+  return out;
+}
+
+/** Control characters (C0, DEL, C1) and bidi overrides: a summary goes on a terminal and in a dialog. */
+const clean = s => String(s).replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]+/g, " ").replace(/ {2,}/g, " ").trim();
+
+const b64url = n => crypto.randomBytes(n).toString("base64url");
+const sha = s => crypto.createHash("sha256").update(String(s)).digest();
+/** Equal in constant time, whatever the lengths. */
+const same = (a, b) => crypto.timingSafeEqual(sha(a), sha(b));
+const randomCode = n => Array.from({ length: n }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join("");
+/** Codes are typed by hand: case and spaces do not matter. */
+const normal = code => String(code || "").toUpperCase().replace(/[\s-]/g, "");
+/** The tailnet node a request came from, when a listener established one. */
+const peerId = peer => (peer && (peer.stableId || peer.node) ? String(peer.stableId || peer.node) : null);
+const spki = b64 => crypto.createPublicKey({ key: Buffer.from(String(b64), "base64url"), format: "der", type: "spki" });
+
+/** Load one of the helper modules lazily. Another file may not exist yet; a failed import is "unavailable". */
+async function lazy(spec, name) {
+  try {
+    const m = await import(spec);
+    if (typeof m[name] === "function") return m;
+    if (m.default && typeof m.default[name] === "function") return m.default;
+  } catch {}
+  return null;
+}
+
+/** The terminals `who` lists as login sessions: ttys003 on a Mac, pts/3 on Linux. */
+function who() {
+  return new Promise(resolve => {
+    execFile("/usr/bin/who", [], { timeout: 5000 }, (err, stdout) => {
+      if (err) return resolve([]);
+      resolve(String(stdout).split("\n").map(l => l.trim().split(/\s+/)[1]).filter(Boolean));
+    });
+  });
+}
+
+/** Write straight to a terminal device, without making it this process's controlling terminal. */
+function writeTty(file, text) {
+  const fd = fs.openSync(file, fs.constants.O_WRONLY | (fs.constants.O_NOCTTY || 0));
+  try { fs.writeSync(fd, text); } finally { fs.closeSync(fd); }
+}
+
+export class Presence {
+  /**
+   * @param {{ db: import("node:sqlite").DatabaseSync, events?: any, log?: (m: string) => void, platform?: string,
+   *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
+   *           touchid?: any, webauthn?: any, now?: () => number }} opts
+   */
+  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now }) {
+    this.db = db;
+    this.role = role;
+    this.network = network;
+    this.events = events;
+    this.log = log;
+    this.platform = platform;
+    this.who = whoFn || who;
+    this.writeTty = write || writeTty;
+    this.statTty = statTty || (f => fs.statSync(f));
+    this.touchidImpl = touchid;
+    this.webauthnImpl = webauthn;
+    this.now = now || Date.now;
+    migrate(db, "presence", MIGRATIONS);
+    /** Open challenges, in memory only: a restart forgets them, which is the safe direction. */
+    /** @type {Map<string, { tool: string, hash: string, method: string, code?: string, tries: number, expires: number, challenge?: string, rpId?: string }>} */
+    this.challenges = new Map();
+    /** Capsule nonces seen, with when each can be forgotten. */
+    /** @type {Map<string, number>} */
+    this.nonces = new Map();
+    this.dialogOpen = false;
+    this.coolUntil = 0;
+  }
+
+  async touchid() {
+    if (this.touchidImpl === undefined) this.touchidImpl = await lazy("./touchid/index.js", "authenticate");
+    return this.touchidImpl;
+  }
+
+  async webauthn() {
+    if (this.webauthnImpl === undefined) this.webauthnImpl = await lazy("./webauthn.js", "verifyAssertion");
+    return this.webauthnImpl;
+  }
+
+  /** Does this tool need a person? The floor's list, or the tool's own declaration. */
+  required(tool, def) {
+    return HUMAN_ONLY.has(tool) || Boolean(def && def.presence);
+  }
+
+  /** What the person sees before proving anything. Never carries a control character. */
+  async summary(tool, input, def) {
+    const fn = def && def.presence && typeof def.presence.summary === "function" ? def.presence.summary : null;
+    if (fn) {
+      try {
+        const s = clean(await fn(input));
+        if (s) return s.slice(0, 400);
+      } catch {}
+    }
+    return clean(`${tool} ${canonical(input)}`.slice(0, 160));
+  }
+
+  /** The methods this machine can take a proof by right now. */
+  async methods() {
+    const out = [];
+    if (this.platform === "darwin") {
+      // The helper is built on first use, which can take a while. A refusal should not wait on
+      // that: until it answers, Touch ID is not offered, and the build carries on behind.
+      const t = await this.touchid();
+      const within = new Promise(r => setTimeout(r, 3000, false).unref());
+      try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
+    }
+    if (this.ttyAllowed()) out.push("tty");
+    const kinds = new Set(this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all().map(r => String(r.kind)));
+    if (kinds.has("capsule")) out.push("capsule");
+    if (kinds.has("passkey")) out.push("passkey");
+    return out;
+  }
+
+  prune() {
+    const now = this.now();
+    for (const [id, c] of this.challenges) if (c.expires <= now) this.challenges.delete(id);
+    for (const [n, until] of this.nonces) if (until <= now) this.nonces.delete(n);
+  }
+
+  /**
+   * A code on a login terminal proves a person only where a model cannot open a login terminal
+   * of its own. On the box it can: the Mac it runs on usually holds SSH keys to the box. And in
+   * the box's container, `vyre` reaches vyred through `docker compose exec`, whose terminal no
+   * `who` lists, so nothing there could tell the person's terminal from Claude's. The box never
+   * takes a terminal code; its first passkey comes from onboarding's one-time code.
+   * @param {string} [tool]
+   */
+  ttyAllowed(tool) {
+    return this.role !== "box";
+  }
+
+  /**
+   * Start a proof that needs one: tty writes a code to a login terminal, passkey hands back
+   * WebAuthn options. Returns { challenge, ... } or { error: { code, message } }.
+   * @param {{ tool: string, input: any, method: string, tty?: string, def?: any }} a
+   */
+  async challenge({ tool, input, method, tty, def }) {
+    this.prune();
+    if (this.challenges.size >= MAX_OPEN) return { error: { code: "denied", message: "too many presence challenges are open; wait for them to expire" } };
+    const hash = inputHash(input);
+    const id = b64url(16);
+    const expires = this.now() + CHALLENGE_TTL;
+    if (method === "tty") {
+      if (!this.ttyAllowed(tool)) return { error: { code: "denied", message: "on the box, prove it with a passkey from the Deck" } };
+      if (typeof tty !== "string" || !TTY.test(tty)) return { error: { code: "bad_input", message: "tty must be a terminal device such as /dev/ttys003 or /dev/pts/3" } };
+      let st;
+      try { st = this.statTty(tty); } catch { return { error: { code: "denied", message: `${tty} is not a terminal` } }; }
+      if (!st || typeof st.isCharacterDevice !== "function" || !st.isCharacterDevice()) return { error: { code: "denied", message: `${tty} is not a terminal` } };
+      if (typeof process.getuid === "function" && st.uid !== process.getuid()) return { error: { code: "denied", message: `${tty} belongs to another user` } };
+      // script, expect, Python pty and tmux panes are not login sessions, so who does not list them.
+      const logins = await this.who();
+      if (!logins.includes(tty.slice("/dev/".length))) return { error: { code: "denied", message: `${tty} is not a login terminal; run the command in a terminal window or over SSH` } };
+      const code = randomCode(6);
+      const summary = await this.summary(tool, input, def);
+      try { this.writeTty(tty, `\r\n  Vyre · ${summary}\r\n  To allow it, type this code where you ran the command: ${code}\r\n\r\n`); }
+      catch (e) { return { error: { code: "denied", message: `could not write to ${tty}: ${/** @type {Error} */ (e).message}` } }; }
+      this.challenges.set(id, { tool, hash, method, code, tries: 0, expires });
+      return { challenge: id };
+    }
+    if (method === "passkey") {
+      const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, rp_id FROM presence_keys WHERE kind = 'passkey' ORDER BY created").all());
+      if (!rows.length) return { error: { code: "bad_input", message: "no passkey is enrolled; enroll one with presence.enroll" } };
+      const rpId = String(rows[0].rp_id);
+      const challenge = b64url(32);
+      this.challenges.set(id, { tool, hash, method, tries: 0, expires, challenge, rpId });
+      return { challenge: id, webauthn: { challenge, rpId, userVerification: "required", timeout: 60_000,
+        allowCredentials: rows.filter(r => String(r.rp_id) === rpId).map(r => ({ type: "public-key", id: String(r.id) })) } };
+    }
+    return { error: { code: "bad_input", message: `method must be tty or passkey; ${method} needs no challenge or does not exist` } };
+  }
+
+  /**
+   * Check a proof for one call. Returns { ok: true, method } or a refusal that lists the methods
+   * the client could use instead.
+   * @param {{ tool: string, input: any, caller: string, proof: any, def?: any }} a
+   */
+  async verify({ tool, input, caller, proof, def, peer = null }) {
+    const method = proof && typeof proof.method === "string" ? proof.method : null;
+    // A call with no proof is how a client learns what to offer, so only a failed proof is an event.
+    const refuse = async message => {
+      if (method) this.emit("presence.refused", { tool, method, caller });
+      return { ok: /** @type {false} */ (false), code: "presence_required", message, methods: await this.methods() };
+    };
+    if (!method) return refuse(`${tool} needs a person to prove they are here`);
+    this.prune();
+    const hash = inputHash(input);
+    const proved = (keyId = null) => { this.emit("presence.proved", { tool, method, caller }); return { ok: /** @type {true} */ (true), method, keyId }; };
+
+    if (method === "touchid") {
+      if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
+      // Checked and taken before any await, so two calls at once cannot both open a dialog.
+      if (this.dialogOpen) return refuse("a Touch ID dialog is already open");
+      if (this.now() < this.coolUntil) return refuse(`Touch ID was cancelled; try again in ${Math.ceil((this.coolUntil - this.now()) / 1000)}s`);
+      this.dialogOpen = true;
+      let r;
+      try {
+        const t = await this.touchid();
+        if (!t || !(await t.available())) return refuse("Touch ID is not available on this Mac");
+        const summary = await this.summary(tool, input, def);
+        try { r = await t.authenticate(`Vyre: ${summary}`, { timeout: 60 }); }
+        catch (e) { r = { ok: false, reason: /** @type {Error} */ (e).message }; }
+      } finally { this.dialogOpen = false; }
+      // After a cancel or a failure, wait before showing another: a model must not wear the user down.
+      if (!r || !r.ok) { this.coolUntil = this.now() + COOL_DOWN; return refuse(`Touch ID did not confirm${r && r.reason ? ": " + r.reason : ""}`); }
+      return proved();
+    }
+
+    if (method === "tty") {
+      if (!this.ttyAllowed(tool)) return refuse("on the box, prove it with a passkey from the Deck");
+      const c = this.challenges.get(String(proof.id || ""));
+      if (!c || c.method !== "tty") return refuse("no such terminal challenge, or it expired");
+      if (c.tool !== tool || c.hash !== hash) return refuse("the terminal challenge was for a different call");
+      if (!same(normal(proof.code), c.code)) {
+        c.tries += 1;
+        if (c.tries >= 3) this.challenges.delete(String(proof.id));
+        return refuse(c.tries >= 3 ? "wrong code three times; start again" : "wrong code");
+      }
+      this.challenges.delete(String(proof.id));
+      return proved();
+    }
+
+    if (method === "capsule") {
+      const { key, ts, nonce, sig } = proof;
+      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key FROM presence_keys WHERE id = ? AND kind = 'capsule'").get(String(key || "")));
+      if (!row) return refuse("that Capsule key is not enrolled");
+      if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse("the Capsule signature is too old or from the future");
+      if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse("the Capsule nonce is missing or malformed");
+      if (this.nonces.has(nonce)) return refuse("that Capsule nonce was already used");
+      let good = false;
+      try {
+        const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${hash}\n${ts}\n${nonce}`);
+        good = crypto.verify(null, msg, spki(row.public_key), Buffer.from(String(sig || ""), "base64url"));
+      } catch {}
+      if (!good) return refuse("the Capsule signature does not check out");
+      this.nonces.set(nonce, this.now() + 2 * CAPSULE_SKEW + 1000);
+      this.db.prepare("UPDATE presence_keys SET last_used = ? WHERE id = ?").run(this.now(), row.id);
+      return proved(row.id);
+    }
+
+    if (method === "passkey") {
+      const c = this.challenges.get(String(proof.id || ""));
+      if (!c || c.method !== "passkey") return refuse("no such passkey challenge, or it expired");
+      if (c.tool !== tool || c.hash !== hash) return refuse("the passkey challenge was for a different call");
+      // One attempt per challenge, whatever its outcome.
+      this.challenges.delete(String(proof.id));
+      const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_keys WHERE id = ? AND kind = 'passkey'").get(String(proof.cred || "")));
+      if (!row || String(row.rp_id) !== c.rpId) return refuse("that passkey is not enrolled");
+      const w = await this.webauthn();
+      if (!w) return refuse("passkeys cannot be checked on this machine");
+      let r;
+      try {
+        r = await w.verifyAssertion({ publicKey: String(row.public_key), alg: Number(row.alg), rpId: String(row.rp_id), challenge: c.challenge,
+          authenticatorData: String(proof.ad || ""), clientDataJSON: String(proof.cd || ""), signature: String(proof.sig || "") });
+      } catch (e) { r = { ok: false, reason: /** @type {Error} */ (e).message }; }
+      if (!r || !r.ok) return refuse(`the passkey assertion does not check out${r && r.reason ? ": " + r.reason : ""}`);
+      // A counter that does not move forward means a cloned authenticator. Synced passkeys send 0.
+      const count = Number(r.signCount || 0);
+      if (count !== 0 && count <= Number(row.sign_count || 0)) return refuse("the passkey's signature counter went backwards");
+      this.db.prepare("UPDATE presence_keys SET sign_count = ?, last_used = ? WHERE id = ?").run(count, this.now(), row.id);
+      return proved(row.id);
+    }
+
+    if (method === "session") {
+      if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
+      const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
+      if (ok !== true) return refuse("this item needs its own proof every time");
+      const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));
+      const now = this.now();
+      if (!row || row.expires <= now || row.last_used + SESSION_IDLE <= now) return refuse("no such session, or it ended");
+      if (!same(sha(String(proof.secret || "")).toString("hex"), row.hash)) return refuse("that session secret is wrong");
+      if (row.peer && row.peer !== peerId(peer)) return refuse("that session belongs to another device");
+      this.db.prepare("UPDATE presence_sessions SET last_used = ? WHERE id = ?").run(now, row.id);
+      return proved(row.key_id);
+    }
+
+    if (method === "code") {
+      if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey");
+      // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
+      // So the code counts only from the owner's own device over the tailnet, where they cannot be.
+      if (this.role === "box") {
+        const owner = String((this.network() || {}).owner || "").toLowerCase();
+        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+      }
+      const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
+        .run(this.now(), sha(normal(proof.code)).toString("hex"), this.now());
+      if (Number(r.changes) !== 1) return refuse("that code is wrong, used or expired");
+      return proved();
+    }
+
+    return refuse(`unknown presence method ${method}`);
+  }
+
+  /**
+   * Open a short session after a strong proof. The secret is returned once and kept only as a
+   * hash; it lasts 5 minutes idle and 30 at most, and only on the device that opened it.
+   * @param {{ method?: string, keyId?: string|null, peer?: any }} proved how the opening call was proved
+   */
+  openSession({ method, keyId = null, peer = null } = {}) {
+    if (!method || !SESSION_FROM.has(method)) throw new Error("a session opens only after Touch ID, the Capsule or a passkey");
+    const now = this.now();
+    this.db.prepare("DELETE FROM presence_sessions WHERE expires <= ? OR last_used <= ?").run(now, now - SESSION_IDLE);
+    const id = b64url(12), secret = b64url(32);
+    this.db.prepare("INSERT INTO presence_sessions (id, hash, key_id, method, peer, created, last_used, expires) VALUES (?,?,?,?,?,?,?,?)")
+      .run(id, sha(secret).toString("hex"), keyId, method, peerId(peer), now, now, now + SESSION_MAX);
+    return { session: id, secret, expires: now + SESSION_MAX, idle: SESSION_IDLE };
+  }
+
+  /** @param {string} id */
+  closeSession(id) {
+    return Number(this.db.prepare("DELETE FROM presence_sessions WHERE id = ?").run(String(id)).changes) > 0;
+  }
+
+  /** A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. */
+  mintCode() {
+    const now = this.now();
+    const code = randomCode(8);
+    const expires = now + CODE_TTL;
+    this.db.prepare("DELETE FROM presence_codes WHERE expires < ?").run(now - 24 * 3600_000);
+    this.db.prepare("INSERT INTO presence_codes (hash, expires, used) VALUES (?,?,NULL)").run(sha(code).toString("hex"), expires);
+    return { code, expires };
+  }
+
+  /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
+  keys() {
+    return this.db.prepare("SELECT id, kind, name, created, last_used FROM presence_keys ORDER BY created").all();
+  }
+
+  /**
+   * Enroll a Capsule key (Ed25519) or a passkey. Public keys only, as base64url SPKI DER.
+   * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
+   */
+  enroll({ kind, name, public_key, alg, rp_id, credential_id }) {
+    if (kind !== "capsule" && kind !== "passkey") throw new Error("kind must be capsule or passkey");
+    let key;
+    try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
+    let id;
+    if (kind === "capsule") {
+      if (key.asymmetricKeyType !== "ed25519") throw new Error("a Capsule key must be Ed25519");
+      alg = -8; rp_id = undefined;
+      // The id is the key's fingerprint, so one key cannot be enrolled twice.
+      id = crypto.createHash("sha256").update(Buffer.from(public_key, "base64url")).digest("base64url").slice(0, 22);
+    } else {
+      if (!/^[A-Za-z0-9_-]{8,1024}$/.test(String(credential_id || ""))) throw new Error("a passkey needs its credential_id in base64url");
+      if (!rp_id || !/^[a-z0-9.-]+$/i.test(rp_id)) throw new Error("a passkey needs the rp_id it was made for");
+      const want = ALGS[String(alg)];
+      if (!want) throw new Error("alg must be -7 (ES256), -8 (EdDSA) or -257 (RS256)");
+      if (key.asymmetricKeyType !== want) throw new Error(`alg ${alg} needs a ${want} key, not ${key.asymmetricKeyType}`);
+      id = String(credential_id);
+    }
+    if (this.db.prepare("SELECT 1 FROM presence_keys WHERE id = ?").get(id)) throw new Error("that key is already enrolled");
+    const created = this.now();
+    this.db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, rp_id, sign_count, created, last_used) VALUES (?,?,?,?,?,?,0,?,NULL)")
+      .run(id, kind, clean(name || kind).slice(0, 80) || kind, public_key, alg ?? null, rp_id ?? null, created);
+    return { id, kind, name: clean(name || kind).slice(0, 80) || kind, created };
+  }
+
+  /** Remove an enrolled key. Returns whether one was removed. */
+  remove(id) {
+    return Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
+  }
+
+  /** Never a code, key, signature or input: tool, method and caller only. */
+  emit(type, payload) {
+    if (!this.events) return;
+    try { this.events.emit("presence", type, payload); } catch (e) { this.log(`presence: could not record ${type}: ${/** @type {Error} */ (e).message}`); }
+  }
+}
+
+/** The Presence vyred builds, with every OS touch point real. */
+export const defaultPresence = ({ db, events, log }) => new Presence({ db, events, log });

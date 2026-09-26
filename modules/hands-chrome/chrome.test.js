@@ -16,7 +16,7 @@ import http from "node:http";
 import net from "node:net";
 import { start } from "../../core/daemon/index.js";
 import { call } from "../../core/daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
 
 const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -127,7 +127,7 @@ async function boot(t, { port }) {
     role: "box",
     computers: { driver: "fake", sweepMs: 0, waitMs: 200, local: { host: "127.0.0.1", ports: { helper: proxyPort } } },
   }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   let stopped = false;
   t.after(async () => { if (!stopped) { stopped = true; await d.stop(); } });
   const computers = d.registry.modules.get("computers");
