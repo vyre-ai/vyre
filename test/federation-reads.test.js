@@ -201,7 +201,8 @@ test("federation reads: onboarding on the box counts the Mac's sessions and says
   await online(s);
   const macTotal = (await s.macCall("projects.catalog", { limit: 1 })).data.total;
   const history = async () => (await asBox(s, "onboard.status", {}, "cli")).detail.history;
-  const on = await until(async () => { const h = await history(); return !h.running && h; });
+  // Once the box's first pass is done and the Mac has answered (a loaded machine can make one read wait).
+  const on = await until(async () => { const h = await history(); return !h.running && h.machines && h.machines.every(m => m.ok) && h; });
   assert.equal(on.sessions, macTotal);
   assert.deepEqual(on.machines, [{ machine: "testbox", source: "box", sessions: 0, ok: true }, { machine: "test-mac", source: "mac", sessions: macTotal, ok: true }]);
   assert.notEqual(on.state, "blocked");

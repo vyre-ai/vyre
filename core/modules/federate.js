@@ -1,5 +1,5 @@
 // @ts-check
-// federate — the box's reads that take in its paired Macs' rows too (docs/work/federation.md,
+// federate: the box's reads that take in its paired Macs' rows too (docs/work/federation.md,
 // design 4). The Mac's sessions stay on the Mac (ADR 0008 step 3); the box asks for them through
 // the link (link.macs.call) when the person reads, labels every row with the machine it came
 // from, and keeps none of it.

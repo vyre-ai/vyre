@@ -20,6 +20,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Mac before running. The Mac runs them as `module:link`. Nothing a Mac answers is stored on the box.
 - The link's test harness (`pair`, the simulated tailnet) moved to `test/link-harness.js`;
   `test/link-federation.test.js` covers the reverse channel.
+- On the box, `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`,
+  `recall.thread` and `threads.list` take in the paired Macs' rows for the person (the Deck, the
+  terminal, the Capsule, the owner over the tailnet), and for a module only when it passes
+  `machines: "all"`. `machines: "local"` asks for the box's rows alone; agents, MCP and guests get
+  them always. Every row of a federated answer carries `source` ("box" or "mac") and `machine`.
+  The catalogue merges by its own order and applies the limit to the merged list, with
+  `sources: [{ source, machine, ok, error?, total? }]` (box first); search merges by score,
+  sessions and threads by recency, capped at each tool's limit. `recall.thread` asks the Macs only
+  for a session the box does not have, or when given `source: "mac"`. A Mac that is away shows as
+  `ok: false, error: "mac_offline"` and the box answers with its own rows at once. On a Mac
+  nothing changes, so the Mac never asks the box back. The shared piece is
+  `core/modules/federate.js`; `test/federation-reads.test.js` covers it end to end.
+- Onboarding's history step on the box counts the paired Mac's sessions, lists them per machine
+  (`history.machines`), and says "Your Mac (<name>) is offline, so its sessions do not show here
+  yet" when the Mac is paired but away and nothing is here.
 
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 

@@ -56,15 +56,49 @@ box.
   `hold` are test seams; `transport.open` takes an AbortSignal so stopping or unpairing the Mac
   ends its held request at once.
 
+- Task B, federated reads and onboarding (design 4, design 5 first half). Main merged in first
+  (e3eb0cb); work in 442bab7, a8663d1 (ci's snapshots of it before the history rewrite), 9d69183
+  and the feat commit after it. `core/modules/federate.js` holds who federates (`wantsMacs`), the
+  ask (`askMacs`, never throws, `[]` without the link) and the labelled merge (`mergeRows`,
+  `sourcesOf`). Tests on the test box, one file at a time: test/federation-reads.test.js 6/6,
+  core/modules/federate.test.js 3/3, test/link.test.js 8/8, test/link-federation.test.js 7/7,
+  core/modules/modules.test.js 22/22, core/projects/projects.test.js 17/17,
+  core/recall/recall.test.js 29/29, core/recall/module.test.js 5/5, core/recall/eval.test.js 5/5,
+  core/switchboard/switchboard.test.js 24/24, test/onboard.test.js 11/11,
+  test/onboard-page.test.js 0 (1 skipped: no Chrome there), test/hygiene.test.js 1/1,
+  core/harness/floor.test.js 8/8, core/learn/learn.test.js 43/43, core/learn/signals.test.js
+  26/26, core/memory/access.test.js 4/4, core/memory/scope.test.js 10/10,
+  core/watchers/runtime.test.js 9/9, deck/test/memory.test.js 15/15, test/projects-cli.test.js
+  4/4. federation-reads ran 25 more times green (10 of them 5 at once, load 9.9); one earlier run
+  had 1 failure that did not repeat and was not captured, and the onboarding test now waits for
+  the Mac's answer rather than the first status. perf-check: CPU p95 0.00%, sustained 0.00%, RSS
+  mean 88.2 MB, max 136.0 MB, no timer under 60 s.
+  Choices beyond the design:
+  - Rows are labelled only in a federated answer. `machines: "local"`, agents, MCP, guests and
+    modules that do not ask get today's rows unchanged, so no existing caller sees a new field.
+  - `projects.list` is an object (`{ projects, problems }`), not an array: box projects then each
+    Mac's, not re-sorted; `problems` merged the same way; `sources` added as on the catalogue.
+  - The catalogue sorts the merged rows as it sorts its own: title match, then how often said, then
+    `last` (newest first; without q only `last` differs). Its `sources` carry each machine's
+    `total`, which onboarding uses.
+  - `threads.list` rows are switchboard records; merged by `last` (newest first), no cap (each
+    machine caps at 200). `recall.sessions` merges by `ended`; `recall.search` by `score` (the two
+    machines' scores come from different corpora: good enough for one list, not a strict ranking).
+  - `recall.thread` falls through to the Macs only on "no session ..." from the box; an ambiguous
+    prefix on the box is still an error. Found nowhere: `no session <id> (test-mac: failed)`, with
+    the Mac's code (`mac_offline`, `timeout`) in place of `failed`.
+  - Onboarding asks the catalogue with `limit: 1` (total does not depend on the limit; it asked for
+    100000 rows before). Done-ness compares the box's index with the box's own sessions only; the
+    Mac indexes its own.
+
 ## Doing
 
-- (nothing; Task B is next)
+- (nothing; Task C is next)
 
 ## Next
 
-- Task B: federated reads (design 4) and onboarding (design 5, first half).
-- Task C: Deck chips and picking (design 5, second half), with the deck owner.
-- perf-check on the test box; docs; CHANGELOG.
+- Task C: Deck chips and picking (design 5, second half), with the deck owner. See "Notes for
+  Task C".
 
 ## Needs from others
 
@@ -87,6 +121,19 @@ box.
 - Tests: `pair()`, `tailnet()`, `until()`, `wait` and the OWNER/MAC/PHONE/BOX constants moved to
   `test/link-harness.js`. `pair()` takes `hold` (default 300 ms), `allow` and `macTranscripts`,
   and returns `boxRoot` too.
+- `machines: "all" | "local"` on the input of `projects.catalog`, `projects.list`,
+  `recall.search`, `recall.sessions`, `recall.thread`, `threads.list` (every role accepts it; only
+  the box acts on it). `recall.thread` also takes `source: "box" | "mac"`.
+- In a federated answer every row gains `source` ("box" | "mac") and `machine` (the box's
+  `config.name`, else "box"; the Mac's paired name). `projects.catalog` and `projects.list` gain
+  `sources: [{ source, machine, ok, error?, total? }]` (box first; `error` is the Mac's code, such
+  as `mac_offline` or `timeout`; `total` on the catalogue only). `recall.thread` gains top-level
+  `source` and `machine`.
+- Onboarding's `detail.history` gains `machines: [{ machine, source, sessions, ok }]` on the box,
+  and `sessions` counts the Mac's too.
+- New shared file `core/modules/federate.js` (`wantsMacs`, `askMacs`, `mergeRows`, `sourcesOf`,
+  `boxLabel`, `macLabel`, `label`). `pair()` takes `boxTranscripts` (sessions in the corpus's
+  shape for the box to index).
 
 ## Notes for Task B
 
@@ -100,3 +147,20 @@ box.
   runs out (60 s): a question in that window times out rather than answering `mac_offline`.
 - Pre-existing, not ours: core/cli/commands/box.test.js "box add: sudo with a password ..." fails
   on the test box on this branch without these changes too.
+
+## Notes for Task C
+
+- A Mac row is told apart by `source: "mac"` and `machine`. Ids are Claude Code session ids, the
+  same on the Mac. Picking one into a box project with `projects.add-threads` stores the bare id,
+  as today. The box's `projects.threads` builds its list from the box's own recall rows
+  (`threadsOf`), so a picked Mac id comes back `missing: true` with no name. Resolving it means
+  asking the Mac for those ids: `recall.sessions` has no id filter, `recall.thread` per id moves
+  turns, and `projects.catalog` with a large limit moves every row. A small `ids` filter on
+  `recall.sessions` (already on the allowlist) is the cheapest fix.
+- A Mac row's `projects` in the catalogue are the Mac's own project slugs, not the box's.
+- The onboarding page polls `onboard.status` every couple of seconds; on the box each poll now asks
+  the Mac for one catalogue row. Cheap, but it is traffic while the page is open; the Deck's
+  offline chip should read `link.macs` rather than ask again.
+- The Mac answers one question at a time, so a busy Mac delays the next read up to the link's 5 s
+  timeout; the Deck should show the box's rows first if it ever waits on that.
+
