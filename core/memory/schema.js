@@ -86,4 +86,20 @@ export const MIGRATIONS = [
     nodes INTEGER NOT NULL, edges INTEGER NOT NULL, ms INTEGER NOT NULL
   );
   `,
+  `
+  -- Facts other modules taught through ctx.memory.teach. fact is the checked fact as JSON, in a
+  -- fixed key order, so teaching the same thing twice is the same row. at is when it was first
+  -- taught (or last changed); it never moves on an identical re-teach.
+  CREATE TABLE memory_taught (
+    module TEXT NOT NULL, kind TEXT NOT NULL, key TEXT NOT NULL, fact TEXT NOT NULL, at INTEGER NOT NULL,
+    PRIMARY KEY (module, kind, key)
+  );
+
+  -- The lessons behind each edge: memory_evidence's counterpart for taught facts, with
+  -- {module, kind, key} where a transcript fact has (session, seq).
+  CREATE TABLE memory_lessons (
+    edge INTEGER NOT NULL, module TEXT NOT NULL, kind TEXT NOT NULL, key TEXT NOT NULL,
+    PRIMARY KEY (edge, module, kind, key)
+  ) WITHOUT ROWID;
+  `,
 ];

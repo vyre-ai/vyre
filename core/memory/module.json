@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["memory.facts", "memory.relevant", "memory.why", "memory.pin", "memory.mute", "memory.curate", "memory.stats"] },
+  "does": { "tools": ["memory.facts", "memory.relevant", "memory.why", "memory.pin", "memory.mute", "memory.teach", "memory.curate", "memory.stats"] },
   "watches": { "emits": ["memory.curated"] },
   "shows": { "deck": [], "capsule": [], "cli": ["memory", "why"] },
   "needs": {},

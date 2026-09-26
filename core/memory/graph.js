@@ -9,8 +9,9 @@
 import { registrable } from "./lexicon.js";
 import { T } from "./curator.js";
 
-/** Relations that say who or what something is. mentioned_in is where, not what. */
-const IDENTITY = ["works_at", "has_email", "has_domain", "at_domain", "owned_by"];
+/** mentioned_in says where something came up, not what it is; every other relation is a fact
+ * about it, including the ones modules teach. */
+const WHERE = "mentioned_in";
 /** Roles that never count as an outside party: the user's own, tools, mail hosts, hubs. */
 const QUIET = new Set(["own", "tool", "mail", "hub"]);
 
@@ -22,6 +23,7 @@ const PHRASE = {
   owned_by: (a, b) => `the repo ${a} belongs to ${b}`,
   mentioned_in: (a, b) => `${a} came up in "${b}"`,
 };
+const words = rel => rel.replace(/_/g, " ");
 
 /** "5 minutes", "3 weeks", "4 months": how old, the way a person says it. */
 export function ago(ms, now = Date.now()) {
@@ -100,9 +102,19 @@ export class Graph {
     let best = null, seen = 0;
     for (const v of ev) { const ts = Number(tsq.get(v.session, v.seq)?.ts || 0); if (!best || ts >= seen) { best = v; seen = ts; } }
     const names = this.labels([...(best ? [String(best.session)] : []), ...(sessionId ? [sessionId] : [])]);
+    // Lessons: what modules taught that supports this edge. When no turn does, the module is
+    // the source.
+    const taught = db.prepare(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
+      LEFT JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key
+      WHERE l.edge = ? ORDER BY t.at DESC, l.module, l.kind, l.key`).all(e.id);
+    if (!best && taught.length) seen = Math.max(...taught.map(t => Number(t.at) || 0));
+    const note = String(e.dst).startsWith("note:");
+    const noteText = note ? (() => { try { return JSON.parse(String(taught[0]?.fact)).text; } catch { return null; } })() : null;
     const object = dst ? { id: dst.id, label: dst.label, kind: dst.kind, role: dst.role ?? null }
+      : note ? { id: e.dst, label: noteText || "a note", kind: "note", role: null }
       : { id: e.dst, label: sessionId ? names.get(sessionId)?.name || sessionId : e.dst, kind: "session", role: null };
-    const text = (PHRASE[e.rel] || ((a, b) => `${a} ${e.rel} ${b}`))(src?.label ?? e.src, object.label);
+    const text = note ? `${src?.label ?? e.src}: ${noteText || "a note"}`
+      : (PHRASE[e.rel] || ((a, b) => `${a} ${words(String(e.rel))} ${b}`))(src?.label ?? e.src, object.label);
     return {
       id: `${e.src}|${e.rel}|${e.dst}`,
       text,
@@ -114,9 +126,10 @@ export class Graph {
       seen: seen || null, age: ago(seen, this.now()),
       // source is what a person reads: the thread's /rename name or its first message. ref is
       // the exact turn, for memory.why and anything that wants to open it.
-      source: best ? names.get(String(best.session))?.name || String(best.session).slice(0, 8) : null,
+      source: best ? names.get(String(best.session))?.name || String(best.session).slice(0, 8) : taught.length ? `taught by ${taught[0].module}` : null,
       ref: best ? { session: String(best.session), seq: Number(best.seq), name: names.get(String(best.session))?.name || null } : null,
       evidence: ev.length,
+      taught: taught.map(t => ({ module: String(t.module), kind: String(t.kind) })),
     };
   }
 
@@ -140,8 +153,8 @@ export class Graph {
   }
 
   identityEdges(id, { closed = false } = {}) {
-    return this.db.prepare(`SELECT * FROM memory_edges WHERE (src = ? OR dst = ?) AND rel IN (${IDENTITY.map(() => "?").join(",")})
-      ${closed ? "" : "AND valid_to IS NULL"} ORDER BY valid_to IS NOT NULL, confidence DESC, id`).all(id, id, ...IDENTITY);
+    return this.db.prepare(`SELECT * FROM memory_edges WHERE (src = ? OR dst = ?) AND rel != ?
+      ${closed ? "" : "AND valid_to IS NULL"} ORDER BY valid_to IS NOT NULL, confidence DESC, id`).all(id, id, WHERE);
   }
 
   mentionEdges(id, limit = 5) {
@@ -305,9 +318,17 @@ export class Graph {
     }
     if (!edges.length) {
       const n = this.resolve(fact);
-      if (!n) return { fact: null, turns: [], gone: 0 };
+      if (!n) return { fact: null, turns: [], taught: [], gone: 0 };
       head = this.summary(n);
       edges = db.prepare("SELECT * FROM memory_edges WHERE src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC").all(n.id);
+    }
+    const lessons = [];
+    for (const e of edges) for (const r of db.prepare(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
+        LEFT JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key WHERE l.edge = ?`).all(e.id)) {
+      if (lessons.some(x => x.module === r.module && x.kind === r.kind && x.key === r.key)) continue;
+      let text = null;
+      try { text = JSON.parse(String(r.fact)).text ?? null; } catch {}
+      lessons.push({ module: String(r.module), kind: String(r.kind), key: String(r.key), text, at: Number(r.at) || null, age: ago(Number(r.at), this.now()) });
     }
     const refs = [];
     for (const e of edges) for (const r of db.prepare("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY seq").all(e.id)) {
@@ -329,7 +350,7 @@ export class Graph {
       turns.push({ session: w.session, seq: w.seq, name: names.get(w.session)?.name || null, role: r.role, ts: Number(r.ts) || null,
         age: ago(Number(r.ts), this.now()), text: String(r.text).slice(0, 400) });
     }
-    return { fact: head, turns, gone };
+    return { fact: head, turns, taught: lessons, gone };
   }
 
   // ------------------------------------------------------------------ steering
@@ -359,6 +380,7 @@ export class Graph {
       byRole: Object.fromEntries(db.prepare("SELECT coalesce(role, 'outside') role, COUNT(*) n FROM memory_nodes GROUP BY 1 ORDER BY n DESC").all().map(r => [r.role, r.n])),
       shortforms: Number(db.prepare("SELECT COUNT(*) n FROM memory_shortforms WHERE precision >= ? AND sessions >= ?").get(T.shortPrecision, T.shortMinSessions)?.n || 0),
       focus: one("SELECT COUNT(*) n FROM memory_focus"),
+      taught: one("SELECT COUNT(*) n FROM memory_taught"),
       lastRun: last && { ...last, age: ago(Number(last.at), this.now()) },
     };
   }

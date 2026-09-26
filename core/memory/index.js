@@ -76,6 +76,20 @@ export default {
     });
     ctx.tool("memory.pin", steer("pin"));
     ctx.tool("memory.mute", steer("mute"));
+    // What ctx.memory.teach(kind, fact) calls. Internal: only modules reach it, and the loader
+    // has already checked that the kind is one the module declares under teaches.memory.
+    ctx.tool("memory.teach", {
+      internal: true,
+      description: "A fact taught by another module, folded into the graph with that module as its source.",
+      input: { type: "object", required: ["kind", "fact", "from"], properties: { kind: { type: "string" }, fact: { type: "object" }, from: { type: "string" } } },
+      run: async ({ kind, fact, from }, { caller } = {}) => {
+        // Provenance is who the loader says called, never what the input claims.
+        if (caller !== `module:${from}`) throw new Error(`memory.teach from ${from} arrived as ${caller}`);
+        const r = curator.teach(from, kind, fact);
+        if (r.changed) soon();
+        return r;
+      },
+    });
     ctx.tool("memory.curate", {
       description: "Read any new turns and rebuild the graph now. full: true re-reads every turn. Returns counts.",
       input: { type: "object", properties: { full: { type: "boolean" } } },
