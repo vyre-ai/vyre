@@ -182,6 +182,17 @@ test("gate: route denies a sending MCP tool inside an agent's thread and leaves 
   assert.deepEqual(gate.route({ tool: "Bash", agent: "juno" }), { decision: null });
 });
 
+test("gate: route leaves the MCP hub's own tools to the hub, and denies the rest as before", () => {
+  const { gate } = setup();
+  const route = tool => gate.route({ tool, agent: "juno" }).decision;
+  assert.equal(route("mcp__vyre__mail__send_email"), null);
+  assert.equal(route("mcp__plugin_vyre_vyre__harlow-slack__post_message"), null);
+  assert.equal(route("mcp__vyre__threads_send"), "deny");
+  assert.equal(route("mcp__plugin_vyre_vyre__threads_send"), "deny");
+  assert.equal(route("mcp__other__x__send_email"), "deny");
+  assert.equal(route("mcp__vyre__Mail__send_email"), "deny");
+});
+
 test("gate: diff is word level and capped", () => {
   assert.deepEqual(diff({ body: "a b c d" }, { body: "a x c d e" }), { removed: ["b"], added: ["x", "e"] });
   assert.deepEqual(diff({ subject: "same" }, { subject: "same" }), { removed: [], added: [] });

@@ -23,6 +23,12 @@ import { flatten, words, dynamic, globReaches } from "./shell.js";
 
 /** Words in an MCP tool's own name that mean it sends something as the user. */
 const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
+/**
+ * The MCP hub's tools inside Vyre's own MCP server (ADR 0015), as `vyre mcp` or as the plugin:
+ * a hub server name, then its tool. The hub holds their outward calls at the Gate itself, and its
+ * rule is stricter than the name rule (unknown is outward), so rule 1 steps aside for them.
+ */
+const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
 /** Where a sending tool keeps its destination, in the order worth showing. */
 const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "email", "thread_id", "chat_id", "user", "url"];
 
@@ -53,7 +59,7 @@ export function rules({ tool, input, cwd, home, userHome }) {
   }
 
   // Rules 1 and 2. Only MCP tools: those are the ones that reach people (mail, chat, posts).
-  if (tool.startsWith("mcp__")) {
+  if (tool.startsWith("mcp__") && !HUB.test(tool)) {
     const own = tool.split("__").pop() || "";
     if (SENDS.test(own) && !/(^|_)(draft|list|get|search|read)(_|$)/i.test(own)) {
       const dest = DEST_KEYS.map(k => input[k]).find(v => v != null && v !== "");

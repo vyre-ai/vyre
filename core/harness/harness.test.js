@@ -41,6 +41,24 @@ test("rules: a tool that sends as the user asks first and names where it is goin
   assert.equal(rules({ tool: "Bash", input: { command: "git push" }, home: HOME }).decision, null, "the floor is about messages, not code");
 });
 
+test("rules: the MCP hub's own tools are left to the Gate; every other send still asks", () => {
+  const decide = (tool, input = { to: "dana@harlowlegal.com" }) => rules({ tool, input, home: HOME }).decision;
+  // The hub's namespace inside Vyre's MCP server, as `vyre mcp` and as the plugin.
+  assert.equal(decide("mcp__vyre__mail__send_email"), null);
+  assert.equal(decide("mcp__plugin_vyre_vyre__harlow-slack__post_message", { channel: "#general" }), null);
+  // Vyre's own tools, one underscore: unchanged.
+  assert.equal(decide("mcp__vyre__threads_send"), "ask");
+  assert.equal(decide("mcp__plugin_vyre_vyre__threads_send"), "ask");
+  assert.equal(decide("mcp__vyre__threads_list"), null);
+  // Look-alikes are not the hub.
+  assert.equal(decide("mcp__other__x__send_email"), "ask");
+  assert.equal(decide("mcp__vyrex__mail__send_email"), "ask");
+  assert.equal(decide("mcp__vyre__Mail__send_email"), "ask", "hub server names are lowercase");
+  assert.equal(decide("mcp__vyre__" + "a".repeat(33) + "__send_email"), "ask", "hub server names are at most 32 characters");
+  // Rule 8 still holds for the hub's tools.
+  assert.equal(rules({ tool: "mcp__vyre__files__read_file", input: { path: path.join(HOME, "vault", "x") }, home: HOME }).decision, "deny");
+});
+
 test("formatMemory: reads Memory's own item shape, where source is an object", () => {
   const t = formatMemory([{ id: "a|works_at|b", text: "Dana Reyes works at Harlow Legal", confidence: 0.9, age: "3 weeks", source: { session: "s1", seq: 0, name: "Harlow site rebuild" } }]);
   assert.match(t, /\(from Harlow site rebuild, 3 weeks, confidence 0\.90\)/);

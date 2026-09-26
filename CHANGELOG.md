@@ -12,6 +12,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the approved content. The MCP hub and native Google need this to hold their sends. Offers live in
   memory, so an item held under a module that has not started yet stays held, and Approve says
   which module to start.
+- The floor's rule 1 and `gate.route` no longer ask about or deny a tool named
+  `mcp__vyre__<server>__<tool>` (or `mcp__plugin_vyre_vyre__<server>__<tool>` under the plugin),
+  where `<server>` is a hub server name. Those are the MCP hub's tools, which hold every outward
+  call at the Gate themselves with a stricter rule than the name check, so asking first would make
+  the user answer twice. Vyre's own tools (`mcp__vyre__threads_send`) and every other server are
+  unchanged.
 
 #### Presence: a person proves they are there (ADR 0004)
 

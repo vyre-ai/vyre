@@ -39,6 +39,11 @@ export const KINDS = ["send", "spend", "delete"];
 /** Words in an MCP tool's own name that mean it sends something as the user (as core/harness/rules.js). */
 const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
 const READS = /(^|_)(draft|list|get|search|read)(_|$)/i;
+/**
+ * The MCP hub's tools inside Vyre's own MCP server (ADR 0015), as `vyre mcp` or as the plugin:
+ * a hub server name, then its tool. The hub holds their outward calls at the Gate itself.
+ */
+const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
 const MAX_SNIPPETS = 12, SNIPPET = 160, MAX_WORDS = 1500;
 
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
@@ -280,7 +285,7 @@ export class Gate {
    * @param {{ tool: string, input?: any, agent?: string, session?: string }} call
    */
   route({ tool, agent }) {
-    if (!agent || !String(tool).startsWith("mcp__")) return { decision: null };
+    if (!agent || !String(tool).startsWith("mcp__") || HUB.test(String(tool))) return { decision: null };
     const own = String(tool).split("__").pop() || "";
     if (!SENDS.test(own) || READS.test(own)) return { decision: null };
     const names = Object.keys(this.senderConfig);
