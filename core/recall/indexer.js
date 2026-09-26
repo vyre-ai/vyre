@@ -47,6 +47,9 @@ export class Indexer {
           ended=excluded.ended, turns=excluded.turns, human=excluded.human, parent=excluded.parent,
           bytes=excluded.bytes, mtime=excluded.mtime`),
       meta: db.prepare("INSERT INTO recall_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v"),
+      // Bumped whenever turns are deleted. Anything holding a copy of turns (the dense index)
+      // compares it and rebuilds; appends only make a copy incomplete, never wrong.
+      generation: db.prepare("INSERT INTO recall_meta (k, v) VALUES ('generation', '1') ON CONFLICT(k) DO UPDATE SET v = CAST(v AS INTEGER) + 1"),
     };
   }
 
@@ -105,6 +108,7 @@ export class Indexer {
         // Vectors first: they key on (session, seq), and the new turns reuse those seqs.
         this.q.delVectors.run(entry.id);
         this.q.delTurns.run(entry.id);
+        this.q.generation.run();
       }
       for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text);
       this.q.put.run(entry.id, entry.file, t.cwd, t.name, t.title, t.started || null, t.ended || null,

@@ -103,6 +103,17 @@ test("daemon: the event stream replays the backlog, then goes live, filtered by 
   assert.deepEqual(got.map(e => e.payload.n), [1, 3]);
 });
 
+test("daemon: since=latest skips the backlog and delivers only new events", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  d.events.emit("test", "thread.started", { n: 1 });
+  const pending = sse(d.paths.socket, "/v1/events/stream?since=latest&type=thread.*", 1);
+  await new Promise(r => setTimeout(r, 50));
+  d.events.emit("test", "thread.stopped", { n: 2 });
+  assert.deepEqual((await pending).map(e => e.payload.n), [2]);
+});
+
 test("daemon: stop is not held open by a connected event stream", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });

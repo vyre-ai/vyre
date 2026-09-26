@@ -26,7 +26,8 @@ const answer = (hookEventName, fields) => process.stdout.write(JSON.stringify({ 
 async function main() {
   if (!(piece in EVENT)) return;
   const h = await stdin();
-  const base = { cwd: h.cwd, session: h.session_id };
+  // prompt_id names the turn; VYRE_AGENT, set by the Switchboard, names the agent a lesson may be scoped to.
+  const base = { cwd: h.cwd, session: h.session_id, prompt_id: h.prompt_id, agent: process.env.VYRE_AGENT || undefined };
   const opts = { caller: "harness", timeout: 3000 };
 
   if (piece === "brief") {
@@ -45,7 +46,10 @@ async function main() {
   } else if (piece === "learn") {
     await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} }, opts);
   } else if (piece === "stop") {
-    await call("harness.stop", base, opts);
+    const text = typeof h.last_assistant_message === "string" ? h.last_assistant_message : undefined;
+    const r = await call("harness.stop", { ...base, text, stop_hook_active: Boolean(h.stop_hook_active) }, opts);
+    // Stop's answer is top level, not hookSpecificOutput. The reason goes to Claude, which continues.
+    if (r.data && r.data.decision === "block") process.stdout.write(JSON.stringify({ decision: "block", reason: r.data.reason }));
   }
 }
 
