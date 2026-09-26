@@ -15,15 +15,15 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
    `Sources/Kit/Extension.swift`).
 
 ## Done
-- c7844c9 ADR 0015 claimed, the floor list (places Vyre never reads or touches), test-owned window.
-- f5d7a9e hands: the whole Mac inside the floor, overlay indicator, stop key, commit needs presence.
-- 73e48e5 screen: screen.context from AX notifications with a long-lived sight helper, screen.shot.
-- 788d5fb voice module (lead snapshot): status, settings, speak, the listen stream, mic helper.
-- 10ea172 screen tests run on the test box (fake helper, platform darwin). screen 20/20, hands 42/42.
-- e1540a6 sideview: `local/sideview` + `vyre-tile` + `vyre sideview`. the test box 21 pass, 1 skip (real Mac).
-- 7c7be45 voice: `vyre voice`, `vyre voice key`, `vyre voice status`. the test box 20 pass, 1 skip.
+- (claim ADR) ADR 0015 claimed, the floor list (places Vyre never reads or touches), test-owned window.
+- (hands) hands: the whole Mac inside the floor, overlay indicator, stop key, commit needs presence.
+- (screen) screen: screen.context from AX notifications with a long-lived sight helper, screen.shot.
+- (voice snapshot) voice module (lead snapshot): status, settings, speak, the listen stream, mic helper.
+- (test(screen) fake-helper) screen tests run on the test box (fake helper, platform darwin). screen 20/20, hands 42/42.
+- 201c417 sideview: `local/sideview` + `vyre-tile` + `vyre sideview`. the test box 21 pass, 1 skip (real Mac).
+- 9245826 voice: `vyre voice`, `vyre voice key`, `vyre voice status`. the test box 20 pass, 1 skip.
 - ADR 0015 written (docs/adr/0015-capsule-sight.md).
-- f1dfc57 sight extension in Sources/Extensions/sight: side view commands, Ask about my screen,
+- 9033c47 sight extension in Sources/Extensions/sight: side view commands, Ask about my screen,
   Option-Return push-to-talk. 12/12 sight tests in a combined scratch copy of capsule-pro's tree
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
