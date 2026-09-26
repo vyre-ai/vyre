@@ -248,6 +248,8 @@ async function send(d, { take = false } = {}) {
     return paint();
   }
   S.sent = { dest: d, text, thread: r.thread || null };
+  // "<name> is busy in your terminal. I'll hand it your message when this turn ends."
+  if (r.queued && r.note) S.note = r.note;
   if (inDm()) { box.value = ""; S.text = ""; box.placeholder = `Message ${S.chip.label}`; return paint(); }
   S.mode = "reply";
   box.value = ""; S.text = "";

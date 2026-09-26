@@ -617,6 +617,35 @@ test("real switchboard: a session the switchboard never started cannot be typed 
   assert.doesNotMatch(String(r.error), /^no thread/);
 });
 
+test("real switchboard: a session busy in a terminal gets the message at its turn's end, and its reply shows here", async t => {
+  const { root, b, events, work } = await live(t);
+  // A fake terminal session: a transcript written a second ago, in the temp home's transcripts.
+  // Nothing touches ~/.claude, and the hooks are called the way hook.js calls them.
+  const tx = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).transcripts[0];
+  const id = "22222222-bbbb-4000-8000-000000000002";
+  const dir = path.join(tx, "-" + work.replace(/[^A-Za-z0-9]/g, "-"));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${id}.jsonl`), [{ type: "user", cwd: work, sessionId: id, message: { role: "user", content: "fix the intake form" } },
+    { type: "custom-title", customTitle: "Intake form", sessionId: id }].map(l => JSON.stringify(l)).join("\n") + "\n");
+  const hook = (tool, input) => call(tool, input, { root, caller: "harness", timeout: 20_000 });
+  await b.refresh();
+  const r = await b.send({ kind: "thread", thread: id, threadLabel: "Intake form", meta: "" }, "which branch are you on?");
+  assert.deepEqual(r, { thread: id, queued: true, note: "Intake form is busy in your terminal. I'll hand it your message when this turn ends." });
+  let snap = b.snapshot().reply;
+  assert.deepEqual([snap?.thread, snap?.queued, snap?.finished, snap?.text], [id, { name: "Intake form", delivered: false }, false, ""]);
+
+  const stop = (await hook("harness.stop", { session: id, text: "Tests pass." })).data;
+  assert.deepEqual(stop, { decision: "block", reason: "Message from the user via the Capsule: which branch are you on?" });
+  await until(() => b.snapshot().reply?.queued?.delivered, "handed over");
+  assert.equal(b.snapshot().reply?.text, "", "the turn it interrupted is not its reply");
+
+  assert.deepEqual((await hook("harness.stop", { session: id, text: "On main.", stop_hook_active: true })).data, { ok: true });
+  await until(() => b.snapshot().reply?.finished, "the reply");
+  snap = b.snapshot().reply;
+  assert.deepEqual([snap?.text, snap?.ok, snap?.error], ["On main.", true, null]);
+  assert.ok(events.some(e => e.type === "thread.queued" && e.thread === id));
+});
+
 test("real switchboard: a question goes to a fast model in the Capsule's folder, follows up in its thread, and Stop stops it", async t => {
   const { root, b, cli } = await live(t);
   const log = path.join(root, "fake-claude.log");

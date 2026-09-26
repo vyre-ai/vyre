@@ -347,6 +347,13 @@ export class Bridge extends EventEmitter {
       const before = this.reply;
       this.reply = this.fresh(String(d.thread), text, this.quick.get(String(d.thread)) || null);
       r = await this.client.call("threads.send", { thread: d.thread, text, surface: "capsule" });
+      // Busy in a terminal: the words wait for its turn to end (the Harness hands them over at
+      // Stop), and its reply comes back on this thread like any other.
+      if (!r.error && r.data && r.data.queued) {
+        this.reply = { ...this.reply, queued: { name: String(r.data.name || d.threadLabel || "The session"), delivered: false } };
+        this.emit("change");
+        return { thread: String(d.thread), queued: true, note: r.data.note || null };
+      }
       if (r.error || (r.data && r.data.sent === false)) this.reply = before;
       if (!r.error && r.data && r.data.sent === false) {
         // {sent:false, holder, note}; the note names a tool, so the Capsule says it in words.
@@ -676,6 +683,7 @@ export class Bridge extends EventEmitter {
       waitingLoud: st.loud(this.waiting),
       reply: this.reply ? { thread: this.reply.thread, text: st.replyText(this.reply), tools: this.reply.tools, finished: this.reply.finished,
         ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease, model: this.reply.model || null, notice: this.reply.notice || null,
+        queued: this.reply.queued || null,
         cost: this.reply.cost, ms: this.reply.ms,
         memory: this.reply.memory ? { ...this.reply.memory, memo: memoItems(this.reply.memory) } : null } : null,
       dm: this.chat ? st.dmView(this.chat) : null,

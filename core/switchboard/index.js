@@ -54,6 +54,11 @@ export const MIGRATIONS = [
    CREATE TABLE threads_watches (id TEXT PRIMARY KEY, thread TEXT NOT NULL, until TEXT NOT NULL, notify TEXT, note TEXT, by TEXT, at INTEGER NOT NULL);
    CREATE INDEX threads_watches_thread ON threads_watches (thread);`,
   USAGE_MIGRATION,
+  // Words for a session busy in another process (a terminal), handed over by the Harness at the
+  // session's next Stop or prompt. replied_at is when the turn that answered them ended.
+  `CREATE TABLE threads_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT NOT NULL, text TEXT NOT NULL, surface TEXT NOT NULL,
+     at INTEGER NOT NULL, delivered_at INTEGER, via TEXT, replied_at INTEGER);
+   CREATE INDEX threads_inbox_thread ON threads_inbox (thread, delivered_at);`,
 ];
 
 
@@ -486,12 +491,15 @@ export class Switchboard {
   /**
    * Type into a thread. The lease decides who may. A thread that is not running here is resumed
    * first, and a session the Switchboard never started is adopted; either only if no other
-   * process has it open, since one transcript takes one writer.
+   * process has it open, since one transcript takes one writer. One that is open elsewhere (a
+   * terminal) is not typed into: a person's words are queued instead, and the Harness hands them
+   * over when that session's turn ends (queue). `queue` false (a model's call) keeps the refusal.
    */
-  async send(id, text, surface) {
+  async send(id, text, surface, { queue = true } = {}) {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
+      if (why && queue) return this.queue(id, text, surface);
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
@@ -509,6 +517,55 @@ export class Switchboard {
     this.write(id, text);
     this.emit("thread.sent", { text: cut(text, 2000), surface }, id, rec.project);
     return { sent: true, thread: id };
+  }
+
+  /**
+   * Keep words for a session another process has open. Nothing is typed into it: the Harness's
+   * Stop hook in that session hands them to Claude when its current turn ends (deliver), or its
+   * next prompt does when it is idle. Emits thread.queued.
+   * @param {string} id @param {string} text @param {string} surface
+   */
+  queue(id, text, surface) {
+    const rec = this.must(id);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at) VALUES (?,?,?,?)").run(id, String(text), surface, Date.now());
+    this.emit("thread.queued", { queued: Number(r.lastInsertRowid), text: cut(text, 2000), surface }, id, rec.project);
+    const name = rec.name || id.slice(0, 8);
+    return { sent: false, queued: true, open_elsewhere: true, thread: id, name,
+      note: `${name} is busy in your terminal. I'll hand it your message when this turn ends.` };
+  }
+
+  /**
+   * The Harness, at a Stop or a prompt in this session: the words queued for it, marked handed
+   * over. Each is emitted as thread.sent {queued, via}, which is when it reached Claude.
+   * @param {string} id @param {"stop"|"prompt"} via
+   */
+  deliver(id, via) {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, at FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    if (!rows.length) return { messages: [] };
+    const now = Date.now();
+    const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = ? WHERE id = ?");
+    const rec = this.record(id);
+    for (const m of rows) {
+      mark.run(now, via, m.id);
+      this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via }, id, rec ? rec.project : null);
+    }
+    return { messages: rows.map(m => ({ id: m.id, text: m.text, surface: m.surface, at: m.at })) };
+  }
+
+  /**
+   * The Harness, at the Stop that ends the turn answering handed-over words: Claude's last message
+   * becomes the reply (thread.text, then thread.finished), the way a headless thread's would.
+   * @param {string} id @param {string} text
+   */
+  replied(id, text) {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL ORDER BY id").all(id));
+    if (!rows.length) return { replied: 0 };
+    this.db.prepare("UPDATE threads_inbox SET replied_at = ? WHERE thread = ? AND delivered_at IS NOT NULL AND replied_at IS NULL").run(Date.now(), id);
+    const rec = this.record(id);
+    const project = rec ? rec.project : null;
+    if (text) this.emit("thread.text", { message: `inbox-${rows.at(-1).id}`, text: String(text), done: true }, id, project);
+    this.emit("thread.finished", { ok: true, via: "terminal" }, id, project);
+    return { replied: rows.length };
   }
 
   lease(id, surface) {
@@ -696,7 +753,8 @@ export default {
 
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first.",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "type into sessions"); return sb.send(i.thread, i.text, surfaceOf(i, caller)); });
+      // Only a person's words are queued for a session open in a terminal: a model's are refused.
+      async (i, { caller }) => { guard(caller, "type into sessions"); return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: !/^(mcp|harness)/.test(String(caller || "")) }); });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
       { type: "object", properties: { agent: str, all: { type: "boolean" } } },
@@ -767,6 +825,18 @@ export default {
       description: "Stop a thread with a reason, saying why in the thread first.", internal: true,
       input: { type: "object", required: ["thread", "reason"], properties: { thread: str, reason: str, text: str } },
       run: async i => sb.halt(i.thread, i.reason, i.text),
+    });
+    // For the Harness: words queued for a session open in a terminal, handed over at its Stop or
+    // next prompt, and the reply that turn gave.
+    ctx.tool("threads.inbox", {
+      description: "Words queued for this session, marked handed over (via stop or prompt).", internal: true,
+      input: { type: "object", required: ["session"], properties: { session: str, via: { type: "string", enum: ["stop", "prompt"] } } },
+      run: async i => sb.deliver(i.session, i.via || "stop"),
+    });
+    ctx.tool("threads.replied", {
+      description: "The turn that answered handed-over words has ended: its last message is their reply.", internal: true,
+      input: { type: "object", required: ["session"], properties: { session: str, text: str } },
+      run: async i => sb.replied(i.session, i.text || ""),
     });
     // For agents.history: conversations with agents, from the event log.
     ctx.tool("threads.history", {
