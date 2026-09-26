@@ -16,8 +16,11 @@ and docs share. The user found the Deck rudimentary: the new-agent form reads as
   - A Instrument: TOKENS as written, finished. Named 240px rail, hairline lists, mono caps buttons.
   - B Studio: 72px icon rail, command bar always on screen, cards, sentence-case buttons, Chat side
     panel with plan, changed files, memory and the agent.
-- Shared decisions in both: removed diff lines use an ash wash, never coral (coral means needs you);
-  replies are labelled Vyre with the agent as a tag; every empty state has its action inline.
+- Shared decisions (agreed with phone-design and the lead): removed diff lines use an ash wash,
+  never coral; beacon only means needs you; a gate is a beacon-wash block with a dot, no border or
+  side stripe; gate buttons are Allow once / Always in <project> / Deny (phone may add "with Face
+  ID"); the reply author is the acting agent (kit) or the onboarding assistant name (juno), "Vyre"
+  only when neither is known, and the user is "you"; every empty state has its action inline.
 
 ## Doing
 
@@ -26,7 +29,11 @@ and docs share. The user found the Deck rudimentary: the new-agent form reads as
 ## Next
 
 1. Write docs/design/deck.md (tokens, components, patterns, motion) for the chosen direction.
-2. Hand it to pwa (implements the Deck) and chat.
+2. Hand it to pwa (implements the Deck) and chat. chat asked for visuals for: New session sheet
+   (project / box folder / no folder; Vyre or an agent; first message), box folder browser, browser
+   terminal frame (xterm), beautified session view (tool cards, diffs, file previews, todos,
+   collapsed thinking, cost and time footer per turn, raw-view toggle), question card (multi-select,
+   Other, side-by-side previews) and permission card. Draw these in the chosen direction.
 
 ## Needs from others
 

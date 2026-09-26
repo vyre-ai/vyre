@@ -94,15 +94,15 @@
       <div class="msg">
         <span class="av-p">AL</span>
         <div class="col grow" style="gap: 2px;">
-          <div class="msg-who"><span class="msg-name">alex</span><span class="msg-time">14:17</span></div>
+          <div class="msg-who"><span class="msg-name">you</span><span class="msg-time">14:17</span></div>
           <p class="prose">The intake form drops the phone number when the matter type is Estate. Fix it and add a test so it stays fixed.</p>
         </div>
       </div>
 
       <div class="msg">
-        <span class="av-v"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path class="mk-w" d="M2.5 4L8 13L11.52 7.24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="13.5" cy="4" r="1.8"></circle></svg></span>
+        <span class="av">k</span>
         <div class="col grow" style="gap: 10px;">
-          <div class="msg-who"><span class="msg-name">Vyre</span><span class="tag">kit</span><span class="msg-time">14:17</span></div>
+          <div class="msg-who"><span class="msg-name">kit</span><span class="msg-time">14:17</span></div>
           <p class="prose">Found it. The Estate branch builds its fields from <code class="ic-code">baseFields</code> and skips <code class="ic-code">contactFields</code>, so phone never renders. One line in schema.ts.</p>
 
           <div class="tool">
@@ -166,15 +166,15 @@ Tests: 7 passed, 7 total</div></div>
 
       <div class="gate" style="margin-left: 42px;">
         <div class="row" style="padding: 14px 16px 10px; gap: 10px;">
-          <svg class="ic bea" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.5 6-5.5 7-3-1-5.5-3.5-5.5-7v-4z"></path></svg>
-          <span class="h4">kit wants to run a command</span>
+          <span class="dot dot-need"></span>
+          <span class="h4">kit is waiting on you</span><span class="lbl bea">Held</span>
           <span class="msg-time" style="margin-left: auto;">held 14:21</span>
         </div>
         <div class="gate-cmd">git push origin main</div>
         <p class="small t2" style="padding: 10px 16px 0;">Held by your rule "Ask before pushing to a client's main branch". The fix is one line and the tests pass.</p>
         <div class="row" style="padding: 14px 16px; gap: 8px;">
           <button class="btn btn-p">Allow once</button>
-          <button class="btn">Push to a branch</button>
+          <button class="btn">Always in Harlow Legal</button>
           <button class="btn btn-g">Deny</button>
           <span class="micro t3" style="margin-left: auto;"><span class="kbd">⏎</span> allow · <span class="kbd">esc</span> deny</span>
         </div>

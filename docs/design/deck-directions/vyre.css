@@ -194,7 +194,7 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .choice-t { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--text); }
 .choice-d { font-size: 13px; line-height: 18px; color: var(--text-2); margin-top: 2px; }
 
-.gate { border: 1px solid var(--beacon-rule); border-radius: 10px; background: var(--beacon-wash); overflow: hidden; }
+.gate { border: 0; border-radius: 10px; background: var(--beacon-wash); overflow: hidden; }
 .gate-cmd { margin: 0 16px; padding: 10px 12px; border-radius: 6px; background: var(--bg); border: 1px solid var(--rule);
   font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13px; line-height: 20px; color: var(--text); }
 
