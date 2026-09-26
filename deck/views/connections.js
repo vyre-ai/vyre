@@ -52,7 +52,7 @@ const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === "string") : [])
 const num = v => (typeof v === "number" && isFinite(v) ? v : null);
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 
-/** @typedef {{ id: string, name: string, url: string, over: boolean, stt: HTMLElement }} Flow */
+/** @typedef {{ id: string, name: string, url: string, over: boolean, stt: HTMLElement, win?: Window | null }} Flow */
 
 // ---- what the page reads, named fields only ------------------------------------------------------
 
@@ -601,9 +601,15 @@ export async function drawConnections(el, ctx, deps = {}) {
       if (!input.name) { put(stt, "Give the account a name."); return; }
       if (!input.client) { put(stt, "Choose the vault item that holds your OAuth client."); return; }
       save.disabled = true;
+      // The tab opens now, before any await, while the press still counts as the person's own
+      // action, so the browser does not block it. It gets Google's address once there is one.
+      const w = window.open("", "_blank");
+      if (w) try { w.opener = null; } catch {}
+      const shut = () => { if (w) try { w.close(); } catch {} };
       const left = await grantAll([input.client], "google", stt);
-      if (!ctx.alive()) return;
+      if (!ctx.alive()) { shut(); return; }
       if (left.length) {
+        shut();
         save.disabled = false;
         put(stt, "The google module cannot read the OAuth client yet. Run this on the box, then press Sign in with Google again: ",
           h("code", { class: "set-mono" }, grantCommand(input.client, "google")));
@@ -612,11 +618,11 @@ export async function drawConnections(el, ctx, deps = {}) {
       put(stt, "Opening Google.");
       const r = await attempt("google.connect", input);
       const id = str(r.data?.id), url = str(r.data?.url);
-      if (!ctx.alive()) { if (id) attempt("google.connect.cancel", { id }); return; }
-      if (r.error || !id || !/^https:\/\//.test(url)) { save.disabled = false; put(stt, r.error ? errText(r.error) : "Vyre did not return Google's address. Try again."); return; }
-      if (st.form !== "google") { attempt("google.connect.cancel", { id }); return; }
-      const opened = window.open(url, "_blank", "noopener");
-      waiting({ id, name: input.name, url, over: false, stt: h("div") }, !opened);
+      if (!ctx.alive()) { shut(); if (id) attempt("google.connect.cancel", { id }); return; }
+      if (r.error || !id || !/^https:\/\//.test(url)) { shut(); save.disabled = false; put(stt, r.error ? errText(r.error) : "Vyre did not return Google's address. Try again."); return; }
+      if (st.form !== "google") { shut(); attempt("google.connect.cancel", { id }); return; }
+      if (w && !w.closed) w.location.href = url;
+      waiting({ id, name: input.name, url, over: false, stt: h("div"), win: w }, !w);
     }
 
     drawSeg(); drawRest();
@@ -627,7 +633,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   /**
    * The open sign-in's panel: waiting for Google, a paste box for a browser on another device,
    * and Cancel. Google's address is not a secret (the client ID and a PKCE challenge), so when
-   * no tab opened it is shown as a link.
+   * the browser blocked the tab it is shown as a link, and only then.
    * @param {Flow} flow @param {boolean} blocked
    */
   function waiting(flow, blocked) {
@@ -645,9 +651,9 @@ export async function drawConnections(el, ctx, deps = {}) {
     } }, "Finish"));
     put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "google", "data-signin": "waiting" },
       h("h3", { class: "set-h3" }, "Add a Google account"),
-      h("p", { class: "cn-wait-t" }, "Waiting for Google. Finish in the tab that opened."),
-      blocked ? h("p", { class: "small", "data-hint": "blocked" }, "If no tab opened, ",
-        h("a", { href: flow.url, target: "_blank", rel: "noopener noreferrer", "data-act": "open-google" }, "open Google's sign-in page"), ".") : null,
+      h("p", { class: "cn-wait-t" }, blocked ? "Waiting for Google." : "Waiting for Google. Finish in the tab that opened."),
+      blocked ? h("p", { class: "small", "data-hint": "blocked" }, "Your browser blocked the new tab: ",
+        h("a", { href: flow.url, target: "_blank", rel: "noopener noreferrer", "data-act": "open-google" }, "open Google's sign-in page")) : null,
       h("div", { class: "rows" },
         h("div", { class: "set-row" }, h("div", { class: "set-k" }, h("label", { for: "cg-paste" }, "Another device")),
           h("div", { class: "set-v" },
@@ -688,6 +694,7 @@ export async function drawConnections(el, ctx, deps = {}) {
     if (!flow || flow.over) return;
     flow.over = true;
     st.flow = null;
+    if (flow.win) try { flow.win.close(); } catch {}
     attempt("google.connect.cancel", { id: flow.id });
   }
 

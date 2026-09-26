@@ -9,7 +9,8 @@
 // With no form: connections.png and connections-phone.png, the list with the tracker's tools and
 // the work account's test open (its admin console block included). With a form, the Add a Google
 // account form in that mode, at desktop and phone width: signin, waiting (after pressing Sign in
-// with Google, with window.open stubbed to null so no tab goes to Google), or service-account.
+// with Google, with window.open stubbed to a stand-in tab so nothing goes to Google), or
+// service-account. waiting-blocked is the same with window.open returning null.
 // "all" takes every one.
 
 import { spawn } from "node:child_process";
@@ -57,17 +58,21 @@ const list = `document.querySelector("#connections").scrollIntoView({ block: "st
   document.querySelector('[data-server="tracker"] button[data-act="test"]').click(); await wait(600);
   document.querySelector('[data-account="work"] button[data-act="test"]').click(); await wait(600);
   document.querySelector("#connections").scrollIntoView({ block: "start" });`;
+// The Google form in one mode. The waiting shot gives the page a stand-in tab, so nothing is
+// opened or sent to Google, and the panel shows as it does when the tab opened.
+const fakeTab = `const fake = { opener: null, closed: false, location: { href: "" }, close() { this.closed = true; } };`;
 // The Google form in one mode. northwind-google is already granted to google, so no passkey sheet.
-const form = mode => `document.querySelector("#connections").scrollIntoView({ block: "start" }); await wait(300);
+const form = mode => `${fakeTab} document.querySelector("#connections").scrollIntoView({ block: "start" }); await wait(300);
   click('[data-act="add-google"]'); await wait(600);
   const f = document.querySelector('form[data-form="google"]');
   ${mode === "service-account" ? `click('[data-auth="service-account"]'); await wait(100);` : ""}
   f.querySelector("#cg-name").value = "${mode === "service-account" ? "work" : "dana"}";
   ${mode === "service-account" ? `f.querySelector("#cg-email").value = "alex@harlowlegal.com";` : ""}
   const it = f.querySelector("#cg-item"); it.value = "${mode === "service-account" ? "harlow-google-sa" : "northwind-google"}"; it.dispatchEvent(new Event("change"));
-  ${mode === "waiting" ? `window.open = () => null; f.requestSubmit(); await wait(800);` : ""}
+  ${mode === "waiting" ? `window.open = () => fake; f.requestSubmit(); await wait(800);` : ""}
   document.querySelector('[data-form="google"]').scrollIntoView({ block: "start" }); await wait(200);`;
-const SHOTS = { "": list, signin: form("signin"), waiting: form("waiting"), "service-account": form("service-account") };
+const SHOTS = { "": list, signin: form("signin"), waiting: form("waiting"),
+  "waiting-blocked": form("waiting").replace("window.open = () => fake;", "window.open = () => null;"), "service-account": form("service-account") };
 const want = process.argv[3] || "";
 if (want !== "all" && !(want in SHOTS)) { console.error(`form is one of ${Object.keys(SHOTS).filter(Boolean).join(", ")}, or all`); process.exit(2); }
 

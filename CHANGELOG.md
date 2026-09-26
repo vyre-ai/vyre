@@ -8,11 +8,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - Deck, Settings, Connections: "Add a Google account" signs in with Google by default. Name the
   account, pick the OAuth client env set (the form shows the `vyre vault put` line for one), and
-  press Sign in with Google: the client is granted to google with presence, google.connect runs,
-  and Google's page opens in a new tab while the form waits for `google.connected` (or
+  press Sign in with Google: a blank tab opens at once (while the press still counts, so it is
+  not blocked, with its opener cut), the client is granted to google with presence,
+  google.connect runs, and the tab goes to Google's page while the form waits for `google.connected` (or
   `google.connect-failed`, whose error it shows). A browser on another device pastes the address
   it landed on into google.connect.finish. Cancel, closing the form and leaving the page each call
-  google.connect.cancel. When no tab opened, Google's address is shown as a link. "Service
+  google.connect.cancel, and a failed grant or connect closes the tab. Only when the browser
+  blocked the tab is Google's address shown as a link. "Service
   account" and "Refresh token item" stay as they were, and a service account's Test now shows an
   admin console block with its client ID and scope line, each with Copy.
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault

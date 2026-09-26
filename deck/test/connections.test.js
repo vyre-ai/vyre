@@ -328,11 +328,22 @@ test("Google Remove asks first, then calls google.remove", async () => {
 // ---- Sign in with Google ------------------------------------------------------------------------
 
 const CONNECT = FIXTURE["google.connect"];
-/** A window.open stand-in: records each call; `blocked` returns null as a blocked popup does. */
+/**
+ * A window.open stand-in: records each call and the tab it returns; `blocked` returns null as a
+ * blocked popup does.
+ */
 function fakeOpen({ blocked = false } = {}) {
   const opened = /** @type {any[][]} */ ([]);
-  globalThis.open = /** @type {any} */ ((...a) => { opened.push(a); return blocked ? null : {}; });
-  return opened;
+  const tabs = /** @type {any[]} */ ([]);
+  globalThis.open = /** @type {any} */ ((...a) => {
+    opened.push(a);
+    if (blocked) return null;
+    const tab = { opener: globalThis, closed: false, location: { href: "" }, close() { this.closed = true; } };
+    tabs.push(tab);
+    return tab;
+  });
+  /** @type {any} */ (globalThis.open).tabs = tabs;
+  return Object.assign(opened, { tabs });
 }
 /** Settle the fire-and-forget calls and handlers. */
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -370,13 +381,16 @@ test("Sign in with Google: grants the client with presence first, then google.co
   const order = /** @type {string[]} */ ([]);
   const p = fakePresence();
   const presence = p.presence;
-  p.presence = async (...a) => { order.push("grant"); return presence(...a); };
+  p.presence = async (...a) => { order.push(`grant, after ${/** @type {any} */ (globalThis.open).tabs.length} tab`); return presence(...a); };
   const { api, opened, wait, el } = await startSignIn({}, p);
   order.push(...api.calls.filter(c => c.tool.startsWith("google.connect")).map(c => c.tool));
-  assert.deepEqual(order, ["grant", "google.connect"], "the grant comes before google.connect");
+  assert.deepEqual(order, ["grant, after 1 tab", "google.connect"], "the tab opens first, then the grant, then google.connect");
   assert.deepEqual(p.asked.map(a => a.input), [{ name: "dana-google", module: "google" }]);
   assert.deepEqual(api.of("google.connect").map(c => c.input), [{ name: "dana", client: "dana-google" }]);
-  assert.deepEqual(opened, [[CONNECT.url, "_blank", "noopener"]]);
+  assert.deepEqual([...opened], [["", "_blank"]], "the tab opens before any await, empty");
+  assert.equal(opened.tabs[0].opener, null, "the tab cannot reach this page");
+  assert.equal(opened.tabs[0].location.href, CONNECT.url, "then it goes to Google's page");
+  assert.equal(opened.tabs[0].closed, false);
   assert.match(text(wait()), /Waiting for Google\. Finish in the tab that opened\./);
   assert.equal($(el, "[data-hint=blocked]"), null, "a tab opened, so no link");
   assert.equal(api.of("google.add").length, 0, "sign-in adds the account itself");
@@ -432,6 +446,7 @@ test("Sign in with Google: Cancel calls google.connect.cancel, and so does leavi
   const a = await startSignIn();
   await $(a.wait(), "button[data-act=cancel-signin]").click();
   assert.deepEqual(a.api.of("google.connect.cancel").map(c => c.input), [{ id: CONNECT.id }]);
+  assert.equal(a.opened.tabs[0].closed, true, "Cancel closes the tab");
   assert.equal(a.wait(), null);
   await a.emit("google.connect-failed", { id: CONNECT.id, error: "The sign-in was cancelled." });
   assert.equal($(a.el, "[data-hint=signin-failed]"), null, "our own cancel is not shown as a failure");
@@ -449,6 +464,7 @@ test("Sign in with Google: Cancel calls google.connect.cancel, and so does leavi
 test("Sign in with Google: a blocked popup shows Google's address as a link", async () => {
   const { el, opened } = await startSignIn({}, fakePresence(), { blocked: true });
   assert.equal(opened.length, 1);
+  assert.match(text($(el, "[data-hint=blocked]")), /Your browser blocked the new tab: open Google's sign-in page/);
   const a = $(el, "[data-hint=blocked] a[data-act=open-google]");
   assert.ok(a);
   assert.equal(a.getAttribute("href"), CONNECT.url);
@@ -461,7 +477,7 @@ test("Sign in with Google: a refused grant shows the grant line and calls nothin
   const { el, api, opened } = await startSignIn({}, fakePresence({ fail: true }));
   assert.match(text($(el, "form[data-form=google]")), /vyre vault grant dana-google google/);
   assert.equal(api.of("google.connect").length, 0);
-  assert.equal(opened.length, 0);
+  assert.equal(opened.tabs[0].closed, true, "the tab opened for the press is closed again");
 });
 
 test("Sign in with Google: a client already granted asks nothing; an error from google.connect is said", async () => {
@@ -469,7 +485,8 @@ test("Sign in with Google: a client already granted asks nothing; an error from 
     fakePresence(), { client: "northwind-google" });
   assert.equal(p.asked.length, 0);
   assert.match(text($(el, "form[data-form=google]")), /already connected/);
-  assert.equal(opened.length, 0);
+  assert.equal(opened.tabs[0].closed, true, "a refused google.connect closes the tab");
+  assert.equal(opened.tabs[0].location.href, "");
 });
 
 // ---- the admin console helper ------------------------------------------------------------------
