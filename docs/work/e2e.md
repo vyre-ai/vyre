@@ -74,9 +74,9 @@ the tailnet and asked it to pair.
 | 10 | Passkey, Deck, Chat, Agents, Vault and Mac pairing cannot be checked without a real tailnet login | done on a private headscale tailnet, 27 Sep (below) |
 | 11 | local/capsule changed since the live Capsule zip (2e795b8 vs 16613ae), so the next release.sh rebuilds and uploads Vyre-mac.zip | lead, at release |
 
-| 12 | The box's Deck is called as `tailnet:<owner>`, and every tool whose callers list names `deck` refused it with 403: gate.get/approve/reject (held items could not be approved from the Deck or a phone), push.devices/settings, agents.delete, vault.update (Seal it did nothing) | fixed, 1a7dd2c (`callerAllowed` in core/modules) |
-| 13 | Settings showed `<name>.vyre.run` as the address of a box served at its ts.net name | fixed, 1a7dd2c |
-| 14 | agents.list left out `instructions`, so every agent page said "No instructions yet" and Edit opened empty (saving would erase the job) | fixed, 580122c |
+| 12 | The box's Deck is called as `tailnet:<owner>`, and every tool whose callers list names `deck` refused it with 403: gate.get/approve/reject (held items could not be approved from the Deck or a phone), push.devices/settings, agents.delete, vault.update (Seal it did nothing) | fixed, 41f1e21 (`callerAllowed` in core/modules) |
+| 13 | Settings showed `<name>.vyre.run` as the address of a box served at its ts.net name | fixed, 41f1e21 |
+| 14 | agents.list left out `instructions`, so every agent page said "No instructions yet" and Edit opened empty (saving would erase the job) | fixed, 08deeb9 |
 | 15 | No Deck screen shows `link.pending` or approves a Mac, yet `vyre up`, `vyre link` and `vyre link approve` on the box all say "approve it in the Deck". And link.pair.approve refuses the Mac's own node ("a Mac cannot approve its own pairing"), so the Deck in the Mac's browser cannot approve even through the API. Today a Mac pairs only from another device (a phone) by calling the API by hand | deck/link (a decision, see Needs) |
 | 16 | Vault: after a refused vault.update the editor closes and says nothing; the Deck calls `vault.usage`, which main does not have (404) | vault-deck |
 | 17 | Onboarding: revisiting "Your address" after it serves says "Not reserved yet" until Get your address is pressed again; reopening /onboard without a token (a new browser) shows step 1 empty with Continue disabled and no hint to run `vyre up --print-link` | polish-surfaces |
