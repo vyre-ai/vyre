@@ -49,7 +49,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A held post has no Edit button (the user's rule: edit inline, then Send sends exactly what is
   shown). It always shows the words Send will send: `/vyre body <id> <text>` and `/vyre subject`
   revise them and the post is patched in place, and "Edit in Deck" links to the Deck when
-  `chat.deck` is set. The edit dialog is gone. Chat takes leases as `chat:<owner>`.
+  `chat.deck` is set. Chat takes leases as `chat:<owner>`.
+- The Edit button is back, because Mattermost cannot edit inside a post: it opens an interactive
+  dialog filled with the words Send would send now (To, Cc, Subject and Body for an email; URL and
+  Body for a request). Saving calls `gate.revise`, never `gate.approve`, so the item stays held,
+  the post is patched to the new words, and the person presses Send. An emptied field clears it.
+  The dialog's `state` carries the hook secret and only the owner is obeyed, on `/chat/dialog`.
 - Why polling and not the websocket: no dependency, nothing to reconnect after Mattermost
   restarts, and `since` turns a missed interval into a delay rather than a lost message.
 - Only the configured owner is obeyed. Every button carries its id and a per-install hook
