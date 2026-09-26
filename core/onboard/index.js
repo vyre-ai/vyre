@@ -28,6 +28,15 @@ const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
 // The switchboard's agents module starts the headless sessions and hands them this credential.
 const CREDENTIAL_READERS = ["agents"];
+// Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
+// Never a tailnet caller, which a model on the owner's Mac is too.
+const HANDS_CODE = new Set(["onboard", "cli", "local"]);
+const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
+/** An agent's name from a display name: "Juno Two" becomes "juno-two". */
+export const slug = s => {
+  const v = String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^[^a-z]+|-+$/g, "").slice(0, 31).replace(/-+$/, "");
+  return v.length >= 2 ? v : "assistant";
+};
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 
@@ -117,7 +126,10 @@ export default {
         else if (ob().history && history.indexed >= history.sessions) history.state = "done";
       }
 
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD };
+      // The Mac counts once link has paired one; the first paired is the one shown.
+      const peers = await tryCall("link.peers");
+      const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
+      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.
@@ -248,15 +260,68 @@ export default {
       },
     });
 
+    /**
+     * The assistant (spec section 10): made once, on every project, signed in with what the Claude
+     * step put in the Vault, and greeting the person in its first thread. Without a Claude sign-in
+     * there is nothing to run it on yet, so it waits for Settings; a failure never blocks finishing.
+     */
+    async function meet() {
+      const auth = ob().claude;
+      if (!auth) return null;
+      if (ob().greeted) return { name: ob().greeted.agent, display: ob().assistant || null, thread: ob().greeted.thread };
+      try {
+        const display = ob().assistant || "Juno";
+        const list = await call("agents.list");
+        let a = (Array.isArray(list) ? list : list.agents || []).find(x => x.kind === "assistant");
+        if (!a) {
+          const name = slug(display);
+          const person = ob().person ? ` You work for ${ob().person}.` : "";
+          a = await call("agents.create", { name, kind: "assistant", projects: "*",
+            auth: { vault: VAULT_ITEM[auth === "api-key" ? "api-key" : "subscription"], ...(auth === "api-key" ? {} : { fallback: VAULT_ITEM["api-key"] }) },
+            instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
+        }
+        const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
+        save({ onboard: { greeted: { agent: a.name, thread: r.thread } } });
+        return { name: a.name, display, thread: r.thread };
+      } catch (e) {
+        ctx.log("onboard: the assistant was not made: " + /** @type {Error} */ (e).message);
+        return { name: null, display: ob().assistant || null, thread: null, why: /** @type {Error} */ (e).message };
+      }
+    }
+
+    /**
+     * The first passkey is made at the box's own address (a passkey made on the loopback page
+     * would belong to 127.0.0.1). While none exists, presence mints a one-time code, which rides
+     * in the fragment to the page that enrolls it; the code proves presence.enroll and nothing else.
+     */
+    async function passkeyUrl(address) {
+      const keys = await tryCall("presence.keys");
+      if (keys.__error) return null;
+      const list = Array.isArray(keys) ? keys : keys.keys || [];
+      if (list.some(k => k.kind === "passkey")) return null;
+      const c = await tryCall("presence.code");
+      return c.__error || !c.code ? null : `${String(address).replace(/\/$/, "")}/onboard/passkey#e=${encodeURIComponent(c.code)}`;
+    }
+
+    ctx.tool("onboard.passkey", {
+      description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
+      input: obj(),
+      run: async (_, { caller }) => {
+        const address = (await status(caller)).address || net().address || null;
+        return { address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null };
+      },
+    });
+
     ctx.tool("onboard.finish", {
       description: "Finish the onboarding.",
       input: obj(),
       run: async (_, { caller }) => {
+        const assistant = await meet();
         save({ onboard: { finished: new Date().toISOString() } });
         ctx.events.emit("onboard.finished", {});
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
-        return { ...s, url: s.address };
+        return { ...s, url: s.address, passkeyUrl: HANDS_CODE.has(String(caller)) && (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
       },
     });
 
@@ -266,7 +331,11 @@ export default {
       run: async (_, { caller }) => {
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
-        if (net().ownerSeen) return { url: null, address, port: null, expires: null, user: os.userInfo().username };
+        // Once the owner has come in over the tailnet, or onboarding is finished and the address
+        // serves, the way in is the address: no more one-time links (the open one may still finish).
+        if (net().ownerSeen || (ob().finished && address)) {
+          return { url: null, address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+        }
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
     });

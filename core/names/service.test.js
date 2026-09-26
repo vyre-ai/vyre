@@ -57,10 +57,13 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     set: async () => "txt", clear: async () => {},
   };
   let issued = 0;
-  const svc = names({ ctx, ts, certs, save: p => config.save(p, root, cfg), dns: async () => dns,
-    issue: async ({ names: list }) => { issued++; return selfSigned(list[0]); } });
+  const deps = { ctx, ts, certs, save: p => config.save(p, root, cfg), dns: async () => dns,
+    issue: async ({ names: list }) => { issued++; return selfSigned(list[0]); } };
+  const svc = names(deps);
   t.after(() => svc.close());
-  return { root, cfg, ctx, svc, emitted, records, calls, issued: () => issued };
+  /** A new service on the same box, as after vyred restarts. */
+  const restart = () => { const again = names(deps); t.after(() => again.close()); return again; };
+  return { root, cfg, ctx, svc, emitted, records, calls, issued: () => issued, restart };
 }
 
 /** A request as the listener sees it, from a given peer address. */
@@ -166,6 +169,17 @@ test("names: the ts.net fallback serves the tailnet's own name", { skip }, async
   assert.equal(s.via, "ts.net");
   assert.match(String(s.address), /^https:\/\/box\.example\.ts\.net/);
   assert.equal(fs.statSync(path.join(w.ctx.paths.certs, "box.example.ts.net.key")).mode & 0o777, 0o600);
+});
+
+test("names: a ts.net box serves again after vyred restarts", { skip }, async t => {
+  const w = world(t);
+  w.svc.fallback();
+  await w.svc.wait();
+  await w.svc.close();
+  const again = w.restart();
+  assert.equal(await again.serve(), true, "the ts.net certificate is found without a status call first");
+  assert.equal(again.status().listening, true);
+  assert.equal(again.status().phase, "serving");
 });
 
 test("names: renewal waits until 30 days are left, then swaps the certificate in", { skip }, async t => {

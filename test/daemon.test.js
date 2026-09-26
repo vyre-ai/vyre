@@ -180,11 +180,26 @@ test("daemon: on the socket, x-vyre-caller is a label and cannot claim another i
   for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "cli", "capsule"]) {
     await call("system.echo", { text: "x" }, { root, caller: forged });
   }
-  assert.deepEqual(seen, ["local", "local", "local", "local", "cli", "capsule"]);
+  assert.deepEqual(seen, ["anonymous", "anonymous", "anonymous", "anonymous", "cli", "capsule"]);
   // Naming an agent without that agent's thread key is refused outright, before any rule runs.
   const agent = await call("system.echo", { text: "x" }, { root, caller: "mcp:agent:kit" });
   assert.equal(agent.error && agent.error.code, "denied");
   assert.equal(seen.length, 6);
+});
+
+test("daemon: a socket request with no caller label is anonymous, not a person", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  let seen = null;
+  d.registry.tools.set("system.whoami", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, run: async (_, { caller }) => { seen = caller; return {}; } });
+  const http = await import("node:http");
+  const { paths } = await import("../core/config/index.js");
+  await new Promise((resolve, reject) => {
+    const r = http.request({ socketPath: paths(root).socket, path: "/v1/tools/system.whoami", method: "POST", headers: { "content-type": "application/json" } }, res => { res.resume(); res.on("end", resolve); });
+    r.on("error", reject); r.end("{}");
+  });
+  assert.equal(seen, "anonymous");
 });
 
 test("client: the first call after vyred restarts reaches the new vyred", async t => {
@@ -204,7 +219,7 @@ test("daemon: no client on the socket can claim to be a module", async t => {
   let seen = null;
   d.registry.tools.set("system.whoami", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, run: async (_, { caller }) => { seen = caller; return {}; } });
   await call("system.whoami", {}, { root, caller: "module:vault" });
-  assert.equal(seen, "local");
+  assert.equal(seen, "anonymous");
 });
 
 test("daemon: a request cannot claim the hook caller to reach a webhook-only tool", async t => {

@@ -42,6 +42,7 @@ BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 # Overridable for tests only.
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
 TUN=${VYRE_TUN:-/dev/net/tun}
+DOCKER_SOCK=${VYRE_DOCKER_SOCK:-/var/run/docker.sock}
 # A line only our wrapper carries, so we never replace or remove someone else's vyre.
 MARK="vyre on a Docker box"
 
@@ -240,8 +241,8 @@ mkdir_owned() {
 
 # The box files: from a checkout with --from, else downloaded from BASE.
 write_stack() {
-  mkdir_owned "$DIR"
   if [ -n "$FROM" ]; then
+    mkdir_owned "$DIR"
     put "$FROM/box/compose.yml" "$DIR/compose.yml" 0644
     put "$FROM/box/compose.build.yml" "$DIR/compose.build.yml" 0644
     put "$FROM/box/vyre.env.example" "$DIR/vyre.env.example" 0644
@@ -257,6 +258,8 @@ write_stack() {
       get_sums
       for f in $files; do get "$f"; done
     fi
+    # Only once everything has verified, so a failed run leaves no empty stack folder behind.
+    mkdir_owned "$DIR"
     for f in compose.yml compose.build.yml vyre.env.example; do
       put "$TMP/$f" "$DIR/$f" 0644
     done
@@ -265,12 +268,31 @@ write_stack() {
   fi
 }
 
+# docker_gid: the group that owns the host's Docker socket, which the docker-api proxy joins
+# (group_add) so it never runs as root. Empty when there is no socket to read.
+docker_gid() {
+  [ -S "$DOCKER_SOCK" ] || [ -f "$DOCKER_SOCK" ] || return 0
+  stat -c %g "$DOCKER_SOCK" 2>/dev/null || stat -f %g "$DOCKER_SOCK" 2>/dev/null || true
+}
+
 # /srv/vyre/.env names the project and its compose files. Written once, never overwritten:
-# it is where the person adds TS_AUTHKEY, COMPOSE_PROFILES and anything else of theirs.
+# it is where the person adds TS_AUTHKEY, COMPOSE_PROFILES and anything else of theirs. The one
+# exception is DOCKER_GID: added to an existing .env that lacks it, and nothing else touched.
 write_env() {
+  gid=$(docker_gid)
   if [ -e "$DIR/.env" ]; then
-    say "$DIR/.env exists; leaving it as it is"
-    if { [ -n "$FROM" ] || [ "$TGZ" = 1 ]; } && ! grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env"; then
+    if [ -n "$gid" ] && ! grep -q '^DOCKER_GID=' "$DIR/.env" 2>/dev/null; then
+      say "$DIR/.env exists; adding DOCKER_GID=$gid and leaving the rest as it is"
+      TMP=${TMP:-$(mktemp -d)}
+      # A read, so it runs even in a dry run; sudo only when the .env is not ours to read.
+      if [ -r "$DIR/.env" ] || [ -z "$SUDO" ]; then cat "$DIR/.env" >"$TMP/env"; else sudo cat "$DIR/.env" >"$TMP/env"; fi
+      [ -z "$(tail -c 1 "$TMP/env")" ] || printf '\n' >>"$TMP/env"
+      printf 'DOCKER_GID=%s\n' "$gid" >>"$TMP/env"
+      put "$TMP/env" "$DIR/.env" 0600
+    else
+      say "$DIR/.env exists; leaving it as it is"
+    fi
+    if { [ -n "$FROM" ] || [ "$TGZ" = 1 ]; } && ! grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then
       say "  (it does not list compose.build.yml, so the image is pulled, not built from source)"
     fi
     return 0
@@ -288,6 +310,8 @@ write_env() {
     else
       say "COMPOSE_FILE=compose.yml"
     fi
+    # The Docker socket's group, for the computers profile's docker-api proxy.
+    [ -z "$gid" ] || say "DOCKER_GID=$gid"
   } >"$TMP/env"
   if [ "$DRY" = 1 ]; then
     say "would write $DIR/.env (0600):"
@@ -302,6 +326,7 @@ install_wrapper() {
     ask "$WRAPPER exists and is not the box wrapper. Replace it?" \
       || die "left $WRAPPER alone. The stack is in $DIR; move that file aside and run this again."
   fi
+  [ -d "$(dirname "$WRAPPER")" ] || priv mkdir -p "$(dirname "$WRAPPER")"
   priv install -m 0755 "$WRAPPER_SRC" "$WRAPPER"
 }
 
@@ -406,7 +431,8 @@ main() {
   write_stack
   write_env
   install_wrapper
-  start
+  # VYRE_NO_UP=1: everything but starting it, for `vyre box move`, which streams the volumes in first.
+  if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"; else start; fi
 }
 
 main "$@"

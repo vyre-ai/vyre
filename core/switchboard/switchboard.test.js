@@ -409,6 +409,14 @@ test("agents: an agent whose item is not granted to agents is refused, naming th
   assert.equal((await tool("agents.ask", { agent: "scout", text: "whoami" })).data.text, "auth=subscription");
 });
 
+test("agents: a subscription agent whose fallback key is not in the vault still starts, without the fallback", async t => {
+  const { tool, launches } = await boot(t, { vault: { "setup-token": "fake-setup-value" } });
+  await tool("agents.create", { name: "juno", kind: "assistant", auth: { vault: "setup-token", fallback: "api-key" } });
+  const r = await tool("agents.ask", { agent: "juno", text: "whoami" });
+  assert.equal(r.data?.text, "auth=subscription", JSON.stringify(r.error));
+  assert.equal(launches().at(-1).auth, "subscription");
+});
+
 test("agents: an API-key agent stops at its budget", async t => {
   const { tool } = await boot(t, { vault: { "api-key": "fake-api-value" } });
   await tool("agents.create", { name: "ledger", projects: [], auth: { fallback: "api-key", budget_usd: 0.2 } });

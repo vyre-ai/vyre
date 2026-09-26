@@ -123,7 +123,12 @@ export default {
       const left = budget == null ? null : Math.max(0, budget - spent(a.name));
       if (a.auth.vault) {
         const out = { auth: "subscription", env: envFor(await release(a, a.auth.vault), "subscription") };
-        if (a.auth.fallback && (left == null || left > 0)) out.fallback = { env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) };
+        // The API key only backs the subscription up. The onboarding names it before the person
+        // has one, so a missing or ungranted key means no fallback, not no start.
+        if (a.auth.fallback && (left == null || left > 0)) {
+          try { out.fallback = { env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) }; }
+          catch (e) { ctx.log(`agents: ${a.name} starts without its API key fallback: ${/** @type {Error} */ (e).message}`); }
+        }
         return out;
       }
       if (a.auth.fallback) {

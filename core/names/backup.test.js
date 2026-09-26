@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { backup, restore, checkEntries } from "./backup.js";
 import { tempHome } from "../../test/helpers.js";
@@ -87,12 +87,27 @@ test("restore: refuses to replace a store without force, and replaces it with fo
 
 test("restore: refuses while vyred is alive", async t => {
   const home = tempHome(t);
-  fs.writeFileSync(path.join(home, "vyred.pid"), String(process.pid));
+  // A live process that is not this one stands in for vyred.
+  const other = spawn("sleep", ["30"], { stdio: "ignore" });
+  t.after(() => other.kill());
+  fs.writeFileSync(path.join(home, "vyred.pid"), String(other.pid));
   let asked = null;
   await assert.rejects(restore({ root: home, file: path.join(home, "none.tar.gz"), alive: o => { asked = o; return true; } }), /vyred is running/);
-  assert.equal(asked?.pid, process.pid);
-  // The default check sees this very process as alive.
+  assert.equal(asked?.pid, other.pid);
   await assert.rejects(restore({ root: home, file: path.join(home, "none.tar.gz") }), /vyred is running/);
+});
+
+test("restore: a stale pid file naming the restore itself is not a running vyred", async t => {
+  // A container killed with vyred as pid 7 leaves 7 behind, and the one-off container that
+  // runs the restore gives its own CLI pid 7 too.
+  const home = tempHome(t);
+  const a = path.join(home, "a"), b = path.join(home, "b");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(b);
+  const file = path.join(home, "b.tar.gz");
+  await backup({ root: a, file });
+  fs.writeFileSync(path.join(b, "vyred.pid"), String(process.pid));
+  const r = await restore({ root: b, file });
+  assert.ok(r.restored.includes("config.json"));
 });
 
 test("restore: rejects archives with absolute, escaping or unknown entries", async t => {

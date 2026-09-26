@@ -74,7 +74,12 @@ services:
       vyre:
         aliases:
           - vyred
+        # The published onboarding port lands on this network, where vyred binds `vyred`.
+        gw_priority: 1
       docker-api: {}
+      # Agents' computers join this network, so vyred reaches their screens, computerd and
+      # browser ports by container name. It is made here because the proxy refuses NETWORKS.
+      computers: {}
 
   vyre:
     image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
@@ -110,27 +115,41 @@ services:
       test: ["CMD", "vyre", "status"]
       interval: 30s
 
-  # A Docker API with only what the computers module needs (containers, images, exec), for
-  # agents' own computers (spec 7.9). Off until `--profile computers`. The host's socket is
-  # mounted read-only here and nowhere else; vyred reaches it at tcp://docker-api:2375 on an
-  # internal network no other service joins. The computers module still decides what a
-  # container may mount or run as: this proxy filters endpoints, not their bodies.
+  # The Docker API for agents' own computers (spec 7.9), and nothing else. Off until
+  # `--profile computers`. Vyre's own proxy (core/dockerproxy) holds the host's socket, here and
+  # nowhere else; vyred reaches it at http://docker-api:2375 on an internal network that only the
+  # tailscale/vyred namespace joins. It allows container create, start, stop, pause, unpause,
+  # inspect, list and remove, exec on a computer and volume inspect, and refuses every other
+  # endpoint. It reads every body too: a create must pass core/computers/driver/policy.js against
+  # the network, image and label prefix below, every per-container op is checked against the
+  # labels the Engine itself reports, and what it forwards is its own re-serialisation of what it
+  # checked. The socket is read-write because the proxy must write to it; the proxy runs as uid
+  # 1000 with the socket's group (DOCKER_GID, which install-box.sh writes to /srv/vyre/.env).
   docker-api:
-    image: ${VYRE_DOCKER_PROXY_IMAGE:-tecnativa/docker-socket-proxy:v0.4.1}
+    image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
+    command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
     profiles: ["computers"]
     restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    group_add:
+      - "${DOCKER_GID:-999}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     labels:
       run.vyre: "1"
     environment:
-      - CONTAINERS=1
-      - IMAGES=1
-      - EXEC=1
-      - POST=1
-      - NETWORKS=0
-      - VOLUMES=0
-      - INFO=1
+      - DOCKER_SOCKET=/var/run/docker.sock
+      # What a create may ask for. The same values as vyred's computers.network, computers.image,
+      # computers.labelPrefix and computers.capAdd; a create that differs is refused.
+      - VYRE_COMPUTERS_NETWORK=${VYRE_COMPUTERS_NETWORK:-vyre-computers}
+      - VYRE_COMPUTERS_IMAGE=${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}
+      - VYRE_COMPUTERS_LABEL_PREFIX=${VYRE_COMPUTERS_LABEL_PREFIX:-run.vyre.computers}
+      - VYRE_COMPUTERS_CAP_ADD=${VYRE_COMPUTERS_CAP_ADD:-}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - docker-api
 
@@ -151,6 +170,10 @@ volumes:
 networks:
   vyre:
     name: vyre
+    labels:
+      run.vyre: "1"
+  computers:
+    name: vyre-computers
     labels:
       run.vyre: "1"
   docker-api:

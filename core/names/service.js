@@ -226,6 +226,8 @@ export function names(deps) {
   }
 
   async function serve() {
+    // A ts.net name comes from Tailscale, and a freshly started vyred has not asked yet.
+    if (net().via === "ts.net" && !(last && last.node)) await tailscale();
     const name = certName();
     const c = name && deps.certs.load(ctx.paths.certs, name);
     if (!c) return false;
@@ -258,6 +260,7 @@ export function names(deps) {
 
   /** Daily: renew at 30 days left; say so once fewer than 14 remain and renewal keeps failing. */
   async function renew() {
+    if (net().via === "ts.net" && !(last && last.node)) await tailscale().catch(() => null);
     const name = certName();
     const c = name && deps.certs.load(ctx.paths.certs, name);
     if (!c || c.expires - now() > 30 * DAY || working) return false;

@@ -54,6 +54,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   every route it could find. It tried 16 routes, and every one was refused. Nothing reached
   the mail stub.
 
+#### Box: Vyre's own Docker proxy for agents' computers
+
+- `core/dockerproxy` replaces `tecnativa/docker-socket-proxy` as the `docker-api` service. It
+  allows only the endpoints `core/computers/driver/docker.js` uses, plus exec and volume inspect
+  on computers, and refuses the rest with 403. It reads every body: a create must pass
+  `core/computers/driver/policy.js` against the box's `VYRE_COMPUTERS_*` settings, and an
+  existing volume it mounts must already belong to the same agent. Every per-container op and
+  exec start is checked against labels from the Engine's own inspect. List gets the computer
+  label filter forced. Bodies are capped at 256 KiB, duplicate keys are refused, and the proxy
+  forwards its own re-serialisation, never the caller's bytes. Attached (upgraded) exec is
+  refused. The proxy runs from the vyre image as uid 1000 in the socket's group, with a read-only
+  root and no capabilities. `install-box.sh` writes that group to `/srv/vyre/.env` as
+  `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It needs `policy.js` from
+  work/computers: until that merges, `main.js` stops at start with a clear error.
+
 #### Link and the real Tailscale
 
 - `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or
