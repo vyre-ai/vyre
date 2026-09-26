@@ -43,26 +43,44 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   `docs/reference/*` generated.
 - e8924af `scripts/build-docs` and `scripts/lib/docs/` (renderer, loader, assets), `test/docs-build.test.js`.
 - 37d39af main merged in (4aceca5 included). Removed the committed `node_modules` symlink.
+- 15299ab All 57 nav pages written (five subagent batches, reviewed); legacy docs moved behind
+  redirect stubs; ADRs and TOKENS have front matter; npm `files` ships docs/ minus internal
+  folders; include lines inside fenced code are left alone (build and check), `/search-index.json`
+  fixed in check.js.
+- dcb7276 `VYRE_ALLOW_DIALOGS` described; config reference regenerated after main's dialog work.
+- On the test box: docs-check, docs-build, hygiene tests 34/34 pass. `build-docs`: 57 pages, 6 redirects,
+  125 files, 3.5 MB, 305 ms.
 
 ## Doing
 
-- Writing every page in the nav (docs-check had 128 problems: 45 missing pages, 59 em dashes,
-  19 pages without front matter). Split into five batches, one subagent each:
-  A. moves + stubs (spec, install, onboarding, without-docker, performance, writing-a-module),
-     front matter on ADRs and TOKENS, changelog page, package.json `files`;
-  B. using/ pages other teams own (seeded, owner set to that team);
-  C. using/ pages docs owns; D. concepts/ and build/; E. index, architecture, security,
-  contributing, first-day, troubleshooting, ADR 0019.
+- Waiting for the lead's review and sign-off, then the user's, before any public deploy.
 
 ## Next
 
-- docs-check clean, then `npm test` targeted (docs-check, docs-build, hygiene) on the test box.
-- Build the site on the test box, screenshot pages, ask the lead for sign-off, then the user.
-- Cloudflare Pages project vyre-docs (needs the lead: account/token), DNS docs.vyre.run.
+- `capsule.autostart` is read by the Capsule but missing from reference/config.md: teach
+  gen-docs-reference to find config keys read outside core/config.
+- Deploy: Cloudflare Pages project `vyre-docs`, `npx wrangler pages deploy docs-site
+  --project-name vyre-docs --branch main`, custom domain docs.vyre.run. Needs a Cloudflare token
+  with Pages edit from the lead. Not before sign-off.
+- Each team refines its seeded pages (owner field says whose).
 
 ## Needs from others
 
 - Every team: its pages, on the template, with each feature.
+
+- lead: sign-off on the site; a Cloudflare token for Pages; the public security contact
+  address (security/index.md shows security@example.com as a placeholder).
+- polish-surfaces / polish-cli: Deck Settings shows `vyre up --step ...`, which the CLI lacks.
+  `watchers.pause` is called with `off: true` by the Deck, not in the tool's schema.
+- integrator: spec Section 5.3 says every tool call passes the Rules; vyred never passes a
+  `rules` hook to the Registry, so only Claude Code's PreToolUse hook runs them. `ctx.projects`
+  (spec 5.2) does not exist. `site/start/index.html` still says to use the Cloudflare token and
+  `vyre link approve` on the box. ADR 0008 says `vyre box update` upgrades the Mac; it only
+  prints the command.
+- e2e / integrator: `vyre link approve` says approve in the Deck, but no Deck screen approves a
+  pairing that we could find.
+- vault owner: `vault.reveal` description says off by default; `core/vault/tools/deck.js`
+  returns `reveal: true`.
 
 ## Changed contracts
 
