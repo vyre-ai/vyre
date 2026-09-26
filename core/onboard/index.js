@@ -6,7 +6,9 @@
 // config.json under "onboard". The steps call other modules' tools (names.*, vault.put,
 // recall.*, projects.*) and work without them: a missing module blocks its step and says why.
 
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
@@ -66,7 +68,15 @@ export default {
     const ob = () => ctx.config.onboard || {};
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
-    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m) });
+    // The link's hash survives a restart (vyre update restarts vyred): 0600, hashes only.
+    const kept = path.join(ctx.paths.root, "onboard-link.json");
+    const keep = {
+      load: () => { try { return JSON.parse(fs.readFileSync(kept, "utf8")); } catch { return null; } },
+      save: s => { if (s) fs.writeFileSync(kept, JSON.stringify(s), { mode: 0o600 }); else fs.rmSync(kept, { force: true }); },
+    };
+    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m), keep });
+    if (!net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
+    else keep.save(null);
     let claimUrl = null;
     let indexing = null;
     let lastPhase = "idle";
@@ -349,15 +359,21 @@ export default {
     });
 
     ctx.tool("onboard.link", {
-      description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket.",
-      input: obj(),
-      run: async (_, { caller }) => {
+      description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket. With mint false it makes nothing and says whether an unused link is still open (url null, pending with its expiry), so an update never voids the link the user was sent.",
+      input: obj({ mint: { type: "boolean" } }),
+      run: async (input, { caller }) => {
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).
         if (net().ownerSeen || (ob().finished && address)) {
-          return { url: null, address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+          // A passkey link is a one-time code too: mint false makes none.
+          const mint = !(input && input.mint === false);
+          return { url: null, address, passkeyUrl: mint && address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+        }
+        if (input && input.mint === false) {
+          const p = lb.pending();
+          return { url: null, address, passkeyUrl: null, port: p ? p.port : null, expires: p ? p.expires : null, pending: Boolean(p), user: os.userInfo().username };
         }
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
@@ -365,6 +381,6 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); signin.stop(); await lb.close(); await indexing; } };
+    return { async stop() { if (typeof off === "function") off(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

@@ -15,13 +15,12 @@
     "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\"",
     "posttest": "node test/tmp-guard.mjs after",
     "perf-check": "node scripts/perf-check",
-    "eval:memory": "node scripts/eval-memory.js"
-  },
-  "optionalDependencies": {
-    "@huggingface/transformers": "^4.3.0"
+    "eval:memory": "node scripts/eval-memory.js",
+    "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
   "files": [
     "bin",
+    "build.json",
     "core",
     "harness",
     "local",

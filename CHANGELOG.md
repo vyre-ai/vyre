@@ -150,6 +150,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   delegation list, and requires its own tokens with the right scope on Calendar and Gmail calls.
   A fake that accepted anything would hide the bugs that matter here, such as a read token used
   to send.
+#### Vyre installs as a Claude Code plugin, and shows its line in every session
+
+- `.claude-plugin/marketplace.json`: the marketplace `vyre`, one plugin `vyre` from `./harness`.
+  Install with `/plugin marketplace add vyre-ai/vyre`, then `/plugin install vyre@vyre` (ADR 0020).
+- `harness/hooks/run.js`, `harness/mcp/run.js`, `harness/lib/vyre.js`: `/plugin install` copies only
+  `harness/`, so hooks and the MCP server start from launchers that find a Vyre package
+  (`VYRE_PACKAGE`, the package they sit in, or `vyre` on PATH) and run its own `hook.js` or
+  `server.js`. With no Vyre, a fresh session gets one line pointing at https://vyre.run/start, every other hook
+  exits 0 silently in about 20 ms, and the MCP server connects with no tools.
+- `/vyre` gains `ask <agent> <text>`, `send <session> <text>` and `statusline`.
+- `core/statusline`: a module that keeps `<home>/statusline` (pid and line, such as
+  `vyre · 2 need you · box ok · juno idle`), recomputed on events and once a minute.
+  `harness/statusline/statusline.sh` prints it in about 4 ms, never touching vyred or the network.
+  It reads and drops Claude Code's stdin JSON unless it chains, so the writer never hits EPIPE.
+- `vyre statusline [install [--chain] [--yes] | uninstall]`: sets Claude Code's `statusLine` with
+  consent, never replacing one the user has (`--chain` keeps theirs above Vyre's line). `vyre up`
+  on a Mac offers it once on a terminal.
+- Learning treats running `hooks/run.js` by hand as running a hook by hand.
+
 #### CI on GitHub's free runners
 
 - Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the
@@ -182,6 +201,73 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Offline: the service worker keeps the shell and the five phone tabs at install, a cold launch
   reopens the last screen, and one line says when the phone is offline or the box is not answering.
 
+#### The `vyre` screen, polished from a captured frame
+
+- The status line reads link.health's real shape ("link direct 23 ms", "link relayed", "link
+  down"; nothing on a box or an unpaired Mac, where it said "link ?"), and shows the commit
+  ("vyred 0.0.1 · 1a2b3c4").
+- A wrapped transcript line keeps its indent, so a quoted prompt reads as one block.
+- Something seconds old is "now", not "1m". `core/cli/screen/`.
+
+#### One vyred per home, whatever path reached it
+
+- Two vyreds could run on one store when the home was reached through a symlink: the socket
+  path was worked out from the home's spelling (a long spelling moves it to /tmp under a hash),
+  and the "already running" check came after every module had started. Now vyred takes
+  `vyred.lock` in the home's real folder before it opens the store; the socket path is worked out
+  from the real folder too. A lock whose process is gone, is not a vyre process, or is from before
+  this boot (a reboot or a container restart reusing its pid) is taken over.
+  `core/daemon/lock.js`, `core/daemon/index.js`, `core/config/index.js`.
+
+#### `vyre threads` never answers with a blank screen
+
+- With no sessions it printed nothing. Now it says why: indexing still running, no transcript
+  folders configured, or no Claude Code sessions yet; a search with no hits names the words and
+  points at `vyre recall`; `--project` with none says how to start one. `core/cli/commands/projects.js`.
+- `vyre threads --help` crashed on main (projects.js parse rejected --help); the kit branch
+  already handles help in core/cli/index.js, and test/cli.test.js now pins it.
+
+#### A release says which commit it is
+
+- `scripts/build-site.sh` (the step that packs vyre.tgz for npm and for the box image) writes
+  `build.json` `{version, commit, dirty}` into the package; gitignored in the checkout.
+  `core/daemon/build.js` reads it, or in a checkout asks git once, lazily (never on a plain CLI
+  start). `/v1/health` and `system.info` report `commit` and `dirty` next to `version`, and
+  `vyre status` prints `0.0.1 · 1a2b3c4` (`+dirty` when it was).
+
+#### `vyre update` no longer voids the set-up link the user was sent
+
+- `vyre update` on a box ended with `vyre up`, which minted a new onboarding link and voided the
+  unused one; recreating the container also restarted vyred, which forgot the link and every open
+  onboarding page. Now update runs `vyre up --keep-link`, which calls `onboard.link {mint:false}`
+  and only reports: "set up is not finished; the link you have still works (42 min left)". A
+  plain `vyre up` still mints a fresh link, and says it voids the old one.
+- The unused link's hash, its port and the open onboarding sessions' hashes are kept in
+  `<VYRE_HOME>/onboard-link.json` (0600, hashes only) when vyred stops, and the next vyred reopens
+  the listener for them. The owner arriving on the tailnet deletes the file for good.
+  `core/onboard/loopback.js` (`keep`, `resume()`, `pending()`, `close({forget})`),
+  `core/onboard/index.js`, `core/cli/commands/up.js`, `box/vyre`.
+
+#### `npm i -g vyre` is 6 MB, not 750
+
+- The search model's library (`@huggingface/transformers` with ONNX Runtime) is no longer an npm
+  dependency of any kind. It made a global install 750 MB on Linux (onnxruntime-node 548 MB,
+  onnxruntime-web 141 MB), because npm ignores `--omit=optional` for a global package's own
+  optional deps. Measured on the test box from `npm pack`: the tarball is 1.50 MB before and after, and
+  the install into an empty prefix went from 750 MB to 5.9 MB on disk (4.5 MB of files; all of it
+  Vyre's own code, deck and docs). `package-lock.json` lost 1,048 lines.
+- Recall installs the library on first use into `<VYRE_HOME>/embedder` (on a box, the home's
+  volume) with the npm next to node, pinned to 4.3.0, and searches by keyword until then. It says
+  so in one line: `vyre recall` prints "downloading the search model (about 128 MB, once); search
+  is by keyword until then · vyre recall --setup", and vyred logs the same. `core/recall/embed.js`.
+- The install is pruned to what the CPU path opens: this platform's ONNX Runtime only, no GPU
+  providers (CUDA and TensorRT were 260 MB), and only onnxruntime-web's `ort.node` entry (its
+  WebAssembly builds were 115 MB). 500 MB becomes 105 MB, and the model loads and embeds the same
+  (checked on the test box: "croissant menu" vs "pastry list" 0.566, vs "kubernetes ingress" 0.065).
+- `vyre recall --setup` (new tool `recall.setup`) installs and loads it now and waits: 16 s on
+  the test box. A failed install leaves no half-written tree, says why, and `--setup` tries again. New
+  config keys `recall.embedder` (where it goes) and `recall.npm`.
+- `scripts/release-check.sh` now fails on any optional dependency and on an install over 10 MB.
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
 - Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
