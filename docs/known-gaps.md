@@ -13,13 +13,6 @@ screen shows, the page carries a **Known gap** note that links here. Each gap be
 true now, what to do instead, and which team owns the fix. A gap leaves this page in the same
 change that closes it.
 
-## ctx.projects does not exist
-
-Spec Section 5.2 lists `ctx.projects` among the members a module gets. It is not there. Call
-`ctx.call("projects.list", {})` and the other `projects.*` tools instead.
-
-Owner: integrator. Page: [the module contract](build/module-contract.md).
-
 ## Approving a Mac in the Deck
 
 The Deck approves a pairing: Now, and the **Your devices** step of onboarding, show each Mac that
