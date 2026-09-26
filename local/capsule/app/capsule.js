@@ -844,5 +844,7 @@ api.onOpen(d => {
   requestAnimationFrame(() => requestAnimationFrame(() => api.paintPing()));
 });
 api.snapshot().then(s => { S.snap = s; paint(); });
+// Files from the box, when they land: only for the words still in the box.
+api.onMore(m => { if (m && m.found && box.value.trim() === String(m.text).trim() && S.mode === "ask" && !S.chip) { showResults(m.found, "files"); paint(); } });
 // A notification the user clicked: open that report.
 api.onReport(id => { const r = (S.snap.reports || []).find(x => x.id === id); if (r) openReport(r); });

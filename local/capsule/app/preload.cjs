@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("vyre", {
   watch: (thread, label) => ipcRenderer.invoke("capsule:watch", thread, label),
   unwatch: thread => ipcRenderer.invoke("capsule:unwatch", thread),
   reportRead: id => ipcRenderer.invoke("capsule:report-read", id),
+  // Results that arrived late (files on the box), for the words they were asked for.
+  onMore: fn => ipcRenderer.on("capsule:more", (_e, m) => fn(m)),
   onReport: fn => ipcRenderer.on("capsule:report", (_e, id) => fn(id)),
   // The page says how tall it is; the window follows. Width never changes.
   size: h => ipcRenderer.send("capsule:size", h),

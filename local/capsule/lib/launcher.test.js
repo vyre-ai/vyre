@@ -136,3 +136,100 @@ test("launcher: pick opens only what it made, and copies a sum", async t => {
   assert.ok((await l.pick({ kind: "define", id: "d", label: "x", sub: "", target: "https://example.com" }, "x")).error);
   assert.equal(ran.length, 1);
 });
+
+/** A fake vyred: `answers[tool]` is a value or (input) => value, each after `delay[tool]` ms. */
+function fakeVyred(answers, delay = {}) {
+  const calls = [];
+  const fn = (tool, input) => {
+    calls.push([tool, input]);
+    const a = answers[tool];
+    const v = typeof a === "function" ? a(input) : a ?? { error: { code: "unknown_tool", message: tool } };
+    return new Promise(res => setTimeout(() => res(v), delay[tool] || 0));
+  };
+  return { fn, calls };
+}
+const LINKED = { data: { linked: true, box: { address: "10.0.0.2", name: "studio" }, reachable: true } };
+const boxRows = n => ({ data: { results: Array.from({ length: n }, (_, i) => ({ source: "box", path: `/home/me/docs/budget ${i}.pdf`, name: `budget ${i}.pdf`,
+  kind: "file", size: 10, mtime: "2026-09-20T10:00:00Z" })).concat([{ source: "mac", path: "/Users/x/budget.pdf", name: "budget.pdf", kind: "file", size: 1, mtime: "" },
+  { source: "box", path: "/home/me/p/node_modules/budget/index.js", name: "index.js", kind: "file", size: 1, mtime: "" }]),
+  sources: [{ source: "box", ok: true, count: n }] } });
+
+test("launcher: box files join full(), never quick(), mapped and capped at three", async t => {
+  const v = fakeVyred({ "link.status": LINKED, "files.search": boxRows(5) });
+  // mdfind takes a few hundred ms; the box, on a LAN, usually less.
+  const l = new Launcher({ apps: appsIn(t, []), files: () => new Promise(res => setTimeout(() => res([]), 40)), vyred: v.fn });
+  await l.quick("budget", null);
+  assert.equal(v.calls.length, 0, "the keystroke path never asks the box");
+  const r = await l.full("budget", null);
+  const box = r?.results.filter(x => x.kind === "boxfile") || [];
+  assert.equal(box.length, 3);
+  assert.deepEqual(box[0], { kind: "boxfile", id: "box:/home/me/docs/budget 0.pdf", label: "budget 0.pdf", sub: "studio · ~/docs",
+    last: Date.parse("2026-09-20T10:00:00Z"), target: "/home/me/docs/budget 0.pdf", source: "box", fileKind: "file", score: box[0].score });
+  assert.deepEqual(v.calls.find(c => c[0] === "files.search")?.[1], { q: "budget", where: "box", limit: 20 });
+  await l.full("budgets", null);
+  assert.equal(v.calls.filter(c => c[0] === "link.status").length, 1, "link.status is remembered");
+});
+
+test("launcher: a slow box never holds up this Mac's files; late rows come through onMore", async t => {
+  const v = fakeVyred({ "link.status": LINKED, "files.search": boxRows(2) }, { "files.search": 150 });
+  const mac = [{ kind: "file", id: "file:/h/budget.md", label: "budget.md", sub: "~", last: 1, target: "/h/budget.md" }];
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => mac, vyred: v.fn });
+  const more = [];
+  const t0 = Date.now();
+  const r = await l.full("budget", null, m => more.push(m));
+  assert.ok(Date.now() - t0 < 120, "answered before the box");
+  assert.deepEqual(r?.results.map(x => x.kind), ["file"]);
+  await new Promise(res => setTimeout(res, 250));
+  assert.equal(more.length, 1);
+  assert.equal(more[0].results.filter(x => x.kind === "boxfile").length, 2);
+
+  const slow = fakeVyred({ "link.status": LINKED, "files.search": boxRows(2) }, { "files.search": 400 });
+  const l2 = new Launcher({ apps: appsIn(t, []), files: async () => mac, vyred: slow.fn, boxTimeoutMs: 50 });
+  const late = [];
+  await l2.full("budget", null, m => late.push(m));
+  await new Promise(res => setTimeout(res, 450));
+  assert.deepEqual(late, [], "past its timeout the box is dropped");
+});
+
+test("launcher: no box work while hidden, unlinked, or with vyred down", async t => {
+  const hidden = fakeVyred({ "link.status": LINKED, "files.search": boxRows(2) });
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: hidden.fn, visible: () => false });
+  await l.full("budget", null);
+  assert.equal(hidden.calls.length, 0);
+  const unlinked = fakeVyred({ "link.status": { data: { linked: false, box: null, reachable: false } }, "files.search": boxRows(2) });
+  const l2 = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: unlinked.fn });
+  assert.equal((await l2.full("budget", null))?.results.length, 0);
+  assert.deepEqual(unlinked.calls.map(c => c[0]), ["link.status"]);
+  const down = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: async () => { throw new Error("socket gone"); } });
+  assert.deepEqual((await down.full("budget", null))?.results, []);
+});
+
+test("launcher: picking a box file fetches it, then opens the local copy", async t => {
+  const opened = [];
+  const v = fakeVyred({ "link.status": LINKED, "files.fetch": { data: { local: "/Users/x/.vyre/files/fetched/budget 0.pdf" } } });
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: v.fn, boxName: "studio", open: async r => (opened.push(r.target), { ok: true }) });
+  const row = { kind: "boxfile", id: "box:/home/me/docs/budget 0.pdf", label: "budget 0.pdf", sub: "", last: 0, target: "/home/me/docs/budget 0.pdf", source: "box" };
+  assert.deepEqual(await l.pick(row, "bud"), { ok: true, close: true, note: "Fetched from studio." });
+  assert.deepEqual(v.calls.at(-1), ["files.fetch", { path: "/home/me/docs/budget 0.pdf", source: "box" }]);
+  assert.deepEqual(opened, ["/Users/x/.vyre/files/fetched/budget 0.pdf"]);
+  const off = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: fakeVyred({ "files.fetch": { error: { code: "unreachable", message: "box did not answer" } } }).fn });
+  assert.deepEqual(await off.pick(row, "bud"), { error: "The box is not reachable right now." });
+  const gone = new Launcher({ apps: appsIn(t, []), files: async () => [], boxName: "studio", vyred: fakeVyred({ "files.fetch": { error: { code: "not_found", message: "no such file" } } }).fn });
+  assert.deepEqual(await gone.pick(row, "bud"), { error: "Could not fetch it from studio: no such file." });
+});
+
+test("launcher: preview reads a text file's first 4 kB, asks the box for box files, else null", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-prev-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "a.txt"), "é".repeat(3000));
+  fs.writeFileSync(path.join(dir, "b.bin"), Buffer.from([1, 0, 2]));
+  const v = fakeVyred({ "files.preview": { data: { kind: "text", mime: "text/plain", text: "hi", truncated: false } } });
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: v.fn });
+  const p = await l.preview({ kind: "file", id: "f", label: "a.txt", sub: "", target: path.join(dir, "a.txt") });
+  assert.equal(p?.truncated, true);
+  assert.equal(p?.text, "é".repeat(2048), "cut on a whole character");
+  assert.equal(await l.preview({ kind: "file", id: "f", label: "b.bin", sub: "", target: path.join(dir, "b.bin") }), null);
+  assert.equal(await l.preview({ kind: "folder", id: "d", label: "x", sub: "", target: dir }), null);
+  assert.deepEqual(await l.preview({ kind: "boxfile", id: "box:/a", label: "a", sub: "", target: "/a" }), { kind: "text", mime: "text/plain", text: "hi", truncated: false });
+  assert.deepEqual(v.calls, [["files.preview", { path: "/a", source: "box" }]]);
+});

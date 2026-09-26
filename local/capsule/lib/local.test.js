@@ -7,7 +7,7 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { execFileSync } from "node:child_process";
-import { Apps, files, mdQuery, noise, settings, match, Frecency, open, tilde, PANES } from "./local.js";
+import { Apps, files, mdQuery, noise, settings, match, Frecency, open, tilde, PANES, taste, filenameLike, mdLine } from "./local.js";
 
 const DAY = 86_400_000;
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "vyre-local-"));
@@ -91,7 +91,7 @@ test("files: builds a display-name query, skips noise, types folders, tildes the
   ]);
   const out = await files("report", { run, stat: fakeStat([`${home}/Documents/Reports`]), home, onlyin: home });
   assert.equal(calls[0].file, "/usr/bin/mdfind");
-  assert.deepEqual(calls[0].args, ["-onlyin", home, 'kMDItemDisplayName == "*report*"cd']);
+  assert.deepEqual(calls[0].args, ["-onlyin", home, "-attr", "kMDItemLastUsedDate", "-attr", "kMDItemContentType", 'kMDItemDisplayName == "*report*"cd']);
   assert.deepEqual(out.map(r => [r.kind, r.label, r.sub]), [["file", "report.pdf", "~/Documents"], ["folder", "Reports", "~/Documents"]]);
   assert.equal(out[0].id, `file:${home}/Documents/report.pdf`);
   assert.equal(out[0].target, `${home}/Documents/report.pdf`);
@@ -149,6 +149,53 @@ test("files: noise filter", () => {
   assert.ok(noise("/Users/a/.ssh/config"));
   assert.ok(!noise("/Users/a/Documents/Library notes.txt"));
   assert.ok(!noise("/Users/a/Documents/app plan.md"));
+  for (const p of ["/Users/a/google-cloud-sdk/lib/zoneinfo/Asia/Calcutta", "/Users/a/p/vendor/x", "/Users/a/p/build/out.pdf", "/Users/a/p/dist",
+    "/Users/a/p/target/debug/x", "/Users/a/p/.next/x", "/Users/a/py/lib/python3/site-packages/x", "/Users/a/p/third_party/x", "/Users/a/p/third-party/x",
+    "/Users/a/ios/Pods/x", "/Users/a/p/venv/x", "/Users/a/p/.venv/x", "/Users/a/p/coverage/x", "/Users/a/tmp/x", "/Users/a/p/out/x",
+    "/Users/a/Library/Caches/x", "/Users/a/x/Foo.xcodeproj/y"]) assert.ok(noise(p), p);
+  for (const p of ["/Users/a/Documents/Build notes.pdf", "/Users/a/Documents/outline.md", "/Users/a/Desktop/Target receipts", "/Users/a/Documents/sdk.pdf",
+    "/Users/a/Downloads/distances.xlsx"]) assert.ok(!noise(p), p);
+});
+
+test("files: reads last-used date and type from the same mdfind line, and marks files in a git repo", async () => {
+  const home = "/Users/someone";
+  const { run } = fakeRun([
+    `${home}/Documents/Q3 invoice.pdf   kMDItemLastUsedDate = 2026-08-26 15:02:24 +0000   kMDItemContentType = com.adobe.pdf`,
+    `${home}/code/site/docs/invoice.md   kMDItemLastUsedDate = (null)   kMDItemContentType = net.daringfireball.markdown`,
+  ]);
+  const exists = async p => { if (p !== `${home}/code/site/.git`) throw new Error("ENOENT"); };
+  const out = await files("invoice", { run, stat: fakeStat([]), exists, home, onlyin: home });
+  assert.deepEqual(out.map(r => [r.label, r.used, r.uti, r.repo]), [
+    ["Q3 invoice.pdf", Date.UTC(2026, 7, 26, 15, 2, 24), "com.adobe.pdf", false],
+    ["invoice.md", 0, "net.daringfireball.markdown", true]]);
+  assert.deepEqual(mdLine("/a b/c   d.txt"), { path: "/a b/c   d.txt", used: 0, uti: "" }, "a plain line is all path");
+  assert.equal(mdLine("/x   kMDItemLastUsedDate = 2026-01-02 03:04:05 -0500   kMDItemContentType = public.png").used, Date.UTC(2026, 0, 2, 8, 4, 5));
+});
+
+test("taste: name start before substring, documents before code, recent use rises, apps win a tie", () => {
+  const home = "/Users/a", now = Date.UTC(2026, 8, 26);
+  const t = (label, dir, extra = {}) => taste({ kind: "file", label, target: `${dir}/${label}`, ...extra }, extra.q || "invoice", { now, home });
+  const doc = t("Invoice March.pdf", `${home}/Documents`);
+  const word = t("March invoice.pdf", `${home}/Documents`);
+  const sub = t("Reinvoiced.pdf", `${home}/Documents`);
+  const code = t("invoice.ts", `${home}/code/app/src`, { repo: true });
+  const recent = t("March invoice.pdf", `${home}/Documents`, { used: now - 3_600_000 });
+  assert.ok(doc > word && word > sub, "prefix, then word start, then substring");
+  assert.ok(sub <= 0.3, "a substring alone is low");
+  assert.ok(code < word && code < doc - 0.2, "a repo file sits below documents");
+  assert.ok(recent > word, "opened an hour ago rises");
+  assert.equal(t("Calcutta", `${home}/x`, { q: "zz" }), 0, "no match, no row");
+  const folder = taste({ kind: "folder", label: "Invoices", target: `${home}/Documents/Invoices` }, "invoice", { now, home });
+  const deep = taste({ kind: "folder", label: "Invoices", target: `${home}/p/q/Invoices` }, "invoice", { now, home });
+  assert.ok(folder > deep, "a folder in Documents before one deep in a tree");
+  assert.equal(t("invoice.pdf", `${home}/Documents`), taste({ kind: "file", label: "invoice.pdf", target: `${home}/Documents/invoice.pdf` }, "invoice", { now, home }));
+  // An exact stem is the full name; still, a prefix-matched file stays under a prefix-matched app (0.9).
+  assert.ok(t("Calculations.xlsx", `${home}/Documents`, { q: "calcu", used: now }) < 0.9);
+});
+
+test("filenameLike: an extension, a slash, or a known extension as the last word", () => {
+  for (const q of ["report.pdf", "q3.xl", "notes.md", "invoice pdf", "Desktop/", "budget xlsx"]) assert.ok(filenameLike(q), q);
+  for (const q of ["invoice", "calcu", "mr. smith", "notes on it", "v1.2"]) assert.ok(!filenameLike(q), q);
 });
 
 test("settings: synonyms find the pane people mean", () => {

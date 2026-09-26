@@ -589,6 +589,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- File results with taste: noise paths are gone (dependencies, SDKs, third-party code, build
+  output, caches, ~/Library, dot-folders), a name start or word start beats a substring, recently
+  used documents, images and folders in Documents, Desktop and Downloads rise, files inside code
+  repos sink, and at most 4 files show (8 when the words look like a file name). On eight real
+  queries, noise rows went from 5 of 30 to none.
+- Files on the box, through this Mac's vyred (`files.search {where: "box"}`), join the list when
+  they land, never delaying the Mac's own; picking one fetches it (`files.fetch`) and opens it.
+- `vyre capsule build --app` signs from the inside out (frameworks, each helper with its own
+  identifier, then the bundle) and fails unless `codesign --verify --deep --strict` passes, so a
+  downloaded app is not reported as damaged.
+- Hidden memory under the 250 MB budget (about 212 to 238 MB, from about 300): the network service
+  and GPU run in the main process and no spare renderer is kept. Warm open stays 18 to 50 ms.
+- Open Glass on an agent with a computer, a thread of one, or `glass box` (from the glass stream).
 - Drive and watch sessions from the Capsule. "watch the intake thread" offers a row per thread it
   could mean; picking one sets a watch (`lib/watch.js`), a filter on the event stream the Capsule
   follows anyway. When the thread finishes, fails, stops or asks, a macOS notification says so and

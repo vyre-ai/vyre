@@ -15,6 +15,8 @@
 // and the dialog appears only when the user picks that row.
 
 import { execFile } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import * as local from "./local.js";
 import * as route from "./route.js";
 import { evaluate } from "./calc.js";
@@ -39,15 +41,36 @@ const personish = t => /^[\p{L}][\p{L}'.-]*(\s[\p{L}][\p{L}'.-]*){0,2}$/u.test(t
 
 const CLIPS = /^(clipboard|clips?|paste)\b/i;
 
+const BOX_TIMEOUT = 1200;
+const LINK_TTL = 30_000;
+const UNREACHABLE = "The box is not reachable right now.";
+
+/** @typedef {(tool: string, input: object) => Promise<{ data?: any, error?: any }>} Vyred */
+
+const errText = e => (e && typeof e === "object" ? String(e.message || e.code || "") : String(e || ""));
+const boxDown = e => /unreach|timeout|timed out|not linked|offline|ECONN|EHOST|down|refused/i.test(errText(e) + " " + (e && e.code ? e.code : ""));
+
 const GRANT = /** @type {Result} */ ({ kind: "grant", id: "grant:contacts", label: "Show contacts here",
   sub: "macOS asks once. They stay on this Mac.", target: "", score: 0.2 });
 
 export class Launcher {
   /**
    * @param {{ apps?: local.Apps, helper?: any, frecency?: local.Frecency|null, files?: typeof local.files,
-   *   open?: typeof local.open, run?: typeof execFile, copy?: (text: string) => void }} [deps]
+   *   open?: typeof local.open, run?: typeof execFile, copy?: (text: string) => void, clips?: any,
+   *   vyred?: Vyred|null, boxName?: string|null, visible?: () => boolean, boxTimeoutMs?: number, now?: () => number }} [deps]
    */
-  constructor({ apps = new local.Apps(), helper = null, frecency = null, files = local.files, open = local.open, run = execFile, copy = () => {}, clips = null } = {}) {
+  constructor({ apps = new local.Apps(), helper = null, frecency = null, files = local.files, open = local.open, run = execFile, copy = () => {}, clips = null,
+    vyred = null, boxName = null, visible = () => true, boxTimeoutMs = BOX_TIMEOUT, now = Date.now } = {}) {
+    /** @type {Vyred|null} (tool, input) => { data } | { error }, on the Mac's own vyred socket; null keeps files to this Mac */
+    this.vyred = vyred;
+    /** @type {string|null} what box rows say they came from; link.status's name when not given */
+    this.boxName = boxName;
+    /** Whether the Capsule is on screen. Nothing about box files runs while it is hidden. */
+    this.visible = visible;
+    this.boxTimeoutMs = boxTimeoutMs;
+    this.now = now;
+    /** @type {{ linked: boolean, at: number }|null} link.status, asked at most every 30 s */
+    this.link = null;
     /** @type {any} clipboard history (lib/clips.js), or null */
     this.clips = clips;
     this.apps = apps;
@@ -124,18 +147,89 @@ export class Launcher {
   }
 
   /**
-   * quick() plus files. A newer call cancels the mdfind of an older one.
+   * quick() plus files. A newer call cancels the mdfind of an older one. When a box is linked, its
+   * files are asked for alongside mdfind with their own short timeout; if they land after the
+   * Mac's files, `onMore` gets the list again with them in, so a slow box never holds up this Mac.
    * @param {string} text @param {route.Catalog|null} cat
+   * @param {(more: { results: Result[], intent: "open"|"ask" }) => void} [onMore]
    */
-  async full(text, cat) {
+  async full(text, cat, onMore) {
     this.pending?.abort();
     const ctl = new AbortController();
     this.pending = ctl;
     const q = String(text || "").trim();
+    /** @type {Result[]|null} */
+    let box = null;
+    const boxP = this.boxFiles(q, ctl.signal).then(b => (box = b));
     const [base, found] = await Promise.all([this.quick(q, cat), this.filesFn(q, { signal: ctl.signal })]);
     if (ctl.signal.aborted) return null;
-    const results = route.rank(q, { local: base.results, files: found, cat: null, boost: this.boost });
-    return { results, intent: route.intent(q, results) };
+    const answer = () => {
+      const results = route.rank(q, { local: base.results, files: found, box: box || [], cat: null, boost: this.boost });
+      return { results, intent: route.intent(q, results) };
+    };
+    if (box === null && onMore) boxP.then(b => { if (b.length && !ctl.signal.aborted && this.visible()) onMore(answer()); });
+    return answer();
+  }
+
+  /** Is a box linked? link.status, remembered for 30 s; also learns the box's name. */
+  async linked() {
+    if (!this.vyred) return false;
+    if (this.link && this.now() - this.link.at < LINK_TTL) return this.link.linked;
+    const r = await this.vyred("link.status", {}).catch(e => ({ error: e }));
+    const d = r && r.data;
+    const linked = Boolean(d && d.linked && d.box);
+    if (linked && !this.boxName) this.boxName = d.box.name || d.box.address || null;
+    this.link = { linked, at: this.now() };
+    return linked;
+  }
+
+  /**
+   * Files on the box matching `q`, as result rows, or [] when there is no box, it is slow (past
+   * `boxTimeoutMs`), down, or the Capsule is hidden. Never throws.
+   * @param {string} q @param {AbortSignal} [signal] @returns {Promise<Result[]>}
+   */
+  async boxFiles(q, signal) {
+    if (!this.vyred || q.length < 2 || !this.visible() || signal?.aborted) return [];
+    let timer;
+    const late = new Promise(res => { timer = setTimeout(() => res(null), this.boxTimeoutMs); });
+    const ask = (async () => {
+      if (!(await this.linked()) || signal?.aborted || !this.visible()) return null;
+      return this.vyred("files.search", { q, where: "box", limit: 20 });
+    })().catch(() => null);
+    const r = await Promise.race([ask, late]);
+    clearTimeout(timer);
+    const rows = r && r.data && Array.isArray(r.data.results) ? r.data.results : [];
+    const name = this.boxName || "box";
+    return rows.filter(x => x && x.source === "box" && typeof x.path === "string" && x.path.startsWith("/") && !local.noise(x.path))
+      .map(x => /** @type {Result} */ ({ kind: "boxfile", id: "box:" + x.path, label: String(x.name || path.basename(x.path)),
+        sub: `${name} · ${path.dirname(x.path).replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, "~")}`, last: Date.parse(x.mtime) || 0,
+        target: x.path, source: "box", fileKind: x.kind ? String(x.kind) : undefined }));
+  }
+
+  /**
+   * What the page can show beside a result: the box's own preview for a box file, the first 4 kB
+   * of a text file on this Mac, or null.
+   * @param {Result} r
+   */
+  async preview(r) {
+    if (!r || typeof r.target !== "string" || !r.target.startsWith("/")) return null;
+    if (r.kind === "boxfile") {
+      if (!this.vyred) return null;
+      const p = await this.vyred("files.preview", { path: r.target, source: "box" }).catch(() => null);
+      return p && p.data ? p.data : null;
+    }
+    if (r.kind !== "file") return null;
+    let fh;
+    try {
+      fh = await fs.promises.open(r.target, "r");
+      const buf = Buffer.alloc(4097);
+      const { bytesRead } = await fh.read(buf, 0, 4097, 0);
+      const head = buf.subarray(0, Math.min(bytesRead, 4096));
+      if (head.includes(0)) return null; // binary
+      // stream: a multi-byte character cut at 4096 is left out, not drawn as a replacement mark.
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(head, { stream: bytesRead > 4096 });
+      return { kind: "text", mime: "text/plain", text, truncated: bytesRead > 4096 };
+    } catch { return null; } finally { await fh?.close().catch(() => {}); }
   }
 
   /** Contacts matching `q`, or the one row that offers them, or nothing. */
@@ -177,6 +271,7 @@ export class Launcher {
       const o = await this.openFn(/** @type {any} */ (r));
       return "error" in o ? { error: o.error } : { ok: true, close: true };
     }
+    if (r.kind === "boxfile") return this.fetch(r);
     if (r.kind === "glass") return glass.open(this.box, String(/** @type {glass.Result} */ (r).glass || ""), this.run);
     if (r.kind === "contact" || r.kind === "define") {
       const url = String(r.target || "");
@@ -187,6 +282,20 @@ export class Launcher {
       });
     }
     return { error: `the Capsule does not open ${r.kind} results` };
+  }
+
+  /** Pull a box file to this Mac (vyred puts it under its fetched folder), then open that copy. */
+  async fetch(r) {
+    const name = this.boxName || "the box";
+    if (!this.vyred) return { error: UNREACHABLE };
+    const f = await this.vyred("files.fetch", { path: r.target, source: "box" }).catch(e => ({ error: e }));
+    const localPath = f && f.data && typeof f.data.local === "string" ? f.data.local : "";
+    if (!localPath || !path.isAbsolute(localPath)) {
+      const e = f && f.error;
+      return { error: !e || boxDown(e) ? UNREACHABLE : `Could not fetch it from ${name}: ${errText(e) || "no file came back"}.` };
+    }
+    const o = await this.openFn(/** @type {any} */ ({ ...r, kind: "file", target: localPath }));
+    return "error" in o ? { error: o.error } : { ok: true, close: true, note: `Fetched from ${name}.` };
   }
 
   close() { this.pending?.abort(); this.helper?.close?.(); this.frecency?.flush?.(); }

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
-import { sourceHash, packaged, electron } from "./capsule.js";
+import { sourceHash, packaged, electron, signing, sign } from "./capsule.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 function fakeCapsule(t) {
@@ -49,4 +49,35 @@ test("capsule: a package is run only while its stamp matches the source", t => {
 test("capsule: Electron is looked for in the Capsule's own folder only", t => {
   tempHome(t);
   assert.equal(electron(fakeCapsule(t)), null);
+});
+
+function fakeApp(t) {
+  const app = path.join(fakeCapsule(t), "dist", "Vyre.app");
+  for (const d of ["Frameworks/Electron Framework.framework", "Frameworks/Vyre Helper (GPU).app", "Resources/bin"]) fs.mkdirSync(path.join(app, "Contents", d), { recursive: true });
+  for (const n of ["hotkey", "vyre-launcher", "local"]) fs.writeFileSync(path.join(app, "Contents", "Resources", "bin", n), "");
+  return app;
+}
+
+test("capsule: the app is signed inside out, each helper under its own identifier", t => {
+  tempHome(t);
+  const app = fakeApp(t);
+  const runs = signing(app);
+  const last = runs[runs.length - 1];
+  assert.deepEqual(last, ["--force", "--sign", "-", app], "the outer bundle last, without --deep, so nested identities survive");
+  const ids = runs.filter(a => a.includes("--identifier")).map(a => [path.basename(a[a.length - 1]), a[a.indexOf("--identifier") + 1]]);
+  assert.deepEqual(ids, [["hotkey", "run.vyre.hotkey"], ["vyre-launcher", "run.vyre.launcher"], ["local", "run.vyre.local"]]);
+  assert.ok(runs.filter(a => a.includes("--deep")).every(a => a[a.length - 1].includes("Frameworks")), "--deep only inside Frameworks");
+  assert.equal(runs.filter(a => a.includes("--deep")).length, 2);
+});
+
+test("capsule: a signature that does not verify fails the build", t => {
+  tempHome(t);
+  const app = fakeApp(t);
+  const seen = [];
+  const ok = sign(app, a => { seen.push(a); return { status: 0, stderr: "" }; });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(seen[seen.length - 1], ["--verify", "--deep", "--strict", app]);
+  const bad = sign(app, a => (a[0] === "--verify" ? { status: 1, stderr: "code has no resources but signature indicates they must be present" } : { status: 0, stderr: "" }));
+  assert.equal(bad.ok, false);
+  assert.match(bad.message, /no resources/);
 });

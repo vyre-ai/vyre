@@ -42,6 +42,24 @@ const WIDTH = 560;
 /** Room around the Capsule for the shadow the page draws; the window itself is transparent. */
 const MARGIN = { x: 24, top: 8, bottom: 40 };
 
+// Budget (SPEC.md section 2 principle 8): under 250 MB resident across every Capsule process while
+// hidden. Measured shown once then hidden, from source, summed over the pid tree: about 320 MB as
+// Chromium lays it out by default (browser 141, GPU 62, network 38, renderer 83), 212 to 233 MB
+// with the two processes below folded into this one, pixels and warm open (30 to 45 ms) unchanged.
+//   - The network service runs in this process. The Capsule loads one local file and talks to
+//     vyred over a Unix socket from Node, so a separate network process is 38 MB for nothing.
+//   - GPU work runs in this process too (62 MB saved; a GPU fault would now take the Capsule down
+//     with it). The window draws identically: screenshots of the transparent panel with and
+//     without it compare byte for byte.
+//   - No spare renderer. With either switch above Chromium keeps a second, idle renderer warm
+//     (67 MB) for a page that never comes; the Capsule has exactly one.
+// Tried and not kept: disableHardwareAcceleration (no gain once GPU is in process, and text drew
+// differently), creating the window on first show (hidden 137 MB until then, but that first open
+// took 770 ms against the 100 ms wake budget), --optimize-for-size and skipping the tray drawing
+// (within noise). The window already throttles in the background (Electron's default).
+app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess2");
+app.commandLine.appendSwitch("disable-features", "SpareRendererForSitePerProcess");
+app.commandLine.appendSwitch("in-process-gpu");
 app.setName("Vyre");
 process.title = "Vyre Capsule";
 const say = obj => { if (DEV || process.env.VYRE_CAPSULE_LOG) try { process.stdout.write(JSON.stringify(obj) + "\n"); } catch {} };
@@ -63,7 +81,9 @@ const clips = DRIVEN
   ? new Clips({ file: path.join(HOME, "capsule-test-clips.json"), helper, board: "vyre-drive-" + process.pid })
   : new Clips({ file: path.join(app.getPath("userData"), "clips.json"), helper });
 const launcher = new Launcher({ apps: new Apps(), helper, clips,
-  frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t) });
+  frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t),
+  // Files on the box come through this Mac's vyred (files.search, files.fetch), only while shown.
+  vyred: (tool, input) => vyred.call(tool, input), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
 /** Icons, bounded, in the Capsule's own app-data folder ("-2": the helper once drew them a quarter size). Asked for only while the page is showing results. */
 let icons = /** @type {Icons|null} */ (null);
 const iconsNow = () => (icons ||= new Icons({ dir: path.join(app.getPath("userData"), "icons-2"), helper }));
@@ -329,7 +349,12 @@ ipcMain.on("capsule:size", (_e, h) => {
 });
 ipcMain.on("capsule:dismiss", () => hide());
 ipcMain.handle("capsule:quick", async (_e, text) => withIcons(await launcher.quick(String(text || ""), bridge.up ? bridge.catalog : null)));
-ipcMain.handle("capsule:full", async (_e, text) => withIcons(await launcher.full(String(text || ""), bridge.up ? bridge.catalog : null)));
+ipcMain.handle("capsule:full", async (_e, text) => {
+  const q = String(text || "");
+  // Box files land after the Mac's own; the page takes them if the box still says the same words.
+  const more = found => tell("capsule:more", { text: q, found: withIcons(found) });
+  return withIcons(await launcher.full(q, bridge.up ? bridge.catalog : null, more));
+});
 ipcMain.handle("capsule:icons", (_e, results) => (Array.isArray(results) ? iconsNow().get(results.slice(0, 40)) : {}));
 ipcMain.handle("capsule:cancel", () => bridge.cancel());
 ipcMain.handle("capsule:dm-open", (_e, agent) => bridge.openDm(String(agent || "")));

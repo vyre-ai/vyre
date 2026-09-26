@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { age, mention, complete, bestThread, destinations, describe, ownThings, asksQuestion } from "./route.js";
+import { age, mention, complete, bestThread, destinations, describe, ownThings, asksQuestion, rank } from "./route.js";
 
 const NOW = Date.parse("2026-09-24T14:40:00Z");
 const DAY = 86_400_000;
@@ -130,4 +130,25 @@ test("route: commands keep the assistant, however they read", () => {
     assert.equal(asksQuestion(c), false, c);
   }
   assert.equal(asksQuestion("can you send the invoice?"), true);
+});
+
+test("rank: files are tasted and capped, more when the box reads as a filename, three from the box", async () => {
+  const { homedir } = await import("node:os");
+  const home = homedir();
+  const f = (label, dir, extra = {}) => ({ kind: "file", id: `file:${dir}/${label}`, label, sub: "", last: 0, target: `${dir}/${label}`, ...extra });
+  const files = [
+    f("invoice.ts", `${home}/code/app/src`, { repo: true }),
+    ...Array.from({ length: 9 }, (_, i) => f(`Invoice ${i}.pdf`, `${home}/Documents`)),
+    f("reinvoiced.pdf", `${home}/Documents`),
+  ];
+  const plain = rank("invoice", { files });
+  assert.equal(plain.length, 4, "about four file rows");
+  assert.ok(plain.every(r => r.label.startsWith("Invoice ")), "documents before the repo file and the substring");
+  assert.equal(rank("invoice pdf", { files }).length, 8, "a filename-looking query shows up to eight");
+  const box = Array.from({ length: 5 }, (_, i) => ({ kind: "boxfile", id: `box:/srv/invoice${i}.pdf`, label: `invoice${i}.pdf`, sub: "box · /srv", last: 0, target: `/srv/invoice${i}.pdf`, source: "box" }));
+  const mixed = rank("invoice", { files: files.slice(0, 2), box });
+  assert.equal(mixed.filter(r => r.kind === "boxfile").length, 3);
+  const app = [{ kind: "app", id: "app:/A/Calculator.app", label: "Calculator", sub: "", last: 0, target: "/A/Calculator.app", score: 0.9 }];
+  const calc = rank("calcu", { local: app, files: [f("Calculations.xlsx", `${home}/Documents`, { used: Date.now() })] });
+  assert.equal(calc[0].label, "Calculator", "an app matched as well beats a file");
 });

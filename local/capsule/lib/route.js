@@ -19,7 +19,7 @@
  *   meta: string }} Destination
  */
 
-import { match } from "./local.js";
+import { match, taste, filenameLike } from "./local.js";
 
 const KIND_ORDER = { agent: 0, project: 1, thread: 2 };
 
@@ -187,36 +187,38 @@ export function describe(d) {
 
 /**
  * @typedef {{ kind: string, id: string, label: string, sub: string, last?: number, target?: string, score?: number,
- *   copy?: string }} Result
+ *   copy?: string, used?: number, source?: string, fileKind?: string }} Result
  */
 
 // Ties only, after name length. A higher score always wins, so an app opened ten times a day can
 // outrank a project visited once (proposal section 4).
-const RESULT_ORDER = { calc: 0, app: 1, setting: 2, agent: 3, project: 4, thread: 5, contact: 6, folder: 7, file: 8, define: 9 };
+const RESULT_ORDER = { calc: 0, app: 1, setting: 2, agent: 3, project: 4, thread: 5, contact: 6, folder: 7, file: 8, boxfile: 9, define: 10 };
+
+const FILES = 4;
+const FILES_NAMED = 8;
+const BOX_FILES = 3;
 
 /**
  * Local results and Vyre's own, ranked as one list. Local results arrive scored by local.js (match
- * plus frecency); Vyre candidates and files are scored here the same way. A calculator answer is
- * always first: it only exists when the box is clearly arithmetic or a conversion.
- * @param {string} query @param {{ local?: Result[], files?: Result[], extra?: Result[], cat?: Catalog|null,
- *   boost?: (id: string, query: string) => number, limit?: number }} src
+ * plus frecency); Vyre candidates are scored here the same way, and files by local.js's `taste()`
+ * (name tier, kind, recent use, code repos last). A calculator answer is always first: it only
+ * exists when the box is clearly arithmetic or a conversion.
+ * @param {string} query @param {{ local?: Result[], files?: Result[], box?: Result[], extra?: Result[], cat?: Catalog|null,
+ *   boost?: (id: string, query: string) => number, limit?: number, now?: number }} src
  * @returns {Result[]}
  */
-const FILES_WITH_OTHERS = 4;
-
-export function rank(query, { local = [], files = [], extra = [], cat = null, boost = () => 0, limit = 8 }) {
+export function rank(query, { local = [], files = [], box = [], extra = [], cat = null, boost = () => 0, limit = 8, now = Date.now() }) {
   const q = String(query || "").trim();
   if (!q) return [];
   /** @type {Result[]} */
   const all = [...local];
   const score = (r, label = r.label) => { const m = match(q, label); return m > 0 ? m + boost(r.id, q) : 0; };
-  // A file only on scattered letters is noise in a launcher; it needs at least a substring.
-  // Files count a little less than the same match on an app or a pane: "calcu" is the Calculator
-  // before a file named Calcutta. And a few of them at most, when anything else matched.
-  const fileRows = [];
-  for (const r of files) { const s = score(r); if (s >= 0.5) fileRows.push({ ...r, score: s * 0.9 }); }
-  fileRows.sort((a, b) => b.score - a.score);
-  all.push(...fileRows.slice(0, all.length ? FILES_WITH_OTHERS : limit));
+  // A handful of files unless the box reads as a filename ("q3 report.pdf", "invoice pdf", "notes/"),
+  // and at most three from the box, which is further away.
+  const tasted = (rows, cap) => rows.map(r => ({ r, t: taste(/** @type {any} */ (r), q, { now }) })).filter(x => x.t > 0)
+    .map(x => ({ ...x.r, score: x.t + boost(x.r.id, q) })).sort((a, b) => b.score - a.score || (b.used || 0) - (a.used || 0)).slice(0, cap);
+  all.push(...tasted(files, filenameLike(q) ? FILES_NAMED : FILES));
+  all.push(...tasted(box, BOX_FILES));
   if (cat) for (const c of candidates(cat)) {
     // A thread named only by its id is not something anyone types.
     const s = score(c);
