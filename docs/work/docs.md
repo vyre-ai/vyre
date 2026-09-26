@@ -75,6 +75,8 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   why." with a "Retry" button and an "Open kit's page" link; the panel says "Stopped". Retry starts
   the same computer again; Restart computer makes a new one from the current image, so Restart first
   when the box's software was fixed. Replaces the "connection dropped" text now on the page.
+  Keep the `vyre call computers.checkout '{"agent":"kit"}'` line as the way to see the full
+  reason on the box. Trigger: integrator merges work/glass-live c006e55.
 - capsule-pro 4c957a4: `vyre capsule` builds the native app locally; the download is retired.
 - main f3b5e36 (spec: no ctx.projects): close that gap in known-gaps.md and module-contract.md.
 
