@@ -107,7 +107,8 @@ export const callerKind = caller => (String(caller).startsWith("module:") ? "mod
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
-   *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }> }} deps
+   *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
+   *           presence?: import("../presence/index.js").Presence }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -219,7 +220,7 @@ export class Registry {
         // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
         // "hook"), and left out of every listing. The tool checks its own secret.
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal),
-          callers: Array.isArray(def.callers) ? def.callers : null, hook: Boolean(def.hook) });
+          callers: Array.isArray(def.callers) ? def.callers : null, hook: Boolean(def.hook), presence: def.presence || false });
       },
     };
   }
@@ -228,7 +229,7 @@ export class Registry {
    * Run a tool. Every call goes through the rules before it runs, whoever made it: Claude through
    * MCP, a surface through HTTP, or the CLI. That is the point of having one path.
    */
-  async call(tool, input = {}, caller = "unknown") {
+  async call(tool, input = {}, caller = "unknown", opts = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -239,6 +240,13 @@ export class Registry {
     if (this.deps.rules) {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
+    }
+    // A human-only tool needs a proof that a person is there, whatever the caller claims
+    // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
+    const presence = this.deps.presence;
+    if (presence && callerKind(caller) !== "module" && presence.required(tool, def)) {
+      const v = await presence.verify({ tool, input, caller, proof: opts.proof || null, def });
+      if (!v.ok) return { error: { code: "presence_required", message: v.message, methods: v.methods } };
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
     try { return { data: await def.run(input, { caller }) }; }
@@ -251,7 +259,18 @@ export class Registry {
 
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller) {
-    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || !d.callers || d.callers.includes(callerKind(caller)))).map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input }));
+    const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
+    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || !d.callers || d.callers.includes(callerKind(caller))))
+      .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}) }));
+  }
+
+  /** Start a presence proof that needs a challenge (tty, passkey) for one call of a tool. */
+  async presenceChallenge(tool, input = {}, method, extra = {}) {
+    const def = this.tools.get(tool);
+    if (!def || def.internal || def.hook) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    if (!this.deps.presence) return { error: { code: "bad_input", message: "presence is not checked on this registry" } };
+    const r = await this.deps.presence.challenge({ ...extra, tool, input, method, def });
+    return r.error ? { error: r.error } : { data: r };
   }
 
   async stop() {

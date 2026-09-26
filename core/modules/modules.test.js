@@ -181,3 +181,35 @@ test("modules: a per-<thing> declaration lets a module fetch items named at run 
   ]);
   assert.deepEqual(await reg.call("relay.check", { item: "work-mail" }, "cli"), { data: { got: "value-of-work-mail-for-module:relay" } });
 });
+
+test("modules: a presence tool needs a proof from every caller but a module, and a challenge reaches only listed tools", async t => {
+  const asked = [];
+  const presence = {
+    required: (tool, def) => tool === "notes.add" || Boolean(def.presence),
+    verify: async call => { asked.push(call); return call.proof && call.proof.ok ? { ok: true, method: "tty" } : { ok: false, message: "prove it", methods: ["tty"] }; },
+    challenge: async a => ({ challenge: "c-" + a.tool + "-" + a.method + "-" + a.tty }),
+  };
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", good, echo);
+  writeModule(root, "brief", { requires: ["notes"], does: { tools: ["brief.make", "brief.secret"] } }, `export default { async start(ctx) {
+    ctx.tool("brief.make", { run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
+    ctx.tool("brief.secret", { internal: true, presence: true, run: async () => 1 });
+    return {};
+  } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, presence });
+  await reg.start(discover([root]), { role: "local" });
+  assert.deepEqual(await reg.call("notes.add", { text: "hi" }, "cli"), { error: { code: "presence_required", message: "prove it", methods: ["tty"] } });
+  assert.deepEqual(await reg.call("notes.add", { text: "hi" }, "cli", { proof: { ok: true } }), { data: { saved: "hi" } });
+  assert.deepEqual(asked[1].proof, { ok: true });
+  assert.equal(asked[1].caller, "cli");
+  assert.deepEqual(await reg.call("brief.make", {}, "mcp"), { data: { saved: "from brief" } }, "a module caller was asked for presence");
+  assert.equal(asked.length, 2);
+  assert.equal(reg.listTools().find(x => x.name === "notes.add").presence, true);
+  assert.equal(reg.listTools().find(x => x.name === "brief.make").presence, undefined);
+  assert.deepEqual(await reg.presenceChallenge("notes.add", { text: "hi" }, "tty", { tty: "/dev/ttys003" }), { data: { challenge: "c-notes.add-tty-/dev/ttys003" } });
+  assert.equal((await reg.presenceChallenge("brief.secret", {}, "tty")).error.code, "no_such_tool");
+  assert.equal((await reg.presenceChallenge("notes.nope", {}, "tty")).error.code, "no_such_tool");
+});

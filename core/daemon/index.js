@@ -14,6 +14,7 @@ import * as config from "../config/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
+import { Presence, parse as parsePresence } from "../presence/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, "..", "..");
@@ -26,7 +27,7 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any }} [opts]
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any }} [opts]
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -41,7 +42,9 @@ export async function start(opts = {}) {
 
   const db = open(p.db);
   const events = new Events(db);
-  const registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules });
+  // vyred always checks presence; a test may swap in a verifier with fake OS touch points.
+  const presence = opts.presence || new Presence({ db, events, log });
+  const registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, presence });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
@@ -110,9 +113,16 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const result = await registry.call(name, await body(req), caller);
-    const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "denied" ? 403 : result.error.code === "bad_input" ? 400 : 500;
+    const result = await registry.call(name, await body(req), caller, { proof: parsePresence(req.headers["x-vyre-presence"]) });
+    const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
+  }
+  // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey
+  // returns WebAuthn options for the Deck (docs/adr/0004-presence.md).
+  if (req.method === "POST" && url.pathname === "/v1/presence/challenge") {
+    const b = await body(req);
+    const result = await registry.presenceChallenge(String(b.tool || ""), b.input || {}, String(b.method || ""), { tty: b.tty });
+    return send(res, !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "bad_input" ? 400 : 403, result);
   }
   // Webhooks: POST /v1/<module>/<name>/hook reaches that module's hook tool (watchers.hook) with
   // the name, the token from x-vyre-token or ?token=, and the JSON body. The tool checks the token.
