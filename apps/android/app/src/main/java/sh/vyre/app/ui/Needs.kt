@@ -122,7 +122,7 @@ fun HeldItem(id: String, onDone: (String) -> Unit, inline: Boolean = false) {
 
         when (state) {
             "held" -> Row(Modifier.fillMaxWidth().padding(top = Space.l), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                VButton(Held.action(item.str("kind")), enabled = !busy, kind = ButtonKind.Primary, leading = "→", modifier = Modifier.weight(1f), onClick = {
+                VButton(Held.action(item.str("kind")) + " with fingerprint", enabled = !busy, kind = ButtonKind.Primary, modifier = Modifier.weight(1f), onClick = {
                     val edited = try { Held.edited(fields, values) } catch (e: IllegalArgumentException) { note = e.message; return@VButton }
                     busy = true; note = null
                     scope.launch {
@@ -216,7 +216,7 @@ fun AskItem(ask: JsonElement, agent: String?, onDone: () -> Unit) {
         val decided = ask.str("decision")
         if (decided != null && decided != "null") Label(decided)
         else Row(horizontalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.padding(top = Space.s)) {
-            VButton("Allow", onClick = { answer("allow") }, kind = ButtonKind.Primary, enabled = !busy, modifier = Modifier.weight(1f).semantics { onClick("Allow $summary") { answer("allow"); true } })
+            VButton("Approve with fingerprint", onClick = { answer("allow") }, kind = ButtonKind.Primary, enabled = !busy, modifier = Modifier.weight(1f).semantics { onClick("Approve $summary") { answer("allow"); true } })
             VButton("Deny", onClick = { answer("deny") }, enabled = !busy, modifier = Modifier.weight(1f))
         }
         note?.let { Text(it, style = Type.small, color = c.text2) }

@@ -205,10 +205,12 @@ private fun Shell(activity: MainActivity) {
                     OfflineLine()
                     CompositionLocalProvider(LocalInShell provides true) {
                         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), beyondViewportPageCount = 1) { i ->
-                            when (PageId.entries[i]) {
-                                PageId.Now -> NowScreen()
-                                PageId.Chats -> ChatScreen()
-                                PageId.Agents -> AgentsScreen()
+                            CompositionLocalProvider(LocalOnScreen provides (pager.settledPage == i && sheet == null)) {
+                                when (PageId.entries[i]) {
+                                    PageId.Now -> NowScreen()
+                                    PageId.Chats -> ChatScreen()
+                                    PageId.Agents -> AgentsScreen()
+                                }
                             }
                         }
                     }

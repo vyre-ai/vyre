@@ -72,6 +72,8 @@ val LocalActivity = staticCompositionLocalOf<MainActivity> { error("no activity"
 val LocalNav = staticCompositionLocalOf<(String) -> Unit> { {} }
 /** True inside the shell's pages and sheets: the header or the sheet owns the top inset, and pages leave room for the Capsule. */
 val LocalInShell = staticCompositionLocalOf { false }
+/** True while this page is the one on screen (the pager settled on it, nothing pushed over it). */
+val LocalOnScreen = staticCompositionLocalOf { true }
 /** Show a short line over the Capsule (an Undo, a note). */
 val LocalToast = staticCompositionLocalOf<(Toast) -> Unit> { {} }
 /** Open a route on the tab it belongs to (a session on Chat from Now's "Open session"), as a link would. */
