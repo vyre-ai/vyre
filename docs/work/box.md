@@ -4,7 +4,8 @@ Branch: work/box · Worktree: ../vyre-box · Milestone: M5 · Wave 1
 
 ## Scope
 
-Owns `core/names/`, `core/cli/commands/up.js` (a richer `vyre up` that replaces the one in
+Owns `core/names/`, `core/onboard/` (the `onboard` module: its tools must start with its name),
+`core/cli/commands/up.js` (a richer `vyre up` that replaces the one in
 `core/cli/commands/daemon.js`; remove it there in the same commit), `scripts/install-box.sh`,
 `docs/adr/0002-network-and-identity.md` (write it first).
 
@@ -47,3 +48,51 @@ A Linux box on the tailnet with SSH, the Cloudflare token in the env, and the na
 
 From a phone on the tailnet, `https://<you>.vyre.run/v1/health` answers with a valid
 certificate, and from off the tailnet it does not resolve to anything reachable.
+
+## Done
+- `b45e955` ADR 0002: vyred terminates TLS on the tailnet interface and identifies callers by
+  `tailscale whois` of the source address. `tailscale serve` is not used: it cannot present a
+  vyre.run certificate, and each serve variant leaves a forgeable local hop. `docs/INSTALL.md`
+  covers the owner's own account (not a system user), folders, units, upgrade, uninstall and
+  backup. SPEC 7.1 and 7.10 updated to match.
+- `a658bf8` core: `ctx.handler(policy)`, `config.save`, new paths, `supervisor` in health.
+- `9cc1352` ACME DNS-01, CSR, Cloudflare (zone-guarded), cert store. Live: `_vyre-test`
+  records created, updated and deleted (0 left); LE staging account created, and the order was
+  rejected for the underscore label (`rejectedIdentifier`).
+- `bc287b4` `names` module: tailnet listener, whois identity, claim, fallback, renewal, owner,
+  claim code. Live on the Mac: it bound only the tailnet IPs, and self with forged headers got
+  403. Real whois passed the owner's devices and refused another login's node.
+- `5250bf5` `onboard` module: tools plus the one-time loopback page (cookie, Host and Origin checks).
+- `a56c44e` systemd plan, dry run, backup and restore, `scripts/install-box.sh`.
+- `bb579ac` `vyre up` (link, ssh line, restart on upgrade, `--box`, `--connect`, `--system`),
+  `vyre uninstall --system`, `name`, `owner`, `backup`, `restore`, `daemon`.
+
+## Doing
+- Security review of the listeners (subagent).
+
+## Next
+1. On a real Linux box: run the installer, then the socket unit and fd 3, `tailscale up` as
+   operator, a real DNS-01 certificate for the user's name, and the phone check from Done when.
+2. Wire `onboard.claude` to the vault's real `vault.put` once it merges.
+3. The hosted name directory (designed in ADR 0002; not built).
+
+## Needs from others
+- vault: `vault.put { name, value }` callable by `module:onboard`; items `claude-setup-token`,
+  `anthropic-api-key`, `cloudflare-vyre-token` (read by `names` through `ctx.vault.fetch`).
+- deck: `deck/onboard/`, with everything it loads under `/onboard/` (loopback serves nothing else).
+- switchboard: hand the vault's `claude-setup-token` to headless sessions as their credential.
+  Make the assistant at `onboard.finish` once `agents.create` exists.
+- gate: approvals should require a `tailnet:*` caller, since socket callers include Claude's own
+  processes (ADR 0002, caller classes).
+- user: a Linux box on the tailnet (not the test box), `CLOUDFLARE_VYRE_TOKEN` in its `~/.vyre/env`,
+  and the name to claim.
+
+## Changed contracts
+- `ctx.handler(policy) -> (req, res, caller)`: new, in core/modules and core/daemon.
+- `config.save(patch, root?, live?)`, and `paths()` gains certs, names, models, env.
+- `GET /v1/health` gains `supervisor`.
+- `vyre up` moved from `core/cli/commands/daemon.js` to `up.js`.
+- New tools `onboard.*` and `names.*` (shapes sent to deck); events `onboard.stepped`,
+  `onboard.finished`, `name.claimed`, `name.released`, `certificate.issued`, `certificate.failed`,
+  `owner.seen`, `owner.changed`.
+- Caller strings: `tailnet:<login>` for people on devices, `onboard` for the loopback page.
