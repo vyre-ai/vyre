@@ -324,6 +324,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   moves a value asks `proof.prove` first. Touch ID or the Mac password on a Mac, confirm (and
   the tailnet owner when known) on the Deck, refused where there is no Touch ID. Reveal is on
   for the Deck and the Capsule behind it (SPEC 11 rule 8); `vault.deck.reveal` is gone.
+- The keychain keystore writes through `mac/keychain.swift`, so only that helper is on the
+  item's access list (`security find-generic-password -w` no longer returns the key without
+  asking). Items the old path wrote are moved on first read.
 
 - Sharing, hardened (ADR 0006, findings 4, 5 and 12): pass tickets are signed by the owner and
   checked against the owner's pinned card, for this holder only, and a held pass can never be

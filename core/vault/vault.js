@@ -25,6 +25,7 @@ import {
 } from "./store.js";
 import * as relay from "./relay.js";
 import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
+import { Helper } from "./mac/helper.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, merge as mergeImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
@@ -148,8 +149,11 @@ export class Vault {
     this.name = (config && config.name) || "vyre";
     this.kind = opts.keystore || defaultKind();
     this.guarded = this.kind === "keychain" && !opts.keychain && Boolean(process.env.NODE_TEST_CONTEXT);
-    this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain });
-    this.secretKeys = secretKeyStore({ dir, kind: this.kind === "keychain" ? "keychain" : "file", keychain: opts.keychain });
+    // On a Mac the keychain is written by a hash-checked helper that is the only app on each
+    // item's access list (ADR 0006 finding 1); elsewhere there is no keychain keystore.
+    const kcHelper = this.kind === "keychain" && process.platform === "darwin" ? new Helper({ name: "keychain", dir: path.join(dir, "helpers") }) : null;
+    this.keys = keystore({ dir, kind: this.kind, keychain: opts.keychain, helper: kcHelper });
+    this.secretKeys = secretKeyStore({ dir, kind: this.kind === "keychain" ? "keychain" : "file", keychain: opts.keychain, helper: kcHelper });
     this.testKdf = testKdf;
     /** The agent vault's key, the personal vault's key while unlocked, and the row MAC key. All KeyObjects. */
     /** @type {import("node:crypto").KeyObject|null} */ this.vk = null;

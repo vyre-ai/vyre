@@ -14,6 +14,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { newMasterKey, wrapKey, unwrapKey, fromHex } from "./crypto.js";
+import { enclaveCall as helperCall } from "./touchid.js";
 
 export const SERVICE = "vyre-vault";
 
@@ -89,13 +90,11 @@ async function securityRetry(argv, stdin) {
 }
 
 /**
- * One keychain entry for a vault folder. `suffix` picks a second entry under the same service
- * (the Secret Key lives apart from the device key), and `decode` checks and decodes what was read.
- * @param {string} dir @param {string} [keychain] @param {string} [suffix]
- * @param {(text: string) => Buffer} [decode]
+ * One keychain entry through /usr/bin/security: the path before the keychain helper, kept to
+ * read (once) and remove items that path wrote, and for a Mac where the helper cannot be built.
+ * @param {string} account @param {string} [keychain] @param {(text: string) => Buffer} decode
  */
-function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain entry for this vault is not a vault key")) {
-  const account = accountFor(dir) + suffix;
+function legacyStore(account, keychain, decode) {
   const tail = keychain ? [keychain] : [];
   const read = async () => {
     const r = await securityRetry(["find-generic-password", "-s", SERVICE, "-a", account, "-w", ...tail]);
@@ -104,21 +103,89 @@ function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain
     return decode(r.out.trim());
   };
   return {
-    exists: async () => (await read()) !== null,
-    /** @param {Buffer} mk */
-    put: async mk => {
-      const { argv, stdin } = keychainWriteCommand({ account, hex: mk.toString("hex"), keychain });
-      const hex = mk.toString("hex");
+    read,
+    /** @param {string} text */
+    put: async text => {
+      const { argv, stdin } = keychainWriteCommand({ account, hex: text, keychain });
       const r = await securityRetry(argv, stdin);
       // `security -i` exits 0 even when a command fails; the failure shows on stderr, which may
       // repeat the command it was given, key and all, so the key is cut out before it is shown.
-      const err = r.err.split(hex).join("<key>").trim();
+      const err = r.err.split(text).join("<key>").trim();
       if (r.code !== 0 || err) throw new Error(`could not write the vault key to the keychain: ${err || "exit " + r.code}`);
     },
-    read,
     remove: async () => {
       const r = await securityRetry(["delete-generic-password", "-s", SERVICE, "-a", account, ...tail]);
       if (r.code !== 0 && r.code !== NOT_FOUND) throw new Error(`could not remove the vault key from the keychain: ${r.err.trim()}`);
+    },
+  };
+}
+
+/**
+ * One keychain entry for a vault folder. `suffix` picks a second entry under the same service
+ * (the Secret Key lives apart from the device key), and `decode` checks and decodes what was read.
+ *
+ * With `helper` (mac/keychain.swift), items are written through that hash-checked helper with an
+ * access list naming only it, so `security find-generic-password -w` run by anything else gets a
+ * system prompt, not the key (ADR 0006 finding 1). An item the old path wrote is read once
+ * through `security`, written again through the helper, and the old one deleted. If the helper
+ * was rebuilt (its source changed), the item trusts the old binary, so older helper binaries in
+ * the same private folder are tried, and the item is moved to the new one the same way.
+ * @param {string} dir @param {string} [keychain] @param {string} [suffix]
+ * @param {(text: string) => Buffer} [decode] @param {import("./mac/helper.js").Helper|null} [helper]
+ */
+function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain entry for this vault is not a vault key"), helper = null) {
+  const account = accountFor(dir) + suffix;
+  const legacy = legacyStore(account, keychain, decode);
+  if (!helper || !helper.usable()) return { ...legacy, exists: async () => (await legacy.read()) !== null };
+  const q = { service: SERVICE, account, ...(keychain ? { keychain } : {}) };
+  const call = async req => helperCall(helper, { ...q, ...req });
+  /** Older builds of the helper, which an item written before a rebuild still trusts. */
+  const olderBinaries = async () => {
+    const now = (await helper.ensure()).path;
+    const d = path.dirname(now);
+    return fs.readdirSync(d).filter(n => /^vyre-vault-keychain-[0-9a-f]{16}$/.test(n)).map(n => path.join(d, n)).filter(p => p !== now);
+  };
+  const oldCall = (bin, req) => helperCall({ spawn: async () => spawn(bin, [], { stdio: "pipe" }) }, { ...q, ...req });
+  const move = async text => {
+    const w = await call({ op: "write", secret: text });
+    if (!w.ok) throw new Error(`could not write the vault key through the keychain helper (${w.status || w.code})`);
+    const back = await call({ op: "read" });
+    if (!back.ok || back.secret !== text) throw new Error("the vault key did not read back through the keychain helper");
+  };
+  const read = async () => {
+    const r = await call({ op: "read" });
+    if (r.ok) return r.secret == null ? null : decode(String(r.secret));
+    // Not ours to read: an item the old path wrote, or one an older helper build wrote.
+    const old = await legacy.read().catch(() => null);
+    if (old) {
+      // The device key is kept as hex, the Secret Key as its text.
+      const text = suffix ? old.toString("utf8") : old.toString("hex");
+      await legacy.remove();
+      await move(text);
+      return old;
+    }
+    for (const bin of await olderBinaries()) {
+      const o = await oldCall(bin, { op: "read" }).catch(() => null);
+      if (!o || !o.ok || o.secret == null) continue;
+      const text = String(o.secret);
+      await oldCall(bin, { op: "delete" }).catch(() => null);
+      await move(text);
+      return decode(text);
+    }
+    throw new Error(`could not read the vault key from the keychain (${r.status || r.code})`);
+  };
+  return {
+    exists: async () => (await read()) !== null,
+    /** @param {string} text */
+    put: async text => {
+      const w = await call({ op: "write", secret: text });
+      if (!w.ok) throw new Error(`could not write the vault key to the keychain (${w.status || w.code})`);
+    },
+    read,
+    remove: async () => {
+      const r = await call({ op: "delete" });
+      await legacy.remove().catch(() => {});
+      if (!r.ok) throw new Error(`could not remove the vault key from the keychain (${r.status || r.code})`);
     },
   };
 }
@@ -151,18 +218,19 @@ const rmFile = file => fs.rmSync(file, { force: true });
 
 /**
  * The keystore for one vault folder.
- * @param {{ dir: string, kind: Kind, keychain?: string }} o
+ * @param {{ dir: string, kind: Kind, keychain?: string, helper?: import("./mac/helper.js").Helper|null }} o
+ *   helper: the keychain helper (mac/keychain.swift); without one the keychain is written by `security`.
  */
-export function keystore({ dir, kind, keychain }) {
+export function keystore({ dir, kind, keychain, helper = null }) {
   if (kind === "keychain") {
-    const kc = keychainStore(dir, keychain);
+    const kc = keychainStore(dir, keychain, "", undefined, helper);
     return {
       kind,
       exists: kc.exists,
       async create(_ = {}) {
         if (await kc.exists()) throw new Error("this vault already has a key in the keychain");
         const mk = newMasterKey();
-        await kc.put(mk);
+        await kc.put(mk.toString("hex"));
         return mk;
       },
       async load(_ = {}) { return kc.read(); },
@@ -219,18 +287,13 @@ export function keystore({ dir, kind, keychain }) {
  * The passphrase keystore uses the file too: the Secret Key alone opens nothing.
  * @param {{ dir: string, kind: Kind, keychain?: string }} o
  */
-export function secretKeyStore({ dir, kind, keychain }) {
+export function secretKeyStore({ dir, kind, keychain, helper = null }) {
   const text = s => { if (!/^V2-[A-Z2-7-]{20,60}$/.test(s)) throw new Error("the stored Secret Key is not one"); return Buffer.from(s, "utf8"); };
   if (kind === "keychain") {
-    const kc = keychainStore(dir, keychain, ":sk", text);
+    const kc = keychainStore(dir, keychain, ":sk", text, helper);
     return {
       /** @param {string} formatted */
-      async put(formatted) {
-        const { argv, stdin } = keychainWriteCommand({ account: accountFor(dir) + ":sk", hex: formatted, keychain });
-        const r = await securityRetry(argv, stdin);
-        const err = r.err.split(formatted).join("<key>").trim();
-        if (r.code !== 0 || err) throw new Error(`could not write the Secret Key to the keychain: ${err || "exit " + r.code}`);
-      },
+      async put(formatted) { await kc.put(formatted); },
       /** @returns {Promise<string|null>} */
       async read() { const b = await kc.read(); if (!b) return null; const s = b.toString("utf8"); b.fill(0); return s; },
       remove: kc.remove,
