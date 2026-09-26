@@ -8,6 +8,7 @@
 .gl-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; min-height: 44px; }
 .gl-title { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .gl-title-row { display: flex; align-items: baseline; gap: 10px; }
+.gl-title-row .dot { align-self: center; }
 .gl-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .gl-head-right:empty { display: none; }
 .gl-watchers { display: flex; align-items: center; gap: 8px; padding-right: 8px; color: var(--label); }

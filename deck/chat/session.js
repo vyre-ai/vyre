@@ -11,6 +11,7 @@ import { h, put, add, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
+import { healthDot } from "../js/health.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
@@ -38,6 +39,8 @@ export function mountSession(container, opts) {
   const head = h("div", { class: "session-head" });
   const leaseBar = h("div", { class: "lease-bar" });
   const record = { current: /** @type {any} */ (null) };
+  // How the box reaches this device, as a dot in the header (asked on open, then once a minute while shown).
+  const health = healthDot();
 
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
 
@@ -65,6 +68,7 @@ export function mountSession(container, opts) {
         h("div", { class: "sub ellipsis" }, [rec?.agent, rec?.cwd].filter(Boolean).join(" · ") || "session"),
       ),
       rec?.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null,
+      health.el,
     );
     put(leaseBar,
       icon("lock", 12),
@@ -235,5 +239,5 @@ export function mountSession(container, opts) {
     // the graph changed, so refetch this open thread and let fetchMemory's id-dedup filter it.
     on("memory.curated", () => fetchMemory()),
   ];
-  return () => { for (const off of offs) off(); };
+  return () => { health.stop(); for (const off of offs) off(); };
 }
