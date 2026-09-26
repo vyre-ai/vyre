@@ -81,6 +81,10 @@ the tailnet and asked it to pair.
 | 16 | Vault: after a refused vault.update the editor closes and says nothing; the Deck calls `vault.usage`, which main does not have (404) | vault-deck |
 | 17 | Onboarding: revisiting "Your address" after it serves says "Not reserved yet" until Get your address is pressed again; reopening /onboard without a token (a new browser) shows step 1 empty with Continue disabled and no hint to run `vyre up --print-link` | polish-surfaces |
 | 18 | With Claude skipped, the end screen says "juno is ready when you are" while Agents says "No assistant yet. Onboarding makes one." (none is made without a Claude sign-in) | polish-surfaces |
+| 19 | Live box, step 2: the Claude sign-in code never submitted. The code and Enter went into `claude setup-token` in one write, Ink reads that as a paste, and the page waited 60 s in silence | fixed, a10fcec (Enter on its own; OAuth errors reported at once) |
+| 20 | Live box, step 4 claimed a public `<name>.vyre.run` after step 1 was skipped: step 1's live check saved every name it checked | fixed, b405bfc (checks save nothing; vyre.run needs a confirmed name) |
+| 22 | The New agent form's "Give it its own computer" box is ticked but the agent is made with computer false | deck (agents view) |
+| 21 | Slow steps gave no sign of time: the address takes about a minute | fixed, b405bfc (time up front, elapsed seconds per line) |
 
 ## Headscale run (27 Sep): everything after Tailscale
 
@@ -135,7 +139,24 @@ Capsule on macOS.
 | Egress: Chrome with a data: PAC | the computer image's Chromium honours it: a listed site goes through the Mac, others direct, and the listed site fails when egress is down. chromedp/headless-shell ignores every PAC (data: or http), so never test PAC with it |
 | Agent nodes | not built yet (waits on the image change) |
 
+## Glass over the tailnet (27 Sep, work/e2e + work/glass-live dcf7b18)
+
+On the headscale harness with the computers profile (the box's own Docker proxy, image
+vyre-e2e/computer:0.1, network and label prefix, so the live box's computers were out of reach):
+New agent kit, Give kit a computer (the create form's computer box did not stick: `computer:
+false`; the agent page's button worked), then /glass/kit in the stand-in Mac's Chrome. The computer
+started on first view (about 20 s), and noVNC drew kit's Chromium at 1440 x 900, LIVE, over the
+box's HTTPS address (the ticketed stream /v1/streams/computers/glass through the tailnet listener).
+Take over: glass.take answered presence_required, the page offered Confirm with passkey, the
+virtual authenticator asserted, and "You have control". Clicks and keys reached the screen (typed
+example.com in kit's address bar; the page loaded). Hand back also asks for the passkey
+(glass.release is on the presence list): is that intended? Torn down afterwards, including the
+computer container and its home volume.
+
 ## Needs from others
+
+- lead: yes or no to letting the asking Mac approve its own pairing once a passkey proves presence
+  (plus a Deck card for link.pending). The user cannot pair his Mac tonight without it or a phone.
 
 - deck and link (lead decides): a Deck card for `link.pending` with the code and Approve/Deny
   behind presence (snag 15), and whether the Mac's own browser may approve its own pairing once a

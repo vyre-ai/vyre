@@ -21,6 +21,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   paired Mac it asks the box. `core/cli/commands/assistant.js`, `core/cli/ending.js`,
   `test/upgrade.test.js`.
 
+#### An assistant made with an API key uses it as one
+
+- With an API key at the Claude step, `onboard.finish` made the assistant with
+  `auth: { vault: "anthropic-api-key" }`, which agents reads as a subscription token. It is now
+  `auth: { fallback: "anthropic-api-key" }`; a subscription keeps the token first and the key as
+  its fallback (`core/onboard/index.js`, `test/onboard.test.js`). Found by pwa.
+
+#### Live Claude Code sessions are seen on node 24
+
+- node 24 names its main thread "MainThread", so `ps -o comm=` said that for every claude running
+  on node, and adopt, "live in terminal" and the queue for a busy session saw no session at all
+  on a Mac with node 24. `isClaude` (`core/switchboard/sessions.js`) reads the command line
+  instead: a native claude, node started as claude, or `node <path>/claude`. Found by ci on
+  GitHub's node 24 runner.
+- A switchboard test compared a thread's status across two reads while it could still be
+  starting; it now waits until the thread has started.
 #### `vyre vault` and `vyre memory` ask for the person, as `vyre learn` does
 
 - `vyre vault put/grant/get --copy/...` and `vyre memory correct/merge/split/uncorrect/pin/mute`
@@ -102,6 +118,128 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   timeout and reports `magicDNS` and `certDomains`; new tool `capsule.report {ok, message}`
   emits `capsule.hotkey`, for the Capsule app to say whether Control twice works (TCC holds
   Vyre.app responsible, so only the app can know).
+#### Handing the keyboard back needs no passkey
+
+- `glass.release` asked for a passkey, so a person in control had to prove presence again just
+  to give the agent its keyboard back. Taking over still asks; handing back never does, and an
+  agent still cannot hand back a person's surface. `core/glass/index.js`.
+
+#### A Mac-only owner can pair the Mac
+
+- `link.pair.approve` refused the node that asked, so the Deck on the Mac being paired could never
+  approve it, and an owner without a second device could not pair at all. The asking Mac may now
+  approve its own request when that call carries a fresh passkey assertion (not a presence
+  session) and the typed code matches; a model on the Mac can do neither. `core/link/box.js`.
+- The Deck's pairing card and the CLI say to approve "on this Mac or your phone".
+
+#### A public name only when the person chose it; slow steps say so
+
+- Step 1's live availability check (`onboard.name` check) saved every valid name it was asked
+  about, so a name typed and then skipped became `config.name`, and step 4 claimed
+  `<name>.vyre.run` on the public zone. A check now saves nothing. Step 4 claims a vyre.run name
+  only when step 1 was continued with it, or with `confirm: true`; otherwise the page asks
+  ("Use kit.vyre.run? Change it · Use my tailnet name"). Continue in step 1 with a new name
+  replaces an earlier candidate while no address serves.
+- The address step says up front that it can take about a minute, and the line in progress shows
+  its elapsed seconds. Starting Claude's and Tailscale's sign-in say they take a few seconds.
+#### The phone app switches tabs in one frame
+
+- Pages stay mounted: leaving a screen hides it (laid out, inert) instead of tearing it down, so
+  going back shows it as it was, scrolled where it was, still following its events. Up to eight
+  are kept; Glass and the Vault never are. A view can ask to refresh on a revisit (ctx.onShow).
+- On a phone the five tabs are made while it is idle after launch, so the first tap on each is a
+  revisit. Tapping the tab you are on scrolls it to the top.
+- A Chat session opens from what the list already knew, reads only its last 60 turns (Show
+  earlier reads more), and Back returns to the list as it was. The Chat list draws the last one
+  this phone saw at once, then the box's.
+- The fonts are served from the box (deck/fonts, OFL), not Google, and the service worker answers
+  the Deck's own files from its cache and refreshes them behind (stale-while-revalidate).
+- The first screen no longer waits on onboard.status.
+- Measured on the test box, iPhone size, CPU 4x slower, 60 ms to the box: a tab switch 40 to 90 ms
+  (was 150 to 400), a revisit about 30 ms (was up to 190), Back in Chat about 20 ms, opening a
+  session 100 to 250 ms. `deck/test/pwa-perf.js` and `pwa-perf.test.js` (runs where CDP is set)
+  fail over 100 ms.
+- The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
+  tailnet node does not (queuesFor in core/switchboard).
+#### The phone's design
+
+- docs/design/phone.md sets the phone app's design for the PWA and the native apps: no tab bar,
+  three pages (Now, Chats, Agents) swiped sideways and the floating Capsule for ask, find and run,
+  with native-feeling screens (grouped cards, sentence-case buttons, standard sheets). Needs you is
+  a list whose rows swipe to approve or deny and open a detail sheet with Open session. Colour
+  roles use the Deck's names (deck/css/deck.css). Native approvals are a device-key signature
+  after Face ID (ADR 0018), the PWA's a passkey; both are the same box-checked presence proof.
+  Docs only; no code changes.
+
+#### docs.vyre.run, round 2: screenshots, a terms index, interactive pages (ADR 0019)
+
+- Page syntax that works with JavaScript off and gets better with it: copy buttons on every
+  command (prompts left out), `output` blocks labelled "You should see", `::: tabs` for a choice
+  of path (one choice follows the reader across pages), `[!SNAG]` "If this happens" boxes,
+  `[!WHY]` expandable background, figures with a dark twin, `::: demo capsule` (a Capsule you can
+  type into, sample data only) and `::: demo onboarding` (the six screens as slides), and search
+  that jumps to headings (`/` focuses it). `scripts/lib/docs/assets/demos.{js,css}` load only on
+  pages with a demo.
+- Screenshots: `npm run docs:shots` (on the test box) starts the sample world and captures the
+  Deck, onboarding, the Capsule, Glass and the phone views in light and dark. `docs/shots.json`
+  holds a hash of the files each shot shows; docs-check fails a shot once they change.
+- The terms index: `npm run docs:ref` writes `docs/reference/index.md` and `docs/index.json`
+  (published at /index.json): every command, tool, event, config key, variable, screen and
+  concept, with where it is defined, the page that explains it and every mention. docs-check
+  fails a mention of a command, tool, key or variable the code no longer has.
+- `core/config/theme.js` holds the palette; the design tokens page draws its colour tables from
+  it as live swatches.
+- Every page reviewed against main; install is one numbered path with expected output and snag
+  boxes; the old install reference moved to box care and the box-and-Mac concepts page.
+- `scripts/lib/hygiene.js`: the `sk-` secret pattern no longer matches inside words (an anchor
+  like `#ask-...`).
+
+#### vyre.run/start matches the code again
+
+- /start's Mac section is `npm i -g https://vyre.run/box/vyre.tgz`, `vyre up` (pick 3, I already
+  set up a box), then `vyre capsule`, which builds the Capsule from the npm install. There is no
+  Mac download any more. The Cloudflare token steps are gone (your address is the tailnet name),
+  and pairing says what the code does: approve in the Deck with your passkey, whose screen is a
+  known gap.
+- `scripts/build-site.sh` writes `/download/mac /start#mac 302` into `site/_redirects`: onboarding's
+  "Download for Mac" link was a 404. Deployed to vyre.run with the live box files unchanged.
+
+#### Known gaps are marked on the page (ADR 0019)
+
+- `docs/known-gaps.md` lists each place the code does not yet do what the spec, an ADR or a
+  screen says, with what is true now and the owning team. Pages carry a `> [!GAP]` callout,
+  rendered as "Known gap", that links to it. `CONTRIBUTING-DOCS.md` says how to add and close one.
+- The security page names security@vyre.run as the contact.
+
+#### Every page of docs.vyre.run is written (ADR 0019)
+
+- The 57 pages in `docs/nav.json` exist, each with front matter and an owner: get-started,
+  using, concepts, build, architecture, security, contributing, and ADR 0019 for the site itself.
+  Pages other teams own are seeded from the code on main for them to refine.
+- `docs/SPEC.md`, `INSTALL.md`, `GETTING-STARTED.md`, `JOURNEY.md`, `MODULES.md` and `PERF.md`
+  moved to `architecture/spec.md`, `get-started/install.md` and `without-docker.md`,
+  `get-started/onboarding.md` (GETTING-STARTED and JOURNEY merged), `build/writing-a-module.md`
+  and `architecture/performance.md`. Each old path is a redirect stub, so `docs/SPEC.md section N`
+  in code comments still resolves. The ADRs and `design/TOKENS.md` have front matter.
+- The npm package ships all of `docs/` except `work/`, `proposals/` and `design/boards/`, instead
+  of five named files that are now stubs.
+- An include line inside fenced code is an example: the build and docs-check leave it alone.
+  docs-check's list of built files names `/search-index.json`, which is what the build writes.
+
+#### docs-check and the generated reference pages (ADR 0019)
+
+- `scripts/docs-check` (`npm run docs:check`, and `test/docs-check.test.js` under `npm test`)
+  holds `docs/` to its contract: front matter on every published page, every page in
+  `docs/nav.json` or a redirect stub, relative links, `#anchors` and docs.vyre.run paths that
+  resolve, no links into unpublished folders, no em dash or section sign (in included files
+  too), no real names, secrets, non-example email or IP addresses, and reference pages that match
+  the code. It prints `path:line: problem` and exits 1 on any.
+- `scripts/gen-docs-reference` (`npm run docs:ref`) writes `docs/reference/{cli,tools,events,config,modules}.md`
+  from the CLI's command list, every `module.json`, every `ctx.tool` definition, the `emit` calls
+  and `core/config`. Tools are read by starting each module in a child process with a throwaway
+  home and a context that only records: no child processes, no listeners, no fetch, no keychain.
+- The hygiene rules (forbidden names, the secret pattern) moved to `scripts/lib/hygiene.js`,
+  shared by `test/hygiene.test.js` (unchanged behaviour) and docs-check.
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
@@ -174,9 +312,50 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   watching thaws it.
 - `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
   required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+#### Glass egress: fail closed, keys that survive restarts
+
+- The egress sidecar no longer sends a listed site out from the box when the Mac stops offering
+  its exit node or its route is unapproved (tailscaled then dials directly, and the site saw the
+  datacenter's address). A gate, `core/computers/egressgate.js` in the vyre image, now answers as
+  `egress:1055`: it reads each SOCKS5 CONNECT and relays it to the sidecar only while the
+  sidecar's tailscaled status shows the exit node in use (BackendState Running, one peer with
+  ExitNode, Online and ExitNodeOption, and ExitNodeStatus online when present). Otherwise it
+  answers "connection not allowed by ruleset" and never dials the site. The status is read on
+  demand, kept 2 s, with no timer while idle; each change of reason is logged once. Node
+  built-ins only; `read_only`, `cap_drop: ALL`, uid 1000.
+- `box/compose.egress.yml`: the tailscaled sidecar is now `egress-node` (SOCKS5 on :1056, on a new
+  internal network `vyre-egress` shared only with the gate, off the computers network); its
+  socket is shared read-only with the gate through the `egress-sock` volume. The key is an OAuth
+  client secret (`tskey-client-...?ephemeral=true&preauthorized=true`) or a reusable ephemeral
+  key, always with `--advertise-tags=tag:vyre-egress`; a single-use key failed the first restart.
+- `computers.egress.status` also returns `gate`, the gate's verdict and reason (GET /status on
+  egress:1057).
 
 #### Connectors (ADR 0016)
 
+- A held MCP call names its destination from `channel_id` and `chat_id` too, so a Slack post
+  held at the Gate shows the channel rather than the server's name.
+- CLI: `vyre connect add google <name> --sign-in [--client <vault item>]` signs in with Google
+  from a terminal. The client defaults to `google-oauth-client`; without it, the command says so
+  and prints the `vyre vault put` line for a Desktop app OAuth client. It grants the client to
+  google with presence, runs google.connect and prints the consent address on its own line. It
+  opens a browser only when dialogs are allowed and stdout is a terminal. It then waits for
+  `google.connected` or `google.connect-failed` on the event stream, for a pasted address (sent
+  to google.connect.finish), for Ctrl-C (google.connect.cancel, "cancelled, nothing stored") or
+  for 10 minutes. End of input cancels only at a terminal; piped or empty stdin just stops the
+  paste reader and the loopback can still finish it, and ends with the account's test. `--email`, `--item`
+  and `--dwd` are refused with `--sign-in`.
+- Deck, Settings, Connections: "Add a Google account" signs in with Google by default. Name the
+  account, pick the OAuth client env set (the form shows the `vyre vault put` line for one), and
+  press Sign in with Google: a blank tab opens at once (while the press still counts, so it is
+  not blocked, with its opener cut), the client is granted to google with presence,
+  google.connect runs, and the tab goes to Google's page while the form waits for `google.connected` (or
+  `google.connect-failed`, whose error it shows). A browser on another device pastes the address
+  it landed on into google.connect.finish. Cancel, closing the form and leaving the page each call
+  google.connect.cancel, and a failed grant or connect closes the tab. Only when the browser
+  blocked the tab is Google's address shown as a link. "Service
+  account" and "Refresh token item" stay as they were, and a service account's Test now shows an
+  admin console block with its client ID and scope line, each with Copy.
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
   env-set holding an OAuth client's `client_id` and `client_secret` (granted to google) and
   returns `{ id, url, redirect }`: the consent page, with PKCE S256, a random state, offline
