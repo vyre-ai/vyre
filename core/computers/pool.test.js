@@ -291,12 +291,12 @@ test("pool: a computer that exits on boot fails the checkout with the reason, an
 
 test("pool: a checkout waits for the screen to answer, and gives up after bootMs", async t => {
   let answers = 0;
-  const { pool } = setup(t, { config: { bootMs: 100 } });
+  const { pool } = setup(t, { config: { bootMs: 5_000 } });
   pool.probe = async () => ++answers >= 3;
   await pool.checkout("kit");
   assert.equal(answers, 3, "probed until the screen answered");
   pool.probe = async () => false;
-  await pool.stop("pax").catch(() => {});
+  pool.opts.bootMs = 100;
   await assert.rejects(pool.checkout("pax"), /pax's computer started but its screen did not answer within 0 s/);
 });
 
