@@ -80,7 +80,8 @@ test("computers: the manifest loads on the box with its tools and the glass stre
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
   assert.deepEqual(tools.sort(), ["computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback",
-    "computers.list", "computers.pause", "computers.release", "computers.resume", "computers.stop", "computers.takeover", "computers.watch"]);
+    "computers.list", "computers.pause", "computers.release", "computers.resume", "computers.stop", "computers.tailnet.set", "computers.tailnet.status",
+    "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
   const glass = s.d.registry.upgrades.has("computers/glass");
@@ -388,4 +389,47 @@ test("computers: egress.set is the owner's, refused to an agent, saved to config
   const spec = [...FakeDriver.for(s.root).containers.values()][0].spec;
   assert.match(spec.env.VYRE_PROXY_PAC, /^data:application\/x-ns-proxy-autoconfig;base64,/);
   assert.match(Buffer.from(spec.env.VYRE_PROXY_PAC.split(",")[1], "base64").toString(), /"bank\.example\.com"/);
+});
+
+// ---- tailnet: each computer as its own node ------------------------------------------------
+
+test("computers: tailnet is off by default; status says so, and whether the key is in the vault, never its value", async t => {
+  const s = await boot(t);
+  const r = await s.cli("computers.tailnet.status");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual([r.data.enabled, r.data.tag], [false, "tag:vyre-agent"]);
+  assert.equal(r.data.vault.item, "tailscale-agent-authkey");
+  assert.ok(r.data.vault.exists === false || r.data.vault.exists === null, JSON.stringify(r.data.vault));
+  assert.deepEqual(r.data.computers, []);
+  // Off: a computer starts and nothing asks the vault for the key.
+  await s.cli("computers.checkout", { agent: "kit" });
+  const h = s.h.pool.joins.get("kit");
+  if (h) await h.done;
+  assert.equal(s.h.pool.joins.size, 0);
+  assert.ok(!s.d.events.since(0, { limit: 1000 }).some(e => e.type === "vault.released" || e.type === "computer.joined"));
+  const after = await s.cli("computers.tailnet.status");
+  assert.deepEqual(after.data.computers, [{ agent: "kit", running: true, node: null, stableId: null }]);
+});
+
+test("computers: tailnet.set and status are the owner's, refused to agents and the assistant; set is saved to config", async t => {
+  const s = await boot(t);
+  for (const as of [s.kit, s.juno]) {
+    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /is an agent/);
+    assert.match((await as("computers.tailnet.status")).error.message, /is an agent/);
+  }
+  assert.ok(s.d.registry.tools.get("computers.tailnet.set")?.presence, "computers.tailnet.set does not declare presence");
+  const ok = await s.cli("computers.tailnet.set", { enabled: true });
+  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
+  assert.deepEqual([ok.data.enabled, ok.data.tag], [true, "tag:vyre-agent"]);
+  const saved = JSON.parse(fs.readFileSync(path.join(s.root, "config.json"), "utf8"));
+  assert.deepEqual(saved.computers.tailnet, { enabled: true, tag: "tag:vyre-agent" });
+  assert.equal(saved.computers.driver, "fake", "saving the switch dropped another computers key");
+  assert.equal((await s.cli("computers.tailnet.status")).data.enabled, true);
+});
+
+test("computers: node.agent is internal and for modules only, and knows no node that never joined", async t => {
+  const s = await boot(t);
+  assert.equal((await s.cli("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
+  assert.equal((await s.kit("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
+  assert.deepEqual((await s.module("computers.node.agent", { stableId: "nKit7CNTRL" })).data, { agent: null });
 });

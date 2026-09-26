@@ -18,6 +18,7 @@
 import crypto from "node:crypto";
 import { PORTS, SIZE } from "./driver/index.js";
 import { chromeEnv } from "./egress.js";
+import { join as joinTailnet, leave as leaveTailnet } from "./tailnet.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE computers_computers (
@@ -28,6 +29,10 @@ export const MIGRATIONS = [
   // What the container's Chrome was made with for config glass.egress (the PAC data: URL, or ""),
   // so a change reaches a computer the next time it starts rather than never (egress.js).
   `ALTER TABLE computers_computers ADD COLUMN egress TEXT NOT NULL DEFAULT '';`,
+  // The computer's own tailnet node, while it has one (config computers.tailnet, tailnet.js):
+  // what computers.node.agent maps a whois back to. Cleared when the computer stops or vanishes.
+  `ALTER TABLE computers_computers ADD COLUMN stable_id TEXT;
+   ALTER TABLE computers_computers ADD COLUMN node TEXT;`,
 ];
 
 /** How long a Glass ticket lives: long enough to open a WebSocket, too short to be worth stealing. */
@@ -50,8 +55,12 @@ export class Pool {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, driver: import("./driver/index.js").Driver|null,
    *   call: (tool: string, input: any) => Promise<any>, emit: (type: string, payload: any, where?: any) => any,
-   *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any }} deps
+   *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any,
+   *   tailnet?: { setting: () => { enabled: boolean, tag: string }, key: () => Promise<string> },
+   *   wait?: (ms: number) => Promise<void> }} deps
    *   egress reads config glass.egress when a computer is made, so a change needs no restart.
+   *   tailnet reads config computers.tailnet each time a computer starts, and fetches the auth key
+   *   from the vault only then, only when that switch is on.
    */
   constructor(deps) {
     const c = deps.config || {};
@@ -62,6 +71,8 @@ export class Pool {
     this.log = deps.log || (() => {});
     this.now = deps.now || (() => Date.now());
     this.egress = deps.egress || (() => undefined);
+    this.tailnet = deps.tailnet || null;
+    this.wait = deps.wait;
     this.opts = {
       screens: Math.max(1, Number(c.screens || 2)),
       idleMs: Number(c.idleMs ?? 60_000),
@@ -81,7 +92,7 @@ export class Pool {
     /** @type {Map<string, number>} */
     this.idle = new Map();
     /** Where each running computer answers, from the driver's last inspect. */
-    /** @type {Map<string, { host: string, ports: { vnc: number, helper: number } }>} */
+    /** @type {Map<string, { host: string, ports: { vnc: number, helper: number, tailnet?: number } }>} */
     this.hosts = new Map();
     /** @type {Map<string, { agent: string, surface: string, expires: number }>} */
     this.tickets = new Map();
@@ -92,6 +103,9 @@ export class Pool {
     /** The surface holding a take-over of this agent's computer, or null. The keyboard sets it. */
     /** @type {(agent: string) => string|null} */
     this.heldBy = () => null;
+    /** A join in flight per agent, so a stop can cut it short and wait for it. */
+    /** @type {Map<string, { ctl: AbortController, done: Promise<void> }>} */
+    this.joins = new Map();
   }
 
   // ---- the table -------------------------------------------------------------------------
@@ -204,6 +218,7 @@ export class Pool {
     try { st = await this.driver.inspect(r.container); }
     catch { return; } // a network hiccup talking to the proxy is not evidence the container is gone
     if (st.state !== "missing") return;
+    this.leftTailnet(agent);
     this.set(agent, { state: "none", container: null });
     this.hosts.delete(agent);
     this.checkouts.delete(agent);
@@ -341,6 +356,7 @@ export class Pool {
       st = { state: "exited", host: null };
     }
     const id = String(this.row(agent).container);
+    const before = st.state;
     if (st.state === "paused") {
       await d.unpause(id);
       this.emit("computer.thawed", { agent });
@@ -350,6 +366,67 @@ export class Pool {
     const now = await d.inspect(id);
     if (now.host) this.hosts.set(agent, { host: now.host, ports: now.ports || { ...PORTS } });
     this.set(agent, { state: "running" });
+    // A computer that just started or thawed joins the tailnet (when the switch is on), and so
+    // does a running one that has no node yet. It never holds up the checkout.
+    if (before !== "running" || !this.row(agent).stable_id) this.joinTailnet(agent);
+  }
+
+  // ---- the computer's own tailnet node (tailnet.js) --------------------------------------
+
+  /** Start joining, unless the switch is off or a join is already under way. Never throws. */
+  joinTailnet(agent) {
+    if (!this.tailnet || this.joins.has(agent)) return;
+    let cfg;
+    try { cfg = this.tailnet.setting(); }
+    catch (e) { this.log(`${agent}'s computer did not join the tailnet: ${/** @type {Error} */ (e).message}`); return; }
+    if (!cfg.enabled) return;
+    // The key goes only to a port the driver names for the tailnet side, never to computerd's own
+    // port: computerd runs as the agent's uid, so the agent could stop it and answer there itself.
+    if (!this.tailnetSide(agent)) { this.log(`${agent}'s computer did not join the tailnet: its image has no tailnet side apart from the agent's user (no tailnet port); the key was not sent`); return; }
+    const ctl = new AbortController();
+    const key = this.tailnet.key;
+    const done = joinTailnet({ helper: () => /** @type {{ url: string, token: string }} */ (this.tailnetSide(agent)), key, agent, tag: cfg.tag, signal: ctl.signal, ...(this.wait ? { wait: this.wait } : {}) })
+      .then(r => {
+        if (ctl.signal.aborted) return;
+        if (!r.joined) { this.log(`${agent}'s computer did not join the tailnet: ${r.why}`); return; }
+        const had = this.row(agent);
+        this.set(agent, { stable_id: r.stableId, node: r.node });
+        if (!had || had.stable_id !== r.stableId) {
+          this.emit("computer.joined", { agent, node: r.node, stableId: r.stableId });
+          this.log(`${agent}'s computer joined the tailnet as ${r.node || r.stableId}`);
+        }
+      })
+      .catch(e => this.log(`${agent}'s computer did not join the tailnet: ${/** @type {Error} */ (e).message}`))
+      .finally(() => { if (this.joins.get(agent) && this.joins.get(agent).ctl === ctl) this.joins.delete(agent); });
+    this.joins.set(agent, { ctl, done });
+  }
+
+  /** Where the computer's tailnet side answers, or null when the driver names no port for it. */
+  tailnetSide(agent) {
+    const h = this.hosts.get(agent), r = this.row(agent);
+    if (!h || !r || !h.ports.tailnet) return null;
+    return { url: `http://${h.host}:${h.ports.tailnet}`, token: String(r.helper_token) };
+  }
+
+  /** The node is gone with the computer: forget it, and say so once. */
+  leftTailnet(agent) {
+    const r = this.row(agent);
+    if (!r || !r.stable_id) return;
+    this.set(agent, { stable_id: null, node: null });
+    this.emit("computer.left", { agent });
+  }
+
+  /**
+   * The agent whose running computer joined as this node, or null. Only a stable id recorded at
+   * join, and only while that computer is running: a frozen, stopped or vanished one maps to no one.
+   * @param {string} stableId
+   * @returns {string|null}
+   */
+  agentOfNode(stableId) {
+    if (typeof stableId !== "string" || !stableId) return null;
+    const r = /** @type {any} */ (this.db.prepare("SELECT agent, state FROM computers_computers WHERE stable_id = ?").get(stableId));
+    if (!r || r.state !== "running" || !this.hosts.has(String(r.agent))) return null;
+    return String(r.agent);
   }
 
   /** Freeze a computer nobody has checked out. Docker pause keeps memory and costs no CPU. */
@@ -362,7 +439,7 @@ export class Pool {
       try { await this.driver.pause(r.container); }
       catch (e) {
         const st = await this.driver.inspect(r.container).catch(() => null);
-        if (st && st.state === "missing") { this.set(agent, { state: "none", container: null }); this.hosts.delete(agent); }
+        if (st && st.state === "missing") { this.leftTailnet(agent); this.set(agent, { state: "none", container: null }); this.hosts.delete(agent); }
         this.log(`could not freeze ${agent}'s computer: ${/** @type {Error} */ (e).message}`);
         return false;
       }
@@ -383,10 +460,19 @@ export class Pool {
       const r = this.row(agent);
       if (!r || !r.container) return { stopped: false };
       const st = await d.inspect(r.container);
-      if (st.state === "missing") { this.set(agent, { state: "none", container: null }); this.hosts.delete(agent); return { stopped: false }; }
+      const joining = this.joins.get(agent);
+      if (joining) { joining.ctl.abort(); await joining.done; }
+      if (st.state === "missing") { this.leftTailnet(agent); this.set(agent, { state: "none", container: null }); this.hosts.delete(agent); return { stopped: false }; }
       // A frozen process cannot handle SIGTERM, so a stop would only ever end in the kill.
       if (st.state === "paused") await d.unpause(r.container);
+      // A clean stop logs the node out. The node is ephemeral, so if this fails it still goes.
+      const side = this.tailnetSide(agent);
+      if (st.state !== "exited" && (this.row(agent).stable_id || joining) && side) {
+        try { await leaveTailnet(side); }
+        catch (e) { this.log(`${agent}'s node was not logged out (it is ephemeral and goes with the container): ${/** @type {Error} */ (e).message}`); }
+      }
       if (st.state !== "exited") await d.stop(r.container);
+      this.leftTailnet(agent);
       this.set(agent, { state: "stopped" });
       this.hosts.delete(agent);
       this.emit("computer.stopped", { agent });
@@ -432,9 +518,10 @@ export class Pool {
     const known = new Set();
     for (const r of this.rows()) {
       const c = r.container ? byId.get(r.container) : null;
-      if (!c) { if (r.container || r.state !== "none") this.set(r.agent, { state: "none", container: null }); continue; }
+      if (!c) { this.leftTailnet(r.agent); if (r.container || r.state !== "none") this.set(r.agent, { state: "none", container: null }); continue; }
       known.add(c.id);
       const state = c.state === "running" ? "running" : c.state === "paused" ? "frozen" : "stopped";
+      if (state === "stopped") this.leftTailnet(r.agent);
       this.set(r.agent, { state });
       if (state === "running") this.idle.set(r.agent, this.now());
       if (state !== "stopped") {

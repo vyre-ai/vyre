@@ -77,7 +77,8 @@ export function privateSocketDir() {
 /** @typedef {{ name?: string, role: "box"|"local", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
- *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } } }} Config */
+ *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
+ *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any } }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
@@ -93,6 +94,9 @@ function defaults() {
     // Off: no computer's Chrome goes out through the user's Mac until the owner lists sites
     // (core/computers/egress.js, box/compose.egress.yml).
     glass: { egress: { enabled: false, sites: [] } },
+    // Off: no computer joins the tailnet as its own node until the owner turns it on
+    // (core/computers/tailnet.js, ADR 0014 part 9).
+    computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
   };
 }
 
@@ -115,6 +119,7 @@ export function load(root = home()) {
     modules: { ...d.modules, ...(user.modules || {}) },
     network: { ...d.network, ...(user.network || {}) },
     glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
+    computers: { ...d.computers, ...(user.computers || {}), tailnet: { ...d.computers.tailnet, ...((user.computers && user.computers.tailnet) || {}) } },
   };
   c.projectsDir = untilde(c.projectsDir);
   c.roots = (c.roots || []).map(untilde);
