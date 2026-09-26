@@ -69,8 +69,12 @@ test("tailscale: status and whois parse the fields vyre uses", () => {
   assert.equal(login.loginUrl, "https://login.tailscale.com/a/abc");
   assert.equal(login.node, null);
   assert.deepEqual(parseWhois({ Node: { Name: "phone.example.ts.net.", StableID: "n2" }, UserProfile: { LoginName: "alex@example.com" } }),
-    { login: "alex@example.com", tagged: false, node: "phone.example.ts.net", stableId: "n2" });
+    { login: "alex@example.com", tagged: false, node: "phone.example.ts.net", stableId: "n2", tags: [], caps: {} });
   assert.equal(parseWhois({ Node: { Name: "ci.", Tags: ["tag:ci"] }, UserProfile: { LoginName: "tagged-devices" } })?.login, null);
+  // The policy's app capabilities come through as written; anything not a list reads as none.
+  const granted = parseWhois({ Node: { Name: "mac.", StableID: "n3" }, UserProfile: { LoginName: "alex@example.com" },
+    CapMap: { "vyre.run/cap/vault": [{ items: ["northwind-*"] }], "odd": "nope" } });
+  assert.deepEqual(granted?.caps, { "vyre.run/cap/vault": [{ items: ["northwind-*"] }], odd: [] });
 });
 
 test("tailscale up names the operator again on Linux, and takes only flag-shaped extras", async () => {

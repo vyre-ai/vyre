@@ -8,7 +8,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import os from "node:os";
-import { tailscaleBin as bin } from "../link/transport.js";
+import { tailscaleBin as bin, parseWhois } from "../link/transport.js";
 
 /** Run the CLI and resolve to { code, out, err }; a missing binary is code 127, not a throw. */
 export function run(args, { timeout = 15_000 } = {}) {
@@ -71,8 +71,8 @@ export function parseStatus(s) {
 }
 
 /**
- * Who is at this tailnet address.
- * @returns {Promise<{ login: string|null, tagged: boolean, node: string, stableId: string } | null>}
+ * Who is at this tailnet address: login, node, stable ID, tags and the app capabilities the
+ * policy grants it (link/transport.js parseWhois, the one parser).
  */
 export async function whois(ip) {
   const r = await run(["whois", "--json", ip], { timeout: 5000 });
@@ -80,17 +80,7 @@ export async function whois(ip) {
   try { return parseWhois(JSON.parse(r.out)); } catch { return null; }
 }
 
-/** Pure, for tests. A tagged node has no person behind it, whatever profile it reports. */
-export function parseWhois(w) {
-  if (!w || !w.Node) return null;
-  const tagged = Array.isArray(w.Node.Tags) && w.Node.Tags.length > 0;
-  return {
-    login: tagged ? null : (w.UserProfile && w.UserProfile.LoginName) || null,
-    tagged,
-    node: String(w.Node.Name || w.Node.ComputedName || "").replace(/\.$/, ""),
-    stableId: String(w.Node.StableID || w.Node.ID || ""),
-  };
-}
+export { parseWhois };
 
 /**
  * Tailnet Lock as this machine sees it, from `tailscale lock status --json`. Read-only: that is
