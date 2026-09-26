@@ -25,13 +25,12 @@ the Mac branch of `vyre up` in `core/cli/commands/up.js` (`mac()`), agreed with 
 ## Release
 
 ```
-scripts/build-mac-zip.sh /tmp/Vyre-mac.zip                     # macOS
 set -a; . <vault>/.env.vyre; set +a
-scripts/build-site.sh --mac-zip /tmp/Vyre-mac.zip --upload
-nice -n 10 scripts/release-check.sh --claude
-npx wrangler pages deploy site --project-name vyre-site --branch main
-scripts/release-check.sh --skip-tests --live
+scripts/release.sh            # main; add --claude for a real Claude Code check
 ```
+
+Run it after every main merge that touches install paths (core, bin, harness, box, scripts,
+local/capsule, site), so the one-liner always installs current main.
 
 ## Needs from others
 

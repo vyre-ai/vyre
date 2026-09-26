@@ -31,6 +31,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (`vyre capsule`), or points at the Vyre-mac.zip download when no Capsule is installed.
   `--no-capsule` skips the Capsule.
   With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
+- `scripts/release.sh [--ref REF] [--claude] [--skip-tests] [--mac] [--dry-run]`: puts REF
+  (default main) on vyre.run from a scratch worktree. It rebuilds and uploads the Capsule zip
+  only when `local/capsule` changed since the live zip (`Vyre-mac.source`), then builds the
+  site and runs release-check. It deploys only when vyre.run serves something different, then
+  checks the live site and prints a summary. Running it twice changes nothing.
+- `/start` and GETTING-STARTED: "What works today" and "What's coming" replace "What is not
+  finished".
 - `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,
   zip, and a signature check after unzipping; the build output is deleted afterwards.
   `release-check` runs perf-check after the suite (`--skip-perf` to leave it out).

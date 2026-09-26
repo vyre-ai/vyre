@@ -126,23 +126,24 @@ The app is not signed with a Developer ID or notarized yet, so macOS stops it th
 After the first open it starts normally. Run `vyre capsule` (or `vyre up` again) so it opens
 wired to this Mac's vyred, then press Control twice anywhere to open it.
 
-## What is not finished
+## What works today
 
-- **npm.** `npm install -g vyre` does not work until the package is published. Use the tarball
-  URL above.
-- **The image.** There is no published image yet, so each server builds its own from the
-  tarball. `vyre update` rebuilds it.
-- **Signing.** The Mac app is unsigned and not notarized, hence the right-click, Open.
-- **Names.** `<you>.vyre.run` needs your own Cloudflare token for now. The hosted name directory
-  that will claim a name without one is designed (ADR 0002) and not built.
-- **Pairing.** Approve a Mac from the box's terminal (`vyre link approve`). Approving from the
-  Deck on another device waits on the box passing the caller's tailnet node through. Pairing is
-  tested between two vyreds with a simulated tailnet, not yet against a real box.
-- **The Capsule zip** is built on the maintainer's Mac with ad-hoc signed helpers. If macOS
-  refuses to run it, build and run the Capsule from the npm install instead: `vyre capsule build`
-  (needs the Xcode command line tools), then `vyre capsule --dev`.
-- **Updates.** Nothing updates itself. On the server, `vyre update`. On the Mac, run the
-  `npm install -g` line again, and download the zip again.
+- **The server install.** The one line installs Docker if you agree, verifies every file against a published SHA-256, builds the image from main, and prints the onboarding link. Tested end to end on a fresh Linux server.
+- **Onboarding in the browser.** The one-time link over the `ssh -L` tunnel, with the Claude, Tailscale and name steps.
+- **The Mac CLI and Claude Code plugin.** `npm install -g` from the tarball, `vyre up`, and Vyre's tools inside Claude Code.
+- **The Capsule.** Control twice, from the zip. It opens after the one-time right-click, Open.
+- **Pairing.** `vyre up` on the Mac finds the box, and you approve the code on the box.
+
+Not yet checked on a real server: the Tailscale sign-in, the certificate for your name, and pairing against it. Each works in tests with a simulated tailnet.
+
+## What's coming
+
+- **npm.** `npm install -g vyre` works once the package is published. Until then, use the tarball URL.
+- **A published image.** Today each server builds its own from the tarball, which takes a few minutes. `vyre update` rebuilds it.
+- **A signed, notarized Mac app.** Until then, right-click, Open. If macOS refuses the zip, `vyre capsule build` (needs the Xcode command line tools) and then `vyre capsule --dev` run the Capsule from the npm install.
+- **Names without a token.** `<you>.vyre.run` needs your own Cloudflare token for now. The hosted name directory is designed (ADR 0002) and not built.
+- **Approving from your phone.** Today a Mac is approved from the box's terminal. The Deck screen for it is not built.
+- **Updates.** Nothing updates itself. On the server, `vyre update`. On the Mac, run the `npm install -g` line again and download the zip again.
 
 ## If something goes wrong
 
