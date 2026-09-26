@@ -1,0 +1,28 @@
+# Chat on the box: labels for modules/chat/compose.yml, so every Vyre container and volume
+# carries run.vyre=1. List both in COMPOSE_FILE, after box/compose.yml:
+#
+#   COMPOSE_FILE=compose.yml:chat/compose.yml:compose.chat.yml
+#
+# Chat needs VYRE_CHAT_URL and VYRE_CHAT_DB_PASSWORD in /srv/vyre/.env (see modules/chat/SETUP.md).
+
+services:
+  mattermost:
+    labels:
+      run.vyre: "1"
+  postgres:
+    labels:
+      run.vyre: "1"
+
+volumes:
+  mm-config:
+    labels: { run.vyre: "1" }
+  mm-data:
+    labels: { run.vyre: "1" }
+  mm-logs:
+    labels: { run.vyre: "1" }
+  mm-plugins:
+    labels: { run.vyre: "1" }
+  mm-client-plugins:
+    labels: { run.vyre: "1" }
+  mm-db:
+    labels: { run.vyre: "1" }
