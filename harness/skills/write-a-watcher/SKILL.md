@@ -19,7 +19,7 @@ Code; load them with ToolSearch when they are deferred). Call them directly, nev
 1. `watchers_list` → its `dir` is where watchers live on this machine.
 2. `projects_of` with `{ "cwd": "<the current folder>" }` → the project's `slug`.
 3. Write `<dir>/<name>/watcher.json` and `<dir>/<name>/watch.js` (section 3).
-   If it needs a credential, `vault_grant` it to this watcher and have the user approve it
+   If it needs a credential, give the user the grant command for this watcher and wait
    (section 2).
 4. `watchers_test` with `{ "name": "<name>" }` → fix and repeat until it returns `ok: true`.
 5. Show the user the items and the schedule; on their yes, `watchers_create` with `{ "name" }`.
@@ -49,12 +49,19 @@ your reply. A public source needs nothing: leave `needs` out. Otherwise:
 1. `vault_list` (names only) to find the item. If it is missing, tell the user the exact name to
    add with `vyre vault put <name>` and stop there. Never ask them to paste a value.
 2. List the item's name under `needs` in `watcher.json`.
-3. `vault_grant` with `{ "name": "<item>", "module": "watchers", "watcher": "<watcher name>" }`.
-   A grant is for one watcher, never for every watcher. From you it waits as `pending`: tell the
-   user to run `vyre vault approve <id>` with the `id` it returns (or, from their own terminal,
-   `vyre vault grant <item> watchers --watcher <watcher name>`).
-4. Until they approve, the dry run fails with "<item> is not granted to watchers/<name>". That
-   is expected; wait for them, then dry-run again.
+3. Before the dry run, give the user the exact command that lets this one watcher use it, and
+   wait for them to run it:
+
+   ```
+   vyre vault grant <item> watchers --watcher <watcher name>
+   ```
+
+   A grant can only come from a person. A grant is for one watcher, never for every watcher; a
+   second watcher that needs the same item needs its own. (If you call `vault_grant` yourself,
+   it only waits as `pending` until they run `vyre vault approve <id>`; the command above is
+   one step for them instead of two.)
+4. Until they have run it, the dry run fails with "<item> is not granted to watchers/<name>".
+   That is expected, not a bug in the watcher: remind them of the command, then dry-run again.
 
 In `watch.js`, `await vault.fetch("<item>")` returns the value (`value`, a login's `password`, a
 card's `number`, a note's `text`). Pass `{ field: "username" }` for another field; an env set
