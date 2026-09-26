@@ -96,9 +96,32 @@ Vyre"). Verified against a rewritten `deck/fixtures/onboard.json`, not yet again
 branch (not merged into this worktree).
 
 Shell hooks landed for the four carve-outs: `deck/chat/` mounts via `deck/views/chat.js` (same
-"not here yet" pattern as Glass) at `/chat` and `/chat/:id`, nav placement left to gate-chat;
-`/vault/:place` and `/vault/:place/:name` routed; `ctx.rail(el)` lets a view fill the rail's lower
-group. `js/api.js`'s module-name map said `learn` was named "learning"; it's `learn`.
+"not here yet" pattern as Glass) routed at `/chat`, `/chat/:project`, `/chat/:project/:thread` plus
+a rail entry (gate-chat asked where; settled); `/vault/:place` and `/vault/:place/:name` routed;
+`ctx.rail(el)` lets a view fill the rail's lower group. `js/api.js`'s module-name map said `learn`
+was named "learning"; it's `learn`.
+
+Now made a real home (2026-09-27): the assistant's name and what it's doing (`agents.list`'s
+`doing`), Recent projects, and an offline read of the last state (`localStorage`, counts and a
+timestamp only, never a held item's words — the service worker already refuses `/v1/` for the
+same reason) shown as "Offline. As of … ago: …" when `threads.list` fails with the offline error
+code. Found and fixed a real bug while wiring this: Working read `t.state === "running"`, but the
+real field is `status`, and the switchboard never sets `"running"` or `"finished"` — only
+starting/working/waiting/idle/stopped — so Working always said "Nothing is running" no matter
+what was actually live. Verified against a real thread (`status: "working"`).
+
+PWA installability: manifest, icons (already generated from the mark, matching `icons.js`'s
+`mark()` exactly), iOS meta tags and the shell-caching service worker were already in place from
+an earlier pass; the offline-Now read above completes the "offline gives you something" half of
+the ask. Web Push is not built: there is no server-side piece anywhere in the codebase (no VAPID
+keys, no subscribe tool, nothing that would call a push service when an event fires while the
+Deck is closed) — a client `Notification`/`PushManager` registration alone cannot deliver anything
+without one. iOS 16.4+ supports Web Push for an installed (Add to Home Screen) PWA, and the
+tailnet does not block it (the box has ordinary outbound internet to reach Apple's/the browser's
+push service; the tailnet only restricts inbound). So it is feasible, but it needs a new module
+(VAPID keypair in the vault, a `push.subscribe`/`push.send` pair, called from wherever
+`ask.raised`/`gate.held` already fire) that nobody owns yet — flagged to the lead rather than
+guessed at.
 
 ## Doing
 - Nothing; waiting on box's onboard core to merge, and answers from box below.
