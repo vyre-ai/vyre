@@ -56,7 +56,7 @@ In `~/.vyre/config.json`:
     "url": "http://mattermost:8065",
     "team": "vyre",
     "owner": "alex",
-    "listen": { "host": "0.0.0.0", "port": 8766 },
+    "listen": { "host": "vyred", "port": 8766 },
     "callback": "http://vyred:8766",
     "poll_ms": 2000 } }
 ```
