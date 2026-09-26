@@ -154,11 +154,26 @@ guessed at.
 - Proposed lessons in Now's needs, with a count (intelligence asked) — a new need "kind" next to
   draft/ask, bigger scope, not started.
 - Settings: confirm the per-step `vyre` commands it shows once box's core is in.
-- Web Push client side: subscribe UI in Settings, iOS "install first" hint, and the service
-  worker's `push`/`notificationclick` handlers — waiting on switchboard's `core/push` shapes
-  (VAPID, subscribe, delivery on ask.raised/gate.held/thread.watched, no content in the payload).
 - A usage badge on the Agents *list* rows (turns or spend, at a glance) — the detail page's Usage
   section (below) covers "per agent"; the list is a natural follow-up, not started.
+- Re-check Web Push (below) once `core/push` merges into this worktree — built and verified
+  against switchboard's shapes and a mocked response, not yet against the real module.
+
+## Done (Web Push, 2026-09-27)
+- Settings → Notifications: turn this device on/off (push.key + pushManager.subscribe +
+  push.subscribe), other devices with delivery health and Remove (push.unsubscribe), quiet hours
+  and per-kind toggles (push.settings, browser timezone sent along), a test send (push.test).
+  This device's id lives in localStorage (push.devices never returns an endpoint to match
+  against), with a fallback to the live subscription's endpoint if that's ever lost.
+- An iOS install-first hint replaces the button when Web Push cannot work yet (an ordinary Safari
+  tab, not an installed Home Screen app).
+- deck/sw.js's `push` handler shows a notification from exactly {kind,title,path,tag,at} — never
+  a held item's words, by core/push's own design — with a short fixed body per kind written here;
+  `notificationclick` focuses an open tab and posts it the path for a client-side navigation, or
+  opens a new one.
+- settings.js now honours `?section=` (a query, since a notification's path is a plain fetchable
+  link) alongside the existing `#section`.
+- `js/icons.js` gained a `bell` glyph.
 
 ## Done (continued)
 - `agents.history` turned out to already be a real tool by the time I checked (switchboard added
