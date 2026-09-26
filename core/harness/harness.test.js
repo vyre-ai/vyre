@@ -1,6 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
 import { formatMemory } from "./index.js";
@@ -62,6 +63,12 @@ test("rules: the MCP hub's own tools are left to the Gate; every other send stil
   assert.equal(decide("mcp__vyre__google_mail_send_now"), "ask");
   // Rule 8 still holds for the hub's tools.
   assert.equal(rules({ tool: "mcp__vyre__files__read_file", input: { path: path.join(HOME, "vault", "x") }, home: HOME }).decision, "deny");
+  assert.equal(rules({ tool: "mcp__vyre__srv__send_message", input: { to: "dana@harlowlegal.com", text: path.join(HOME, "vault", "items.sealed") }, home: HOME }).decision, "deny");
+  assert.equal(rules({ tool: "mcp__vyre__srv__send_message", input: { to: "dana@harlowlegal.com", attach: "~/.vyre/vault" }, home: path.join(os.homedir(), ".vyre") }).rule, 8);
+  assert.equal(rules({ tool: "mcp__vyre__srv__send_message", input: { command: "cat ../.vyre/vault/*" }, cwd: "/home/alex/Work", home: HOME }).rule, 8, "a command reaching the vault");
+  // A send outside the hub's namespace still asks, by rule 1.
+  assert.equal(rules({ tool: "mcp__other__send_message", input: { to: "dana@harlowlegal.com" }, home: HOME }).rule, 1);
+  assert.equal(rules({ tool: "mcp__vyre__threads_send", input: {}, home: HOME }).rule, 1);
 });
 
 test("formatMemory: reads Memory's own item shape, where source is an object", () => {

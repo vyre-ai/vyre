@@ -8,7 +8,8 @@
 //
 // The rules that shape this file come from the floor, not from MCP:
 // - A stdio server gets a minimal env plus what the caller passes, never vyred's own env, so a
-//   credential vyred holds for one server can never be read by another.
+//   credential vyred holds for one server can never be read by another. It always carries
+//   VYRE_HUB_CHILD=1, which Vyre's own MCP server reads as "do not run here".
 // - HTTP headers are asked for on every request, because credentials are minted at call time
 //   and a cached header would outlive its token.
 // - Redirects are refused (redirect: "manual", any 3xx is an error), as the Gate does, so a
@@ -214,7 +215,9 @@ function lines(stream, cap, onLine, onOverflow) {
 function stdioChannel(spec, opts) {
   if (typeof spec.command !== "string" || !spec.command) throw new McpError("bad_input", "a stdio server needs a command");
   const child = spawn(spec.command, spec.args || [], {
-    cwd: spec.cwd, env: { ...baseEnv(), ...(opts.env || {}) }, stdio: ["pipe", "pipe", "pipe"],
+    // VYRE_HUB_CHILD comes last, so no caller can take it away: Vyre's own MCP server refuses to
+    // run under it, in case a hub row reaches it by a route normalize did not foresee.
+    cwd: spec.cwd, env: { ...baseEnv(), ...(opts.env || {}), VYRE_HUB_CHILD: "1" }, stdio: ["pipe", "pipe", "pipe"],
   });
   const pend = pendingMap();
   /** @type {string[]} */

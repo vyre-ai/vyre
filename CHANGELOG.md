@@ -6,6 +6,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0016)
 
+- The MCP hub is never a route around the floor. A hub tool with a send word (`send`, `post`,
+  `reply`, `forward`, `publish`, `share`, `invite`, `tweet`, `dm`, `comment`) is always held at
+  the Gate, even when a person set its mode to `read` or the server marks it read-only, and
+  `mcp.add` and `mcp.update` now refuse `read` for such a tool (it can be `write` or `off`).
+  They also refuse Vyre's own MCP server as a hub server (`vyre mcp`, or anything running
+  `harness/mcp/server.js`) and any `vars` or `env` name that starts with `VYRE_`. Every stdio hub
+  child now gets `VYRE_HUB_CHILD=1`, and Vyre's MCP server started under it answers every request
+  with an error, offers no tools and never contacts vyred.
 - Settings has a Connections section (`deck/views/connections.js`): the hub's MCP servers and the
   Google accounts, each with its state, tool count or scopes, and Test, Restart and Remove.
   Adding one picks vault items by name and asks for the `mcp` or `google` grant with presence;

@@ -116,10 +116,14 @@ async function handle(msg) {
 }
 
 const send = o => process.stdout.write(JSON.stringify(o) + "\n");
+// Started by the MCP hub (ADR 0016): vyred's own child with no session, where an agent's scope
+// would be lost. Every request is refused, no tool is offered and vyred is never contacted.
+const HUB_CHILD = Boolean(process.env.VYRE_HUB_CHILD);
 readline.createInterface({ input: process.stdin }).on("line", async line => {
   if (!line.trim()) return;
   let msg;
   try { msg = JSON.parse(line); } catch { return send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }); }
+  if (HUB_CHILD) { if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "Vyre's MCP server does not run inside the MCP hub" } }); return; }
   try {
     const result = await handle(msg);
     if (msg.id !== undefined && result !== undefined) send({ jsonrpc: "2.0", id: msg.id, result });

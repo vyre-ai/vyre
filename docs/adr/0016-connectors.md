@@ -104,6 +104,7 @@ Anything a server's tool does to the world outside is held, unless it is plainly
   write or delete word, or when its annotations say `readOnlyHint: true` and its name has no
   send, write or delete word. Everything else is **outward**. Unknown means outward.
 - The person can set a tool's mode in `tools.mode`: `read`, `write` (held) or `off` (hidden).
+  A tool whose name has a send word can be `write` or `off`, never `read`.
 - An outward call becomes `gate.request { kind, via: "mcp:<server>", to, content: { tool,
   arguments } }`. `kind` is `delete` for delete-like names, `spend` for pay-like names, `send`
   otherwise. `to` is the first of the argument's `to`, `channel`, `recipient`, `email`,
@@ -119,6 +120,14 @@ The harness Rules ask about any MCP tool with a send word in its name (rule 1), 
 denies them to agents. The hub's tools already go through the Gate, so both step aside for
 `mcp__vyre__<server>__<tool>`: the hub's classification is stricter than the name rule (unknown
 is outward), so nothing that the rule would have asked about goes out unheld.
+
+That stepping aside is sound only while one invariant holds: every hub tool with a send word
+(`send`, `post`, `reply`, `forward`, `publish`, `share`, `invite`, `tweet`, `dm`, `comment`, in
+its own name or in the aggregated name the floor sees) is held at the Gate, whatever the person's
+mode or the server's annotations say, and `mcp.add` and `mcp.update` refuse `read` for one. And
+Vyre's own MCP server is never a hub server: `vyre mcp`, `harness/mcp/server.js` and `VYRE_`
+variables are refused at add, and every stdio child gets `VYRE_HUB_CHILD=1`, under which the
+server answers every request with an error and never reaches vyred.
 
 ### 5. One MCP entry for every session
 

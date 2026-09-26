@@ -77,11 +77,30 @@ export function words(name) {
 }
 
 /**
- * Read or outward, and the Gate kind for an outward one.
+ * Words that mean a tool sends as the person. The floor's name rule (core/harness/rules.js rule 1)
+ * asks about these and steps aside for hub tools only because the hub holds them, so a tool with
+ * one is held whatever the person's mode says; it can be write or off, never read.
+ */
+const SEND_WORDS = ["send", "post", "reply", "forward", "publish", "share", "invite", "tweet", "dm", "comment"];
+const SEND_STEMS = ["send", "reply", "forward", "publish"];
+/** The name rule's own test, so a name it would ask about is always one this says sends. */
+const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
+
+/** Whether a tool name sends as the person: a send word, a send stem inside it, or the name rule's match. */
+export function sends(name) {
+  const flat = String(name || "").toLowerCase();
+  return words(name).some(w => SEND_WORDS.includes(w)) || SEND_STEMS.some(s => flat.includes(s)) || SENDS.test(String(name || ""));
+}
+
+/**
+ * Read or outward, and the Gate kind for an outward one. A tool that sends is outward whatever
+ * the mode or its annotations say, judged by its own name and by the aggregated name a model and
+ * the floor see (a cut name can read differently).
  * @param {{ name: string, annotations?: any }} tool @param {string} [mode] the person's tools.mode for it
+ * @param {string} [alias] the aggregated <server>__<tool> name, when known
  * @returns {{ outward: boolean, kind: "send"|"spend"|"delete", off: boolean }}
  */
-export function classify(tool, mode) {
+export function classify(tool, mode, alias) {
   const ws = words(tool.name);
   const flat = String(tool.name || "").toLowerCase();
   // "Starts with" is for a name that is one unbroken word ("sendmessage", "listissues"); a name
@@ -93,6 +112,7 @@ export function classify(tool, mode) {
   const kind = ws.some(w => DELETE_WORDS.includes(w)) || /delete|remove|destroy|purge/.test(flat) ? "delete"
     : ws.some(w => PAY_WORDS.includes(w)) || /payment|refund|purchase|transfer/.test(flat) ? "spend" : "send";
   if (mode === "off") return { outward: true, kind, off: true };
+  if (sends(tool.name) || (alias && sends(alias.slice(alias.indexOf("__") + 2)))) return { outward: true, kind, off: false };
   if (mode === "read") return { outward: false, kind, off: false };
   if (mode === "write") return { outward: true, kind, off: false };
   return { outward: !((reads || hint) && !writes), kind, off: false };
@@ -189,6 +209,19 @@ function checkRef(ref, where) {
 }
 
 /**
+ * Whether a stdio command runs Vyre's own MCP server: `vyre mcp` (the bin, or node running it) or
+ * harness/mcp/server.js directly. As a hub server it would be vyred's child with no session, so an
+ * agent's scope would be lost, and its tools are offered through the one vyre entry already.
+ * @param {string} command @param {string[]} args
+ */
+function ownServer(command, args) {
+  const parts = [command, ...args].map(a => String(a).replace(/\\/g, "/"));
+  const base = a => a.split("/").pop() || "";
+  if (parts.some(a => a.endsWith("harness/mcp/server.js"))) return true;
+  return parts.some(a => ["vyre", "vyre.js", "vyre.mjs"].includes(base(a))) && args.includes("mcp");
+}
+
+/**
  * The stored row for an add or update, checked. Refuses anything that would put a value in the
  * table: a sensitive header, an env value that is not a vault item, a credential in a url.
  * @param {any} i @param {{ httpHosts?: string[] }} [opts]
@@ -204,6 +237,7 @@ export function normalize(i, opts = {}) {
     if (i.args !== undefined && !(Array.isArray(i.args) && i.args.every(a => typeof a === "string"))) throw bad("args must be a list of strings");
     for (const a of i.args || []) if (looksSecret(a)) throw bad("an argument looks like a secret; pass it through env from the vault instead");
     if (i.cwd != null && (typeof i.cwd !== "string" || !i.cwd)) throw bad("cwd must be a folder");
+    if (ownServer(i.command, i.args || [])) throw bad("that is Vyre's own MCP server; its tools are already offered through the one vyre entry");
     Object.assign(out, { command: i.command, args: i.args || [], cwd: i.cwd || null });
     if (i.headers && Object.keys(i.headers).length) throw bad("headers are for http and sse servers");
   } else {
@@ -234,6 +268,7 @@ export function normalize(i, opts = {}) {
     }
   }
   out.auth = normalizeAuth(i.auth, out);
+  for (const k of [...Object.keys(out.env), ...Object.keys(out.vars)]) if (/^VYRE_/.test(k)) throw bad(`${k.slice(0, 40)}: VYRE_ settings belong to Vyre, not a server`);
   out.scope = normalizeScope(i.scope);
   out.tools = normalizePolicy(i.tools);
   if (i.idle !== undefined && i.idle !== null && !(Number.isInteger(i.idle) && i.idle >= 100 && i.idle <= 24 * 3600_000)) throw bad("idle is milliseconds, from 100 to a day");
@@ -284,6 +319,7 @@ function normalizePolicy(t) {
   if (t.deny !== undefined) { if (!Array.isArray(t.deny) || !t.deny.every(x => typeof x === "string")) throw bad("tools.deny must be a list of tool names"); out.deny = t.deny; }
   if (t.mode !== undefined) {
     if (!isObj(t.mode) || !Object.values(t.mode).every(m => MODES.includes(/** @type {string} */ (m)))) throw bad("tools.mode maps a tool to read, write or off");
+    for (const [k, m] of Object.entries(t.mode)) if (m === "read" && sends(k)) throw bad(`${k.slice(0, 80)} sends as the person, so it is always held; it can be write or off`);
     out.mode = t.mode;
   }
   return out;
@@ -492,7 +528,7 @@ export class Hub {
       const tool = String(t.name);
       if (pol.allow && pol.allow.length && !pol.allow.includes(tool)) continue;
       if (pol.deny && pol.deny.includes(tool)) continue;
-      const c = classify(t, pol.mode && pol.mode[tool]);
+      const c = classify(t, pol.mode && pol.mode[tool], names.get(tool));
       if (c.off) continue;
       out.push({ name: /** @type {string} */ (names.get(tool)), server: r.name, tool, description: cut(String(t.description || ""), 2000),
         input: isObj(t.inputSchema) ? t.inputSchema : { type: "object" }, outward: c.outward, kind: c.kind, annotations: t.annotations });

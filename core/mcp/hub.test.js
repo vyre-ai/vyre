@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { Credentials } from "../connectors/auth.js";
 import { McpError } from "./client.js";
-import { Hub, MIGRATIONS, MAX_NAME, aggregate, classify, normalize, target, looksSecret, whoFrom, checkUrl } from "./hub.js";
+import { Hub, MIGRATIONS, MAX_NAME, aggregate, classify, normalize, target, looksSecret, whoFrom, checkUrl, sends } from "./hub.js";
 
 test("classify: reads by verb or readOnlyHint, never with a send, write or delete word; unknown is outward", () => {
   const out = (name, annotations, mode) => classify({ name, annotations }, mode);
@@ -21,7 +21,19 @@ test("classify: reads by verb or readOnlyHint, never with a send, write or delet
   assert.deepEqual(out("delete_issue"), { outward: true, kind: "delete", off: false });
   assert.equal(out("refund_payment").kind, "spend");
   assert.equal(out("send_message").kind, "send");
-  assert.equal(out("send_message", undefined, "read").outward, false, "the person's mode wins");
+  assert.equal(out("create_issue", undefined, "read").outward, false, "the person's mode wins for a tool that does not send");
+  // A tool that sends is held whatever the mode says: the floor's name rule steps aside for hub
+  // tools only because the hub holds them.
+  for (const n of ["send_message", "postMessage", "reply", "forward_mail", "publish-page", "share_doc", "invite_user", "tweet", "dm_user", "add_comment", "sendmessage", "autoreply", "pOst_update"])
+    assert.deepEqual(out(n, { readOnlyHint: true }, "read"), { outward: true, kind: "send", off: false }, n);
+  assert.equal(out("delete_and_send", undefined, "read").kind, "delete", "the kind is unchanged");
+  assert.equal(out("send_message", undefined, "off").off, true, "off still turns it off");
+  assert.equal(out("send_message", undefined, "write").outward, true);
+  // Judged by the name the floor sees too: a cut aggregated name with a send word is held.
+  assert.equal(classify({ name: "admin_dmx_list" }, "read").outward, false);
+  assert.equal(classify({ name: "admin_dmx_list" }, "read", "srv__admin_dm_a1b2c3").outward, true);
+  assert.equal(sends("list_issues"), false);
+  assert.equal(sends("address_lookup"), false);
   assert.equal(out("list_issues", undefined, "write").outward, true);
   assert.equal(out("list_issues", undefined, "off").off, true);
 });
@@ -52,6 +64,19 @@ test("normalize: a row holds item names, never values", () => {
   assert.throws(() => normalize({ ...base, args: ["--token", "xoxb-" + "1a".repeat(12)] }), /secret/);
   assert.throws(() => normalize({ ...base, auth: { type: "bearer", item: "x" } }), /http and sse/);
   assert.throws(() => normalize({ name: "t", transport: "stdio" }), /command/);
+  // Vyre's own MCP server is never a hub server, however it is spelled.
+  const own = /Vyre's own MCP server; its tools are already offered through the one vyre entry/;
+  assert.throws(() => normalize({ ...base, command: "vyre", args: ["mcp"] }), own);
+  assert.throws(() => normalize({ ...base, command: "/usr/local/bin/vyre", args: ["mcp"] }), own);
+  assert.throws(() => normalize({ ...base, command: "node", args: ["/opt/vyre/bin/vyre.js", "mcp"] }), own);
+  assert.throws(() => normalize({ ...base, command: "npx", args: ["vyre", "mcp"] }), own);
+  assert.throws(() => normalize({ ...base, command: "node", args: ["/opt/vyre/harness/mcp/server.js"] }), own);
+  assert.throws(() => normalize({ ...base, command: "/opt/vyre/harness/mcp/server.js" }), own);
+  assert.equal(normalize({ ...base, command: "vyre-tracker", args: ["mcp"] }).command, "vyre-tracker", "another program is fine");
+  assert.equal(normalize({ ...base, command: "vyre", args: ["status"] }).command, "vyre");
+  assert.throws(() => normalize({ ...base, vars: { VYRE_HOME: "/tmp/x" } }), /VYRE_ settings belong to Vyre, not a server/);
+  assert.throws(() => normalize({ ...base, env: { VYRE_AGENT_KEY: "gh-token" } }), /VYRE_ settings belong to Vyre/);
+  assert.throws(() => normalize({ ...base, auth: { type: "env", item: "gh-token", var: "VYRE_HUB_CHILD" } }), /VYRE_ settings belong to Vyre/);
   const web = { name: "web", transport: "http", url: "https://mcp.northwind.example/mcp" };
   assert.equal(normalize(web).url, "https://mcp.northwind.example/mcp");
   assert.deepEqual(normalize({ ...web, headers: { "X-Team": "northwind" } }).headers, { "x-team": "northwind" });
@@ -64,6 +89,9 @@ test("normalize: a row holds item names, never values", () => {
   assert.throws(() => normalize({ ...web, auth: { type: "bearer", item: "tok", format: "nope" } }), /\{value\}/);
   assert.throws(() => normalize({ ...web, scope: { projects: "harlow-legal" } }), /scope.projects/);
   assert.throws(() => normalize({ ...web, tools: { mode: { x: "maybe" } } }), /read, write or off/);
+  assert.throws(() => normalize({ ...web, tools: { mode: { send_message: "read" } } }), /send_message sends as the person, so it is always held; it can be write or off/);
+  assert.throws(() => normalize({ ...web, tools: { mode: { postComment: "read" } } }), /always held/);
+  assert.deepEqual(normalize({ ...web, tools: { mode: { send_message: "off", reply: "write", list_issues: "read" } } }).tools.mode, { send_message: "off", reply: "write", list_issues: "read" });
   assert.throws(() => normalize({ ...web, idle: 5 }), /idle/);
   assert.throws(() => normalize({ ...web, name: "a".repeat(33) }), /lowercase/);
   assert.throws(() => normalize({ ...web, name: "has_underscore" }), /lowercase/);
