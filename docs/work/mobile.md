@@ -47,12 +47,18 @@ Small changes outside the scope, each through the owner's contract and listed be
 
 - Android (8bcb6f1): builds (assembleDebug, 28/28 JVM tests). First run, five tabs, Capsule,
   Files, Agents, Memory, Vault, Settings. Runs in the emulator against apps/test/world.js and
-  enrolls with a one-time code (27 Sep 2026).
+  enrolls with a one-time code (27 Sep 2026). Now's OPEN-label overlap fixed (fdfa1e4).
+- apps/RELEASE.md (bf56c7f): the owner's steps for real phones, TestFlight and Play.
 
 ## Doing
 - iOS: screens written (20f6262), full xcodebuild waits on the iOS 26.5 simulator runtime
   (downloaded once through the build lock). Then boot one simulator against the test world.
-- Android: the "OPEN" label overlaps the card title on Now.
+- Priority (lead, 27 Sep): the PWA (team pwa) ships first; native follows on the same API and
+  design. Tabs change to Now / Projects / Chat / Find / Agents with pull-down to Find, matching
+  the PWA; tokens from docs/design/TOKENS.md. Asked pwa where Files, Memory, Vault, Settings live.
+- CI (team ci): heavy builds move to GitHub Actions once live. iOS: apps/ios/scripts/build.sh
+  [test]; Android: ./apps/android/gradlew -p apps/android assembleDebug testDebugUnitTest.
+  Until then, compiles only through buildlock.sh; downloads never take the lock.
 
 How to run the phone against the test world (Mac, one emulator or simulator at a time):
 - `VYRE_NO_DIALOGS=1 node apps/test/world.js 4801`
