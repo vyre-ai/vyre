@@ -36,6 +36,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Fix during review: a correction without a check matched every other lesson without one, so a
   second free-text rule was never proposed.
 
+#### Deck
+
+- The onboarding (`deck/onboard/`), the first screen after `vyre up`: six steps, one a screen,
+  each skippable, with live progress for the Claude sign-in, Tailscale sign-in, the address and
+  history indexing, and a project picker over the session catalogue. It calls `onboard.*` (box
+  stream) and answers from fixtures until those land. The one-time token is taken out of the
+  address bar and kept for the tab only. Its board, `docs/design/boards/Onboard.dc.html`, is
+  built from the rendered steps so the two cannot drift.
+- The Deck's foundation: one stylesheet of the tokens (dark, and paper for the light theme), a
+  small `h()` helper that only ever makes text nodes from strings (there is no `innerHTML` in
+  the Deck, so thread text cannot become markup), and one API client. Tools that other streams
+  have not merged answer from `deck/fixtures/*.json`, only with `?fixtures=1` and only when the
+  live tool is missing; otherwise the view names the module that is not running.
+- Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
+  phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
+  a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
+- `deck/test/world.js` and `deck/test/shoot.js`, test helpers only: a temp `VYRE_HOME` seeded with
+  the fictional corpus, a real vyred, a loopback proxy to its socket, and headless Chrome
+  screenshots that can click through a flow.
+
 ### Shared core for the parallel workstreams (2026-09-26)
 
 - `ctx.vault.fetch(name)`: a module gets only the vault items its manifest declares, through the

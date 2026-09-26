@@ -1,0 +1,25 @@
+{
+  "onboard.status": { "owner": false, "name": "", "host": "alex-box", "headless": true,
+    "steps": { "you": "todo", "claude": "todo", "tailscale": "todo", "name": "todo", "history": "todo", "devices": "todo" } },
+  "onboard.you": { "name": "alex", "assistant": "juno" },
+  "onboard.skip": { "ok": true },
+  "onboard.name": { "$by": "action", "cases": {
+    "check": { "available": true, "address": "alex.vyre.run" },
+    "reserve": { "steps": [ { "id": "reserve", "state": "done" }, { "id": "dns", "state": "doing" }, { "id": "cert", "state": "todo" } ] },
+    "status": { "steps": [ { "id": "reserve", "state": "done" }, { "id": "dns", "state": "done", "note": "alex.vyre.run → 100.101.12.7" },
+      { "id": "cert", "state": "done", "note": "Let's Encrypt, renews in 60 days" } ], "url": "https://alex.vyre.run" }
+  } },
+  "onboard.claude": { "$seq": [
+    { "installed": true, "version": "2.1.40", "path": "/usr/local/bin/claude", "signedIn": false },
+    { "state": "waiting", "url": "https://claude.ai/oauth/authorize?example" },
+    { "installed": true, "version": "2.1.40", "path": "/usr/local/bin/claude", "signedIn": false },
+    { "installed": true, "version": "2.1.40", "path": "/usr/local/bin/claude", "signedIn": true, "via": "setup-token" }
+  ] },
+  "onboard.tailscale": { "$seq": [
+    { "installed": true, "state": "off" },
+    { "installed": true, "state": "needs-login", "loginUrl": "https://login.tailscale.com/a/example" },
+    { "installed": true, "state": "needs-login", "loginUrl": "https://login.tailscale.com/a/example" },
+    { "installed": true, "state": "connected", "node": { "ip": "100.101.12.7", "dns": "alex-box.tail-example.ts.net" } }
+  ] },
+  "onboard.finish": { "url": "" }
+}
