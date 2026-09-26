@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule is Spotlight's size
+
+- The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it
+  replaces. `local/capsule/app/main.js`, `capsule.css`.
+
 #### The login keychain and every dialog belong to ~/.vyre alone
 
 - A dev world (`deck/test/world.js`), a demo and a stress run each started a real vyred on a temp
