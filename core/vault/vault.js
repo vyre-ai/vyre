@@ -30,6 +30,7 @@ import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
 import { Share, SHARE_MIGRATIONS } from "./share.js";
+import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -72,6 +73,7 @@ export const MIGRATIONS = [
    ALTER TABLE vault_passes ADD COLUMN mac TEXT;
    ALTER TABLE vault_devices ADD COLUMN mac TEXT;`,
   ...SHARE_MIGRATIONS,
+  ...SHARED_MIGRATIONS,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -97,6 +99,7 @@ const AGENT_VK = path.join("vaults", "agents.json");
 const STATE = "state.json";
 const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
 const locked = message => Object.assign(new Error(message), { code: "locked" });
+const isShared = cls => String(cls || "").startsWith("shared:");
 
 export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set", "ssh-key"];
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -158,6 +161,8 @@ export class Vault {
     this.flagged = new Set();
     /** People, signed cards and tickets, relay guards (share.js). */
     this.share = new Share(this);
+    /** Shared vaults: manifests, sync, and the keys of `shared:<id>` classes (shared.js). */
+    this.shared = new Shared(this);
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
@@ -509,7 +514,7 @@ export class Vault {
   }
 
   /** Where a row's sealed copy sits in the key hierarchy. */
-  at(r) { return { vault: r.vault || AGENTS, kv: KV, id: r.id, ver: Number(r.ver || 0), name: r.name }; }
+  at(r) { return { vault: r.vault || AGENTS, kv: isShared(r.vault) ? this.shared.kvOf(r.vault) : KV, id: r.id, ver: Number(r.ver || 0), name: r.name }; }
 
   mustRow(name) {
     const r = this.row(name);
@@ -529,7 +534,7 @@ export class Vault {
   async open(r) {
     const vk = await this.key();
     if (!this.rowOk("vault_items", r)) throw new Error(`the record for ${r.name} failed its check and is ignored`);
-    const k = r.vault === PERSONAL ? this.pvk : vk;
+    const k = r.vault === PERSONAL ? this.pvk : isShared(r.vault) ? await this.shared.keyFor(r.vault) : vk;
     if (!k) throw locked(`${r.name} is in your personal vault, which is locked · vyre vault account unlock`);
     const sealed = readSealed(this.dir, r.id);
     if (!sealed) throw new Error(`the sealed copy of ${r.name} is missing`);
@@ -623,6 +628,7 @@ export class Vault {
     // A row that fails its check can still be deleted: removing is always safe.
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
     if (!r) throw new Error(`no item named ${name}`);
+    if (isShared(r.vault)) throw new Error(`${name} is in a shared vault; deleting from a shared vault is not built yet`);
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
@@ -943,11 +949,14 @@ export class Vault {
   }
 
   /** Someone leaves: every pass they hold ends, their card is forgotten, and the list to rotate. */
-  offboard({ person }, caller) {
+  async offboard({ person }, caller) {
     const all = this.db.prepare("SELECT * FROM vault_passes WHERE holder=?").all(person);
-    const known = this.db.prepare("SELECT 1 FROM vault_people WHERE name=?").get(person);
-    if (!all.length && !known) throw new Error(`no one called ${person} holds anything`);
-    const revoked = [], rotate = new Set();
+    const known = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_people WHERE name=?").get(person));
+    // Shared vaults first, while their pinned key is still known: out of every vault this Vyre
+    // can administer, with a new key there and every item they could read flagged.
+    const shared = await this.shared.removeEverywhere(known ? known.sign : null, person, caller);
+    if (!all.length && !known && !shared.vaults.length) throw new Error(`no one called ${person} holds anything`);
+    const revoked = [], rotate = new Set(shared.rotate);
     for (const p of all) {
       if (!p.revoked) {
         const good = this.rowOk("vault_passes", p);
@@ -960,7 +969,7 @@ export class Vault {
     this.db.prepare("DELETE FROM vault_people WHERE name=?").run(person);
     this.audit("offboard", null, caller, true, `${person}: ${revoked.length} passes, ${rotate.size} to rotate`);
     this.emit("person.offboarded", { person, revoked: revoked.length, rotate: rotate.size });
-    return { person, revoked, rotate: [...rotate].sort() };
+    return { person, revoked, rotate: [...rotate].sort(), ...(shared.vaults.length ? { vaults: shared.vaults } : {}) };
   }
 
   /**

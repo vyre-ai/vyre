@@ -392,6 +392,9 @@ async function put(args) {
   const r = await tool("vault.put", input);
   for (const k of Object.keys(fields)) fields[k] = "";
   if (r.error) return fail(r);
+  // A `<vault>/<item>` name went to a shared vault: a revision, a merge, or a conflict kept aside.
+  if (r.data.conflict) { say(`  ${beacon("conflict")} ${bold(r.data.name)} ${dim(`· someone changed the same field first; yours is kept as a conflict revision beside rev ${r.data.current}`)}`); return 0; }
+  if (r.data.rev) { say(`  ${signal(r.data.merged ? "merged" : "shared")} ${bold(r.data.name)} ${dim(`· rev ${r.data.rev} in ${r.data.vault}`)}`); return 0; }
   say(`  ${signal(r.data.created ? "stored" : "updated")} ${bold(r.data.name)} ${dim(`· ${r.data.kind}${hosts.length ? " · sent only to " + hosts.join(", ") : ""}`)}`);
   return 0;
 }

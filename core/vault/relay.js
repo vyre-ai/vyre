@@ -224,6 +224,35 @@ export function checkEnvelope(env, { holderKey, audience, now = Date.now(), seen
   return null;
 }
 
+const SYNC_TAG = "vyre-sync-v1";
+const syncBody = e => ({ tag: SYNC_TAG, v: e.v, aud: e.aud, from: e.from, vault: e.vault, op: e.op, body: e.body, ts: e.ts, nonce: e.nonce });
+
+/**
+ * A shared-vault sync request, signed by a member's device key for one home (`aud`). The same
+ * guards as a relay envelope: a domain tag, the audience, a timestamp and a nonce.
+ * @param {{ vault: string, op: string, body: any, from: string, privDer: string, aud: string, now?: number }} a
+ */
+export function syncEnvelope({ vault, op, body, from, privDer, aud, now = Date.now() }) {
+  const e = { v: 1, aud: String(aud), from, vault, op, body, ts: now, nonce: crypto.randomBytes(16).toString("base64url") };
+  return { ...e, sig: sign(privDer, syncBody(e)) };
+}
+
+/**
+ * Check a sync envelope. `key` is the sender's sign key, which the caller has already found in
+ * the vault's manifest. Returns null when valid, or a short reason.
+ * @param {any} env @param {{ audience: string, now?: number, seen: { prune(now: number): void, claim(nonce: string, ts: number): boolean } }} o
+ */
+export function checkSync(env, { audience, now = Date.now(), seen }) {
+  seen.prune(now);
+  if (!env || typeof env !== "object" || env.v !== 1 || !isStr(env.from) || !isStr(env.vault) || !isStr(env.op) || !isStr(env.nonce)
+    || !isStr(env.sig) || typeof env.ts !== "number") return "malformed sync request";
+  if (env.aud !== audience) return "this request was signed for another home";
+  if (!verify(env.from, syncBody(env), env.sig)) return "bad signature";
+  if (Math.abs(now - env.ts) > SKEW_MS) return "timestamp outside 60 s window";
+  if (!seen.claim(env.nonce, env.ts)) return "replayed nonce";
+  return null;
+}
+
 /** 127.0.0.0/8, ::1 and localhost. */
 export function isLoopback(host) {
   const h = String(host || "").replace(/^\[|\]$/g, "").toLowerCase();
@@ -410,15 +439,17 @@ async function readJson(req) {
  * @param {{ host?: string, port?: number, identity?: string|null, onRelay: (env: any, meta: { remoteAddress?: string, login?: string|null }) => Promise<{ status: number, body: any }> }} o
  * @returns {Promise<{ url: string, close: () => Promise<void> }>}
  */
-export async function serve({ host = "127.0.0.1", port = 0, identity = null, onRelay }) {
+export async function serve({ host = "127.0.0.1", port = 0, identity = null, onRelay, onSync = null }) {
   checkBind(host, identity);
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url || "/", "http://relay").pathname;
-      if (req.method !== "POST" || path !== "/v1/relay") return reply(res, 404, { error: { code: "not_found", message: `${req.method} ${path}` } });
+      // /v1/sync: shared vaults, answered only by a home that has them (share.js, shared.js).
+      const handler = path === "/v1/relay" ? onRelay : path === "/v1/sync" && onSync ? onSync : null;
+      if (req.method !== "POST" || !handler) return reply(res, 404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       const env = await readJson(req);
       const login = identity === "tailscale" ? req.headers["tailscale-user-login"] : null;
-      const out = await onRelay(env, { remoteAddress: req.socket.remoteAddress, login: typeof login === "string" && login ? login : null });
+      const out = await handler(env, { remoteAddress: req.socket.remoteAddress, login: typeof login === "string" && login ? login : null });
       reply(res, out?.status || 200, out?.body ?? {});
     } catch (e) {
       if (e instanceof HttpError) return reply(res, e.status, { error: { code: e.code, message: e.message } });
@@ -442,9 +473,9 @@ export async function serve({ host = "127.0.0.1", port = 0, identity = null, onR
  * @param {string} relayUrl @param {Envelope} env @param {{ timeoutMs?: number }} [o]
  * @returns {Promise<any>}
  */
-export async function callRelay(relayUrl, env, { timeoutMs = 45000 } = {}) {
+export async function callRelay(relayUrl, env, { timeoutMs = 45000, route = "/v1/relay" } = {}) {
   let res;
-  const target = new URL("/v1/relay", relayUrl);
+  const target = new URL(route, relayUrl);
   try {
     res = await fetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(env), redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {

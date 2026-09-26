@@ -23,6 +23,7 @@ import * as account from "./tools/account.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
+import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as deckTools from "./tools/deck.js";
@@ -49,7 +50,7 @@ export default {
     }
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity, onRelay: (env, meta) => vault.onRelay(env, meta) });
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity, onRelay: (env, meta) => vault.onRelay(env, meta), onSync: env => vault.shared.onSync(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
@@ -106,6 +107,12 @@ export default {
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
         if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
+        // `<vault>/<item>` goes into a shared vault (shared.js); modules put only their own items.
+        const slash = String(input.name).indexOf("/");
+        if (slash > 0) {
+          if (mod) throw new Error("modules cannot write to shared vaults");
+          return vault.shared.put({ ...input, vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
+        }
         if (mod) {
           const old = vault.row(input.name);
           if (old && old.origin !== caller) throw new Error(`${input.name} was not made by ${mod}, so ${mod} cannot replace it`);
@@ -231,6 +238,7 @@ export default {
       presence("Offboard someone", ({ person }) => `Revoke every pass ${String(person).slice(0, 64)} holds and forget their card`));
 
     const kits = shareTools.register({ ctx, vault, tool });
+    vaultsTools.register({ vault, tool });
 
     const surfaces = registerSurfaces({ ctx, vault });
 
