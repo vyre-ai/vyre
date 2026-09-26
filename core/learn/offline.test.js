@@ -77,6 +77,8 @@ test("offlineTouched + offlineStop: code without the changelog is sent back; fil
   writeSnapshot(root, [lesson(1, "update CHANGELOG.md whenever you change code")]);
   const edit = (prompt_id, file_path) => offlineTouched({ root, session: "s1", prompt_id, cwd: CWD, tool: "Edit", input: { file_path } });
   edit("p0", "src/old.js");
+  edit("p0", "CHANGELOG.md");
+  assert.deepEqual(offlineStop({ root, session: "s1", prompt_id: "p0", stop_hook_active: false }), { decision: null }, "the older prompt's turn passed its Stop");
   assert.deepEqual(offlineStop({ root, session: "s1", prompt_id: "p1", stop_hook_active: false }), { decision: null }, "src/old.js was an older prompt");
   edit("p1", "src/intake.js");
   const b = offlineStop({ root, session: "s1", prompt_id: "p1", stop_hook_active: false });
@@ -213,4 +215,16 @@ test("offline: with lessons.json gone, the lessons are read read-only from vyre.
   assert.deepEqual(fromStore(tempHome(t)), [], "no store: nothing, and no throw");
   fs.writeFileSync(path.join(root, "vyre.db"), "not a database");
   assert.deepEqual(fromStore(root), [], "a broken store: nothing, and no throw");
+});
+
+test("offline: a made-up prompt_id mid-turn keeps the turn's edits; after a Stop passes, a new prompt starts clean", t => {
+  const root = tempHome(t);
+  writeSnapshot(root, [lesson(1, "update CHANGELOG.md whenever you change code")]);
+  const base = { root, session: "s1", cwd: CWD };
+  offlineTouched({ ...base, prompt_id: "p1", tool: "Edit", input: { file_path: "src/a.js" } });
+  assert.equal(offlineStop({ ...base, prompt_id: "p1", stop_hook_active: false }).decision, "block");
+  offlineTool({ ...base, prompt_id: "forged", tool: "Bash", input: { command: "ls" } });
+  assert.equal(offlineStop({ ...base, prompt_id: "forged", stop_hook_active: true }).decision, "block", "the edit is still this turn's");
+  assert.equal(offlineStop({ ...base, prompt_id: "forged", stop_hook_active: true }).decision, null, "the cap ends it");
+  assert.equal(offlineStop({ ...base, prompt_id: "p2", stop_hook_active: false }).decision, null, "a new turn after a passed Stop starts clean");
 });

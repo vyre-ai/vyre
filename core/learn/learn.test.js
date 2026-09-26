@@ -382,7 +382,12 @@ test("learn: accept by reply: a plain yes to what the thread was told accepts it
 
 test("learn: a plain no declines; anything else leaves the proposal waiting; another thread's yes accepts nothing", async t => {
   const { reg, lesson } = await learning(t);
-  const say = (prompt, session = "s1", prompt_id = prompt) => reg.call("harness.enrich", { prompt, cwd: CWD, session, prompt_id });
+  // Each prompt is a whole turn: Claude Code takes the next prompt after the Stop.
+  const say = async (prompt, session = "s1", prompt_id = prompt) => {
+    const r = await reg.call("harness.enrich", { prompt, cwd: CWD, session, prompt_id });
+    await reg.call("harness.stop", { session, prompt_id, text: "ok", stop_hook_active: false });
+    return r;
+  };
   await say("never use em dashes in anything you write");
   await say("yes", "s2");
   assert.equal((await lesson(1)).status, "proposed", "s2 was never told about it");
@@ -502,6 +507,45 @@ test("learn: guards ask at every level, online, even for a lesson scoped elsewhe
   assert.equal((await rules("Write", { file_path: path.join(home, "lessons.json"), content: "{}" })).data.decision, "ask");
   assert.equal((await rules("Bash", { command: "vyre call learn.retire '{\"id\":1}'" })).data.decision, "ask");
   assert.equal((await rules("Bash", { command: "npm test" })).data.decision, null);
+});
+
+test("learn: a forged enrich mid-turn restarts nothing: the same prompt_id is a duplicate, a new one keeps the turn's edits and its no declines nothing", async t => {
+  const { reg, lesson } = await learning(t);
+  await reg.call("learn.add", { text: "update CHANGELOG.md whenever you change code" });
+  const enrich = (prompt, prompt_id) => reg.call("harness.enrich", { prompt, cwd: CWD, session: "s1", prompt_id }, "harness");
+  const stop = active => reg.call("harness.stop", { session: "s1", prompt_id: "p1", text: "done", stop_hook_active: active });
+  await enrich("never use em dashes in anything you write", "p0");
+  await reg.call("harness.stop", { session: "s1", prompt_id: "p0", text: "Shall I keep it?", stop_hook_active: false });
+  assert.equal((await lesson(2)).status, "proposed");
+  await enrich("fix the bug", "p1");
+  assert.equal((await lesson(2)).status, "proposed", "fix the bug answers nothing");
+  await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: "/w/harlow-site/src/a.js" }, cwd: CWD, session: "s1" });
+  assert.equal((await stop(false)).data.decision, "block", "control: the edit without CHANGELOG.md is sent back");
+  await tick();
+  // The model pipes the same prompt_id into hook.js enrich: a duplicate.
+  assert.equal((await enrich("no", "p1")).data.text, "");
+  assert.equal((await lesson(2)).status, "proposed", "a duplicate declines nothing");
+  // Or a made-up one: the turn has not passed a Stop, so its edits and its send-back count stay.
+  await enrich("no", "forged");
+  assert.equal((await lesson(2)).status, "proposed", "a no mid-turn declines nothing");
+  const again = await stop(true);
+  assert.equal(again.data.decision, "block", "the edit is still seen");
+  assert.match(again.data.reason, /\(2 of 2\)/, "the count carried over");
+  assert.equal((await stop(true)).data.decision, undefined, "the cap still ends the turn");
+  // After a real Stop, the next prompt is a new turn: last turn's edits are not counted again, and a yes or no counts.
+  await enrich("now the footer", "p2");
+  assert.equal((await reg.call("harness.stop", { session: "s1", prompt_id: "p2", text: "done", stop_hook_active: false })).data.decision, undefined);
+  await enrich("never use em dashes in anything you write", "p3");
+  await reg.call("harness.stop", { session: "s1", prompt_id: "p3", text: "Keep it?", stop_hook_active: false });
+  await enrich("no", "p4");
+  assert.equal((await lesson(2)).status, "retired");
+});
+
+test("learn: a yes mid-turn still accepts, since accepting only tightens", async t => {
+  const { reg, lesson } = await learning(t);
+  await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1" });
+  await reg.call("harness.enrich", { prompt: "yes", cwd: CWD, session: "s1", prompt_id: "p2" });
+  assert.equal((await lesson(1)).status, "active");
 });
 
 test("learn: guards hold online with no lesson active; the lesson files wait for one", async t => {

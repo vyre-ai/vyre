@@ -132,13 +132,16 @@ const stateFile = (root, session) => path.join(dir(root), String(session || "non
  * first. `changed` is the `n` of the newest edit; commands with a higher `n` came after it.
  */
 function load(root, session, prompt_id) {
+  /** @type {{ prompt: string|null, blocks: number, touched: any[], ran: any[], n: number, changed: number, stopped?: boolean }} */
   let s = { prompt: null, blocks: 0, touched: [], ran: [], n: 0, changed: 0 };
   try {
     const saved = JSON.parse(fs.readFileSync(stateFile(root, session), "utf8"));
     // A file written before the counter kept a timestamp in `changed`; it would outrank every `n`.
     s = Number.isInteger(saved.n) ? { ...s, ...saved } : { ...s, ...saved, n: 0, changed: 0 };
   } catch {}
-  if (prompt_id && s.prompt !== prompt_id) s = { ...s, prompt: prompt_id, touched: [] };
+  // A new prompt_id starts a new turn only after the last one passed a Stop. Before that (a hook
+  // run by hand with a made-up prompt_id, or a turn the user interrupted) its edits carry over.
+  if (prompt_id && s.prompt !== prompt_id) s = { ...s, prompt: prompt_id, touched: s.stopped === false ? s.touched : [], stopped: false };
   return s;
 }
 function save(root, session, s) {
@@ -222,6 +225,7 @@ export function offlineStop({ root, session, prompt_id, agent, cwd, text, stop_h
     return { decision: "block", reason: sentBack(s.blocks, back) };
   }
   for (const { l } of failed) log(root, { lesson: l.id, kind: "broken", session: session || null });
+  s.stopped = true;
   save(root, session, s);
   return { decision: null };
 }

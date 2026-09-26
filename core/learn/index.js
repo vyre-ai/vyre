@@ -95,6 +95,9 @@ const MIGRATIONS = [
   JOBS_MIGRATION,
   METRICS_MIGRATION,
   ...SKILL_MIGRATIONS,
+  // stopped: whether the thread's turn has passed a Stop. A prompt that arrives while it has not
+  // (a forged enrich, or a turn the user interrupted) does not wipe the turn's edits or its count.
+  `ALTER TABLE learn_turns ADD COLUMN stopped INTEGER NOT NULL DEFAULT 1;`,
 ];
 
 export { MAX_BLOCKS };
@@ -178,12 +181,12 @@ export default {
     // Turns: learn.signal marks one starting (every prompt passes through Enrich); Stop counts
     // how often it sent the turn back. Claude Code's prompt_id names the turn when it sends one.
     const turnOf = session => db.prepare("SELECT * FROM learn_turns WHERE session = ?").get(session);
-    const saveTurn = t => db.prepare(`INSERT INTO learn_turns (session, prompt, seq, started, blocks, owed, asked, project, agent) VALUES (?,?,?,?,?,?,?,?,?)
+    const saveTurn = t => db.prepare(`INSERT INTO learn_turns (session, prompt, seq, started, blocks, owed, asked, project, agent, stopped) VALUES (?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT (session) DO UPDATE SET prompt = excluded.prompt, seq = excluded.seq, started = excluded.started, blocks = excluded.blocks, owed = excluded.owed,
-        asked = excluded.asked, project = excluded.project, agent = excluded.agent`)
-      .run(t.session, t.prompt ?? null, t.seq, t.started, t.blocks, t.owed, t.asked || "[]", t.project ?? null, t.agent ?? null);
+        asked = excluded.asked, project = excluded.project, agent = excluded.agent, stopped = excluded.stopped`)
+      .run(t.session, t.prompt ?? null, t.seq, t.started, t.blocks, t.owed, t.asked || "[]", t.project ?? null, t.agent ?? null, t.stopped == null ? 1 : Number(t.stopped) ? 1 : 0);
     const turn = (session, prompt_id) => {
-      const t = turnOf(session) || { session, prompt: null, seq: 0, started: 0, blocks: 0, owed: "[]", asked: "[]" };
+      const t = turnOf(session) || { session, prompt: null, seq: 0, started: 0, blocks: 0, owed: "[]", asked: "[]", stopped: 1 };
       // A turn Enrich never saw (vyred came up mid-turn): a new turn from here. Its block count is
       // not reset by a new prompt_id: only a real prompt (learn.signal) or a Stop that Claude Code
       // says is not a continuation (stop_hook_active false) starts the count over, so a turn at
@@ -241,9 +244,9 @@ export default {
       return lessons.filter(l => l.scope === "all" || (l.scope.project && here(l.scope.project)) || (l.scope.agent && l.scope.agent === agent));
     };
 
-    /** Files changed in this thread since `since`, from the Harness. */
-    const touchedSince = async (session, since) => {
-      const r = await ctx.call("harness.touched", { session, limit: 500 });
+    /** Files changed in this thread since `since`, newest first, from the Harness. */
+    const touchedSince = async (session, since, limit = 500) => {
+      const r = await ctx.call("harness.touched", { session, limit });
       return r && Array.isArray(r.data) ? r.data.filter(f => f.at >= since) : [];
     };
 
@@ -762,7 +765,16 @@ export default {
       description: "Enrich: a prompt starts a turn. Opens with lessons broken last turn; takes a plain yes or no as the answer to proposals told last prompt; proposes a lesson when the prompt is a correction; and returns reminders whose `when` matches.",
       input: { type: "object", required: ["session"], properties: { session: { type: "string" }, prompt_id: { type: "string" }, prompt: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" } } },
       run: async ({ session, prompt_id, prompt = "", cwd, agent }) => {
-        const t = turnOf(session) || { session, seq: -1, owed: "[]", asked: "[]" };
+        const t = turnOf(session) || { session, seq: -1, owed: "[]", asked: "[]", stopped: 1 };
+        // The same prompt_id again is the same prompt: nothing restarts, nothing is answered or
+        // proposed. Claude Code sends one UserPromptSubmit per prompt; a second is a forge (a
+        // model piping JSON into hook.js) or a retry.
+        if (prompt_id && t.prompt === prompt_id) return { text: "", seq: t.seq, proposed: null, broke: [], duplicate: true };
+        // A prompt while the last turn has not passed a Stop: a forge mid-turn, or a turn the user
+        // interrupted. Its send-backs and broken lessons carry over, and so do its edits: Stop
+        // still sees what changed since the turn really started. Its "no" declines nothing.
+        const open = Boolean(t.started) && !Number(t.stopped ?? 1);
+        const keep = open && (await touchedSince(session, Number(t.started), 1)).length > 0;
         const owed = /** @type {number[]} */ (JSON.parse(t.owed || "[]"));
         const waiting = /** @type {number[]} */ (JSON.parse(t.asked || "[]"));
         const seq = t.seq + 1;
@@ -771,14 +783,16 @@ export default {
         const asked = [];
 
         // A turn that ended with a lesson broken: the next prompt opens with it.
-        const late = owed.map(get).filter(l => l && l.status === "active");
+        const late = open ? [] : owed.map(get).filter(l => l && l.status === "active");
         if (late.length) lines.push(`Last turn broke ${late.length === 1 ? "this lesson" : "these lessons"}. Keep ${late.length === 1 ? "it" : "them"} this turn.`, ...late.map(l => `- Lesson ${l.id}: ${l.rule}`));
 
         // Accept by reply. This prompt is what the user typed (Claude Code fills it), so a plain
         // yes to a proposal told last prompt accepts it here, and a plain no declines it. A lesson
         // named by number may be any proposal this thread was told about.
+        // Accepting only makes Vyre stricter, so a yes counts even then; a no waits for a real turn.
         const answer = reply(prompt);
-        if (answer) {
+        if (answer && !answer.yes && open) asked.push(...waiting);
+        else if (answer) {
           const told = id => waiting.includes(id) || Boolean(db.prepare("SELECT 1 FROM learn_signals WHERE session = ? AND lesson = ? AND kind IN ('prompt','edited','proposed') LIMIT 1").get(session, id));
           const ids = answer.id ? (told(answer.id) ? [answer.id] : []) : waiting;
           for (const l of ids.map(get)) {
@@ -856,13 +870,15 @@ export default {
         }
 
         // The turn before this one was clean unless this prompt corrects it or Stop sent it back.
-        if (t.seq >= 0 && t.started) {
+        // A turn that never passed a Stop is not over, so it is not judged.
+        if (t.seq >= 0 && t.started && !open) {
           const clean = !d && !soft && !(answer && !answer.yes) && !(Number(t.blocks) > 0) && !owed.length;
           if (skills.mark({ session, seq: t.seq, clean }) > 0) await skillCandidates();
         }
         await sweep(project);
 
-        saveTurn({ session, prompt: prompt_id || null, seq, started: now(), blocks: 0, owed: "[]", asked: JSON.stringify(asked), project, agent: agent || null });
+        saveTurn({ session, prompt: prompt_id || null, seq, started: keep ? Number(t.started) : now(), blocks: open ? Number(t.blocks) : 0,
+          owed: open ? JSON.stringify(owed) : "[]", asked: JSON.stringify([...new Set(asked)]), project, agent: agent || null, stopped: 0 });
         const reminders = lessons.filter(l => !l.check && !l.dormant && l.level !== "block" && matches(l.when, prompt));
         if (reminders.length) lines.push("Lessons the user taught. Follow them:", ...reminders.map(l => `- ${l.rule}`));
         void jobs.pump();
@@ -987,7 +1003,7 @@ export default {
         return { decision: "block", reason: sentBack(t.blocks, back), lessons: back.map(f => f.l.id) };
       }
       for (const { l } of failed) await broke(l, session, owe, "stop");
-      saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]) });
+      saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]), stopped: 1 });
       if (session) {
         try { await ended(session, t, rows, commands); } catch (e) { ctx.log("turn not read: " + /** @type {Error} */ (e).message); }
       }
