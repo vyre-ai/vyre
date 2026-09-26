@@ -329,6 +329,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Webhooks: a watcher with schedule `webhook` gets `POST /v1/watchers/<name>/hook` with a token
   made at create, checked in constant time; the JSON body reaches `watch` as `hook`. Calls that
   arrive mid-run are queued, not dropped.
+- On the real vault: every fetch names the watcher, so the vault releases only against a grant
+  for that one watcher; a grant to one watcher is not a grant to another listing the same item
+  (tested). `vault.fetch(name, { field })` inside a watcher picks a field (a login's username,
+  an env set's key), passed through as `ctx.vault.fetch(name, { watcher, field })`.
 - `vyre watchers [test|create|pause|resume|logs|items] [name]`.
 - Shared core, kept minimal: the registry gains `hook: true` tools (reachable only as caller
   `hook` through vyred's new `POST /v1/<module>/<name>/hook` route, never listed or offered to
@@ -337,7 +341,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   it now loads before Claude asks questions, beats `/loop`, calls `watchers_list` for the folder
   instead of guessing `~/.vyre` (one session wrote there), calls the MCP tools directly rather
   than from a shell, never runs `watch.js` with plain `node`, fetches in parallel, logs what it
-  read, and does not widen a filter to manufacture items.
+  read, and does not widen a filter to manufacture items. When a watcher needs a vault item, it
+  gives the user the exact `vyre vault grant <item> watchers --watcher <name>` before the dry run,
+  since a grant can only come from a person.
+  A grant Claude asks for through `vault_grant` stays pending until a person runs
+  `vyre vault approve <id>` (listed by `vyre vault pending`); the skill says so. It also warns that
+  a ranked list such as a front page has no id cursor: skipping ids below the highest seen drops
+  older stories that climb onto it, which Haiku wrote in a real session.
 
 #### Capsule
 

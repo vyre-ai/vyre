@@ -31,7 +31,7 @@ export const LIMITS = { items: 1000, itemBytes: 4000, logLines: 200, lineChars: 
 /**
  * Run a watcher once.
  * @param {{ dir: string, needs: string[], since: any, hook?: any, timeoutMs: number,
- *   fetch: (name: string) => Promise<string>, signal?: AbortSignal }} opts
+ *   fetch: (name: string, field?: string) => Promise<string>, signal?: AbortSignal }} opts
  * @returns {Promise<Result>}
  */
 export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal }) {
@@ -69,7 +69,7 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
         const name = String(m.name);
         if (!needs.includes(name)) { child.connected && child.send({ t: "vault", id: m.id, error: `this watcher does not list "${name}" under needs in watcher.json` }); return; }
         try {
-          const value = String(await fetch(name));
+          const value = String(await fetch(name, m.field));
           released.push(value);
           child.connected && child.send({ t: "vault", id: m.id, value });
         } catch (e) { child.connected && child.send({ t: "vault", id: m.id, error: /** @type {Error} */ (e).message }); }
