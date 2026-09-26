@@ -38,3 +38,21 @@ test("events: listeners hear exact, family and all patterns; one bad listener st
   ev.emit("w", "watcher.fired", {});
   assert.deepEqual(heard, ["exact", "all"]);
 });
+
+test("events: prune deletes only the matching rows", t => {
+  const ev = fresh(t);
+  const at = (type, payload, thread, source = "threads") => ev.emit(source, type, payload, { thread }).id;
+  const d1 = at("thread.text", { delta: "he" }, "a");
+  const whole = at("thread.text", { text: "hello", done: true }, "a");
+  const other = at("thread.text", { delta: "yo" }, "b");
+  const tool = at("thread.tool", { delta: "not text" }, "a");
+  const foreign = at("thread.text", { delta: "x" }, "a", "someone");
+  const fin = at("thread.finished", { ok: true }, "a");
+  const later = at("thread.text", { delta: "next turn" }, "a");
+  assert.equal(ev.prune({ type: "thread.text", before: fin, source: "threads", thread: "a", has: "delta" }), 1);
+  const left = ev.since(0, { limit: 100 }).map(e => e.id);
+  assert.deepEqual(left, [whole, other, tool, foreign, fin, later], "other threads, types, sources and later rows stay");
+  assert.ok(!left.includes(d1));
+  assert.throws(() => ev.prune({ type: "thread.text", before: fin, has: "a'); DROP TABLE events; --" }), /not a payload key/);
+  assert.throws(() => ev.prune({ type: "thread.text" }), /event id/);
+});

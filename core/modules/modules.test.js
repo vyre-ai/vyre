@@ -76,6 +76,21 @@ test("modules: a module cannot register a tool or emit an event it did not decla
   assert.match(reg.status()[0].error, /does not declare/);
 });
 
+test("modules: ctx.events.prune takes only the module's own declared types", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async ({ type }) => ctx.events.prune(type, { before: 1e9 }) });
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["notes", good, src]]);
+  const ev = reg.deps.events;
+  ev.emit("notes", "note.added", { text: "mine" });
+  ev.emit("other", "note.added", { text: "not mine" });
+  ev.emit("other", "thing.happened", {});
+  assert.match((await reg.call("notes.add", { type: "thing.happened" })).error.message, /pruned thing.happened, which its manifest does not declare/);
+  assert.deepEqual(await reg.call("notes.add", { type: "note.added" }), { data: 1 });
+  assert.deepEqual(ev.since(0).map(e => e.source + ":" + e.type), ["other:note.added", "other:thing.happened"], "a module prunes only rows it emitted");
+});
+
 test("modules: every call passes through the rules, whoever makes it", async t => {
   const seen = [];
   const reg = await registry(t, [["notes", good, echo]], {
