@@ -26,8 +26,9 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 - vyre update keeps the pending onboarding link (lead's add): `vyre up --keep-link`,
   `onboard.link {mint:false}`, link hash and sessions survive a vyred restart. Tests:
-  test/onboard.test.js (restart survival), core/cli/commands/up.test.js. Commit stamping
-  {version, commit}: offered to the integrator (who also has it); waiting for its answer.
+  test/onboard.test.js (restart survival), core/cli/commands/up.test.js. 
+- Commit stamp (lead assigned it to me): build.json from build-site.sh; /v1/health, system.info,
+  vyre status. Test core/daemon/build.test.js.
 
 ## Doing
 
@@ -46,6 +47,8 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - onboard (owner: onboarding team): `onboard.link` takes `{mint:false}` and then returns
   `{url:null, pending, expires, port}`; loopback keeps hashes in <VYRE_HOME>/onboard-link.json.
 - box/vyre: `update` ends with `cli up --keep-link`.
+- daemon/system: /v1/health and system.info gain `commit`, `dirty`; scripts/build-site.sh
+  stamps build.json; package.json files gains build.json.
 
 - recall (owner: recall team): `package.json` has no optionalDependencies; `core/recall/embed.js`
   installs the library on first use (`install`, `installed`, `load({ runtime, npm })`, `PACKAGE`,

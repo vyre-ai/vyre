@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A release says which commit it is
+
+- `scripts/build-site.sh` (the step that packs vyre.tgz for npm and for the box image) writes
+  `build.json` `{version, commit, dirty}` into the package; gitignored in the checkout.
+  `core/daemon/build.js` reads it, or in a checkout asks git once, lazily (never on a plain CLI
+  start). `/v1/health` and `system.info` report `commit` and `dirty` next to `version`, and
+  `vyre status` prints `0.0.1 · 1a2b3c4` (`+dirty` when it was).
+
 #### `vyre update` no longer voids the set-up link the user was sent
 
 - `vyre update` on a box ended with `vyre up`, which minted a new onboarding link and voided the

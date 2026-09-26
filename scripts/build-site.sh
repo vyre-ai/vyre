@@ -84,6 +84,17 @@ fi
 if [ -f "$out/Vyre-mac.zip.sha256" ]; then cut -d' ' -f1 "$out/Vyre-mac.zip.sha256" >"$src/box/Vyre-mac.sha256"
 else rm -f "$src/box/Vyre-mac.sha256"
 fi
+# Which commit this is, so `vyre status`, /v1/health and system.info can say (core/daemon/build.js).
+# dirty ignores the files this script itself writes into --src. Gitignored there.
+if git -C "$src" rev-parse --verify HEAD >/dev/null 2>&1; then
+  commit=$(git -C "$src" rev-parse HEAD)
+  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no)" ]; then dirty=true; else dirty=false; fi
+  printf '{"version":"%s","commit":"%s","dirty":%s}\n' \
+    "$(node -p 'require(process.argv[1]).version' "$src/package.json")" "$commit" "$dirty" >"$src/build.json"
+else
+  echo "build-site: $src is not a git checkout; the package says no commit" >&2
+  rm -f "$src/build.json"
+fi
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"

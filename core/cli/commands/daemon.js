@@ -1,6 +1,7 @@
 // @ts-check
 // Commands about vyred itself. `vyre up` lives in up.js.
 
+import { label } from "../../daemon/build.js";
 import { request, call } from "../../daemon/client.js";
 import { stop } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
@@ -31,7 +32,7 @@ export default [
       // The first model download is the one slow thing a fresh install does; say so once.
       const why = (await call("recall.status")).data?.vectors?.why;
       if (json()) return emit({ running: true, ...d, ...(typeof why === "string" && why.startsWith("downloading") ? { note: why } : {}) });
-      out(`  vyred ${signal("running")} ${dim(`· ${d.version} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
+      out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (typeof why === "string" && why.startsWith("downloading")) out(dim(`  ${why}`));
       return 0;
