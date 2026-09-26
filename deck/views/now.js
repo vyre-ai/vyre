@@ -18,23 +18,41 @@ export default async function now(ctx) {
   const date = h("div", { class: "lbl" }, today());
   const title = h("h1", { class: "h1 now-title" }, " ");
   const sub = h("p", { class: "muted" }, " ");
+  const assistant = h("div", { class: "now-assistant" });
   const needsBox = h("section", { class: "now-needs", "aria-labelledby": "needs-h" });
   const working = h("section", { class: "now-sec", "aria-labelledby": "working-h" });
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
+  const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
 
   put(ctx.root, h("div", { class: "now" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
-      h("div", { class: "now-head" }, date, title, sub),
-      needsBox, working, learned)));
+      h("div", { class: "now-head" }, date, title, sub, assistant),
+      needsBox, working, learned, recentProjects)));
+
+  // The assistant, present: who it is and what it is doing, the first live thing Now says after
+  // onboarding hands off here.
+  (async () => {
+    const r = await attempt("agents.list");
+    if (!ctx.alive() || r.error) return;
+    const a = (Array.isArray(r.data) ? r.data : []).find(x => x.kind === "assistant");
+    if (!a) return;
+    put(assistant, h("span", null, h("b", null, a.name), " · ", a.doing || "idle"));
+  })();
 
   let running = 0;
+  // Offline read of the last Now state: only counts, a name and a timestamp, never a held item's
+  // words or destination (the service worker already refuses to cache /v1/ for the same reason).
+  const SNAP_KEY = "vyre.now.snapshot";
+  const saveSnapshot = () => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), needs: needs.current().length, running })); } catch {} };
+  const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch { return null; } };
   const say = () => {
     const n = needs.current().length;
     put(title, n ? `${things(n)} need${n === 1 ? "s" : ""} you.` : "Nothing needs you.");
     const r = running ? `${count(running)} thread${running === 1 ? " is" : "s are"} running on ${running === 1 ? "its" : "their"} own.` : "Nothing is running.";
     put(sub, n ? `${r} Nothing else is waiting on you.` : r);
+    saveSnapshot();
   };
   const tick = setInterval(() => put(date, today()), 30_000);
   ctx.cleanup(() => clearInterval(tick));
@@ -56,9 +74,19 @@ export default async function now(ctx) {
   const drawWorking = async () => {
     const r = await attempt("threads.list", {});
     if (!ctx.alive()) return;
+    if (r.error?.code === "offline") {
+      const snap = loadSnapshot();
+      const headRow = head("Working");
+      /** @type {HTMLElement} */ (headRow.firstChild).id = "working-h";
+      put(working, headRow, h("div", { class: "empty" },
+        snap ? `Offline. As of ${since(snap.at)} ago: ${things(snap.needs)} needed you, ${snap.running} running.` : "Offline, and nothing is cached yet."));
+      return;
+    }
     const all = r.data || [];
-    const run = all.filter(t => t.state === "running");
-    const done = all.filter(t => t.state === "finished" && (t.last || 0) >= startOfToday());
+    // threads.list's real field is `status` (starting|working|waiting|idle|stopped), not `state`,
+    // and "running" isn't a value it uses at all — any non-stopped status counts as running.
+    const run = all.filter(t => t.status !== "stopped");
+    const done = all.filter(t => t.status === "stopped" && (t.last || 0) >= startOfToday());
     running = run.length;
     say();
     const right = h("span", { class: "lbl" }, r.error ? "" : `${run.length} running · ${done.length} finished today`);
@@ -97,6 +125,25 @@ export default async function now(ctx) {
   };
   drawLearned();
   ctx.on("memory.curated", drawLearned);
+
+  // Recent projects: a way back in without the rail, for a phone or a narrow window.
+  const drawRecent = async () => {
+    const r = await attempt("projects.list");
+    if (!ctx.alive()) return;
+    const list = [...(r.data?.projects || [])].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
+    const headRow = head("Recent projects");
+    /** @type {HTMLElement} */ (headRow.firstChild).id = "recent-h";
+    if (r.error) { put(recentProjects); return; }
+    if (!list.length) { put(recentProjects); return; }
+    put(recentProjects, headRow, h("div", { class: "rows" }, list.map(p =>
+      h("div", { class: "work-row" },
+        h("span", { class: "initial", "aria-hidden": "true" }, icon("projects", 14)),
+        h("div", { class: "work-main" },
+          h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet" }, p.name)),
+          h("div", { class: "code ellipsis" }, plural(p.threads, "thread"))),
+        h("div", { class: "code faint work-since" }, p.last ? since(p.last) : "")))));
+  };
+  drawRecent();
 }
 
 /** One held item: a draft at the Gate, or a question from a session. */
