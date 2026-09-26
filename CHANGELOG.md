@@ -6,6 +6,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `test/helpers.js` points `VYRE_TAILSCALE_BIN` at a path that does not exist, so no test runs the
+  machine's real `tailscale` when `vyre up` looks for a box.
 - `vyre box add <user@host>` (ADR 0008 section 2): checks the Mac is on its tailnet, reaches the
   server over SSH (a password is asked once, then one held connection), reads the server in one
   call, shows the plan and asks once (`--yes` skips; no terminal and no `--yes` changes nothing),
