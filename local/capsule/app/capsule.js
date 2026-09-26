@@ -737,5 +737,11 @@ api.onOpen(d => {
   if (!(S.mode === "reply" && S.snap.reply && !S.snap.reply.finished)) reset();
   paint();
   box.focus();
+  // Wake-latency instrumentation (SPEC.md 2.8, see main.js's wakeStart comment). rAF only runs
+  // once the browser is about to present a frame, so it is the honest "this actually painted"
+  // signal for a window that's shown/hidden rather than reloaded. A second nested rAF waits one
+  // more frame so the paint() above (a synchronous DOM write, not yet composited) is guaranteed
+  // flushed before the ping goes out — a single rAF can fire just ahead of that composite.
+  requestAnimationFrame(() => requestAnimationFrame(() => api.paintPing()));
 });
 api.snapshot().then(s => { S.snap = s; paint(); });
