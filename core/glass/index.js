@@ -249,7 +249,10 @@ export default {
         emit("glass.released", { target: i.target, surface, held_ms: held, why: "gave back" });
         await noteThread(agent, surface, held, i.note);
         return { released: true, held_ms: held };
-      }, { presence: { summary: i => `Hand the keyboard of ${String(i.target).replace(/^computer:/, "")}'s computer back` } });
+        // No presence: giving the agent its keyboard back only returns what it had, and a person
+        // at the Deck must never be stuck in control. An agent still cannot call it for a person's
+        // surface (surfaceOf), and takeover keeps its passkey.
+      });
 
     /**
      * Tell the agent its keyboard was taken and given back: who, for how long, and the person's

@@ -1,4 +1,12 @@
-# ADR 0005 · Glass: a remote computer you can watch, take over, sign in on and browse
+---
+title: ADR 0005: Glass: a remote computer you can watch, take over, sign in on and browse
+summary: Glass shows a remote computer live and lets a person watch an agent, take over, sign in with the Vault and browse, from the Deck, the Capsule or the phone.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0005: Glass: a remote computer you can watch, take over, sign in on and browse
 
 Status: accepted, 26 Sep 2026 · Workstream: glass · Spec: sections 5, 7.9, 9 and 11 (floor rules
 4, 5 and 8) · Builds on: ADR 0003 (the stream), ADR 0004 (presence), ADR 0010 (vault autofill)

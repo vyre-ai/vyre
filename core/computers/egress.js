@@ -3,13 +3,15 @@
 //
 // A bank or a court that sees a datacenter address asks questions, or refuses outright. With
 // config glass.egress on, Chrome in every computer made after the change gets a proxy
-// auto-config script: the listed sites go through the `egress` sidecar (box/compose.egress.yml),
-// a second tailscaled that uses the Mac as its exit node and offers a SOCKS5 server on the
-// computers network, and everything else goes out directly, as before. The box's own tailscaled
-// never uses an exit node: that applies to the whole node, vyred included.
+// auto-config script: the listed sites go to `egress:1055` (box/compose.egress.yml), a gate
+// (egressgate.js) in front of a second tailscaled that uses the Mac as its exit node, and
+// everything else goes out directly, as before. The box's own tailscaled never uses an exit
+// node: that applies to the whole node, vyred included.
 //
 // Fail closed: a listed site has no DIRECT fallback. When the Mac is asleep or away, that site
-// fails to load rather than quietly showing the datacenter's address after all.
+// fails to load rather than quietly showing the datacenter's address after all. The gate covers
+// the case the sidecar alone does not: with the Mac online but no longer offering its exit node,
+// tailscaled would dial the site directly, so the gate refuses unless the exit node is in use.
 //
 // Everything a site string could carry into the script is checked here first, so the script is
 // built from hostnames and nothing else. It is a routing rule, not an access control: any
@@ -17,9 +19,13 @@
 // where that port leads (autogroup:internet, through the exit node, and nothing else).
 
 import net from "node:net";
+import http from "node:http";
 
 /** Where the sidecar answers, as the computers see it. VYRE_EGRESS_PROXY moves it (tests only). */
 export const PROXY = "egress:1055";
+
+/** Where the gate in front of the sidecar (egressgate.js) answers GET /status, on the same host. */
+export const GATE_STATUS_PORT = 1057;
 
 /** How many sites a list may hold. A PAC is read on every request; this is a list, not a policy. */
 export const MAX_SITES = 200;
@@ -134,5 +140,33 @@ export function probe(hostport, timeoutMs = 1500) {
     s.setTimeout(timeoutMs, () => done({ answers: false, why: `no answer within ${timeoutMs} ms` }));
     s.once("connect", () => done({ answers: true }));
     s.once("error", e => done({ answers: false, why: /** @type {any} */ (e).code || e.message }));
+  });
+}
+
+/**
+ * The gate's own verdict (egressgate.js): whether it lets listed sites through right now, and
+ * why not. Asked on demand by computers.egress.status; VYRE_EGRESS_GATE_STATUS moves it (tests).
+ * @param {number} [timeoutMs]
+ * @returns {Promise<{ answers: true, allowed: boolean, reason: string } | { answers: false, why: string }>}
+ */
+export function gateStatus(timeoutMs = 1500) {
+  const at = String(process.env.VYRE_EGRESS_GATE_STATUS || `${proxy().split(":")[0]}:${GATE_STATUS_PORT}`).toLowerCase();
+  if (!HOSTPORT.test(at)) return Promise.resolve({ answers: false, why: `"${at}" is not a host:port` });
+  const i = at.lastIndexOf(":");
+  return new Promise(resolve => {
+    const req = http.get({ host: at.slice(0, i), port: Number(at.slice(i + 1)), path: "/status", timeout: timeoutMs, agent: false }, res => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", c => { body += c; if (body.length > 4096) req.destroy(); });
+      res.on("end", () => {
+        try {
+          const v = JSON.parse(body);
+          if (res.statusCode === 200 && typeof v.allowed === "boolean") return resolve({ answers: true, allowed: v.allowed, reason: String(v.reason || "").slice(0, 300) });
+        } catch {}
+        resolve({ answers: false, why: `the gate answered ${res.statusCode} without a verdict` });
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error(`no answer within ${timeoutMs} ms`)));
+    req.on("error", e => resolve({ answers: false, why: /** @type {any} */ (e).code || e.message }));
   });
 }

@@ -1,8 +1,16 @@
-# ADR 0008 · The install journey
+---
+title: ADR 0008: The install journey
+summary: The install journey from a Mac and a server to a working assistant: vyre box add over SSH, onboarding in the browser, pairing and the ending.
+audience: builders
+owner: integrator
+status: stable
+---
+
+# ADR 0008: The install journey
 
 Status: proposed, 26 Sep 2026. Builds on ADR 0002 (network and identity). Amends SPEC section 1
 ("Install and onboarding") where noted. The one-page version for users is
-[docs/JOURNEY.md](../JOURNEY.md).
+[Onboarding](../get-started/onboarding.md).
 
 ## Context
 
@@ -216,7 +224,7 @@ From the Mac, each command runs over the saved `box.ssh`, so the person still ne
 
 On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an older vyred);
 `vyre down && npm rm -g vyre` removes it and leaves `~/.vyre`. On the server alone, box's
-`vyre update` and `install.sh --uninstall` stand as written in docs/INSTALL.md.
+`vyre update` and `install.sh --uninstall` stand as written in [Install on a server](../get-started/install.md).
 
 ## Consequences
 

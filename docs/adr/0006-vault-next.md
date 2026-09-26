@@ -1,4 +1,12 @@
-# ADR 0006 · The Vault, next: a key hierarchy, presence on every value, and a person's app
+---
+title: ADR 0006: The Vault, next: a key hierarchy, presence on every value, and a person's app
+summary: The next Vault: a key hierarchy, presence required for every value a person sees, and an app a person would pick over a password manager.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0006: The Vault, next: a key hierarchy, presence on every value, and a person's app
 
 Status: proposed, 26 Sep 2026 · Workstream: vault · Extends: ADR 0001 and its autofill addendum ·
 Depends on: ADR 0004 (presence) · Spec: sections 2, 5, 7.5 and 11
