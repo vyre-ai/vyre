@@ -240,8 +240,8 @@ mkdir_owned() {
 
 # The box files: from a checkout with --from, else downloaded from BASE.
 write_stack() {
-  mkdir_owned "$DIR"
   if [ -n "$FROM" ]; then
+    mkdir_owned "$DIR"
     put "$FROM/box/compose.yml" "$DIR/compose.yml" 0644
     put "$FROM/box/compose.build.yml" "$DIR/compose.build.yml" 0644
     put "$FROM/box/vyre.env.example" "$DIR/vyre.env.example" 0644
@@ -257,6 +257,8 @@ write_stack() {
       get_sums
       for f in $files; do get "$f"; done
     fi
+    # Only once everything has verified, so a failed run leaves no empty stack folder behind.
+    mkdir_owned "$DIR"
     for f in compose.yml compose.build.yml vyre.env.example; do
       put "$TMP/$f" "$DIR/$f" 0644
     done
@@ -406,7 +408,8 @@ main() {
   write_stack
   write_env
   install_wrapper
-  start
+  # VYRE_NO_UP=1: everything but starting it, for `vyre box move`, which streams the volumes in first.
+  if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"; else start; fi
 }
 
 main "$@"

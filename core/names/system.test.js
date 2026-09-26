@@ -330,6 +330,15 @@ test("install-box.sh: a real run writes the stack, never overwrites .env, and st
   assert.ok(r.calls.some(c => /^docker compose exec .*-e VYRE_HOST_USER=alex vyre vyre up$/.test(c)), r.calls.join("\n"));
 });
 
+test("install-box.sh: VYRE_NO_UP=1 installs everything and starts nothing", t => {
+  const r = runScript(t, ["--yes", "--from", REPO], {}, () => {}, { VYRE_NO_UP: "1" });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(fs.existsSync(path.join(r.dir, "compose.yml")));
+  assert.ok(fs.existsSync(r.wrapper));
+  assert.match(r.stdout, /not started \(VYRE_NO_UP=1\)/);
+  assert.ok(!r.calls.some(c => /docker compose (up|exec)/.test(c)), r.calls.join("\n"));
+});
+
 test("install-box.sh: a wrapper that is not ours is not replaced without asking", t => {
   const r = runScript(t, ["--dry-run"], {}, ({ wrapper }) => fs.writeFileSync(wrapper, "#!/bin/sh\necho npm vyre\n"));
   assert.equal(r.status, 1);
