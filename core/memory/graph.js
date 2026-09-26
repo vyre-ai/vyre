@@ -27,7 +27,15 @@ const PHRASE = {
   at_domain: (a, b) => `${a} is an address at ${b}`,
   owned_by: (a, b) => `the repo ${a} belongs to ${b}`,
   mentioned_in: (a, b) => `${a} came up in "${b}"`,
+  has_title: (a, b) => `${a} is the ${b}`,
+  client_of: (a, b) => b === "you" ? `${a} is your client` : `${a} is a client of ${b}`,
+  repo_for: (a, b) => `the repo ${a} is for ${b}`,
+  deadline: (a, b) => `${a} has a deadline on ${b}`,
+  prefers: (a, b) => `${a} prefers ${b}`,
+  decided: (a, b) => a === "you" ? `you decided to ${b}` : `${a} decided to ${b}`,
 };
+/** Values at the far end of a relation, not things a prompt names: never matched as phrases. */
+export const VALUES = new Set(["title", "date", "pref", "decision", "me"]);
 const words = rel => rel.replace(/_/g, " ");
 
 const DAY = 86_400_000;
@@ -46,11 +54,24 @@ export const DECAY = {
 export const STALE = 0.35;
 
 /**
+ * When a deadline stops holding: two days after its date. Read at read time, like decay, so
+ * derive never needs the clock and a passed deadline needs no pass to close it.
+ * @returns {number|null}
+ */
+export function deadlineEnd(e) {
+  if (String(e.rel) !== "deadline" || !String(e.dst).startsWith("date:")) return null;
+  const d = Date.parse(String(e.dst).slice(5) + "T00:00:00Z");
+  return Number.isFinite(d) ? d + 2 * DAY : null;
+}
+
+/**
  * fresh = max(floor, 0.5 ^ (days since seen / half-life)). What the user said or confirmed does
  * not decay, and a fact with no date is as fresh as it ever was. Silence never closes an edge.
  */
 export function freshness(e, now = Date.now()) {
   if (["user", "confirmed"].includes(String(e.origin))) return 1;
+  // A deadline is as fresh as it gets until its date passes.
+  if (String(e.rel) === "deadline") return 1;
   const seen = Number(e.seen) || Number(e.valid_from) || 0;
   if (!seen) return 1;
   const [half, floor] = DECAY[/** @type {keyof typeof DECAY} */ (String(e.rel))] || [180, 0.25];
@@ -216,6 +237,8 @@ export class Graph {
     // closed only if what replaced it is in the view too. Otherwise another client's sessions
     // would show through as a date.
     let since = Number(e.valid_from) || null, until = e.valid_to == null ? null : Number(e.valid_to);
+    const due = deadlineEnd(e);
+    if (until === null && due !== null && due <= this.now()) until = due;
     if (sc && !sc.room) {
       if (since && ev.length) since = Math.min(...ev.map(v => Number(tsq.get(v.session, v.seq)?.ts || 0)).filter(Boolean)) || since;
       if (until !== null) {
@@ -435,7 +458,7 @@ export class Graph {
     };
     const nodes = room === "*" ? "(SELECT * FROM memory_nodes WHERE ? = '*')" : "(SELECT * FROM memory_room_nodes WHERE room = ?)";
     for (const n of this.sql(`SELECT id, kind, label, role FROM ${nodes}`).all(room)) {
-      if (QUIET.has(String(n.role))) continue;
+      if (QUIET.has(String(n.role)) || VALUES.has(String(n.kind))) continue;
       put(String(n.label), String(n.id), 1, "name");
     }
     // Every claimant of a short form, most precise first. Which one a prompt means is decided
@@ -513,7 +536,10 @@ export class Graph {
         const k = `${e.src}|${e.rel}|${e.dst}`;
         // A fact where the named thing is the subject answers "who is this"; one where it is the
         // object ("Dana works at Harlow" for a prompt naming Harlow) is context, slightly less.
-        // Stale facts stay out of a prompt unless the user pinned what they are about.
+        // A passed deadline has closed. Stale facts stay out of a prompt unless the user pinned
+        // what they are about.
+        const due = deadlineEnd(e);
+        if (due !== null && due <= now) continue;
         const fresh = freshness(e, now);
         if (fresh < STALE && !pinned && !f.pin.has(String(other))) continue;
         const s = h.weight * Number(e.confidence) * boost * (e.src === id ? 1 : 0.8) * (e.rel === "mentioned_in" ? 0.5 : 1) * fresh;

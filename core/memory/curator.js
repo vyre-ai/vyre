@@ -58,12 +58,14 @@ const yieldNow = () => new Promise(r => setImmediate(r));
 export class Curator {
   /**
    * @param {import("node:sqlite").DatabaseSync} db
-   * @param {{ me?: { domains?: string[], emails?: string[] }, now?: () => number, log?: (m: string) => void }} [opts]
+   * @param {{ me?: { domains?: string[], emails?: string[] }, now?: () => number, log?: (m: string) => void, relations?: { prefers?: boolean, decided?: boolean } }} [opts]
    */
   constructor(db, opts = {}) {
     this.db = db;
     this.now = opts.now || (() => Date.now());
     this.log = opts.log || (() => {});
+    // prefers and decided are read only when switched on: off until the eval shows them precise.
+    this.relations = { prefers: Boolean(opts.relations?.prefers), decided: Boolean(opts.relations?.decided) };
     const me = opts.me || {};
     this.me = {
       domains: new Set((me.domains || []).map(d => registrable(String(d)))),
@@ -162,6 +164,8 @@ export class Curator {
       return { recall: false, sessions: 0, turns: 0, ...this.counts(), changed, ms: Date.now() - t0 };
     }
     const db = this.db;
+    // A migration that changed what extraction finds asks for every turn to be read again, once.
+    if (Number(db.prepare("SELECT v FROM memory_meta WHERE k = 'reread'").get()?.v || 0)) { db.prepare("DELETE FROM memory_meta WHERE k = 'reread'").run(); full = true; }
     if (full) { this.tx(() => db.exec("DELETE FROM memory_obs; DELETE FROM memory_cues; DELETE FROM memory_curated;")); this.hw = 0; this.rowSession.clear(); }
 
     const recall = new Map(db.prepare("SELECT id, turns FROM recall_sessions").all().map(r => [String(r.id), Number(r.turns)]));
@@ -179,7 +183,7 @@ export class Curator {
       const rows = this.pending(need);
       const obs = db.prepare("INSERT INTO memory_obs (session, seq, node, n, initial, ts) VALUES (?,?,?,?,?,?) ON CONFLICT DO UPDATE SET n = excluded.n, initial = excluded.initial, ts = excluded.ts");
       const cue = db.prepare("INSERT OR IGNORE INTO memory_cues (session, seq, rel, a, b, ts) VALUES (?,?,?,?,?,?)");
-      const text = db.prepare("SELECT ts, text FROM recall_turns WHERE rowid = ?");
+      const text = db.prepare("SELECT ts, text, role FROM recall_turns WHERE rowid = ?");
       const done = db.prepare("INSERT INTO memory_curated (session, upto, at) VALUES (?,?,?) ON CONFLICT DO UPDATE SET upto = excluded.upto, at = excluded.at");
       let since = 0;
       for (const [session, list] of rows) {
@@ -190,7 +194,7 @@ export class Curator {
             if (!t) continue;       // deleted since the scan: gone, not an error
             const ts = Number(t.ts) || 0;
             const agg = new Map();
-            const { things, cues } = extract(String(t.text));
+            const { things, cues } = extract(String(t.text), { user: t.role === "user" });
             for (const th of things) {
               const a = agg.get(th.id) || { n: 0, initial: 1 };
               a.n++; if (!th.initial) a.initial = 0;
@@ -450,7 +454,7 @@ export class Curator {
       } catch { /* a fact that no longer checks out is ignored, not fatal */ }
     }
 
-    const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map(), alias: into.size || splits.length ? alias : null };
+    const common = { sess, obsBy, cuesBy, turnTs, recall, saidBy: new Map(), alias: into.size || splits.length ? alias : null, apart };
     const bySlug = new Map();
     for (const [s, rs] of member) for (const r of rs) { if (!bySlug.has(r)) bySlug.set(r, new Set()); bySlug.get(r).add(s); }
     /** @type {Result[]} */
@@ -468,14 +472,14 @@ export class Curator {
     results.push(await this.compute({ room: "*", names: rooms.map(r => r.name), sessions: null, multi: new Set(), lessons, others: results.slice(),
       said: facts.filter(c => c.scope === "*") }, common));
     conflicts(results);
-    return this.write(results, now);
+    return await this.write(results, now);
   }
 
   /**
    * One scope's beliefs: a room from its own sessions and lessons, or the main graph from all.
    * The same rules everywhere; only what they are fed differs.
    * @param {{ room: string, names: string[], sessions: Set<string>|null, multi: Set<string>, lessons: Lesson[], others: Result[], said?: Correction[] }} scope
-   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null }} common
+   * @param {{ sess: Map<string, { parent: string|null, started: number }>, obsBy: Map<string, any[]>, cuesBy: Map<string, any[]>, turnTs: Map<string, number>, recall: boolean, saidBy: Map<string, string[]>, alias?: ((id: string, session: string) => string)|null, apart?: Set<string> }} common
    * @returns {Promise<Result>}
    */
   async compute(scope, common) {
@@ -512,14 +516,35 @@ export class Curator {
     const anchor = new Set();
     for (const l of lessons) for (const c of l.claims) for (const r of [c.src, c.dst]) if (r) anchor.add(r.id);
     const own = [], shared = [];
-    for (const s of scope.sessions || obsBy.keys()) (scope.multi.has(s) ? shared : own).push(s);
+    for (const s of scope.sessions || new Set([...obsBy.keys(), ...cuesBy.keys()])) (scope.multi.has(s) ? shared : own).push(s);
     own.sort(); shared.sort();
-    const as = common.alias || ((id, _s) => id);
+    const as0 = common.alias || ((id, _s) => id);
+    // Two names written with one address are one person ("Dana M. Reyes" and "Dana Reyes" at
+    // dana@...), when they share a first or last word and the user has not kept them apart.
+    // Counted from this scope's own phrasings, so a room pools only what it says itself.
+    const byAddress = new Map();
+    for (const s of scope.sessions || cuesBy.keys()) for (const c of cuesBy.get(s) || []) if (c.rel === "email_of" && !NO_PERSON.test(c.b.slice(6).split("@")[0])) {
+      const a = as0(c.a, s);
+      if (!byAddress.has(c.b)) byAddress.set(c.b, new Set());
+      byAddress.get(c.b).add(a);
+    }
+    const pool = new Map();
+    for (const list of byAddress.values()) {
+      if (list.size < 2) continue;
+      const ns = [...list].sort((x, y) => x.split(" ").length - y.split(" ").length || x.length - y.length || (x < y ? -1 : 1));
+      const head = ns[0], hw = labelOf(head.slice(5)).toLowerCase().split(/\s+/);
+      for (const other of ns.slice(1)) {
+        const ow = labelOf(other.slice(5)).toLowerCase().split(/\s+/);
+        if (pool.has(other) || common.apart?.has(`${other}\u0000${head}`)) continue;
+        if (hw[0] === ow[0] || hw[hw.length - 1] === ow[ow.length - 1]) pool.set(other, pool.get(head) || head);
+      }
+    }
+    const as = pool.size ? (id, s) => { const x = as0(id, s); return pool.get(x) || x; } : as0;
     for (const s of own) for (const o of obsBy.get(s) || []) { const id = as(o.node, s); touch(id, s, o.seq, o.n, o.initial, o.ts); anchor.add(id); }
     for (const s of shared) for (const o of obsBy.get(s) || []) { const id = as(o.node, s); if (anchor.has(id)) touch(id, s, o.seq, o.n, o.initial, o.ts); }
     const cues = [];
     for (const s of [...own, ...shared].sort()) for (const c0 of cuesBy.get(s) || []) {
-      const c = common.alias ? { ...c0, a: as(c0.a, s), b: as(c0.b, s) } : c0;
+      const c = common.alias || pool.size ? { ...c0, a: as(c0.a, s), b: as(c0.b, s) } : c0;
       if (scope.multi.has(s) && !(anchor.has(c.a) && anchor.has(c.b))) continue;
       cues.push(c);
     }
@@ -597,10 +622,20 @@ export class Curator {
     // Names. A name is an organisation when its last word says so, when a domain spells it, or
     // when someone is said to be "at" it; a person when an address or an "at" phrasing is
     // attached to it. Everything else stays a plain name.
+    // A domain spells an organisation by its first label, by that label and a word-like TLD
+    // ("harlow.law" is Harlow Law), or by the label less an organisation word at its end
+    // ("keelasharchitects.com" is Keel & Ash).
     const domainByStem = new Map();
-    for (const a of agg.values()) if (a.kind === "domain") domainByStem.set(stemOf(a.key), a.id);
-    const cueObj = new Set(cues.filter(c => c.rel === "works_at").map(c => c.b));
-    const cueSubj = new Set(cues.map(c => c.a));
+    const spell = (k, id) => { if (k.length >= 4 && !domainByStem.has(k)) domainByStem.set(k, id); };
+    for (const a of agg.values()) if (a.kind === "domain") {
+      const stem = stemOf(a.key), tld = a.key.split(".").pop() || "";
+      domainByStem.set(stem, a.id);
+      if (tld.length >= 3 && !PLAIN_TLDS.has(tld)) spell(stem + tld, a.id);
+      for (const w of ORG_WORDS) if (w.length >= 3 && stem.endsWith(w) && stem.length - w.length >= 4) spell(stem.slice(0, -w.length), a.id);
+    }
+    const cueObj = new Set(cues.filter(c => c.rel === "works_at" || c.rel === "client_of").map(c => c.rel === "works_at" ? c.b : c.a));
+    for (const c of cues) if (c.rel === "client_of") clientOf.add(c.a);
+    const cueSubj = new Set(cues.filter(c => c.rel === "works_at" || c.rel === "email_of" || c.rel === "has_title").map(c => c.a));
     const names = [...agg.values()].filter(a => a.kind === "name");
     const orgDomain = new Map();  // org id -> domain id
     for (const a of names) {
@@ -868,6 +903,83 @@ export class Curator {
         seen: Math.max(newest([p, ...(emailsOf.get(p) || [])], cluster(o)), lessonSeen(taught)), rule, origin: ev.length ? "extract" : "taught", conflict: 0 });
     }
 
+    // ---- more relations: titles, clients, repos for an org, deadlines, and (when switched on)
+    // preferences and decisions. All are this scope's own, from its own turns.
+    /** A value at the far end of a relation (a title, a date, a preference): a node of its own. */
+    const value = (id, ts = 0) => {
+      if (!agg.has(id)) { const i = id.indexOf(":"); agg.set(id, { id, kind: id.slice(0, i), key: id.slice(i + 1), by: new Map(), parents: new Set(), mentions: 0, first: ts, last: ts, mid: true }); }
+      const a = agg.get(id);
+      if (ts && (!a.first || ts < a.first)) a.first = ts;
+      if (ts > a.last) a.last = ts;
+      kind.set(id, id.slice(0, id.indexOf(":")));
+      role.set(id, null);
+      kept.add(id);
+      return id;
+    };
+    // Who a short reference means here: a name, or a short form this scope measured as usable.
+    const usable = new Map(forms.filter(f => f.usable).map(f => [f.form, f.node]));
+    const refer = a => a.startsWith("ref:") ? usable.get(a.slice(4)) ?? null : a;
+    /** Sessions and turns behind a set of cues, as evidence. */
+    const cueEv = list => list.map(c => /** @type {[string, number]} */ ([c.session, c.seq])).filter((v, i, all) => all.findIndex(w => w[0] === v[0] && w[1] === v[1]) === i).slice(0, T.evidencePerEdge);
+    const group = rel => {
+      const out = new Map();
+      for (const c of cues) if (c.rel === rel) { const a = c.a === ME ? value(ME, c.ts) : refer(c.a); if (!a || !kept.has(a)) continue; const k = a + "\u0000" + c.b; if (!out.has(k)) out.set(k, { a, b: c.b, list: [] }); out.get(k).list.push(c); }
+      return [...out.values()];
+    };
+    // has_title: the appositive, one title per person, the one said in most sessions (then newest).
+    const titles = new Map();
+    for (const g of group("has_title")) {
+      if (kind.get(g.a) !== "person") continue;
+      const n = new Set(g.list.map(c => c.session)).size, last = Math.max(...g.list.map(c => c.ts));
+      const t = titles.get(g.a);
+      if (!t || n > t.n || (n === t.n && last > t.last)) titles.set(g.a, { ...g, n, last });
+    }
+    for (const t of titles.values()) want.push({ src: t.a, rel: "has_title", dst: value(t.b, t.last), weight: t.n, from: Math.min(...t.list.map(c => c.ts)), conf: 0.9, ev: cueEv(t.list), seen: t.last, rule: "appositive" });
+    // client_of: the user said so ("Northwind Bakery is a new client").
+    for (const g of group("client_of")) if (kind.get(g.a) === "org" && role.get(g.a) !== "own") {
+      want.push({ src: g.a, rel: "client_of", dst: value(ME), weight: g.list.length, from: Math.min(...g.list.map(c => c.ts)), conf: 0.9, ev: cueEv(g.list), seen: Math.max(...g.list.map(c => c.ts)), rule: "client_said" });
+    }
+    // repo_for: a repo named after an organisation's short form, the two together in 2+ sessions.
+    for (const id of kept) if (kind.get(id) === "repo") {
+      const words = agg.get(id).key.split("/")[1].toLowerCase().split(/[-_.]+/);
+      for (const o of orgs) {
+        if (role.get(o) === "own") continue;
+        const first = labelOf(agg.get(o).key).split(/\s+/)[0].toLowerCase();
+        const short = first.length >= 3 && !ORG_WORDS.has(first) && !OPENERS.has(first) ? letters(first) : null;
+        if (!words.some(w => (short && w === short) || orgStems(agg.get(o).key).includes(w))) continue;
+        const both = [...sessionsOf([id])].filter(s => sessionsOf(cluster(o)).has(s));
+        if (new Set(both.map(s => parentOf(s, sess))).size < 2) continue;
+        want.push({ src: id, rel: "repo_for", dst: o, weight: both.length, from: 0, conf: 0.8, ev: together([id], cluster(o)), seen: newest([id], cluster(o)), rule: "repo_name" });
+      }
+    }
+    // deadline: "due / launches / ships (on / by) <date>", the date read against the turn's own time.
+    for (const g of group("deadline")) {
+      if (!["org", "person"].includes(/** @type {string} */ (kind.get(g.a))) || ["hub", "tool"].includes(/** @type {string} */ (role.get(g.a)))) continue;
+      const byDate = new Map();
+      for (const c of g.list) { const d = dateOf(c.b.slice(5), c.ts); if (d) { if (!byDate.has(d)) byDate.set(d, []); byDate.get(d).push(c); } }
+      for (const [d, list] of byDate) want.push({ src: g.a, rel: "deadline", dst: value("date:" + d, Math.max(...list.map(c => c.ts))), weight: list.length,
+        from: Math.min(...list.map(c => c.ts)), conf: 0.9, ev: cueEv(list), seen: Math.max(...list.map(c => c.ts)), rule: "deadline_said" });
+    }
+    for (const rel of /** @type {("prefers"|"decided")[]} */ (["prefers", "decided"])) if (this.relations[rel]) for (const g of group(rel)) {
+      if (rel === "prefers" && kind.get(g.a) !== "person") continue;
+      want.push({ src: rel === "decided" ? value(ME) : g.a, rel, dst: value(g.b, Math.max(...g.list.map(c => c.ts))), weight: g.list.length,
+        from: Math.min(...g.list.map(c => c.ts)), conf: 0.8, ev: cueEv(g.list), seen: Math.max(...g.list.map(c => c.ts)), rule: rel + "_said" });
+    }
+    // An address matches a person across sessions when exactly one kept person has its local
+    // part and works at the address's domain.
+    for (const e of agg.values()) {
+      if (e.kind !== "email" || hasEmail.has(e.id) || !kept.has(e.id)) continue;
+      const local = e.key.split("@")[0].replace(/\d+$/, "");
+      if (NO_PERSON.test(local)) continue;
+      const d = "domain:" + registrable(e.key.split("@")[1]);
+      const who = [...new Set((byLocal.get(local) || []).map(p => p.id))].filter(p => kept.has(p) && orgDomain.get(worksAt.get(p)?.org || "") === d);
+      if (who.length !== 1) continue;
+      hasEmail.set(e.id, { person: who[0], conf: 0.75, rule: "email_local_org" });
+      if (!emailsOf.has(who[0])) emailsOf.set(who[0], []);
+      emailsOf.get(who[0]).push(e.id);
+      derived({ src: who[0], rel: "has_email", dst: e.id, weight: 1, from: 0, conf: 0.75, ev: [...e.by.keys()].flatMap(s => turnsIn(e.id, s, 2)).slice(0, T.evidencePerEdge), seen: lastOf([e.id]), rule: "email_local_org" });
+    }
+
     // Facts the user called wrong here: no row keeps them, whatever evidence is left.
     const wrong = new Set(said.filter(c => c.action === "wrong").map(c => `${c.src}\u0000${c.rel}\u0000${c.dst}`));
     const out = { room: scope.room, agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, wrong };
@@ -1007,161 +1119,220 @@ export class Curator {
     return measured;
   }
 
-  /** Write every scope's derived graph as a difference against what is stored. */
-  write(results, now) {
-    const db = this.db;
+  /**
+   * Write every scope's derived graph as a difference against what is stored: one transaction
+   * per scope, with a yield between, so the event loop is never held for more than one scope's
+   * rows. Each room is consistent on its own; the cursor moves once, at the end.
+   * @param {Result[]} results
+   */
+  async write(results, now) {
     let changed = 0;
-    return this.tx(() => {
-      // nodes: the main graph's in memory_nodes, each room's in memory_room_nodes
-      const have = new Map(db.prepare("SELECT * FROM memory_nodes").all().map(r => [String(r.id), r]));
-      const haveRoom = new Map(db.prepare("SELECT * FROM memory_room_nodes").all().map(r => [`${r.room}\u0000${r.id}`, r]));
-      const upNode = db.prepare(`INSERT INTO memory_nodes (id, kind, key, label, role, sessions, mentions, first_seen, last_seen)
-        VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, key=excluded.key, label=excluded.label,
-        role=excluded.role, sessions=excluded.sessions, mentions=excluded.mentions, first_seen=excluded.first_seen, last_seen=excluded.last_seen`);
-      const upRoom = db.prepare(`INSERT INTO memory_room_nodes (room, id, kind, key, label, role, sessions, mentions, first_seen, last_seen)
-        VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(room, id) DO UPDATE SET kind=excluded.kind, key=excluded.key, label=excluded.label,
-        role=excluded.role, sessions=excluded.sessions, mentions=excluded.mentions, first_seen=excluded.first_seen, last_seen=excluded.last_seen`);
-      const wantRoom = new Set();
-      for (const r of results) {
-        const star = r.room === "*";
-        for (const id of r.kept) {
-          const a = r.agg.get(id);
-          const row = [id, r.kind.get(id), a.key, labelOf(a.key), r.role.get(id) ?? null, a.parents.size || new Set([...a.by.keys()]).size, a.mentions, a.first || null, a.last || null];
-          const h = star ? have.get(id) : haveRoom.get(`${r.room}\u0000${id}`);
-          if (!star) wantRoom.add(`${r.room}\u0000${id}`);
-          if (!h || h.kind !== row[1] || h.label !== row[3] || (h.role ?? null) !== row[4] || Number(h.sessions) !== row[5] || Number(h.mentions) !== row[6] || (h.first_seen ?? null) !== row[7] || (h.last_seen ?? null) !== row[8]) {
-            if (star) upNode.run(...row); else upRoom.run(r.room, ...row);
-            changed++;
-          }
-        }
-        if (star) { const delNode = db.prepare("DELETE FROM memory_nodes WHERE id = ?"); for (const id of have.keys()) if (!r.kept.has(id)) { delNode.run(id); changed++; } }
-      }
-      const delRoom = db.prepare("DELETE FROM memory_room_nodes WHERE room = ? AND id = ?");
-      for (const [k, h] of haveRoom) if (!wantRoom.has(k)) { delRoom.run(h.room, h.id); changed++; }
-
-      // edges, per scope
-      const all = db.prepare("SELECT id, room, src, rel, dst, weight, valid_from, valid_to, confidence, seen, conflict, origin, rule FROM memory_edges").all()
-        .map(r => ({ id: Number(r.id), room: String(r.room), src: String(r.src), rel: String(r.rel), dst: String(r.dst), weight: Number(r.weight), from: Number(r.valid_from),
-          to: r.valid_to == null ? null : Number(r.valid_to), conf: Number(r.confidence), seen: r.seen == null ? null : Number(r.seen), conflict: Number(r.conflict), origin: String(r.origin), rule: r.rule == null ? null : String(r.rule) }));
-      const ins = db.prepare("INSERT INTO memory_edges (room, src, rel, dst, weight, valid_from, valid_to, observed, confidence, seen, conflict, origin, rule) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
-      const upd = db.prepare("UPDATE memory_edges SET weight = ?, confidence = ?, valid_to = ?, valid_from = ?, observed = ?, seen = ?, conflict = ?, origin = ?, rule = ? WHERE id = ?");
-      const del = db.prepare("DELETE FROM memory_edges WHERE id = ?");
-      /** @type {Map<number, [string, number][]>} */
-      const evidence = new Map();
-      /** @type {Map<number, string[][]>} */
-      const taught = new Map();
-      const wanted = new Set();
-      const key = (s, r, d, f) => `${s}\u0000${r}\u0000${d}\u0000${f}`;
-      const same = (e, w, to) => e.weight === w.weight && e.conf === w.conf && e.to === to && e.seen === (w.seen || null) && e.conflict === (w.conflict || 0)
-        && e.origin === (w.origin || "extract") && e.rule === (w.rule ?? null);
-      const put = (room, w, to = null) => ins.run(room, w.src, w.rel, w.dst, w.weight, w.from, to, now, w.conf, w.seen || null, w.conflict || 0, w.origin || "extract", w.rule ?? null);
-      const set = (id, w, to, from) => upd.run(w.weight, w.conf, to, from, now, w.seen || null, w.conflict || 0, w.origin || "extract", w.rule ?? null, id);
-      for (const r of results) {
-        const edges = all.filter(e => e.room === r.room);
-        const byKey = new Map(edges.map(e => [key(e.src, e.rel, e.dst, e.from), e]));
-        for (let w of r.want) {
-          if (!w.ev.length && !w.lessons?.length && w.origin !== "user") continue;
-          const k = key(w.src, w.rel, w.dst, w.from);
-          const to = w.to ?? null;
-          let e = byKey.get(k);
-          // A belief the user ended closes the row that held it, whatever start the vote gave it.
-          if (!e && to !== null) e = edges.find(x => x.src === w.src && x.rel === w.rel && x.dst === w.dst && (x.to === null || x.to === to) && !wanted.has(x.id));
-          if (e && e.from !== w.from && to !== null) w = { ...w, from: e.from };
-          if (!e) {
-            const id = Number(put(r.room, w, to).lastInsertRowid);
-            e = { id, room: r.room, src: w.src, rel: w.rel, dst: w.dst, weight: w.weight, from: w.from, to, conf: w.conf, seen: w.seen || null, conflict: w.conflict || 0, origin: w.origin || "extract", rule: w.rule ?? null };
-            byKey.set(k, e); changed++;
-          } else if (!same(e, w, to)) {
-            set(e.id, w, to, w.from); changed++;
-            Object.assign(e, { weight: w.weight, conf: w.conf, to, from: w.from, seen: w.seen || null, conflict: w.conflict || 0, origin: w.origin || "extract", rule: w.rule ?? null });
-          }
-          wanted.add(e.id);
-          evidence.set(e.id, w.ev);
-          taught.set(e.id, w.lessons || []);
-        }
-
-        // works_at is bi-temporal. When the vote moves a person to another organisation, the old
-        // edge is CLOSED at the point the new one starts, never deleted: what was believed in
-        // June stays readable in September. A closed edge lives as long as its evidence does.
-        const works = edges.filter(e => e.rel === "works_at");
-        const people = new Set([...works.map(e => e.src), ...r.worksAt.keys()]);
-        for (const p of people) {
-          const mine = works.filter(e => e.src === p);
-          const w = r.worksAt.get(p);
-          if (w) {
-            const x = { ...w, src: p, rel: "works_at", dst: w.org };
-            const open = mine.find(e => e.to === null && e.dst === w.org);
-            for (const e of mine) if (e.to === null && e.dst !== w.org && !w.keep?.has(e.dst)) {
-              e.to = Math.max(e.from, w.from);
-              upd.run(e.weight, e.conf, e.to, e.from, now, e.seen, e.conflict, e.origin, e.rule, e.id); changed++;
-            }
-            const to = w.to ?? null;
-            if (open && to === null) {
-              if (open.from !== w.from || !same(open, x, null)) {
-                const clash = byKey.get(key(p, "works_at", w.org, w.from));
-                if (clash && clash.id !== open.id) { del.run(clash.id); changed++; }
-                set(open.id, x, null, w.from); changed++;
-                Object.assign(open, { from: w.from, weight: w.weight, conf: w.conf });
-              }
-              wanted.add(open.id); evidence.set(open.id, w.ev); taught.set(open.id, w.lessons);
-            } else {
-              const hit = byKey.get(key(p, "works_at", w.org, w.from));
-              let id;
-              if (hit) { if (!same(hit, x, to)) { set(hit.id, x, to, w.from); changed++; } id = hit.id; }
-              else { id = Number(put(r.room, x, to).lastInsertRowid); changed++; }
-              wanted.add(id); evidence.set(id, w.ev); taught.set(id, w.lessons);
-            }
-          }
-          // Every other works_at edge of this person stays while the turns or lessons behind it exist.
-          for (const e of mine) {
-            if (wanted.has(e.id) || !r.kept.has(e.src) || !r.kept.has(e.dst) || r.wrong?.has(`${e.src}\u0000works_at\u0000${e.dst}`)) continue;
-            const ev = r.together([e.src, ...(r.emailsOf.get(e.src) || [])], r.cluster(e.dst));
-            const ls = r.lessonsFor(e.src, "works_at", e.dst);
-            if (ev.length || ls.length) { wanted.add(e.id); evidence.set(e.id, ev); taught.set(e.id, ls); }
-          }
-        }
-      }
-      for (const e of all) if (!wanted.has(e.id)) { del.run(e.id); changed++; }
-
-      // evidence, as a difference
-      const haveEv = new Set(db.prepare("SELECT edge, session, seq FROM memory_evidence").all().map(r => `${r.edge}\u0000${r.session}\u0000${r.seq}`));
-      const wantEv = new Set();
-      for (const [id, list] of evidence) for (const [s, q] of list) wantEv.add(`${id}\u0000${s}\u0000${q}`);
-      const insEv = db.prepare("INSERT INTO memory_evidence (edge, session, seq) VALUES (?,?,?)");
-      const delEv = db.prepare("DELETE FROM memory_evidence WHERE edge = ? AND session = ? AND seq = ?");
-      for (const k of wantEv) if (!haveEv.has(k)) { const [e, s, q] = k.split("\u0000"); insEv.run(Number(e), s, Number(q)); changed++; }
-      for (const k of haveEv) if (!wantEv.has(k)) { const [e, s, q] = k.split("\u0000"); delEv.run(Number(e), s, Number(q)); changed++; }
-
-      // lessons, the same way
-      const haveL = new Set(db.prepare("SELECT edge, module, kind, key FROM memory_lessons").all().map(r => [r.edge, r.module, r.kind, r.key].join("\u0000")));
-      const wantL = new Set();
-      for (const [id, list] of taught) for (const l of list) wantL.add([id, ...l].join("\u0000"));
-      const insL = db.prepare("INSERT INTO memory_lessons (edge, module, kind, key) VALUES (?,?,?,?)");
-      const delL = db.prepare("DELETE FROM memory_lessons WHERE edge = ? AND module = ? AND kind = ? AND key = ?");
-      for (const k of wantL) if (!haveL.has(k)) { const [e, m, kd, ky] = k.split("\u0000"); insL.run(Number(e), m, kd, ky); changed++; }
-      for (const k of haveL) if (!wantL.has(k)) { const [e, m, kd, ky] = k.split("\u0000"); delL.run(Number(e), m, kd, ky); changed++; }
-
-      // short forms, every claimant in every scope
-      const haveSf = new Map(db.prepare("SELECT room, node, form, precision, sessions FROM memory_shortforms").all().map(r => [`${r.room}\u0000${r.node}\u0000${r.form}`, r]));
-      const upSf = db.prepare("INSERT INTO memory_shortforms (room, node, form, precision, sessions, at) VALUES (?,?,?,?,?,?) ON CONFLICT DO UPDATE SET precision = excluded.precision, sessions = excluded.sessions, at = excluded.at");
-      const wantSf = new Set();
-      for (const r of results) for (const f of r.forms) {
-        const k = `${r.room}\u0000${f.node}\u0000${f.form}`;
-        wantSf.add(k);
-        const h = haveSf.get(k);
-        if (!h || Number(h.precision) !== f.precision || Number(h.sessions) !== f.count) { upSf.run(r.room, f.node, f.form, f.precision, f.count, now); changed++; }
-      }
-      const delSf = db.prepare("DELETE FROM memory_shortforms WHERE room = ? AND node = ? AND form = ?");
-      for (const [k] of haveSf) if (!wantSf.has(k)) { const [rm, n, f] = k.split("\u0000"); delSf.run(rm, n, f); changed++; }
-
-      if (changed) { this.version++; this.bump(); }
-      return changed;
+    for (const r of results) {
+      changed += this.tx(() => this.writeScope(r, now));
+      await yieldNow();
+    }
+    // Rooms that are gone keep nothing.
+    changed += this.tx(() => {
+      const keep = results.map(r => r.room);
+      const marks = keep.map(() => "?").join(",");
+      const db = this.db;
+      let n = 0;
+      n += db.prepare(`DELETE FROM memory_evidence WHERE edge IN (SELECT id FROM memory_edges WHERE room NOT IN (${marks}))`).run(...keep).changes;
+      n += db.prepare(`DELETE FROM memory_lessons WHERE edge IN (SELECT id FROM memory_edges WHERE room NOT IN (${marks}))`).run(...keep).changes;
+      n += db.prepare(`DELETE FROM memory_edges WHERE room NOT IN (${marks})`).run(...keep).changes;
+      n += db.prepare(`DELETE FROM memory_room_nodes WHERE room NOT IN (${marks})`).run(...keep).changes;
+      n += db.prepare(`DELETE FROM memory_shortforms WHERE room NOT IN (${marks})`).run(...keep).changes;
+      return Number(n);
     });
+    if (changed) { this.version++; this.bump(); }
+    return changed;
+  }
+
+  /**
+   * One scope's rows as a difference: its nodes, edges, evidence, lessons and short forms.
+   * @param {Result} r
+   * @returns {number} rows changed
+   */
+  writeScope(r, now) {
+    const db = this.db;
+    const room = r.room, star = room === "*";
+    let changed = 0;
+    // What this scope has now, read before anything changes, so evidence and lessons of edges
+    // deleted below are found and removed too.
+    const haveEv = new Set(db.prepare("SELECT v.edge, v.session, v.seq FROM memory_evidence v JOIN memory_edges e ON e.id = v.edge WHERE e.room = ?").all(room)
+      .map(x => `${x.edge}\u0000${x.session}\u0000${x.seq}`));
+    const haveL = new Set(db.prepare("SELECT l.edge, l.module, l.kind, l.key FROM memory_lessons l JOIN memory_edges e ON e.id = l.edge WHERE e.room = ?").all(room)
+      .map(x => [x.edge, x.module, x.kind, x.key].join("\u0000")));
+
+    // nodes: the main graph's in memory_nodes, a room's in memory_room_nodes
+    const have = new Map((star ? db.prepare("SELECT * FROM memory_nodes").all() : db.prepare("SELECT * FROM memory_room_nodes WHERE room = ?").all(room)).map(x => [String(x.id), x]));
+    const upNode = star ? db.prepare(`INSERT INTO memory_nodes (id, kind, key, label, role, sessions, mentions, first_seen, last_seen)
+      VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, key=excluded.key, label=excluded.label,
+      role=excluded.role, sessions=excluded.sessions, mentions=excluded.mentions, first_seen=excluded.first_seen, last_seen=excluded.last_seen`)
+      : db.prepare(`INSERT INTO memory_room_nodes (room, id, kind, key, label, role, sessions, mentions, first_seen, last_seen)
+      VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(room, id) DO UPDATE SET kind=excluded.kind, key=excluded.key, label=excluded.label,
+      role=excluded.role, sessions=excluded.sessions, mentions=excluded.mentions, first_seen=excluded.first_seen, last_seen=excluded.last_seen`);
+    for (const id of r.kept) {
+      const a = r.agg.get(id);
+      const row = [id, r.kind.get(id), a.key, labelOf(a.key), r.role.get(id) ?? null, a.parents.size || new Set([...a.by.keys()]).size, a.mentions, a.first || null, a.last || null];
+      const h = have.get(id);
+      if (!h || h.kind !== row[1] || h.label !== row[3] || (h.role ?? null) !== row[4] || Number(h.sessions) !== row[5] || Number(h.mentions) !== row[6] || (h.first_seen ?? null) !== row[7] || (h.last_seen ?? null) !== row[8]) {
+        if (star) upNode.run(...row); else upNode.run(room, ...row);
+        changed++;
+      }
+    }
+    const delNode = star ? db.prepare("DELETE FROM memory_nodes WHERE id = ?") : db.prepare("DELETE FROM memory_room_nodes WHERE room = ? AND id = ?");
+    for (const id of have.keys()) if (!r.kept.has(id)) { if (star) delNode.run(id); else delNode.run(room, id); changed++; }
+
+    // edges
+    const edges = db.prepare("SELECT id, room, src, rel, dst, weight, valid_from, valid_to, confidence, seen, conflict, origin, rule FROM memory_edges WHERE room = ?").all(room)
+      .map(x => ({ id: Number(x.id), room: String(x.room), src: String(x.src), rel: String(x.rel), dst: String(x.dst), weight: Number(x.weight), from: Number(x.valid_from),
+        to: x.valid_to == null ? null : Number(x.valid_to), conf: Number(x.confidence), seen: x.seen == null ? null : Number(x.seen), conflict: Number(x.conflict), origin: String(x.origin), rule: x.rule == null ? null : String(x.rule) }));
+    const ins = db.prepare("INSERT INTO memory_edges (room, src, rel, dst, weight, valid_from, valid_to, observed, confidence, seen, conflict, origin, rule) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    const upd = db.prepare("UPDATE memory_edges SET weight = ?, confidence = ?, valid_to = ?, valid_from = ?, observed = ?, seen = ?, conflict = ?, origin = ?, rule = ? WHERE id = ?");
+    const del = db.prepare("DELETE FROM memory_edges WHERE id = ?");
+    /** @type {Map<number, [string, number][]>} */
+    const evidence = new Map();
+    /** @type {Map<number, string[][]>} */
+    const taught = new Map();
+    const wanted = new Set();
+    const key = (s, rl, d, f) => `${s}\u0000${rl}\u0000${d}\u0000${f}`;
+    const same = (e, w, to) => e.weight === w.weight && e.conf === w.conf && e.to === to && e.seen === (w.seen || null) && e.conflict === (w.conflict || 0)
+      && e.origin === (w.origin || "extract") && e.rule === (w.rule ?? null);
+    const put = (w, to = null) => ins.run(room, w.src, w.rel, w.dst, w.weight, w.from, to, now, w.conf, w.seen || null, w.conflict || 0, w.origin || "extract", w.rule ?? null);
+    const set = (id, w, to, from) => upd.run(w.weight, w.conf, to, from, now, w.seen || null, w.conflict || 0, w.origin || "extract", w.rule ?? null, id);
+    const byKey = new Map(edges.map(e => [key(e.src, e.rel, e.dst, e.from), e]));
+    for (let w of r.want) {
+      if (!w.ev.length && !w.lessons?.length && w.origin !== "user") continue;
+      const k = key(w.src, w.rel, w.dst, w.from);
+      const to = w.to ?? null;
+      let e = byKey.get(k);
+      // A belief the user ended closes the row that held it, whatever start the vote gave it.
+      if (!e && to !== null) e = edges.find(x => x.src === w.src && x.rel === w.rel && x.dst === w.dst && (x.to === null || x.to === to) && !wanted.has(x.id));
+      if (e && e.from !== w.from && to !== null) w = { ...w, from: e.from };
+      if (!e) {
+        const id = Number(put(w, to).lastInsertRowid);
+        e = { id, room, src: w.src, rel: w.rel, dst: w.dst, weight: w.weight, from: w.from, to, conf: w.conf, seen: w.seen || null, conflict: w.conflict || 0, origin: w.origin || "extract", rule: w.rule ?? null };
+        byKey.set(k, e); changed++;
+      } else if (!same(e, w, to)) {
+        set(e.id, w, to, w.from); changed++;
+        Object.assign(e, { weight: w.weight, conf: w.conf, to, from: w.from, seen: w.seen || null, conflict: w.conflict || 0, origin: w.origin || "extract", rule: w.rule ?? null });
+      }
+      wanted.add(e.id);
+      evidence.set(e.id, w.ev);
+      taught.set(e.id, w.lessons || []);
+    }
+
+    // works_at is bi-temporal. When the vote moves a person to another organisation, the old
+    // edge is CLOSED at the point the new one starts, never deleted: what was believed in
+    // June stays readable in September. A closed edge lives as long as its evidence does.
+    const works = edges.filter(e => e.rel === "works_at");
+    const people = new Set([...works.map(e => e.src), ...r.worksAt.keys()]);
+    for (const p of people) {
+      const mine = works.filter(e => e.src === p);
+      const w = r.worksAt.get(p);
+      if (w) {
+        const x = { ...w, src: p, rel: "works_at", dst: w.org };
+        const open = mine.find(e => e.to === null && e.dst === w.org);
+        for (const e of mine) if (e.to === null && e.dst !== w.org && !w.keep?.has(e.dst)) {
+          e.to = Math.max(e.from, w.from);
+          upd.run(e.weight, e.conf, e.to, e.from, now, e.seen, e.conflict, e.origin, e.rule, e.id); changed++;
+        }
+        const to = w.to ?? null;
+        if (open && to === null) {
+          if (open.from !== w.from || !same(open, x, null)) {
+            const clash = byKey.get(key(p, "works_at", w.org, w.from));
+            if (clash && clash.id !== open.id) { del.run(clash.id); changed++; }
+            set(open.id, x, null, w.from); changed++;
+            Object.assign(open, { from: w.from, weight: w.weight, conf: w.conf });
+          }
+          wanted.add(open.id); evidence.set(open.id, w.ev); taught.set(open.id, w.lessons);
+        } else {
+          const hit = byKey.get(key(p, "works_at", w.org, w.from));
+          let id;
+          if (hit) { if (!same(hit, x, to)) { set(hit.id, x, to, w.from); changed++; } id = hit.id; }
+          else { id = Number(put(x, to).lastInsertRowid); changed++; }
+          wanted.add(id); evidence.set(id, w.ev); taught.set(id, w.lessons);
+        }
+      }
+      // Every other works_at edge of this person stays while the turns or lessons behind it exist.
+      for (const e of mine) {
+        if (wanted.has(e.id) || !r.kept.has(e.src) || !r.kept.has(e.dst) || r.wrong?.has(`${e.src}\u0000works_at\u0000${e.dst}`)) continue;
+        const ev = r.together([e.src, ...(r.emailsOf.get(e.src) || [])], r.cluster(e.dst));
+        const ls = r.lessonsFor(e.src, "works_at", e.dst);
+        if (ev.length || ls.length) { wanted.add(e.id); evidence.set(e.id, ev); taught.set(e.id, ls); }
+      }
+    }
+    for (const e of edges) if (!wanted.has(e.id)) { del.run(e.id); changed++; }
+
+    // evidence, as a difference
+    const wantEv = new Set();
+    for (const [id, list] of evidence) for (const [s, q] of list) wantEv.add(`${id}\u0000${s}\u0000${q}`);
+    const insEv = db.prepare("INSERT INTO memory_evidence (edge, session, seq) VALUES (?,?,?)");
+    const delEv = db.prepare("DELETE FROM memory_evidence WHERE edge = ? AND session = ? AND seq = ?");
+    for (const k of wantEv) if (!haveEv.has(k)) { const [e, s, q] = k.split("\u0000"); insEv.run(Number(e), s, Number(q)); changed++; }
+    for (const k of haveEv) if (!wantEv.has(k)) { const [e, s, q] = k.split("\u0000"); delEv.run(Number(e), s, Number(q)); changed++; }
+
+    // lessons, the same way
+    const wantL = new Set();
+    for (const [id, list] of taught) for (const l of list) wantL.add([id, ...l].join("\u0000"));
+    const insL = db.prepare("INSERT INTO memory_lessons (edge, module, kind, key) VALUES (?,?,?,?)");
+    const delL = db.prepare("DELETE FROM memory_lessons WHERE edge = ? AND module = ? AND kind = ? AND key = ?");
+    for (const k of wantL) if (!haveL.has(k)) { const [e, m, kd, ky] = k.split("\u0000"); insL.run(Number(e), m, kd, ky); changed++; }
+    for (const k of haveL) if (!wantL.has(k)) { const [e, m, kd, ky] = k.split("\u0000"); delL.run(Number(e), m, kd, ky); changed++; }
+
+    // short forms, every claimant
+    const haveSf = new Map(db.prepare("SELECT node, form, precision, sessions FROM memory_shortforms WHERE room = ?").all(room).map(x => [`${x.node}\u0000${x.form}`, x]));
+    const upSf = db.prepare("INSERT INTO memory_shortforms (room, node, form, precision, sessions, at) VALUES (?,?,?,?,?,?) ON CONFLICT DO UPDATE SET precision = excluded.precision, sessions = excluded.sessions, at = excluded.at");
+    const wantSf = new Set();
+    for (const f of r.forms) {
+      const k = `${f.node}\u0000${f.form}`;
+      wantSf.add(k);
+      const h = haveSf.get(k);
+      if (!h || Number(h.precision) !== f.precision || Number(h.sessions) !== f.count) { upSf.run(room, f.node, f.form, f.precision, f.count, now); changed++; }
+    }
+    const delSf = db.prepare("DELETE FROM memory_shortforms WHERE room = ? AND node = ? AND form = ?");
+    for (const [k] of haveSf) if (!wantSf.has(k)) { const [nd, f] = k.split("\u0000"); delSf.run(room, nd, f); changed++; }
+    return changed;
   }
 }
 
 /** The room for sessions in no project. */
 export const UNFILED = "unfiled";
+
+/** The user, as the far end of client_of and the near end of decided. */
+export const ME = "me:you";
+
+/** Top-level domains that are not words, so "harlowlegal.com" is never "harlowlegalcom". */
+const PLAIN_TLDS = new Set(["com", "org", "net", "info", "biz", "xyz", "app", "dev", "run", "page", "site", "online", "cloud", "tech", "email"]);
+
+const MONTH = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const WEEKDAY = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+/**
+ * A date as a person wrote it ("18 september", "oct 2", "friday", "2026-10-02"), read against
+ * the turn's own time: a weekday is the next one on or after that day, a day and month without
+ * a year is the next one no more than a week back. Never the clock. Null when unsure.
+ * @returns {string|null} YYYY-MM-DD
+ */
+export function dateOf(text, ts) {
+  const t = String(text).toLowerCase().trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (iso) return t;
+  if (!ts) return null;
+  const at = new Date(ts);
+  const day = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate());
+  const w = WEEKDAY.indexOf(t);
+  if (w >= 0) return new Date(day + ((w - at.getUTCDay() + 7) % 7) * 86_400_000).toISOString().slice(0, 10);
+  const m = /^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)$/.exec(t) || /^([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?$/.exec(t);
+  if (!m) return null;
+  const [dd, mon] = /^\d/.test(m[1]) ? [Number(m[1]), m[2]] : [Number(m[2]), m[1]];
+  const mi = MONTH.indexOf(mon.slice(0, 3));
+  if (mi < 0 || dd < 1 || dd > 31) return null;
+  let y = at.getUTCFullYear();
+  if (Date.UTC(y, mi, dd) < day - 7 * 86_400_000) y++;
+  const d = new Date(Date.UTC(y, mi, dd));
+  return d.getUTCMonth() === mi ? d.toISOString().slice(0, 10) : null;
+}
 
 /** What memory.correct can say, plus the merge and split of nodes. */
 export const ACTIONS = new Set(["wrong", "ended", "replace", "confirm", "add", "merge", "split"]);

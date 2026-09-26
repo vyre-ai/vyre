@@ -503,6 +503,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- Resolution (decision 2): an address matches a person across sessions when exactly one kept
+  person has its local part and works at its domain (0.75); a word-like TLD or a trailing
+  organisation word in a domain spells the organisation (`harlow.law` is Harlow Law,
+  `keelasharchitects.com` is Keel & Ash); two names written with one address, sharing a first
+  or last word, are one person; `Dana M. Reyes` is Dana Reyes. `architects` and `architecture`
+  join the generic organisation words.
+- New relations, each derived per room from the room's own turns: `has_title` (the appositive,
+  one per person), `client_of` (the user's own words, "X is a new client", "our new client X";
+  taught ones too), `repo_for` (a repo named after an organisation, together in 2+ sessions) and
+  `deadline` ("due / launches / ships (on / by) <date>", read against the turn's own time,
+  closed at read time two days after its date). `prefers` and `decided` are read only with
+  `config.memory.relations.{prefers, decided}`, off by default. Client, deadline, preference and
+  decision phrasings count only in user turns; code talk ("the API client", "ship it Friday")
+  makes none. Titles, dates, preferences and decisions are value nodes a prompt never matches.
+- Migration 5 re-reads every turn once (in the background), because extraction changed.
+- The derive's write is one transaction per room with a yield between. Measured on 4,350
+  fictional sessions (9,300 turns), best of four: cold derive 820 to 908ms, worst block 57 to
+  104ms; an unchanged re-derive 146 to 286ms, worst block 14 to 67ms; `memory.relevant` p95
+  under 1ms. On the eval world `relevant` p50 0.08ms, p95 0.17ms.
+
 - The user corrects a fact (decision 4). `memory.correct {fact | subject, rel, object; action;
   object?; at?; note?; room?}` with `wrong` (never true, dropped from every vote in scope),
   `ended` (closed at `at`; older evidence never reopens it, newer opens a new row), `replace`

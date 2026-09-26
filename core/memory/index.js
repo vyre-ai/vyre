@@ -20,7 +20,9 @@ const cwds = { type: "array", items: { type: "string" } };
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log });
+    // config.memory.relations: { prefers?, decided? } switches on the relations still under
+    // evaluation (docs/adr/0007-intelligence.md, decision 2). Both are off by default.
+    const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log, relations: ctx.config.memory?.relations });
     const graph = new Graph(ctx.store.db, curator);
     let running = null, again = false, stopping = false, timer = null;
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on

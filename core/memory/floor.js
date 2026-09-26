@@ -13,6 +13,7 @@
 // the Deck asks for more with `around` rather than with a bigger limit.
 
 import { within } from "./teach.js";
+import { deadlineEnd } from "./graph.js";
 
 /** Roles that never get a room: tools, mail hosts and hubs are beside the work, not in it; the
  * user's own things are everywhere by definition. Same rule as memory.facts. */
@@ -89,8 +90,11 @@ export function floorPlan(g, { project_cwds = [], room, around, depth = 1, limit
         for (const r of lr) er.add(r);
       }
     }
+    // A deadline closes two days after its date, read now (docs/adr/0007-intelligence.md).
+    const due = deadlineEnd({ rel, dst: e.dst });
+    const until = e.valid_to != null ? Number(e.valid_to) : due !== null && due <= g.now() ? due : null;
     if (inView) edges.push({ id, src: String(e.src), rel, dst: String(e.dst), confidence: Number(e.confidence),
-      since: Number(e.valid_from) || null, until: e.valid_to == null ? null : Number(e.valid_to), learned: Number(e.observed) || null,
+      since: Number(e.valid_from) || null, until, learned: Number(e.observed) || null,
       taught: scopes.has(id), conflict: Boolean(e.conflict), rooms: er, row: e });
   }
 

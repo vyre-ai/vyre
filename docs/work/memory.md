@@ -67,6 +67,11 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   `memory.corrections`, `memory.uncorrect`, `memory.merge`, `memory.split` (by room, or apart),
   owner callers only, applied in derive after the votes, conflicts recorded, events with the ADR
   payload, CLI subcommands and `--project`. `module.json` does/watches/shows as in decision 12.
+- Resolution and new relations (decision 2): local parts across sessions, word-like TLDs and org
+  words in domains, one identity per address, middle initials; `has_title`, `client_of`,
+  `repo_for`, `deadline`; `prefers`/`decided` behind `config.memory.relations`, off. On the eval
+  world every supported relation measures precision 1 and recall 1 except `deadline` (recall 0.5,
+  see Next), Enrich P@3 0.949, empty on irrelevant 1.
 - `memory.graph` (floor plan, rooms, `updated` cursor), strict project graphs, agent access checks.
 - Taught facts scoped to a project with `fact.project_cwds`.
 - Short forms pooled per identity (spellings sharing a domain), so "the Harlow team" style references match on the real index.
@@ -81,6 +86,12 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
 ## Doing
 
 ## Next
+- eval gold: the Harlow deadline (18 September) is marked open at the eval's NOW (26 September),
+  but ADR 0007 closes a deadline two days after its date. One of the two should change.
+- prefers/decided: switch on once the eval measures precision 0.8 or more with the flag set
+  (the eval builds memory without config, so it reports them unsupported today).
+- A split write means readers can see one room's new rows beside another's old ones for a
+  moment; each room is consistent on its own. Revisit if the Deck shows it.
 - Short forms for people's first names are measured but few pass the 0.6 floor; that is by
   design. Revisit if the Enrich hook misses obvious first-name references.
 
@@ -121,6 +132,11 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   `correction: {id, action, age, note} | null`; `memory.why` returns `corrections`.
 - A split node's id is `<id>#<room slug>` with the same label, so the Deck shows two "Dana Reyes".
 - `module.json` `shows`: `{deck: ["panel:memory"], capsule: ["answer:memory.relevant"], cli: ["memory", "why"]}`.
+- New relations in facts: `has_title` (object kind `title`), `client_of` (object `me:you`, label
+  "you", kind `me`), `repo_for`, `deadline` (object `date:YYYY-MM-DD`, kind `date`; `until` is set
+  at read time once two days past), and with the flag `prefers` (`pref:`) and `decided`
+  (subject `me:you`, object `decision:`). Value kinds never match a prompt.
+- Config: `memory.relations: { prefers?: boolean, decided?: boolean }`.
 - `memory_edges` has a `room` column; any direct reader must filter `room = '*'` for the main
   graph. `memory_shortforms` has `room` in its key.
 

@@ -165,4 +165,10 @@ export const MIGRATIONS = [
   -- Every existing home derives once more, so its rows get rooms.
   INSERT INTO memory_meta (k, v) VALUES ('rederive', 1);
   `,
+  `
+  -- Extraction learned titles, clients, deadlines and middle initials, and reads user turns
+  -- apart from Claude's. Turns already read have none of that, so every home reads them again
+  -- once, in the background, the way a first pass does.
+  INSERT INTO memory_meta (k, v) VALUES ('reread', 1);
+  `,
 ];

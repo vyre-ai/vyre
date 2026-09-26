@@ -70,10 +70,11 @@ test("memory: extract finds addresses, domains, repos, names and the phrasings t
   // Code is full of dotted names that are not domains, and example domains are nobody's.
   assert.deepEqual(ids("db.run(ctx.store) then intake.tsx and user@example.com"), []);
   const cue = extract("Dana Reyes, the office manager at Harlow Legal, and Sam Okafor (sam@northwindbakery.com) called").cues;
-  assert.deepEqual(cue, [
+  assert.deepEqual(cue.sort((x, y) => x.rel.localeCompare(y.rel)), [
     { rel: "email_of", a: SAM, b: "email:sam@northwindbakery.com" },
+    { rel: "has_title", a: DANA, b: "title:office manager" },
     { rel: "works_at", a: DANA, b: HARLOW },
-  ].sort((x, y) => x.rel.localeCompare(y.rel)));
+  ]);
 });
 
 test("memory: a capital at the start of a sentence, a heading or a tool is not a name", () => {
