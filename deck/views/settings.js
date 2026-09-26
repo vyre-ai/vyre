@@ -29,14 +29,15 @@ const SECTIONS = [
   ["machine", "This machine"],
 ];
 
-/** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same. */
+/** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same.
+ * `vyre up` picks up at the first step not finished; it has no flag for one step (asked polish-cli). */
 const STEPS = [
   { id: "you", title: "You", cmd: "vyre up" },
-  { id: "claude", title: "Claude Code", cmd: "vyre up --step claude" },
-  { id: "tailscale", title: "Tailscale", cmd: "vyre up --step tailscale" },
-  { id: "name", title: "Your address", cmd: "vyre up --step name" },
+  { id: "claude", title: "Claude Code", cmd: "vyre up" },
+  { id: "tailscale", title: "Tailscale", cmd: "vyre up" },
+  { id: "name", title: "Your address", cmd: "vyre up" },
   { id: "history", title: "Your history", cmd: "vyre index" },
-  { id: "devices", title: "Your devices", cmd: "vyre up --step devices" },
+  { id: "devices", title: "Your devices", cmd: "vyre up" },
 ];
 
 const onTailnet = () => /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
