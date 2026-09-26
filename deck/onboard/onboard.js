@@ -266,7 +266,9 @@ const SCREENS = {
         const submit = async () => {
           const code = /** @type {HTMLInputElement} */ (codeIn).value.trim();
           if (!code) { put(codeErr, "Paste the code first."); return; }
+          put(codeErr, h("span", { class: "busy-inline faint" }, "Checking the code with Claude. This takes a few seconds."));
           const p = await attempt("onboard.claude", { mode: "setup-token", code });
+          put(codeErr);
           if (p.error) { put(codeErr, String(p.error.message)); return; }
           if (p.data?.signedIn) render(); else put(codeErr, "That code did not work. Try again.");
         };

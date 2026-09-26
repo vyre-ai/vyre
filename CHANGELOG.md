@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Claude sign-in code is submitted
+
+- Onboarding step 2 typed the pasted code and Enter into `claude setup-token` in one write.
+  Claude Code's prompt reads a multi-character chunk as pasted text, Enter included, so the code
+  sat in the box unsubmitted, and the page waited a silent minute. The code now goes first and
+  Enter on its own 300 ms later; a refused code ("OAuth error: ...") is reported at once, with a
+  hint to open the sign-in again for a fresh code. The page says it is checking while it waits.
+  `core/onboard/setup-token.js`, `deck/onboard/onboard.js`; the test's fake claude now reads its
+  prompt the way Ink does.
+
 #### The box's Deck can approve, seal and delete again
 
 - On a box the Deck is only served at the tailnet address, where calls are `tailnet:<owner>`.
