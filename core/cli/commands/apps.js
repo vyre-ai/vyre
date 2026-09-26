@@ -37,6 +37,8 @@ const SUBCOMMANDS = new Set(["find", "targets", "setup", "list"]);
 export function parseArgs(args) {
   /** @type {{ json: boolean, help: boolean, model: boolean, app: string | null }} */
   const flags = { json: false, help: false, model: false, app: null };
+  /** @type {string | null} what was wrong with the flags, for a usage error */
+  let error = null;
   /** @type {string[]} */
   const words = [];
   let raw = false;
@@ -47,12 +49,16 @@ export function parseArgs(args) {
     if (a === "--json") flags.json = true;
     else if (a === "--help" || a === "-h") flags.help = true;
     else if (a === "--model") flags.model = true;
-    else if (a === "--app") flags.app = args[++i] ?? "";
-    else if (a.startsWith("--app=")) flags.app = a.slice(6);
+    else if (a === "--app" || a.startsWith("--app=")) {
+      const v = a === "--app" ? args[++i] : a.slice(6);
+      if (!v || v.startsWith("-")) error = "--app needs an app name, like --app Notes";
+      else flags.app = v;
+    }
+    else if (/^--?[a-z]/i.test(a)) error = `${a} is not a flag vyre apps knows; put words that start with a dash after --`;
     else words.push(a);
   }
   const sub = !raw && words.length && SUBCOMMANDS.has(words[0].toLowerCase()) ? words.shift()?.toLowerCase() || null : null;
-  return { sub, words, flags };
+  return { sub, words, flags, error };
 }
 
 /** Rows as aligned columns, two spaces apart. @param {string[][]} rows */
@@ -80,13 +86,13 @@ export function formatSetup(r) {
 
 /**
  * @typedef {{ data?: any, error?: { code: string, message: string } }} Answer
- * @typedef {{ call(tool: string, input: any): Promise<Answer>, person(tool: string, input: any): Promise<Answer>,
- *   up(): Promise<boolean>, print(line: string): void }} Deps
+ * @typedef {{ call(tool: string, input: any, opts?: { timeout?: number }): Promise<Answer>, person(tool: string, input: any): Promise<Answer>,
+ *   up(): Promise<boolean>, print(line: string): void, warn(line: string): void }} Deps
  */
 
 /** @type {Deps} */
 const real = {
-  call: (tool, input) => daemonCall(tool, input, { timeout: 90_000 }),
+  call: (tool, input, opts) => daemonCall(tool, input, { timeout: (opts && opts.timeout) || 90_000 }),
   person: (tool, input) => callAsPerson(tool, input),
   up: async () => {
     const r = await ensureUp();
@@ -94,6 +100,7 @@ const real = {
     return r.ok;
   },
   print: line => out(line),
+  warn: line => { process.stderr.write(line + "\n"); },
 };
 
 /**
@@ -101,9 +108,10 @@ const real = {
  * @param {string[]} args @param {Deps} [deps]
  */
 export async function runApps(args, deps = real) {
-  const { sub, words, flags } = parseArgs(args);
+  const { sub, words, flags, error } = parseArgs(args);
   const p = deps.print;
   if (flags.help) { p(USAGE); return 0; }
+  if (error) { deps.warn(`  ${error}`); deps.warn(USAGE); return 2; }
   if (!(await deps.up())) return 1;
 
   /** Print a refusal in words; the exit code says it failed. */
@@ -133,7 +141,8 @@ export async function runApps(args, deps = real) {
   }
   if (sub === "setup") {
     if (!words.length) { p("  vyre apps setup clock"); return 1; }
-    return done(await deps.call("apps.setup", { app: words.join(" ") }), formatSetup);
+    // Signing asks Apple's servers, once for each shortcut: it can take a while.
+    return done(await deps.call("apps.setup", { app: words.join(" ") }, { timeout: 180_000 }), formatSetup);
   }
 
   const text = words.join(" ");
@@ -147,8 +156,10 @@ export async function runApps(args, deps = real) {
   }
   const input = { app: r.app, action: r.action, args: r.args };
   if (r.sends) {
-    // Said before any proof is asked for, so the person knows what they are approving.
-    if (!flags.json) p(`  ${bold(r.said)}`);
+    // Said before any proof is asked for, so the person knows what they are approving. With
+    // --json it goes to stderr, keeping stdout for the JSON.
+    if (flags.json) deps.warn(`  ${r.said}`);
+    else p(`  ${bold(r.said)}`);
     return done(await deps.person("apps.send", input), d => [`  ${signal("●")} ${d.said}`]);
   }
   return done(await deps.call("apps.act", input), d => [`  ${signal("●")} ${d.said}`]);

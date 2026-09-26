@@ -160,8 +160,8 @@ test("reminders: a due time that has passed, in the configured zone, is refused"
   const env = makeEnv({ config: { exec: f.exec, platform: "darwin", now: () => NINE_AM, timeZone: KL } });
   await assert.rejects(reminders.actions.create.run({ text: "x", due: "2026-09-27T08:59" }, env), (/** @type {any} */ e) =>
     e.code === "bad_input" && e.message === "that time has passed");
-  await assert.rejects(reminders.actions.create.run({ text: "x", due: "2026-09-27T09:00" }, env), (/** @type {any} */ e) => e.code === "bad_input");
   assert.equal(f.calls.length, 0);
+  assert.equal((await reminders.actions.create.run({ text: "x", due: "2026-09-27T09:00" }, env)).said, "Reminder: x, today at 9:00", "the current minute is now");
   // The same moment is still 26 Sep in New York, so 27 Sep 00:30 there is tomorrow, not the past.
   const ny = makeEnv({ config: { exec: f.exec, platform: "darwin", now: () => NINE_AM, timeZone: "America/New_York" } });
   assert.equal((await reminders.actions.create.run({ text: "x", due: "2026-09-27T00:30" }, ny)).said, "Reminder: x, tomorrow at 0:30");

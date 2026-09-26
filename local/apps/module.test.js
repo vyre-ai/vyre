@@ -226,7 +226,7 @@ test("module: the model seam runs only for ambiguous words, only when asked, and
   const chat = chatApp();
   const model = async (/** @type {string} */ text, /** @type {any[]} */ apps) => {
     asked.push({ text, apps });
-    if (text.includes("lie")) return { app: "Chatter", action: "message", args: { to: "juno", text: "hi" }, sends: false };
+    if (text.includes("lie")) return { app: "Chatter", action: "message", args: { to: "juno", text: "hi" }, sends: false, said: "Timer for 5 minutes" };
     if (text.includes("junk")) return { nope: true };
     if (text.includes("throw")) throw new Error("model down");
     return { app: "Clock", action: "timer", args: { seconds: 300 }, said: "Timer for 5 minutes" };
@@ -237,9 +237,11 @@ test("module: the model seam runs only for ambiguous words, only when asked, and
   assert.equal((await reg.call("apps.route", { text: "brew a tea for five minutes" }, "capsule")).data.ambiguous, true);
   assert.equal(asked.length, 0, "the model was asked without model: true");
   const m = await reg.call("apps.route", { text: "brew a tea for five minutes", model: true }, "capsule");
-  assert.deepEqual(m.data, { app: "Clock", action: "timer", args: { seconds: 300 }, sends: false, said: "Timer for 5 minutes", via: "model" });
+  assert.deepEqual(m.data, { app: "Clock", action: "timer", args: { seconds: 300 }, sends: false, said: "Clock timer", via: "model" });
   assert.ok(asked[0].apps.find((/** @type {any} */ a) => a.app === "Clock").actions.some((/** @type {any} */ x) => x.name === "timer"));
-  assert.equal((await reg.call("apps.route", { text: "lie to me", model: true }, "capsule")).data.sends, true, "the model's sends: false was trusted");
+  const lie = (await reg.call("apps.route", { text: "lie to me", model: true }, "capsule")).data;
+  assert.equal(lie.sends, true, "the model's sends: false was trusted");
+  assert.equal(lie.said, "Chatter → juno: hi", "the preview was not built from the args");
   assert.equal((await reg.call("apps.route", { text: "junk please", model: true }, "capsule")).data.ambiguous, true);
   assert.equal((await reg.call("apps.route", { text: "throw it", model: true }, "capsule")).data.ambiguous, true);
 });
@@ -258,11 +260,11 @@ test("module: apps.setup answers only the surfaces a person drives", async t => 
   const home = tempHome(t);
   const f = fakeExec((file, args) => (args[0] === "sign" ? (fs.writeFileSync(args[args.indexOf("--output") + 1], "x"), {}) : {}));
   const { reg } = await start(t, { apps: { exec: f.exec, setupDir: path.join(home, "shortcuts") } });
-  for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:kit", "module:chat", "anonymous", "local"]) {
+  for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:kit", "module:chat", "anonymous", "local", "tailnet-guest:juno", "tailnet:agent:kit"]) {
     const r = await reg.call("apps.setup", { app: "clock" }, caller);
     assert.equal(r.error && r.error.code, "denied", `${caller} ran apps.setup`);
   }
   assert.equal(f.calls.length, 0);
   assert.equal(reg.listTools("mcp").some(x => x.name === "apps.setup"), false);
-  for (const caller of ["cli", "capsule", "deck"]) assert.ok((await reg.call("apps.setup", { app: "clock" }, caller)).data, caller);
+  for (const caller of ["cli", "capsule", "deck", "tailnet:alex"]) assert.ok((await reg.call("apps.setup", { app: "clock" }, caller)).data, caller);
 });

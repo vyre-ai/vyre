@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { TIMER, ALARM } from "./adapters/clock.js";
+import { AppsError } from "./env.js";
 
 /**
  * Shortcuts' action identifiers. VERIFIED ones are long-standing actions seen in shared
@@ -70,7 +71,8 @@ export function timerShortcut() {
     action(ACTIONS.getText, { UUID: U.text, WFInput: input }),
     action(ACTIONS.getNumbers, { UUID: U.number, WFInput: output(U.text, "Text") }),
     action(ACTIONS.startTimer, {
-      WFDuration: { Value: { Magnitude: inText(U.number, "Numbers"), Unit: "sec" }, WFSerializationType: "WFQuantityFieldValue" },
+      // UNVERIFIED: the magnitude as a variable attachment, the form a quantity field takes a variable in.
+      WFDuration: { Value: { Magnitude: output(U.number, "Numbers"), Unit: "sec" }, WFSerializationType: "WFQuantityFieldValue" },
     }),
   ]);
 }
@@ -118,7 +120,7 @@ export const BY_HAND = [
 /**
  * Clock's setup: write, sign and open the two shortcuts, unless they are already there.
  * @param {import("./env.js").Env} env @param {string} dir the folder under the Vyre home to keep them in
- * @returns {Promise<{ ready: boolean, steps: string[], files: string[] }>}
+ * @returns {Promise<{ ready: boolean, steps: string[], files: string[], failed?: string[] }>}
  */
 export async function setupClock(env, dir) {
   // Refused here, before a file is written, when signing or opening would be refused after.
@@ -127,20 +129,33 @@ export async function setupClock(env, dir) {
   const missing = [{ name: TIMER, build: timerShortcut }, { name: ALARM, build: alarmShortcut }].filter(s => !have.includes(s.name));
   if (!missing.length) return { ready: true, steps: [`Clock is set up: ${TIMER} and ${ALARM} are in Shortcuts.`], files: [] };
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // Sign both, then open both. One that fails does not stop the other; the steps say which.
+  /** @type {{ name: string, file: string }[]} */
+  const signed = [];
   /** @type {string[]} */
-  const files = [];
+  const problems = [];
   for (const s of missing) {
-    const unsigned = path.join(dir, `${s.name}.unsigned.shortcut`), signed = path.join(dir, `${s.name}.shortcut`);
+    const unsigned = path.join(dir, `${s.name}.unsigned.shortcut`), out = path.join(dir, `${s.name}.shortcut`);
+    // A signed file left from an earlier try would be opened even if signing failed now.
+    fs.rmSync(out, { force: true });
     fs.writeFileSync(unsigned, plist(s.build()));
-    try { await env.shortcuts.sign(unsigned, signed); }
+    try { await env.shortcuts.sign(unsigned, out); signed.push({ name: s.name, file: out }); }
+    catch (e) { problems.push(`${s.name} could not be signed: ${/** @type {Error} */ (e).message}`); }
     finally { fs.rmSync(unsigned, { force: true }); }
-    files.push(signed);
   }
-  for (const f of files) await env.openFile(f);
+  /** @type {string[]} */
+  const opened = [];
+  for (const s of signed) {
+    try { await env.openFile(s.file); opened.push(s.name); }
+    catch (e) { problems.push(`${s.name} could not be opened: ${/** @type {Error} */ (e).message}. Open ${s.file} yourself.`); }
+  }
+  if (!signed.length) throw new AppsError("failed", `${problems.join("; ")}. ${BY_HAND[0]}`);
   return {
     ready: false,
-    steps: [WHY, ...missing.map(s => `Shortcuts has opened ${s.name}: click Add Shortcut.`), "Then ask again, for example: timer 10 min.", ...BY_HAND],
-    files,
+    steps: [WHY, ...opened.map(n => `Shortcuts has opened ${n}: click Add Shortcut.`), ...problems,
+      "Then ask again, for example: timer 10 min.", ...BY_HAND],
+    files: signed.map(s => s.file),
+    ...(problems.length ? { failed: problems } : {}),
   };
 }
 

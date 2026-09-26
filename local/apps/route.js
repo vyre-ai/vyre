@@ -6,10 +6,21 @@
 // Rules only, and a pure function: the moment and the time zone come in, a route or
 // `{ambiguous, reason}` goes out, and nothing runs. What the rules cannot place is ambiguous, and
 // the tool (index.js) may then ask a small model, through a seam this file knows nothing about.
+// When in doubt the rules say ambiguous rather than guess: a wrong guess sets the wrong alarm or,
+// worse, sends the wrong words to the wrong person.
 //
 // Times are wall-clock times in the given zone, never the zone of the machine running the code.
-// A bare hour ("at 6") is whichever of 6:00 and 18:00 comes next. On a named later day it reads
-// the way people mean it: 7 to 11 is the morning, 12 is noon, 1 to 6 is the afternoon.
+// A bare hour ("at 6") is whichever of 6:00 and 18:00 comes next; a time in the current minute
+// counts as now. On a named later day it reads the way people mean it: 7 to 11 is the morning, 12
+// is noon, 1 to 6 is the afternoon. "Tonight at 12" is midnight, and "tonight at 1" to 4 are the
+// small hours after it.
+//
+// Daylight saving: "in 20 minutes" is added to the instant and then read on the zone's clock, so
+// it lands right across a change. A named wall time is handed on as written; one that a spring
+// change skips (02:30 on that morning) is left to Reminders to place.
+//
+// A message's words are sent exactly as typed: only who it is for is tidied. Who it is for must
+// look like a name (one to three words, or a #channel or @handle); anything else is ambiguous.
 //
 // An @App scope (the Capsule's "@Notes buy milk") applies only that app's rules, and words that
 // match none of them become the app's default action: a note, a reminder, a timer or alarm, the
@@ -21,22 +32,39 @@
  * @typedef {{ now: number, timeZone: string, app?: string }} RouteOptions
  */
 
+/** Longer text than this is never a command; refusing it early also bounds every regex below. */
+export const MAX_TEXT = 2000;
+
 const UNIT = "(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])";
 const ONE = `\\d+(?:\\.\\d+)?\\s*${UNIT}`;
 const DUR = `(?:half\\s+an\\s+hour|an?\\s+(?:hour|minute)|${ONE})(?:\\s*(?:,|and)?\\s*${ONE})*`;
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const WEEKDAY = `(?:${DAYS.join("|")})`;
-const CLOCK = "(?:\\d{1,2}(?::\\d{2})?\\s*(?:[ap]\\.?m\\.?)?|noon|midnight)";
+const CLOCK = "(?:\\d{1,2}(?:[:.]\\d{2})?\\s*(?:[ap]\\.?m\\.?)?|noon|midnight)";
+const AMPM = "\\d{1,2}(?:[:.]\\d{2})?\\s*[ap]\\.?m\\.?";
 const MESSENGERS = /** @type {Record<string, string>} */ ({ slack: "Slack", whatsapp: "WhatsApp" });
 
+const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+  "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS = /** @type {Record<string, number>} */ ({ twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60 });
+
+/** "twenty-five minutes" -> "25 minutes": number words from one to sixty, as digits. */
+function numberWords(/** @type {string} */ s) {
+  return s
+    .replace(/\b(twenty|thirty|forty|fifty)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/g, (_, t, u) => String(TENS[t] + SMALL.indexOf(u)))
+    .replace(/\b(twenty|thirty|forty|fifty|sixty)\b/g, t => String(TENS[t]))
+    .replace(new RegExp(`\\b(${SMALL.slice(1).join("|")})\\b`, "g"), w => String(SMALL.indexOf(w)));
+}
+
 /**
- * Seconds in "10 min", "1h30m", "2 hours and 5 minutes", "half an hour"; null unless the whole
- * text is a duration.
+ * Seconds in "10 min", "1h30m", "1h30", "a 10-minute", "ten minutes", "2 hours and 5 minutes",
+ * "half an hour"; null unless the whole text is a duration.
  * @param {string} text
  */
 export function parseDuration(text) {
-  const s = String(text).trim().toLowerCase();
-  if (!new RegExp(`^${DUR}$`).test(s)) return null;
+  let s = numberWords(String(text).trim().toLowerCase());
+  s = s.replace(/^an?\s+(?=\d)/, "").replace(/(\d)-(?=[a-z])/g, "$1 ").replace(/^(\d+)\s*h\s*(\d{1,2})$/, "$1h$2m");
+  if (s.length > 80 || !new RegExp(`^${DUR}$`).test(s)) return null;
   let total = 0;
   if (/^half\s+an\s+hour/.test(s)) total += 1800;
   else if (/^an?\s+hour/.test(s)) total += 3600;
@@ -49,7 +77,7 @@ export function parseDuration(text) {
 }
 
 /**
- * "7", "6:45", "7am", "3:30 p.m.", "noon" -> hour, minute, and am/pm when said.
+ * "7", "6:45", "7.30", "7am", "3:30 p.m.", "noon" -> hour, minute, and am/pm when said.
  * @param {string} text
  * @returns {{ h: number, mi: number, mer: "am" | "pm" | null, colon: boolean } | null}
  */
@@ -57,7 +85,7 @@ export function parseClock(text) {
   const s = String(text).trim().toLowerCase();
   if (s === "noon") return { h: 12, mi: 0, mer: "pm", colon: false };
   if (s === "midnight") return { h: 0, mi: 0, mer: "am", colon: false };
-  const m = /^(\d{1,2})(?::(\d{2}))?\s*(?:([ap])\.?m\.?)?$/.exec(s);
+  const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*(?:([ap])\.?m\.?)?$/.exec(s);
   if (!m) return null;
   const h = Number(m[1]), mi = m[2] ? Number(m[2]) : 0, mer = m[3] ? (m[3] === "a" ? "am" : "pm") : null;
   if (mi > 59 || h > 23 || (mer && (h < 1 || h > 12))) return null;
@@ -92,14 +120,23 @@ function dayAfter(/** @type {{ y: number, mo: number, d: number }} */ w, /** @ty
 
 const nowIso = (/** @type {ReturnType<typeof wall>} */ w) => `${w.y}-${pad(w.mo)}-${pad(w.d)}T${pad(w.h)}:${pad(w.mi)}`;
 
-/** How far ahead a weekday is: 0 today, up to 6. */
-const ahead = (/** @type {ReturnType<typeof wall>} */ w, /** @type {string} */ name) => (DAYS.indexOf(name.toLowerCase()) - w.dow + 7) % 7;
+/**
+ * How many days ahead a weekday is: 0 today, up to 6. With `next`, the one in next week (weeks
+ * start on Monday): on a Thursday, "next monday" is in four days and "next friday" in eight.
+ */
+function ahead(/** @type {ReturnType<typeof wall>} */ w, /** @type {string} */ name, next = false) {
+  const target = DAYS.indexOf(name.toLowerCase());
+  if (!next) return (target - w.dow + 7) % 7;
+  const toMonday = (1 - w.dow + 7) % 7 || 7;
+  return toMonday + (target - 1 + 7) % 7;
+}
 
 /** @returns {Ambiguous} */
 const unsure = (/** @type {string} */ reason) => ({ ambiguous: true, reason });
 
-/** Collapse spaces and trim trailing punctuation a person adds to a request. */
-const tidy = (/** @type {string} */ s) => String(s).replace(/\s+/g, " ").trim().replace(/[?!.]+$/, "").trim();
+/** Collapse spaces, and drop the "please" and end punctuation a person adds to a request. */
+const tidy = (/** @type {string} */ s) => String(s).replace(/\s+/g, " ").trim()
+  .replace(/[?!.]+$/, "").replace(/[\s,]+please$/i, "").replace(/^please\s+/i, "").replace(/[?!.]+$/, "").trim();
 
 const DURATION_WORDS = (/** @type {number} */ s) => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
@@ -125,15 +162,17 @@ function alarm(/** @type {string} */ when) {
 
 /** @param {string} t @returns {Route | Ambiguous | null} */
 function clockRules(t) {
-  let m = /^(?:(?:set|start)\s+)?(?:an?\s+)?timer(?:\s+(?:for\s+)?(.+))?$/i.exec(t);
+  let m = /^(?:(?:set|start)\s+)?(?:an?\s+)?timer(?:\s*:\s*|\s+(?:for\s+)?|$)(.*)$/i.exec(t);
   if (m) {
     const s = m[1] ? parseDuration(m[1]) : null;
     return s ? timer(s) : unsure("how long a timer?");
   }
-  m = /^(?:(?:set|start)\s+)?(?:an?\s+)?(.+?)\s+timer$/i.exec(t);
+  m = /^(?:(?:set|start)\s+)?(.+?)\s+timer$/i.exec(t);
   if (m && parseDuration(m[1])) return timer(/** @type {number} */ (parseDuration(m[1])));
-  m = /^(?:(?:set|make)\s+)?(?:an?\s+)?alarm(?:\s+(?:for|at))?(?:\s+(.+))?$/i.exec(t) || /^wake\s+me(?:\s+up)?(?:\s+at)?\s+(.+)$/i.exec(t);
+  m = /^(?:(?:set|make)\s+)?(?:an?\s+)?alarm(?:\s*:\s*|\s+(?:for\s+|at\s+)?|$)(.*)$/i.exec(t) || /^wake\s+me(?:\s+up)?(?:\s+at)?\s+(.+)$/i.exec(t);
   if (m) return m[1] ? alarm(m[1]) : unsure("an alarm for what time?");
+  const s = parseDuration(t);
+  if (s) return timer(s);
   return null;
 }
 
@@ -144,68 +183,99 @@ const note = (/** @type {string} */ text) => ({ app: "Notes", action: "create", 
 
 /** @param {string} raw @returns {Route | Ambiguous | null} */
 function noteRules(raw) {
-  const m = /^(?:(?:add|save)\s+(?:this\s+)?to\s+(?:my\s+)?notes?|new\s+note|make\s+a\s+note|take\s+a\s+note|note(?:\s+down)?)(?:\s*[:\-]\s*|\s+|$)([\s\S]*)$/i.exec(raw.trim());
+  // A dash separates only with spaces round it, so "note-taking tips" is not a note.
+  const m = /^(?:(?:add|save)\s+(?:this\s+)?to\s+(?:my\s+)?notes?|new\s+note|make\s+a\s+note|take\s+a\s+note|note(?:\s+down)?)(?:\s*:\s*|\s+-\s+|\s+|$)([\s\S]*)$/i.exec(raw.trim());
   if (!m) return null;
-  const text = m[1].trim();
-  return text ? note(text) : unsure("a note saying what?");
+  const text = m[1].replace(/^(?:to\s+self\b\s*:?\s*|that\s+|of\s+)/i, "").trim();
+  // "make a note of this" names nothing to write down.
+  if (!text || /^(?:this|that|it)[.!]?$/i.test(text)) return unsure("a note saying what?");
+  return note(text);
 }
 
 // ---- Reminders ---------------------------------------------------------------------------
 
 /**
- * The due time a reminder's words name, and the words left over for the task.
+ * The due time a reminder's words name, and the words left over for the task. Time words are
+ * taken after "at", "on" or "in" wherever they are, and bare ("tomorrow", "friday", "9am") only at
+ * the start or the end, so "email about sunday brunch" and "take my 3pm pill" keep their words.
  * @param {string} words @param {RouteOptions} o
- * @returns {{ task: string, due: string | null, when: string } | Ambiguous}
+ * @returns {{ task: string, due: string | null } | Ambiguous}
  */
 function reminderParts(words, o) {
   let rest = ` ${words} `;
-  const take = (/** @type {RegExp} */ re) => {
-    const m = re.exec(rest);
-    if (m) rest = rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length);
-    return m;
-  };
-  const inDur = take(new RegExp(`\\sin\\s+(${DUR})(?=[\\s,.!?])`, "i"));
-  const atTime = take(new RegExp(`\\s(?:at\\s+(${CLOCK})|(\\d{1,2}(?::\\d{2})?\\s*[ap]\\.?m\\.?))(?=[\\s,.!?])`, "i"));
-  const day = take(new RegExp(`\\s(?:on\\s+)?(today|tonight|tomorrow|${WEEKDAY})(?=[\\s,.!?])`, "i"));
-  const task = tidy(rest).replace(/^(?:to|that|about)\s+/i, "").replace(/\s+(?:to|at|on)$/i, "").trim();
+  /** @type {Record<string, RegExpExecArray | null>} */
+  const got = { dur: null, time: null, day: null };
+  /** @type {[keyof typeof got, RegExp][]} */
+  const rules = [
+    ["dur", new RegExp(`\\sin\\s+(${DUR})(?=\\s)`, "i")],
+    ["time", new RegExp(`\\sat\\s+(${CLOCK})(?=\\s)`, "i")],
+    ["time", new RegExp(`^\\s+(${AMPM})(?=\\s)`, "i")],
+    ["time", new RegExp(`\\s(${AMPM})\\s*$`, "i")],
+    ["day", new RegExp(`\\son\\s+((?:next\\s+)?${WEEKDAY})(?=\\s)`, "i")],
+    ["day", new RegExp(`^\\s+((?:next\\s+)?${WEEKDAY}|today|tonight|tomorrow)(?=\\s)`, "i")],
+    ["day", new RegExp(`\\s((?:next\\s+)?${WEEKDAY}|today|tonight|tomorrow)\\s*$`, "i")],
+  ];
+  // Taking one phrase can bring another to an edge ("tomorrow at 9 to ..."), so go round again.
+  for (let round = 0, moved = true; moved && round < 4; round++) {
+    moved = false;
+    for (const [k, re] of rules) {
+      if (got[k]) continue;
+      const m = re.exec(rest);
+      if (!m) continue;
+      got[k] = m;
+      rest = rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length) + " ";
+      moved = true;
+    }
+  }
+  const task = tidy(rest).replace(/^(?:to|that|about)\s+/i, "").replace(/\s+(?:to|at|on|in)$/i, "").trim();
   if (!task) return unsure("remind you of what?");
 
   const w = wall(o.now, o.timeZone);
-  if (inDur) {
-    const s = parseDuration(inDur[1]);
-    if (!s) return unsure(`"in ${inDur[1]}" is not a length of time`);
-    const due = nowIso(wall(Math.ceil((o.now + s * 1000) / 60000) * 60000, o.timeZone));
-    return { task, due, when: `in ${DURATION_WORDS(s)}` };
+  if (got.dur) {
+    const s = parseDuration(got.dur[1]);
+    if (!s) return unsure(`"in ${got.dur[1]}" is not a length of time`);
+    return { task, due: nowIso(wall(Math.ceil((o.now + s * 1000) / 60000) * 60000, o.timeZone)) };
   }
-  const clock = atTime ? parseClock(atTime[1] || atTime[2]) : null;
-  if (atTime && !clock) return unsure(`"${atTime[0].trim()}" is not a time`);
-  const dayWord = day ? day[1].toLowerCase() : null;
+  const clock = got.time ? parseClock(got.time[1]) : null;
+  if (got.time && !clock) return unsure(`"${got.time[1].trim()}" is not a time`);
+  const dayWord = got.day ? got.day[1].toLowerCase().replace(/\s+/g, " ") : null;
+  const next = Boolean(dayWord && dayWord.startsWith("next "));
+  const weekday = dayWord ? dayWord.replace(/^next /, "") : null;
+  const isWeekday = Boolean(weekday && DAYS.includes(weekday));
   const tonight = dayWord === "tonight";
   /** @type {number | null} days ahead the words fix, or null for "the next one" */
-  let offset = dayWord === "today" || tonight ? 0 : dayWord === "tomorrow" ? 1 : dayWord ? ahead(w, dayWord) : null;
-  if (!clock && offset === null) return { task, due: null, when: "" };
+  const offset = dayWord === "today" || tonight ? 0 : dayWord === "tomorrow" ? 1 : isWeekday ? ahead(w, /** @type {string} */ (weekday), next) : null;
+  if (!clock && offset === null) return { task, due: null };
 
-  // The hours the words could mean, earliest first.
-  /** @type {number[]} */
-  let hours;
+  // Candidate (days ahead, hour) pairs, earliest first; the first not yet past wins.
   const mi = clock ? clock.mi : 0;
-  if (!clock) hours = [tonight ? 20 : 9];
-  else if (fixed(clock) !== null) hours = [/** @type {number} */ (fixed(clock))];
-  else if (clock.h === 0 || clock.h > 12) hours = [clock.h];
-  else if (tonight) hours = [clock.h === 12 ? 12 : clock.h + 12];
-  else if (clock.h === 12) hours = [12];
-  else if (offset !== null && offset > 0) hours = [clock.h >= 7 ? clock.h : clock.h + 12];
-  else hours = [clock.h, clock.h + 12];
-
-  const now = nowIso(w);
-  const at = (/** @type {number} */ n, /** @type {number} */ h) => `${dayAfter(w, n)}T${pad(h)}:${pad(mi)}`;
-  // A weekday that is today, with its time gone, means next week's.
-  const days = offset === null ? [0, 1] : dayWord && DAYS.includes(dayWord) && offset === 0 ? [0, 7] : [offset];
-  for (const n of days) {
-    for (const h of hours) {
-      if (at(n, h) > now) return { task, due: at(n, h), when: "" };
-    }
+  /** @type {[number, number][]} */
+  let tries;
+  if (tonight) {
+    // Tonight runs past midnight: 12 is midnight, 1 to 4 the small hours after it.
+    const f = clock ? fixed(clock) : null;
+    const h = !clock ? 20 : f !== null ? f : clock.h === 12 ? 0 : clock.h <= 4 ? clock.h : clock.h < 12 ? clock.h + 12 : clock.h;
+    tries = [[h < 5 ? 1 : 0, h]];
+  } else {
+    /** @type {number[]} */
+    let hours;
+    if (!clock) hours = [9];
+    else if (fixed(clock) !== null) hours = [/** @type {number} */ (fixed(clock))];
+    else if (clock.h === 0 || clock.h > 12) hours = [clock.h];
+    else if (clock.h === 12) hours = [12];
+    else if (offset !== null && offset > 0) hours = [clock.h >= 7 ? clock.h : clock.h + 12];
+    else hours = [clock.h, clock.h + 12];
+    // No day: today, then tomorrow. A weekday that is today, with its time gone, is next week's.
+    const days = offset === null ? [0, 1] : isWeekday && offset === 0 ? [0, 7] : [offset];
+    tries = days.flatMap(n => hours.map(h => /** @type {[number, number]} */ ([n, h])));
   }
+  const now = nowIso(w);
+  for (const [n, h] of tries) {
+    const due = `${dayAfter(w, n)}T${pad(h)}:${pad(mi)}`;
+    if (due >= now) return { task, due };
+  }
+  // "today" with no time, once 09:00 has gone, is a plain reminder; a named time that has gone is not.
+  if (!clock && dayWord === "today") return { task, due: null };
   return unsure(offset === 0 ? "that time has already passed today" : "that time has passed");
 }
 
@@ -234,7 +304,7 @@ function reminder(words, o) {
 
 /** @param {string} t @param {RouteOptions} o @returns {Route | Ambiguous | null} */
 function reminderRules(t, o) {
-  const m = /^(?:please\s+)?remind\s+me(?:\s+(.*))?$/i.exec(t);
+  const m = /^remind\s+me(?:\s+(.*))?$/i.exec(t);
   if (!m) return null;
   return m[1] ? reminder(m[1], o) : unsure("remind you of what?");
 }
@@ -245,26 +315,29 @@ const WX_WORDS = /\b(weather|forecast|rain|raining|rainy|snow|snowing|sunny|clou
 
 /**
  * The day and place in weather words. `bare` (the @Weather scope) takes leftover words as the
- * place: "@Weather London".
+ * place: "@Weather London". The place is what follows the last " in ", " for " or " at ".
  * @param {string} words @param {RouteOptions} o @param {boolean} bare
  */
 function weatherArgs(words, o, bare) {
   let rest = ` ${tidy(words)} `;
   /** @type {Record<string, string>} */
   const args = { day: "today" };
-  const d = new RegExp(`\\s(?:on\\s+|for\\s+)?(today|tonight|tomorrow|${WEEKDAY})(?=\\s)`, "i").exec(rest);
+  const d = new RegExp(`\\s(?:on\\s+|for\\s+)?(today|tonight|tomorrow|(?:this\\s+|the\\s+)?weekend|${WEEKDAY})(?=\\s)`, "i").exec(rest);
   if (d) {
     const word = d[1].toLowerCase();
     rest = rest.slice(0, d.index) + " " + rest.slice(d.index + d[0].length);
     if (word === "tomorrow") args.day = "tomorrow";
+    else if (/weekend$/.test(word)) args.day = "saturday";
     else if (DAYS.includes(word)) {
       const n = ahead(wall(o.now, o.timeZone), word);
       args.day = n === 0 ? "today" : dayAfter(wall(o.now, o.timeZone), n);
     }
   }
-  const p = /\s(?:in|for|at)\s+([a-z][a-z .'-]*?)\s*$/i.exec(rest);
-  if (p) args.place = p[1].trim();
-  else if (bare && tidy(rest)) args.place = tidy(rest);
+  const lower = rest.toLowerCase();
+  const cut = Math.max(...[" in ", " for ", " at "].map(k => { const i = lower.lastIndexOf(k); return i < 0 ? -1 : i + k.length; }));
+  const after = cut > 0 ? rest.slice(cut).trim() : "";
+  if (after && /^[a-z][a-z .'-]{0,60}$/i.test(after)) args.place = after;
+  else if (bare && cut < 0 && /^[a-z][a-z .'-]{0,60}$/i.test(tidy(rest))) args.place = tidy(rest);
   return args;
 }
 
@@ -278,58 +351,79 @@ function weather(args) {
 function weatherRules(t, o) {
   let m = /^(?:(?:what'?s|what\s+is|how'?s|how\s+is)\s+)?(?:the\s+)?(?:weather|forecast)\b(.*)$/i.exec(t);
   if (m) return weather(weatherArgs(m[1], o, false));
-  m = /^(?:will|is|does|do|should|am|are)\b(.*)$/i.exec(t);
-  if (m && WX_WORDS.test(t)) return weather(weatherArgs(m[1], o, false));
+  // A question about the weather has "it" or "outside" for its subject, or names a place: "is it
+  // cold in Lahore", "will it rain". "Is the coffee hot" is not one.
+  m = /^(?:will|is|does|do|should|am|are)\s+(.*)$/i.exec(t);
+  if (m && WX_WORDS.test(t) && (/^(?:it|it's|outside)\b/i.test(m[1]) || /\s(?:in|at)\s+[A-Z]/.test(t))) return weather(weatherArgs(m[1], o, false));
   return null;
 }
 
 // ---- Messages ----------------------------------------------------------------------------
 
+/** Words that mean the "recipient" was really the start of the message. */
+const NOT_A_NAME = new Set(["i", "i'm", "im", "i'll", "i've", "i'd", "we", "we're", "you", "you're", "me", "my", "he", "she",
+  "they", "it", "it's", "that", "this", "at", "on", "in", "now", "tonight", "today", "tomorrow"]);
+
+/** Who a message is for, tidied, or null when it does not look like one name, channel or handle. */
+function recipient(/** @type {string} */ to) {
+  const who = String(to).replace(/\s+/g, " ").trim().replace(/^the\s+/i, "");
+  if (!/^[@#]?[\w.' -]{1,40}$/.test(who) || /\d:/.test(who)) return null;
+  const words = who.split(" ");
+  if (words.length > 3 || words.some(x => NOT_A_NAME.has(x.toLowerCase()))) return null;
+  return who;
+}
+
 /** @returns {Route | Ambiguous} */
 function message(/** @type {string} */ app, /** @type {string} */ to, /** @type {string} */ text) {
-  const who = tidy(to).replace(/^the\s+/i, "");
-  const what = String(text).trim().replace(/^(?:that|saying)\s+/i, "").replace(/^:\s*/, "").trim();
-  if (!who) return unsure(`send it to whom on ${app}?`);
+  const who = recipient(to);
+  // The words go exactly as typed, but for a leading "that" or "saying" joining them on.
+  const what = String(text).replace(/^\s*(?:that|saying)\s+/i, "").replace(/^\s*:\s*/, "").trim();
+  if (!who) return unsure(`who is the ${app} message for? Say it as: ${app.toLowerCase()} juno: the message`);
   if (!what) return unsure(`what should the ${app} message say?`);
   return { app, action: "send", args: { to: who, text: what }, sends: true, said: `${app} → ${who}: ${what}` };
 }
 
 /**
- * Message words, for any messenger, or only `only` inside its @App scope.
- * @param {string} t @param {string | null} only
+ * Message words, for any messenger, or only `only` inside its @App scope. `raw` is as typed.
+ * @param {string} raw @param {string | null} only
  * @returns {Route | Ambiguous | null}
  */
-function messageRules(t, only) {
+function messageRules(raw, only) {
   const APP = "(slack|whatsapp)";
   const pats = [
-    new RegExp(`^tell\\s+(.+?)\\s+on\\s+${APP}\\s+(?:that\\s+)?(.+)$`, "i"),
-    new RegExp(`^(?:message|text|msg)\\s+(.+?)\\s+on\\s+${APP}\\s*:?\\s+(.+)$`, "i"),
-    new RegExp(`^send\\s+(.+?)\\s+a\\s+message\\s+on\\s+${APP}\\s*(?:saying|that|:)?\\s+(.+)$`, "i"),
+    new RegExp(`^tell\\s+(.+?)\\s+on\\s+${APP}(?:\\s*:\\s*|\\s+)((?:that\\s+)?[\\s\\S]+)$`, "i"),
+    new RegExp(`^(?:message|text|msg)\\s+(.+?)\\s+on\\s+${APP}(?:\\s*:\\s*|\\s+)([\\s\\S]+)$`, "i"),
+    new RegExp(`^send\\s+(.+?)\\s+a\\s+message\\s+on\\s+${APP}(?:\\s*(?:saying|that|:)\\s*|\\s+)([\\s\\S]+)$`, "i"),
   ];
   for (const re of pats) {
-    const m = re.exec(t);
+    const m = re.exec(raw);
     if (!m) continue;
     const app = MESSENGERS[m[2].toLowerCase()];
     if (only && app !== only) return unsure(`those words are for ${app}, not ${only}`);
     return message(app, m[1], m[3]);
   }
-  const m = new RegExp(`^${APP}\\s+([^:]+?)\\s*:\\s*([\\s\\S]+)$`, "i").exec(t);
+  // "whatsapp juno: text". The name must not end in a digit, so "at 10:30" is not a colon form.
+  const m = new RegExp(`^${APP}\\s+([^:\\n]*[^:\\d\\s])\\s*:\\s*([\\s\\S]+)$`, "i").exec(raw);
   if (m) {
     const app = MESSENGERS[m[1].toLowerCase()];
     if (only && app !== only) return unsure(`those words are for ${app}, not ${only}`);
     return message(app, m[2], m[3]);
   }
-  if (!only && new RegExp(`^${APP}\\b`, "i").test(t)) return unsure("who is the message for? Say it as: whatsapp juno: the message");
+  if (!only && new RegExp(`^${APP}\\b`, "i").test(raw)) return unsure("who is the message for? Say it as: whatsapp juno: the message");
+  // Words that mention a messenger but match no form are left alone rather than guessed at.
+  if (!only && new RegExp(`^(?:tell|message|text|msg|send)\\b[\\s\\S]*\\bon\\s+${APP}\\b`, "i").test(raw)) {
+    return unsure("who is the message for, and what does it say? Say it as: whatsapp juno: the message");
+  }
   return null;
 }
 
 /** Inside a messenger's scope: "juno: text", "tell juno text", or its own full sentence. */
-function scopedMessage(/** @type {string} */ t, /** @type {string} */ app) {
-  const own = messageRules(t, app);
+function scopedMessage(/** @type {string} */ raw, /** @type {string} */ app) {
+  const own = messageRules(raw, app);
   if (own) return own;
-  let m = /^([^:]{1,60}?)\s*:\s*([\s\S]+)$/.exec(t);
+  let m = /^([^:\n]{0,59}[^:\d\s])\s*:\s*([\s\S]+)$/.exec(raw);
   if (m) return message(app, m[1], m[2]);
-  m = /^(?:tell|message|text|msg)\s+(\S+)\s+([\s\S]+)$/i.exec(t);
+  m = /^(?:tell|message|text|msg)\s+(\S+)\s+([\s\S]+)$/i.exec(raw);
   if (m) return message(app, m[1], m[2]);
   return unsure(`who is the ${app} message for? Say it as: juno: the message`);
 }
@@ -344,6 +438,7 @@ const SCOPES = /** @type {Record<string, string>} */ ({ clock: "Clock", notes: "
  * @returns {Route | Ambiguous}
  */
 export function route(text, o) {
+  if (String(text || "").length > MAX_TEXT) return unsure(`that is more than ${MAX_TEXT} characters`);
   const raw = String(text || "").trim();
   const t = tidy(raw);
   if (!t) return unsure("nothing to do");
@@ -356,13 +451,11 @@ export function route(text, o) {
     if (app === "Clock") {
       const c = clockRules(t);
       if (c) return c;
-      const s = parseDuration(t);
-      if (s) return timer(s);
       if (parseClock(t)) return alarm(t);
       return unsure("a timer needs a length and an alarm a time");
     }
-    return scopedMessage(t, app);
+    return scopedMessage(raw, app);
   }
-  return clockRules(t) || noteRules(raw) || reminderRules(t, o) || messageRules(t, null) || weatherRules(t, o)
+  return clockRules(t) || noteRules(raw) || reminderRules(t, o) || messageRules(raw, null) || weatherRules(t, o)
     || unsure(`Vyre does not know what "${t.slice(0, 60)}" should do`);
 }

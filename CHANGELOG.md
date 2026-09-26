@@ -53,6 +53,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   asks this terminal for a person's proof through apps.send. `--app`, `--model`, `--json`,
   `--help`, and `vyre apps -- <words>` for words that start like a subcommand
   (`core/cli/commands/apps.js`).
+- The router's review round. A message goes exactly as typed (punctuation and line breaks
+  kept), and its recipient must look like one name, #channel or @handle, else the words are
+  ambiguous ("tell mom I'm on slack now" sends nothing). A model-routed send's preview is built
+  from its args, never the model's own line. Reminder time words are taken after at, on or in,
+  or at the start or end, so "take my 3pm pill" keeps its words; "next friday" is next week's,
+  "tonight at 12" is midnight, the current minute counts as now, and "today" after 09:00 is a
+  plain reminder. More timer and alarm phrasings ("a 10-minute timer", "timer ten minutes",
+  "alarm 7.30"), stricter notes and weather questions, "weather this weekend", and weekday
+  names in the weather adapter. Text over 2000 characters is refused. Clock's setup removes a
+  stale file, signs both before opening either, and reports one that failed; `vyre apps setup`
+  waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
+  or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
+  (the Registry's callerAllowed), never a guest.
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours

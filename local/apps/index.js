@@ -116,12 +116,16 @@ export default {
       const a = registry.find(m.app);
       const act = a && Object.prototype.hasOwnProperty.call(a.actions, m.action) ? a.actions[m.action] : null;
       const app = a ? a.app : m.app;
-      return { app, action: m.action, args, sends: act ? act.sends : true, said: typeof m.said === "string" && m.said ? m.said : `${app} ${m.action}`, via: "model" };
+      const sends = act ? act.sends : true;
+      // The line a person approves is built here from the args, never taken from the model: a
+      // model could otherwise show "Timer for 5 minutes" over a message to someone else.
+      const said = sends && typeof args.to === "string" && typeof args.text === "string" ? `${app} → ${args.to}: ${args.text}` : `${app} ${m.action}`;
+      return { app, action: m.action, args, sends, said, via: "model" };
     };
 
     ctx.tool("apps.route", {
       description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
-      input: { type: "object", required: ["text"], properties: { text: str, app: str, model: { type: "boolean" } } },
+      input: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 2000 }, app: str, model: { type: "boolean" } } },
       async run({ text, app, model = false }) {
         const r = route(text, { now: env.now(), timeZone: env.timeZone, ...(app ? { app } : {}) });
         if (!("ambiguous" in r) || !model || typeof opts.model !== "function") return r;
@@ -139,7 +143,8 @@ export default {
       input: { type: "object", required: ["app"], properties: { app: str } },
       // Only the surfaces a person drives: it signs files and opens import windows, which a
       // model or another module has no business doing on its own. The Deck (and the phone's
-      // installed Deck) calls as "deck".
+      // installed Deck) calls as "deck", and the Registry lets "deck" admit the box owner's own
+      // devices over the tailnet (tailnet:<owner>), never a guest or an agent's node.
       callers: ["cli", "capsule", "deck"],
       async run({ app }) {
         const a = registry.find(app);

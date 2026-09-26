@@ -16,30 +16,33 @@ function fake(answers) {
   const calls = [];
   /** @type {string[]} */
   const lines = [];
+  /** @type {string[]} */
+  const errs = [];
   const answer = (/** @type {string} */ tool) => {
     const a = answers[tool];
     if (a === undefined) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     return a && a.error ? a : { data: typeof a === "function" ? a() : a };
   };
   return {
-    calls, lines,
+    calls, lines, errs,
     deps: {
-      call: async (/** @type {string} */ tool, /** @type {any} */ input) => { calls.push({ tool, input, as: "call" }); return answer(tool); },
+      call: async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ opts) => { calls.push({ tool, input, as: "call", ...(opts ? { opts } : {}) }); return answer(tool); },
       person: async (/** @type {string} */ tool, /** @type {any} */ input) => { calls.push({ tool, input, as: "person" }); return answer(tool); },
       up: async () => true,
       print: (/** @type {string} */ l) => { lines.push(l.replace(/\x1b\[[0-9;]*m/g, "")); },
+      warn: (/** @type {string} */ l) => { errs.push(l); },
     },
   };
 }
 
 test("apps cli: arguments split into a subcommand, words and flags", () => {
-  assert.deepEqual(parseArgs(["timer", "10", "min"]), { sub: null, words: ["timer", "10", "min"], flags: { json: false, help: false, model: false, app: null } });
+  assert.deepEqual(parseArgs(["timer", "10", "min"]), { sub: null, words: ["timer", "10", "min"], flags: { json: false, help: false, model: false, app: null }, error: null });
   assert.deepEqual(parseArgs(["find", "note", "--json"]).sub, "find");
   assert.deepEqual(parseArgs(["--app", "Notes", "buy", "milk"]).flags.app, "Notes");
   assert.deepEqual(parseArgs(["--app=WhatsApp", "juno:", "hi", "--model"]).flags, { json: false, help: false, model: true, app: "WhatsApp" });
   assert.deepEqual(parseArgs(["--", "--json", "is", "text"]).words, ["--json", "is", "text"]);
   assert.equal(parseArgs(["Setup", "clock"]).sub, "setup");
-  assert.deepEqual(parseArgs(["--", "list", "of", "groceries"]), { sub: null, words: ["list", "of", "groceries"], flags: { json: false, help: false, model: false, app: null } });
+  assert.deepEqual(parseArgs(["--", "list", "of", "groceries"]), { sub: null, words: ["list", "of", "groceries"], flags: { json: false, help: false, model: false, app: null }, error: null });
 });
 
 test("apps cli: --help prints the usage without reaching vyred", async () => {
@@ -109,10 +112,35 @@ test("apps cli: list, find, targets and setup call their tools and print columns
   assert.deepEqual(f.calls.map(c => [c.tool, c.input]), [
     ["apps.list", { limit: 100 }], ["apps.list", { q: "bakery" }], ["apps.targets", { app: "Reminders", q: "harl" }], ["apps.setup", { app: "clock" }],
   ]);
+  assert.deepEqual(f.calls[3].opts, { timeout: 180_000 }, "setup signs twice with Apple and needs longer");
   assert.deepEqual(f.lines.slice(0, 2), ["  Clock                 intents  com.apple.clock", "  Northwind Bakery POS  ax"]);
   assert.ok(f.lines.includes("  Harlow Legal  list  L2"));
   assert.ok(f.lines.includes("  Add each one once."));
   assert.equal(await runApps(["targets"], f.deps), 1);
   assert.deepEqual(formatApps([]), ["  no apps found"]);
   assert.deepEqual(formatTargets([], "Clock"), ["  nothing to pick in Clock"]);
+});
+
+test("apps cli: --app without a name, or an unknown flag, is a usage error with exit 2", async () => {
+  for (const args of [["--app"], ["--app", "--json", "hi"], ["--app="], ["--verbose", "timer", "1", "min"], ["-x", "hi"]]) {
+    const f = fake({});
+    assert.equal(await runApps(args, f.deps), 2, args.join(" "));
+    assert.equal(f.calls.length, 0);
+    assert.ok(f.errs.some(l => l.includes("vyre apps <words...>")), "no usage shown");
+  }
+  assert.match(String(parseArgs(["--app"]).error), /needs an app name/);
+});
+
+test("apps cli: with --json a send's preview goes to stderr before the proof, and stdout holds only JSON", async () => {
+  const route = { app: "WhatsApp", action: "send", args: { to: "juno", text: "hi" }, sends: true, said: "WhatsApp → juno: hi" };
+  /** @type {string[]} */
+  const order = [];
+  const f = fake({ "apps.route": route, "apps.send": { said: "Sent to juno" } });
+  const deps = { ...f.deps,
+    warn: (/** @type {string} */ l) => { order.push("warn"); f.errs.push(l); },
+    person: async (/** @type {string} */ tool, /** @type {any} */ input) => { order.push("proof"); return f.deps.person(tool, input); } };
+  assert.equal(await runApps(["--json", "whatsapp", "juno:", "hi"], deps), 0);
+  assert.deepEqual(order, ["warn", "proof"]);
+  assert.deepEqual(f.errs, ["  WhatsApp → juno: hi"]);
+  assert.deepEqual(JSON.parse(f.lines.join("\n")), { said: "Sent to juno" });
 });

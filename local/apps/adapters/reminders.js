@@ -131,7 +131,8 @@ export default {
         const given = due !== undefined && due !== "";
         const d = given ? parseDue(due) : null;
         if (given && !d) throw new AppsError("bad_input", `due must be a local date and time like 2026-09-28T18:00, not "${due}"`);
-        if (d && due <= wallClock(env.now(), env.timeZone).iso) throw new AppsError("bad_input", "that time has passed");
+        // A time in the current minute counts as now, not the past.
+        if (d && due < wallClock(env.now(), env.timeZone).iso) throw new AppsError("bad_input", "that time has passed");
         const argv = [String(text), list || "", d ? "1" : ""];
         if (d) argv.push(String(d.y), String(d.mo), String(d.d), String(d.h * 3600 + d.mi * 60));
         const id = await env.osa(CREATE, argv);

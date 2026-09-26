@@ -82,15 +82,16 @@ export default {
       title: "The forecast",
       input: { type: "object", properties: {
         place: { type: "string", description: "A city or town. Default: config apps.weather.place, else the time zone's city." },
-        day: { type: "string", description: "today, tomorrow or YYYY-MM-DD within the next 7 days. Default today." },
+        day: { type: "string", description: "today, tomorrow, a weekday name, or YYYY-MM-DD within the next 7 days. Default today." },
       } },
       sends: false,
       async run({ place, day = "today" }, env) {
         const opts = (env.config && env.config.weather) || {};
         const where = String(place || opts.place || cityOf(env.timeZone)).trim();
         if (!where) throw new AppsError("setup", "set a place: vyre apps weather in <city>, or config apps.weather.place");
-        if (day !== "today" && day !== "tomorrow" && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-          throw new AppsError("bad_input", `day must be today, tomorrow or YYYY-MM-DD, not "${day}"`);
+        day = String(day).toLowerCase();
+        if (day !== "today" && day !== "tomorrow" && !/^\d{4}-\d{2}-\d{2}$/.test(day) && !WEEKDAYS.map(x => x.toLowerCase()).includes(day)) {
+          throw new AppsError("bad_input", `day must be today, tomorrow, a weekday or YYYY-MM-DD, not "${day}"`);
         }
         const geo = await getJson(env, `${GEO}?name=${encodeURIComponent(where)}&count=1`);
         const hit = geo && Array.isArray(geo.results) && geo.results[0];
@@ -101,7 +102,12 @@ export default {
           + `&timezone=auto&forecast_days=7${f ? "&temperature_unit=fahrenheit" : ""}`);
         const daily = fc && fc.daily;
         if (!daily || !Array.isArray(daily.time)) throw new AppsError("failed", "the weather service sent no forecast");
-        const i = day === "today" ? 0 : day === "tomorrow" ? 1 : daily.time.indexOf(day);
+        // A weekday is the next such date in the forecast, today included; the forecast's first
+        // day is today where the place is, which is the right "today" to count from.
+        const weekday = WEEKDAYS.findIndex(x => x.toLowerCase() === day);
+        const i = day === "today" ? 0 : day === "tomorrow" ? 1
+          : weekday >= 0 ? daily.time.findIndex((/** @type {string} */ t) => new Date(`${t}T00:00:00Z`).getUTCDay() === weekday)
+          : daily.time.indexOf(day);
         if (i < 0 || i >= daily.time.length) throw new AppsError("bad_input", `the forecast covers ${daily.time[0]} to ${daily.time[daily.time.length - 1]}`);
         const round = (/** @type {any} */ n) => (typeof n === "number" && Number.isFinite(n) ? Math.round(n) : null);
         const at = (/** @type {string} */ k) => (Array.isArray(daily[k]) ? round(daily[k][i]) : null);

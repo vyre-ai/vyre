@@ -14,7 +14,8 @@ const pick = (/** @type {any} */ x) => (x.ambiguous ? { ambiguous: true } : { ap
 
 test("route: durations", () => {
   for (const [s, n] of /** @type {[string, number|null][]} */ ([["10 min", 600], ["1h30m", 5400], ["90s", 90], ["2 hours and 5 minutes", 7500],
-    ["an hour", 3600], ["half an hour", 1800], ["1.5 hours", 5400], ["3 mins, 20 secs", 200], ["10", null], ["ten minutes", null], ["10 minutes of fun", null]])) {
+    ["an hour", 3600], ["half an hour", 1800], ["1.5 hours", 5400], ["3 mins, 20 secs", 200], ["10", null], ["ten minutes", 600], ["10 minutes of fun", null],
+    ["1h30", 5400], ["a 10-minute", 600], ["twenty-five minutes", 1500], ["sixty seconds", 60], ["x".repeat(500), null]])) {
     assert.equal(parseDuration(s), n, s);
   }
 });
@@ -83,6 +84,48 @@ const TABLE = /** @type {[string, any][]} */ ([
   ["notebook prices", { ambiguous: true }],
   ["remind me at 6", { ambiguous: true }],
   ["whatsapp running late", { ambiguous: true }],
+  // Review round: timers and alarms said other ways.
+  ["5 min", TIMER(300)],
+  ["10 min timer please", TIMER(600)],
+  ["set timer 10 minutes please", TIMER(600)],
+  ["timer 1h30", TIMER(5400)],
+  ["a 10-minute timer", TIMER(600)],
+  ["timer: 10 min", TIMER(600)],
+  ["timer ten minutes", TIMER(600)],
+  ["alarm 7.30", ALARM("07:30")],
+  // Notes: what joins the words on is not part of the note; a dash needs spaces.
+  ["note to self: buy milk", NOTE("buy milk")],
+  ["note that the oven is fixed", NOTE("the oven is fixed")],
+  ["make a note of the Harlow Legal address", NOTE("the Harlow Legal address")],
+  ["note-taking tips", { ambiguous: true }],
+  ["make a note of this", { ambiguous: true }],
+  // Reminders: time words from the middle of the task stay in the task.
+  ["remind me to email about sunday brunch", REM("email about sunday brunch", "")],
+  ["remind me to take my 3pm pill", REM("take my 3pm pill", "")],
+  ["remind me to call kit please", REM("call kit", "")],
+  ["remind me next friday to pay rent", REM("pay rent", "2026-10-02T09:00")],
+  ["remind me next monday to call kit", REM("call kit", "2026-09-28T09:00")],
+  ["remind me to call juno tomorrow", REM("call juno", "2026-09-25T09:00")],
+  ["remind me tomorrow 9am to call juno", REM("call juno", "2026-09-25T09:00")],
+  ["remind me to call juno at 6 tomorrow", REM("call juno", "2026-09-25T18:00")],
+  ["remind me tonight at 12 to lock up", REM("lock up", "2026-09-25T00:00")],
+  ["remind me tonight at 2 to check the oven", REM("check the oven", "2026-09-25T02:00")],
+  ["remind me tonight at 11pm to lock up", REM("lock up", "2026-09-24T23:00")],
+  ["remind me today to call kit", REM("call kit", "")],
+  // Weather: only about "it", "outside" or a place.
+  ["weather this weekend", WX({ day: "saturday" })],
+  ["will it rain in London on friday", WX({ day: "2026-09-25", place: "London" })],
+  ["is the coffee hot", { ambiguous: true }],
+  // Messages: the body as typed, and a recipient that looks like one.
+  ["tell mom I'm on slack now", { ambiguous: true }],
+  ["text juno that I'm on whatsapp tonight", { ambiguous: true }],
+  ["whatsapp juno at 10:30 we meet", { ambiguous: true }],
+  ["tell juno on whatsapp that I'm on my way", MSG("WhatsApp", "juno", "I'm on my way")],
+  ["Tell the team on Slack: line one", MSG("Slack", "team", "line one")],
+  ["whatsapp juno: running late!", MSG("WhatsApp", "juno", "running late!")],
+  ["whatsapp juno: line one\nline two?", MSG("WhatsApp", "juno", "line one\nline two?")],
+  ["tell the whole Northwind Bakery team on slack hi", { ambiguous: true }],
+  ["x".repeat(2001), { ambiguous: true }],
 ]);
 
 for (const [text, want] of TABLE) {
@@ -104,7 +147,8 @@ test("route: the moment decides am or pm, and the day rolls over", () => {
   assert.equal(r("remind me to call juno at 6", { now: at(5) }).args.due, "2026-09-24T06:00");
   assert.equal(r("remind me in 20 min to stretch", { now: at(23, 50) }).args.due, "2026-09-25T00:10");
   assert.equal(r("remind me today to call kit", { now: at(8) }).args.due, "2026-09-24T09:00");
-  assert.equal(r("remind me today to call kit").ambiguous, true, "09:00 today has passed at 15:00");
+  assert.deepEqual(r("remind me today to call kit").args, { text: "call kit" }, "09:00 today has passed: a plain reminder");
+  assert.equal(r("remind me to call juno at 6", { now: at(18) }).args.due, "2026-09-24T18:00", "the current minute is now, not the past");
   assert.equal(r("remind me today at 1 to call kit", { now: at(14) }).ambiguous, true);
   // The same instant is still Wednesday evening in Pago Pago (UTC-11).
   assert.equal(r("remind me tomorrow at 9 to call kit", { timeZone: "Pacific/Pago_Pago" }).args.due, "2026-09-24T09:00");
@@ -125,4 +169,13 @@ test("route: an @App scope applies only that app's rules, and bare words take it
   assert.equal(r("tell the team on slack I'm late", { app: "WhatsApp" }).ambiguous, true, "another app's words escaped the scope");
   assert.equal(r("anything", { app: "Photoshop" }).ambiguous, true);
   assert.equal(r("banana", { app: "Clock" }).ambiguous, true);
+  assert.equal(r("standup moved to 10:30", { app: "Slack" }).ambiguous, true);
+  assert.deepEqual(pick(r("#general: standup moved to 10:30!", { app: "Slack" })), MSG("Slack", "#general", "standup moved to 10:30!"));
+});
+
+test("route: across a daylight saving change, in N minutes lands on the new clock", () => {
+  // 2026-03-08 01:50 EST in New York; clocks jump from 02:00 to 03:00.
+  const before = Date.UTC(2026, 2, 8, 6, 50);
+  assert.equal(r("remind me in 20 min to stretch", { now: before, timeZone: "America/New_York" }).args.due, "2026-03-08T03:10");
+  assert.equal(r("remind me tomorrow at 9 to stretch", { now: before, timeZone: "America/New_York" }).args.due, "2026-03-09T09:00");
 });

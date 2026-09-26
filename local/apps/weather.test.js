@@ -105,3 +105,11 @@ test("weather: open runs open -a Weather through exec", async () => {
   assert.equal((await weather.actions.open.run({}, env)).said, "Opened Weather");
   assert.deepEqual(f.calls, [{ file: "open", args: ["-a", "Weather"], opts: {} }]);
 });
+
+test("weather: a weekday name is the next such date in the forecast, today included", async () => {
+  const w = envWith({ "geocoding-api": GEO, "forecast": FORECAST });
+  // 2026-09-27 is a Sunday and 2026-10-02 a Friday.
+  assert.equal((await weather.actions.get.run({ day: "friday" }, w.env)).said, "Friday 2 Oct in Kuala Lumpur: snow, 28 / 22 C, 30% chance of rain");
+  assert.equal((await weather.actions.get.run({ day: "Sunday" }, w.env)).day, "2026-09-27");
+  await assert.rejects(weather.actions.get.run({ day: "someday" }, w.env), (/** @type {any} */ e) => e.code === "bad_input");
+});

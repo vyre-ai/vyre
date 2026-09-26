@@ -13,13 +13,14 @@ import { setupClock, timerShortcut, alarmShortcut, plist, ACTIONS, WHY } from ".
 import { tempHome } from "../../test/helpers.js";
 
 /** A Shortcuts world: which shortcuts exist, and a signer that copies input to output. */
-function world(/** @type {any} */ t, have = /** @type {string[]} */ ([])) {
+function world(/** @type {any} */ t, have = /** @type {string[]} */ ([]), failSign = "") {
   const home = tempHome(t);
   /** @type {Record<string, string>} */
   const signedFrom = {};
   const f = fakeExec((file, args) => {
     if (file === "shortcuts" && args[0] === "list") return { stdout: have.join("\n") };
     if (file === "shortcuts" && args[0] === "sign") {
+      if (failSign && args.at(-1)?.includes(failSign)) return { code: 1, stderr: "Error: could not reach the signing service" };
       const src = args[args.indexOf("--input") + 1], dst = args[args.indexOf("--output") + 1];
       signedFrom[dst] = fs.readFileSync(src, "utf8");
       fs.writeFileSync(dst, "signed");
@@ -87,4 +88,30 @@ test("setup: with the real exec and no dialogs allowed, it refuses before writin
   await assert.rejects(setupClock(env, dir), (/** @type {any} */ e) => e.code === "no_dialog");
   assert.equal(spawned.length, 0);
   assert.equal(fs.existsSync(dir), false);
+});
+
+test("setup: the timer's seconds go in as a variable attachment", () => {
+  const d = timerShortcut().WFWorkflowActions[2].WFWorkflowActionParameters.WFDuration.Value.Magnitude;
+  assert.deepEqual(d, { Value: { OutputUUID: timerShortcut().WFWorkflowActions[1].WFWorkflowActionParameters.UUID, Type: "ActionOutput", OutputName: "Numbers" }, WFSerializationType: "WFTextTokenAttachment" });
+});
+
+test("setup: a stale signed file is removed before signing, and one failed signing still opens the other", async t => {
+  const w = world(t, [], "Vyre Alarm");
+  fs.mkdirSync(w.dir, { recursive: true });
+  const stale = path.join(w.dir, "Vyre Alarm.shortcut");
+  fs.writeFileSync(stale, "from an earlier try");
+  const r = await setupClock(w.env, w.dir);
+  assert.deepEqual(r.files, [path.join(w.dir, "Vyre Timer.shortcut")]);
+  assert.equal(fs.existsSync(stale), false, "the stale signed file would have been opened");
+  assert.deepEqual(w.calls.filter(c => c.file === "open").map(c => c.args), [[path.join(w.dir, "Vyre Timer.shortcut")]]);
+  assert.ok(r.failed && /Vyre Alarm could not be signed: .*signing service/.test(r.failed[0]));
+  assert.ok(r.steps.includes(r.failed[0]));
+  const order = w.calls.filter(c => c.args[0] === "sign" || c.file === "open").map(c => c.file === "open" ? "open" : "sign");
+  assert.deepEqual(order, ["sign", "sign", "open"], "opened before both were signed");
+});
+
+test("setup: when every signing fails, it is code failed with the by-hand hint", async t => {
+  const w = world(t, [], "Vyre");
+  await assert.rejects(setupClock(w.env, w.dir), (/** @type {any} */ e) => e.code === "failed" && /make them by hand/.test(e.message));
+  assert.equal(w.calls.filter(c => c.file === "open").length, 0);
 });
