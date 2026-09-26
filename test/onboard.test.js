@@ -292,3 +292,15 @@ test("onboard: finishing makes the assistant once, on every project, signed in w
   await tool(base, session, "onboard.finish");
   assert.equal((await call("agents.list", {}, { root, caller: "cli" })).data.filter(x => x.kind === "assistant").length, 1, "finishing again makes no second assistant");
 });
+
+test("onboard: once finished with an address, vyre up gets the address, not another link", async t => {
+  const { root } = await box(t, { vault: { keystore: "file" }, network: { onboardPort: 0, address: "https://alex.vyre.run" } });
+  const first = (await call("onboard.link", {}, { root })).data;
+  assert.ok(first.url, "not finished yet: a link");
+  const { session } = await redeem(first.url);
+  const done = await (await tool(`http://127.0.0.1:${first.port}`, session, "onboard.finish")).json();
+  assert.equal(done.data.detail.devices.mac.connected, false);
+  const after = (await call("onboard.link", {}, { root })).data;
+  assert.equal(after.url, null);
+  assert.equal(after.address, "https://alex.vyre.run");
+});

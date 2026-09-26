@@ -123,7 +123,10 @@ export default {
         else if (ob().history && history.indexed >= history.sessions) history.state = "done";
       }
 
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD };
+      // The Mac counts once link has paired one; the first paired is the one shown.
+      const peers = await tryCall("link.peers");
+      const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
+      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.
@@ -302,7 +305,9 @@ export default {
       run: async (_, { caller }) => {
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
-        if (net().ownerSeen) return { url: null, address, port: null, expires: null, user: os.userInfo().username };
+        // Once the owner has come in over the tailnet, or onboarding is finished and the address
+        // serves, the way in is the address: no more one-time links (the open one may still finish).
+        if (net().ownerSeen || (ob().finished && address)) return { url: null, address, port: null, expires: null, user: os.userInfo().username };
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
     });
