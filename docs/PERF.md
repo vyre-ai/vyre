@@ -86,6 +86,35 @@ Electron-internal gesture-to-paint path; it doesn't include the Swift hotkey tap
 double-tap gesture-recognition window (by design, not part of "wake") or window-server
 compositing beyond what rAF reports. Cold-start (first show after launch) is much higher
 (~721ms observed) and isn't representative of the steady-state wake the budget targets.
-- **deck**, **computers**: not yet audited in this pass.
 - **release**: `scripts/perf-check` exists, `npm run perf-check`, ~65s runtime, exit 0/1 — ready
-  to wire into `scripts/release-check.sh`; CPU-max flakiness noted above.
+  to wire into `scripts/release-check.sh`.
+
+## Deck audit
+
+`grep -rn "setInterval\|setTimeout" deck` — one real violation, everything else is either a
+one-shot debounce (`setTimeout` cleared/re-armed on the next input event, not a standing
+timer) or lives inside `deck/onboard/`, a finite, attended, foreground wizard (not the
+"background tab" the budget targets):
+
+- **Fixed**: `deck/views/now.js:39` ticked the header clock every 30s for as long as the Now
+  view stayed mounted, including while its tab was hidden — tighter than the "no timers faster
+  than a minute" background-tab budget. Now pauses on `visibilitychange` and catches up
+  immediately when looked at again.
+- **Not a violation, left as-is**: `deck/onboard/onboard.js` polls at 1.5-5s in a few places
+  (waiting for a sign-in to complete, waiting for Tailscale to connect, an indexing-progress
+  meter) — all inside a wizard the user is actively looking at and that ends (cleanup array
+  fires) once the step completes. Worth `deck` backing these off if any of them turn out to run
+  longer than expected in practice, but not a budget breach as written.
+- `deck/chat/` (from `gate-chat`/Chat) had not landed on this branch as of this audit —
+  nothing to check yet. `deck` and `gate-chat`: flag me when it lands and I'll pass over it.
+
+## Computers audit
+
+`core/computers` and `deck/glass/` don't exist yet (M8, not built — `deck/views/glass.js` is
+just a stub that says so). The one piece that has landed, `local/hands-mac` (the accessibility
+helper), is already well-designed for this budget: the Swift/native helper runs once per call
+as a short-lived child process rather than a long-lived daemon (see the design note at the top
+of `local/hands-mac/runner.js`), so there's no idle cost to measure. `hands.js:118`'s "poll
+briefly until the effect shows" is a bounded, action-driven verification loop after a UI
+action, not a background poll. Nothing to fix or flag here yet; will revisit once
+`core/computers`/`deck/glass/` land — `glass` and `computers`, ping me when they do.
