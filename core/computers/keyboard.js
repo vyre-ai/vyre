@@ -25,7 +25,7 @@ import { EventEmitter } from "node:events";
 /** The switchboard's lease TTL. A take-over unrenewed this long is over. */
 export const TTL = 90_000;
 
-const SURFACE = /^(glass|deck|phone):[A-Za-z0-9._-]{1,64}$/;
+const SURFACE = /^(glass|deck|phone|capsule):[A-Za-z0-9._-]{1,64}$/;
 /** Is this a person's screen (as opposed to the CLI, the assistant or a module)? */
 export const isSurface = s => SURFACE.test(String(s || ""));
 
@@ -82,7 +82,7 @@ export class Keyboard extends EventEmitter {
    * @returns {Promise<{ agent: string, surface: string, thread: string|null, previous: string|null }>}
    */
   async takeover(agent, surface) {
-    if (!isSurface(surface)) throw new Error(`"${surface}" is not a person's screen; a surface looks like glass:<device>, deck:<device> or phone:<device>`);
+    if (!isSurface(surface)) throw new Error(`"${surface}" is not a person's screen; a surface looks like glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
     const before = this.holder(agent);
     // A take-over needs the screen: it checks out (and thaws), and holds the checkout while it lasts.
     await this.pool.checkout(agent, { why: "take-over" });

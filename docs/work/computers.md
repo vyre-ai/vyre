@@ -81,7 +81,7 @@ in `computers.list` (`driver: "none"`).
 | `computers.takeover` | `{agent, surface}` | `{agent, surface, thread, previous}` |
 | `computers.giveback` | `{agent, surface}` | `{agent, handed_back}` |
 | `computers.watch` | `{agent, surface}` | `{ticket, path: "/v1/streams/computers/glass?ticket=...", width, height}` |
-| `computers.endpoint` (internal) | `{agent}` | `{cdp: "http://host:port", helper: {url, token}}`; checks out, thaws |
+| `computers.endpoint` (internal) | `{agent}` | `{helper: {url, token}}`; checks out, thaws. Chrome is reached only through `helper`'s own `/cdp` proxy (ADR 0005), never a raw address |
 | `computers.may-act` (internal) | `{agent, tool}` | `{ok: true}` or `{ok: false, why, holder?}`; touches the checkout |
 
 `surface` names a person's screen: `glass:<device>`, `deck:<device>`, `phone:<device>`.
@@ -106,10 +106,14 @@ No payload ever carries the VNC password, the helper token or page content beyon
 | `POST /act` | `{path, action: "press"|"focus"|"set-text", value?}` through AT-SPI actions |
 | `POST /input` | `{kind: "click", x, y, button?}`, `{kind: "key", keys: "ctrl+l"}`, `{kind: "type", text}` through xdotool |
 | `GET /screenshot` | `image/png` of the whole display |
+| `GET /cdp/json/version` | Chrome's own answer, `webSocketDebuggerUrl` rewritten to `ws://<host>/cdp/...` |
+| WS upgrade `/cdp/...` | an authenticated raw pipe to Chrome's loopback debugging port (token in `?token=`, a plain WebSocket cannot send a header; ADR 0005) |
 
-Ports inside the container: `5900` Xvnc (VNC auth, password from `VNC_PASSWORD`), `9223` Chrome's
-debugging port relayed from `127.0.0.1:9222`, `7000` computerd (`COMPUTERD_TOKEN`). None is
-published on the host; vyred reaches them over the internal network.
+Ports inside the container: `5900` Xvnc (VNC auth, password from `VNC_PASSWORD`), `7000`
+computerd (`COMPUTERD_TOKEN`). None is published on the host; vyred reaches them over the internal
+network. Chrome's own debugging port (9222) is not one of them: it is loopback-only, reached only
+by computerd's `/cdp` routes above (ADR 0005; an earlier version relayed it out on its own
+unauthenticated port, which was a real hole).
 
 ## Done
 - ADR 0003 and this design.

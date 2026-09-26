@@ -168,6 +168,7 @@ export class Registry {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
+      for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) this.routes.delete(k);
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
     }
   }

@@ -30,8 +30,7 @@ Claude Code itself:
   Vyre steps aside and uses theirs.
 - **Not a hosted service.** Vyre AI runs one thing: the name directory for `<you>.vyre.run`. It
   holds no user data.
-- **Not an IDE.** It uses Claude Code for coding; Chat is part of the Deck, a window onto real
-  Claude Code sessions, not a separate assistant.
+- **Not an IDE.** It uses Claude Code for coding; its own Chat is a window onto real Claude Code sessions, not a separate assistant.
 
 ### Install and onboarding
 

@@ -7,13 +7,14 @@
     "tools": [
       "computers.list", "computers.get", "computers.checkout", "computers.release", "computers.stop",
       "computers.pause", "computers.resume", "computers.takeover", "computers.giveback", "computers.watch",
-      "computers.endpoint", "computers.may-act"
+      "computers.endpoint", "computers.may-act", "computers.helper", "computers.shield"
     ]
   },
   "watches": {
     "emits": [
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
-      "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back"
+      "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back",
+      "computer.shielded", "computer.unshielded"
     ]
   },
   "shows": { "streams": ["glass"], "cli": ["computers"], "deck": ["panel:glass"] },
