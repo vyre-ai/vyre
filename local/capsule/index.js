@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { dialogsAllowed } from "../../core/config/dialogs.js";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -38,7 +39,8 @@ export default {
         return { requested: action, event: e.id };
       },
     });
-    const auto = ctx.config.capsule && ctx.config.capsule.autostart && process.platform === "darwin";
+    // Never under tests: a vyred a test starts must not put the Capsule on the screen.
+    const auto = ctx.config.capsule && ctx.config.capsule.autostart && process.platform === "darwin" && dialogsAllowed();
     const bin = auto ? electron() : null;
     if (auto && !bin) ctx.log("capsule.autostart is on, but Electron is not installed in local/capsule (vyre capsule build)");
     if (bin) {

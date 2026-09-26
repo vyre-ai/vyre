@@ -10,6 +10,7 @@
 //     passphrase the vault is locked, and load says so by returning null rather than throwing.
 
 import { spawn } from "node:child_process";
+import { dialogsAllowed } from "../config/dialogs.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -96,7 +97,10 @@ async function securityRetry(argv, stdin) {
  */
 function legacyStore(account, keychain, decode) {
   const tail = keychain ? [keychain] : [];
+  // The login keychain can ask for the user's password; a test keychain file (keychain set) cannot.
+  const noDialog = () => { if (!keychain && !dialogsAllowed()) throw Object.assign(new Error("the login keychain is off under tests"), { code: "no_dialog" }); };
   const read = async () => {
+    noDialog();
     const r = await securityRetry(["find-generic-password", "-s", SERVICE, "-a", account, "-w", ...tail]);
     if (r.code === NOT_FOUND) return null;
     if (r.code !== 0) throw new Error(`could not read the vault key from the keychain: ${r.err.trim() || "exit " + r.code}`);
@@ -106,6 +110,7 @@ function legacyStore(account, keychain, decode) {
     read,
     /** @param {string} text */
     put: async text => {
+      noDialog();
       const { argv, stdin } = keychainWriteCommand({ account, hex: text, keychain });
       const r = await securityRetry(argv, stdin);
       // `security -i` exits 0 even when a command fails; the failure shows on stderr, which may
@@ -114,6 +119,7 @@ function legacyStore(account, keychain, decode) {
       if (r.code !== 0 || err) throw new Error(`could not write the vault key to the keychain: ${err || "exit " + r.code}`);
     },
     remove: async () => {
+      noDialog();
       const r = await securityRetry(["delete-generic-password", "-s", SERVICE, "-a", account, ...tail]);
       if (r.code !== 0 && r.code !== NOT_FOUND) throw new Error(`could not remove the vault key from the keychain: ${r.err.trim()}`);
     },
@@ -139,7 +145,12 @@ function legacyStore(account, keychain, decode) {
  * @param {string} dir @param {string} [keychain] @param {string} [suffix]
  * @param {(text: string) => Buffer} [decode] @param {import("./mac/helper.js").Helper|null} [helper]
  */
-function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain entry for this vault is not a vault key"), helper = null) {
+function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain entry for this vault is not a vault key"), helper = null, login = false) {
+  // The login keychain (no keychain file) only when the caller says this home may use it.
+  if (!keychain && !login) {
+    const off = async () => { throw Object.assign(new Error("the login keychain is off for this home"), { code: "no_dialog" }); };
+    return { exists: off, put: off, read: off, remove: off, migrate: off };
+  }
   const account = accountFor(dir) + suffix;
   const legacy = legacyStore(account, keychain, decode);
   if (!helper || !helper.usable()) return { ...legacy, exists: async () => (await legacy.read()) !== null, migrate: async () => ({ moved: false }) };
@@ -247,12 +258,14 @@ const rmFile = file => fs.rmSync(file, { force: true });
 
 /**
  * The keystore for one vault folder.
- * @param {{ dir: string, kind: Kind, keychain?: string, helper?: import("./mac/helper.js").Helper|null }} o
+ * @param {{ dir: string, kind: Kind, keychain?: string, helper?: import("./mac/helper.js").Helper|null, login?: boolean }} o
  *   helper: the keychain helper (mac/keychain.swift); without one the keychain is written by `security`.
+ *   login: this home may use the login keychain. Without it and without a keychain file, every
+ *   keychain call refuses before anything runs.
  */
-export function keystore({ dir, kind, keychain, helper = null }) {
+export function keystore({ dir, kind, keychain, helper = null, login = false }) {
   if (kind === "keychain") {
-    const kc = keychainStore(dir, keychain, "", undefined, helper);
+    const kc = keychainStore(dir, keychain, "", undefined, helper, login);
     return {
       kind,
       exists: kc.exists,
@@ -315,12 +328,12 @@ export function keystore({ dir, kind, keychain, helper = null }) {
  * Where the account's Secret Key lives on this device (ADR 0006 decision 1): the keychain, as a
  * second generic password under a distinct account, or `secret-key`, 0600, beside the key file.
  * The passphrase keystore uses the file too: the Secret Key alone opens nothing.
- * @param {{ dir: string, kind: Kind, keychain?: string }} o
+ * @param {{ dir: string, kind: Kind, keychain?: string, helper?: any, login?: boolean }} o
  */
-export function secretKeyStore({ dir, kind, keychain, helper = null }) {
+export function secretKeyStore({ dir, kind, keychain, helper = null, login = false }) {
   const text = s => { if (!/^V2-[A-Z2-7-]{20,60}$/.test(s)) throw new Error("the stored Secret Key is not one"); return Buffer.from(s, "utf8"); };
   if (kind === "keychain") {
-    const kc = keychainStore(dir, keychain, ":sk", text, helper);
+    const kc = keychainStore(dir, keychain, ":sk", text, helper, login);
     return {
       /** @param {string} formatted */
       async put(formatted) { await kc.put(formatted); },

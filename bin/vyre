@@ -5,5 +5,9 @@ if (major < 22 || (major === 22 && minor < 5)) {
   console.error(`  Vyre needs Node 22.5 or newer; this is ${process.version}.`);
   process.exit(1);
 }
+// Node 22 calls node:sqlite experimental and says so on stderr for every command. Vyre depends
+// on it on purpose; the warning is noise to someone typing `vyre status`.
+const emitWarning = process.emitWarning;
+process.emitWarning = (w, ...rest) => (/SQLite is an experimental/.test(String(w)) ? undefined : emitWarning.call(process, w, ...rest));
 const { main } = await import("../core/cli/index.js");
 process.exitCode = await main(process.argv.slice(2));

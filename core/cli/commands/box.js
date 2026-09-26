@@ -13,6 +13,7 @@ import readline from "node:readline/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as config from "../../config/index.js";
+import { dialogsAllowed } from "../../config/dialogs.js";
 import * as tailnet from "../tailnet.js";
 import { remote, quote, line, validTarget } from "../ssh.js";
 import { ensureUp } from "../daemonctl.js";
@@ -152,6 +153,8 @@ export function parseLink(text) {
 }
 
 function openBrowser(url, env = process.env) {
+  // Without a fake `open` (VYRE_OPEN_BIN), a test opens no browser tab.
+  if (!env.VYRE_OPEN_BIN && !dialogsAllowed(env)) return;
   const bin = env.VYRE_OPEN_BIN || (process.platform === "darwin" ? "open" : "xdg-open");
   try { spawn(bin, [url], { stdio: "ignore", detached: true }).on("error", () => {}).unref(); } catch {}
 }

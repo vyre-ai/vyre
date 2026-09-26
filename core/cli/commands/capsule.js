@@ -19,6 +19,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import * as config from "../../config/index.js";
+import { dialogsAllowed } from "../../config/dialogs.js";
 import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, signal, beacon } from "../style.js";
@@ -79,6 +80,7 @@ function helpersBuilt() { return fs.existsSync(path.join(CAPSULE, "bin", "hotkey
 
 async function open(flags) {
   if (process.platform !== "darwin") { out("  The Capsule runs on macOS. On this machine, use vyre or the Deck."); return 1; }
+  if (!dialogsAllowed()) { out("  The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it)."); return 1; }
   const up = await ensureUp();
   if (!up.ok) out(dim("  vyred did not start; the Capsule will open and say it is offline."));
   const e = electron();
