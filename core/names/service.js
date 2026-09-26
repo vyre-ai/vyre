@@ -54,11 +54,12 @@ export function names(deps) {
   /** @type {Map<string, number>} claim code hash -> expiry */
   const codes = new Map();
 
-  const identify = identifier({ whois: ip => ts.whois(ip), selfIps: () => selfIps, owner: () => net().owner || null });
+  let selfId = null;
+  const identify = identifier({ whois: ip => ts.whois(ip), selfIps: () => selfIps, selfId: () => selfId, owner: () => net().owner || null });
 
   async function tailscale() {
     const s = await ts.status();
-    if (s.node) selfIps = s.node.ips;
+    if (s.node) { selfIps = s.node.ips; selfId = s.node.stableId || null; }
     // The login that owns this node is the box's owner, unless one was already set or claimed.
     if (s.running && s.owner && !net().owner) setOwner(s.owner);
     last = s;
@@ -197,6 +198,24 @@ export function names(deps) {
       res.writeHead(403, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: { code: "not_owner", message: "This Vyre serves only its owner." } }));
     }
+    // The owner's browser also visits other sites. A cross-site page can send a "simple" POST
+    // (form or text/plain, no preflight) that the browser attaches nothing to but still delivers,
+    // and the source address would be the owner's. So a POST must be JSON (which forces a CORS
+    // preflight we never answer), and a browser's Origin must be this box's own address.
+    const host = String(req.headers.host || "").toLowerCase();
+    const mine = [certName(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
+    if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) {
+      res.writeHead(421, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: { code: "misdirected", message: "not this box's address" } }));
+    }
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      const origin = req.headers.origin;
+      const json = /^application\/json\b/.test(String(req.headers["content-type"] || ""));
+      if (!json || (origin && origin.toLowerCase() !== `https://${host}`)) {
+        res.writeHead(403, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: { code: "denied", message: "cross-site request" } }));
+      }
+    }
     if (!net().ownerSeen) {
       deps.save({ network: { ownerSeen: new Date(now()).toISOString() } });
       ctx.events.emit("owner.seen", {});
@@ -219,11 +238,12 @@ export function names(deps) {
       return s;
     };
     const listen = deps.listen || defaultListen;
+    // Know this box's own addresses before the first connection, on every path (fd 3 included).
+    await tailscale();
     // Under systemd the socket unit hands over port 443 on the tailnet interface as fd 3.
     if (process.env.LISTEN_FDS && Number(process.env.LISTEN_PID) === process.pid) {
       const s = make(); await listen(s, { fd: 3 }); servers.push(s);
     } else {
-      await tailscale();
       for (const host of selfIps) { const s = make(); await listen(s, { host, port: port() }); servers.push(s); }
     }
     ctx.log(`names: serving ${name} on ${servers.length} listener(s)`);

@@ -46,9 +46,9 @@ is ever read.**
 
 | Listener | Where | Who | Identity |
 |---|---|---|---|
-| Local API | `~/.vyre/vyred.sock`, mode 0600 | the Unix user vyred runs as: the CLI, the Harness hooks, the Capsule | `x-vyre-caller`, a label only; everything on the socket is that user |
+| Local API | `~/.vyre/vyred.sock`, mode 0600 | the Unix user vyred runs as: the CLI, the Harness hooks, the Capsule | `x-vyre-caller`, a label only (`cli`, `harness`, `hook`, `mcp`, `capsule`); anything else, `module:*` and `tailnet:*` included, becomes `local` |
 | Tailnet | the box's Tailscale addresses, port 443, TLS | people on their own devices | `tailnet:<login>`, from whois of the TCP peer |
-| Onboarding | `127.0.0.1:7300` (next free port if taken), plain HTTP | the person installing, before an owner exists | `onboard`, from a one-time token exchanged for a cookie |
+| Onboarding | `127.0.0.1:7300` (next free port if taken), plain HTTP | the person installing, before an owner exists | `onboard`, from a one-time token exchanged for a session header |
 
 - **The tailnet listener binds only Tailscale addresses.** On Linux under systemd it is a socket
   unit, `ListenStream=443` with `BindToDevice=tailscale0`, handed to vyred as file descriptor 3.
@@ -67,6 +67,14 @@ is ever read.**
 - **Headers are ignored, not stripped and trusted.** `Tailscale-User-*`, `X-Forwarded-*` and
   `x-vyre-caller` from the network change nothing. The listener hands vyred's router the caller
   it established itself.
+- **The owner's browser is not a trusted client.** It visits other sites too, and a page there
+  can make it send a request whose source address is the owner's. So every POST must carry
+  `application/json`, which forces a CORS preflight vyred never answers. A browser's `Origin`
+  must be this box's own address, and `Host` must be the box's name or one of its tailnet
+  addresses (otherwise `421`). A client with no `Origin` (the Mac's vyred, curl) is not a
+  browser and passes on identity alone.
+- **Self is checked twice**: by the box's own addresses, which are read before the first
+  connection on every path, fd 3 included, and by whois naming this node's own stable ID.
 - **TLS**: the Let's Encrypt certificate for `<you>.vyre.run`, or the `tailscale cert`
   certificate for the ts.net name when there is no vyre.run name. HSTS on every response.
 - **Containers.** An agent's container reaches the host from a bridge address, which is not a
@@ -93,17 +101,25 @@ Tools and the Gate can tell these apart and must not treat them as equal:
   only its hash in memory, and opens the onboarding listener. The link is
   `http://127.0.0.1:7300/onboard?t=<token>`. On a headless box `vyre up` also prints
   `ssh -N -L 7300:127.0.0.1:7300 <user>@<host>`.
-- The token is single use: the first `GET /onboard?t=` exchanges it for an `HttpOnly`,
-  `SameSite=Strict` session cookie and redirects to `/onboard`, so the token leaves the address
-  bar and history. An unredeemed token expires after an hour. A new `vyre up` makes a new link
-  and voids the old unredeemed one; open sessions carry on.
-- The listener serves only `/onboard/...` files and `POST /v1/tools/onboard.*` (plus
-  `projects.catalog`, `projects.create` and `recall.status` for step 5), all behind the cookie,
-  and `GET /v1/events/stream` limited to `onboard.*` events. It checks `Host` is loopback
-  (against DNS rebinding) and that every POST is JSON with a loopback `Origin`.
-- **Other Unix users** on the box can reach port 7300 but have neither token nor cookie. The
-  owner's own processes could ask the socket for a link. They are already the owner's account,
-  so this gives them nothing the socket did not.
+- The token is single use. The first `GET /onboard?t=` exchanges it for a session and
+  redirects to `/onboard#s=<session>`, so the token leaves the address bar and history. An
+  unredeemed token expires after an hour. A new `vyre up` makes a new link and voids the old
+  unredeemed one; open sessions carry on.
+- **The session is not a cookie.** Browsers share cookies across every port of 127.0.0.1, and
+  `SameSite` treats them as one site, so any other local web server the person visits (another
+  Unix user's included) would receive it. The session rides in the fragment, which is never sent
+  to a server. The page keeps it in memory and sends it as `x-vyre-onboard` on every tool call,
+  or as `?s=` on the event stream, since `EventSource` cannot set headers. A custom header also
+  forces a CORS preflight, so no other page can send one.
+- The listener serves the onboarding page's files under `/onboard/` to anyone on loopback, since
+  they are the open-source Deck and carry nothing secret. Behind the session it serves
+  `POST /v1/tools/onboard.*` (plus `projects.catalog`, `projects.create` and `recall.status` for
+  step 5) and `GET /v1/events/stream`, limited to `onboard.*` events. It checks `Host` is
+  loopback (against DNS rebinding) and that every POST is JSON with a loopback `Origin`.
+- **Other Unix users** on the box can reach port 7300 but have neither token nor session. The
+  owner's own processes could ask the socket for a link, which `onboard.link` gives only to the
+  `cli`, `local` and `capsule` labels. They are already the owner's account, so this gives them
+  nothing the socket did not.
 - **Closing.** The onboarding listener closes the moment the owner is first served over the
   tailnet address. Closing it earlier, when the name is claimed, could lock out someone whose
   laptop is not on the tailnet yet. If Tailscale is skipped, it stays open (still only the
@@ -114,7 +130,7 @@ Tools and the Gate can tell these apart and must not treat them as equal:
 When Tailscale connects, `network.owner` becomes the login of the Tailscale user that owns this
 node. When the node is tagged (signed in with an auth key) it has no user, so the onboarding
 page shows a claim link on the tailnet address instead: `https://<address>/onboard/claim?c=<code>`,
-a one-time code minted for the cookie holder. The first tailnet login to open it becomes the
+a one-time code minted for the session holder. The first tailnet login to open it becomes the
 owner. Changing owner later is `vyre owner <login>` on the socket.
 
 ### Names

@@ -64,8 +64,8 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
 }
 
 /** A request as the listener sees it, from a given peer address. */
-function fakeReq(remoteAddress, url = "/v1/health", method = "GET") {
-  return { method, url, headers: { "tailscale-user-login": "alex@example.com", "x-vyre-caller": "cli" }, socket: { remoteAddress } };
+function fakeReq(remoteAddress, url = "/v1/health", method = "GET", headers = {}) {
+  return { method, url, headers: { host: "alex.vyre.run:0", "tailscale-user-login": "alex@example.com", "x-vyre-caller": "cli", ...headers }, socket: { remoteAddress } };
 }
 function fakeRes() {
   const r = { status: 0, headers: {}, body: "", headersSent: false,
@@ -105,6 +105,7 @@ test("names: a taken name fails the claim with a reason and creates nothing", as
 
 test("names: the listener serves only the owner, from another device, whatever the headers say", { skip }, async t => {
   const w = world(t);
+  w.cfg.name = "alex";
   await w.svc.tailscale();
   const owner = fakeRes();
   await w.svc.onRequest(fakeReq("100.101.1.2"), owner);
@@ -187,4 +188,32 @@ test("names: release removes the record and stops serving", { skip }, async t =>
   assert.equal(w.records.length, 0);
   assert.equal(s.listening, false);
   assert.equal(s.address, null);
+});
+
+test("names: the owner's browser cannot be made to call a tool from another site", async t => {
+  const w = world(t);
+  w.cfg.name = "alex";
+  await w.svc.tailscale();
+  const cases = [
+    [{ "content-type": "text/plain" }, 403, "a simple POST needs no preflight, so it must be refused"],
+    [{ "content-type": "application/x-www-form-urlencoded" }, 403, "a form post"],
+    [{ "content-type": "application/json", origin: "https://evil.example" }, 403, "another origin"],
+    [{ "content-type": "application/json", origin: "https://alex.vyre.run:0" }, 200, "this box's own page"],
+    [{ "content-type": "application/json" }, 200, "a non-browser client (the Mac's vyred) sends no Origin"],
+  ];
+  for (const [headers, status, why] of cases) {
+    const r = fakeRes();
+    await w.svc.onRequest(fakeReq("100.101.1.2", "/v1/tools/names.owner", "POST", headers), r);
+    assert.equal(r.status, status, why);
+  }
+  const wrongHost = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.1.2", "/v1/health", "GET", { host: "evil.example" }), wrongHost);
+  assert.equal(wrongHost.status, 421);
+});
+
+test("names: whois naming this very node is refused even when the address list is stale", async () => {
+  const { identifier } = await import("./identity.js");
+  const id = identifier({ whois: async () => ({ login: "alex@example.com", tagged: false, node: "box", stableId: "nSELF" }),
+    selfIps: () => [], selfId: () => "nSELF", owner: () => "alex@example.com" });
+  assert.equal((await id("100.101.1.1")).why, "from this box itself");
 });

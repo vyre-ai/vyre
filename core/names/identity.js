@@ -31,10 +31,10 @@ export function isTailnet(ip) {
 /**
  * Build the identify function a listener calls once per connection.
  * @param {{ whois: (ip: string) => Promise<{ login: string|null, tagged: boolean, node: string } | null>,
- *   selfIps: () => string[], owner: () => string|null, ttl?: number, now?: () => number }} deps
+ *   selfIps: () => string[], selfId?: () => string|null, owner: () => string|null, ttl?: number, now?: () => number }} deps
  * @returns {(ip: string) => Promise<{ ok: boolean, login: string|null, node: string|null, why: string }>}
  */
-export function identifier({ whois, selfIps, owner, ttl = 60_000, now = Date.now }) {
+export function identifier({ whois, selfIps, selfId = () => null, owner, ttl = 60_000, now = Date.now }) {
   /** @type {Map<string, { at: number, who: any }>} */
   const cache = new Map();
   return async raw => {
@@ -49,6 +49,9 @@ export function identifier({ whois, selfIps, owner, ttl = 60_000, now = Date.now
     }
     const who = hit.who;
     if (!who) return { ok: false, login: null, node: null, why: "tailscale does not know this address" };
+    // A second check in case the address list was stale: whois naming this very node.
+    const me = selfId();
+    if (me && who.stableId === me) return { ok: false, login: null, node: who.node, why: "from this box itself" };
     if (who.tagged || !who.login) return { ok: false, login: null, node: who.node, why: "a tagged node, not a person" };
     const o = owner();
     if (o && who.login.toLowerCase() === o.toLowerCase()) return { ok: true, login: who.login, node: who.node, why: "owner" };

@@ -1,17 +1,21 @@
 // @ts-check
 // The onboarding listener: plain HTTP on 127.0.0.1, before the box has an owner (ADR 0002).
 //
-// Anyone on the box can reach a loopback port, so nothing here is served without either the
-// one-time token from `vyre up` or the cookie it was exchanged for. The token is kept only as a
-// hash, works once, and expires after an hour. The listener serves the onboarding page's files
-// and a short list of tools, and closes for good once the owner has been seen on the tailnet.
+// Anyone on the box can reach a loopback port, so no tool answers without either the one-time
+// token from `vyre up` or the session it was exchanged for. The token is kept only as a hash,
+// works once, and expires after an hour. The session is not a cookie: browsers share cookies
+// across every port of 127.0.0.1, so any other local web server the person visits would get it.
+// It travels in the redirect's fragment (never sent to a server), the page keeps it in memory
+// and sends it as the x-vyre-onboard header, or as ?s= on the event stream, which cannot set
+// headers. The page's own files carry nothing secret and are served to anyone on loopback. The
+// listener closes for good once the owner has been seen on the tailnet.
 
 import crypto from "node:crypto";
 import http from "node:http";
 
 const HOUR = 3_600_000;
 const SESSION = 12 * HOUR;
-const COOKIE = "vyre_onboard";
+const HEADER = "x-vyre-onboard";
 const sha = s => crypto.createHash("sha256").update(String(s)).digest("hex");
 
 /** The tools the onboarding page may call. onboard.link is not one: only the socket mints links. */
@@ -42,17 +46,8 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
   const json = (res, status, code, message) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code, message } })); };
   const loopbackHost = h => h === `127.0.0.1:${port}` || h === `localhost:${port}` || h === `[::1]:${port}`;
 
-  function cookies(req) {
-    const out = {};
-    for (const part of String(req.headers.cookie || "").split(";")) {
-      const i = part.indexOf("=");
-      if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
-    }
-    return out;
-  }
-
-  function session(req) {
-    const sid = cookies(req)[COOKIE];
+  function session(req, url) {
+    const sid = String(req.headers[HEADER] || url.searchParams.get("s") || "");
     if (!sid) return false;
     const h = sha(sid), exp = sessions.get(h);
     if (!exp || exp < now()) { sessions.delete(h); return false; }
@@ -73,11 +68,12 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
       token = null;
       const sid = crypto.randomBytes(32).toString("base64url");
       sessions.set(sha(sid), now() + SESSION);
-      res.writeHead(302, { location: "/onboard", "set-cookie": `${COOKIE}=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION / 1000}`, "cache-control": "no-store" });
+      res.writeHead(302, { location: `/onboard#s=${sid}`, "cache-control": "no-store" });
       return res.end();
     }
-    if (!session(req)) return text(res, 403, "Open the link `vyre up` printed on the box.");
     if (req.method === "GET" && url.pathname === "/") { res.writeHead(302, { location: "/onboard" }); return res.end(); }
+    if (req.method === "GET" && onboardPath(url.pathname)) return handle(req, res, "onboard");
+    if (!session(req, url)) return json(res, 403, "denied", "Open the link `vyre up` printed on the box.");
     if (req.method === "POST") {
       // Same-origin fetches send JSON and a loopback Origin; a form from another page cannot.
       if (!/^application\/json\b/.test(String(req.headers["content-type"] || ""))) return json(res, 415, "bad_input", "send JSON");

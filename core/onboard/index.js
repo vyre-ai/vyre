@@ -204,7 +204,7 @@ export default {
       description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket.",
       input: obj(),
       run: async (_, { caller }) => {
-        if (caller === "onboard" || String(caller).startsWith("tailnet:") || String(caller).startsWith("module:")) throw new Error("links are made only from the box's own terminal");
+        if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         if (net().ownerSeen) return { url: null, address, port: null, expires: null, user: os.userInfo().username };
         return { ...(await lb.link()), address, user: os.userInfo().username };

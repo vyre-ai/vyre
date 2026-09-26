@@ -103,9 +103,15 @@ async function body(req) {
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
+const SOCKET_LABELS = new Set(["local", "cli", "harness", "hook", "mcp", "capsule"]);
+
 async function route(req, res, { registry, events, cfg, started, streams }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
-  const caller = policy.caller || String(req.headers["x-vyre-caller"] || "local");
+  // On the socket the header is only a label, and anything on the box can send it (Claude's own
+  // processes included), so only plain labels pass; "module:*", "tailnet:*" and "onboard" are
+  // identities that listeners and the registry establish, never a client (ADR 0002).
+  const label = String(req.headers["x-vyre-caller"] || "local");
+  const caller = policy.caller || (SOCKET_LABELS.has(label) ? label : "local");
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
   if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {

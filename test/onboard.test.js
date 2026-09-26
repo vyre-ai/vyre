@@ -36,16 +36,17 @@ async function box(t) {
   return { root, d };
 }
 
-/** Exchange the one-time link for the session cookie, the way a browser does. */
+/** Exchange the one-time link for the session, the way the page does: from the redirect's fragment. */
 async function redeem(url) {
   const r = await fetch(url, { redirect: "manual" });
-  return { status: r.status, location: r.headers.get("location"), cookie: (r.headers.get("set-cookie") || "").split(";")[0] };
+  const location = r.headers.get("location") || "";
+  return { status: r.status, location, session: (location.match(/#s=([A-Za-z0-9_-]+)$/) || [])[1] || "", cookie: r.headers.get("set-cookie") };
 }
 
-const tool = (base, cookie, name, input = {}, headers = {}) => fetch(`${base}/v1/tools/${name}`, {
-  method: "POST", headers: { "content-type": "application/json", cookie, ...headers }, body: JSON.stringify(input) });
+const tool = (base, session, name, input = {}, headers = {}) => fetch(`${base}/v1/tools/${name}`, {
+  method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, ...headers }, body: JSON.stringify(input) });
 
-test("onboard: the link works once, becomes a cookie, and the cookie reaches only the onboarding", async t => {
+test("onboard: the link works once, becomes a session, and the session reaches only the onboarding", async t => {
   const { root } = await box(t);
   const link = await call("onboard.link", {}, { root });
   assert.ok(link.data, JSON.stringify(link.error));
@@ -53,14 +54,15 @@ test("onboard: the link works once, becomes a cookie, and the cookie reaches onl
   assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/onboard\?t=[A-Za-z0-9_-]{40,}$/);
   const base = `http://127.0.0.1:${port}`;
 
-  assert.equal((await fetch(`${base}/onboard`)).status, 403, "nothing is served without the token or cookie");
+  assert.equal((await tool(base, "", "onboard.status")).status, 403, "no tool answers without the token or session");
   const first = await redeem(url);
   assert.equal(first.status, 302);
-  assert.equal(first.location, "/onboard", "the token leaves the address bar");
-  assert.match(first.cookie, /^vyre_onboard=/);
+  assert.match(first.location, /^\/onboard#s=/, "the token leaves the address bar; the session rides in the fragment");
+  assert.equal(first.cookie, null, "no cookie: browsers share cookies with every other port on 127.0.0.1");
   assert.equal((await redeem(url)).status, 403, "the link is single use");
+  assert.equal((await tool(base, "forged", "onboard.status")).status, 403);
 
-  const s = await (await tool(base, first.cookie, "onboard.status")).json();
+  const s = await (await tool(base, first.session, "onboard.status")).json();
   assert.equal(s.data.mode, "loopback");
   assert.equal(s.data.current, "you");
   assert.equal(s.data.steps.claude.installed, true);
@@ -69,12 +71,14 @@ test("onboard: the link works once, becomes a cookie, and the cookie reaches onl
   assert.equal(s.data.steps.tailscale.loginUrl, "https://login.tailscale.com/a/fake");
   assert.equal(s.data.steps.address.state, "blocked");
 
-  // Everything that is not the onboarding is closed, even with the cookie.
-  assert.equal((await tool(base, first.cookie, "onboard.link")).status, 404, "only the socket mints links");
-  assert.equal((await tool(base, first.cookie, "system.echo", { text: "x" })).status, 404);
-  assert.equal((await fetch(`${base}/v1/events`, { headers: { cookie: first.cookie } })).status, 404);
-  assert.equal((await fetch(`${base}/v1/health`, { headers: { cookie: first.cookie } })).status, 404);
-  const listed = await (await fetch(`${base}/v1/tools`, { headers: { cookie: first.cookie } })).json();
+  // Everything that is not the onboarding is closed, even with the session.
+  const h = { "x-vyre-onboard": first.session };
+  assert.equal((await tool(base, first.session, "onboard.link")).status, 404, "only the socket mints links");
+  assert.equal((await tool(base, first.session, "system.echo", { text: "x" })).status, 404);
+  assert.equal((await tool(base, first.session, "onboard.status/../../system.echo", { text: "x" })).status, 404);
+  assert.equal((await fetch(`${base}/v1/events`, { headers: h })).status, 404);
+  assert.equal((await fetch(`${base}/v1/health`, { headers: h })).status, 404);
+  const listed = await (await fetch(`${base}/v1/tools`, { headers: h })).json();
   assert.ok(listed.error || listed.data.every(x => x.name.startsWith("onboard.") || ["projects.catalog", "projects.create", "recall.status"].includes(x.name)));
 });
 
@@ -82,14 +86,14 @@ test("onboard: the loopback listener refuses other hosts, forms and other origin
   const { root } = await box(t);
   const { url, port } = (await call("onboard.link", {}, { root })).data;
   const base = `http://127.0.0.1:${port}`;
-  const { cookie } = await redeem(url);
+  const { session } = await redeem(url);
   // fetch will not send a forged Host, so this one goes by hand.
-  const rebound = await new Promise((resolve, reject) => http.get({ host: "127.0.0.1", port, path: "/onboard", headers: { cookie, host: `evil.example:${port}` } },
+  const rebound = await new Promise((resolve, reject) => http.get({ host: "127.0.0.1", port, path: "/onboard", headers: { host: `evil.example:${port}` } },
     res => { res.resume(); resolve(res.statusCode); }).on("error", reject));
   assert.equal(rebound, 421, "a rebinding page's Host is refused");
-  const form = await fetch(`${base}/v1/tools/onboard.skip`, { method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body: "step=you" });
+  const form = await fetch(`${base}/v1/tools/onboard.skip`, { method: "POST", headers: { "x-vyre-onboard": session, "content-type": "application/x-www-form-urlencoded" }, body: "step=you" });
   assert.equal(form.status, 415);
-  const cross = await tool(base, cookie, "onboard.skip", { step: "you" }, { origin: "https://evil.example" });
+  const cross = await tool(base, session, "onboard.skip", { step: "you" }, { origin: "https://evil.example" });
   assert.equal(cross.status, 403);
 });
 
@@ -97,7 +101,7 @@ test("onboard: skipping, a missing vault and a missing token all say why", async
   const { root } = await box(t);
   const { url, port } = (await call("onboard.link", {}, { root })).data;
   const base = `http://127.0.0.1:${port}`;
-  const { cookie } = await redeem(url);
+  const { session: cookie } = await redeem(url);
   const skipped = await (await tool(base, cookie, "onboard.skip", { step: "you" })).json();
   assert.equal(skipped.data.steps.you.state, "skipped");
   assert.equal(skipped.data.current, "claude");
@@ -120,8 +124,8 @@ test("onboard: a new link voids the old unredeemed one; the owner arriving on th
   const b = (await call("onboard.link", {}, { root })).data;
   assert.equal(a.port, b.port);
   assert.equal((await redeem(a.url)).status, 403);
-  const { cookie } = await redeem(b.url);
-  assert.equal((await tool(`http://127.0.0.1:${b.port}`, cookie, "onboard.status")).status, 200);
+  const { session } = await redeem(b.url);
+  assert.equal((await tool(`http://127.0.0.1:${b.port}`, session, "onboard.status")).status, 200);
   d.events.emit("names", "owner.seen", {});
   await new Promise(r => setTimeout(r, 100));
   assert.equal(await fetch(`http://127.0.0.1:${b.port}/onboard`).then(() => "open", () => "closed"), "closed");

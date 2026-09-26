@@ -125,3 +125,14 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
     assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
   }
 });
+
+test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", async t => {
+  const root = tempHome(t);
+  let seen = [];
+  const d = await start({ root, log: () => {}, rules: async c => { seen.push(c.caller); return { allow: true }; } });
+  t.after(() => d.stop());
+  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "cli", "capsule"]) {
+    await call("system.echo", { text: "x" }, { root, caller: forged });
+  }
+  assert.deepEqual(seen, ["local", "local", "local", "cli", "capsule"]);
+});

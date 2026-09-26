@@ -71,6 +71,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `--box` makes a Mac the box, and `--connect <addr>` points a Mac at one. Also new:
   `vyre up --system` / `vyre uninstall --system` (with `--dry-run`), `vyre name`, `vyre owner`,
   `vyre backup`, `vyre restore` and `vyre daemon`.
+- Security fixes from a review of the listeners:
+  - The tailnet listener refused no cross-site POST. A page the owner visited could have made
+    their browser call any tool as the owner. Every POST there must now be JSON with this
+    box's own `Origin`, and `Host` must be the box's.
+  - `x-vyre-caller` on the socket could claim `module:*` (past the internal-tool gate, so
+    `vault.release`) or `tailnet:*`. Only plain labels pass now, and anything else becomes
+    `local`.
+  - The onboarding session was a cookie, which browsers share with every port on 127.0.0.1.
+    It is now a header the page holds in memory.
+  - The box's own addresses are read before the first connection under systemd too, and whois
+    naming this node is refused.
+  - `onboard.link` allows only terminal callers.
 
 ### Shared core for the parallel workstreams (2026-09-26)
 
