@@ -10,7 +10,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 
 async function boot(t, { vault = true } = {}) {
   const root = tempHome(t);
@@ -31,7 +31,7 @@ async function boot(t, { vault = true } = {}) {
   t.after(() => server.close());
   const port = /** @type {any} */ (server.address()).port;
 
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const made = await call("projects.create", { name: "Harlow Legal", home }, { root });
   assert.ok(!made.error, JSON.stringify(made.error));
@@ -113,7 +113,7 @@ test("watchers module: without a vault, a watcher that needs one fails its run a
   const root = tempHome(t);
   const p = config.ensure(root);
   fs.writeFileSync(p.config, JSON.stringify({ transcripts: [path.join(root, "none")], modules: { disable: ["vault"] } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   writeWatcher(p, "harlow-inbox", { schedule: "@hourly", needs: ["billing-inbox"] }, `export default async function watch({ vault }) { await vault.fetch("billing-inbox"); }`);
   const r = (await call("watchers.test", { name: "harlow-inbox" }, { root })).data;
