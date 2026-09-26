@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Get started · Vyre</title>
+  <meta name="description" content="Put Vyre on your server and your Mac, in order: the one-line server install, onboarding in the browser, the CLI on your Mac, and the Capsule app.">
+  <link rel="canonical" href="https://vyre.run/start">
+  <meta name="theme-color" content="#0E0D0C">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Vyre">
+  <meta property="og:url" content="https://vyre.run/start">
+  <meta property="og:title" content="Get started · Vyre">
+  <meta property="og:description" content="The exact steps to put Vyre on your server and your Mac, in order.">
+  <meta property="og:image" content="https://vyre.run/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/start/start.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Vyre, home">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#server">Server</a>
+      <a href="#onboarding">Onboarding</a>
+      <a href="#mac">Mac</a>
+      <a href="#capsule">Capsule</a>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <a class="keep" href="https://github.com/vyre-ai/vyre">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="start">
+  <div class="wrap">
+  <div class="col">
+
+    <div class="start-head">
+      <p class="lbl">Getting started</p>
+      <h1 class="h-display">Put Vyre on your server and your Mac.</h1>
+      <p class="lead">The exact steps, in order.</p>
+      <p class="body">Vyre is not on npm yet, and the Mac app is not signed. Until both are done, the server installs from a tarball on vyre.run (checked against a published SHA-256), and the Mac installs from the same tarball. The steps below already account for that.</p>
+    </div>
+
+    <section class="part" aria-labelledby="need-h">
+      <span class="num dim">00</span>
+      <div class="body-col">
+        <h2 id="need-h" class="h2">What you need</h2>
+        <ul class="need">
+          <li>A Linux server you can <code>ssh</code> into, with sudo. Docker is installed for you if it is missing.</li>
+          <li>A Mac with Node 22.5 or newer (<code>node --version</code>).</li>
+          <li>A Claude subscription (Pro or Max) or an Anthropic API key.</li>
+          <li>A Tailscale account. The free plan is enough.</li>
+          <li>A Cloudflare API token with DNS edit rights on the <code>vyre.run</code> zone. vyred uses it to publish <code>&lt;you&gt;.vyre.run</code> and to get its certificate. The hosted name directory will replace it.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="part" id="server" aria-labelledby="server-h">
+      <span class="num">01</span>
+      <div class="body-col">
+        <h2 id="server-h" class="h2">The server</h2>
+        <p>From your Mac, ssh to the server and run the one line:</p>
+      <div class="term-block">
+        <div class="term-row"><pre>ssh &lt;you&gt;@&lt;server&gt;</pre><button class="btn btn-line btn-sm" type="button" data-copy="ssh &lt;you&gt;@&lt;server&gt;" aria-label="Copy the command ssh &lt;you&gt;@&lt;server&gt;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+        <div class="term-row"><pre>curl -fsSL https://vyre.run/install.sh | sh</pre><button class="btn btn-line btn-sm" type="button" data-copy="curl -fsSL https://vyre.run/install.sh | sh" aria-label="Copy the command curl -fsSL https://vyre.run/install.sh | sh"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+      </div>
+        <p>The installer asks before installing anything (Docker, if the server has none). It lays out the stack in <code>/srv/vyre</code>, installs the <code>vyre</code> command to <code>/usr/local/bin/vyre</code>, builds the image from <code>vyre.run/box/vyre.tgz</code> after checking its checksum, and starts two containers: <code>tailscale</code> and <code>vyre</code>. The first build takes a few minutes.</p>
+        <p>If a test stack is already in <code>/srv/vyre</code>, the installer leaves <code>/srv/vyre/.env</code> as it is. To start clean: <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then run the one line again. The data volumes stay unless you add <code>--purge</code>.</p>
+        <p>Then give vyred the Cloudflare token, in a file only you can read:</p>
+      <div class="term-block">
+        <div class="term-row"><pre>cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env</pre><button class="btn btn-line btn-sm" type="button" data-copy="cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env" aria-label="Copy the command cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+        <div class="term-row"><pre>chmod 600 /srv/vyre/vyre.env</pre><button class="btn btn-line btn-sm" type="button" data-copy="chmod 600 /srv/vyre/vyre.env" aria-label="Copy the command chmod 600 /srv/vyre/vyre.env"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+        <div class="term-row"><pre>nano /srv/vyre/vyre.env            <span class="note"># uncomment CLOUDFLARE_VYRE_TOKEN= and paste the token</span></pre><button class="btn btn-line btn-sm" type="button" data-copy="nano /srv/vyre/vyre.env" aria-label="Copy the command nano /srv/vyre/vyre.env"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+        <div class="term-row"><pre>vyre update                        <span class="note"># recreates the vyre container so it reads the file</span></pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre update" aria-label="Copy the command vyre update"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+      </div>
+        <p><code>vyre up</code> prints the onboarding link, and, because you are on ssh, the tunnel line to reach it:</p>
+        <div class="term-block">
+          <div class="term-cap"><span class="lbl">Output of vyre up</span></div>
+<pre class="term-out">  Open this link to set up Vyre (it works once, for an hour):
+
+    http://127.0.0.1:7300/onboard?t=...
+
+  This box is headless. On your own computer, run this first, then open the link there:
+    ssh -N -L 7300:127.0.0.1:7300 &lt;you&gt;@&lt;server&gt;</pre>
+        </div>
+        <p>If your account is not in the <code>docker</code> group, every <code>vyre</code> command on the server needs <code>sudo</code>.</p>
+      </div>
+    </section>
+
+    <section class="part" id="onboarding" aria-labelledby="onboarding-h">
+      <span class="num">02</span>
+      <div class="body-col">
+        <h2 id="onboarding-h" class="h2">Onboarding, in the browser on your Mac</h2>
+        <ol class="sub">
+          <li><span>In a second Terminal tab on your Mac, run the <code>ssh -N -L 7300:...</code> line and leave it open.</span></li>
+          <li><span>Open the <code>http://127.0.0.1:7300/onboard?t=...</code> link in your Mac's browser. The link works once and for an hour. If it has expired, run <code>vyre up</code> on the server for a new one.</span></li>
+          <li><span><strong>You.</strong> Type the name you want, e.g. <code>alex</code>. That becomes <code>alex.vyre.run</code>. The rest of this page writes <code>&lt;you&gt;</code> for it.</span></li>
+          <li><span><strong>Claude Code.</strong> Sign in with your subscription (the page runs <code>claude setup-token</code> for you and shows Anthropic's sign-in link) or paste an API key. It goes into the Vault.</span></li>
+          <li><span><strong>Tailscale.</strong> Press Connect. Tailscale's own sign-in opens; sign in with your Tailscale account. The page waits until the server shows up on your tailnet.</span></li>
+          <li><span><strong>Your address.</strong> Vyre points <code>&lt;you&gt;.vyre.run</code> at the server's tailnet address and gets a certificate. When that is done the page moves to <code>https://&lt;you&gt;.vyre.run</code>, and the <code>127.0.0.1:7300</code> link stops working. You can close the ssh tunnel.</span></li>
+          <li><span><strong>Your history</strong> and <strong>Your devices</strong> can be skipped for now and finished from Settings.</span></li>
+        </ol>
+        <p><code>https://&lt;you&gt;.vyre.run</code> only opens from your own devices on your tailnet. Put Tailscale on the Mac and your phone (<a href="https://tailscale.com/download">tailscale.com/download</a>) and sign in with the same account.</p>
+      </div>
+    </section>
+
+    <section class="part" id="mac" aria-labelledby="mac-h">
+      <span class="num">03</span>
+      <div class="body-col">
+        <h2 id="mac-h" class="h2">The Mac</h2>
+        <p>Install the CLI from the same tarball the server uses:</p>
+      <div class="term-block">
+        <div class="term-row"><pre>npm install -g https://vyre.run/box/vyre.tgz</pre><button class="btn btn-line btn-sm" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" aria-label="Copy the command npm install -g https://vyre.run/box/vyre.tgz"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+        <div class="term-row"><pre>vyre up --connect &lt;you&gt;.vyre.run</pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre up --connect &lt;you&gt;.vyre.run" aria-label="Copy the command vyre up --connect &lt;you&gt;.vyre.run"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+      </div>
+        <p><code>vyre up</code> on a Mac sets its role to <code>local</code>, starts vyred for this Mac, links it to your box, and opens the Capsule. The install is about 480 MB, most of it the optional local embedding model that lets search find things by meaning. Search still works without it, as full text.</p>
+        <p>To use Vyre's tools inside Claude Code on the Mac:</p>
+      <div class="term-block">
+        <div class="term-row"><pre>claude --plugin-dir "$(npm root -g)/vyre/harness"</pre><button class="btn btn-line btn-sm" type="button" data-copy="claude --plugin-dir &quot;$(npm root -g)/vyre/harness&quot;" aria-label="Copy the command claude --plugin-dir &quot;$(npm root -g)/vyre/harness&quot;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
+      </div>
+      </div>
+    </section>
+
+    <section class="part" id="capsule" aria-labelledby="capsule-h">
+      <span class="num">04</span>
+      <div class="body-col">
+        <h2 id="capsule-h" class="h2">The Capsule</h2>
+        <p>Download <a href="/box/Vyre-mac.zip">vyre.run/box/Vyre-mac.zip</a>, unzip it, and move <code>Vyre.app</code> to Applications.</p>
+        <p>The app is not signed or notarized yet, so macOS stops it the first time:</p>
+        <ol class="sub">
+          <li><span>In Finder, right-click (or Control-click) <code>Vyre.app</code> and choose <strong>Open</strong>.</span></li>
+          <li><span>macOS says it cannot check the app for malicious software. Choose <strong>Open</strong> again. On recent macOS the dialog may offer only <strong>Done</strong>. If so, open System Settings, then Privacy &amp; Security, scroll to the note about Vyre, and choose <strong>Open Anyway</strong>.</span></li>
+          <li><span>Grant Accessibility when it asks: Control twice opens the Capsule from any app, and macOS needs that permission to see the key.</span></li>
+        </ol>
+        <p>After the first open it starts normally. Press Control twice anywhere to open it.</p>
+      </div>
+    </section>
+
+    <section class="part" id="not-finished" aria-labelledby="unfinished-h">
+      <span class="num dim">!</span>
+      <div class="body-col">
+        <div class="callout">
+          <p class="lbl beacon">Known gaps</p>
+          <h2 id="unfinished-h" class="h2">What is not finished</h2>
+          <ul class="need">
+            <li><strong>npm.</strong> <code>npm install -g vyre</code> does not work until the package is published. Use the tarball URL above.</li>
+            <li><strong>The image.</strong> There is no published image yet, so each server builds its own from the tarball. <code>vyre update</code> rebuilds it.</li>
+            <li><strong>Signing.</strong> The Mac app is unsigned and not notarized, hence the right-click, Open.</li>
+            <li><strong>Names.</strong> <code>&lt;you&gt;.vyre.run</code> needs your own Cloudflare token for now. The hosted name directory that will claim a name without one is designed (ADR 0002) and not built.</li>
+            <li><strong>Updates.</strong> Nothing updates itself. On the server, <code>vyre update</code>. On the Mac, run the <code>npm install -g</code> line again, and download the zip again.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="part" id="trouble" aria-labelledby="trouble-h">
+      <span class="num dim">?</span>
+      <div class="body-col">
+        <h2 id="trouble-h" class="h2">If something goes wrong</h2>
+        <ul class="need">
+          <li>The link says it expired or was used: run <code>vyre up</code> on the server for a new one.</li>
+          <li>The page will not load: check that the <code>ssh -N -L</code> line is still running, and that you opened <code>127.0.0.1:7300</code>, not <code>localhost:7300</code>.</li>
+          <li>On the server: <code>vyre status</code>, <code>vyre logs</code>, and <code>docker compose -p vyre ps</code>.</li>
+          <li>Start over on the server (keeps your data): <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then the one line again. Add <code>--purge</code> to delete the vault, sign-ins and projects too.</li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="start-foot">
+      <a class="btn btn-line" href="/">Back to vyre.run</a>
+      <a class="btn btn-line" href="https://github.com/vyre-ai/vyre">GitHub</a>
+    </div>
+
+  </div>
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <span class="lbl">Vyre Platform &#183; Vyre Agent &#183; Vyre AI</span>
+    </div>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="https://github.com/vyre-ai/vyre">GitHub</a>
+      <a href="https://github.com/vyre-ai/vyre#readme">Docs</a>
+      <a href="/">vyre.run</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

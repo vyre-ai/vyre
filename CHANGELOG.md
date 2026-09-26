@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Release
+
+- `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
+  modules, box) plus SPEC, MODULES, INSTALL, GETTING-STARTED and the ADRs. It leaves out tests,
+  fixtures, `testing` helpers, design boards, working notes and Capsule build output: 186 files,
+  about 570 KB packed. The embedder stays an optional dependency. npm -g still installs it
+  (about 480 MB), because npm ignores `--omit=optional` for a global package's own optional deps.
+- `scripts/build-site.sh --src <checkout> [--mac-zip <zip>]` puts what the box installer downloads
+  under `site/box/`: the compose files, the host wrapper, the Dockerfile, `install-box.sh`,
+  `vyre.tgz` (npm pack, until the package is on npm), `Vyre-mac.zip`, `VERSION` and `SHA256SUMS`.
+  It also copies the installer to `site/install.sh`. All generated and gitignored.
+- `scripts/release-check.sh [--skip-tests] [--claude] [--live]`: the suite, then the pack and what
+  the tarball may and may not hold. Then a global install into a temp prefix, and `vyre up`,
+  `status`, `modules`, `call` and `down` in a temp HOME. Then the Harness MCP server from the
+  installed folder, and with `--claude` a real `claude -p --plugin-dir` call. Then `site/box`
+  against its checksums, and with `--live` the bytes vyre.run actually serves.
+- `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
+  `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
+  finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
+  with 200.
+
 #### Switchboard
 
 - `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
