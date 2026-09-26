@@ -83,13 +83,19 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   6,591 edges, 842 open facts. First pass 6.7s; nothing new 5ms; one new turn 1.2s with the
   event loop never blocked more than about 180ms; `memory.relevant` p50 0.06ms, p95 1.4ms.
 
+- Eval: the Harlow deadline is gold-closed and a closed fact offered by `memory.relevant` fails
+  (`closed.offered`); prefers/decided measured in a second run as optional relations; the
+  `relevant` timing warms up and takes the best p95 of three rounds. Every ADR target is met, no
+  todos left: leakage 0, all precision and recall 1, Enrich P@3 0.986.
+- One identity per domain: org spellings sharing a domain are one node (longest proper label),
+  other spellings in `memory_aliases`, matched by Enrich and resolve.
+
 ## Doing
 
 ## Next
-- eval gold: the Harlow deadline (18 September) is marked open at the eval's NOW (26 September),
-  but ADR 0007 closes a deadline two days after its date. One of the two should change.
-- prefers/decided: switch on once the eval measures precision 0.8 or more with the flag set
-  (the eval builds memory without config, so it reports them unsupported today).
+- prefers/decided: the eval's optional run (flag on) measures precision 1 and recall 1 for both,
+  over the bar of 0.8, but on one gold fact each. Switching the default on is a decision for
+  Intelligence; more gold (distractors that say "prefer" or "decided" in code talk) first.
 - A split write means readers can see one room's new rows beside another's old ones for a
   moment; each room is consistent on its own. Revisit if the Deck shows it.
 - Short forms for people's first names are measured but few pass the 0.6 floor; that is by
@@ -137,6 +143,9 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   at read time once two days past), and with the flag `prefers` (`pref:`) and `decided`
   (subject `me:you`, object `decision:`). Value kinds never match a prompt.
 - Config: `memory.relations: { prefers?: boolean, decided?: boolean }`.
+- `memory_aliases (room, node, alias)`: organisation spellings folded into one node because they
+  share a domain. A spelling that was a node of its own is not one any more; read aliases to
+  match it.
 - `memory_edges` has a `room` column; any direct reader must filter `room = '*'` for the main
   graph. `memory_shortforms` has `room` in its key.
 

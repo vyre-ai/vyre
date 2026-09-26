@@ -23,6 +23,11 @@ test("memory eval: nothing leaks between rooms", async () => {
   assert.equal(r.leakage, 0, "facts crossed rooms:\n" + r.failures.leaks.map(x => `  ${x.room}  ${x.id}  (${x.via})`).join("\n"));
 });
 
+test("memory eval: nothing leaks with the optional relations switched on either", async () => {
+  const r = await report;
+  assert.equal(r.optional?.leakage, 0, "facts crossed rooms with config.memory.relations on:\n" + (r.optional?.failures.leaks || []).map(x => `  ${x.room}  ${x.id}  (${x.via})`).join("\n"));
+});
+
 test("memory eval: no metric is more than 0.02 below the baseline", async () => {
   const r = await report;
   const worse = regressions(r.metrics, baseline);

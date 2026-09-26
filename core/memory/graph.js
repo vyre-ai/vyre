@@ -165,6 +165,9 @@ export class Graph {
     const steps = [
       () => [this.node(r, sc)],
       () => this.sql(`SELECT * FROM ${nodes} WHERE lower(label) = lower(?) ORDER BY sessions DESC LIMIT ${lim}`).all(room, r),
+      // Another spelling of the same organisation (spellings sharing a domain are one node).
+      () => this.sql(`SELECT n.* FROM memory_aliases a JOIN ${nodes} n ON n.id = a.node
+                     WHERE a.room = ? AND lower(a.alias) = lower(?) ORDER BY n.sessions DESC LIMIT ${lim}`).all(room, room, r),
       () => this.sql(`SELECT n.* FROM memory_shortforms f JOIN ${nodes} n ON n.id = f.node
                      WHERE f.room = ? AND f.form = lower(?) AND f.precision >= ? AND f.sessions >= ? ORDER BY f.precision DESC, n.sessions DESC LIMIT ${lim}`).all(room, room, r, T.shortPrecision, T.shortMinSessions),
       () => this.sql(`SELECT * FROM ${nodes} WHERE lower(label) LIKE lower(?) ESCAPE '\\'
@@ -461,6 +464,11 @@ export class Graph {
       if (QUIET.has(String(n.role)) || VALUES.has(String(n.kind))) continue;
       put(String(n.label), String(n.id), 1, "name");
     }
+    // The other spellings of a node name it as fully as its label does.
+    for (const r of this.sql(`SELECT a.node, a.alias FROM memory_aliases a JOIN ${nodes} n ON n.id = a.node
+        WHERE a.room = ? AND (n.role IS NULL OR n.role NOT IN ('own','tool','mail','hub'))`).all(room, room)) {
+      put(String(r.alias), String(r.node), 1, "name");
+    }
     // Every claimant of a short form, most precise first. Which one a prompt means is decided
     // when it is read: the first one in view.
     for (const r of this.sql(`SELECT f.node, f.form, f.precision FROM memory_shortforms f JOIN ${nodes} n ON n.id = f.node
@@ -546,10 +554,18 @@ export class Graph {
         if (!scored.has(k) || scored.get(k).s < s) scored.set(k, { s, e, matched: h.matched });
       }
     }
-    return [...scored.values()].sort((a, b) => b.s - a.s || a.e.id - b.e.id).slice(0, limit).map(({ e, matched, s }) => {
+    // A fact that says what a higher one already said (the same words about the same thing)
+    // is left out, so a prompt never carries it twice.
+    const out = [], said = new Set();
+    for (const { e, matched, s } of [...scored.values()].sort((a, b) => b.s - a.s || a.e.id - b.e.id)) {
+      if (out.length >= limit) break;
       const x = this.fact(e, sc);
-      return { id: x.id, text: x.text, matched, confidence: x.confidence, age: x.age, seen: x.seen, fresh: x.fresh, source: x.source, ref: x.ref, score: Number(s.toFixed(3)) };
-    });
+      const k = x.text.toLowerCase();
+      if (said.has(k)) continue;
+      said.add(k);
+      out.push({ id: x.id, text: x.text, matched, confidence: x.confidence, age: x.age, seen: x.seen, fresh: x.fresh, source: x.source, ref: x.ref, score: Number(s.toFixed(3)) });
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------ why

@@ -171,4 +171,15 @@ export const MIGRATIONS = [
   -- once, in the background, the way a first pass does.
   INSERT INTO memory_meta (k, v) VALUES ('reread', 1);
   `,
+  `
+  -- One organisation written several ways ("Keel & Ash", "Keel & Ash Architects") is one node
+  -- when the spellings share a domain: the longest spelling names it and the others are kept
+  -- here, per room, so a prompt that uses them still finds it.
+  CREATE TABLE memory_aliases (
+    room TEXT NOT NULL, node TEXT NOT NULL, alias TEXT NOT NULL,
+    PRIMARY KEY (room, node, alias)
+  ) WITHOUT ROWID;
+  CREATE INDEX memory_aliases_alias ON memory_aliases (room, alias);
+  INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('rederive', 1);
+  `,
 ];

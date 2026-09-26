@@ -160,7 +160,8 @@ test("memory: the way people talk, \"the Harlow team\", finds Harlow Legal", asy
 
 test("memory: one firm written several ways is measured as one, so its short form still works", async t => {
   // Each spelling alone covers too few of the sessions saying "Harlow" to clear the bar; they
-  // share a domain, so together they are one firm and cover all of them.
+  // share a domain, so together they are one firm, one node named by the longest spelling, and
+  // cover all of them.
   const { db, curator, graph } = world(t, { sessions: [
     S(["we sent the Harlow draft to Harlow Legal for review"]),
     S(["the Harlow invoice went to Harlow Legal Group this week"]),
@@ -171,9 +172,9 @@ test("memory: one firm written several ways is measured as one, so its short for
   ] });
   await curator.curate();
   const measured = db.prepare("SELECT node, precision FROM memory_shortforms WHERE room = '*' AND form = 'harlow' ORDER BY precision DESC").all();
-  assert.equal(measured.length, 3, JSON.stringify(measured));
-  assert.equal(measured[0].precision, 1, "the firm as a whole is what every one of these sessions is about");
-  assert.ok(measured.slice(1).every(m => m.precision < 0.6), "a lesser spelling must not also win the form");
+  assert.deepEqual(measured.map(m => [m.node, m.precision]), [["name:Harlow Legal Partners", 1]], "the firm as a whole is what every one of these sessions is about");
+  const aliases = db.prepare("SELECT alias FROM memory_aliases WHERE room = '*' AND node = 'name:Harlow Legal Partners' ORDER BY alias").all().map(r => r.alias);
+  assert.deepEqual(aliases, ["Harlow Legal", "Harlow Legal Group"]);
   const r = graph.relevant({ text: "email the Harlow team about the implementation plan" });
   assert.ok(r.length > 0 && r.every(f => f.text.includes("Harlow Legal")), r.map(f => f.text).join("\n"));
 });

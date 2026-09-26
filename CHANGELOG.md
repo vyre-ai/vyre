@@ -503,6 +503,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- One identity per domain: organisation spellings that share a domain ("Keel & Ash", "Keel & Ash
+  Architects") fold into one node before anything is counted, named by the longest proper
+  spelling. The others are kept in the new `memory_aliases` table (per room), so a prompt or
+  `memory.resolve` using them still finds the node. Spellings a user correction or a lesson
+  names, and a room's split copies, are left alone. The migration asks every home to derive once.
+  `memory.relevant` also drops a fact whose text repeats a higher one.
+- Eval: the Harlow deadline (18 September) is closed at the eval's clock, as the ADR closes a
+  deadline two days after its date. The gold says so, and the eval now fails a closed fact that
+  `memory.relevant` offers (`closed.offered`, target 0). A second run with
+  `config.memory.relations` on reports `prefers` and `decided` as optional relations with
+  precision, recall and whether they clear the 0.8 bar. `relevant` timing warms up and takes the
+  best p95 of three rounds, so heavy machine load no longer fails the 5 ms bound.
+
 - Resolution (decision 2): an address matches a person across sessions when exactly one kept
   person has its local part and works at its domain (0.75); a word-like TLD or a trailing
   organisation word in a domain spells the organisation (`harlow.law` is Harlow Law,

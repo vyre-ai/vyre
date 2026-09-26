@@ -160,3 +160,27 @@ test("relations: prefers and decided are off by default and read only from the u
   assert.deepEqual(pairs(on.db, "decided"), [["me:you", "decision:keep intake on one page"]]);
   assert.ok(on.graph.facts({ about: "me:you" }).facts.some(f => f.text === "you decided to keep intake on one page"));
 });
+
+test("resolution: spellings sharing a domain are one identity, named by the longest, in the graph and in Enrich", async t => {
+  const { db, graph } = await world(t, [
+    S(["Keel & Ash Architects want a portfolio site. Priya Anand at Keel & Ash Architects wrote from p.anand@keelash.studio."]),
+    S(["Started the Keel & Ash portfolio in github.com/keelash/portfolio-site; it deploys to keelash.studio."]),
+    S(["Keel & Ash sent photos; push them to keelash.studio and github.com/keelash/portfolio-site."]),
+    // A different firm with a different domain stays apart, whatever words it shares.
+    S(["Summit Dental wrote from summitdental.com about the lease."]),
+    S(["Summit Roofing wrote from summitroofing.com about the roof."]),
+    S(["Summit Dental and Summit Roofing both sent logos."]),
+  ]);
+  const nodes = db.prepare("SELECT id FROM memory_nodes WHERE kind = 'org' ORDER BY id").all().map(r => r.id);
+  assert.ok(nodes.includes("name:Keel & Ash Architects"), JSON.stringify(nodes));
+  assert.ok(!nodes.includes("name:Keel & Ash"), "the shorter spelling is no node of its own: " + JSON.stringify(nodes));
+  assert.ok(nodes.includes("name:Summit Dental") && nodes.includes("name:Summit Roofing"), JSON.stringify(nodes));
+  assert.deepEqual(pairs(db, "has_domain").filter(([, d]) => d === "domain:keelash.studio"), [["name:Keel & Ash Architects", "domain:keelash.studio"]]);
+  assert.deepEqual(pairs(db, "owned_by"), [["repo:keelash/portfolio-site", "name:Keel & Ash Architects"]]);
+  // The shorter spelling still names it in a prompt, and each fact comes back once.
+  const got = graph.relevant({ text: "Push the latest Keel & Ash changes to keelash.studio", limit: 10 });
+  assert.ok(got.length, "the short spelling names the identity");
+  assert.ok(got.every(f => !f.id.includes("name:Keel & Ash|") && !f.id.endsWith("|name:Keel & Ash")), JSON.stringify(got.map(f => f.id)));
+  assert.equal(new Set(got.map(f => f.text)).size, got.length, "no fact twice");
+  assert.equal(graph.resolve("Keel & Ash")?.id, "name:Keel & Ash Architects");
+});

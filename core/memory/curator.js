@@ -633,6 +633,54 @@ export class Curator {
       if (tld.length >= 3 && !PLAIN_TLDS.has(tld)) spell(stem + tld, a.id);
       for (const w of ORG_WORDS) if (w.length >= 3 && stem.endsWith(w) && stem.length - w.length >= 4) spell(stem.slice(0, -w.length), a.id);
     }
+    // One organisation written several ways ("Keel & Ash", "Keel & Ash Architects") is one node
+    // when the spellings share a domain. The longest proper spelling names it; the others fold
+    // into it before anything is counted, so every fact about it is said once, and are kept as
+    // aliases so a prompt using them still finds it. A name the user or a lesson spoke about,
+    // or a room's split copy, is left as it is.
+    const aliases = new Map();   // canonical id -> alias labels
+    {
+      const taughtDom = new Map();
+      for (const l of lessons) for (const c of l.claims) if (c.rel === "has_domain" && c.dst && c.src.id.startsWith("name:")) taughtDom.set(c.src.id, c.dst.id);
+      const spoken = new Set(said.flatMap(c => [c.src, c.dst, c.object]).filter(Boolean));
+      const byDom = new Map();
+      for (const a of agg.values()) {
+        if (a.kind !== "name" || a.id.includes("#") || hint.get(a.id) === "person") continue;
+        const dom = taughtDom.get(a.id) || orgStems(a.key).map(s => domainByStem.get(s)).find(Boolean);
+        if (!dom) continue;
+        if (!byDom.has(dom)) byDom.set(dom, []);
+        byDom.get(dom).push(a.id);
+      }
+      const proper = id => labelOf(id.slice(5)).split(/\s+/).every(w => !/\p{L}/u.test(w[0]) || /\p{Lu}/u.test(w[0]));
+      const into = new Map();
+      for (const ids of byDom.values()) {
+        if (ids.length < 2) continue;
+        const [head, ...rest] = [...ids].sort((x, y) => Number(proper(y)) - Number(proper(x)) || y.length - x.length || (x < y ? -1 : 1));
+        for (const id of rest) if (!taughtIds.has(id) && !spoken.has(id) && !common.apart?.has(`${id}\u0000${head}`)) into.set(id, head);
+      }
+      for (const [from, to] of into) {
+        const a = /** @type {Agg} */ (agg.get(from)), b = /** @type {Agg} */ (agg.get(to));
+        for (const [s, x] of a.by) {
+          const y = b.by.get(s);
+          if (!y) { b.by.set(s, { n: x.n, turns: [...x.turns], last: x.last }); continue; }
+          y.n += x.n;
+          y.turns = [...y.turns, ...x.turns.filter(t => !y.turns.some(u => u.seq === t.seq))].sort((p, q) => p.seq - q.seq);
+          y.last = Math.max(y.last, x.last);
+        }
+        for (const p of a.parents) b.parents.add(p);
+        b.mentions += a.mentions;
+        if (a.first && (!b.first || a.first < b.first)) b.first = a.first;
+        b.last = Math.max(b.last, a.last);
+        b.mid = b.mid || a.mid;
+        agg.delete(from);
+        if (!aliases.has(to)) aliases.set(to, []);
+        aliases.get(to).push(labelOf(a.key));
+      }
+      if (into.size) for (let i = 0; i < cues.length; i++) {
+        const c = cues[i];
+        if (into.has(c.a) || into.has(c.b)) cues[i] = { ...c, a: into.get(c.a) || c.a, b: into.get(c.b) || c.b };
+      }
+    }
     const cueObj = new Set(cues.filter(c => c.rel === "works_at" || c.rel === "client_of").map(c => c.rel === "works_at" ? c.b : c.a));
     for (const c of cues) if (c.rel === "client_of") clientOf.add(c.a);
     const cueSubj = new Set(cues.filter(c => c.rel === "works_at" || c.rel === "email_of" || c.rel === "has_title").map(c => c.a));
@@ -982,7 +1030,7 @@ export class Curator {
 
     // Facts the user called wrong here: no row keeps them, whatever evidence is left.
     const wrong = new Set(said.filter(c => c.action === "wrong").map(c => `${c.src}\u0000${c.rel}\u0000${c.dst}`));
-    const out = { room: scope.room, agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, wrong };
+    const out = { room: scope.room, agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, wrong, aliases };
     if (said.length) this.userSaid(out, said, tsOf);
     return out;
   }
@@ -1142,6 +1190,7 @@ export class Curator {
       n += db.prepare(`DELETE FROM memory_edges WHERE room NOT IN (${marks})`).run(...keep).changes;
       n += db.prepare(`DELETE FROM memory_room_nodes WHERE room NOT IN (${marks})`).run(...keep).changes;
       n += db.prepare(`DELETE FROM memory_shortforms WHERE room NOT IN (${marks})`).run(...keep).changes;
+      n += db.prepare(`DELETE FROM memory_aliases WHERE room NOT IN (${marks})`).run(...keep).changes;
       return Number(n);
     });
     if (changed) { this.version++; this.bump(); }
@@ -1293,6 +1342,15 @@ export class Curator {
     }
     const delSf = db.prepare("DELETE FROM memory_shortforms WHERE room = ? AND node = ? AND form = ?");
     for (const [k] of haveSf) if (!wantSf.has(k)) { const [nd, f] = k.split("\u0000"); delSf.run(room, nd, f); changed++; }
+
+    // aliases: the other spellings of a kept node
+    const haveAl = new Set(db.prepare("SELECT node, alias FROM memory_aliases WHERE room = ?").all(room).map(x => `${x.node}\u0000${x.alias}`));
+    const wantAl = new Set();
+    for (const [nd, list] of r.aliases || []) if (r.kept.has(nd)) for (const al of list) wantAl.add(`${nd}\u0000${al}`);
+    const insAl = db.prepare("INSERT INTO memory_aliases (room, node, alias) VALUES (?,?,?)");
+    const delAl = db.prepare("DELETE FROM memory_aliases WHERE room = ? AND node = ? AND alias = ?");
+    for (const k of wantAl) if (!haveAl.has(k)) { const [nd, al] = k.split("\u0000"); insAl.run(room, nd, al); changed++; }
+    for (const k of haveAl) if (!wantAl.has(k)) { const [nd, al] = k.split("\u0000"); delAl.run(room, nd, al); changed++; }
     return changed;
   }
 }
@@ -1389,5 +1447,5 @@ function orgStems(label) {
  * @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, to?: number|null, conf: number, ev: [string, number][], lessons?: string[][], seen?: number, conflict?: number, origin?: string, rule?: string }} Want
  * @typedef {{ org: string, conf: number, from: number, to?: number|null, weight: number, ev: [string, number][], lessons: string[][], seen: number, rule: string, origin: string, conflict: number, keep?: Set<string> }} Work
  * @typedef {{ id: number, action: string, src: string, rel: string|null, dst: string|null, object: string|null, at: number|null, scope: string, created: number }} Correction
- * @typedef {{ room: string, wrong?: Set<string>, agg: Map<string, Agg>, kept: Set<string>, kind: Map<string, string>, role: Map<string, string|null>, want: Want[], worksAt: Map<string, Work>, forms: any[], together: Function, cluster: Function, emailsOf: Map<string, string[]>, lessonsFor: Function }} Result
+ * @typedef {{ room: string, wrong?: Set<string>, agg: Map<string, Agg>, kept: Set<string>, kind: Map<string, string>, role: Map<string, string|null>, want: Want[], worksAt: Map<string, Work>, forms: any[], together: Function, cluster: Function, emailsOf: Map<string, string[]>, lessonsFor: Function, aliases?: Map<string, string[]> }} Result
  */
