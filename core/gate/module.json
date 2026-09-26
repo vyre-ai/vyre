@@ -1,0 +1,11 @@
+{
+  "name": "gate",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["gate.request", "gate.senders", "gate.held", "gate.get", "gate.approve", "gate.reject", "gate.route"] },
+  "watches": { "emits": ["gate.held", "gate.released", "gate.failed", "gate.rejected"] },
+  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "needs": { "vault": ["per-sender"] },
+  "teaches": { "memory": ["draft.edited"] }
+}

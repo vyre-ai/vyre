@@ -4,6 +4,57 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Gate
+
+- `core/gate`: the only way out for an agent (sections 7.7 and 11, floor rules 1 and 2). An agent
+  calls `gate.request {kind: send|spend|delete, via, to, content}`; the item is held until a person
+  approves the final content with `gate.approve {id, edited?}` or discards it with `gate.reject`.
+  `gate.held`, `gate.get` (draft, final and a word-level diff) and `gate.senders` complete the set.
+  A model never approves: every `mcp` caller is refused, and a module may approve only when
+  `gate.approvers` in config.json names it (default `chat`, which checks the owner pressed the button).
+- Senders are configured by the person in config.json: `gmail` (a hand-built RFC 822 message to the
+  Gmail send endpoint) and `http` (exact-origin allowlist, `{{vault}}` only in headers or the body,
+  redirects never followed). The credential is fetched from the Vault at the moment of sending
+  (`needs.vault: ["per-sender"]`, each item granted to `gate`), or added by the owner's Vyre through
+  `vault.relay` for a sender with a relayed pass, and results and errors are scrubbed of it.
+- Events `gate.held`, `gate.released`, `gate.failed` and `gate.rejected` say what and where, never
+  the content: a draft is the user's words and every module reads the log. A failed send returns to
+  held with its error so the user can try again; two Sends at once send once.
+- What the user changed before approving is taught to Memory as `draft.edited` (the recipient, the
+  agent and the diff, keyed `gate:<id>`), the first of the Gate's learning signals (section 7.11).
+- `gate.route` (internal) tells harness.rules to deny a sending MCP tool inside an agent's thread and
+  point the agent at `gate_request`; the user's own sessions keep the interim ask-first rule.
+- An item left in "sending" by a vyred that stopped mid-send goes back to held on the next start,
+  marked as possibly sent, so the person decides rather than the Gate sending twice.
+- `core/harness`: harness.rules asks `gate.route` about a floor rule 1 send when the call comes from
+  an agent's thread. Without the Gate running, the ask-first rule still applies.
+- `core/modules`: `ctx.vault.fetch` accepts any `per-<thing>` declaration, not only `per-watcher`,
+  so the Gate (`per-sender`) and agents (`per-agent`) can fetch items named at run time.
+
+#### Chat
+
+- Mattermost ships as a compose fragment for the box (`modules/chat/compose.yml`: 11.7 ESR, Postgres
+  16, loopback only, sign-up and telemetry off), with an `mmctl` bootstrap in `SETUP.md` that pipes
+  the bot and slash tokens straight into the Vault. Not yet run under Docker.
+- `modules/chat`: Mattermost as a surface over the same real sessions (section 9). A channel per
+  project and a thread per session; `thread.started`, finished text, what other surfaces typed,
+  `ask.raised` and `gate.held` become posts, and answered or released ones are patched in place
+  with their buttons gone. The owner's replies go to `threads.send` (taking the keyboard, and
+  saying who had it), a root post starts a session in that project, and buttons call
+  `threads.answer`, `gate.approve` and `gate.reject`. Editing a held draft is a Mattermost
+  interactive dialog filled with the draft, since that renders natively in the phone apps and a
+  plugin panel does not. `/vyre held|send|discard|new` covers the rest.
+- Why polling and not the websocket: no dependency, nothing to reconnect after Mattermost
+  restarts, and `since` turns a missed interval into a delay rather than a lost message.
+- Only the configured owner is obeyed. Every button carries its id and a per-install hook
+  secret, so a request that did not come from a post Chat made is refused even with a real id;
+  the slash token is compared in constant time. The bot token is a vault item fetched per
+  request through a thunk (the prototype's lesson), so it never sits in an object that gets
+  logged; a test checks it is absent from events, logs, status, tables and posts.
+- Unconfigured, Chat starts idle and `chat.status` names what is missing; Mattermost down is a
+  `failed` state that retries, never a failed vyred.
+- `package.json`: the test glob now includes `modules/**/*.test.js`.
+
 #### Learning
 
 - Drafts the user edited before approving are signals. Learning subscribes to the Gate's
@@ -172,6 +223,68 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   instead of guessing `~/.vyre` (one session wrote there), calls the MCP tools directly rather
   than from a shell, never runs `watch.js` with plain `node`, fetches in parallel, logs what it
   read, and does not widen a filter to manufacture items.
+
+#### Capsule
+
+- `local/capsule/`: the Capsule. Press Control twice anywhere on the Mac, and a command bar
+  opens over the current app with the caret in it. By default you talk to the assistant.
+  `@` completes agents, projects and threads from the running vyred, and a "Sends to" row shows
+  the destination before anything is sent (floor rule 2). A question gets an answer from memory
+  as you type, in Recall gold, with its sources; Enter shows the source turn (floor rule 7).
+  Gate holds and open permission asks wait in one Beacon list, oldest first (press ↑). A hold
+  opens for review: send, edit, discard, allow or deny. A reply streams back from the thread it
+  went to. Ported from the prototype's floating panel and rebuilt against the Capsule board.
+  The prototype's workbench window is left behind: the Capsule is the command bar.
+- The Capsule talks to vyred only through its API over the socket (`lib/vyred.js`, the same
+  `{ data } | { error }` shape as `core/daemon/client.js`), in the main process. The window is
+  sandboxed with no Node. Everything that decides meaning (what `@` completes, where Enter sends,
+  how a destination reads) is in `lib/route.js`, and the page asks for it, because the
+  prototype's second decision path made one sentence mean two things.
+- The switchboard's `agents.*` and `threads.*` and the Gate's `gate.*` are used by their spec
+  names. Which of them exist is read from `/v1/tools`, and each missing feature says so in words
+  before Enter, not after. Open asks come from `threads.asks` when it exists, and otherwise from
+  the event log.
+- Lessons carried over from the prototype: the window is an NSPanel at screen-saver level on
+  every Space, so it opens over a fullscreen app. An agent's question never opens the Capsule or
+  takes the keyboard; it turns the menu-bar dot Beacon (floor rule 6). Escape hides the window
+  and hands the keyboard back to the app that had it. The event stream is followed in the main
+  process, because a hidden window's timers are throttled. When vyred goes away, everything from
+  it is cleared and the Capsule says it is offline. There are no infinite animations.
+- Fix, found on this Mac: with another app active, focusing the panel alone did not make it
+  key, so typed keys reached neither app. On the user's gesture the Capsule now takes the
+  keyboard (`app.focus({ steal: true })`), and `app.hide()` gives it back on close. Verified with
+  real key events over TextEdit.
+- `swift/hotkey.swift`: the double-Control listener, run as a child of the Capsule and read over
+  stdout, so the gesture works with vyred down. It re-arms a tap macOS disables, exits when its
+  parent dies, and reports a missing Input Monitoring grant in words. `--check` prints what
+  macOS allows; `--simulate` posts a real double-Control through the system, for tests.
+- `swift/launcher.swift` (`vyre-launcher`): one macOS identity for vyred, so Accessibility is
+  granted to Vyre alone rather than to every shell. `build.sh` compiles both into
+  `local/capsule/bin/`, ad-hoc signed.
+- `vyre capsule` opens it and starts vyred if needed. `vyre capsule --dev` runs it from source in
+  the terminal. `vyre capsule build [--app]` builds the helpers, and with `--app` packages
+  Vyre.app with a stamp of its source hash. `vyre capsule` runs the package only while that
+  stamp matches the source, and otherwise runs the source and says why, because a packaged app
+  runs `app.asar` and ignores every edit silently.
+- The `capsule` module (role `local`): `capsule.status`, and `capsule.show {action}`, which emits
+  `capsule.requested` so the assistant, the CLI or a phone can open the Capsule. `capsule.autostart:
+  true` in config.json starts the app hidden with vyred. It is off by default, so a vyred started
+  for a test or over SSH never opens a window.
+- Dev only: `VYRE_CAPSULE_DRIVE=1` with `--dev` reads JSON commands on stdin and sends keys into
+  the Capsule's own window, and saves window-only screenshots. Typing through System Events goes
+  to whatever app is in front; during testing it typed four characters into a terminal.
+- Dependencies: `electron` and `@electron/packager`, devDependencies of `local/capsule/` only,
+  never the root package. Fonts: Instrument Sans and JetBrains Mono (both SIL OFL 1.1, licences
+  beside them) are bundled in the app, so it looks the same with no network (floor rule 9).
+- `local/hands-mac/`: computer use on macOS through the accessibility tree, as the module
+  `hands` with `hands.observe` and `hands.act`. Every act is verified by observing again. An
+  action the accessibility API accepted is not counted as done until the re-read shows it.
+  Secure fields never show their value, and `hands.acted` events carry the action and selector,
+  never the typed text. Verified for real on TextEdit (set and type) and Calculator (press).
+- Shared core, kept small: `GET /v1/health` returns `last_event`, so a surface can follow the
+  stream from now. `since=0` replays the whole log, and a guessed cursor past the end drops live
+  events. `npm test` now runs `local/` tests. The hygiene scan now covers `.swift` and skips build
+  output (`dist/`, `bin/`).
 
 ### Shared core for the parallel workstreams (2026-09-26)
 

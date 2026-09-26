@@ -165,3 +165,19 @@ test("modules: a second module with a name already loaded is reported, and the f
   assert.equal((await reg.call("notes.add", { text: "x" })).data.saved, "x");
   assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
 });
+
+test("modules: a per-<thing> declaration lets a module fetch items named at run time", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("relay.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["relay", { version: "0.1.0", does: { tools: ["relay.check"] }, needs: { vault: ["per-sender"] } }, user],
+  ]);
+  assert.deepEqual(await reg.call("relay.check", { item: "work-mail" }, "cli"), { data: { got: "value-of-work-mail-for-module:relay" } });
+});
