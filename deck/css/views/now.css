@@ -63,7 +63,7 @@
   .now-needs { gap: 8px; }
   .work-agent, .work-watch { display: none; }
   .work-row { gap: 12px; min-height: 56px; }
-  .work-title { flex-direction: column; gap: 0; }
+  .work-title { flex-direction: column; align-items: stretch; gap: 0; }
   .work-title .small { display: none; }
   .work-since { display: none; }
   .work-chev { color: var(--text-2); display: flex; }

@@ -8,11 +8,11 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { upPresent } from "./helpers.js";
 import { writeFakes } from "../core/vault/mac/fakes.js";
+import { SCRATCH } from "./scratch.mjs";
 
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BIN = path.join(REPO, "bin", "vyre");
@@ -40,7 +40,7 @@ function filesUnder(dir) {
 }
 
 test("vault cli: account create, status, lock, unlock with the password and with Touch ID", async t => {
-  const h = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-"));
+  const h = fs.mkdtempSync(path.join(SCRATCH, "vyre-test-"));
   const fakes = writeFakes(path.join(h, "..", path.basename(h) + "-fakes"));
   t.after(async () => { await vyre(h, ["down"]); fs.rmSync(h, { recursive: true, force: true }); fs.rmSync(path.join(h, "..", path.basename(h) + "-fakes"), { recursive: true, force: true }); });
   fs.writeFileSync(path.join(h, "config.json"), JSON.stringify({ name: "owner-box", vault: { keystore: "file", testHelpers: { enclave: fakes.helpers.enclave } } }));

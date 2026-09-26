@@ -78,6 +78,26 @@ export class Indexer {
   }
 
   /**
+   * Index one session now, for a turn that just completed: its transcript copies only, and no
+   * last_index mark, since this is not a pass over everything.
+   * @param {string[]} folders @param {string} id
+   * @returns {Stats}
+   */
+  session(folders, id) {
+    const t0 = Date.now();
+    /** @type {Stats} */
+    const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
+    for (const entry of transcripts.list(folders)) {
+      if (entry.id !== id) continue;
+      s.sessions++;
+      try { this.one(entry, s); }
+      catch (e) { s.failed++; this.log(`could not index ${entry.id}: ${/** @type {Error} */ (e).message}`); }
+    }
+    s.ms = Date.now() - t0;
+    return s;
+  }
+
+  /**
    * @param {transcripts.Entry} entry
    * @param {Stats} s
    */

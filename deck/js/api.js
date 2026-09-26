@@ -185,7 +185,8 @@ function fresh(v) {
 function pick(name, entry, input) {
   if (entry && typeof entry === "object" && "$by" in entry) {
     const v = input[entry.$by];
-    return entry.cases[v] ?? entry.cases["*"] ?? null;
+    // A case may itself be a $seq (or another $by), so one action can step while others stay put.
+    return pick(name, entry.cases[v] ?? entry.cases["*"] ?? null, input);
   }
   if (entry && typeof entry === "object" && "$seq" in entry) {
     const i = seqs.get(name) || 0;

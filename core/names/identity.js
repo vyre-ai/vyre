@@ -4,10 +4,19 @@
 // The TCP peer address of a packet that arrived over WireGuard is the one thing a local,
 // unprivileged process cannot forge, so it is the only thing trusted. No header is read. The
 // address is looked up with `tailscale whois`, and a connection is served only when it comes
-// from a tailnet address, from a node other than this box, that is not tagged, and whose login
-// is the owner.
+// from a tailnet address, from a node other than this box, and is one of three kinds:
+//
+// - owner: an untagged node whose login is the owner (`tailnet:<login>`), as ever;
+// - guest: an untagged node of another person, while network.guests.enabled is on, whose login
+//   the owner listed or whom the tailnet policy granted vyre.run/cap/guest (`tailnet-guest:<login>`);
+// - agent: a node carrying the agent tag while computers.tailnet.enabled is on, that the
+//   computers module says is one of its agents (`tailnet:agent:<name>`). The daemon still wants
+//   that agent's key beside it.
+//
+// Everything else is refused, for the same reasons as before.
 
 import net from "node:net";
+import { isGuest } from "./guests.js";
 
 const V4 = new net.BlockList();
 V4.addSubnet("100.64.0.0", 10, "ipv4");
@@ -28,19 +37,27 @@ export function isTailnet(ip) {
   return false;
 }
 
+const AGENT_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
 /**
- * Build the identify function a listener calls once per connection.
- * @param {{ whois: (ip: string) => Promise<{ login: string|null, tagged: boolean, node: string } | null>,
- *   selfIps: () => string[], selfId?: () => string|null, owner: () => string|null, ttl?: number, now?: () => number }} deps
- * @returns {(ip: string) => Promise<{ ok: boolean, login: string|null, node: string|null, stableId?: string|null, why: string }>}
+ * Build the identify function a listener calls once per connection. Only whois is cached (60 s);
+ * the owner, the guest list and the agent switch are read on every connection, so a change to
+ * them counts at once.
+ * @param {{ whois: (ip: string) => Promise<{ login: string|null, tagged: boolean, node: string, stableId?: string, tags?: string[], caps?: Record<string, any[]> } | null>,
+ *   selfIps: () => string[], selfId?: () => string|null, owner: () => string|null,
+ *   network?: () => any, agentNodes?: () => { enabled?: boolean, tag?: string } | null | undefined,
+ *   agentOf?: (stableId: string) => Promise<string|null>, ttl?: number, now?: () => number }} deps
+ *   network: the live network config (for network.guests); agentNodes: computers.tailnet; agentOf:
+ *   which agent a tagged node belongs to, or null (production asks computers.node.agent).
+ * @returns {(ip: string) => Promise<Identity>}
  */
-export function identifier({ whois, selfIps, selfId = () => null, owner, ttl = 60_000, now = Date.now }) {
+export function identifier({ whois, selfIps, selfId = () => null, owner, network = () => ({}), agentNodes = () => null, agentOf = async () => null, ttl = 60_000, now = Date.now }) {
   /** @type {Map<string, { at: number, who: any }>} */
   const cache = new Map();
   return async raw => {
     const ip = normalize(raw);
-    if (!isTailnet(ip)) return { ok: false, login: null, node: null, why: "not a tailnet address" };
-    if (selfIps().map(normalize).includes(ip)) return { ok: false, login: null, node: null, why: "from this box itself" };
+    if (!isTailnet(ip)) return refused(null, null, "not a tailnet address");
+    if (selfIps().map(normalize).includes(ip)) return refused(null, null, "from this box itself");
     let hit = cache.get(ip);
     if (!hit || now() - hit.at > ttl) {
       hit = { at: now(), who: await whois(ip) };
@@ -48,13 +65,39 @@ export function identifier({ whois, selfIps, selfId = () => null, owner, ttl = 6
       if (cache.size > 1000) cache.delete(/** @type {string} */ (cache.keys().next().value));
     }
     const who = hit.who;
-    if (!who) return { ok: false, login: null, node: null, why: "tailscale does not know this address" };
+    if (!who) return refused(null, null, "tailscale does not know this address");
     // A second check in case the address list was stale: whois naming this very node.
     const me = selfId();
-    if (me && who.stableId === me) return { ok: false, login: null, node: who.node, why: "from this box itself" };
-    if (who.tagged || !who.login) return { ok: false, login: null, node: who.node, why: "a tagged node, not a person" };
-    const o = owner();
-    if (o && who.login.toLowerCase() === o.toLowerCase()) return { ok: true, login: who.login, node: who.node, stableId: who.stableId || null, why: "owner" };
-    return { ok: false, login: who.login, node: who.node, why: o ? "not the owner" : "no owner yet" };
+    if (me && who.stableId === me) return refused(null, who.node, "from this box itself");
+    return classify(who, { owner: owner(), network: network(), agentNodes: agentNodes(), agentOf });
   };
+}
+
+/**
+ * @typedef {{ ok: boolean, kind: "owner"|"guest"|"agent"|null, login: string|null, node: string|null, stableId?: string|null,
+ *   tags?: string[], caps?: Record<string, any[]>, agent?: string, why: string }} Identity
+ */
+
+const refused = (login, node, why) => ({ ok: false, kind: null, login, node, why });
+
+/**
+ * Which kind of caller one whois answer is. Pure but for agentOf, so network.guests.check reports
+ * exactly what the listener would do.
+ * @param {any} who a parseWhois answer
+ * @param {{ owner: string|null, network?: any, agentNodes?: { enabled?: boolean, tag?: string } | null, agentOf?: (stableId: string) => Promise<string|null> }} o
+ * @returns {Promise<Identity>}
+ */
+export async function classify(who, { owner, network = {}, agentNodes = null, agentOf = async () => null }) {
+  const base = { node: who.node, stableId: who.stableId || null, tags: who.tags || [], caps: who.caps || {} };
+  if (who.tagged || !who.login) {
+    const tag = (agentNodes && agentNodes.tag) || "tag:vyre-agent";
+    if (agentNodes && agentNodes.enabled === true && owner && (who.tags || []).includes(tag) && who.stableId) {
+      const agent = await agentOf(String(who.stableId)).catch(() => null);
+      if (agent && AGENT_NAME.test(agent)) return { ok: true, kind: "agent", login: null, ...base, agent, why: "agent" };
+    }
+    return refused(null, who.node, "a tagged node, not a person");
+  }
+  if (owner && who.login.toLowerCase() === owner.toLowerCase()) return { ok: true, kind: "owner", login: who.login, ...base, why: "owner" };
+  if (owner && isGuest(network, who)) return { ok: true, kind: "guest", login: who.login, ...base, why: "guest" };
+  return refused(who.login, who.node, owner ? "not the owner" : "no owner yet");
 }
