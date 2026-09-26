@@ -228,25 +228,44 @@ async function link(r, env) {
   return l;
 }
 
-/** Step 7: remember the box, start this Mac's vyred, pair, and print the ending. */
-async function finish(target, s, t) {
-  config.save({ box: { ssh: target }, network: { box: s.address } });
+/**
+ * Step 7: remember the box, start this Mac's vyred, pair, and print the ending. Pairing shows a
+ * code on the Mac for the box's owner to approve (ADR 0008 section 7). Here the person has just
+ * proved they own the server by reaching it over SSH, so the Mac approves its own code there,
+ * as `vyre link approve` on the box, and nobody types it.
+ */
+async function finish(r, target, s, t, env, tool = call) {
+  config.save({ box: { ssh: target }, network: { box: s.address || undefined } });
+  if (!s.address) {
+    // Onboarding finished with the address step skipped: nothing on the tailnet to pair with yet.
+    out(beacon("  your box has no address yet.") + ` Finish ${signal("Your address")} in the Deck's Settings, then run ${signal(`vyre box add ${target}`)} again.`);
+    printEnding({ address: null, assistant: s.assistant });
+    return 0;
+  }
   const up = await ensureUp();
   if (!up.ok) out(beacon("  this Mac's vyred did not start: ") + dim(String(up.log)));
-  else {
-    const p = await call("link.pair", { box: s.address });
-    if (p.error && p.error.code === "no_such_tool") out(dim("  pairing is not in this version yet; this Mac will pair when it is"));
-    else if (p.error) out(beacon("  pairing: ") + p.error.message);
-  }
-  if (s.owner && t.login && s.owner !== t.login) out(beacon(`  the box serves ${s.owner}, and this Mac is signed in to Tailscale as ${t.login}.`) + " Pair with a code: vyre link <code>");
+  else await pairOver(r, s.address, env, tool);
+  if (s.owner && t.login && s.owner !== t.login) out(beacon(`  the box serves ${s.owner}, and this Mac is signed in to Tailscale as ${t.login}.`) + " Sign this Mac in to Tailscale as the box's owner, then run vyre up.");
   printEnding({ address: s.address, assistant: s.assistant });
   return 0;
+}
+
+/** Pair this Mac with the box, approving the code on the box over the SSH connection. */
+async function pairOver(r, address, env, tool) {
+  const st = await tool("link.status");
+  if (st.error && st.error.code === "no_such_tool") { out(dim("  pairing is not in this version yet; this Mac will pair when it is")); return; }
+  if (st.data && st.data.linked) return;
+  const p = await tool("link.pair", { box: address });
+  if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
+  const a = await r.run(vyre(["link", "approve", String(p.data.code)], env));
+  if (a.code === 0) out(`  ${signal("paired")} ${dim("· this Mac and your box work as one")}`);
+  else out(beacon("  pairing is waiting for approval: ") + `on the box, run ${signal("vyre link approve " + p.data.code)}`);
 }
 
 /**
  * `vyre box add user@host`: ADR 0008 section 2, steps 1 to 7. `vyre up` calls this too.
  * @param {string} target user@host
- * @param {{ yes?: boolean, env?: NodeJS.ProcessEnv }} [opts]
+ * @param {{ yes?: boolean, env?: NodeJS.ProcessEnv, call?: typeof call }} [opts] call stands in for this Mac's vyred in tests
  * @returns {Promise<number>} exit code
  */
 export async function add(target, opts = {}) {
@@ -268,7 +287,7 @@ export async function add(target, opts = {}) {
       const code = await install(r, ["--yes"], env);
       if (code !== 0) { out(beacon(`  the installer stopped (exit ${code}). Fix what it said, then run this again.`)); return 1; }
     }
-    return await onboard(r, target, t, env);
+    return await onboard(r, target, t, env, opts.call || call);
   } catch (e) {
     out(beacon("  stopped: ") + /** @type {Error} */ (e).message);
     return 1;
@@ -276,9 +295,12 @@ export async function add(target, opts = {}) {
 }
 
 /** Steps 5 to 7: link, tunnel, browser, wait, finish. */
-async function onboard(r, target, t, env) {
+async function onboard(r, target, t, env, tool) {
+  // A finished box needs no browser: go straight to the end (resuming, or a box set up by curl).
+  const before = await r.json(vyre(["call", "onboard.status"], env)).catch(() => ({}));
+  if (before.finished) return finish(r, target, before, t, env, tool);
   const l = await link(r, env);
-  if (!l.url) return finish(target, await r.json(vyre(["call", "onboard.status"], env)), t);
+  if (!l.url) return finish(r, target, await r.json(vyre(["call", "onboard.status"], env)), t, env, tool);
   const tunnel = await r.tunnel(/** @type {number} */ (l.port), /** @type {number} */ (l.port));
   let s;
   try {
@@ -290,7 +312,7 @@ async function onboard(r, target, t, env) {
     out(`\n  Stopped. Your box is as you left it; run vyre box add ${target} again to carry on.`);
     return 130;
   }
-  return finish(target, s, t);
+  return finish(r, target, s, t, env, tool);
 }
 
 // ---- the saved box (section 8) ----

@@ -164,6 +164,42 @@ test("box add: a box already set up skips install and the browser, and finishes"
   assert.equal(config.load().network.box, ADDRESS);
 });
 
+test("box add: the Mac's pairing code is approved on the box over SSH, so nobody types it", async t => {
+  const r = rig(t);
+  fs.mkdirSync(r.stack, { recursive: true });
+  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  r.setStatuses([status(6, { finished: true })]);
+  const asked = [];
+  const call = async (tool, input) => {
+    asked.push(tool);
+    if (tool === "link.status") return { data: { linked: false, pending: null } };
+    if (tool === "link.pair") return { data: { code: "123-456", box: input.box } };
+    return { error: { code: "no_such_tool", message: tool } };
+  };
+  const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
+  assert.equal(code, 0, text);
+  assert.deepEqual(asked, ["link.status", "link.pair"]);
+  assert.match(r.read("vyre.log"), /^link approve 123-456$/m);
+  assert.doesNotMatch(r.read("vyre.log"), /^up /m, "a finished box needs no link, tunnel or browser");
+  assert.equal(r.read("opened"), "");
+  assert.match(text, /paired/);
+});
+
+test("box add: onboarding finished without an address says what is left, and pairs nothing", async t => {
+  const r = rig(t);
+  fs.mkdirSync(r.stack, { recursive: true });
+  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  r.setStatuses([status(3, { finished: true, steps: { ...steps(3), name: "skipped" } })]);
+  const asked = [];
+  const { code, text } = await capture(() => add("alex@203.0.113.9", { call: async tool => { asked.push(tool); return { data: {} }; } }));
+  assert.equal(code, 0, text);
+  assert.deepEqual(asked, []);
+  assert.match(text, /your box has no address yet/);
+  assert.match(text, /Almost there/);
+  assert.doesNotMatch(text, /Vyre is ready/);
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9");
+});
+
 test("box add: a taken local port stops it and names the port", async t => {
   const r = rig(t);
   const srv = net.createServer();

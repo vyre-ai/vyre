@@ -12,7 +12,8 @@ import { out } from "./style.js";
  */
 export function ending({ address, assistant }) {
   return [
-    "  Vyre is ready.",
+    // Ready means the address serves: without it, the phone and the Mac have nothing to reach.
+    address ? "  Vyre is ready." : "  Almost there: your box has no address yet.",
     "",
     `    your box        ${address || "not set up yet"}`,
     `    your assistant  ${assistant || "not set up yet"}`,

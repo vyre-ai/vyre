@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parse, boxes, status } from "./tailnet.js";
+import { parse, status } from "./tailnet.js";
 
 const sample = {
   BackendState: "Running",
@@ -25,11 +25,6 @@ test("tailnet: parse reads login, self and peers", () => {
   assert.equal(t.login, "alex@example.com");
   assert.equal(t.self?.dnsName, "laptop.tail0000.ts.net");
   assert.equal(t.peers.length, 5);
-});
-
-test("tailnet: a box is an online, untagged peer of the same user named vyre or vyre-<n>", () => {
-  assert.deepEqual(boxes(parse(sample)).map(p => p.dnsName), ["vyre.tail0000.ts.net"]);
-  assert.deepEqual(boxes(parse({ ...sample, BackendState: "NeedsLogin" })), []);
 });
 
 test("tailnet: signed out and missing are said plainly", async t => {

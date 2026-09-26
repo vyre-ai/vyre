@@ -1,8 +1,8 @@
 // @ts-check
 // tailnet — what the person's own computer can see of their tailnet, read-only (ADR 0008).
 //
-// `vyre up` and `vyre box` use it on the Mac to check it is signed in and to find the box among
-// its peers. It only ever runs `tailscale status --json`: Vyre never changes a Mac's Tailscale
+// `vyre up` and `vyre box` use it on the Mac to check it is signed in, and to say why a box does
+// not answer. Finding the box among the peers is the link module's `link.find`. It only ever runs `tailscale status --json`: Vyre never changes a Mac's Tailscale
 // state. VYRE_TAILSCALE_BIN points tests at a fake; otherwise the CLI on PATH, then the one inside
 // the Mac app (which acts as the CLI when TAILSCALE_BE_CLI=1).
 
@@ -11,8 +11,6 @@ import { execFile } from "node:child_process";
 
 const MAC_APP = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
 const CANDIDATES = ["tailscale", "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale"];
-/** The first label of a box's MagicDNS name: `vyre`, or `vyre-2` for a second box. */
-const BOX_LABEL = /^vyre(-\d+)?$/;
 
 export const DOWNLOAD = "https://tailscale.com/download";
 
@@ -69,18 +67,6 @@ export function parse(s) {
     peers,
     why: running ? null : s.BackendState === "NeedsLogin" ? "Tailscale is signed out: open Tailscale and sign in" : `Tailscale is ${s.BackendState || "not running"}`,
   };
-}
-
-/**
- * Peers that could be this person's box: online, the same Tailscale user as this machine, not
- * tagged, named `vyre` or `vyre-<n>`. A node shared in from someone else, or one that merely calls
- * itself vyre, is not ours.
- * @param {Tailnet} t
- * @returns {Peer[]}
- */
-export function boxes(t) {
-  if (!t.running || !t.userId) return [];
-  return t.peers.filter(p => p.online && !p.tagged && p.userId === t.userId && BOX_LABEL.test(p.dnsName.split(".")[0]));
 }
 
 /** Does a Vyre box answer at this https address? Resolves to its health, or null. */

@@ -6,6 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- `vyre box add` approves its own pairing: the Mac asks `link.pair`, and the code is approved as
+  `vyre link approve` on the box over the SSH connection that just proved the person owns it. A
+  box that already finished onboarding skips the link, tunnel and browser. Onboarding finished
+  without an address ends with "Almost there" and what is left, instead of "Vyre is ready."
 - `test/journey.test.js`: the install journey end to end on one machine. A fresh Mac and a fresh
   Linux server are two temp homes (`test/journey/rig.js`) with fake ssh, docker, tailscale, claude
   and browser; both vyreds, `vyre box add`, `vyre up --json`, the installer, the host wrapper and
@@ -42,8 +46,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `core/cli/ending.js`: the "Vyre is ready." block (ADR 0008 section 6), shared by `vyre box add`
   and `vyre up`.
 - `core/cli/tailnet.js`: the Mac's own view of its tailnet, read-only (`tailscale status --json`
-  through PATH or the Mac app's CLI). `boxes()` finds this person's box among the peers: online,
-  untagged, the same Tailscale user, named `vyre` or `vyre-<n>`. `probe()` asks its `/v1/health`.
+  through PATH or the Mac app's CLI), and `probe()` for a box's `/v1/health`. Finding the box
+  among the peers is `link.find`.
 - ADR 0008 and `docs/JOURNEY.md`: the install journey from one command to the assistant's hello.
 
 #### Release
