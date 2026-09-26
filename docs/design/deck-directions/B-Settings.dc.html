@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Deck B, Settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy dB {{theme}}" style="width: 1440px; height: 900px;">
+
+<nav class="rail" aria-label="Deck">
+  <a href="#" aria-label="Vyre home" style="width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; border: 1px solid var(--rule-strong); background: var(--bg);">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
+  </a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="rb-badge">2</span></a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+  <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+    <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+    <span class="av-p" style="width: 32px; height: 32px; border-radius: 16px;">AL</span>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="top">
+    <span class="h4" style="font-size: 15px;">Settings</span>
+    <div class="cmd" style="width: 400px; margin: 0 auto;"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span>Jump to anything</span><span class="kbd" style="margin-left: auto;">⌘K</span></div>
+    <span class="pill-need"><span class="dot dot-need"></span>2 need you</span>
+  </div>
+
+  <div class="page" style="overflow: hidden;">
+    <div style="width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
+      <div class="row" style="align-items: flex-end; gap: 20px;">
+        <h1 class="h2">Settings</h1>
+        <div class="inp" style="width: 280px; margin-left: auto; height: 36px; color: var(--label); background: var(--panel);"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg>Search settings</div>
+      </div>
+
+      <section class="card" aria-label="Appearance">
+        <div class="card-h"><span class="h4">Appearance</span></div>
+        <div style="padding: 0 20px 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+          <button class="tile tile-on" style="padding: 10px; gap: 10px;">
+            <div style="height: 92px; border-radius: 8px; background: #0E0D0C; border: 1px solid #2B2926; display: flex; overflow: hidden;">
+              <div style="width: 18px; background: #161513; border-right: 1px solid #2B2926;"></div>
+              <div style="flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="height: 6px; width: 60%; border-radius: 3px; background: #F1EEE6;"></div>
+                <div style="height: 4px; width: 80%; border-radius: 2px; background: #3A3733;"></div>
+                <div style="height: 4px; width: 70%; border-radius: 2px; background: #3A3733;"></div>
+                <div style="height: 12px; width: 36px; border-radius: 3px; background: #C6F36B; margin-top: auto;"></div>
+              </div>
+            </div>
+            <div class="row" style="gap: 8px;"><span class="radio radio-on"></span><span class="small" style="font-weight: 600;">Dark</span></div>
+          </button>
+          <button class="tile" style="padding: 10px; gap: 10px;">
+            <div style="height: 92px; border-radius: 8px; background: #F4F1EA; border: 1px solid #DCD7CC; display: flex; overflow: hidden;">
+              <div style="width: 18px; background: #FBFAF6; border-right: 1px solid #DCD7CC;"></div>
+              <div style="flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="height: 6px; width: 60%; border-radius: 3px; background: #141311;"></div>
+                <div style="height: 4px; width: 80%; border-radius: 2px; background: #C9C3B7;"></div>
+                <div style="height: 4px; width: 70%; border-radius: 2px; background: #C9C3B7;"></div>
+                <div style="height: 12px; width: 36px; border-radius: 3px; background: #141311; margin-top: auto;"></div>
+              </div>
+            </div>
+            <div class="row" style="gap: 8px;"><span class="radio"></span><span class="small" style="font-weight: 500;">Paper</span></div>
+          </button>
+          <button class="tile" style="padding: 10px; gap: 10px;">
+            <div style="height: 92px; border-radius: 8px; border: 1px solid #3A3733; display: flex; overflow: hidden;">
+              <div style="flex: 1; background: #0E0D0C; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="height: 6px; width: 70%; border-radius: 3px; background: #F1EEE6;"></div>
+                <div style="height: 4px; width: 90%; border-radius: 2px; background: #3A3733;"></div>
+              </div>
+              <div style="flex: 1; background: #F4F1EA; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="height: 6px; width: 70%; border-radius: 3px; background: #141311;"></div>
+                <div style="height: 4px; width: 90%; border-radius: 2px; background: #C9C3B7;"></div>
+              </div>
+            </div>
+            <div class="row" style="gap: 8px;"><span class="radio"></span><span class="small" style="font-weight: 500;">Match this Mac</span></div>
+          </button>
+        </div>
+        <div class="lrow"><div class="col grow"><span class="small" style="font-weight: 500;">Density</span><span class="micro t3">Compact fits more rows in lists and chat.</span></div><span class="seg"><button class="on">Comfortable</button><button>Compact</button></span></div>
+      </section>
+
+      <section class="card" aria-label="Models">
+        <div class="card-h"><span class="h4">Models</span></div>
+        <div class="lrow"><div class="col grow"><span class="small" style="font-weight: 500;">Default model</span><span class="micro t3">Agents can override it.</span></div><span class="seg"><button>Haiku 4.5</button><button class="on">Sonnet 5</button><button>Opus 5.5</button></span></div>
+        <div class="lrow"><div class="col grow"><span class="small" style="font-weight: 500;">Check memory before every call</span><span class="micro t3">When memory has the answer, no model runs.</span></div><button class="tog tog-on" aria-label="Check memory before every call"></button></div>
+      </section>
+
+      <section class="card" aria-label="Devices">
+        <div class="card-h"><span class="h4">Devices</span><button class="sbtn sbtn-sm" style="margin-left: auto;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>Pair a device</button></div>
+        <div class="lrow"><svg class="ic ic-18 t2" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"></rect><path d="M5.5 14h5M8 11.5V14"></path></svg><div class="col grow"><span class="small" style="font-weight: 500;">alex-mac</span><span class="micro t3">This Mac</span></div><span class="dot dot-run"></span></div>
+        <div class="lrow"><svg class="ic ic-18 t2" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="4.5" rx="1"></rect><rect x="2" y="9" width="12" height="4.5" rx="1"></rect><path d="M4.5 4.75h.01M4.5 11.25h.01"></path></svg><div class="col grow"><span class="small" style="font-weight: 500;">alex-box</span><span class="micro t3">Running · 2 agents</span></div><span class="dot dot-run"></span></div>
+        <div class="lrow"><svg class="ic ic-18 t2" viewBox="0 0 16 16"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"></rect><path d="M7.5 12h1"></path></svg><div class="col grow"><span class="small" style="font-weight: 500;">alex's phone</span><span class="micro t3">Last seen 12 min ago</span></div><span class="dot dot-idle"></span></div>
+      </section>
+
+      <section class="card" aria-label="Notifications">
+        <div class="card-h"><span class="h4">Notifications</span></div>
+        <div class="lrow"><div class="col grow"><span class="small" style="font-weight: 500;">Held items</span><span class="micro t3">When the Gate stops something for you.</span></div><button class="tog tog-on" aria-label="Held items"></button></div>
+        <div class="lrow"><div class="col grow"><span class="small" style="font-weight: 500;">Questions from agents</span></div><button class="tog tog-on" aria-label="Questions from agents"></button></div>
+        <div class="lrow"><div class="col grow"><span class="small" style="font-weight: 500;">Daily summary at 18:00</span></div><button class="tog" aria-label="Daily summary"></button></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

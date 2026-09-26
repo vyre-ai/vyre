@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Deck design directions for the polish pass
+
+- docs/design/deck-directions/ holds two directions for the Deck (A Instrument, B Studio) as
+  1440x900 mockups in dark and paper: Now, Chat, Agents, Projects, Vault and Settings. Design only,
+  no code change.
+
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours

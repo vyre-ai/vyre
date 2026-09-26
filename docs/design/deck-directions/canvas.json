@@ -1,0 +1,58 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-09-27T10:00:00Z"},
+  "title": "Vyre Deck directions",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 2960, "h": 1400, "title": "Two directions, one system"},
+
+    "A-Now.dc.html": {"x": 0, "y": 1800, "w": 1440, "h": 900, "title": "A Instrument · Now · dark"},
+    "A-Now-light.dc.html": {"x": 1520, "y": 1800, "w": 1440, "h": 900, "title": "A Instrument · Now · paper"},
+    "B-Now.dc.html": {"x": 3200, "y": 1800, "w": 1440, "h": 900, "title": "B Studio · Now · dark"},
+    "B-Now-light.dc.html": {"x": 4720, "y": 1800, "w": 1440, "h": 900, "title": "B Studio · Now · paper"},
+
+    "A-Chat.dc.html": {"x": 0, "y": 3120, "w": 1440, "h": 900, "title": "A Instrument · Chat · dark", "is_interactive": true},
+    "A-Chat-light.dc.html": {"x": 1520, "y": 3120, "w": 1440, "h": 900, "title": "A Instrument · Chat · paper", "is_interactive": true},
+    "B-Chat.dc.html": {"x": 3200, "y": 3120, "w": 1440, "h": 900, "title": "B Studio · Chat · dark", "is_interactive": true},
+    "B-Chat-light.dc.html": {"x": 4720, "y": 3120, "w": 1440, "h": 900, "title": "B Studio · Chat · paper", "is_interactive": true},
+
+    "A-Agents.dc.html": {"x": 0, "y": 4440, "w": 1440, "h": 900, "title": "A Instrument · Agents, new agent · dark"},
+    "A-Agents-light.dc.html": {"x": 1520, "y": 4440, "w": 1440, "h": 900, "title": "A Instrument · Agents, new agent · paper"},
+    "B-Agents.dc.html": {"x": 3200, "y": 4440, "w": 1440, "h": 900, "title": "B Studio · Agents, new agent · dark"},
+    "B-Agents-light.dc.html": {"x": 4720, "y": 4440, "w": 1440, "h": 900, "title": "B Studio · Agents, new agent · paper"},
+
+    "A-Projects.dc.html": {"x": 0, "y": 5760, "w": 1440, "h": 900, "title": "A Instrument · Projects, empty · dark"},
+    "A-Projects-light.dc.html": {"x": 1520, "y": 5760, "w": 1440, "h": 900, "title": "A Instrument · Projects, empty · paper"},
+    "B-Projects.dc.html": {"x": 3200, "y": 5760, "w": 1440, "h": 900, "title": "B Studio · Projects, list and new · dark"},
+    "B-Projects-light.dc.html": {"x": 4720, "y": 5760, "w": 1440, "h": 900, "title": "B Studio · Projects, list and new · paper"},
+
+    "A-Vault.dc.html": {"x": 0, "y": 7080, "w": 1440, "h": 900, "title": "A Instrument · Vault, add item · dark"},
+    "A-Vault-light.dc.html": {"x": 1520, "y": 7080, "w": 1440, "h": 900, "title": "A Instrument · Vault, add item · paper"},
+    "B-Vault.dc.html": {"x": 3200, "y": 7080, "w": 1440, "h": 900, "title": "B Studio · Vault, add item · dark"},
+    "B-Vault-light.dc.html": {"x": 4720, "y": 7080, "w": 1440, "h": 900, "title": "B Studio · Vault, add item · paper"},
+
+    "A-Settings.dc.html": {"x": 0, "y": 8400, "w": 1440, "h": 900, "title": "A Instrument · Settings · dark"},
+    "A-Settings-light.dc.html": {"x": 1520, "y": 8400, "w": 1440, "h": 900, "title": "A Instrument · Settings · paper"},
+    "B-Settings.dc.html": {"x": 3200, "y": 8400, "w": 1440, "h": 900, "title": "B Studio · Settings · dark"},
+    "B-Settings-light.dc.html": {"x": 4720, "y": 8400, "w": 1440, "h": 900, "title": "B Studio · Settings · paper"}
+  },
+  "order": [
+    "Main.dc.html",
+    "A-Now.dc.html", "A-Now-light.dc.html", "B-Now.dc.html", "B-Now-light.dc.html",
+    "A-Chat.dc.html", "A-Chat-light.dc.html", "B-Chat.dc.html", "B-Chat-light.dc.html",
+    "A-Agents.dc.html", "A-Agents-light.dc.html", "B-Agents.dc.html", "B-Agents-light.dc.html",
+    "A-Projects.dc.html", "A-Projects-light.dc.html", "B-Projects.dc.html", "B-Projects-light.dc.html",
+    "A-Vault.dc.html", "A-Vault-light.dc.html", "B-Vault.dc.html", "B-Vault-light.dc.html",
+    "A-Settings.dc.html", "A-Settings-light.dc.html", "B-Settings.dc.html", "B-Settings-light.dc.html"
+  ],
+  "notes": {
+    "rNow": {"x": 0, "y": 1540, "text": "Now", "kind": "title1", "maxW": 6160},
+    "rChat": {"x": 0, "y": 2860, "text": "Chat", "kind": "title1", "maxW": 6160},
+    "rAgents": {"x": 0, "y": 4180, "text": "Agents", "kind": "title1", "maxW": 6160},
+    "rProjects": {"x": 0, "y": 5500, "text": "Projects", "kind": "title1", "maxW": 6160},
+    "rVault": {"x": 0, "y": 6820, "text": "Vault", "kind": "title1", "maxW": 6160},
+    "rSettings": {"x": 0, "y": 8140, "text": "Settings", "kind": "title1", "maxW": 6160}
+  },
+  "designSystems": []
+}
