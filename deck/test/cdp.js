@@ -40,6 +40,8 @@ export async function openTab(cdp, dev) {
   const features = [{ name: "prefers-color-scheme", value: dev.dark === false ? "light" : "dark" }];
   if (dev.standalone) features.push({ name: "display-mode", value: "standalone" });
   await send("Emulation.setEmulatedMedia", { features });
+  // Launched from the home screen, the way iOS Safari says so (this Chrome may not emulate display-mode).
+  if (dev.standalone) await send("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });" });
   return {
     send, errors,
     /** @param {string} url */

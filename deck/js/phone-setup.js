@@ -354,7 +354,7 @@ export function setupCard() {
         async () => { enrolling = false; st.key = await passkeyState(); if (!st.key.on) st.key = { ...st.key, on: true }; drawKey(); settle(); },
         e2 => { add.disabled = false; put(s, plain(e2)); });
     } },
-      h("label", { class: "small ps-label", for: "ps-code" }, "On your box, run ", h("code", null, "vyre presence code"), " and type the code here."),
+      h("label", { class: "small ps-label", for: "ps-code" }, "Run ", h("code", null, "vyre presence code"), " on your Mac and type the code here."),
       codeIn,
       h("label", { class: "small ps-label", for: "ps-name" }, "Name this phone"),
       nameIn,

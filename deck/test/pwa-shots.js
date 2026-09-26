@@ -23,7 +23,7 @@ const DEVICES = [
 ];
 
 // Each screen: a path, then optional steps in the page, then the shot.
-/** @type {{ name: string, path: string, script?: string, wait?: number, theme?: string, drag?: boolean, offline?: boolean }[]} */
+/** @type {{ name: string, path: string, script?: string, wait?: number, theme?: string, drag?: boolean, offline?: boolean, last?: string, expect?: string }[]} */
 const SCREENS = [
   { name: "now", path: "/now" },
   { name: "now-paper", path: "/now", theme: "paper" },
@@ -37,6 +37,8 @@ const SCREENS = [
   { name: "agents", path: "/agents" },
   { name: "settings", path: "/settings" },
   { name: "offline", path: "/chat", offline: true },
+  // A cold launch from the home screen opens where the user left off, not at start_url.
+  { name: "reopen", path: "/now", last: "/agents", expect: "/agents" },
 ];
 
 let failed = 0;
@@ -48,8 +50,9 @@ for (const dev of DEVICES) {
     try {
       // The notch and the home indicator, where this Chrome can emulate them.
       await tab.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: dev.insets.top, topMax: dev.insets.top, bottom: dev.insets.bottom, bottomMax: dev.insets.bottom, left: 0, leftMax: 0, right: 0, rightMax: 0 } });
-      if (s.theme) { await tab.go(base + "/now", 300); await tab.run(`localStorage.setItem("vyre.theme", ${JSON.stringify(s.theme)});`); }
-      else { await tab.go(base + "/now", 300); await tab.run(`localStorage.removeItem("vyre.theme");`); }
+      if (s.theme) { await tab.go(base + "/now", 300); await tab.run(`localStorage.setItem("vyre.theme", ${JSON.stringify(s.theme)}); localStorage.removeItem("vyre.last");`); }
+      else { await tab.go(base + "/now", 300); await tab.run(`localStorage.removeItem("vyre.theme"); localStorage.removeItem("vyre.last");`); }
+      if (s.last) await tab.run(`localStorage.setItem("vyre.last", JSON.stringify({ path: ${JSON.stringify(s.last)}, at: Date.now() })); sessionStorage.clear();`);
       await tab.go(base + s.path, s.wait || 2200);
       if (s.script) await tab.run(s.script);
       if (s.offline) {
@@ -74,7 +77,7 @@ for (const dev of DEVICES) {
         if (after !== "/find") { failed++; console.log(`FAIL ${label}: releasing the pull went to ${after}, not /find`); }
       }
       const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|fonts\.g/.test(e));
-      const bad = [check.sideways && "scrolls sideways", check.tabbar !== "flex" && "no tab bar", check.standalone !== "standalone" && "not standalone",
+      const bad = [s.expect && check.path !== s.expect && `opened ${check.path}, not ${s.expect}`, check.sideways && "scrolls sideways", check.tabbar !== "flex" && "no tab bar", check.standalone !== "standalone" && "not standalone",
         errs.length && `errors: ${errs.join(" | ").slice(0, 300)}`].filter(Boolean);
       if (bad.length) { failed++; console.log(`FAIL ${label}: ${bad.join("; ")}`); }
       else console.log(`ok   ${label}`);

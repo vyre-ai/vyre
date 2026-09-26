@@ -66,7 +66,7 @@ function reopen() {
 function offlineLine(/** @type {HTMLElement} */ deck) {
   const since = { at: 0 };
   const retry = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: check }, "Retry");
-  const text = h("span", { class: "ellipsis" });
+  const text = h("span", { class: "reach-text" });
   const bar = h("div", { class: "reach", role: "status", hidden: true }, h("span", { class: "dot beacon" }), text, retry);
   deck.prepend(bar);
   const draw = (/** @type {boolean} */ ok) => {
