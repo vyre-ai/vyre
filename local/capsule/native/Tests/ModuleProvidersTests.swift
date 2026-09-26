@@ -51,7 +51,7 @@ let moduleProvidersSuite = Suite("module providers") { t in
         """, callable: ["vault.search", "vault.copy", "vault.totp", "notes.find", "notes.open"])
         let p = ModuleProviders(link: l)
         let n = t.wait { await p.refresh() }
-        t.eq(try? n??.get(), 2)
+        t.eq(try? n?.get(), 2)
         let list = p.list()
         t.eq(list.map(\.module), ["vault", "notes"])
         t.eq(list[0].actions.map(\.key), ["action:vault.copy", "action:vault.copy#username", "action:vault.copy#totp", "action:vault.totp"],

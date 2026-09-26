@@ -39,6 +39,7 @@ public final class AppsProvider: ResultProvider, @unchecked Sendable {
     private var apps: [AppRecord] = []
     private var mtimes: [String: Date] = [:]
     private var scanning = false
+    private let scanQueue = DispatchQueue(label: "vyre.capsule.apps.scan", qos: .userInitiated)
     /// How many scans ran, for tests of "only when a directory changed".
     public private(set) var scans = 0
     public var limit = 6
@@ -56,18 +57,20 @@ public final class AppsProvider: ResultProvider, @unchecked Sendable {
     /// Keeps the list: it is small (a few hundred records) and warm() needs it on the next show.
     public func cool() {}
 
-    /// Rescan if needed. `wait` blocks until done, for tests and for the first launch.
+    /// Rescan if needed. `wait` blocks until done (waiting out a scan already running), for tests
+    /// and for the first launch. Scans run one at a time on their own queue.
     public func refreshIfChanged(wait: Bool) {
-        let go: Bool = lock.withLock { if scanning { return false }; scanning = true; return true }
-        guard go else { return }
         // Checking the mtimes lists the folders too, so all of it runs off the main thread.
         let work = { [self] in
             let have: (Bool, [String: Date]) = lock.withLock { (!apps.isEmpty, mtimes) }
-            if have.0 && Self.dirMtimes(dirs) == have.1 { lock.withLock { scanning = false }; return }
+            if have.0 && Self.dirMtimes(dirs) == have.1 { return }
             let (list, m) = Self.scan(dirs, running: includeRunning ? Self.runningApps() : [])
-            lock.withLock { apps = list; mtimes = m; scanning = false; scans += 1 }
+            lock.withLock { apps = list; mtimes = m; scans += 1 }
         }
-        if wait { work() } else { DispatchQueue.global(qos: .userInitiated).async(execute: work) }
+        if wait { scanQueue.sync(execute: work); return }
+        let go: Bool = lock.withLock { if scanning { return false }; scanning = true; return true }
+        guard go else { return }
+        scanQueue.async { [self] in work(); lock.withLock { scanning = false } }
     }
 
     /// Every scanned directory and each folder one level down, with its mtime.

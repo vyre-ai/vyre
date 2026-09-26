@@ -69,7 +69,17 @@ without editing Capsule files:
 - (nothing merged yet)
 
 ## Doing
-- The native app skeleton and the port.
+- First runnable native build (2026-09-27): `Sources/Host/` (App, Panel, Hotkeys, CapsuleModel,
+  main) and `Sources/UI/` (Theme, CapsuleView). Panel is Spotlight's size and place (680 wide,
+  56 px bar, results grow down, top edge 22% from the screen top), a non-activating NSPanel at
+  popUpMenu level with [.canJoinAllSpaces, .fullScreenAuxiliary], so it opens over a full-screen
+  app on its Space. Core: apps, settings panes, files (Spotlight), dictionary, calculator,
+  system commands, and Ask (threads.start, lean haiku, reply streamed under the bar).
+  Hot keys: Control twice when Input Monitoring is already granted (asked only from the menu),
+  and ⌥Space (VYRE_CAPSULE_HOTKEY) with no permission. `open Vyre.app` again toggles it.
+- Build: `<team-dir>/buildlock.sh capsule-pro local/capsule/native/build.sh app`
+  writes `local/capsule/native/.build/Vyre.app` (plist, ad hoc signature, id sh.vyre.capsule).
+- Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
 
 ## Next
 1. Native shell: NSPanel, hotkey in process, menu-bar item, vyred link, the launcher's local
@@ -79,6 +89,11 @@ without editing Capsule files:
 4. Gallery gaps and the moved polish items.
 
 ## Needs from others
+- capsule-now: its rules doc (docs/work/capsule-now.md) is not written yet; the lead asked the
+  Capsule to follow it (memory in quick answers, notices as a faint line, question vs answer
+  layout, queueing for a busy session). Folded in when it lands.
+- lead/user: whether the native Capsule takes ⌘Space from Spotlight (user decision), and a
+  local signing certificate name for VYRE_SIGN_IDENTITY so grants survive rebuilds.
 - capsule-sight: builds into the seam above (screen context, computer use, side panel, voice).
 - connectors: calendar and email through the assistant; the Capsule's own Calendar/Reminders
   (EventKit) and mail (Spotlight index) rows are local and do not need them.
