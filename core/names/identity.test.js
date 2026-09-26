@@ -80,3 +80,16 @@ test("tailscale up names the operator again on Linux, and takes only flag-shaped
     ["up", "--operator=vyre", "--accept-dns=false", "--hostname=vyre"]);
   assert.deepEqual(upArgs({ VYRE_TAILSCALE_UP_FLAGS: "--ok ; rm -rf /" }, "linux", "vyre"), ["up", "--operator=vyre", "--ok"]);
 });
+
+test("tailscale: under node --test, with no fake and no opt-in, the real CLI is never run", async () => {
+  const { run, up } = await import("./tailscale.js");
+  const saved = { bin: process.env.VYRE_TAILSCALE_BIN, real: process.env.VYRE_TEST_REAL_TAILSCALE };
+  delete process.env.VYRE_TAILSCALE_BIN; delete process.env.VYRE_TEST_REAL_TAILSCALE;
+  try {
+    assert.equal((await run(["status", "--json"])).code, 127);
+    assert.equal((await up()).code, 127);
+  } finally {
+    if (saved.bin !== undefined) process.env.VYRE_TAILSCALE_BIN = saved.bin;
+    if (saved.real !== undefined) process.env.VYRE_TEST_REAL_TAILSCALE = saved.real;
+  }
+});

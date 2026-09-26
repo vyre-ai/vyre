@@ -3,17 +3,19 @@
 //
 // Reads (status, whois) are safe anywhere. `up` and `cert` change the machine's Tailscale state,
 // so only the names module calls them, and only when the user pressed Connect or claimed a name.
-// VYRE_TAILSCALE_BIN points tests at a fake binary; nothing in the tests ever runs the real one.
+// Which binary is link's one gate: VYRE_TAILSCALE_BIN wins, and under node --test there is none
+// unless VYRE_TEST_REAL_TAILSCALE=1, so no test can reach the real Tailscale on this machine.
 
 import { execFile, spawn } from "node:child_process";
 import os from "node:os";
-
-const bin = () => process.env.VYRE_TAILSCALE_BIN || "tailscale";
+import { tailscaleBin as bin } from "../link/transport.js";
 
 /** Run the CLI and resolve to { code, out, err }; a missing binary is code 127, not a throw. */
 export function run(args, { timeout = 15_000 } = {}) {
+  const b = bin();
+  if (!b) return Promise.resolve({ code: 127, out: "", err: "no tailscale binary in tests" });
   return new Promise(resolve => {
-    execFile(bin(), args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (e, out, err) => {
+    execFile(b, args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (e, out, err) => {
       const code = !e ? 0 : /** @type {any} */ (e).code === "ENOENT" ? 127 : Number(/** @type {any} */ (e).code) || 1;
       resolve({ code, out: String(out), err: String(err) });
     });
@@ -102,7 +104,9 @@ export function up({ wait = 10_000 } = {}) {
     let output = "", done = false;
     const finish = (r) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
     let child;
-    try { child = spawn(bin(), args, { stdio: ["ignore", "pipe", "pipe"], detached: true }); }
+    const b = bin();
+    if (!b) return resolve({ loginUrl: null, exited: true, code: 127, output: "no tailscale binary in tests" });
+    try { child = spawn(b, args, { stdio: ["ignore", "pipe", "pipe"], detached: true }); }
     catch (e) { return resolve({ loginUrl: null, exited: true, code: 127, output: /** @type {Error} */ (e).message }); }
     const look = c => {
       output += c;
