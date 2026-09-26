@@ -102,6 +102,8 @@ const down = (/** @type {import("node:child_process").ChildProcess} */ d) => new
       await new Promise(r => setTimeout(r, 200));
     }
     if (id) await call("threads.stop", { thread: id }, { root, caller: "cli" });
+    // The seed typed as cli; give the keyboard back so the finished demo reads as nobody's.
+    if (id) await call("threads.release", { thread: id, surface: "cli" }, { root, caller: "cli" });
   }
   await down(seeding);
 }
