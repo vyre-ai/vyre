@@ -126,7 +126,11 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
  */
 function stream(req, res, url, events, streams) {
   const type = url.searchParams.get("type") || "*";
-  const lastId = Number(req.headers["last-event-id"] || url.searchParams.get("since") || 0);
+  // since=latest skips the backlog: a surface that renders current state from tools only needs
+  // what happens next, and replaying a long log to reach "now" is wasted work.
+  const sinceParam = url.searchParams.get("since");
+  const latest = !req.headers["last-event-id"] && sinceParam === "latest";
+  const lastId = latest ? events.latestId() : Number(req.headers["last-event-id"] || sinceParam || 0);
   const match = type === "*" ? () => true : type.endsWith(".*") ? e => e.type.startsWith(type.slice(0, -1)) : e => e.type === type;
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
