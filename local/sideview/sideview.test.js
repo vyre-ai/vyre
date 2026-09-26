@@ -150,3 +150,21 @@ test("module: valid manifest, three tools, local callers only, and no titles in 
   assert.equal(logged.join("\n").includes("private-title"), false);
   assert.equal(JSON.stringify(reg.deps.events.since(0)).includes("private-title"), false);
 });
+
+test("open with panel: only Chrome moves, fitted from the panel's right edge, and close restores only Chrome", async t => {
+  const f = fake(t);
+  const v = new Sideview({ tile: f.tile, launch: async () => { throw new Error("no launch expected"); } });
+  const panel = { x: 0, y: 33, w: 522, h: 1060 };
+  const r = await v.open({ panel });
+  assert.deepEqual(r.left.frame, panel);
+  assert.equal(r.left.app, "Vyre");
+  assert.deepEqual(r.right.frame, { x: 522, y: 33, w: 1278, h: 1060 });
+  const sets = f.requests().filter(q => q.cmd === "set");
+  assert.deepEqual(sets.map(q => q.moves.map(m => m.pid)), [[20]]);
+  assert.deepEqual(f.windows()[0].frame, TERMINAL.frame);
+  const c = await v.close();
+  assert.equal(c.restored, 1);
+  assert.deepEqual(f.windows().map(w => w.frame), [TERMINAL.frame, CHROME.frame]);
+  await assert.rejects(v.open({ panel: { x: 0, y: 0, w: 10, h: 10 } }), e => e.code === "bad_input");
+  await assert.rejects(v.open({ panel, session: "front" }), e => e.code === "bad_input");
+});

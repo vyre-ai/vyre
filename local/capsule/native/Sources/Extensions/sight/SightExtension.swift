@@ -3,15 +3,20 @@
 // Everything that reads or moves things on the Mac happens in vyred's modules (screen,
 // sideview, voice), each behind its own helper and grant. This extension only asks for it, as
 // the "capsule" caller, and shows what came back:
-//   - "Side view" and "Side view with Glass" call sideview.open; "Close side view" calls
-//     sideview.close. The words are the module's own, success or failure.
+//   - "Side view" slides the session panel (SessionPanel.swift, in the Capsule's own window) in
+//     at the display's left edge with the assistant in it, then has sideview.open fit Chrome
+//     (or the box's Glass) beside it; "Side view: <name>" does the same with another session.
+//     "Close side view" slides it out and sideview.close puts Chrome back. The module's words
+//     are shown as they are, success or failure.
 //   - "Ask about my screen" calls screen.context once, shows a summary in the side panel, and
 //     puts "About <window>: " in the box. A blind place or a secure field is shown as such.
 //   - The talk chord (Option-Return, while the Capsule is open and key) starts vyre-mic and
 //     streams it to voice's listen stream; pressed again, it stops and leaves the words in the
 //     box. Hiding the Capsule stops the mic.
-// Nothing runs while the Capsule is hidden, and nothing here polls.
+// Nothing polls. While the session panel is open it follows its session's events with the
+// Capsule hidden (runsHidden says so); nothing else runs while the Capsule is hidden.
 
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -83,22 +88,58 @@ final class SightExtension: CapsuleExtension {
     var openStream: Talker.Opener?
     var env: [String: String] = ProcessInfo.processInfo.environment
     var bundleURL: URL = Bundle.main.bundleURL
+    /// For tests: the display's visible frame and the main display's frame.maxY. Nil means the
+    /// screen under the mouse.
+    var screen: (() -> (visible: NSRect, primaryMaxY: CGFloat)?)?
+    /// How long the slide takes to land before Chrome is fitted beside it. Tests make it zero.
+    var settle: Duration = .milliseconds(Int(SideGeometry.duration * 1000) + 20)
 
-    init(host: CapsuleHost) { self.host = host }
+    let panel: SessionPanelModel
+    private var window: SessionWindow?
+    /// Sessions seen at the last show, for the "Side view: <name>" rows.
+    private(set) var known: [PanelSession] = []
+    /// Where spoken words go: the Capsule's box, or the panel's prompt.
+    private var talkToPanel = false
+
+    init(host: CapsuleHost) {
+        self.host = host
+        panel = SessionPanelModel(vyred: host.vyred)
+        panel.onTalk = { [weak self] in self?.toggleTalk(toPanel: true) }
+    }
+
+    var panelOpen: Bool { window?.isOpen ?? false }
+
+    var runsHidden: String? {
+        panelOpen ? "the session panel is open beside Chrome and follows its session's events until it closes" : nil
+    }
+
+    func capsuleWillShow(front: FrontApp?) {
+        // Once per show, for the rows below; never on a timer.
+        Task { @MainActor in known = await loadSessions() }
+    }
 
     var commands: [CapsuleCommand] {
-        [
-            command("sideview", "Side view", ["split", "tile", "chrome", "session", "side by side"], "rectangle.split.2x1",
-                    "This session on the left, Chrome filling the rest") { await $0.sideView(glass: false) },
+        var list = [
+            command("sideview", "Side view", ["split", "tile", "chrome", "session", "side by side", "assistant"], "rectangle.split.2x1",
+                    "Your assistant on the left, Chrome filling the rest") { await $0.openPanel(nil, glass: false) },
             command("sideview-glass", "Side view with Glass", ["split", "tile", "glass", "box"], "rectangle.split.2x1.fill",
-                    "This session on the left, the box's Glass filling the rest") { await $0.sideView(glass: true) },
+                    "Your assistant on the left, the box's Glass filling the rest") { await $0.openPanel(nil, glass: true) },
             command("sideview-close", "Close side view", ["untile", "restore"], "rectangle",
                     "Put the windows back where they were") { await $0.closeSideView() },
+            command("sideview-terminal", "Side view with this terminal", ["split", "tile", "terminal", "claude code"], "terminal",
+                    "The terminal in front on the left, Chrome filling the rest") { await $0.sideView(glass: false) },
+        ]
+        for s in known where !s.isAssistant {
+            list.append(command("sideview-\(s.id)", "Side view: \(s.label)", ["split", "tile", "session", s.label], "rectangle.split.2x1",
+                                "\(s.label) on the left, Chrome filling the rest") { await $0.openPanel(s, glass: false) })
+        }
+        list += [
             command("ask-screen", "Ask about my screen", ["screen", "window", "context", "what am i looking at"], "text.viewfinder",
                     "Read the window in front and ask about it") { await $0.askScreen() },
             command("talk", "Talk", ["voice", "dictate", "speak", "mic"], "mic",
                     "Say it instead of typing (Option-Return)") { await $0.talk() },
         ]
+        return list
     }
 
     var keyChords: [KeyShortcut] { [Self.talkChord] }
@@ -115,11 +156,67 @@ final class SightExtension: CapsuleExtension {
     }
 
     func capsuleDidHide() {
+        // Talk started from the panel keeps going: the panel is where its words land.
+        if talkToPanel && panelOpen { return }
+        stopTalk()
+    }
+
+    private func stopTalk() {
         generation += 1
         preparing = false
         talker?.cancel()
         talker = nil
         model.talking = false
+        panel.talking = false
+    }
+
+    // MARK: - The session panel
+
+    func loadSessions() async -> [PanelSession] {
+        async let a = host.vyred.has("agents.list") ? host.vyred.call("agents.list", [:], presence: false) : nil
+        async let t = host.vyred.has("threads.list") ? host.vyred.call("threads.list", [:], presence: false) : nil
+        let (agents, threads) = await (a, t)
+        return PanelSession.load(agents: agents?.data, threads: threads?.data)
+    }
+
+    private func currentScreen() -> (visible: NSRect, primaryMaxY: CGFloat)? {
+        if let screen { return screen() }
+        let mouse = NSEvent.mouseLocation
+        guard let s = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main,
+              let primary = NSScreen.screens.first else { return nil }
+        return (s.visibleFrame, primary.frame.maxY)
+    }
+
+    /// Slide the panel in with a session (the assistant when nil), then fit Chrome beside it.
+    func openPanel(_ session: PanelSession?, glass: Bool) async -> ActionOutcome {
+        let sessions = await loadSessions()
+        known = sessions
+        guard let pick = session.flatMap({ s in sessions.first { $0.id == s.id } ?? s }) ?? sessions.first(where: \.isAssistant) ?? sessions.first else {
+            return .failed("No session to show yet: make your assistant in Vyre, or start a session")
+        }
+        guard let geo = currentScreen() else { return .failed("No display to put the side view on") }
+        let target = SideGeometry.panel(geo.visible)
+        let w = window ?? host.sessionWindow(owner: Self.id)
+        window = w
+        panel.sessions = sessions
+        panel.start()
+        if w.isOpen {
+            w.setFrame(target, duration: SideGeometry.duration)
+        } else {
+            w.show(AnyView(SessionPanelView(model: panel) { [weak self] in Task { @MainActor in _ = await self?.closeSideView() } }),
+                   frame: SideGeometry.offscreen(target))
+            w.setFrame(target, duration: SideGeometry.duration)
+        }
+        let history = Task { @MainActor in await panel.show(pick) }
+        if settle > .zero { try? await Task.sleep(for: settle) }
+        var input: [String: Any] = ["panel": SideGeometry.axFrame(target, primaryMaxY: geo.primaryMaxY)]
+        if glass { input["browser"] = "glass" }
+        let r = await host.vyred.call("sideview.open", input, presence: false)
+        await history.value
+        if let e = r.error { panel.line = e; return .failed("\(pick.label) is on the left; Chrome could not be fitted: \(e)") }
+        let d = r.data as? [String: Any] ?? [:]
+        let right = (d["right"] as? [String: Any])?["app"] as? String ?? (glass ? "Glass" : "Chrome")
+        return .close("\(pick.label) on the left, \(right) on the right")
     }
 
     // MARK: - Side view
@@ -137,10 +234,20 @@ final class SightExtension: CapsuleExtension {
     }
 
     func closeSideView() async -> ActionOutcome {
+        var hadPanel = false
+        if let w = window, w.isOpen {
+            hadPanel = true
+            if talkToPanel { stopTalk() }
+            w.setFrame(SideGeometry.offscreen(w.frame), duration: SideGeometry.duration)
+            panel.stop()
+            if settle > .zero { try? await Task.sleep(for: settle) }
+            w.close()
+        }
         let r = await host.vyred.call("sideview.close", [:], presence: false)
         if let e = r.error { return .failed(e) }
         let n = (r.data as? [String: Any])?["restored"] as? Int ?? 0
-        return n == 0 ? .said("No side view is open") : .close("Put \(n) window\(n == 1 ? "" : "s") back")
+        if n == 0 && !hadPanel { return .said("No side view is open") }
+        return .close(n == 0 ? "Closed the side view" : "Put \(n) window\(n == 1 ? "" : "s") back")
     }
 
     // MARK: - Ask about my screen
@@ -163,11 +270,13 @@ final class SightExtension: CapsuleExtension {
         return .said(model.talking ? "Listening. Option-Return to stop" : "Stopping")
     }
 
-    func toggleTalk() {
+    func toggleTalk(toPanel: Bool = false) {
         if let t = talker { t.toggle(); return }
         if preparing { stopWanted = true; return }
         preparing = true; stopWanted = false
+        talkToPanel = toPanel && panelOpen
         model.talking = true
+        panel.talking = talkToPanel
         model.heard = ""
         model.line = nil
         let gen = generation
@@ -179,7 +288,9 @@ final class SightExtension: CapsuleExtension {
             preparing = false
             let d = st.data as? [String: Any] ?? [:]
             if let why = Self.cannotTalk(st.error, d) {
-                model.talking = false; model.line = why; host.say(why); return
+                model.talking = false; panel.talking = false
+                if talkToPanel { panel.line = why } else { model.line = why; host.say(why) }
+                return
             }
             let t = makeTalker(mic: d["mic"] as? String)
             talker = t
@@ -215,18 +326,22 @@ final class SightExtension: CapsuleExtension {
         switch e {
         case .listening:
             model.talking = true
+            panel.talking = talkToPanel
         case .heard(let text):
             model.heard = text
-            host.setQuery(text)
+            put(text)
         case .done(let text):
-            model.talking = false; talker = nil
-            if text.isEmpty { host.say("Nothing heard") } else { model.heard = text; host.setQuery(text) }
+            model.talking = false; panel.talking = false; talker = nil
+            if text.isEmpty { say("Nothing heard") } else { model.heard = text; put(text) }
         case .failed(let why):
-            model.talking = false; talker = nil
+            model.talking = false; panel.talking = false; talker = nil
             model.line = why
-            host.say(why)
+            say(why)
         }
     }
+
+    private func put(_ text: String) { if talkToPanel { panel.draft = text } else { host.setQuery(text) } }
+    private func say(_ line: String) { if talkToPanel { panel.line = line } else { host.say(line) } }
 
     // MARK: -
 

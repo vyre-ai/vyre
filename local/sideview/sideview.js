@@ -49,6 +49,14 @@ function checkSession(s) {
   throw new SideviewError("bad_input", 'session is "front", "terminal", {"bundle": "<bundle id>"} or {"pid": <pid>}');
 }
 
+/** A frame a Vyre panel already holds on the left, in accessibility points. @param {unknown} r */
+function checkPanel(r) {
+  const o = /** @type {any} */ (r);
+  const ok = o && typeof o === "object" && ["x", "y", "w", "h"].every(k => Number.isFinite(o[k])) && o.w >= 100 && o.h >= 100;
+  if (!ok) throw new SideviewError("bad_input", "panel is the left frame a Vyre panel already holds: {x, y, w, h} in points, at least 100 by 100");
+  return { x: Math.round(o.x), y: Math.round(o.y), w: Math.round(o.w), h: Math.round(o.h) };
+}
+
 const brief = (/** @type {any} */ w, /** @type {any} */ frame) => ({ app: w.app, bundle: w.bundle, pid: w.pid, title: w.title, frame });
 
 export class Sideview {
@@ -85,15 +93,21 @@ export class Sideview {
   }
 
   /**
-   * @param {{ session?: unknown, browser?: string, glass?: string, url?: string, ratio?: number }} [input]
+   * @param {{ session?: unknown, panel?: unknown, browser?: string, glass?: string, url?: string, ratio?: number }} [input]
    */
   async open(input = {}) {
     const ratio = ratioOf(input.ratio);
-    const session = checkSession(input.session);
+    // The Capsule's own session panel animates itself into place, so the left side is already
+    // there: only Chrome is fitted beside it, and only Chrome's frame is kept for close.
+    const panel = input.panel === undefined || input.panel === null ? null : checkPanel(input.panel);
+    if (panel && input.session !== undefined) throw new SideviewError("bad_input", "give session or panel, not both");
+    const session = panel ? "front" : checkSession(input.session);
     const browser = input.browser === undefined ? (input.glass ? "glass" : "chrome") : input.browser;
     if (browser !== "chrome" && browser !== "glass") throw new SideviewError("bad_input", 'browser is "chrome" or "glass"');
     if (browser === "glass" && input.url) throw new SideviewError("bad_input", "url and glass are two different pages; give one");
     const url = browser === "glass" ? await this.glassUrl(String(input.glass || "box")) : input.url ? checkUrl(input.url) : null;
+
+    if (panel) return this.beside(panel, ratio, url);
 
     const ask = {
       bundles: [...new Set([...SESSION_APPS, CHROME, ...(typeof session === "object" && session.bundle ? [session.bundle] : [])])],
@@ -143,6 +157,37 @@ export class Sideview {
 
     this.state = { left: brief(leftNow, la.frame), right: brief(right, ra.frame), ratio, area, url, at: Date.now() };
     return { open: true, ...this.state, exact: Boolean(la.exact && ra.exact) };
+  }
+
+  /** Chrome fitted beside a panel Vyre already put on the left. @param {import("./layout.js").Rect} panel @param {number} ratio @param {string|null} url */
+  async beside(panel, ratio, url) {
+    const ask = { bundles: [CHROME], pids: [] };
+    let f = await this.frames(ask);
+    let right = pickBrowser(f.windows || []);
+    if (!right || url) {
+      await this.launch(url);
+      const until = Date.now() + this.waitMs;
+      for (;;) {
+        f = await this.frames(ask);
+        right = pickBrowser(f.windows || []);
+        if (right) break;
+        if (Date.now() >= until) throw new SideviewError("no_browser", "Chrome did not show a window in time");
+        await sleep(this.stepMs);
+      }
+    }
+    const screen = screenOf(f.screens || [], panel);
+    const area = this.region || (screen && screen.visible);
+    if (!area) throw new SideviewError("no_screen", "no display to lay the windows out on");
+    const k = `${right.pid}:${right.index}`;
+    if (!this.saved.has(k)) this.saved.set(k, { pid: right.pid, index: right.index, title: right.title, frame: right.frame });
+    const b = await this.tile.request({
+      cmd: "set", moves: [{ pid: right.pid, index: right.index, title: right.title, frame: rightFrame(area, panel) }],
+      activate: this.activate() ? [right.pid] : [],
+    });
+    const ra = b.results && b.results[0];
+    if (!ra || ra.code === "gone") throw new SideviewError("gone", "the Chrome window closed while it was being moved");
+    this.state = { left: { app: "Vyre", bundle: null, pid: null, title: "session panel", frame: panel }, right: brief(right, ra.frame), ratio, area, url, at: Date.now() };
+    return { open: true, ...this.state, exact: Boolean(ra.exact) };
   }
 
   async close() {

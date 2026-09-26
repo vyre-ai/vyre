@@ -2,7 +2,9 @@
 // The listen stream is tested over a real unix socket with a tiny WebSocket server in this file,
 // so the handshake, the masking and the framing are what is tested, not a mock of them.
 
+import AppKit
 import Foundation
+import SwiftUI
 
 private final class SightLink: VyredLink, @unchecked Sendable {
     private let lock = NSLock()
@@ -40,6 +42,16 @@ private final class SightHost: CapsuleHost {
     func stepAside() async -> Bool { false }
     func notify(title: String, body: String) { said.append(title) }
     func log(_ message: String) {}
+    func sessionWindow(owner: String) -> SessionWindow { SightWindow() }
+}
+
+@MainActor
+private final class SightWindow: SessionWindow {
+    var isOpen = false
+    var frame: NSRect = .zero
+    func show(_ content: AnyView, frame: NSRect) { isOpen = true; self.frame = frame }
+    func setFrame(_ frame: NSRect, duration: TimeInterval) { self.frame = frame }
+    func close() { isOpen = false }
 }
 
 private final class FakeMic: MicSource, @unchecked Sendable {

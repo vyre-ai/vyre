@@ -33,6 +33,7 @@ export default {
       description: "Tile this Mac for working beside a session: the session's window on the left (ratio of the display's width, 0.29 by default, full height between the menu bar and the Dock) and Chrome's front window filling the rest, edge to edge. session: \"front\" (the front terminal, the default), \"terminal\" (the top terminal window), {bundle} or {pid}. browser: \"chrome\" (default) or \"glass\" (the paired box's Glass page for `glass`, an agent's name or box). url opens in a new Chrome tab. Chrome is opened if it has no window. The frames the windows had are remembered for sideview.close. Needs the Accessibility grant. Local callers only.",
       input: { type: "object", properties: {
         session: { description: "\"front\", \"terminal\", {\"bundle\": \"com.apple.Terminal\"} or {\"pid\": 123}." },
+        panel: { type: "object", description: "Instead of session: the left frame {x, y, w, h} (accessibility points) that the Capsule's own session panel already holds. Only Chrome is moved, fitted from its right edge." },
         browser: { type: "string", enum: ["chrome", "glass"] },
         glass: { type: "string", description: "With browser glass: an agent's name, or box (the default)." },
         url: { type: "string", description: "An http(s) page to open in the right window." },
