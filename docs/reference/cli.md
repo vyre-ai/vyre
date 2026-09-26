@@ -42,6 +42,7 @@ In the order `vyre help` lists them.
 | [`vyre name`](#vyre-name) | this box's address: <you>.vyre.run |
 | [`vyre why`](#vyre-why) | the turns a fact came from |
 | [`vyre learn`](#vyre-learn) | the lessons Vyre learned from you, and what it proposed |
+| [`vyre assistant`](#vyre-assistant) | your assistant, or make one: vyre assistant Juno |
 | [`vyre vault`](#vyre-vault) | credentials, sealed; shared by pass; used without being seen |
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
@@ -260,6 +261,17 @@ vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills] [--js
 ```
 
 Also: `vyre lessons`.
+
+### vyre assistant
+
+Your assistant, or make one: vyre assistant Juno.
+
+```
+vyre assistant [name] [--json]
+```
+
+With no name: who your assistant is. With a name: make it, as onboarding does, if there is none yet.
+On a Mac paired with a box, the assistant lives on the box.
 
 ### vyre vault
 
