@@ -486,7 +486,7 @@ test("mcp: the hub is never a route around the floor", async t => {
   assert.deepEqual(prompts, ["gate.approve cli", "gate.approve cli"], "only a person's approvals asked, and nothing else did");
 
   // A person cannot mark a send as a read, at add or at update.
-  const always = /send_message sends as the person, so it is always held; it can be write or off/;
+  const always = /send_message sends as the person, so it is always held and cannot be read: set send_message to write or off/;
   assert.match((await cli("mcp.add", { ...chat, name: "chat-two", tools: { mode: { send_message: "read" } } })).error?.message, always);
   assert.match((await cli("mcp.update", { name: "chat", tools: { mode: { send_message: "read" } } })).error?.message, always);
   assert.equal((await cli("mcp.update", { name: "chat", tools: { mode: { send_message: "write", echo_env: "read" } } })).data?.name, "chat");

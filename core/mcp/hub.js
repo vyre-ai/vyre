@@ -319,7 +319,7 @@ function normalizePolicy(t) {
   if (t.deny !== undefined) { if (!Array.isArray(t.deny) || !t.deny.every(x => typeof x === "string")) throw bad("tools.deny must be a list of tool names"); out.deny = t.deny; }
   if (t.mode !== undefined) {
     if (!isObj(t.mode) || !Object.values(t.mode).every(m => MODES.includes(/** @type {string} */ (m)))) throw bad("tools.mode maps a tool to read, write or off");
-    for (const [k, m] of Object.entries(t.mode)) if (m === "read" && sends(k)) throw bad(`${k.slice(0, 80)} sends as the person, so it is always held; it can be write or off`);
+    for (const [k, m] of Object.entries(t.mode)) if (m === "read" && sends(k)) { const name = k.slice(0, 80); throw bad(`${name} sends as the person, so it is always held and cannot be read: set ${name} to write or off`); }
     out.mode = t.mode;
   }
   return out;

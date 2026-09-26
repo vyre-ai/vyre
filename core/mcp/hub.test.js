@@ -89,7 +89,7 @@ test("normalize: a row holds item names, never values", () => {
   assert.throws(() => normalize({ ...web, auth: { type: "bearer", item: "tok", format: "nope" } }), /\{value\}/);
   assert.throws(() => normalize({ ...web, scope: { projects: "harlow-legal" } }), /scope.projects/);
   assert.throws(() => normalize({ ...web, tools: { mode: { x: "maybe" } } }), /read, write or off/);
-  assert.throws(() => normalize({ ...web, tools: { mode: { send_message: "read" } } }), /send_message sends as the person, so it is always held; it can be write or off/);
+  assert.throws(() => normalize({ ...web, tools: { mode: { send_message: "read" } } }), /send_message sends as the person, so it is always held and cannot be read: set send_message to write or off/);
   assert.throws(() => normalize({ ...web, tools: { mode: { postComment: "read" } } }), /always held/);
   assert.deepEqual(normalize({ ...web, tools: { mode: { send_message: "off", reply: "write", list_issues: "read" } } }).tools.mode, { send_message: "off", reply: "write", list_issues: "read" });
   assert.throws(() => normalize({ ...web, idle: 5 }), /idle/);
