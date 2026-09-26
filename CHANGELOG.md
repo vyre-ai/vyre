@@ -12,7 +12,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a list whose rows swipe to approve or deny and open a detail sheet with Open session. Colour
   roles use the Deck's names (deck/css/deck.css). Native approvals are a device-key signature
   after Face ID (ADR 0018), the PWA's a passkey; both are the same box-checked presence proof.
-  Docs only; no code changes.
+  Attention is violet (no coral or red anywhere), errors and destructive actions carry no colour,
+  and every mockup text node was measured at WCAG AA. Docs only; no code changes.
 
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 

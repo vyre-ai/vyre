@@ -51,18 +51,39 @@ docs/design/deck-directions/vyre.css), so a phone view and a Deck view read the 
 | `--focus` | #C6F36B | #46700C | Focus ring |
 | `--signal-wash` | rgba(198,243,107,0.12) | rgba(70,112,12,0.10) | The Ask row in Find, added diff lines |
 | `--match` (phone) | rgba(198,243,107,0.20) | rgba(70,112,12,0.16) | Search match highlight, the Open session flash |
-| `--beacon-ink` / `--beacon-dot` | #FF7A59 / #FF7A59 | #C2411F / #E5532F | Needs you. Nothing else |
-| `--beacon-wash` | rgba(255,122,89,0.12) | rgba(229,83,47,0.09) | Behind a held item |
+| `--beacon-ink` / `--beacon-dot` | #B8A4FF / #B8A4FF | #5B3FC4 / #5B3FC4 | Attention: needs you. Nothing else |
+| `--beacon-wash` | rgba(184,164,255,0.12) | rgba(91,63,196,0.08) | Behind a held item |
+| `--beacon-badge-ink` (phone) | #0E0D0C | #F4F1EA | Count text on a `--beacon-dot` badge |
 | `--recall` | #EBC76B | #7E5B0C | Came from memory |
 | `--recall-wash` | rgba(235,199,107,0.10) | rgba(126,91,12,0.08) | Behind a recalled block |
-| `--del-wash` | rgba(140,135,125,0.14) | rgba(107,102,93,0.10) | Deleted diff lines, with `--label` text |
+| `--del-wash` | #1E1C1A | #FBFAF6 | Deleted diff lines, with `--label` text |
 | `--code-bg` | rgba(14,13,12,0.55) | rgba(20,19,17,0.04) | Command blocks, the live console |
 | `--mark-wire` / `--mark-dot` | #F1EEE6 / #C6F36B | #141311 / #141311 | The mark |
 | `--scrim` (phone) | rgba(0,0,0,0.62) | rgba(20,19,17,0.34) | Behind a sheet |
 
-The mark's dot is Signal (dark) or Ink (paper) when nothing is waiting, and Beacon when anything
-needs you. A deleted line in a diff is `--label` on `--del-wash`, never Beacon. A failure is `--text`
-with a `--label` "failed" label; it turns Beacon only when it needs the user.
+**No coral or red, anywhere** (the user's rule). The attention colour ("needs you") keeps the
+`--beacon-*` names but is violet, deck-design's recommendation while the user picks between violet,
+honey and teal (docs/design/deck-directions/Attention.dc.html). Swapping it is one line per theme:
+change the three `--beacon-*` values. Every pair above passes WCAG AA.
+
+The mark's dot is Signal (dark) or Ink (paper) when nothing is waiting, and the attention colour
+when anything needs you. A deleted line in a diff is `--label` on `--del-wash`, never attention.
+
+Errors and destructive actions carry no colour:
+
+- **A failure** is a fact, not an alarm: `--text`, a crossed-circle glyph, a `failed` Label and
+  the reason. It takes the attention colour only when the user has to act on it.
+- **A destructive action** (delete a project, forget a memory, remove a device) is slowed down by
+  words and a second step, never by colour. The sheet says what goes, with counts ("This removes
+  214 files, 41 memories and 3 sessions"). The destructive button is an outline in `--text` whose
+  label carries the count ("Delete 214 files") and needs a 0.6 s hold (with a fill that tracks the
+  hold, and a haptic at the end). The safe choice ("Keep it") is never the primary fill either.
+  Deny and Discard on a held item are not destructive (the item can be held again, and Discard
+  has Undo), so they are plain outline buttons.
+
+Text on tints: on paper, `--label` measures 4.48:1 on `--recall-wash`, `--signal-wash` and
+`--beacon-wash`, just under AA, so meta text on a tinted block uses `--text-2` instead. Input
+placeholders are `--label` at full opacity (browsers default to a lighter grey that fails).
 
 Theme follows the system (`prefers-color-scheme`), with Dark, Paper and System in Settings.
 
@@ -152,7 +173,7 @@ hairlines between rows. Any section with nothing in it is left out, except as no
 
 ### Needs you
 
-Header: a 8 px `--beacon-dot`, then "Needs you", count on the right. One card holds a row per
+Header: an 8 px `--beacon-dot`, then "Needs you", count on the right. One card holds a row per
 item, oldest first. Under the card, one Meta line in `--label`: "Swipe right to approve with Face
 ID, left to deny." Show the hint until the user has swiped once, then drop it.
 
@@ -387,7 +408,7 @@ Under the header, one Secondary `--label` line: "1 working, 1 idle".
 | Page swipe | Follows the finger; snaps with a spring; label colour crossfades |
 | Streaming | Tokens appear as they arrive, no fade; caret blinks at 1 s |
 | Open session highlight | `--match` fill on the target row, fades out over 1.2 s |
-| Beacon dot on arrival | One pulse (scale 1 to 1.6 and back, 400 ms), then still |
+| Attention dot on arrival | One pulse (scale 1 to 1.6 and back, 400 ms), then still |
 
 Reduce Motion: no scale behind sheets, no pulse, swipes and pages crossfade instead of slide.
 Nothing animates in the background.
@@ -413,7 +434,8 @@ Nothing animates in the background.
 - **Mac away**: its sessions stay, read-only, with a machine chip; Open session still works.
 - **Empty pages**: one sentence and a way forward. Chats: "No sessions yet." plus the Capsule.
   Agents: "Only <assistant> so far." plus "New agent".
-- **Errors**: `--text` with a `failed` Label and the reason; Beacon only when the user must act.
+- **Errors**: `--text`, a crossed-circle glyph, a `failed` Label and the reason; the attention
+  colour only when the user must act. Never red.
 
 ## 12. Accessibility
 
@@ -421,8 +443,13 @@ Nothing animates in the background.
   custom actions, Android `AccessibilityAction`) and in the detail sheet.
 - Labels: a Needs row reads "kit, Harlow Legal, wants to push q3-report, git push origin
   q3-report, 4 minutes ago. Actions: Approve, Deny, Open."
-- Contrast: `--label` is the smallest text colour (5.4:1 dark, 5.0:1 paper). Beacon text on paper
-  is `--beacon-deep`.
+- Contrast: `--label` is the smallest text colour (5.4:1 dark, 5.0:1 paper; `--text-2` on tints).
+  Attention text measures 9.1:1 (dark) and 6.3:1 (paper) on the ground.
+- The mockups were rendered to PNG in both themes and every text node, placeholder and icon
+  was measured against its composited background: 1,048 checks, all at AA (4.5:1 text, 3:1 icons
+  and 24 px text). Builds repeat the check on their real screens before shipping, and watch for
+  a CSS rule like `button { color: inherit }` beating a button's own colour class (deck-design
+  hit exactly this: unreadable buttons).
 - Dynamic Type up to AX3: rows grow, the header labels shrink to fit and then scroll
   horizontally, the Capsule grows to 64.
 - Focus ring: 2 px `--focus`, 2 px offset.
