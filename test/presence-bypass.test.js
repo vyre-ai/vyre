@@ -82,7 +82,7 @@ async function box(t) {
 
   const put = await person("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-" + crypto.randomBytes(8).toString("hex") } });
   assert.ok(put.data, JSON.stringify(put));
-  assert.ok((await call("vault.grant", { name: "mail-token", module: "gate" }, { root, caller: "cli" })).data);
+  assert.ok((await person("vault.grant", { name: "mail-token", module: "gate" })).data, "a grant needs a person too");
   const held = await call("gate.request", { kind: "send", via: "mail", to: "someone@example.com", content: { subject: "Hello", body: "Draft by the model" } }, { root, caller: "mcp" });
   assert.equal(held.data.state, "held");
   return { root, d, mail, screen, id: held.data.id, person, signed, socket: d.paths.socket };
