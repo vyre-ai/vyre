@@ -24,6 +24,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and
   `osascript` that record calls, keeps its key in a file, builds no keychain helper and calls
   neither; a temp home that asks for the keychain is refused; the world scripts set the flags.
+#### e2e: a real install walked from main
+
+- The onboarding page kept Continue off on step 1 whenever the box had no vyre.run zone token,
+  which is every box: "That name is not free: could not check". A name the check cannot run for
+  is fine now, since the address is the ts.net one, chosen in step 4. The name field also gets the
+  same `input` style as the assistant's.
+- `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
+  still starting (6s on a loaded Mac). It waits up to 15s now.
 
 #### No Touch ID prompt, or anything else on screen, under tests
 
