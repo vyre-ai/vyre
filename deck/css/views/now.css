@@ -1,0 +1,72 @@
+/* Now. Boards: DeckNow (desktop), PhoneNow (phone). */
+
+.now { min-height: 100%; }
+.now-col { width: 880px; max-width: 100%; margin: 0 auto; padding: 28px 24px 48px; }
+.now-head { display: flex; flex-direction: column; gap: 10px; padding-left: 64px; padding-bottom: 22px; }
+.now-assistant { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.now-assistant:empty { display: none; }
+.now-assistant b { color: var(--text); font-weight: 500; }
+.now-needs { display: flex; flex-direction: column; gap: 12px; }
+.now-label { display: flex; align-items: center; gap: 10px; padding-left: 64px; }
+.now-sec { margin-top: 26px; padding-left: 64px; }
+.now-sec .section-head { padding-bottom: 12px; }
+.phone-only { display: none; }
+.nowrap { white-space: nowrap; }
+
+.need-row { display: flex; }
+.need-time { width: 64px; flex-shrink: 0; padding-top: 18px; font-size: 12px; line-height: 16px; color: var(--beacon-ink); }
+.need { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px; }
+.need-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.need h3 { font-size: 17px; line-height: 24px; font-weight: 600; }
+.need-cmd { font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: var(--r-1); background: var(--code-bg); }
+.need-why { margin-top: 4px; font-size: 14px; line-height: 20px; color: var(--text-2); }
+/* Send was approved and the sender failed: still needs the user, so it takes the Beacon colour. */
+.need-error { margin-top: 0; color: var(--beacon-ink); }
+.need-body:not(:empty) { margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--beacon-rule); border-bottom: 1px solid var(--beacon-rule);
+  display: flex; flex-direction: column; gap: 8px; }
+.need-meta { display: flex; gap: 20px; flex-wrap: wrap; }
+.need-text { font-size: 14px; line-height: 21px; color: var(--text); max-width: 700px; white-space: pre-wrap; }
+.need-recalled { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--recall-ink); }
+.need-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 14px; }
+.need .need-body:empty + .need-actions { padding-top: 8px; }
+.need [role=status]:not(:empty) { margin-top: 10px; }
+.need-compact { display: none; }
+
+.work-row { display: flex; align-items: center; gap: 16px; min-height: 48px; padding: 6px 0; }
+.work-agent { width: 44px; font-size: 14px; line-height: 20px; color: var(--text-2); }
+.work-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.work-title { display: flex; gap: 10px; align-items: baseline; min-width: 0; font-size: 14px; line-height: 20px; }
+.work-since { width: 56px; text-align: right; flex-shrink: 0; }
+
+.fact-row { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 4px 0; }
+.fact-main { flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; row-gap: 0; }
+.fact-text { font-size: 14px; line-height: 20px; }
+
+@media (max-width: 760px) {
+  .now-col { padding: 12px 16px 24px; }
+  .now-head { padding-left: 0; padding-bottom: 20px; gap: 6px; }
+  .now-head .lbl { display: none; }
+  .now-title { font-size: 28px; line-height: 34px; letter-spacing: -0.02em; }
+  .now-head .muted { display: none; }
+  .now-label { padding-left: 0; }
+  .now-label .dot { display: none; }
+  .now-sec { padding-left: 0; margin-top: 24px; }
+  .phone-only { display: inline; }
+  .need-row .need-time, .need-row .need { display: none; }
+  .need-compact { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; text-decoration: none; color: var(--text); flex-grow: 1; }
+  .need-compact-top { display: flex; justify-content: space-between; align-items: center; }
+  .need-compact-top .lbl { display: flex; align-items: center; gap: 8px; }
+  .need-compact-top .dot { width: 6px; height: 6px; }
+  .need-compact-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 16px; line-height: 22px; font-weight: 600; }
+  .need-compact-title code { font-size: 14px; font-weight: 500; }
+  .need-compact-title svg { color: var(--text-2); flex-shrink: 0; }
+  .now-needs { gap: 8px; }
+  .work-agent, .work-watch { display: none; }
+  .work-row { gap: 12px; min-height: 56px; }
+  .work-title { flex-direction: column; gap: 0; }
+  .work-title .small { display: none; }
+  .work-since { display: none; }
+  .work-chev { color: var(--text-2); display: flex; }
+  .now-sec .section-head .lbl + .lbl { display: none; }
+  .fact-row .ibtn { display: none; }
+}

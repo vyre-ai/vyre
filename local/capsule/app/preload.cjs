@@ -12,6 +12,17 @@ contextBridge.exposeInMainWorld("vyre", {
   send: (dest, text, opts) => ipcRenderer.invoke("capsule:send", dest, text, opts),
   held: id => ipcRenderer.invoke("capsule:held", id),
   answer: (item, decision, edited) => ipcRenderer.invoke("capsule:answer", item, decision, edited),
+  // Local results: apps, settings, the calculator, contacts (quick), then files too (full).
+  quick: text => ipcRenderer.invoke("capsule:quick", text),
+  full: text => ipcRenderer.invoke("capsule:full", text),
+  pick: (result, query) => ipcRenderer.invoke("capsule:pick", result, query),
+  timing: t => ipcRenderer.send("capsule:timing", t),
+  // Pictures for result rows, as file:// URLs, fetched after the rows are drawn.
+  icons: results => ipcRenderer.invoke("capsule:icons", results),
+  // Stop an answer that is streaming (Esc). The first Esc stops; the next closes.
+  cancel: () => ipcRenderer.invoke("capsule:cancel"),
+  // Only the user's own click puts text on the clipboard.
+  copy: text => ipcRenderer.invoke("capsule:copy", text),
   // The page says how tall it is; the window follows. Width never changes.
   size: h => ipcRenderer.send("capsule:size", h),
   // Escape: the window goes away, which is the only reliable way to hand the keyboard back.
@@ -22,4 +33,7 @@ contextBridge.exposeInMainWorld("vyre", {
   // The user asked for the Capsule (double-Control, the menu bar, `vyre capsule`). Only this
   // may put the caret in the box; nothing that merely arrives from an agent does.
   onOpen: fn => ipcRenderer.on("capsule:open", (_e, d) => fn(d)),
+  // Wake-latency instrumentation (SPEC.md 2.8): fired once the renderer has actually repainted
+  // after onOpen(), so main can time gesture-to-paint rather than gesture-to-IPC-arrival.
+  paintPing: () => ipcRenderer.send("capsule:paintping"),
 });

@@ -72,10 +72,25 @@ export default {
 
     // Spend on the API key is counted from each turn's result, per agent, so the budget holds
     // across threads and restarts. Turns on the subscription cost the user nothing extra.
-    ctx.events.on("thread.finished", e => {
+    // The budget is enforced here, turn by turn: at 80% the thread is told, and at 100% it stops
+    // with a note saying why and what to change. --max-budget-usd is Claude Code's own backstop.
+    ctx.events.on("thread.finished", async e => {
       try {
         const run = /** @type {any} */ (db.prepare("SELECT agent, auth FROM threads_runs WHERE id = ?").get(e.thread));
-        if (run && run.agent && run.auth === "api-key" && e.payload.cost_usd > 0) db.prepare("INSERT INTO agents_spend (thread, agent, at, usd) VALUES (?,?,?,?)").run(e.thread, run.agent, Date.now(), e.payload.cost_usd);
+        const cost = Number(e.payload.cost_usd) || 0;
+        if (!(run && run.agent && run.auth === "api-key" && cost > 0)) return;
+        db.prepare("INSERT INTO agents_spend (thread, agent, at, usd) VALUES (?,?,?,?)").run(e.thread, run.agent, Date.now(), cost);
+        const a = get(run.agent);
+        const budget = a && typeof a.auth.budget_usd === "number" ? a.auth.budget_usd : null;
+        if (budget == null) return;
+        const now = spent(a.name), before = now - cost;
+        const usd = n => `$${n.toFixed(2)}`;
+        if (now >= budget) {
+          await ctx.call("threads.halt", { thread: e.thread, reason: "budget",
+            text: `${a.name} has spent ${usd(now)} of its ${usd(budget)} API-key budget, so this thread has stopped. To go on, raise it: vyre agents update ${a.name} --budget <dollars>` });
+        } else if (before < budget * 0.8 && now >= budget * 0.8) {
+          await ctx.call("threads.notice", { thread: e.thread, text: `${a.name} has spent ${usd(now)} of its ${usd(budget)} API-key budget (${Math.round((now / budget) * 100)}%).` });
+        }
       } catch {}
     });
 
@@ -177,7 +192,7 @@ export default {
       run: async (_, { caller }) => {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model,
+        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, computer: a.computer,
           auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) })));
       },
     });
@@ -269,6 +284,38 @@ export default {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
       run: async ({ agent }, { caller }) => { guard(caller, "read other agents"); must(agent); return use("threads.list", { agent }); },
+    });
+
+    ctx.tool("agents.usage", {
+      description: "What each agent has used: turns, threads, time, tokens and cost (all of it, and on the API key), its budget and what is left, and the last rate-limit report. since: ms since epoch. With no agent, every agent, and agent null for threads no agent ran.",
+      input: { type: "object", properties: { agent: { type: "string" }, since: { type: "integer" } } },
+      run: async ({ agent, since }, { caller }) => {
+        guard(caller, "read other agents' usage");
+        if (agent) must(agent);
+        const rows = await use("threads.usage", { ...(agent ? { agent } : {}), ...(since ? { since } : {}) });
+        const used = new Map(rows.map(r => [r.agent, r]));
+        const zero = { turns: 0, threads: 0, duration_ms: 0, cost_usd: 0, api_cost_usd: 0, tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0 }, by_auth: {}, limit: null, last_at: null };
+        const agents = agent ? [must(agent)] : db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
+        const out = agents.map(a => {
+          const budget = typeof a.auth.budget_usd === "number" ? a.auth.budget_usd : null;
+          const total = spent(a.name);
+          return { ...zero, ...(used.get(a.name) || {}), agent: a.name, kind: a.kind,
+            auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient",
+            budget_usd: budget, spent_usd: total, left_usd: budget == null ? null : Math.max(0, budget - total) };
+        });
+        if (!agent && used.has(null)) out.push({ ...zero, ...used.get(null), agent: null, kind: null, auth: "ambient", budget_usd: null, spent_usd: 0, left_usd: null });
+        return out;
+      },
+    });
+
+    ctx.tool("agents.history", {
+      description: "Past conversations with an agent (or every agent): what was asked, the answer, when, and the thread, newest last. before: an exchange id, for the page before it.",
+      input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer" } } },
+      run: async ({ agent, limit, before }, { caller }) => {
+        guard(caller, "read other agents' conversations");
+        if (agent) must(agent);
+        return use("threads.history", { ...(agent ? { agent } : {}), ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
+      },
     });
 
     ctx.tool("agents.stop", {

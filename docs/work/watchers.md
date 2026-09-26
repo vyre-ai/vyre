@@ -56,6 +56,19 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
   which `memory.facts {project_cwds: [the project folder]}` returned as `taught by watchers`.
   Both ran on schedule under vyred (`watcher.fired` with trigger `schedule`).
 - Five real sessions shaped the skill; see the changelog.
+- Merged main: the stub vault is gone. Fetches carry `{ watcher, field? }`; the module test puts
+  an item in the real vault (file keystore), shows the dry run refused until
+  `vault.grant {name, module: "watchers", watcher}`, that a second watcher listing the same item
+  is still refused, and that `vault.released` names the watcher.
+- Rerun 2026-09-26 after the vault and gate-chat merges, temp `VYRE_HOME` under `/tmp/vyre-lab`,
+  `claude -p --model haiku --plugin-dir harness`: the skill loaded, the session wrote
+  `hn-demo-sqlite` (HN Firebase API, top 30, parallel fetches), dry-ran it (30 stories read, 0
+  match today) and stopped to ask before `watchers_create`, as the skill says, even though the
+  prompt had said to go ahead. Turned on with `vyre watchers create`; it then fired on schedule
+  under vyred (`schedule` run, 0 filed). Haiku used the highest story id as its cursor, which
+  drops older stories that climb onto the front page; the skill now warns against that. The
+  grant command was checked against a real vault: `vyre vault grant <item> watchers --watcher
+  <name>` prints `granted <item> to watchers/<name>`.
 
 ## Doing
 
@@ -65,10 +78,9 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
   tailnet; today the route is on the local socket only.
 
 ## Needs from others
-- vault: `vault.release` as specified (internal, `caller` passed). The runtime already goes
-  through `ctx.vault.fetch`; a grant for module `watchers` covers every watcher, and the runtime
-  narrows it to each watcher's own `needs`. Offboarding may want to list which watchers need an
-  item: `watchers.list` returns nothing about needs today; say if you want it.
+- vault: nothing outstanding. On main the runtime fetches with `{ watcher }` and grants are per
+  watcher. The use-the-vault skill still says a watcher "lists it under needs and calls
+  vault.fetch", which is true but leaves out the per-watcher grant; worth one line there.
 - projects: nothing adds a watcher to a project's `project.json` `watchers` list yet (spec 7.2).
   The runtime files by `watcher.json`'s `project`, so nothing depends on it; a
   `projects.add-watchers` tool would let the brief mention them.
@@ -78,6 +90,7 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
 ## Changed contracts
 - Registry (`core/modules/index.js`): a tool registered with `hook: true` is callable only by
   caller `"hook"` and is left out of `listTools`. Every other tool refuses caller `"hook"`.
+  vyred maps a socket client's claim to be `"hook"` to `"local"`, so only the route can make it.
 - vyred (`core/daemon/index.js`): `POST /v1/<module>/<name>/hook` calls `<module>.hook` with
   `{ name, token, body }` (token from `x-vyre-token` or `?token=`), as caller `"hook"`; 202 on
   success, 403 when the tool refuses, 404 when there is no hook tool.

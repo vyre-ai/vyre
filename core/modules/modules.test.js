@@ -213,3 +213,18 @@ test("modules: a per-<thing> declaration lets a module fetch items named at run 
   ]);
   assert.deepEqual(await reg.call("relay.check", { item: "work-mail" }, "cli"), { data: { got: "value-of-work-mail-for-module:relay" } });
 });
+
+test("modules: ctx.remote says no_link without a link, and a listener's peer reaches run but not input", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { input: { type: "object" }, run: async (input, meta) => ({ input, peer: meta.peer || null, caller: meta.caller, remote: await ctx.remote("x.y", {}) }) });
+    ctx.route("feed", (req, res) => res.end("ok"));
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["notes", good, src]]);
+  const r = await reg.call("notes.add", {}, "tailnet:owner@example.com", { peer: { stableId: "n1" } });
+  assert.deepEqual(r.data.input, {});
+  assert.deepEqual(r.data.peer, { stableId: "n1" });
+  assert.equal(r.data.caller, "tailnet:owner@example.com");
+  assert.equal(r.data.remote.error.code, "no_link");
+  assert.ok(reg.routes.has("/v1/notes/feed"));
+});

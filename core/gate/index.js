@@ -17,6 +17,9 @@ const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const agentOf = caller => { const m = /^mcp:agent:(.+)$/.exec(String(caller || "")); return m ? m[1] : null; };
 
+/** A model's call: Claude through MCP, in an agent's thread or not. */
+const byModel = caller => /^mcp(?:$|[\s:])/.test(String(caller || ""));
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -49,11 +52,30 @@ export default {
       return c;
     };
 
+    /**
+     * Which thread (session id) and project a held item is filed under. vyred passes the thread it
+     * verified for the caller (an agent's thread, or the session the MCP server's hook bound), and
+     * that wins: a model cannot file a draft under another session, and one that says nothing is
+     * filed under its own. An unverified thread from a model is refused; people and modules name
+     * any. So does the project: the thread's, when the Switchboard knows it.
+     * @param {any} input @param {string} caller @param {string|undefined} verified
+     */
+    const filed = async (input, caller, verified) => {
+      if (byModel(caller) && input.thread && input.thread !== verified)
+        throw new Error(verified ? `this call comes from thread ${verified}; it cannot file under ${input.thread}` : `thread ${input.thread} is not one vyred can confirm this call comes from; leave thread out`);
+      const thread = verified || input.thread || undefined;
+      if (!thread || (input.project && !byModel(caller))) return { thread };
+      // A model's project is the one its thread is in, when the Switchboard knows it.
+      const t = await ctx.call("threads.get", { thread, limit: 1 });
+      const known = t.data && t.data.thread && t.data.thread.project;
+      return { thread, ...(known ? { project: known } : {}) };
+    };
+
     ctx.tool("gate.request", {
       description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here. See gate.senders for the `via` values and what each takes.",
       input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str },
         ["kind", "via", "to", "content"]),
-      run: (input, { caller }) => gate.request(input, { agent: agentOf(caller) }),
+      run: async (input, { caller, thread, agent }) => gate.request({ ...input, ...(await filed(input, caller, thread)) }, { agent: agent || agentOf(caller) }),
     });
 
     ctx.tool("gate.senders", {
