@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Live Claude Code sessions are seen on node 24
+
+- node 24 names its main thread "MainThread", so `ps -o comm=` said that for every claude running
+  on node, and adopt, "live in terminal" and the queue for a busy session saw no session at all
+  on a Mac with node 24. `isClaude` (`core/switchboard/sessions.js`) reads the command line
+  instead: a native claude, node started as claude, or `node <path>/claude`. Found by ci on
+  GitHub's node 24 runner.
+- A switchboard test compared a thread's status across two reads while it could still be
+  starting; it now waits until the thread has started.
+
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours

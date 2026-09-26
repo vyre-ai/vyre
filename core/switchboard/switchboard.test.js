@@ -20,7 +20,7 @@ import { Leases, TTL } from "./lease.js";
 import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
 import { MIGRATIONS, answerSummary } from "./index.js";
-import { Sessions } from "./sessions.js";
+import { Sessions, claudeCommand } from "./sessions.js";
 import { migrate } from "../store/index.js";
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
@@ -325,7 +325,9 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
   t.after(() => s.close());
   const id = (await tool("threads.start", { cwd: work, surface: "deck:1" })).data.id;
   assert.equal((await tool("threads.claimed", { session: id })).error.code, "no_such_tool", "internal: modules only");
-  assert.deepEqual((await tool("probe.claimed", { session: id })).data, { headless: true, holder: "deck:1", status: (await tool("threads.get", { thread: id })).data.thread.status });
+  // Past "starting", so the status cannot move between the two reads.
+  const status = await until(async () => { const st = (await tool("threads.get", { thread: id })).data.thread.status; return st !== "starting" && st; }, "the thread to start");
+  assert.deepEqual((await tool("probe.claimed", { session: id })).data, { headless: true, holder: "deck:1", status });
   assert.equal((await tool("probe.claimed", { session: "not-a-thread" })).data.headless, false);
 
   // Our own child's SessionStart (headless true) is not a second writer.
@@ -785,4 +787,9 @@ test("agents.update: names its agent by name or agent, as the Deck's Give a comp
   assert.match((await tool("agents.update", { name: "kit", agent: "juno", computer: true })).error.message, /different agents/);
   assert.match((await tool("agents.update", { computer: true })).error.message, /say which agent/);
   assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
+});
+
+test("sessions: claude is known by its command line, since node 24 names its main thread MainThread", () => {
+  for (const args of ["claude", "/usr/local/bin/claude --resume abc", "/opt/homebrew/bin/node /usr/local/bin/claude", "node /Users/alex/.npm/bin/claude -p hi"]) assert.equal(claudeCommand(args), true, args);
+  for (const args of ["MainThread", "node /usr/local/bin/vyre", "/usr/bin/python3 claude.py", "bash -c claude", ""]) assert.equal(claudeCommand(args), false, args);
 });
