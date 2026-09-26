@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Every call from an agent passes the floor's rules, not only Claude Code's
+
+- SPEC 5.3 says every tool call passes the Rules, but vyred gave the Registry no `rules` hook, so
+  only Claude Code's PreToolUse hook ran them: an agent through the switchboard, the Capsule or
+  MCP, a module, or a tailnet peer skipped them. vyred now passes `registryRules`
+  (`core/harness/rules.js`) to the Registry. A person at their own surface (cli, local, deck,
+  capsule, naming no agent) is not held there, since presence and the Gate speak for them; every
+  other caller gets the rules' answer, and an "ask" is a refusal, since nobody is there to say
+  yes. `test/daemon.test.js`.
+- `vault.caps`' description said reveal is off by default; it is on, and every reveal needs a
+  presence proof or a session a proof opened (SPEC 11 rule 8, ADR 0006, now updated). A new test
+  runs the real Presence and shows the Deck and the Capsule get no value without a proof, and no
+  agent reaches `vault.reveal` at all. `core/vault/surfaces.test.js`.
+- `test/onboard.test.js` closes each connection, so a request after a vyred restart on the same
+  port never rides a socket the old vyred closed (an intermittent "other side closed").
+
 #### Connectors (ADR 0016)
 
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault

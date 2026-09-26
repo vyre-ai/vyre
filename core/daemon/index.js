@@ -19,6 +19,7 @@ import { build } from "./build.js";
 import { acquire } from "./lock.js";
 import { Presence, parse as parsePresence } from "../presence/index.js";
 import { allowedTools } from "../names/guests.js";
+import { registryRules } from "../harness/rules.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, "..", "..");
@@ -74,7 +75,9 @@ async function startLocked(opts, root, p, release) {
   // limiting what it may reach. The router never reads a caller from their headers.
   const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, handler, presence });
+  // Every call passes the floor's rules (SPEC 5.3), whoever makes it; a test may pass its own.
+  const rules = opts.rules || registryRules({ home: root });
+  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, presence });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on

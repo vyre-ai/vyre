@@ -226,3 +226,25 @@ function toolRoutes(tool, input, { vyreHome, cwd }) {
   }
   return null;
 }
+
+/** Callers that are the person at one of Vyre's own surfaces, when they name no agent. */
+const PERSON = new Set(["cli", "local", "deck", "capsule"]);
+
+/**
+ * The same floor for every tool call through vyred's Registry (SPEC 5.3), not only Claude Code's
+ * PreToolUse hook. A person at a surface is not held back here: presence and the Gate speak for
+ * them. Every other caller (an agent through the switchboard, the Capsule or MCP, a module, a
+ * tailnet peer) gets the rules' answer, and "ask" is a refusal, since nobody is there to answer.
+ * @param {{ home: string }} o VYRE_HOME, for rule 8's paths
+ * @returns {(call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>}
+ */
+export function registryRules({ home }) {
+  return async ({ tool, input, caller }) => {
+    const c = String(caller);
+    if (PERSON.has(c)) return { allow: true };
+    const v = rules({ tool, input: input && typeof input === "object" ? input : {}, home });
+    if (v.decision === "deny") return { allow: false, reason: v.reason };
+    if (v.decision === "ask") return { allow: false, reason: `${v.reason} Only a person can say yes, and ${c} is not one.` };
+    return { allow: true };
+  };
+}
