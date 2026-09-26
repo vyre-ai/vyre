@@ -8,6 +8,10 @@
 
 import { registrable } from "./lexicon.js";
 import { T } from "./curator.js";
+import { within } from "./teach.js";
+
+/** What one lesson taught for a project counts for, against a session's mentions, when ranking a project's facts. */
+const LESSON_WEIGHT = 3;
 
 /** mentioned_in says where something came up, not what it is; every other relation is a fact
  * about it, including the ones modules teach. */
@@ -162,16 +166,53 @@ export class Graph {
   }
 
   /**
+   * For each edge that lessons support: whether any of them is for everywhere, and the folders
+   * of those scoped to a project.
+   * @returns {Map<number, { open: boolean, cwds: string[] }>}
+   */
+  lessonScopes() {
+    // Lessons change only when the curator derives, so this is cached per graph version: the
+    // Enrich hook asks on every prompt, and a watcher can teach thousands of items.
+    if (this.scopeCache?.version === this.curator.version) return this.scopeCache.map;
+    const out = new Map();
+    for (const r of this.db.prepare(`SELECT l.edge, t.fact FROM memory_lessons l
+        JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key`).all()) {
+      let cwds = null;
+      try { cwds = JSON.parse(String(r.fact)).project_cwds || null; } catch {}
+      const id = Number(r.edge);
+      const e = out.get(id) || { open: false, cwds: [] };
+      if (cwds) e.cwds.push(...cwds); else e.open = true;
+      out.set(id, e);
+    }
+    this.scopeCache = { version: this.curator.version, map: out };
+    return out;
+  }
+
+  /**
+   * Does this edge belong in a view of these project folders? Anything a transcript supports,
+   * or a lesson for everywhere, does. A fact taught only for other projects does not.
+   */
+  visibleIn(e, cwds, scopes) {
+    if (!cwds.length) return true;
+    const s = scopes.get(Number(e.id));
+    if (!s || s.open) return true;
+    if (this.db.prepare("SELECT 1 FROM memory_evidence WHERE edge = ? LIMIT 1").get(e.id)) return true;
+    return s.cwds.some(c => within(c, cwds));
+  }
+
+  /**
    * Facts about one thing, about the things a project's sessions name, or about the outside
    * parties seen most across everything.
    * @param {{ about?: string, project_cwds?: string[], limit?: number }} input
    */
   facts({ about, project_cwds = [], limit = 20 } = {}) {
     const f = this.focus(project_cwds);
+    const scopes = this.lessonScopes();
     if (about) {
       const n = this.resolve(about);
       if (!n) return { about: null, facts: [] };
-      const facts = [...this.identityEdges(String(n.id), { closed: true }), ...this.mentionEdges(String(n.id))].map(e => this.fact(e));
+      const facts = [...this.identityEdges(String(n.id), { closed: true }), ...this.mentionEdges(String(n.id))]
+        .filter(e => this.visibleIn(e, project_cwds, scopes)).map(e => this.fact(e));
       return { about: { ...this.summary(n), pinned: f.pin.has(String(n.id)), muted: f.mute.has(String(n.id)) }, facts: facts.slice(0, limit) };
     }
     let ranked;
@@ -181,6 +222,14 @@ export class Graph {
       if (scope.size) {
         const q = this.db.prepare("SELECT src, weight FROM memory_edges WHERE dst = ? AND rel = 'mentioned_in'");
         for (const s of scope) for (const r of q.all("session:" + s)) score.set(String(r.src), (score.get(String(r.src)) || 0) + Number(r.weight));
+      }
+      // Facts a module taught for this project (a watcher's items, say) bring their subject in,
+      // whether or not any of the project's sessions name it.
+      const edge = this.db.prepare("SELECT src FROM memory_edges WHERE id = ?");
+      for (const [id, sc] of scopes) {
+        const n = sc.cwds.filter(c => within(c, project_cwds)).length;
+        const src = n && edge.get(id)?.src;
+        if (src) score.set(String(src), (score.get(String(src)) || 0) + LESSON_WEIGHT * n);
       }
       ranked = [...score].map(([id, s]) => ({ n: this.node(id), s }));
     } else {
@@ -199,7 +248,7 @@ export class Graph {
         if (seen.has(k) || out.length >= limit) continue;
         seen.add(k);
         const other = e.src === n.id ? e.dst : e.src;
-        if (f.mute.has(String(other))) continue;
+        if (f.mute.has(String(other)) || !this.visibleIn(e, project_cwds, scopes)) continue;
         out.push(this.fact(e));
       }
     }
@@ -280,6 +329,7 @@ export class Graph {
       return this.db.prepare("SELECT dst FROM memory_edges WHERE src = ? AND rel = 'mentioned_in'").all(id).some(r => scope.has(String(r.dst).slice(8)));
     };
     const scored = new Map();
+    const scopes = this.lessonScopes();
     for (const [id, h] of hits) {
       if (f.mute.has(id)) continue;
       const boost = (f.pin.has(id) ? 1.5 : 1) * (inScope(id) ? 1.2 : 1);
@@ -287,7 +337,7 @@ export class Graph {
       const list = edges.length ? edges : this.mentionEdges(id, 1);
       for (const e of list) {
         const other = e.src === id ? e.dst : e.src;
-        if (f.mute.has(String(other))) continue;
+        if (f.mute.has(String(other)) || !this.visibleIn(e, project_cwds, scopes)) continue;
         const k = `${e.src}|${e.rel}|${e.dst}`;
         // A fact where the named thing is the subject answers "who is this"; one where it is the
         // object ("Dana works at Harlow" for a prompt naming Harlow) is context, slightly less.

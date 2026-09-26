@@ -9,7 +9,7 @@ import path from "node:path";
 import { open } from "../store/index.js";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
-import { SESSIONS, seedRecall } from "../../test/fixtures/corpus.js";
+import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
@@ -107,6 +107,36 @@ test("teach: a note about a thing reads as its own fact and is relevant when the
   const note = r.find(f => f.text === "Northwind Bakery: the invoice inbox had 4 new invoices");
   assert.ok(note, r.map(f => f.text).join("\n"));
   assert.equal(note.source, "taught by watchers");
+});
+
+test("teach: a fact taught for a project shows in that project's facts and in no other's", async t => {
+  const { curator, graph } = world(t);
+  await curator.curate();
+  const northwind = `${HOME}/Work/northwind`, harlow = [`${HOME}/Work/harlow-site`, `${HOME}/Work/harlow-intake`];
+  // A watcher filing into the Northwind project, from a subfolder of it.
+  curator.teach("watchers", "watcher.item", { subject: "Tomas Berg", text: "approved invoice 1042", project_cwds: [`${northwind}/billing/`] });
+  // About someone the Harlow sessions name, but taught for Northwind only.
+  curator.teach("watchers", "watcher.item", { subject: "Dana Reyes", text: "was copied on the Northwind invoice run", project_cwds: [northwind] });
+  // For everywhere.
+  curator.teach("watchers", "watcher.item", { subject: "Dana Reyes", text: "prefers email before calls" });
+  await curator.curate();
+  const texts = cwds => graph.facts({ project_cwds: cwds }).facts.map(f => f.text);
+  const nw = texts([northwind]);
+  assert.ok(nw.includes("Tomas Berg: approved invoice 1042"), "a subfolder of the project should count: " + nw.join("\n"));
+  assert.ok(nw.includes("Dana Reyes: was copied on the Northwind invoice run"), nw.join("\n"));
+  assert.ok(nw.includes("Sam Okafor works at Northwind Bakery"), "the project's own facts must still be there");
+  const hl = texts(harlow);
+  assert.ok(!hl.some(x => x.includes("Tomas Berg") || x.includes("Northwind invoice run")), "another project's lesson leaked: " + hl.join("\n"));
+  assert.ok(hl.includes("Dana Reyes: prefers email before calls"), "an unscoped lesson belongs everywhere Dana does");
+  assert.ok(hl.includes("Dana Reyes works at Harlow Legal"));
+  // The same rule in relevant: scoped by the project the prompt comes from, everything without one.
+  const rel = cwds => graph.relevant({ text: "check with Dana Reyes", project_cwds: cwds, limit: 20 }).map(f => f.text);
+  assert.ok(!rel(harlow).includes("Dana Reyes: was copied on the Northwind invoice run"));
+  assert.ok(rel([northwind]).includes("Dana Reyes: was copied on the Northwind invoice run"));
+  assert.ok(rel([]).includes("Dana Reyes: was copied on the Northwind invoice run"));
+  // A fact taught without folders keeps the stored form, and key, it had before scoping existed.
+  assert.ok(!("project_cwds" in JSON.parse(lesson({ subject: "Dana Reyes" }).stored)));
+  assert.throws(() => lesson({ subject: "A B", project_cwds: "nope" }), /project_cwds/);
 });
 
 test("teach: taught facts make a graph even with no Recall index", async t => {

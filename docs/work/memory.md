@@ -54,6 +54,7 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   index is available, reports counts and timings only.
 
 ## Done
+- Taught facts scoped to a project with `fact.project_cwds`.
 - Short forms pooled per identity (spellings sharing a domain), so "the Harlow team" style references match on the real index.
 - `memory.teach` and lesson provenance; paged cold derive (worst event-loop block 70 to 120ms).
 - Curator, graph, module, CLI (`core/memory/`, `core/cli/commands/memory.js`), on `work/memory`.
@@ -68,10 +69,6 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
 ## Next
 - Short forms for people's first names are measured but few pass the 0.6 floor; that is by
   design. Revisit if the Enrich hook misses obvious first-name references.
-- Taught facts are not scoped to a project yet: `memory.facts {project_cwds}` finds things
-  through the sessions that name them, so a person known only from a lesson appears in `about`
-  and `relevant`, not in a project's list. If projects wants that, a lesson could carry a
-  `project_cwd`.
 
 ## Needs from others
 - recall: emit `session.indexed {session, from, to, rewritten}` after each index write. Memory
@@ -101,9 +98,12 @@ None to other modules' contracts. New, for dependents:
 - `memory.curate {full?}` returns `{ recall, sessions, turns, nodes, edges, changed, ms }`.
 - Event `memory.curated {nodes, edges, ms}`, only when the graph changed.
 - `memory.teach {kind, fact, from}` (internal, modules only, through `ctx.memory.teach`). A
-  fact: `{ subject, rel?, object?, text?, at?, key?, forget? }`, where `subject` and `object`
+  fact: `{ subject, rel?, object?, text?, at?, key?, project_cwds?, forget? }`, where `subject` and `object`
   are a name or `{ name, email?, domain?, repo?, kind? }` (`kind` is `person` or `org`).
   Known rels: `works_at`, `has_email`, `has_domain`, `owned_by`; any other snake_case rel is
   kept as written; a subject with only `text` becomes a note. Returns `{ key, changed }`.
+- `fact.project_cwds` scopes a lesson: `memory.facts {project_cwds}` and `memory.relevant
+  {project_cwds}` include it when one of its folders is, or is under, a folder asked for, and
+  leave it out of other projects. Without it a lesson belongs everywhere.
 - Facts carry `taught: [{module, kind}]`; `memory.why` also returns `taught: [{module, kind,
   key, text, at, age}]`. `memory.stats` counts `taught`.
