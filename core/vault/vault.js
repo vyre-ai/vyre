@@ -351,7 +351,7 @@ export class Vault {
     if (!f.totp) throw new Error(`${name} has no one-time password`);
     const c = totp(f.totp);
     this.audit("totp", name, caller);
-    return { code: c.code, remaining: c.remaining };
+    return { code: c.code, period: c.period, remaining: c.remaining };
   }
 
   async generate({ length, words, symbols, name, description }, caller) {

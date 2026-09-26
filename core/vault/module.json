@@ -37,7 +37,13 @@
       "vault.devices",
       "vault.device.revoke",
       "vault.device.unlock",
-      "vault.unlock-passphrase"
+      "vault.unlock-passphrase",
+      "vault.session.open",
+      "vault.session.close",
+      "vault.session.status",
+      "vault.reveal",
+      "vault.copy",
+      "vault.fill.native"
     ]
   },
   "watches": {
@@ -57,7 +63,11 @@
       "vault.device-paired",
       "vault.device-revoked",
       "vault.filled",
-      "vault.restored"
+      "vault.restored",
+      "vault.revealed",
+      "vault.copied",
+      "vault.locked",
+      "vault.unlocked"
     ]
   },
   "shows": {
@@ -66,6 +76,13 @@
     ],
     "cli": [
       "vault"
+    ],
+    "capsule": [
+      "results:vault.list",
+      "action:vault.fill.native",
+      "action:vault.copy",
+      "action:vault.totp",
+      "action:vault.lock"
     ]
   },
   "needs": {},

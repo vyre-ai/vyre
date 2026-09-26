@@ -18,6 +18,7 @@ import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
+import { register as registerSurfaces } from "./tools/surfaces.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -121,8 +122,11 @@ export default {
       obj({ items: { type: "array", items: obj({ name: str, env: str, field: str }, ["name"]) } }, ["items"]),
       (input, { caller }) => vault.inject(input, caller, envName));
 
-    tool("vault.totp", ["cli", "local", "module"], "The current one-time code for a login with a TOTP seed.",
-      obj({ name: str }, ["name"]), (input, { caller }) => vault.code(input, caller));
+    // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
+    ctx.tool("vault.totp", { callers: ["cli", "local", "module"], description: "The current one-time code for a login with a TOTP seed.",
+      input: obj({ name: str, session: str }, ["name"]),
+      presence: { summary: async ({ name }) => `Show the one-time code of "${name}"`, skip: ({ input }) => Boolean(vault.sessions?.ok(input.session, input.name)) },
+      run: async ({ name }, { caller }) => { const r = await vault.code({ name }, caller); return { code: r.code, period: r.period ?? 30, remaining: r.remaining }; } });
 
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),
@@ -167,9 +171,12 @@ export default {
     tool("vault.offboard", ["cli", "local", "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller));
 
+    const surfaces = registerSurfaces({ ctx, vault });
+
     return {
       async stop() {
         vault.lock();
+        await surfaces.stop();
         if (listener) await listener.close();
         if (fillListener) await fillListener.close();
       },
