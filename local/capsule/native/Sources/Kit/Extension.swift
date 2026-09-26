@@ -46,9 +46,29 @@ public protocol CapsuleExtension: AnyObject {
     /// the `@` (may be empty, may hold spaces). Called on every keystroke while `@` is being
     /// typed: answer from memory. Picked, a target becomes the chip, and Enter calls send.
     func mentions(matching query: String) -> [MentionTarget]
+    /// The same question with where it is asked from. With no chip, `context.parent` is nil and
+    /// every extension is asked. With a chip from this extension that `nests` (an app, "WhatsApp"),
+    /// a second `@` asks this extension alone, with the chip as `context.parent`, for what is inside
+    /// it (contacts, channels); Vyre's own agents, projects and sessions are not mixed in. The
+    /// default answers the flat question and nothing inside a chip, so an extension written before
+    /// nesting keeps working unchanged.
+    func mentions(matching query: String, context: MentionContext) -> [MentionTarget]
+    /// Newer rows for the same words, when memory was not the whole answer (a contact list read
+    /// from the app on first use). Called once, about 120 ms after the last keystroke, only while
+    /// the Capsule is shown; cancelled when the words change or the Capsule hides. Return nil when
+    /// there is nothing new (the default); a list replaces this extension's rows if the words are
+    /// still the same when it lands. Never polled.
+    func refreshMentions(matching query: String, context: MentionContext) async -> [MentionTarget]?
+    /// A target became the chip. An app chip can start reading its contacts into memory here, so
+    /// the next `@` answers from memory. Called once per pick. The default does nothing.
+    func mentionPicked(_ target: MentionTarget, context: MentionContext)
     /// The user sent `text` to one of your targets. Say what happened in words; never report a
     /// send that did not happen as done.
     func send(_ text: String, to target: MentionTarget, query: Query) async -> ActionOutcome
+    /// The same, with the chip `target` was picked under ("WhatsApp" for "juno"), or nil for a
+    /// target picked on its own. The Capsule calls this one; the default forwards to
+    /// `send(_:to:query:)`, so implement whichever needs less.
+    func send(_ text: String, to target: MentionTarget, in parent: MentionTarget?, query: Query) async -> ActionOutcome
 
     /// The side panel for a row, or nil to leave it to the Capsule. Called only when the row's
     /// `panel` names this extension, or when the extension asked to show one (host.showPanel).
@@ -71,6 +91,14 @@ public extension CapsuleExtension {
     func sidePanel(for item: ResultItem?) -> AnyView? { nil }
     func mentions(matching query: String) -> [MentionTarget] { [] }
     func send(_ text: String, to target: MentionTarget, query: Query) async -> ActionOutcome { .failed("\(target.label) cannot take messages yet.") }
+    func mentions(matching query: String, context: MentionContext) -> [MentionTarget] {
+        context.parent == nil ? mentions(matching: query) : []
+    }
+    func refreshMentions(matching query: String, context: MentionContext) async -> [MentionTarget]? { nil }
+    func mentionPicked(_ target: MentionTarget, context: MentionContext) {}
+    func send(_ text: String, to target: MentionTarget, in parent: MentionTarget?, query: Query) async -> ActionOutcome {
+        await send(text, to: target, query: query)
+    }
     func handle(chord: KeyShortcut, query: Query) -> Bool { false }
     func capsuleWillShow(front: FrontApp?) {}
     func capsuleDidHide() {}
@@ -114,9 +142,28 @@ public struct MentionTarget: Sendable, Equatable {
     public var icon: IconSpec
     /// Where the words go, shown in the bar before Enter ("Notes on this Mac", "Slack").
     public var sendsTo: String
-    public init(id: String, label: String, sub: String = "", icon: IconSpec = .symbol("app"), sendsTo: String) {
+    /// True for a target that holds others (an app holding contacts): picked, it is a chip under
+    /// which a second `@` asks the same extension for its children. False for a leaf, the default.
+    public var nests: Bool
+    /// For a child, the id of the target it sits under ("whatsapp" for "juno"), or nil. The
+    /// Capsule does not read it; it is there so an extension can tell its own rows apart.
+    public var parentID: String?
+    public init(id: String, label: String, sub: String = "", icon: IconSpec = .symbol("app"), sendsTo: String,
+                nests: Bool = false, parentID: String? = nil) {
         self.id = id; self.label = label; self.sub = sub; self.icon = icon; self.sendsTo = sendsTo
+        self.nests = nests; self.parentID = parentID
     }
+}
+
+/// Where an `@` is being typed: after nothing, or inside a chip that nests.
+public struct MentionContext: Sendable, Equatable {
+    /// The current chip, when it belongs to the extension being asked and nests; nil otherwise.
+    public var parent: MentionTarget?
+    /// The id of the extension the chip belongs to ("whatsapp"), or nil when there is no chip.
+    public var extensionID: String?
+    public init(parent: MentionTarget? = nil, extensionID: String? = nil) { self.parent = parent; self.extensionID = extensionID }
+    /// No chip: every extension is asked, as before nesting.
+    public static let top = MentionContext()
 }
 
 /// An open stream: JSON and binary frames out, close when done.

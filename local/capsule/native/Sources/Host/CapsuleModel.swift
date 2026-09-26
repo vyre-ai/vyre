@@ -35,15 +35,25 @@ public final class CapsuleModel: ObservableObject {
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
     @Published public var target: VyreCandidate? { didSet { if target != oldValue { search() } } }
+    /// The outer chip when `target` was picked inside it: WhatsApp for "WhatsApp › juno". Set
+    /// before `target`, so the search that follows sees both. Nil for a one-level chip.
+    @Published public internal(set) var targetParent: VyreCandidate?
     public internal(set) var catalog = VyreCatalog.empty
     /// What extensions add (ExtensionHost.load): rows, named commands, and side panels.
     var extensionProviders: [ResultProvider] = []
     var extensionCommands: [CapsuleCommand] = []
     var panelFor: ((ResultItem?) -> AnyView?)?
-    /// Extension `@` targets for the words, and the send to one (ExtensionHost).
-    var extensionMentions: ((String) -> [(VyreCandidate, MentionTarget)])?
-    var sendToExtension: ((String, VyreCandidate, Query) async -> ActionOutcome)?
+    /// Extension `@` targets for the words (inside a nesting chip when one is given), their slower
+    /// second answer, the pick, and the send to one with its chip (ExtensionHost).
+    var extensionMentions: ((String, VyreCandidate?) -> [ExtensionMention])?
+    var extensionRefresh: ((String, VyreCandidate?) async -> [String: [ExtensionMention]])?
+    var extensionPicked: ((VyreCandidate, VyreCandidate?) -> Void)?
+    var sendToExtension: ((String, VyreCandidate, VyreCandidate?, Query) async -> ActionOutcome)?
     private var appTargets: [String: MentionTarget] = [:]
+    /// Rows a refreshMentions brought, per extension, for one `@` query (`key`). Used while the box
+    /// still says those words; forgotten on the next different words.
+    private var refreshed: (key: String, rows: [String: [ExtensionMention]])?
+    private var mentionRefresh: Task<Void, Never>?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 
@@ -97,13 +107,14 @@ public final class CapsuleModel: ObservableObject {
         frecency.flush()
         vyred.follower.setShown(false)
         token += 1
+        mentionRefresh?.cancel(); mentionRefresh = nil
         confirming = nil
     }
 
     /// A fresh open starts with an empty box, unless a reply is still streaming.
     public func reset() {
         if let r = reply, !r.finished { return }
-        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; target = nil
+        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
         replySub?.cancel(); replySub = nil
     }
 
@@ -121,16 +132,16 @@ public final class CapsuleModel: ObservableObject {
         partial["calc"] = nil; partial["commands"] = nil; partial["ext-commands"] = nil
         let q = Query(text, front: front)
         // `@` being typed: the list is what it can name, nothing else, and memory stays quiet.
-        if target == nil, let m = mentionQuery {
+        // Inside a nesting chip it is only what that chip holds (mentionQuery says when).
+        if let m = mentionQuery {
             recallTask?.cancel(); memory = nil
-            let (found, _) = mentionCandidates(m)
-            let rows = found.map(candidateItem)
-            groups = rows.isEmpty ? [] : [Group(section: .vyre, items: rows)]
-            selected = 0
-            if rows.isEmpty { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start it with vyre up." }
-            searchSessions(m, token: t)
+            if refreshed?.key != mentionKey(m) { refreshed = nil }
+            listMentions(m, keep: false)
+            if nestingChip == nil { searchSessions(m, token: t) }
+            refreshMentions(m, token: t)
             return
         }
+        mentionRefresh?.cancel(); mentionRefresh = nil
         if target != nil {
             recallTask?.cancel(); memory = nil
             groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: [askItem(q)])]
@@ -220,33 +231,93 @@ public final class CapsuleModel: ObservableObject {
     // MARK: @ names
 
     /// What follows a leading `@`, spaces and all ("@computer use settings"), or an `@` being
-    /// typed mid-text; nil when no `@` is being typed or a destination is already picked.
+    /// typed mid-text; nil when no `@` is being typed or a destination is already picked. The one
+    /// exception is a one-level chip that nests (an app): an `@` after it names what is inside.
     var mentionQuery: String? {
-        guard target == nil else { return nil }
+        guard target == nil || nestingChip != nil else { return nil }
         if text.hasPrefix("@") { return String(text.dropFirst()) }
         return Route.mention(text).completing
+    }
+
+    /// The chip, when it is an extension's target that holds others and nothing is picked inside
+    /// it yet. A second `@` then asks only its extension.
+    var nestingChip: VyreCandidate? {
+        guard let c = target, targetParent == nil, c.kind == .app, appTargets[c.id]?.nests == true else { return nil }
+        return c
+    }
+
+    /// The icon an extension gave its target (the chip draws it), or nil for Vyre's own.
+    func mentionIcon(_ c: VyreCandidate) -> IconSpec? { c.kind == .app ? appTargets[c.id]?.icon : nil }
+
+    /// The `@` list for the words: the rows, then a line when there are none. `keep` holds the
+    /// selected row when the list is drawn again for the same words (a refresh landed).
+    func listMentions(_ m: String, keep: Bool) {
+        let was = keep ? current?.id : nil
+        let (found, _) = mentionCandidates(m)
+        let rows = found.map(candidateItem)
+        groups = rows.isEmpty ? [] : [Group(section: .vyre, items: rows)]
+        selected = was.flatMap { id in flat.firstIndex { $0.id == id } } ?? 0
+        if !rows.isEmpty { line = nil }
+        else if let chip = nestingChip { line = "Nothing called that in \(chip.label)." }
+        else { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start it with vyre up." }
     }
 
     /// Candidates for the `@` words, and the words left over as the message. The whole text is
     /// tried first; then fewer words, so "@juno rebuild the menu" finds juno with a message.
     func mentionCandidates(_ q: String) -> ([VyreCandidate], String) {
-        let all = withApps(Route.complete(q, catalog), q)
+        let all = named(q)
         if !all.isEmpty || !q.contains(" ") { return (liveFirst(all), "") }
         let words = q.split(separator: " ", omittingEmptySubsequences: true)
         for n in stride(from: words.count - 1, through: 1, by: -1) {
             let sub = words[0..<n].joined(separator: " ")
-            let found = withApps(Route.complete(sub, catalog), sub)
+            let found = named(sub)
             if !found.isEmpty { return (liveFirst(found), words[n...].joined(separator: " ")) }
         }
         return ([], "")
     }
 
+    /// Everything the words can name: Vyre's own and the extensions', or inside a nesting chip
+    /// only what its extension holds.
+    private func named(_ q: String) -> [VyreCandidate] {
+        nestingChip == nil ? withApps(Route.complete(q, catalog), q) : withApps([], q)
+    }
+
     /// Vyre's own candidates, then what extensions name for the same words (apps come after
-    /// agents, projects and sessions, and never push them out of the list).
+    /// agents, projects and sessions, and never push them out of the list). An extension whose
+    /// refreshMentions answered for these same words shows that answer instead of its first one.
     func withApps(_ found: [VyreCandidate], _ q: String) -> [VyreCandidate] {
-        guard let ext = extensionMentions?(q), !ext.isEmpty else { return found }
-        for (c, t) in ext { appTargets[c.id] = t }
-        return found + ext.map(\.0).prefix(max(0, 9 - found.count))
+        let parent = nestingChip
+        guard var ext = extensionMentions?(q, parent) else { return found }
+        if let r = refreshed, r.key == mentionKey(q) {
+            var order: [String] = []
+            for e in ext.map(\.ext) + r.rows.keys.sorted() where !order.contains(e) { order.append(e) }
+            ext = order.flatMap { e in r.rows[e] ?? ext.filter { $0.ext == e } }
+        }
+        if ext.isEmpty { return found }
+        for x in ext { appTargets[x.candidate.id] = x.target }
+        return found + ext.map(\.candidate).prefix(max(0, 9 - found.count))
+    }
+
+    /// Which `@` question the words are: the same words inside another chip are another question.
+    private func mentionKey(_ q: String) -> String { (nestingChip?.id ?? "") + "\u{0}" + q }
+
+    /// Ask the extensions again, slower, once the typing pauses (about 120 ms): refreshMentions.
+    /// Cancelled by the next keystroke (a new search) and by hide; an answer for older words is
+    /// dropped. Nothing is asked again unless the user types.
+    func refreshMentions(_ m: String, token t: Int) {
+        mentionRefresh?.cancel(); mentionRefresh = nil
+        guard let refresh = extensionRefresh else { return }
+        let parent = nestingChip, key = mentionKey(m)
+        mentionRefresh = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard let self, !Task.isCancelled, t == self.token else { return }
+            let rows = await refresh(m, parent)
+            guard !Task.isCancelled, t == self.token, !rows.isEmpty, self.mentionQuery == m else { return }
+            var now = self.refreshed?.key == key ? self.refreshed!.rows : [:]
+            now.merge(rows) { $1 }
+            self.refreshed = (key, now)
+            self.listMentions(m, keep: true)
+        }
     }
 
     /// A session active in the last 15 minutes that vyred does not run is live in a terminal.
@@ -298,8 +369,10 @@ public final class CapsuleModel: ObservableObject {
                           }])
     }
 
-    /// The `@` row was picked: it becomes the chip, and the `@...` leaves the box.
+    /// The `@` row was picked: it becomes the chip, and the `@...` leaves the box. Picked inside a
+    /// nesting chip, it is the chip's child ("WhatsApp › juno"). An extension hears of its pick.
     func pick(_ c: VyreCandidate) -> ActionOutcome {
+        let parent = nestingChip
         var rest: String
         if text.hasPrefix("@") {
             // The words after the name, if the name was only the first words ("@juno rebuild ...").
@@ -311,18 +384,26 @@ public final class CapsuleModel: ObservableObject {
             if m.start >= 0 { chars.removeSubrange(m.start..<m.end) }
             rest = String(chars)
         }
+        if c.kind == .app { extensionPicked?(c, parent) }
+        targetParent = parent
         target = c
         return .replaceQuery(rest.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// Delete on an empty box: the child of a two-level chip goes first, then the chip.
+    func dropChip() {
+        if let p = targetParent { targetParent = nil; target = p } else { target = nil }
     }
 
     func askItem(_ q: Query) -> ResultItem {
         let words = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let c = target {
+            let p = targetParent
             let to = c.kind == .project ? "a new thread in \(c.label)" : c.label
             let via = c.kind == .app ? (appTargets[c.id]?.sendsTo ?? c.label) : c.label
             return ResultItem(id: "send", kind: "ask", title: "Send to \(to)", subtitle: words, icon: .mark, section: .vyre, score: 0,
                               actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
-                                  await self?.send(words, to: c) ?? .failed("The Capsule closed.")
+                                  await self?.send(words, to: c, in: p) ?? .failed("The Capsule closed.")
                               }], sendsTo: via)
         }
         return ResultItem(id: "ask", kind: "ask", title: "Ask", subtitle: words, icon: .mark, section: .vyre, score: 0,
@@ -467,7 +548,8 @@ public final class CapsuleModel: ObservableObject {
         }
     }
 
-    func send(_ words: String, to c: VyreCandidate) async -> ActionOutcome {
+    /// `parent` is the outer chip of a two-level one (only extensions' targets have one).
+    func send(_ words: String, to c: VyreCandidate, in parent: VyreCandidate? = nil) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type what to send first.") }
         asked = words
         askedMemory = nil
@@ -477,7 +559,7 @@ public final class CapsuleModel: ObservableObject {
             // An extension's target: it does the sending and says what happened. No reply view.
             asked = nil; pending = false
             guard let send = sendToExtension else { return .failed("\(c.label) is not there any more.") }
-            return await send(words, c, Query(words, front: front))
+            return await send(words, c, parent, Query(words, front: front))
         case .thread:
             reply = VyState.reply(c.id)
             follow { c.id }

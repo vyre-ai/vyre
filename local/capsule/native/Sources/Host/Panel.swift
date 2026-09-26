@@ -191,8 +191,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             if !model.text.isEmpty { model.text = ""; return true }
             hide(); return true
-        case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip
-            model.target = nil; return true
+        case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip (a child first)
+            model.dropChip(); return true
         case 48 where model.current?.kind == "mention": // tab picks the @ row
             model.run(); return true
         case 125: model.move(1); return true   // down
