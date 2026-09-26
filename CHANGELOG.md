@@ -6,6 +6,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Install (ADR 0008)
 
+- The npm package carries `scripts/install-box.sh`, which `vyre box add` copies to the server so
+  the box files match the Mac's version, and `docs/JOURNEY.md`. `release-check.sh` checks the
+  installer is in the tarball.
 - `vyre box add` approves its own pairing: the Mac asks `link.pair`, and the code is approved as
   `vyre link approve` on the box over the SSH connection that just proved the person owns it. A
   box that already finished onboarding skips the link, tunnel and browser. Onboarding finished

@@ -69,10 +69,10 @@ tgz=$work/$name
 tar -tzf "$tgz" | sed 's|^package/||' >"$work/files"
 ok "$name, $(wc -l <"$work/files" | tr -d ' ') files, $(du -k "$tgz" | cut -f1) KB"
 for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugin/plugin.json \
-  harness/.mcp.json harness/hooks/hooks.json harness/mcp/server.js deck/index.html LICENSE package.json; do
+  harness/.mcp.json harness/hooks/hooks.json harness/mcp/server.js deck/index.html scripts/install-box.sh LICENSE package.json; do
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
-ok "has the bin, core, the Harness plugin and the Deck"
+ok "has the bin, core, the Harness plugin, the Deck and the box installer"
 if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design|work)/|^local/capsule/(dist|bin)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
   fail "the tarball carries the files above, which it should not"
 fi
