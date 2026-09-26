@@ -119,9 +119,10 @@ extension BrandBar where Trailing == EmptyView {
 
 /// The person's circle at the right of Now's head: it opens Settings.
 struct Avatar: View {
+    let name: String?
     let host: String
     var body: some View {
-        Text(String(host.first ?? "v").uppercased())
+        Text(initials(name: name, host: host))
             .vyre(.label)
             .foregroundStyle(Color.bone)
             .frame(width: 32, height: 32)

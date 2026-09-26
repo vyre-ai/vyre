@@ -134,3 +134,18 @@ func byteSize(_ n: Double?) -> String {
     guard let n else { return "" }
     return ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file)
 }
+
+/// "AB" from "Alex Brandt", "A" from "alex"; the host's first letter when there is no name.
+func initials(name: String?, host: String) -> String {
+    let words = (name ?? "").split(whereSeparator: { $0.isWhitespace }).prefix(2)
+    let s = words.compactMap(\.first).map(String.init).joined()
+    return (s.isEmpty ? String(host.first ?? "v") : s).uppercased()
+}
+
+/// A model's name without its maker's: "sonnet-4-5" for "claude-sonnet-4-5". The phone names
+/// the assistant and the agents, never the model's maker (a user rule).
+func modelLabel(_ m: String?) -> String? {
+    guard var m, !m.isEmpty else { return nil }
+    for p in ["claude-", "claude_", "claude"] where m.lowercased().hasPrefix(p) { m = String(m.dropFirst(p.count)); break }
+    return m.isEmpty ? nil : m
+}

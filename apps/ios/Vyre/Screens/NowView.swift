@@ -47,7 +47,7 @@ struct NowView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
             BrandBar {
-                Button { path.append(.settings) } label: { Avatar(host: app.address?.host ?? "v") }.buttonStyle(.plain)
+                Button { path.append(.settings) } label: { Avatar(name: app.ownerName, host: app.address?.host ?? "v") }.buttonStyle(.plain)
             }
             PageHead(eyebrow: todayLabel(), title: title, sub: sub)
         }

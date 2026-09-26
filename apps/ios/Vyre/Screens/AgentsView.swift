@@ -28,7 +28,7 @@ struct AgentsHome: View {
                             let name = a["name"].text
                             NavigationLink(value: Dest.agent(name)) {
                                 ListRow(title: name,
-                                        detail: [a["kind"].string == "assistant" ? "Assistant" : nil, a["doing"].string, a["model"].string].compactMap { $0 }.joined(separator: " · "),
+                                        detail: [a["kind"].string == "assistant" ? "Assistant" : nil, a["doing"].string, modelLabel(a["model"].string)].compactMap { $0 }.joined(separator: " · "),
                                         note: spend(name),
                                         dot: statusDot(a["status"].string == "new" ? nil : a["status"].string))
                             }
@@ -116,7 +116,7 @@ struct AgentDetailView: View {
     private var facts: some View {
         VStack(alignment: .leading, spacing: 0) {
             Hairline()
-            pair("Model", agent["model"].string)
+            pair("Model", modelLabel(agent["model"].string))
             pair("Paid by", agent["auth"].string)
             pair("Projects", agent["projects"].string == "*" ? "all" : agent["projects"].strings.joined(separator: ", "))
             pair("Computer", agent["computer"].bool == true ? "yes" : "no")

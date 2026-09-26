@@ -117,7 +117,7 @@ struct Transcript: Equatable, Sendable {
         for (i, t) in turns.enumerated() {
             let text = t["text"].text
             if text.isEmpty { continue }
-            if t["role"].string == "user" { entries.append(.said(key: "r\(i)", text: text, surface: nil)) }
+            if t["role"].string == "user" { entries.append(.said(key: "r\(i)", text: text, surface: "recorded")) }
             else { entries.append(.reply(message: "r\(i)", text: text, done: true)) }
         }
     }

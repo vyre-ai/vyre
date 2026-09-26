@@ -181,7 +181,7 @@ struct ThreadView: View {
 
     private var head: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
-            let bits = [record["agent"].string, record["project"].string, record["model"].string].compactMap { $0 }
+            let bits = [record["agent"].string, record["project"].string, modelLabel(record["model"].string)].compactMap { $0 }
             if !bits.isEmpty { Text(bits.joined(separator: " · ")).vyre(.codeSmall).foregroundStyle(Color.ash) }
             if offlineCopy { Engraved("Offline copy") }
             if recorded { Text("Recorded. Nothing is running it; a message resumes it if the box can.").vyre(.small).foregroundStyle(Color.stone) }
@@ -214,9 +214,12 @@ struct ThreadView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.panel))
         case .reply(_, let t, let done):
-            Text(markdown(t) + (done ? "" : " ")).vyre(.body).foregroundStyle(Color.bone)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Engraved(replier)
+                Text(markdown(t) + (done ? "" : " ")).vyre(.body).foregroundStyle(Color.bone)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         case .notice(_, let t):
             HStack(alignment: .firstTextBaseline, spacing: Space.s) { Engraved("vyre"); Text(t).vyre(.small).foregroundStyle(Color.stone) }
         case .tools(_, let lines):
@@ -256,12 +259,18 @@ struct ThreadView: View {
         }
     }
 
+    /// Who typed a turn: "you" for any person's surface, an agent by its name, and the assistant
+    /// for a module's prompt. The model is never named (a user rule).
     private func who(_ surface: String?) -> String {
-        guard let s = surface else { return "Typed" }
-        if s == ThreadView.surface { return "You, this phone" }
+        guard let s = surface else { return app.assistantLabel }
         if s.hasPrefix("agent:") { return String(s.dropFirst(6)) }
-        if s.hasPrefix("tailnet:") { return "You, another device" }
-        return "You, \(s)"
+        return "you"
+    }
+
+    /// Who answers: the thread's agent, else the assistant ("Vyre" when the box names none).
+    private var replier: String {
+        if let a = record["agent"].string, !a.isEmpty { return a }
+        return app.assistantLabel
     }
 
     private func markdown(_ t: String) -> AttributedString {

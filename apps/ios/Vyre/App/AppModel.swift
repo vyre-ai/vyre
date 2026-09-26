@@ -69,6 +69,13 @@ final class AppModel {
     /// Vault values are on screen: blur the app when it leaves the front.
     var secretOnScreen = false
     var inFront = true
+    /// The owner's name from `system.info`'s `owner.name`, when the box carries it.
+    private(set) var ownerName: String?
+    /// The assistant's name: the `agents.list` entry of kind "assistant", else `system.info`'s.
+    private(set) var assistantName: String?
+
+    /// Who answers in a transcript when no agent is named: the assistant, never the model.
+    var assistantLabel: String { assistantName ?? "Vyre" }
 
     init() {
         theme = Theme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .dark
@@ -145,7 +152,16 @@ final class AppModel {
             if hub.lastEventId != nil { since = nil }
             hub.start(client: client, since: since)
             await needs.refresh()
+            await loadNames()
         }
+    }
+
+    /// The owner's and the assistant's names. A box without `owner` or an assistant keeps nil.
+    func loadNames() async {
+        let info = try? await call("system.info")
+        ownerName = info?["owner"]["name"].string.flatMap { $0.isEmpty ? nil : $0 }
+        let listed = (try? await call("agents.list"))?.list.first { $0["kind"].string == "assistant" }?["name"].string
+        assistantName = listed ?? info?["assistant"]["name"].string ?? info?["assistant"].string
     }
 
     /// Left the screen: close the stream within a second and end any presence session.

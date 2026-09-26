@@ -17,4 +17,14 @@ final class RouteTests: XCTestCase {
         XCTAssertEqual(Tab.allCases, [.now, .projects, .chat, .find, .agents])
         XCTAssertEqual(Theme.allCases.first, .dark)
     }
+
+    func testInitialsAndModelLabels() {
+        XCTAssertEqual(initials(name: "alex", host: "vyre.example.ts.net"), "A")
+        XCTAssertEqual(initials(name: "Alex Brandt", host: "x"), "AB")
+        XCTAssertEqual(initials(name: nil, host: "northwind.ts.net"), "N")
+        XCTAssertEqual(initials(name: "  ", host: "kit"), "K")
+        XCTAssertEqual(modelLabel("claude-sonnet-4-5"), "sonnet-4-5")
+        XCTAssertEqual(modelLabel("haiku"), "haiku")
+        XCTAssertNil(modelLabel(nil))
+    }
 }
