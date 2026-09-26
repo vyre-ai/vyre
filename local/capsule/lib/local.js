@@ -17,7 +17,8 @@ import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 
 /**
- * @typedef {{ kind: "app"|"file"|"folder"|"setting", id: string, label: string, sub: string, last: number, target: string, score?: number }} Result
+ * @typedef {{ kind: "app"|"file"|"folder"|"setting", id: string, label: string, sub: string, last: number, target: string, score?: number,
+ *   used?: number, uti?: string, repo?: boolean, fileKind?: string }} Result
  * @typedef {(id: string, query: string) => number} Boost
  */
 
@@ -182,42 +183,138 @@ export function mdQuery(q) {
   return `kMDItemDisplayName == "*${safe}*"cd`;
 }
 
-/** Paths no one looks for from a launcher: library, caches, dependencies, VCS, app internals, dot-dirs. */
+// Directories whose insides no one looks for from a launcher: libraries, caches, dependencies,
+// build output, VCS, SDKs. mdfind cannot filter on the path (kMDItemPath is not in the index, so
+// `kMDItemPath != "*x*"` is always true and `==` always false), so this runs on each line it prints.
+const NOISE_DIRS = /\/(Library|node_modules|\.git|\.Trash|Caches?|__pycache__|DerivedData|\.cache|\.next|vendor|site-packages|dist-packages|third[_-]party|[^/]+-sdk|build|dist|target|out|Pods|\.?venv|coverage|tmp)(\/|$)/;
+
+/** Paths no one looks for from a launcher: library, caches, dependencies, VCS, build output, SDKs, app internals, dot-dirs. */
 export function noise(p) {
-  return /\/(Library|node_modules|\.git|\.Trash|Caches?|__pycache__|DerivedData|\.cache)(\/|$)/.test(p)
-    || /\.(app|framework|bundle|photoslibrary)(\/|$)/i.test(p)
+  return NOISE_DIRS.test(p)
+    || /\.(app|framework|bundle|photoslibrary|xcodeproj|xcworkspace)(\/|$)/i.test(p)
     || /\/\.[^/]/.test(p);
 }
 
+// What a file is, by extension when Spotlight did not say. Documents are what people open from a
+// launcher; source files are what their editor opens.
+const DOC_EXT = new Set(["pdf", "doc", "docx", "pages", "rtf", "txt", "md", "odt", "key", "ppt", "pptx", "numbers", "xls", "xlsx",
+  "csv", "tsv", "png", "jpg", "jpeg", "heic", "gif", "tif", "tiff", "webp", "svg", "psd", "ai", "sketch", "fig", "mov", "mp4",
+  "m4a", "mp3", "wav", "epub", "eml", "zip", "dmg", "vcf", "ics"]);
+const CODE_EXT = new Set(["js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "rb", "go", "rs", "java", "kt", "swift", "c", "h", "cc", "cpp",
+  "hpp", "m", "cs", "php", "sh", "zsh", "json", "yaml", "yml", "toml", "lock", "xml", "html", "css", "scss", "sql", "map", "d", "plist"]);
+const DOC_UTI = /^(com\.adobe\.pdf|public\.(image|jpeg|png|heic|tiff|movie|audio|mpeg-4|plain-text|rtf|comma-separated-values-text|presentation|spreadsheet)|com\.apple\.(iwork|keynote|pages|numbers)|org\.openxmlformats|com\.microsoft\.(word|excel|powerpoint)|net\.daringfireball\.markdown)/;
+const CODE_DIR = /\/(src|lib|app|components)\//;
+const FILE_EXT = [...DOC_EXT, ...CODE_EXT].filter(e => e.length >= 2);
+
+/** The extension of a name, lowercased, or "". */
+export const extOf = name => { const m = /\.([a-z0-9]{1,8})$/i.exec(String(name || "")); return m ? m[1].toLowerCase() : ""; };
+
 /**
- * Files and folders whose name contains `query`, via `mdfind` (never a shell). Reads lines only
- * until `limit` good results arrive, then kills the process; also killed on `signal` or after
- * `timeoutMs`, returning what it had by then.
+ * Does the box read as a filename: an extension ("q3.xl", "notes.md"), a slash, or a known
+ * extension as the last word ("invoice pdf")? Then more file rows are worth showing.
+ */
+export function filenameLike(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (q.includes("/")) return true;
+  const dot = /\.([a-z0-9]{1,5})$/.exec(q);
+  if (dot && FILE_EXT.some(e => e.startsWith(dot[1]))) return true;
+  const last = /\s([a-z0-9]{2,5})$/.exec(q);
+  return Boolean(last && FILE_EXT.includes(last[1]));
+}
+
+/**
+ * How much a launcher user wants this file row for `query`, or 0 to drop it. The name match comes
+ * first: a name start or word start keeps its tier, a substring alone is worth little. Then taste:
+ * a document, or a folder sitting in Documents, Desktop or Downloads, is lifted; anything inside a
+ * code repository is pushed below the documents; what the user opened lately rises. Scaled so a
+ * file never beats an app matched as well by name: "calcu" is the Calculator before Calculations.xlsx.
+ * @param {{ label: string, kind: string, target?: string, sub?: string, used?: number, last?: number, uti?: string, repo?: boolean, fileKind?: string }} r
+ * @param {string} query @param {{ now?: number, home?: string }} [opts]
+ */
+export function taste(r, query, { now = Date.now(), home = HOME } = {}) {
+  const ext = extOf(r.label);
+  const stem = ext ? r.label.slice(0, -(ext.length + 1)) : r.label;
+  let m = Math.max(match(query, r.label), match(query, stem));
+  // "invoice pdf": the last word names the type, the rest the name.
+  const typed = /^(.*\S)\s+([a-z0-9]{2,5})$/i.exec(String(query || "").trim());
+  if (typed && ext && typed[2].toLowerCase() === ext) m = Math.max(m, match(typed[1], stem));
+  if (m < 0.5) return 0;
+  let s = m >= 0.8 ? m * 0.85 : m * 0.5;
+  const p = String(r.target || "");
+  const dir = p ? path.dirname(p) : "";
+  const isFolder = r.kind === "folder" || r.fileKind === "folder" || r.fileKind === "dir";
+  const repo = r.repo || CODE_DIR.test(p);
+  if (repo) s -= 0.3;
+  else if (isFolder) { if ([home + "/Documents", home + "/Desktop", home + "/Downloads", home].includes(dir)) s += 0.05; }
+  else if (DOC_UTI.test(r.uti || "") || DOC_EXT.has(ext)) s += 0.05;
+  else if (CODE_EXT.has(ext)) s -= 0.1;
+  const age = now - (r.used || 0);
+  if (r.used) s += age < 86_400_000 ? 0.05 : age < 7 * 86_400_000 ? 0.04 : age < 30 * 86_400_000 ? 0.025 : age < 365 * 86_400_000 ? 0.01 : 0;
+  else if (r.last && now - r.last < 7 * 86_400_000) s += 0.01;
+  return s > 0 ? s : 0; // a repo file matched only mid-name is not shown at all
+}
+
+/** "path   kMDItemLastUsedDate = 2026-08-26 15:02:24 +0000   kMDItemContentType = public.png" -> its parts. */
+export function mdLine(line) {
+  const i = line.indexOf("   kMDItem");
+  if (i < 0) return { path: line, used: 0, uti: "" };
+  const rest = line.slice(i);
+  const d = /kMDItemLastUsedDate = (\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) ([+-]\d{4})/.exec(rest);
+  const u = /kMDItemContentType = ([\w.-]+)/.exec(rest);
+  const used = d ? Date.parse(`${d[1]}T${d[2]}${d[3].slice(0, 3)}:${d[3].slice(3)}`) || 0 : 0;
+  return { path: line.slice(0, i), used, uti: u ? u[1] : "" };
+}
+
+/**
+ * Whether `dir` or a parent below `stop` holds a `.git`, cached per directory for this call.
+ * @param {string} dir @param {string} stop @param {Map<string, Promise<boolean>>} cache @param {(p: string) => Promise<unknown>} exists
+ */
+function inRepo(dir, stop, cache, exists) {
+  if (!dir || dir === stop || dir === "/" || !dir.startsWith(stop + "/")) return Promise.resolve(false);
+  let hit = cache.get(dir);
+  if (!hit) {
+    hit = exists(path.join(dir, ".git")).then(() => true, () => inRepo(path.dirname(dir), stop, cache, exists));
+    cache.set(dir, hit);
+  }
+  return hit;
+}
+
+/**
+ * Files and folders whose name contains `query`, via `mdfind` (never a shell), with when each was
+ * last opened and its content type from the same call (`-attr` costs nothing measurable). Reads
+ * lines only until `limit` good candidates arrive, then kills the process; also killed on `signal`
+ * or after `timeoutMs`, returning what it had by then. Candidates come back unranked: `taste()`
+ * orders them.
  * @param {string} query
  * @param {{ limit?: number, onlyin?: string, timeoutMs?: number, signal?: AbortSignal, run?: typeof spawn,
- *   stat?: (p: string) => Promise<{ isDirectory(): boolean, mtimeMs: number }>, home?: string, maxLines?: number }} [opts]
+ *   stat?: (p: string) => Promise<{ isDirectory(): boolean, mtimeMs: number }>, exists?: (p: string) => Promise<unknown>,
+ *   home?: string, maxLines?: number }} [opts]
  * @returns {Promise<Result[]>}
  */
-export function files(query, { limit = 8, onlyin = HOME, timeoutMs = 400, signal, run = spawn,
-  stat = p => fs.promises.stat(p), home = HOME, maxLines = 400 } = {}) {
+export function files(query, { limit = 60, onlyin = HOME, timeoutMs = 400, signal, run = spawn,
+  stat = p => fs.promises.stat(p), exists = p => fs.promises.access(p), home = HOME, maxLines = 800 } = {}) {
   const q = String(query || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
   if (q.length < 2 || signal?.aborted) return Promise.resolve([]);
   return new Promise(resolve => {
-    /** @type {string[]} */
-    const paths = [];
+    /** @type {{ path: string, used: number, uti: string }[]} */
+    const rows = [];
+    const seen = new Set();
     let buf = "", lines = 0, done = false;
-    const child = run("/usr/bin/mdfind", ["-onlyin", onlyin, mdQuery(q)], { stdio: ["ignore", "pipe", "ignore"] });
+    const child = run("/usr/bin/mdfind", ["-onlyin", onlyin, "-attr", "kMDItemLastUsedDate", "-attr", "kMDItemContentType", mdQuery(q)],
+      { stdio: ["ignore", "pipe", "ignore"] });
     const finish = () => {
       if (done) return;
       done = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", finish);
       try { child.kill(); } catch {}
-      Promise.all(paths.map(async p => {
+      const repos = new Map();
+      Promise.all(rows.map(async ({ path: p, used, uti }) => {
         try {
           const st = await stat(p);
+          const repo = await inRepo(path.dirname(p), home, repos, exists);
           return /** @type {Result} */ ({ kind: st.isDirectory() ? "folder" : "file", id: `file:${p}`, label: path.basename(p),
-            sub: tilde(path.dirname(p), home), last: Math.round(st.mtimeMs || 0), target: p });
+            sub: tilde(path.dirname(p), home), last: Math.round(st.mtimeMs || 0), target: p, used, uti, repo });
         } catch { return null; } // indexed but gone: Spotlight lags deletes
       })).then(rs => resolve(/** @type {Result[]} */ (rs.filter(Boolean))));
     };
@@ -225,9 +322,11 @@ export function files(query, { limit = 8, onlyin = HOME, timeoutMs = 400, signal
     signal?.addEventListener("abort", finish, { once: true });
     const take = line => {
       if (done || !line || ++lines > maxLines) return lines > maxLines ? finish() : undefined;
-      if (!line.startsWith("/") || noise(line) || paths.includes(line)) return;
-      paths.push(line);
-      if (paths.length >= limit) finish();
+      const row = mdLine(line);
+      if (!row.path.startsWith("/") || noise(row.path) || seen.has(row.path)) return;
+      seen.add(row.path);
+      rows.push(row);
+      if (rows.length >= limit) finish();
     };
     child.stdout?.setEncoding?.("utf8");
     child.stdout?.on("data", chunk => {

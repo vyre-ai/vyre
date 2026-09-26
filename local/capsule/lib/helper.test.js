@@ -38,6 +38,7 @@ process.stdin.on("data", d => {
       }, 20);
     }
     else if (req.op === "clip.write") say({ ok: true, count: 9, wrote: req });
+    else if (req.op === "front") say({ front: mode === "nofront" ? null : { bundle: "com.example.app", pid: 42, name: "Example" } });
     else if (req.op === "contacts") say({ contacts: [{ id: "A1", name: "Ann Lee", org: "", emails: ["ann@example.com"], phones: [] }].slice(0, req.limit) });
   }
 });
@@ -191,6 +192,18 @@ test("helper: watching with no binary does not spin", async () => {
   h.close();
 });
 
+test("helper: front answers the app in front, or null", async t => {
+  const { bin, fakeSpawn } = fake(t);
+  const h = new LocalHelper(bin, { spawn: fakeSpawn, timeoutMs: 2000 });
+  t.after(() => h.close());
+  assert.deepEqual(await h.front(), { bundle: "com.example.app", pid: 42, name: "Example" });
+  const none = fake(t, "nofront");
+  const h2 = new LocalHelper(none.bin, { spawn: none.fakeSpawn, timeoutMs: 2000 });
+  t.after(() => h2.close());
+  assert.equal(await h2.front(), null);
+  assert.equal(await new LocalHelper("/nonexistent/bin/local").front(), null, "not built is null, not a throw");
+});
+
 const REAL = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "local");
 
 test("helper: the real binary defines a word and reports Contacts status", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
@@ -216,6 +229,17 @@ test("helper: the real binary names icon files as icons.js does", { skip: !fs.ex
   if (a.error === "timeout") a = await h.icons([{ key, kind: "app", path: "/System/Applications/Calculator.app" }, { key: "nope", kind: "file", path: "/nonexistent" }], { dir });
   assert.equal(a.icons[key], path.join(dir, iconFile(key)));
   assert.equal(a.icons.nope, null);
+});
+
+test("helper: the real binary names the app in front without asking for anything", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
+  const h = new LocalHelper(REAL, { timeoutMs: 2000 });
+  t.after(() => h.close());
+  const f = await h.front();
+  if (f !== null) {
+    assert.equal(typeof f.bundle, "string");
+    assert.ok(Number.isInteger(f.pid) && f.pid > 0);
+    assert.equal(typeof f.name, "string");
+  }
 });
 
 /** Raw requests to a real `local serve`, for the test-only ops the client does not expose. */

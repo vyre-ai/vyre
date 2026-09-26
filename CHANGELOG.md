@@ -734,6 +734,42 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- A lesson scoped to a project or an agent reads in words on its card, not as an object.
+- An action marked `hide: true` in shows.capsule (the vault's fill) runs with the Capsule out of the
+  way: it hides, waits until the app the user was in is frontmost again, calls, and says the
+  result as a notification.
+- With vyred down, the hidden Capsule looks for it every 3 s doubling to a minute (the event
+  stream's reconnect doubles to 30 s), not every 3 s forever; opening the Capsule looks at once.
+  Perf measured the steady retry at about 0.8% CPU hidden against a 0.2% budget.
+- Modules can offer the Capsule results and actions (`shows.capsule`, SPEC 5.1): `lib/providers.js`
+  reads them from GET /v1/modules, which now carries each module's `shows`. Their results (names
+  only, never a value) rank with the rest on the slow path; Enter runs the first action, → or ⌘K
+  lists the others, each call gets `{...input, id, front}` with the app that was in front when the
+  Capsule opened (from the double-Control line, or `bin/local`'s `front` op for other ways in),
+  and what the module says is shown as it is. A one-time code counts down. This is how the vault's
+  fill, copy, code and lock appear.
+- Proposed lessons wait in the Capsule, quietly: "Vyre proposes: <rule>" joins the waiting list
+  from `learn.lessons {status: "proposed"}` and `lesson.proposed`, leaves on `lesson.learned` or
+  `lesson.retired`, and never turns the dot or the tray Beacon. Accept is `learn.accept`, Decline
+  `learn.retire`. Memory sources show how old they are and how sure memory is.
+- Quick answers start lean (`threads.start {lean: true, append}`): no plugin, tools, MCP servers
+  or settings, about half the cost of a full thread. Watches set from the Capsule use the
+  switchboard's `threads.watch {notify: "capsule"}`, which outlives restarts, and any
+  `thread.watched` meant for the user (the assistant can set one on their behalf) becomes a
+  notification and a report. The Capsule's own filter on the stream stays as the fallback.
+- File results with taste: noise paths are gone (dependencies, SDKs, third-party code, build
+  output, caches, ~/Library, dot-folders), a name start or word start beats a substring, recently
+  used documents, images and folders in Documents, Desktop and Downloads rise, files inside code
+  repos sink, and at most 4 files show (8 when the words look like a file name). On eight real
+  queries, noise rows went from 5 of 30 to none.
+- Files on the box, through this Mac's vyred (`files.search {where: "box"}`), join the list when
+  they land, never delaying the Mac's own; picking one fetches it (`files.fetch`) and opens it.
+- `vyre capsule build --app` signs from the inside out (frameworks, each helper with its own
+  identifier, then the bundle) and fails unless `codesign --verify --deep --strict` passes, so a
+  downloaded app is not reported as damaged.
+- Hidden memory under the 250 MB budget (about 212 to 238 MB, from about 300): the network service
+  and GPU run in the main process and no spare renderer is kept. Warm open stays 18 to 50 ms.
+- Open Glass on an agent with a computer, a thread of one, or `glass box` (from the glass stream).
 - Drive and watch sessions from the Capsule. "watch the intake thread" offers a row per thread it
   could mean; picking one sets a watch (`lib/watch.js`), a filter on the event stream the Capsule
   follows anyway. When the thread finishes, fails, stops or asks, a macOS notification says so and

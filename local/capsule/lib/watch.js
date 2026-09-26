@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * @typedef {{ thread: string, label: string, until: "done"|"asks"|"either", at: number }} Watch
+ * @typedef {{ thread: string, label: string, until: "done"|"asks"|"either", at: number, server?: string|null }} Watch
  * @typedef {{ id: string, thread: string, label: string, why: "finished"|"failed"|"stopped"|"asked", text: string,
  *   cost: number|null, at: number, read: boolean }} Report
  */
@@ -56,9 +56,13 @@ export class Watches {
     } catch {}
   }
 
-  /** Watch a thread. Watching it again replaces the old watch. @param {string} thread @param {string} label */
-  add(thread, label, until = /** @type {Watch["until"]} */ ("either")) {
-    const w = { thread: String(thread), label: String(label || thread).slice(0, 80), until, at: this.now() };
+  /**
+   * Watch a thread. Watching it again replaces the old watch. `server` is the switchboard's watch
+   * id when threads.watch holds it: then its thread.watched is what fires, not the raw events.
+   * @param {string} thread @param {string} label @param {Watch["until"]} [until] @param {string|null} [server]
+   */
+  add(thread, label, until = /** @type {Watch["until"]} */ ("either"), server = null) {
+    const w = { thread: String(thread), label: String(label || thread).slice(0, 80), until, at: this.now(), server };
     this.watches.set(w.thread, w);
     this.save();
     return w;
@@ -83,10 +87,18 @@ export class Watches {
    * @returns {Report|null}
    */
   onEvent(e) {
-    const thread = e && e.thread ? String(e.thread) : "";
+    const thread = e && e.thread ? String(e.thread) : String((e && e.payload && e.payload.thread) || "");
+    const p = (e && e.payload) || {};
+    // The switchboard's own watch fired: set here, or by the assistant for the user ("watch the
+    // intake thread and tell me"). Only watches meant for the user's screen are reported.
+    if (e && e.type === "thread.watched" && thread) {
+      const mine = this.watches.get(thread);
+      if (!mine && p.notify && !["capsule", "user"].includes(String(p.notify))) return null;
+      const why = p.reason === "asked" ? "asked" : p.reason === "stopped" ? "stopped" : "finished";
+      return this.fire(thread, mine ? mine.label : String(p.note || thread.slice(0, 8)), why, String(p.summary || ""), null, e);
+    }
     const w = thread ? this.watches.get(thread) : null;
-    if (!w) return null;
-    const p = e.payload || {};
+    if (!w || w.server) return null;
     if (e.type === "thread.text" && p.done && typeof p.text === "string") { this.last.set(thread, p.text); return null; }
     let why = /** @type {Report["why"]|null} */ (null);
     if (e.type === "thread.finished" && w.until !== "asks") why = p.ok === false ? "failed" : "finished";
@@ -94,8 +106,13 @@ export class Watches {
     else if (e.type === "ask.raised" && w.until !== "done") why = "asked";
     if (!why) return null;
     const text = why === "asked" ? String(p.summary || p.tool || "a question") : why === "failed" ? String(p.error || "") : this.last.get(thread) || "";
-    const r = /** @type {Report} */ ({ id: `${thread}:${e.id || this.now()}`, thread, label: w.label, why, text: text.slice(0, KEEP_TEXT),
-      cost: typeof p.cost_usd === "number" ? p.cost_usd : null, at: Number(e.at) || this.now(), read: false });
+    return this.fire(thread, w.label, why, text, typeof p.cost_usd === "number" ? p.cost_usd : null, e);
+  }
+
+  /** @returns {Report} */
+  fire(thread, label, why, text, cost, e) {
+    const r = /** @type {Report} */ ({ id: `${thread}:${e.id || this.now()}`, thread, label, why, text: String(text).slice(0, KEEP_TEXT),
+      cost, at: Number(e.at) || this.now(), read: false });
     this.watches.delete(thread);
     this.last.delete(thread);
     this.reports = [r, ...this.reports].slice(0, MAX_REPORTS);

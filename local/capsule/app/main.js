@@ -31,6 +31,7 @@ import { Apps, Frecency } from "../lib/local.js";
 import { LocalHelper } from "../lib/helper.js";
 import { Icons } from "../lib/icons.js";
 import { Clips } from "../lib/clips.js";
+import { Providers } from "../lib/providers.js";
 import { Watches, notice } from "../lib/watch.js";
 import os from "node:os";
 
@@ -42,6 +43,24 @@ const WIDTH = 560;
 /** Room around the Capsule for the shadow the page draws; the window itself is transparent. */
 const MARGIN = { x: 24, top: 8, bottom: 40 };
 
+// Budget (SPEC.md section 2 principle 8): under 250 MB resident across every Capsule process while
+// hidden. Measured shown once then hidden, from source, summed over the pid tree: about 320 MB as
+// Chromium lays it out by default (browser 141, GPU 62, network 38, renderer 83), 212 to 233 MB
+// with the two processes below folded into this one, pixels and warm open (30 to 45 ms) unchanged.
+//   - The network service runs in this process. The Capsule loads one local file and talks to
+//     vyred over a Unix socket from Node, so a separate network process is 38 MB for nothing.
+//   - GPU work runs in this process too (62 MB saved; a GPU fault would now take the Capsule down
+//     with it). The window draws identically: screenshots of the transparent panel with and
+//     without it compare byte for byte.
+//   - No spare renderer. With either switch above Chromium keeps a second, idle renderer warm
+//     (67 MB) for a page that never comes; the Capsule has exactly one.
+// Tried and not kept: disableHardwareAcceleration (no gain once GPU is in process, and text drew
+// differently), creating the window on first show (hidden 137 MB until then, but that first open
+// took 770 ms against the 100 ms wake budget), --optimize-for-size and skipping the tray drawing
+// (within noise). The window already throttles in the background (Electron's default).
+app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess2");
+app.commandLine.appendSwitch("disable-features", "SpareRendererForSitePerProcess");
+app.commandLine.appendSwitch("in-process-gpu");
 app.setName("Vyre");
 process.title = "Vyre Capsule";
 const say = obj => { if (DEV || process.env.VYRE_CAPSULE_LOG) try { process.stdout.write(JSON.stringify(obj) + "\n"); } catch {} };
@@ -62,8 +81,16 @@ const helper = new LocalHelper(path.join(BIN, "local"));
 const clips = DRIVEN
   ? new Clips({ file: path.join(HOME, "capsule-test-clips.json"), helper, board: "vyre-drive-" + process.pid })
   : new Clips({ file: path.join(app.getPath("userData"), "clips.json"), helper });
-const launcher = new Launcher({ apps: new Apps(), helper, clips,
-  frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t) });
+// Modules that offer the Capsule results and actions (shows.capsule in their manifest).
+const providers = new Providers({ client: vyred });
+/** The app that was in front when the user opened the Capsule: what "fill" and "paste" act on. */
+let front = /** @type {{ bundle: string, pid: number, name?: string }|null} */ (null);
+const OWN_BUNDLE = "run.vyre.capsule";
+let providersAt = 0;
+const launcher = new Launcher({ apps: new Apps(), helper, clips, providers,
+  frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t),
+  // Files on the box come through this Mac's vyred (files.search, files.fetch), only while shown.
+  vyred: (tool, input) => vyred.call(tool, input), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
 /** Icons, bounded, in the Capsule's own app-data folder ("-2": the helper once drew them a quarter size). Asked for only while the page is showing results. */
 let icons = /** @type {Icons|null} */ (null);
 const iconsNow = () => (icons ||= new Icons({ dir: path.join(app.getPath("userData"), "icons-2"), helper }));
@@ -140,11 +167,22 @@ let wakeStart = 0n;
 const TRACE_WAKE = Boolean(process.env.VYRE_CAPSULE_TRACE_WAKE);
 
 /** Open ready to type. Called only for the user's own gesture. */
-async function show(via, at = Date.now()) {
+async function show(via, at = Date.now(), from = undefined) {
+  // Which app the user was in: the gesture says (read the moment Control was pressed twice); for
+  // other ways of opening (menu, CLI), ask while that app is still in front, before this one
+  // takes focus. The hotkey path never waits for this.
+  if (from !== undefined) front = from && from.bundle !== OWN_BUNDLE ? from : null;
+  else if (!(win && !win.isDestroyed() && win.isVisible())) {
+    const f = await Promise.race([helper.front().catch(() => null), new Promise(r => setTimeout(() => r(null), 150))]);
+    front = f && f.bundle && f.bundle !== OWN_BUNDLE && !/electron/i.test(String(f.bundle)) ? f : null;
+  }
   wakeStart = process.hrtime.bigint();
   const w = create();
   const refresh = bridge.refresh();
   launcher.warm().catch(() => {});
+  if (!stream && followTimer) follow();
+  // Which modules offer results and actions changes rarely: read it on open, at most twice a minute.
+  if (Date.now() - providersAt > 30_000) { providersAt = Date.now(); providers.refresh().catch(() => {}); }
   w.setBounds(place());
   // Driven by a test, the Capsule must not take the keyboard: whoever is at the Mac keeps typing
   // into their own app, and those keys once landed in a test window instead. Test keys go to this
@@ -192,9 +230,9 @@ function hide() {
   paintTray();
 }
 
-function toggle(via, at) {
+function toggle(via, at, from) {
   if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) return hide();
-  show(via, at);
+  show(via, at, from);
 }
 
 /** Send to the page, if there still is one. A window closing mid-send must not throw. */
@@ -233,13 +271,13 @@ let images = null;
 
 function paintTray() {
   if (!tray || !images) return;
-  const n = bridge.waiting.length;
+  const n = bridge.waiting.filter(w => !w.quiet).length; // lessons wait quietly
   tray.setImage(n ? images.needs : images.idle);
   tray.setToolTip(!bridge.up ? "Vyre: vyred is not running" : n ? `Vyre: ${n} waiting on you` : "Vyre: press Control twice");
 }
 
 function trayMenu() {
-  const n = bridge.waiting.length;
+  const n = bridge.waiting.filter(w => !w.quiet).length; // lessons wait quietly
   return Menu.buildFromTemplate([
     { label: "Open the Capsule", click: () => show("menu") },
     { label: n ? `Waiting on you · ${n}` : "Nothing waiting", enabled: n > 0, click: () => show("menu") },
@@ -270,7 +308,7 @@ function startHotkey() {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
       let m; try { m = JSON.parse(line); } catch { continue; }
       if (m.ready) { hotkey = { ...hotkey, ok: true, message: "ready" }; push(); }
-      if (m.gesture === "double-control") toggle("hotkey", Number(m.at) || Date.now());
+      if (m.gesture === "double-control") toggle("hotkey", Number(m.at) || Date.now(), m.front || null);
       if (m.error) { hotkey = { ...hotkey, ok: false, message: m.message }; push(); }
     }
   });
@@ -286,9 +324,21 @@ function startHotkey() {
 
 // ------------------------------------------------------------------ vyred
 
+// While vyred is down, look for it again soon at first, then less often: every 3 s doubling to a
+// minute while the Capsule is hidden (perf measured the steady 3 s retry at about 0.8% CPU hidden,
+// four times the budget). Opening the Capsule looks again at once.
+let followWait = 3000, followTimer = null;
 async function follow() {
+  clearTimeout(followTimer);
   const h = await vyred.get("/v1/health");
-  if (h.error) { await bridge.refresh(); setTimeout(follow, 3000); return; }
+  if (h.error) {
+    await bridge.refresh();
+    const shown = Boolean(win && !win.isDestroyed() && win.isVisible());
+    followTimer = setTimeout(follow, shown ? 3000 : followWait);
+    followWait = Math.min(followWait * 2, 60_000);
+    return;
+  }
+  followWait = 3000;
   // From now. The waiting list is read whole by refresh(); the stream only adds to it.
   stream = vyred.stream({
     since: h.data.last_event || 0,
@@ -298,15 +348,33 @@ async function follow() {
       const r = watches.onEvent(e);
       if (r) reported(r);
     },
-    onState: s => { say({ stream: s }); bridge.refresh().catch(() => {}); },
+    onState: s => { say({ stream: s }); bridge.refresh().catch(() => {}); if (s === "open") { providersAt = Date.now(); providers.refresh().catch(() => {}); } },
   });
 }
 
 // ------------------------------------------------------------------ what the page may ask
 
 ipcMain.handle("capsule:snapshot", () => ({ ...bridge.snapshot(), hotkey: { ok: hotkey.ok, message: hotkey.message }, watching: watches.list(), reports: watches.unread() }));
-ipcMain.handle("capsule:watch", (_e, thread, label) => { const w = watches.add(String(thread || ""), String(label || "")); push(); return w; });
-ipcMain.handle("capsule:unwatch", (_e, thread) => { watches.remove(String(thread || "")); push(); return { ok: true }; });
+ipcMain.handle("capsule:watch", async (_e, thread, label) => {
+  const t = String(thread || ""), l = String(label || "");
+  // The switchboard's watch outlives the Capsule and vyred restarting; the Capsule's own filter on
+  // the stream is the fallback for a vyred without it.
+  let server = null;
+  if (bridge.has("threads.watch")) {
+    const r = await vyred.call("threads.watch", { thread: t, until: "either", notify: "capsule", note: l });
+    if (r.data && r.data.watch) server = String(r.data.watch);
+  }
+  const w = watches.add(t, l, "either", server);
+  push();
+  return w;
+});
+ipcMain.handle("capsule:unwatch", async (_e, thread) => {
+  const w = watches.list().find(x => x.thread === String(thread || ""));
+  if (w && w.server) await vyred.call("threads.unwatch", { watch: w.server });
+  watches.remove(String(thread || ""));
+  push();
+  return { ok: true };
+});
 ipcMain.handle("capsule:report-read", (_e, id) => { const r = watches.read(String(id || "")); push(); return r; });
 ipcMain.handle("capsule:mention", (_e, text, caret) => bridge.mention(String(text || ""), Number(caret) || 0));
 ipcMain.handle("capsule:destinations", (_e, target, text) => bridge.destinations(target || null, String(text || "")));
@@ -329,9 +397,39 @@ ipcMain.on("capsule:size", (_e, h) => {
 });
 ipcMain.on("capsule:dismiss", () => hide());
 ipcMain.handle("capsule:quick", async (_e, text) => withIcons(await launcher.quick(String(text || ""), bridge.up ? bridge.catalog : null)));
-ipcMain.handle("capsule:full", async (_e, text) => withIcons(await launcher.full(String(text || ""), bridge.up ? bridge.catalog : null)));
+ipcMain.handle("capsule:full", async (_e, text) => {
+  const q = String(text || "");
+  // Box files land after the Mac's own; the page takes them if the box still says the same words.
+  const more = found => tell("capsule:more", { text: q, found: withIcons(found) });
+  return withIcons(await launcher.full(q, bridge.up ? bridge.catalog : null, more));
+});
 ipcMain.handle("capsule:icons", (_e, results) => (Array.isArray(results) ? iconsNow().get(results.slice(0, 40)) : {}));
 ipcMain.handle("capsule:cancel", () => bridge.cancel());
+ipcMain.handle("capsule:actions", (_e, r) => providers.actions(r));
+// A module's verb on one of its results, with the app that was in front. Whatever it says is
+// shown as it is; a value (a password) never comes back here, only what the module chose to say.
+ipcMain.handle("capsule:act", async (_e, r, key) => {
+  const k = String(key || "");
+  const a = providers.actions(r).find(x => x.key === k);
+  if (!a || !a.hide) return providers.run(r, k, front);
+  // It acts on the front app (the vault's fill): step out of the way, wait until the app the user
+  // was in is frontmost again, then call. What it says comes back as a notification.
+  const was = front;
+  hide();
+  if (was && was.pid) {
+    const until = Date.now() + 800;
+    for (;;) {
+      const f = await helper.front().catch(() => null);
+      if ((f && Number(f.pid) === Number(was.pid)) || Date.now() > until) break;
+      await new Promise(res => setTimeout(res, 40));
+    }
+  }
+  const out = await providers.run(r, k, was);
+  const line = out.error || out.said || "Done.";
+  if (Notification.isSupported() && !DRIVEN) new Notification({ title: out.error ? "Not done" : String(r.provider || r.module || "Vyre"), body: line, silent: true }).show();
+  else say({ acted: { key: k, line } });
+  return { ...out, hidden: true };
+});
 ipcMain.handle("capsule:dm-open", (_e, agent) => bridge.openDm(String(agent || "")));
 ipcMain.handle("capsule:dm-close", () => bridge.closeDm());
 ipcMain.handle("capsule:copy", (_e, text) => { clipboard.writeText(String(text || "")); return { ok: true }; });

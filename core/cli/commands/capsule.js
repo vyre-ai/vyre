@@ -145,9 +145,62 @@ async function build(flags) {
     // Contacts: the helper's ask is credited to this app, and macOS refuses it without a reason.
     extendInfo: { LSUIElement: true, NSContactsUsageDescription: "Vyre's Capsule shows matching contacts as you type. They stay on this Mac." },
   });
+  const app = path.join(made, "Vyre.app");
+  const signed = sign(app);
+  if (!signed.ok) { out(beacon("  Vyre.app did not sign") + dim(" · " + signed.message)); return 1; }
   fs.writeFileSync(path.join(made, "stamp.json"), JSON.stringify({ source, at: new Date().toISOString() }) + "\n");
-  out(`  packaged ${made}/Vyre.app ${dim("· source " + source)}`);
+  out(`  packaged ${app} ${dim("· source " + source + " · signed ad hoc, verified")}`);
   return 0;
+}
+
+// ------------------------------------------------------------------ signing
+
+/** The helpers in Contents/Resources/bin, and the identity each keeps once inside the app. */
+export const HELPERS = { hotkey: "run.vyre.hotkey", "vyre-launcher": "run.vyre.launcher", local: "run.vyre.local" };
+
+/**
+ * The codesign runs that make a packaged Vyre.app whole, inside out. After packager the app
+ * carries only Electron's linker signature, which seals no resources, so `codesign --verify
+ * --deep --strict` fails and a quarantined download opens as "Vyre is damaged".
+ *
+ * Each nested bundle in Frameworks is signed with --deep (they are Electron's and carry their own
+ * bundle ids). The helpers are signed one by one with their own identifier, never with --deep
+ * from above, which would leave them without one. `local` keeps the Info.plist linked into it
+ * (its NSContactsUsageDescription): codesign binds an embedded plist and does not replace it.
+ * The outer bundle is signed last and without --deep, so it seals what is already signed; its
+ * identifier comes from CFBundleIdentifier (run.vyre.capsule).
+ *
+ * Input Monitoring: the hotkey helper is a child of Vyre.app and does not disclaim
+ * responsibility, so macOS (TCC) holds Vyre.app responsible and the grant attaches to Vyre.app,
+ * not to the helper. Re-signing the helper does not move it. An ad-hoc signature is a cdhash,
+ * though, so a rebuilt Vyre.app is a new identity and macOS may ask again after each build.
+ * @param {string} app
+ * @returns {string[][]}
+ */
+export function signing(app) {
+  const runs = [];
+  const fw = path.join(app, "Contents", "Frameworks");
+  if (fs.existsSync(fw)) for (const n of fs.readdirSync(fw).sort()) {
+    if (n.endsWith(".framework") || n.endsWith(".app")) runs.push(["--force", "--deep", "--sign", "-", path.join(fw, n)]);
+  }
+  const bin = path.join(app, "Contents", "Resources", "bin");
+  for (const [n, id] of Object.entries(HELPERS)) {
+    const p = path.join(bin, n);
+    if (fs.existsSync(p)) runs.push(["--force", "--sign", "-", "--identifier", id, p]);
+  }
+  runs.push(["--force", "--sign", "-", app]);
+  return runs;
+}
+
+/** Sign the app ad hoc, then prove it: a build whose signature does not verify is a failed build. */
+export function sign(app, run = (/** @type {string[]} */ a) => spawnSync("codesign", a, { encoding: "utf8" })) {
+  for (const a of signing(app)) {
+    const r = run(a);
+    if (r.status !== 0) return { ok: false, message: `codesign ${a.slice(0, -1).join(" ")} ${path.basename(a[a.length - 1])}: ${String(r.stderr || "").trim()}` };
+  }
+  const v = run(["--verify", "--deep", "--strict", app]);
+  if (v.status !== 0) return { ok: false, message: "codesign --verify --deep --strict: " + String(v.stderr || "").trim() };
+  return { ok: true, message: "signed and verified" };
 }
 
 export default {

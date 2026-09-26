@@ -31,7 +31,7 @@ const doc = () => h("span", { class: "i" }, svg(`<svg width="14" height="14" vie
 function svg(markup) { const t = document.createElement("template"); t.innerHTML = markup; return /** @type {Node} */ (t.content.firstChild); }
 
 const S = {
-  /** @type {"ask"|"waiting"|"review"|"source"|"reply"|"report"} */ mode: "ask",
+  /** @type {"ask"|"waiting"|"review"|"source"|"reply"|"report"|"actions"|"code"} */ mode: "ask",
   /** @type {any} */ snap: { up: false, waiting: [], reply: null, has: {}, assistant: null, hotkey: { ok: true, message: "" } },
   /** @type {any} */ chip: null,
   text: "",
@@ -45,6 +45,7 @@ const S = {
   note: "",
   /** @type {any} */ takeable: null,
   /** @type {any} */ report: null,
+  /** @type {any} */ acts: null, /** @type {any} */ code: null,
   // What a bare query finds on this Mac, ranked with Vyre's own. `sel` runs over the results and
   // then the ask row, which is always last: results.length means "send it".
   /** @type {any[]} */ results: [], intent: "ask",
@@ -153,11 +154,46 @@ function timed(kind) {
   requestAnimationFrame(() => api.timing({ kind, ms: performance.now() - at, n: S.results.length }));
 }
 
+/** The verbs a module offers on one of its results, as a list to choose from. */
+async function openActions(r) {
+  const acts = await api.actions(r);
+  if (!acts.length) return;
+  S.acts = { r, list: acts, index: 0 }; S.mode = "actions";
+  paint();
+}
+
+/** Run one verb. What the module says is shown as it is; a one-time code counts down. */
+async function act(r, key) {
+  S.note = "";
+  S.busy = true; paint();
+  const out = await api.act(r, key);
+  S.busy = false;
+  // The Capsule stepped aside for it; the result went out as a notification.
+  if (out.hidden) { S.mode = "ask"; S.acts = null; return; }
+  if (out.error) { S.note = out.error; S.mode = "ask"; return paint(); }
+  if (out.code) { S.code = { label: r.label, code: String(out.code), period: Number(out.period) || 30, until: Date.now() + (Number(out.remaining) || 0) * 1000, said: out.said || "" }; S.mode = "code"; tickCode(); return paint(); }
+  S.note = out.said || "Done."; S.mode = "ask";
+  paint();
+}
+
+let codeTimer = 0;
+/** Repaint the countdown once a second, only while the code is on screen. */
+function tickCode() {
+  clearInterval(codeTimer);
+  codeTimer = window.setInterval(() => { if (S.mode !== "code") return clearInterval(codeTimer); paint(); }, 1000);
+}
+
 /** Open a local result, or make a Vyre one the chip, the way @ would. */
 async function pickResult(r, { take = false } = {}) {
   if (r.kind === "agent" || r.kind === "project" || r.kind === "thread") {
     box.value = ""; S.results = []; S.selKey = null;
     return choose(r);
+  }
+  if (r.kind === "module") {
+    // Enter runs the module's first verb (for the vault: fill the front app). ⌘K lists the rest.
+    const acts = await api.actions(r);
+    if (!acts.length) { S.note = "Nothing to do with it here."; return paint(); }
+    return act(r, acts[0].key);
   }
   if (r.kind === "drive") {
     const d = { kind: "thread", thread: r.target, threadLabel: r.thread, meta: "", show: { who: r.thread, where: [] } };
@@ -262,6 +298,7 @@ window.addEventListener("keydown", e => {
     if (S.mode === "review") { S.mode = "waiting"; S.review = null; api.pin(false); return paint(); }
     if (S.mode === "source") { S.mode = "ask"; S.source = null; paint(); return box.focus(); }
     if (S.mode === "report") { S.mode = "ask"; S.report = null; paint(); return box.focus(); }
+    if (S.mode === "actions" || S.mode === "code") { S.mode = "ask"; S.acts = null; S.code = null; paint(); return box.focus(); }
     // An answer still streaming: the first Esc stops it and keeps what came; the next one closes.
     if (S.mode === "reply" && S.snap.reply && !S.snap.reply.finished) { api.cancel().then(r => { if (r && r.note) { S.note = r.note; paint(); } }); return; }
     // One press, always the same result: the Capsule goes and the keyboard goes back.
@@ -270,10 +307,19 @@ window.addEventListener("keydown", e => {
   if (S.mode === "review") {
     // No single-letter keys here: every line of a draft takes typing, and a letter that
     // discarded the draft would fire mid-word.
-    if (k === "Enter" && e.metaKey) { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "allow" : "send"); }
-    if (k === "Enter" && S.review.source === "ask" && !inField()) { e.preventDefault(); return decide(S.review, "allow"); }
+    const yesNo = S.review.source === "ask" || S.review.source === "lesson";
+    if (k === "Enter" && e.metaKey) { e.preventDefault(); return decide(S.review, yesNo ? "allow" : "send"); }
+    if (k === "Enter" && yesNo && !inField()) { e.preventDefault(); return decide(S.review, "allow"); }
     return;
   }
+  if (S.mode === "actions" && S.acts) {
+    const n = S.acts.list.length;
+    if (k === "ArrowDown") { e.preventDefault(); S.acts.index = (S.acts.index + 1) % n; return paint(); }
+    if (k === "ArrowUp") { e.preventDefault(); S.acts.index = (S.acts.index - 1 + n) % n; return paint(); }
+    if (k === "Enter") { e.preventDefault(); return act(S.acts.r, S.acts.list[S.acts.index].key); }
+    return;
+  }
+  if (S.mode === "code") return;
   if (S.mode === "waiting") {
     const n = S.snap.waiting.length;
     if (k === "ArrowDown") { e.preventDefault(); S.waitIndex = (S.waitIndex + 1) % n; return paint(); }
@@ -304,6 +350,8 @@ window.addEventListener("keydown", e => {
     const i = selected(E);
     if (k === "ArrowDown") { e.preventDefault(); S.selKey = E[(i + 1) % E.length].key; return paint(); }
     if (k === "ArrowUp") { e.preventDefault(); S.selKey = E[i <= 0 ? E.length - 1 : i - 1].key; return paint(); }
+    const cur = i >= 0 ? E[i] : null;
+    if (cur && cur.r && cur.r.kind === "module" && (k === "ArrowRight" || (k === "k" && e.metaKey))) { e.preventDefault(); return openActions(cur.r); }
     // Tab always asks, whatever is highlighted: the one key that sends the words on.
     if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
     if (k === "Enter" && !e.metaKey && i >= 0) {
@@ -349,7 +397,9 @@ function paint() {
   const hint = $("hint");
   const kids = [];
   const nWait = snap.waiting.length;
-  $("dot").setAttribute("fill", nWait ? "#FF7A59" : "#C6F36B");
+  // A proposed lesson waits quietly: it never turns the dot Beacon on its own.
+  const loud = snap.waitingLoud ?? nWait;
+  $("dot").setAttribute("fill", loud ? "#FF7A59" : "#C6F36B");
   $("chip").hidden = !S.chip;
   if (S.chip) $("chip").textContent = "@" + S.chip.label;
   hint.replaceChildren();
@@ -368,10 +418,30 @@ function paint() {
     return done(panel, kids);
   }
 
+  if (S.mode === "actions" && S.acts) {
+    const a = S.acts;
+    kids.push(h("div", { class: "sect replyhead" }, h("span", { class: "lbl on" }, a.r.provider || a.r.module), h("span", { class: "who" }, a.r.label)));
+    kids.push(h("div", { class: "sect pad" }, a.list.map((x, i) => h("div", { class: "row res" + (i === a.index ? " on" : ""), onmousedown: ev => { ev.preventDefault(); act(a.r, x.key); } },
+      glyph(a.r.module === "vault" ? "vault" : "file"), h("span", { class: "t" }, x.title), h("span", { class: "acc" }, i === a.index ? "⏎" : "")))));
+    if (S.busy) kids.push(h("div", { class: "sect note" }, "Waiting for the vault. Touch ID may ask first."));
+    keys("↑↓ move", "⏎ run", "esc back");
+    return done(panel, kids);
+  }
+
+  if (S.mode === "code" && S.code) {
+    const c = S.code;
+    const left = Math.max(0, Math.round((c.until - Date.now()) / 1000));
+    kids.push(h("div", { class: "sect replyhead" }, h("span", { class: "lbl on" }, "One-time code"), h("span", { class: "who" }, c.label), h("span", { class: "state" }, left ? `${left} s` : "expired")));
+    kids.push(h("div", { class: "code" }, left ? c.code.replace(/^(\d{3})(\d{3})$/, "$1 $2") : "Expired. Ask for it again."));
+    if (c.said) kids.push(h("div", { class: "sect note" }, c.said));
+    keys("esc back");
+    return done(panel, kids);
+  }
+
   if (S.mode === "waiting" && nWait) {
     kids.push(h("div", { class: "sect waithead" }, h("span", { class: "lbl" }, `Waiting on you · ${nWait}`), h("span", { class: "s" }, "oldest first")));
     kids.push(h("div", { class: "pad" }, snap.waiting.map((w, i) => h("div", { class: "wait" + (i === S.waitIndex ? " on" : ""), onclick: () => { S.waitIndex = i; openReview(w); } },
-      h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null),
+      h("span", { class: "b" + (w.quiet ? " quiet" : "") }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null),
       h("span", { class: "a" }, w.age), i === S.waitIndex ? h("span", { class: "kbd" }, "⏎") : null))));
     keys("↑↓ move", "⏎ review", "A allow", "esc close");
     return done(panel, kids);
@@ -383,7 +453,7 @@ function paint() {
     // only its note changes; the words are the user's until they send or leave.
     const key = `${w.source}:${w.id}:${S.loading ? "loading" : "ready"}`;
     if (panel.dataset.review === key) { const n = panel.querySelector(".heldnote"); if (n) n.textContent = S.note; return; }
-    hint.append(h("span", { class: "badge" }, h("i"), "HELD FOR YOU"));
+    hint.append(w.source === "lesson" ? h("span", { class: "badge quiet" }, "VYRE PROPOSES") : h("span", { class: "badge" }, h("i"), "HELD FOR YOU"));
     box.hidden = true;
     $("chip").hidden = true;
     const field = /** @type {HTMLElement} */ (box.parentElement);
@@ -404,15 +474,21 @@ function paint() {
       body.push(h("div", { class: "grid" }, w.to ? [h("span", { class: "k" }, "To"), h("span", { class: "v mono" }, w.to)] : null,
         w.via ? [h("span", { class: "k" }, "Via"), h("span", { class: "v mono" }, w.via)] : null));
       if (S.summary) body.push(h("div", { class: "body" }, S.summary));
+    } else if (w.source === "lesson") {
+      body.push(h("div", { class: "body lesson" }, w.rule || ""));
+      // scope is "all" or {project} or {agent}; state.js has already put it in words.
+      body.push(h("div", { class: "grid" }, w.where ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.where)] : null,
+        w.from ? [h("span", { class: "k" }, "From"), h("span", { class: "v" }, w.from)] : null));
     } else {
       body.push(h("div", { class: "grid" }, w.tool ? [h("span", { class: "k" }, "Tool"), h("span", { class: "v mono" }, w.tool)] : null, w.sub ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.sub)] : null));
     }
     kids.push(h("div", { class: "sect held" }, body));
-    const ask = w.source === "ask";
+    const ask = w.source === "ask" || w.source === "lesson";
+    const yes = w.source === "lesson" ? "Accept" : ask ? "Allow" : "Send", no = w.source === "lesson" ? "Decline" : ask ? "Deny" : "Discard";
     kids.push(h("div", { class: "sect actions" },
-      h("button", { type: "button", class: "btn btn-primary", onclick: () => decide(w, ask ? "allow" : "send") }, ask ? "Allow" : "Send", h("span", { class: "k" }, ask ? "⏎" : "⌘⏎")),
-      h("button", { type: "button", class: "btn btn-ghost quiet", onclick: () => decide(w, ask ? "deny" : "discard") }, ask ? "Deny" : "Discard"),
-      w.rule ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : w.why ? h("span", { class: "rule" }, w.why) : null));
+      h("button", { type: "button", class: "btn btn-primary", onclick: () => decide(w, ask ? "allow" : "send") }, yes, h("span", { class: "k" }, ask ? "⏎" : "⌘⏎")),
+      h("button", { type: "button", class: "btn btn-ghost quiet", onclick: () => decide(w, ask ? "deny" : "discard") }, no),
+      w.rule && w.source !== "lesson" ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : w.why ? h("span", { class: "rule" }, w.why) : null));
     kids.push(h("div", { class: "heldnote note warn" }, S.note));
     $("keys").hidden = true;
     done(panel, kids);
@@ -445,7 +521,7 @@ function paint() {
     const mem = r && r.memory && (r.memory.answer || (r.memory.sources || []).length) ? r.memory : null;
     if (mem) kids.push(h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, "From memory"),
       mem.answer ? h("div", { class: "answer" }, mem.answer) : null,
-      (mem.sources || []).length ? h("div", { class: "srcs" }, mem.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name))) : null));
+      (mem.sources || []).length ? h("div", { class: "srcs" }, mem.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name, srcMeta(s)))) : null));
     if (r && r.tools.length) kids.push(h("div", { class: "tools" }, r.tools.map(t => h("span", { class: "tl" + (t.error ? " fail" : "") }, `${t.done ? (t.error ? "failed" : "done") : "running"} · ${t.summary}`))));
     kids.push(h("div", { class: "reply md" }, r && r.text ? md(r.text) : null, r && !r.finished ? h("span", { class: "caret" }) : null));
     if (r && r.finished && r.text) kids.push(h("div", { class: "sect replyacts" },
@@ -494,7 +570,7 @@ function paint() {
     if (S.note) kids.push(h("div", { class: "sect note" }, S.note));
     const cur = E[selected(E)];
     const primary = opts[0] && opts[0].kind !== "recall" ? opts[0].show.who : null;
-    keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "clip" ? "⏎ copy, then ⌘V" : cur.r.kind === "clipclear" ? "⏎ clear" : cur.r.kind === "watch" ? "⏎ watch" : cur.r.kind === "drive" ? "⏎ send and watch" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
+    keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "clip" ? "⏎ copy, then ⌘V" : cur.r.kind === "clipclear" ? "⏎ clear" : cur.r.kind === "watch" ? "⏎ watch" : cur.r.kind === "module" ? (cur.r.module === "vault" ? "⏎ fill, ⌘K more" : "⏎ run, ⌘K more") : cur.r.kind === "drive" ? "⏎ send and watch" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
       primary && !(cur && cur.ask === opts[0]) ? `⇥ ask ${primary}` : null, "esc close");
     done(panel, kids);
     loadIcons();
@@ -574,11 +650,11 @@ function entryRows(E) {
     const r = e.r;
     return h("div", { class: "row res" + (r.kind === "calc" ? " calc" : "") + (sel ? " on" : ""), onmousedown: pick },
       picture(r), h("span", { class: "t" }, r.label), r.sub ? h("span", { class: "s" }, r.sub) : null,
-      h("span", { class: "acc" }, sel ? (r.kind === "calc" ? "copy ⏎" : "⏎") : KIND_LABEL[r.kind] ?? r.kind));
+      h("span", { class: "acc" }, sel ? (r.kind === "calc" ? "copy ⏎" : r.kind === "module" ? "⌘K ⏎" : "⏎") : r.kind === "module" ? r.provider || r.module : KIND_LABEL[r.kind] ?? r.kind));
   });
   const out = [];
   if (rc) out.push(h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, "From memory · no model used"), h("div", { class: "answer" }, rc.answer),
-    rc.sources.length ? h("div", { class: "srcs" }, rc.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name))) : null));
+    rc.sources.length ? h("div", { class: "srcs" }, rc.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name, srcMeta(s)))) : null));
   out.push(h("div", { class: "sect pad" }, rows));
   return out;
 }
@@ -595,6 +671,7 @@ const FROM_MAC = new Set(["app", "file", "folder", "setting", "contact"]);
  * a quiet tile (or a contact's initials) holds the place.
  */
 function picture(r) {
+  if (r.kind === "module") return glyph(r.module === "vault" ? "vault" : "file");
   if (!FROM_MAC.has(r.kind)) return glyph(r.kind);
   const url = r.icon || S.iconMap[r.id] || "";
   const box_ = h("span", { class: "ic mac" + (url ? " has" : "") + (r.kind === "contact" ? " round" : "") });
@@ -694,6 +771,12 @@ function dmView(d) {
   if (d.asks.length) out.push(h("div", { class: "sect pad" }, d.asks.map(w => h("div", { class: "wait", onclick: () => openReview(w) },
     h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null), h("span", { class: "a" }, w.age || "")))));
   return out;
+}
+
+/** How old a memory is and how sure it is, beside its source: "3 days · 82%". */
+function srcMeta(s) {
+  const bits = [s.age || null, s.confidence != null ? `${Math.round(Number(s.confidence) * 100)}%` : null].filter(Boolean);
+  return bits.length ? h("span", { class: "srcm" }, bits.join(" · ")) : null;
 }
 
 // ------------------------------------------------------------------ answers
@@ -844,5 +927,7 @@ api.onOpen(d => {
   requestAnimationFrame(() => requestAnimationFrame(() => api.paintPing()));
 });
 api.snapshot().then(s => { S.snap = s; paint(); });
+// Files from the box, when they land: only for the words still in the box.
+api.onMore(m => { if (m && m.found && box.value.trim() === String(m.text).trim() && S.mode === "ask" && !S.chip) { showResults(m.found, "files"); paint(); } });
 // A notification the user clicked: open that report.
 api.onReport(id => { const r = (S.snap.reports || []).find(x => x.id === id); if (r) openReport(r); });
