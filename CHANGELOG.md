@@ -431,6 +431,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- `vyre capsule` opens an installed Vyre.app (/Applications or ~/Applications) when there is no
+  dist build of this source, and leaves it on its own bundled helpers. Packaged apps declare
+  `NSContactsUsageDescription`, without which macOS refuses the Contacts ask silently.
+- A bare query in the Capsule finds things on this Mac first: `lib/launcher.js` ranks apps,
+  settings, the calculator, contacts, definitions, files and Vyre's own agents, projects and
+  threads as one list (`route.rank`, frecency from picks), and `route.intent` decides whether
+  Enter opens the top result or asks: a question, or no strong match, goes to the ask row that
+  names the assistant. Local results arrive on every keystroke with no debounce; files join
+  when `mdfind` answers. It all works with vyred down. Picking a sum copies it. The window no
+  longer takes focus when driven by a test (`VYRE_CAPSULE_DRIVE`), and `capsule.open` carries
+  the gesture time, so the page reports keypress-to-visible and keystroke-to-results timings.
+- Local results, all on this Mac and offline (proposal: the Capsule replaces Spotlight, milestones
+  1 and 2, without taking ⌘Space). `lib/calc.js`: a calculator and unit converter with its own
+  parser (no eval), which returns nothing rather than guess. `lib/local.js`: apps from the
+  Applications folders, files and folders through `mdfind` (the query escaped, no shell, killed on
+  timeout), 45 System Settings panes with verified `x-apple.systempreferences:` ids and synonyms,
+  a scored `match()`, and `Frecency`, which stores result ids and six-letter prefixes only.
+  `swift/local.swift` (built to `bin/local`) and `lib/helper.js`: Contacts and the Dictionary in
+  one long-lived child. Contacts asks for permission only on the first contacts lookup.
+- Runs against the real switchboard, proven in a temp home with the fake Claude: the assistant and
+  `@agent` through `agents.ask`, `@thread` through `threads.send` with the lease (taken only on the
+  user's ⌘⏎, released on close, including a thread the Capsule started), asks through
+  `threads.asks` and `threads.answer`. Switchboard threads join `@` completion via `threads.list`.
+  The Capsule listens before it sends, so a fast reply is not lost. `thread.text` is read as
+  `{message, delta}`, and a withdrawn question as `ask.answered` with decision "cancelled".
 - Held drafts are edited in place, with no Edit button: To, Subject and body read as text and
   show an underline when focused. Send (⌘⏎) sends what the card shows through `gate.approve
   {id, edited}` with every field; Discard is `gate.reject`. Esc leaves a field, then the card. The

@@ -63,8 +63,9 @@ export function waiting(list) {
 export function applyWaiting(list, e, name = slug => slug) {
   const p = e.payload || {};
   if (e.type === "ask.raised") return waiting([...list, fromAsk(e, name)]);
-  // ask.answered carries decision "cancelled" when Claude Code withdrew the question.
-  if (e.type === "ask.answered" || e.type === "ask.cancelled") return drop(list, "ask", p.ask || p.id);
+  // ask.answered {ask, decision, by}: decision "cancelled" when Claude Code withdrew the question
+  // or its thread stopped. There is no separate event for that.
+  if (e.type === "ask.answered") return drop(list, "ask", p.ask || p.id);
   if (e.type === "gate.held") return waiting([...list, fromHeld({ ...p, at: e.at, thread: e.thread, project: e.project })]);
   if (e.type === "gate.released" || e.type === "gate.rejected") return drop(list, "gate", p.id);
   // A send that failed is held again, with its error, for the user to send again or discard.
@@ -78,9 +79,11 @@ const drop = (list, source, id) => {
 };
 
 /**
- * A thread's reply as it streams. thread.text carries `delta`, a piece to append (throttled
- * upstream), or `text` with done:true, the whole block, which replaces the pieces: the whole
- * block is what Claude Code said, the pieces are only how it arrived.
+ * A thread's reply as it streams. thread.text is `{message, delta}`, a piece to append (throttled
+ * to 20 a second by the switchboard), or `{message, text, done: true}`, the whole block, which
+ * replaces the pieces: the whole block is what Claude Code said, the pieces are only how it
+ * arrived. `message` is Claude Code's message id, shared by a block's pieces and its whole text.
+ * A notice from vyred itself (the switch to the API key) is `{message: "vyre", text, done, notice}`.
  * @typedef {{ thread: string, order: string[], text: Record<string, string>, tools: { id: string, summary: string, done: boolean, error: boolean }[],
  *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null }} Reply
  */
@@ -90,15 +93,12 @@ export function reply(thread) {
 
 /** @param {Reply} r @param {any} e @returns {Reply} */
 export function applyReply(r, e) {
-  if (!r || e.thread !== r.thread) {
-    if (r && e.type === "lease.changed" && (e.payload || {}).thread === r.thread) return { ...r, lease: e.payload.holder == null ? null : s(e.payload.holder) };
-    return r;
-  }
+  if (!r || e.thread !== r.thread) return r;
   const p = e.payload || {};
   if (e.type === "thread.text") {
     const id = s(p.message || "m");
     const order = r.order.includes(id) ? r.order : [...r.order, id];
-    const text = { ...r.text, [id]: p.done ? s(p.text) : (r.text[id] || "") + s(p.delta ?? p.text) };
+    const text = { ...r.text, [id]: p.done ? s(p.text) : (r.text[id] || "") + s(p.delta) };
     return { ...r, order, text, finished: false };
   }
   if (e.type === "thread.tool") {
@@ -107,6 +107,7 @@ export function applyReply(r, e) {
   }
   if (e.type === "thread.stopped") return { ...r, finished: true, ok: false, error: `the thread stopped${p.reason ? ": " + s(p.reason) : ""}` };
   if (e.type === "thread.finished") return { ...r, finished: true, ok: p.ok !== false, error: p.ok === false ? s(p.error || "the turn failed") : null };
+  // lease.changed {holder, previous, took?}: holder null when the keyboard was given back.
   if (e.type === "lease.changed") return { ...r, lease: p.holder == null ? null : s(p.holder) };
   return r;
 }
