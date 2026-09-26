@@ -151,7 +151,7 @@ export class Fill {
   /** Paired devices, with how many sessions each has open. Names and times only. */
   devices() {
     const t = this.now();
-    const rows = /** @type {Device[]} */ (this.db.prepare("SELECT * FROM vault_devices ORDER BY created").all());
+    const rows = /** @type {Device[]} */ (this.db.prepare("SELECT * FROM vault_devices ORDER BY created").all()).filter(d => this.vault.rowOk("vault_devices", d));
     return {
       devices: rows.map(d => ({
         id: d.id, name: d.name, created: d.created, lastSeen: d.last_seen, revoked: d.revoked || null,
@@ -168,6 +168,7 @@ export class Fill {
     if (!d) throw new Error(`no paired device ${id}`);
     if (d.revoked) return { revoked: false, id: d.id };
     this.db.prepare("UPDATE vault_devices SET revoked = ? WHERE id = ?").run(this.now(), d.id);
+    this.vault.sign("vault_devices", d.id);
     const ended = Number(this.db.prepare("DELETE FROM vault_sessions WHERE device = ?").run(d.id).changes);
     this.pickup.delete(d.id);
     this.vault.audit("device-revoke", null, caller, true, `${d.id} (${d.name}), ${ended} sessions ended`);
@@ -187,6 +188,9 @@ export class Fill {
     const h = {};
     for (const [k, v] of Object.entries(headers || {})) h[k.toLowerCase()] = Array.isArray(v) ? v[0] : v;
     const b = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+    // Device rows are MACed under the vault key (ADR 0006): load it if the keystore opens
+    // unattended, so the checks below run. A locked passphrase vault stays locked.
+    try { if (await this.vault.keys.exists()) await this.vault.key(); } catch {}
     switch (route) {
       case "POST pair": return this.pair(b);
       case "POST unlock": return this.unlock(b, h);
@@ -208,6 +212,8 @@ export class Fill {
     }
     const c = normalCode(b.code);
     if (c.length !== CODE_LEN) return this.pairRefused(t, "that is not a pairing code");
+    // A device row must be signed, and signing needs the vault key.
+    if (!this.vault.mkey) return fail(423, "vault_locked", "the vault is locked · vyre vault unlock, then pair");
     const hash = this.codeHash(c);
     const row = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_pairing WHERE code_hash = ?").get(hash));
     // Single use, claimed in one statement so two racing requests cannot both win.
@@ -217,6 +223,7 @@ export class Fill {
     const token = newToken();
     const id = newId("d_");
     this.db.prepare("INSERT INTO vault_devices (id, name, token_hash, created, last_seen, revoked) VALUES (?,?,?,?,?,NULL)").run(id, name, sha(token), t, t);
+    this.vault.sign("vault_devices", id);
     this.vault.audit("pair", null, `device:${id}:${name}`, true, null);
     this.vault.emit("vault.device-paired", { device: id, name });
     return ok({ device: id, name, token });
@@ -342,7 +349,10 @@ export class Fill {
   who(d) { return `device:${d.id}:${d.name}`; }
 
   /** @returns {Device|undefined} */
-  deviceById(id) { return /** @type {any} */ (this.db.prepare("SELECT * FROM vault_devices WHERE id = ?").get(String(id ?? ""))); }
+  deviceById(id) {
+    const d = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_devices WHERE id = ?").get(String(id ?? "")));
+    return d && this.vault.rowOk("vault_devices", d) ? d : undefined;
+  }
 
   /**
    * The device a request's bearer token names, or a refusal.
@@ -353,7 +363,7 @@ export class Fill {
     if (!m) return fail(401, "unauthorized", "pair this browser first · vyre vault pair");
     const hash = sha(m[1]);
     const d = /** @type {Device|undefined} */ (this.db.prepare("SELECT * FROM vault_devices WHERE token_hash = ?").get(hash));
-    if (!d || !same(d.token_hash, hash)) return fail(401, "unauthorized", "this browser is not paired · vyre vault pair");
+    if (!d || !same(d.token_hash, hash) || !this.vault.rowOk("vault_devices", d)) return fail(401, "unauthorized", "this browser is not paired · vyre vault pair");
     if (d.revoked) return fail(401, "revoked", "this browser was unpaired · vyre vault pair to pair it again");
     this.db.prepare("UPDATE vault_devices SET last_seen = ? WHERE id = ?").run(this.now(), d.id);
     return d;
@@ -400,8 +410,8 @@ export class Fill {
 
   /** Logins whose hosts include an origin: the same rule fill applies, so the popup offers only what fills. */
   logins(o) {
-    return /** @type {any[]} */ (this.db.prepare("SELECT name, description, url, hosts FROM vault_items WHERE kind = 'login' ORDER BY name").all())
-      .filter(r => this.hostsOf(r).includes(o));
+    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'login' ORDER BY name").all())
+      .filter(r => this.vault.rowOk("vault_items", r) && this.hostsOf(r).includes(o));
   }
 
   /** @param {any} rec @param {string} passphrase */

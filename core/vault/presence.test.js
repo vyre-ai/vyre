@@ -17,11 +17,11 @@ import { encodeTicket } from "./relay.js";
 export const NEEDS_PRESENCE = [
   "vault.put", "vault.delete", "vault.import", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
-  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock",
+  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
-  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke"];
+  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock"];
 
 /** Start the vault module against a ctx that records every tool definition. */
 export async function recorded(t, extra = {}) {
@@ -91,4 +91,22 @@ test("generate from mcp only creates a new name", async t => {
   assert.equal((await run("vault.generate", { name: "fresh-secret" }, "mcp")).stored, "fresh-secret");
   // A person still rotates a login's password with it.
   assert.equal((await run("vault.generate", { name: "site-login" }, "cli")).stored, "site-login");
+});
+
+test("account tools: create returns the Secret Key once, unlock and lock, and nothing leaks", async t => {
+  const { run, tools, db, events } = await recorded(t);
+  const pw = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
+  const value = `fixture-mail-${crypto.randomBytes(12).toString("hex")}`;
+  await run("vault.put", { name: "mail-login", kind: "login", fields: { username: "alex@example.com", password: value } });
+  assert.throws(() => { throw new Error(String(tools.get("vault.account.create").callers)); }, /cli,local/);
+  const made = await run("vault.account.create", { password: pw });
+  assert.match(made.secretKey, /^V2-/);
+  assert.equal(made.moved, 1);
+  assert.equal((await run("vault.list", {})).items[0].vault, "personal");
+  assert.deepEqual(await run("vault.account.lock", {}, "mcp"), { locked: true });
+  await assert.rejects(run("vault.inject", { items: [{ name: "mail-login" }] }), /locked/);
+  await assert.rejects(run("vault.account.unlock", { password: "fixture-wrong-password" }), /does not open/);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true);
+  const seen = JSON.stringify([db.prepare("SELECT * FROM vault_audit").all(), events, await run("vault.list", {})]);
+  for (const s of [pw, value, made.secretKey]) assert.ok(!seen.includes(s));
 });

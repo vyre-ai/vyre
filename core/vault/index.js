@@ -18,24 +18,15 @@ import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
+import { presence, quoted, list } from "./tools/presence.js";
+import * as account from "./tools/account.js";
+
+export { presence };
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
-const quoted = n => `"${String(n ?? "").slice(0, 128)}"`;
-const list = ns => (Array.isArray(ns) ? ns : []).slice(0, 8).map(n => quoted(n && typeof n === "object" ? n.name : n)).join(", ") + (Array.isArray(ns) && ns.length > 8 ? ` and ${ns.length - 8} more` : "");
-
-/**
- * A presence declaration (ADR 0004, ADR 0006 section 3). The summary names the item, its kind
- * and where it goes, never a value, and never throws: presence's fallback prints the input,
- * which for a put would carry the value.
- * @param {string} fallback @param {(input: any) => string | Promise<string>} [fn] @param {any} [extra]
- */
-export function presence(fallback, fn, extra = {}) {
-  return { ...extra, summary: async input => { try { return (fn && (await fn(input || {}))) || fallback; } catch { return fallback; } } };
-}
-
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -43,6 +34,12 @@ export default {
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
 
     const opts = (ctx.config && ctx.config.vault) || {};
+    // An existing home opens its agent vault now, so a v1 home is re-sealed as v2 at start
+    // (ADR 0006, migration). A fresh home still makes its key on first use.
+    if (!vault.guarded) {
+      try { if (await vault.keys.exists()) await vault.key(); }
+      catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
+    }
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
       listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), onRelay: (env, meta) => vault.onRelay(env, meta) });
@@ -93,7 +90,7 @@ export default {
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
     tool("vault.put", ["cli", "local", "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
-      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, grants: strs }, ["name"]),
+      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs }, ["name"]),
       async ({ value, grants, ...input }, { caller }) => {
         if (value !== undefined) input.fields = { ...(input.fields || {}), value };
         if (!input.fields) throw new Error("give the item a value or fields");
@@ -105,7 +102,7 @@ export default {
           input.origin = caller;
         }
         const out = await vault.put(input, caller);
-        for (const g of grants || []) vault.grant({ name: input.name, module: g }, caller);
+        for (const g of grants || []) await vault.grant({ name: input.name, module: g }, caller);
         return { ...out, ...(grants ? { granted: grants } : {}) };
       }, presence("Save an item in the vault", ({ name, kind }) => {
         const old = vault.row(name);
@@ -122,7 +119,7 @@ export default {
     tool("vault.grant", ["cli", "local", "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
       obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.grant(input, caller),
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
-      presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away`,
+      presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp" }));
 
     tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers.",
@@ -136,7 +133,7 @@ export default {
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
-        if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)} while you are away`;
+        if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)} while you are away${vault.row(g.name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
         const s = p.passes.find(x => x.id === id);
         if (s) return `Share ${list(s.items)} with ${s.holder}, ${s.mode}, until ${new Date(s.expires).toISOString().slice(0, 10)}`;
         return "";
@@ -214,6 +211,8 @@ export default {
     tool("vault.relay", ["cli", "local", "mcp", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
       (input, { caller }) => vault.relayOut(input, caller));
+
+    account.register({ ctx, vault, tool });
 
     tool("vault.offboard", ["cli", "local", "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
