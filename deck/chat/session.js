@@ -172,13 +172,15 @@ export function mountSession(container, opts) {
   }
 
   // Matches the Capsule's shape for a memory source (capsule teammate, 2026-09-27): the name,
-  // then "<age> · <confidence>%" in mono 11 Ash, once intelligence's memory.thread carries them.
+  // then "<age> · <confidence>%" in mono 11 Ash. confidence is 0 to 1 (capsule: same as
+  // memory.relevant sends it, Math.round(c * 100)); the >1 branch stays only in case
+  // memory.thread (still unconfirmed with intelligence) turns out to differ.
   function sourceChip(s) {
     if (typeof s === "string") return h("span", { class: "source" }, icon("file", 12), s);
     const name = s.name || s.title || "";
     const bits = [];
     if (s.at) bits.push(since(s.at) + " ago");
-    if (s.confidence != null) bits.push(Math.round(s.confidence <= 1 ? s.confidence * 100 : s.confidence) + "%");
+    if (s.confidence != null) bits.push(Math.round(s.confidence > 1 ? s.confidence : s.confidence * 100) + "%");
     return h("span", { class: "source" }, icon("file", 12), h("span", null, name), bits.length ? h("span", { class: "source-meta" }, bits.join(" · ")) : null);
   }
 
