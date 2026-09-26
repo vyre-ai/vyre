@@ -37,7 +37,10 @@
       "vault.devices",
       "vault.device.revoke",
       "vault.device.unlock",
-      "vault.unlock-passphrase"
+      "vault.unlock-passphrase",
+      "vault.account.create",
+      "vault.account.unlock",
+      "vault.account.lock"
     ]
   },
   "watches": {
@@ -57,7 +60,9 @@
       "vault.device-paired",
       "vault.device-revoked",
       "vault.filled",
-      "vault.restored"
+      "vault.restored",
+      "vault.unlocked",
+      "vault.locked"
     ]
   },
   "shows": {

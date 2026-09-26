@@ -298,6 +298,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   - The daemon client no longer pools connections: the first call after a vyred restart failed
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
+- ADR 0006 step 1: every tool that hands out, writes, moves or unlocks a value declares
+  `presence` with a summary naming items and destinations, never a value (put, delete, import,
+  grant, approve, inject, totp, backup, restore, pass.create, pass.accept, offboard, unlock,
+  unlock-passphrase, device.code, device.unlock). The registry on main ignores the field until
+  ADR 0004 merges, so this is a declaration only for now. The fill listener refuses `/pair`
+  without an extension Origin and any Host that is not loopback or `vault.fill.names` (DNS
+  rebinding). `vault.generate` from Claude only creates new names.
+- ADR 0006 step 2, crypto v2: each put seals a new item version under a random item key,
+  wrapped under its vault's key; the body carries `meta` (kind, url, hosts, apps, reprompt),
+  checked against vyre.db on open, and the version sits in the AAD and in a MACed row, so an
+  older file put back fails. Item, grant, pass and device rows carry an HMAC; a row that fails
+  it is ignored and audited as `tamper`. ECIES v2 binds the recipient key and a purpose and
+  refuses an all-zero shared secret; v1 tickets still open. Two vault classes: `agents` (key
+  wrapped by the keystore's device key, opens unattended) and `personal` (key wrapped under the
+  account unlock key, Argon2id or scrypt of the password XOR the Secret Key). New tools
+  `vault.account.create`, `vault.account.unlock`, `vault.account.lock`. A v1 home is re-sealed
+  at start, v1 files removed only after every v2 copy verifies; once done, a v1 file is refused.
+  Keys are KeyObjects and `lock()` drops them all. Backups keep format v1 and old ones restore.
 
 #### Watchers
 

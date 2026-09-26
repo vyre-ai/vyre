@@ -78,6 +78,27 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Events: `vault.device-paired`, `vault.device-revoked`, `vault.filled`, `vault.restored`.
 - Tool definitions may carry `callers: ["cli", "local", "mcp", "module"]`. Other callers get
   `denied`, and `GET /v1/tools` lists only what the requesting caller may use.
+- Tool definitions carry `presence: { summary(input), skip? }` on every value-out or
+  access-giving vault tool (list in `core/vault/presence.test.js`). `skip` is a proposal to
+  security: `({ input, caller }) => boolean`, used for totp sessions and for mcp grant and
+  pass.create, which only wait as pending.
+- Fill listener: `/pair` needs an extension Origin (403 `origin_required`); a Host outside
+  loopback and config `vault.fill.names` gets 421 `host_refused`.
+- `vault.generate {name}` from mcp refuses an existing name.
+- Crypto v2 (`crypto.js`, `vault.js`): `vault.row(name)` returns undefined for a row whose MAC
+  fails; `vault.fields(row)` throws `code: "locked"` for a personal item while the account is
+  locked, and refuses a sealed copy whose version or meta disagrees with the row. New:
+  `vault.meta(row)`, `vault.open(row)` (`{meta, fields}`), `vault.rowOk(table, row)`,
+  `vault.sign(table, id)` (call after any direct write to a MACed table), `vault.grant` is now
+  async. `vault.list` adds `personal: "none"|"locked"|"unlocked"` and each item's `vault`.
+  `vault.put` takes `apps` and `reprompt` (cards default to true).
+- New tools: `vault.account.create {password}` (cli/local, presence; returns `{acct, secretKey,
+  moved}` once), `vault.account.unlock {password}` (cli/local, presence), `vault.account.lock`.
+  Events `vault.unlocked`, `vault.locked` (`{vault: "personal"}`). Internal `vault.secretKey()`
+  for the recovery kit.
+- Files in the vault folder: `vaults/agents.json` (agent VK wrapped by the device key),
+  `account.json` (KDF params, salt, personal VK wrapped under the AUK), `state.json` (v2 done),
+  `secret-key` (file keystores) or a keychain item under account `<acct>:sk`.
 - vyred treats an HTTP `x-vyre-caller: module:*` header as `local`.
 - Events: `vault.item-added`, `vault.item-changed`, `vault.item-deleted`, `vault.granted`,
   `vault.revoked`, `vault.released` (`{name, module}` or `{name, pass, holder}`),

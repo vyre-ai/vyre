@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { newMasterKey, wrapKey, unwrapKey } from "./crypto.js";
+import { newMasterKey, wrapKey, unwrapKey, fromHex } from "./crypto.js";
 
 export const SERVICE = "vyre-vault";
 
@@ -88,17 +88,20 @@ async function securityRetry(argv, stdin) {
   return r;
 }
 
-/** @param {string} dir @param {string} [keychain] */
-function keychainStore(dir, keychain) {
-  const account = accountFor(dir);
+/**
+ * One keychain entry for a vault folder. `suffix` picks a second entry under the same service
+ * (the Secret Key lives apart from the device key), and `decode` checks and decodes what was read.
+ * @param {string} dir @param {string} [keychain] @param {string} [suffix]
+ * @param {(text: string) => Buffer} [decode]
+ */
+function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain entry for this vault is not a vault key")) {
+  const account = accountFor(dir) + suffix;
   const tail = keychain ? [keychain] : [];
   const read = async () => {
     const r = await securityRetry(["find-generic-password", "-s", SERVICE, "-a", account, "-w", ...tail]);
     if (r.code === NOT_FOUND) return null;
     if (r.code !== 0) throw new Error(`could not read the vault key from the keychain: ${r.err.trim() || "exit " + r.code}`);
-    const hex = r.out.trim();
-    if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error("the keychain entry for this vault is not a vault key");
-    return Buffer.from(hex, "hex");
+    return decode(r.out.trim());
   };
   return {
     exists: async () => (await read()) !== null,
@@ -118,6 +121,11 @@ function keychainStore(dir, keychain) {
       if (r.code !== 0 && r.code !== NOT_FOUND) throw new Error(`could not remove the vault key from the keychain: ${r.err.trim()}`);
     },
   };
+}
+
+/** A decoder for a 64-hex-character key, into a buffer the caller zeroes. */
+function hexKey(message) {
+  return text => { try { return fromHex(text); } catch { throw new Error(message); } };
 }
 
 /** Write a file only this user can read, failing if it already exists. */
@@ -175,9 +183,7 @@ export function keystore({ dir, kind, keychain }) {
       async load(_ = {}) {
         const raw = readPrivate(file);
         if (raw === null) return null;
-        const hex = raw.toString("utf8").trim();
-        if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error(`${file} is not a vault key`);
-        return Buffer.from(hex, "hex");
+        try { return hexKey(`${file} is not a vault key`)(raw.toString("utf8").trim()); } finally { raw.fill(0); }
       },
       async destroy() { rmFile(file); },
     };
@@ -205,4 +211,40 @@ export function keystore({ dir, kind, keychain }) {
     };
   }
   throw new Error(`unknown vault keystore "${kind}"; use keychain, file or passphrase`);
+}
+
+/**
+ * Where the account's Secret Key lives on this device (ADR 0006 decision 1): the keychain, as a
+ * second generic password under a distinct account, or `secret-key`, 0600, beside the key file.
+ * The passphrase keystore uses the file too: the Secret Key alone opens nothing.
+ * @param {{ dir: string, kind: Kind, keychain?: string }} o
+ */
+export function secretKeyStore({ dir, kind, keychain }) {
+  const text = s => { if (!/^V2-[A-Z2-7-]{20,60}$/.test(s)) throw new Error("the stored Secret Key is not one"); return Buffer.from(s, "utf8"); };
+  if (kind === "keychain") {
+    const kc = keychainStore(dir, keychain, ":sk", text);
+    return {
+      /** @param {string} formatted */
+      async put(formatted) {
+        const { argv, stdin } = keychainWriteCommand({ account: accountFor(dir) + ":sk", hex: formatted, keychain });
+        const r = await securityRetry(argv, stdin);
+        const err = r.err.split(formatted).join("<key>").trim();
+        if (r.code !== 0 || err) throw new Error(`could not write the Secret Key to the keychain: ${err || "exit " + r.code}`);
+      },
+      /** @returns {Promise<string|null>} */
+      async read() { const b = await kc.read(); if (!b) return null; const s = b.toString("utf8"); b.fill(0); return s; },
+      remove: kc.remove,
+    };
+  }
+  const file = path.join(dir, "secret-key");
+  return {
+    /** @param {string} formatted */
+    async put(formatted) { writePrivate(file, formatted + "\n"); },
+    async read() {
+      const raw = readPrivate(file);
+      if (raw === null) return null;
+      try { return text(raw.toString("utf8").trim()).toString("utf8"); } finally { raw.fill(0); }
+    },
+    async remove() { rmFile(file); },
+  };
 }
