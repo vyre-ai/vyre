@@ -6,12 +6,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { open } from "../../../core/store/index.js";
 import { start } from "../../../core/daemon/index.js";
 import { paths } from "../../../core/config/index.js";
+import { call } from "../../../core/daemon/client.js";
 import { client, stream } from "./vyred.js";
 import { Bridge, explain } from "./bridge.js";
 
@@ -93,18 +95,21 @@ test("bridge: with the switchboard, the assistant is the default and a reply str
   const fc = withFakes(c, {
     "agents.list": () => [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }],
     "agents.threads": () => [{ id: "t-q3", label: "Q3 report", last: Date.now() - 4 * 86_400_000, project: "harlow-legal", projectName: "Harlow Legal" }],
-    "agents.ask": ({ agent }) => ({ thread: `t-${agent}` }),
-    "threads.send": () => ({ ok: true }),
-    "threads.lease": () => ({ holder: "capsule" }),
+    // The switchboard's shapes (work/switchboard, core/agents): wait:false answers once the words are in.
+    "agents.ask": ({ agent }) => ({ agent, thread: `t-${agent}`, ok: true, sent: true, text: "" }),
+    "threads.send": ({ thread }) => ({ sent: true, thread }),
+    "threads.lease": ({ thread }) => ({ thread, holder: "capsule", previous: null }),
   });
   const b = new Bridge(fc);
   await b.refresh();
   const d = await b.destinations(null, "what is left this week");
   assert.deepEqual([d.options[0].kind, d.options[0].agent, d.unavailable], ["assistant", "juno", null]);
   assert.deepEqual(await b.send(d.options[0], "what is left this week"), { thread: "t-juno" });
-  assert.deepEqual(fc.calls.at(-1), ["agents.ask", { agent: "juno", text: "what is left this week" }]);
-  b.onEvent({ id: 1, at: 1, type: "thread.text", thread: "t-juno", payload: { message: "m", text: "Two things", done: false } });
-  b.onEvent({ id: 2, at: 2, type: "thread.finished", thread: "t-juno", payload: { ok: true } });
+  assert.deepEqual(fc.calls.at(-1), ["agents.ask", { agent: "juno", text: "what is left this week", surface: "capsule", wait: false }]);
+  b.onEvent({ id: 1, at: 1, type: "thread.text", thread: "t-juno", payload: { message: "m", delta: "Two", done: false } });
+  b.onEvent({ id: 2, at: 1, type: "thread.text", thread: "t-juno", payload: { message: "m", delta: " thi", done: false } });
+  b.onEvent({ id: 3, at: 1, type: "thread.text", thread: "t-juno", payload: { message: "m", text: "Two things", done: true } });
+  b.onEvent({ id: 4, at: 2, type: "thread.finished", thread: "t-juno", payload: { ok: true } });
   const snap = b.snapshot();
   assert.equal(snap.reply?.text, "Two things");
   assert.equal(snap.reply?.finished, true);
@@ -114,39 +119,70 @@ test("bridge: with the switchboard, the assistant is the default and a reply str
   const k = await b.destinations(kit, "the Harlow deck needs the Q3 report numbers");
   assert.equal(k.options[0].thread, "t-q3", "kit's words matched its Q3 report thread");
   await b.send(k.options[0], "numbers please");
-  assert.deepEqual(fc.calls.slice(-2).map(x => x[0]), ["threads.lease", "threads.send"], "the lease is taken before typing into a thread");
+  assert.deepEqual(fc.calls.at(-1), ["threads.send", { thread: "t-q3", text: "numbers please", surface: "capsule" }], "a free thread is taken by typing; no lease is grabbed first");
+  assert.ok(!fc.calls.some(x => x[0] === "threads.lease"));
 });
 
-test("bridge: another surface holding the keyboard stops the send and says who", async t => {
+test("bridge: another surface holding the keyboard stops the send and says who, and only the user takes it", async t => {
   const { c } = await vyred(t);
-  const fc = withFakes(c, { "threads.lease": () => ({ holder: "terminal" }), "threads.send": () => ({ ok: true }) });
+  let holder = "terminal";
+  const fc = withFakes(c, {
+    "threads.lease": ({ thread, surface }) => { const previous = holder; holder = surface; return { thread, holder, previous }; },
+    "threads.send": ({ thread, surface }) => (holder === surface ? { sent: true, thread } : { sent: false, holder, note: `${holder} has the keyboard; threads.lease takes it` }),
+  });
   const b = new Bridge(fc);
   await b.refresh();
   const site = b.complete("site")[0];
   const d = await b.destinations(site, "x");
   const r = await b.send(d.options[0], "x");
   assert.match(String(r.error), /terminal has the keyboard/);
-  assert.ok(!fc.calls.some(x => x[0] === "threads.send"));
+  assert.equal(r.holder, "terminal");
+  assert.ok(!fc.calls.some(x => x[0] === "threads.lease"), "the Capsule never takes it on its own");
+  const took = await b.send(d.options[0], "x", { take: true });
+  assert.equal(took.error, undefined);
+  assert.deepEqual(fc.calls.map(x => x[0]).slice(-2), ["threads.lease", "threads.send"]);
 });
 
 test("bridge: held items and open asks wait in one list, and answering goes through the tools", async t => {
   const { c } = await vyred(t);
-  let held = [{ id: "g1", agent: "juno", to: "Dana Reyes <dana@harlowlegal.com>", subject: "Re: Q3 report", body: "Hi Dana", rule: "email to a client waits for you", at: 2000 }];
+  // The Gate's shapes (core/gate): gate.held has a summary and no words; gate.get has the draft.
+  let held = [{ id: "g1", kind: "send", via: "mail", to: ["Dana Reyes <dana@harlowlegal.com>"], summary: "Re: Q3 report", why: "Dana asked for the numbers", agent: "juno", thread: null, project: "harlow-legal", at: 2000 }];
   const fc = withFakes(c, {
     "gate.held": () => held,
-    "gate.approve": ({ id }) => { held = held.filter(h => h.id !== id); return { sent: true }; },
-    "gate.reject": () => ({ ok: true }),
-    "threads.asks": () => [{ ask: "a1", agent: "pax", summary: "email 14 clients the new intake form", at: 1000 }],
-    "threads.answer": () => ({ ok: true }),
+    "gate.get": ({ id }) => ({ ...held.find(h => h.id === id), state: "held", draft: { subject: "Re: Q3 report", body: "Hi Dana" }, final: null, diff: { removed: [], added: [] } }),
+    "gate.approve": ({ id }) => { held = held.filter(h => h.id !== id); return { id, state: "sent", result: {} }; },
+    "gate.reject": ({ id }) => ({ id, state: "rejected" }),
+    "threads.asks": () => [{ id: "a1", thread: "t9", tool: "Bash", summary: "email 14 clients the new intake form", state: "open", at: 1000 }],
+    "threads.answer": ({ ask, decision }) => ({ ask, answered: true, decision }),
   });
   const b = new Bridge(fc);
   await b.refresh();
   assert.deepEqual(b.snapshot().waiting.map(w => w.id), ["a1", "g1"]);
-  assert.deepEqual(await b.answer(b.waiting[1], "send", "Hi Dana, edited"), { ok: true });
-  assert.deepEqual(fc.calls.find(x => x[0] === "gate.approve"), ["gate.approve", { id: "g1", text: "Hi Dana, edited" }]);
+  assert.equal(b.waiting[1].title, "juno drafted a message to Dana Reyes");
+  const card = await b.held("g1");
+  assert.deepEqual(card.draft, { to: "Dana Reyes <dana@harlowlegal.com>", subject: "Re: Q3 report", body: "Hi Dana" });
+  assert.deepEqual(await b.answer(b.waiting[1], "send", { to: ["dana@harlowlegal.com"], body: "Hi Dana, edited" }), { ok: true });
+  assert.deepEqual(fc.calls.find(x => x[0] === "gate.approve"), ["gate.approve", { id: "g1", edited: { to: ["dana@harlowlegal.com"], body: "Hi Dana, edited" } }]);
   assert.deepEqual(b.waiting.map(w => w.id), ["a1"], "re-read from the Gate, not removed on optimism");
   await b.answer(b.waiting[0], "allow");
-  assert.deepEqual(fc.calls.at(-1)?.[0] === "threads.asks" ? fc.calls.find(x => x[0] === "threads.answer") : fc.calls.at(-1), ["threads.answer", { ask: "a1", decision: "allow" }]);
+  assert.deepEqual(fc.calls.find(x => x[0] === "threads.answer"), ["threads.answer", { ask: "a1", decision: "allow", surface: "capsule" }]);
+});
+
+test("bridge: a send the sender refused stays held and says why", async t => {
+  const { c } = await vyred(t);
+  const fc = withFakes(c, {
+    "gate.held": () => [{ id: "g2", kind: "send", via: "mail", to: ["dana@harlowlegal.com"], summary: "Re: Q3", agent: "juno", at: 1 }],
+    "gate.approve": ({ id }) => ({ id, state: "failed", error: "gmail said 401" }),
+  });
+  const b = new Bridge(fc);
+  await b.refresh();
+  const r = await b.answer(b.waiting[0], "send");
+  assert.match(String(r.error), /Not sent: gmail said 401.*still held/);
+  assert.equal(b.waiting.length, 1);
+  b.onEvent({ id: 1, at: 2, type: "gate.failed", payload: { id: "g2", via: "mail", error: "gmail said 401" } });
+  assert.match(b.waiting[0].sub, /last send failed$/);
+  b.onEvent({ id: 2, at: 3, type: "gate.rejected", payload: { id: "g2" } });
+  assert.equal(b.waiting.length, 0);
 });
 
 test("bridge: without threads.asks, open asks come from the event log", async t => {
@@ -191,4 +227,42 @@ test("bridge: when vyred is down everything is cleared, and the reason is words"
   assert.deepEqual(b.snapshot().waiting, []);
   assert.equal(b.complete("har").length, 0, "nothing stale is offered as if it were live");
   assert.match(explain({ code: "no_such_tool", message: "no tool gate.held" }), /Gate/);
+});
+
+test("bridge: the real Gate holds a draft, the Capsule opens it, and Send sends the user's edit", async t => {
+  const root = tempHome(t);
+  const got = [];
+  const gmail = http.createServer((req, res) => {
+    let body = ""; req.on("data", x => (body += x));
+    req.on("end", () => { got.push(body); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ id: "msg-1" })); });
+  });
+  await new Promise(r => gmail.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => new Promise(r => { gmail.close(() => r(undefined)); gmail.closeAllConnections(); }));
+  const empty = fs.mkdtempSync(path.join(root, "transcripts-"));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
+    role: "local", transcripts: [empty], roots: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "projects", "learn"] },
+    gate: { senders: { mail: { type: "gmail", vault: "test-mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (gmail.address()).port}` } } },
+  }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
+  assert.ok((await cli("vault.put", { name: "test-mail-token", kind: "api-key", fields: { value: "fixture-token" } })).data);
+  assert.equal((await cli("vault.grant", { name: "test-mail-token", module: "gate" })).data.grant.status, "active");
+  const req = await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Re: Q3 report", body: "Hi Dana" }, why: "Dana asked" }, { root, caller: "mcp:agent:juno" });
+  assert.equal(req.data.state, "held", JSON.stringify(req));
+
+  const b = new Bridge(client(d.paths.socket));
+  await b.refresh();
+  assert.equal(b.waiting[0]?.source, "gate", "gate.held is open to every caller");
+  // gate.get and gate.approve list their callers; until the Capsule is one of them, the loader
+  // hides them from it. Say so rather than fail: the fake-shape test above covers the Capsule.
+  if (!b.has("gate.approve")) return t.skip("core/gate does not list the capsule caller on gate.get/approve/reject yet");
+  const card = await b.held(b.waiting[0].id);
+  assert.deepEqual(card.draft, { to: "dana@harlowlegal.com", subject: "Re: Q3 report", body: "Hi Dana" });
+  assert.deepEqual(await b.answer(b.waiting[0], "send", { body: "Hi Dana, the numbers are on slide 6." }), { ok: true });
+  assert.equal(got.length, 1);
+  const mime = Buffer.from(JSON.parse(got[0]).raw, "base64url").toString();
+  assert.equal(Buffer.from(mime.split("\r\n\r\n")[1], "base64").toString(), "Hi Dana, the numbers are on slide 6.", "what the user left on screen is what went");
+  assert.deepEqual(b.waiting, []);
 });

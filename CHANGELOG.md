@@ -241,6 +241,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Held drafts are edited in place, with no Edit button: To, Subject and body read as text and
+  show an underline when focused. Send (⌘⏎) sends what the card shows through `gate.approve
+  {id, edited}` with every field; Discard is `gate.reject`. Esc leaves a field, then the card. The
+  words come from `gate.get` when the card opens; a send the sender refused stays up with its error.
+- Sending follows the switchboard's shapes: `agents.ask {wait: false}` streams the reply,
+  `threads.send` into a thread another screen holds says who has it, and only the user's ⌘⏎ takes
+  the keyboard (`threads.lease`). Answered asks leave the list; `thread.stopped` ends a reply.
 - `local/capsule/`: the Capsule. Press Control twice anywhere on the Mac, and a command bar
   opens over the current app with the caret in it. By default you talk to the assistant.
   `@` completes agents, projects and threads from the running vyred, and a "Sends to" row shows
