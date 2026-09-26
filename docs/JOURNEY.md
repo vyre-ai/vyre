@@ -14,6 +14,8 @@ npm i -g vyre
 vyre up
 ```
 
+(Until Vyre is on npm, the first line is `npm i -g https://vyre.run/box/vyre.tgz`.)
+
 `vyre up` asks where Vyre should run. Pick **a server**, and give it the address you SSH to:
 
 ```
@@ -60,8 +62,9 @@ One step a screen. Any step can be skipped and finished later in Settings.
 
 ## 4. Done
 
-Your assistant says hello on the last screen. Press **Open Vyre**. On your Mac the terminal ends
-with:
+Your assistant says hello on the last screen. Press **Open Vyre**. Back in the terminal, Vyre
+pairs your Mac with the box; the first time, it shows a short code for you to type back, which
+proves it is you at the keyboard. Then it ends with:
 
 ```
   Vyre is ready.
@@ -78,7 +81,8 @@ you want to check.
 
 - **Already on the server?** `curl -fsSL https://vyre.run/install.sh | sh`, then follow the link
   it prints (it also prints the `ssh -L` line to reach it from your laptop). Afterwards,
-  `npm i -g vyre && vyre up` on your Mac finds the box on your tailnet by itself.
+  `npm i -g vyre && vyre up` on your Mac finds the box on your tailnet by itself, and asks you to
+  approve the Mac in the Deck on your phone.
 - **No server?** `vyre up --box` makes this Mac the box. It has to stay awake for your phone to
   reach it.
 
