@@ -179,7 +179,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         return KeyShortcut(key, command: f.contains(.command), option: f.contains(.option), shift: f.contains(.shift), control: f.contains(.control))
     }
 
-    private func key(_ e: NSEvent) -> Bool {
+    /// One key while the panel is key. Internal, not private, so a test can hand it an event
+    /// made with NSEvent.keyEvent (never posted) without a window on screen.
+    func key(_ e: NSEvent) -> Bool {
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
         // Chords with Option or Control are the extensions' (Option-Return talks). The Capsule's own
         // keys use Command and Shift only, so they win a clash by never reaching here.

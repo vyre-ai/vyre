@@ -14,7 +14,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   icon.
 - `refreshMentions(matching:context:)`: a slower second answer, asked once 120 ms after typing
   pauses, cancelled by the next key and by hide, replacing the extension's rows only for the same
-  words. `mentionPicked(_:context:)` is told once per pick. Every addition has a default, so
+  words, chip and search, only while the Capsule is shown, and only for extensions that say
+  `refreshesMentions`; several run side by side. `mentionPicked(_:context:)` is told once per pick. Every addition has a default, so
   existing extensions are unchanged. `Sources/Kit/Extension.swift`, `Sources/Host/`,
   `Sources/UI/CapsuleView.swift`, `Tests/ExtensionNestTests.swift`.
 

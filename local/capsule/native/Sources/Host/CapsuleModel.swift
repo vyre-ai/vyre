@@ -34,7 +34,14 @@ public final class CapsuleModel: ObservableObject {
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
-    @Published public var target: VyreCandidate? { didSet { if target != oldValue { search() } } }
+    @Published public var target: VyreCandidate? {
+        didSet {
+            // The outer chip stays only while `target` is its child; any other change (nil, an
+            // agent, another app) makes the chip one level again, so the two never disagree.
+            if let p = targetParent, target.map({ $0.id.hasPrefix(Self.childID(p.id, "")) }) != true { targetParent = nil }
+            if target != oldValue { search() }
+        }
+    }
     /// The outer chip when `target` was picked inside it: WhatsApp for "WhatsApp › juno". Set
     /// before `target`, so the search that follows sees both. Nil for a one-level chip.
     @Published public internal(set) var targetParent: VyreCandidate?
@@ -46,7 +53,7 @@ public final class CapsuleModel: ObservableObject {
     /// Extension `@` targets for the words (inside a nesting chip when one is given), their slower
     /// second answer, the pick, and the send to one with its chip (ExtensionHost).
     var extensionMentions: ((String, VyreCandidate?) -> [ExtensionMention])?
-    var extensionRefresh: ((String, VyreCandidate?) async -> [String: [ExtensionMention]])?
+    var extensionRefreshers: ((String, VyreCandidate?) -> [@MainActor () async -> (String, [ExtensionMention])?])?
     var extensionPicked: ((VyreCandidate, VyreCandidate?) -> Void)?
     var sendToExtension: ((String, VyreCandidate, VyreCandidate?, Query) async -> ActionOutcome)?
     private var appTargets: [String: MentionTarget] = [:]
@@ -54,6 +61,12 @@ public final class CapsuleModel: ObservableObject {
     /// still says those words; forgotten on the next different words.
     private var refreshed: (key: String, rows: [String: [ExtensionMention]])?
     private var mentionRefresh: Task<Void, Never>?
+    /// Between willShow and didHide. Nothing slow is asked for `@` outside it.
+    private(set) var shown = false
+
+    /// A child target's id under its chip's: joined with NUL, which no label or id carries, so no
+    /// pair of ids can make the same child id ("a:b" + "c" and "a" + "b:c" stay apart).
+    nonisolated static func childID(_ parent: String, _ child: String) -> String { parent + "\u{0}" + child }
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 
@@ -89,6 +102,7 @@ public final class CapsuleModel: ObservableObject {
 
     public func willShow(front: FrontApp?) {
         self.front = front
+        shown = true
         (providers + extensionProviders).forEach { $0.warm() }
         vyred.follower.setShown(true)
         if !vyred.follower.started { vyred.follower.start() }
@@ -107,7 +121,9 @@ public final class CapsuleModel: ObservableObject {
         frecency.flush()
         vyred.follower.setShown(false)
         token += 1
-        mentionRefresh?.cancel(); mentionRefresh = nil
+        shown = false
+        cancelMentionRefresh()
+        sessionSearch?.cancel(); sessionSearch = nil
         confirming = nil
     }
 
@@ -115,6 +131,7 @@ public final class CapsuleModel: ObservableObject {
     public func reset() {
         if let r = reply, !r.finished { return }
         text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
     }
 
@@ -141,7 +158,7 @@ public final class CapsuleModel: ObservableObject {
             refreshMentions(m, token: t)
             return
         }
-        mentionRefresh?.cancel(); mentionRefresh = nil
+        cancelMentionRefresh()
         if target != nil {
             recallTask?.cancel(); memory = nil
             groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: [askItem(q)])]
@@ -302,22 +319,41 @@ public final class CapsuleModel: ObservableObject {
     private func mentionKey(_ q: String) -> String { (nestingChip?.id ?? "") + "\u{0}" + q }
 
     /// Ask the extensions again, slower, once the typing pauses (about 120 ms): refreshMentions.
-    /// Cancelled by the next keystroke (a new search) and by hide; an answer for older words is
-    /// dropped. Nothing is asked again unless the user types.
+    /// Only while shown, and only extensions that said they have a second answer; they run side by
+    /// side and each answer is applied as it lands, if the words, the chip and the search are
+    /// still the ones it was asked for. The next keystroke and hide cancel it. Never repeated
+    /// unless the user types.
     func refreshMentions(_ m: String, token t: Int) {
-        mentionRefresh?.cancel(); mentionRefresh = nil
-        guard let refresh = extensionRefresh else { return }
-        let parent = nestingChip, key = mentionKey(m)
+        cancelMentionRefresh(forget: false)
+        guard shown, let calls = extensionRefreshers?(m, nestingChip), !calls.isEmpty else { return }
+        let key = mentionKey(m)
         mentionRefresh = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 120_000_000)
-            guard let self, !Task.isCancelled, t == self.token else { return }
-            let rows = await refresh(m, parent)
-            guard !Task.isCancelled, t == self.token, !rows.isEmpty, self.mentionQuery == m else { return }
-            var now = self.refreshed?.key == key ? self.refreshed!.rows : [:]
-            now.merge(rows) { $1 }
-            self.refreshed = (key, now)
-            self.listMentions(m, keep: true)
+            if Task.isCancelled { return }
+            await withTaskGroup(of: Void.self) { g in
+                for call in calls {
+                    g.addTask { @MainActor [weak self] in
+                        let got = await call()
+                        // Re-bound after the wait: the model may have gone, or moved on.
+                        guard let self, let (ext, rows) = got, !Task.isCancelled, self.shown, t == self.token,
+                              self.mentionQuery == m, self.mentionKey(m) == key else { return }
+                        var now = self.refreshed?.key == key ? self.refreshed!.rows : [:]
+                        now[ext] = rows
+                        self.refreshed = (key, now)
+                        self.listMentions(m, keep: true)
+                    }
+                }
+            }
         }
+    }
+
+    /// A refresh is waiting or in flight (for tests: none is made when no extension has one).
+    var refreshScheduled: Bool { mentionRefresh != nil }
+
+    /// Stop a refresh waiting or in flight; `forget` also drops the rows an earlier one brought.
+    func cancelMentionRefresh(forget: Bool = true) {
+        mentionRefresh?.cancel(); mentionRefresh = nil
+        if forget { refreshed = nil }
     }
 
     /// A session active in the last 15 minutes that vyred does not run is live in a terminal.
@@ -340,7 +376,7 @@ public final class CapsuleModel: ObservableObject {
     func searchSessions(_ q: String, token t: Int) {
         sessionSearch?.cancel()
         let words = q.trimmingCharacters(in: .whitespaces)
-        guard words.count >= 2, vyred.isUp else { return }
+        guard shown, words.count >= 2, vyred.isUp else { return }
         sessionSearch = Task { @MainActor [vyred] in
             try? await Task.sleep(nanoseconds: 120_000_000)
             if Task.isCancelled || t != self.token { return }

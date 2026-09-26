@@ -57,8 +57,11 @@ public protocol CapsuleExtension: AnyObject {
     /// from the app on first use). Called once, about 120 ms after the last keystroke, only while
     /// the Capsule is shown; cancelled when the words change or the Capsule hides. Return nil when
     /// there is nothing new (the default); a list replaces this extension's rows if the words are
-    /// still the same when it lands. Never polled.
+    /// still the same when it lands. Never polled. Only asked when `refreshesMentions` is true.
     func refreshMentions(matching query: String, context: MentionContext) async -> [MentionTarget]?
+    /// Say true when you implement refreshMentions. Read once when the Capsule loads the
+    /// extension, so one that has no second answer costs no task per keystroke. Default false.
+    var refreshesMentions: Bool { get }
     /// A target became the chip. An app chip can start reading its contacts into memory here, so
     /// the next `@` answers from memory. Called once per pick. The default does nothing.
     func mentionPicked(_ target: MentionTarget, context: MentionContext)
@@ -95,6 +98,7 @@ public extension CapsuleExtension {
         context.parent == nil ? mentions(matching: query) : []
     }
     func refreshMentions(matching query: String, context: MentionContext) async -> [MentionTarget]? { nil }
+    var refreshesMentions: Bool { false }
     func mentionPicked(_ target: MentionTarget, context: MentionContext) {}
     func send(_ text: String, to target: MentionTarget, in parent: MentionTarget?, query: Query) async -> ActionOutcome {
         await send(text, to: target, query: query)
@@ -144,6 +148,8 @@ public struct MentionTarget: Sendable, Equatable {
     public var sendsTo: String
     /// True for a target that holds others (an app holding contacts): picked, it is a chip under
     /// which a second `@` asks the same extension for its children. False for a leaf, the default.
+    /// Nesting stops at two levels: a child's `nests` is ignored, so "WhatsApp › juno" is as deep
+    /// as a chip goes.
     public var nests: Bool
     /// For a child, the id of the target it sits under ("whatsapp" for "juno"), or nil. The
     /// Capsule does not read it; it is there so an extension can tell its own rows apart.

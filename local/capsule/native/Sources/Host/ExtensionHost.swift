@@ -36,7 +36,8 @@ final class ExtensionHost: CapsuleHost {
         }
         reread()
         model.extensionMentions = { [weak self] q, parent in self?.mentions(q, parent: parent) ?? [] }
-        model.extensionRefresh = { [weak self] q, parent in await self?.refreshMentions(q, parent: parent) ?? [:] }
+        refreshing = Set(extensions.filter(\.refreshesMentions).map { type(of: $0).id })
+        model.extensionRefreshers = { [weak self] q, parent in self?.refreshers(q, parent: parent) ?? [] }
         model.extensionPicked = { [weak self] c, parent in self?.picked(c, parent: parent) }
         model.sendToExtension = { [weak self] text, c, parent, query in
             guard let self, let (e, t) = self.targets[c.id] else { return .failed("\(c.label) is not there any more.") }
@@ -59,6 +60,8 @@ final class ExtensionHost: CapsuleHost {
 
     /// Targets named in the last `@` list, by candidate id, for the send that follows.
     private var targets: [String: (CapsuleExtension, MentionTarget)] = [:]
+    /// Extensions that said they have a slower second answer (refreshesMentions), read at load.
+    private var refreshing = Set<String>()
 
     /// The extensions a `@` asks, with what each is told. No chip (`parent` nil): all of them, as
     /// before nesting. A nesting chip: only the extension it came from, with the chip as parent.
@@ -68,11 +71,12 @@ final class ExtensionHost: CapsuleHost {
         return [(e, MentionContext(parent: t, extensionID: type(of: e).id))]
     }
 
-    /// One target as a candidate row. A child's id carries its chip's, so "juno" in WhatsApp and
-    /// "juno" in Slack stay two targets.
+    /// One target as a candidate row. A child's id carries its chip's (CapsuleModel.childID), so
+    /// "juno" in WhatsApp and "juno" in Slack stay two targets.
     private func candidate(_ e: CapsuleExtension, _ t: MentionTarget, _ parent: VyreCandidate?) -> ExtensionMention {
         let id = type(of: e).id
-        let c = VyreCandidate(kind: .app, id: parent.map { "\($0.id)>\(t.id)" } ?? "ext:\(id):\(t.id)", label: t.label, sub: t.sub, last: 0)
+        let c = VyreCandidate(kind: .app, id: parent.map { CapsuleModel.childID($0.id, t.id) } ?? "ext:\(id):\(t.id)",
+                              label: t.label, sub: t.sub, last: 0)
         targets[c.id] = (e, t)
         return ExtensionMention(ext: id, candidate: c, target: t)
     }
@@ -82,16 +86,17 @@ final class ExtensionHost: CapsuleHost {
         asked(parent).flatMap { e, ctx in e.mentions(matching: q, context: ctx).map { candidate(e, $0, parent) } }
     }
 
-    /// The slower second answer (refreshMentions), per extension that had something new. The model
-    /// calls this once the typing pauses and drops what lands after the words changed.
-    func refreshMentions(_ q: String, parent: VyreCandidate?) async -> [String: [ExtensionMention]] {
-        var out: [String: [ExtensionMention]] = [:]
-        for (e, ctx) in asked(parent) {
-            guard let rows = await e.refreshMentions(matching: q, context: ctx) else { continue }
-            if Task.isCancelled { return [:] }
-            out[type(of: e).id] = rows.map { candidate(e, $0, parent) }
+    /// The slower second answer (refreshMentions), one call per extension that has one, for the
+    /// model to run side by side and apply as each lands. A call answers nil for nothing new, or
+    /// when its task was cancelled while the extension worked.
+    func refreshers(_ q: String, parent: VyreCandidate?) -> [@MainActor () async -> (String, [ExtensionMention])?] {
+        asked(parent).filter { refreshing.contains(type(of: $0.0).id) }.map { e, ctx in
+            { [weak self] in
+                guard !Task.isCancelled, let rows = await e.refreshMentions(matching: q, context: ctx),
+                      !Task.isCancelled, let self else { return nil }
+                return (type(of: e).id, rows.map { self.candidate(e, $0, parent) })
+            }
         }
-        return out
     }
 
     /// A target became the chip: tell the extension it came from, once.
