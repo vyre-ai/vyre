@@ -399,6 +399,10 @@ test("learn: a plain no declines; anything else leaves the proposal waiting; ano
   for (const s of ["yes", "y", "keep it", "yes keep lesson 7", "sure", "do it", "Yes!"]) assert.equal(reply(s)?.yes, true, s);
   for (const s of ["no", "don't", "drop it", "no thanks"]) assert.equal(reply(s)?.yes, false, s);
   for (const s of ["yes but use the other logo", "no idea", "what?", "keep going"]) assert.equal(reply(s), null, s);
+  // The answer as its own first sentence, with the next request after it.
+  assert.equal(reply("Yes, keep it. Now write two sentences about rye.")?.yes, true);
+  assert.equal(reply("No thanks.\nJust fix the test.")?.yes, false);
+  for (const s of ["No, I meant the other file. Try again.", "Yes, and also rename it.", "Sure thing, but only in docs. Go on."]) assert.equal(reply(s), null, s);
 });
 
 test("learn: accept, retire and relax refuse MCP, agents, hooks and unknown callers, and declare presence", async t => {

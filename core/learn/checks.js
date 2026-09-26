@@ -505,12 +505,21 @@ export function weakens(tool, input, { home: root, cwd } = {}) {
 
 /**
  * A reply to a proposal: a plain yes or a plain no, and the lesson it names if it names one.
- * Anything with more in it is neither, so a sentence that happens to start with "no" leaves the
- * proposal waiting.
+ * The answer may be its own first sentence with a request after it ("Yes, keep it. Now write
+ * the intro."). Anything else is neither, so a sentence that happens to start with "no" ("no,
+ * I meant the other file") leaves the proposal waiting.
  * @param {string} said
  * @returns {{ yes: boolean, id: number|null } | null}
  */
 export function reply(said) {
+  const whole = plain(said);
+  if (whole) return whole;
+  const first = /^([^.!?\n]{1,60})[.!?\n]\s+\S/.exec(String(said || "").trim());
+  return first ? plain(first[1]) : null;
+}
+
+/** @param {string} said */
+function plain(said) {
   const t = String(said || "").toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[.,!]+/g, " ").replace(/\s+/g, " ").trim();
   if (!t || t.length > 60) return null;
   const which = "(?:it|that|this|them|(?:lesson\\s+)?#?(\\d+))";
