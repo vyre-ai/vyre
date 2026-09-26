@@ -190,8 +190,8 @@ export function offlineTouched({ root, session, prompt_id, agent, cwd, tool, inp
   if (!raw || typeof raw !== "string" || !readSnapshot(root, agent, cwd).length) return;
   const s = load(root, session, prompt_id);
   const at = Date.now();
-  s.touched.push({ path: path.resolve(cwd || process.cwd(), raw), at });
   s.changed = ++s.n;
+  s.touched.push({ path: path.resolve(cwd || process.cwd(), raw), at, n: s.changed });
   save(root, session, s);
 }
 
@@ -206,9 +206,12 @@ export function offlineStop({ root, session, prompt_id, agent, cwd, text, stop_h
   const s = load(root, session, prompt_id);
   if (!stop_hook_active) s.blocks = 0;
   const touched = s.touched.map(f => f.path);
+  // An after check orders this turn's changes and commands by the file's own counter.
+  const changes = s.touched.map(f => ({ path: f.path, at: Number.isInteger(f.n) ? f.n : 0 }));
+  const commands = s.ran.filter(r => Number.isInteger(r.n)).map(r => ({ command: r.command, at: r.n }));
   const failed = [];
   for (const l of lessons) {
-    const r = atStop(l.check, { text: typeof text === "string" ? text : null, touched });
+    const r = atStop(l.check, { text: typeof text === "string" ? text : null, touched, changes, commands });
     if (r.problem) failed.push({ l, problem: r.problem });
   }
   const back = failed.filter(f => f.l.level !== "remind");
