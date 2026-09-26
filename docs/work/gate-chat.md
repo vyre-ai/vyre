@@ -32,6 +32,7 @@ Tools:
 | Tool | Callers | Input | Returns |
 |---|---|---|---|
 | `gate.request` | all | `{kind: "send"\|"spend"\|"delete", via, to: string\|string[], content: object, why?, thread?, project?}` | `{id, state: "held", message}` |
+|  |  | `thread` is filled from the caller vyred verified (`run(input, {caller, thread, agent})`): an agent's thread, or the session the MCP server's hook bound. From a model, a `thread` that differs is refused; `project` comes from the thread when the Switchboard knows it. | |
 | `gate.senders` | all | `{}` | `[{name, type, kinds, content}]`: the `via` values that exist and the content each takes. Never a credential. |
 | `gate.held` | all | `{thread?, project?}` | held items, oldest first: `{id, kind, via, to, summary, why, agent, thread, project, at}` |
 | `gate.get` | cli, local, module | `{id}` | the item plus `draft`, `final`, `diff: {removed: [], added: []}`, `state`, `result`, `error` |

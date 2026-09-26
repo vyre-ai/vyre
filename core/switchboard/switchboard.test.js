@@ -17,7 +17,8 @@ import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
 import { open } from "../store/index.js";
-import { MIGRATIONS } from "./index.js";
+import { MIGRATIONS, answerSummary } from "./index.js";
+import { Sessions } from "./sessions.js";
 import { migrate } from "../store/index.js";
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
@@ -122,7 +123,9 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   process.env.FAKE_CLAUDE_LOG = log;
   t.after(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   // The file keystore, so no test goes near the login keychain.
-  if (vault) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  if (vault) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
+    // A Gate sender, so an agent's gate.request shows which thread vyred verified. Nothing is sent.
+    gate: { senders: { mail: { type: "gmail", vault: "no-such-item", from: "alex@example.com" } } } }));
   if (probe) {
     // Internal tools answer only modules: a module that asks threads.claimed for the test.
     writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.claimed"] } }, `
@@ -338,6 +341,14 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   assert.equal(launches().at(-1).auth, "ambient", "no auth configured means the machine's own login");
   assert.equal(launches().at(-1).projects, "*");
   assert.ok(Array.isArray((await inside("juno", "threads.list {}")).data));
+  // A tool learns the thread vyred verified: juno's draft is filed under juno's own thread, and
+  // naming scout's thread instead is refused.
+  const junoThread = (await tool("agents.list", {})).data.find(a => a.name === "juno").thread;
+  const draft = { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "s", body: "b" } };
+  assert.equal((await inside("juno", `gate.request ${JSON.stringify(draft)}`)).data.state, "held");
+  const filed = (await tool("gate.held", {})).data.at(-1);
+  assert.deepEqual([filed.thread, filed.agent], [junoThread, "juno"]);
+  assert.match((await inside("juno", `gate.request ${JSON.stringify({ ...draft, thread: who.thread })}`)).error.message, /cannot file under/);
   assert.equal((await inside("juno", 'threads.answer {"ask":"a1","decision":"allow"}')).error.code, "denied", "not even the assistant answers a permission");
   // Naming an agent without its thread's key is refused outright, before any tool runs: nothing
   // outside juno's thread can pass for the assistant, and scout's key does not make it juno.
@@ -382,4 +393,33 @@ test("agents: an API-key agent stops at its budget", async t => {
   await until(async () => (await tool("agents.list", {})).data[0].status === "stopped", "ledger stopping");
   const again = await tool("agents.ask", { agent: "ledger", text: "whoami" });
   assert.match(again.error.message, /spent its \$0.2 budget/);
+});
+
+test("switchboard: the presence summary of an answer says what is allowed, where, and in which thread", () => {
+  const asks = { a1: { thread: "0f3c9a2e-1111", tool: "Write", summary: "write notes.md", destination: "/work/notes.md" } };
+  const sb = /** @type {any} */ ({ asks: { get: id => asks[id] || null }, record: () => ({ name: "Intake" }) });
+  assert.equal(answerSummary(sb, { ask: "a1", decision: "allow" }), "Allow Write to /work/notes.md: write notes.md (thread Intake)");
+  assert.equal(answerSummary({ ...sb, record: () => null }, { ask: "a1", decision: "deny" }), "Deny Write to /work/notes.md: write notes.md (thread 0f3c9a2e)");
+  assert.equal(answerSummary(sb, { ask: "zz", decision: "deny" }), "deny permission question zz");
+});
+
+test("sessions: a session binds to a running claude once, its key is checked, and a gone process vouches for nothing", t => {
+  const db = open(path.join(tempHome(t), "s.db"));
+  migrate(db, "threads", MIGRATIONS);
+  const up = new Set([100, 200, 300]);
+  const sessions = new Sessions(db, { children: () => [300], isClaude: pid => pid === 100 || pid === 200, alive: pid => up.has(pid) });
+  const id = "5f0c2a61-7d7e-4c43-9a57-0b6f3d0e9a11";
+  assert.throws(() => sessions.bind(id, 999), /not a running claude/);
+  assert.throws(() => sessions.bind("s1", 100), /not a session id/);
+  const a = sessions.bind(id, 100);
+  assert.equal(sessions.vouch(id, a.key), id);
+  assert.equal(sessions.vouch(id, "a-guess"), null);
+  assert.throws(() => sessions.bind(id, 200), /bound to another running process/, "another claude cannot take a live session");
+  const again = sessions.bind(id, 100);
+  assert.equal(sessions.vouch(id, a.key), null, "binding again replaces the key");
+  assert.equal(sessions.vouch(id, again.key), id);
+  assert.ok(sessions.bind("0b1d9c7e-0000-4000-8000-000000000000", 300).key, "a headless child of this Switchboard binds too");
+  up.delete(100);
+  assert.equal(sessions.vouch(id, again.key), null, "the process is gone");
+  assert.ok(sessions.bind(id, 200).key, "a resumed session binds from its new process");
 });
