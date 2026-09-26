@@ -267,9 +267,15 @@ window.addEventListener("popstate", route);
 window.addEventListener("deck:navigate", route);
 
 // First visit before setup is finished goes to the onboarding.
+// onboard.status can be slow (it asks Tailscale and Claude Code on a cold cache), so the Deck waits
+// for it at most a moment and never leaves the phone on a blank screen: a late answer that says
+// there is no owner yet still sends the page to the onboarding.
 (async () => {
-  const st = await attempt("onboard.status");
-  if (st.data && st.data.owner === false && !fixturesOn) { location.replace("/onboard"); return; }
+  const status = attempt("onboard.status");
+  const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
+  const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;
+  if (toOnboard(first)) { location.replace("/onboard"); return; }
+  if (!first) status.then(st => { if (toOnboard(st)) location.replace("/onboard"); });
   drawFoot();
   pwa.start({ view, deck });
   route();

@@ -46,7 +46,10 @@ fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
 // VYRE_NO_DIALOGS: a world never raises Touch ID, a notification or an app on the user's screen.
 // VYRE_TAILSCALE_BIN: a sample tailnet (fake-tailscale.js), never the real Tailscale of this machine.
 const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
-  VYRE_TAILSCALE_BIN: path.join(REPO, "deck", "test", "fake-tailscale.js") };
+  VYRE_TAILSCALE_BIN: path.join(REPO, "deck", "test", "fake-tailscale.js"),
+  // A send from the Deck resumes a session headless: with the Switchboard's fake claude, which
+  // streams an echo back (or asks permission for "write <file>"), never the real one.
+  VYRE_CLAUDE_BIN: path.join(REPO, "deck", "test", "fake-claude.js") };
 const vyre = (/** @type {string[]} */ args) => spawnSync(process.execPath, [BIN, ...args], { env, encoding: "utf8" });
 
 const { socketPath } = await import("../../core/config/index.js");

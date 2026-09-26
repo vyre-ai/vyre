@@ -40,9 +40,18 @@ const SCREENS = [
   { name: "find-command", path: "/find?q=tell%20intake%20to%20add%20a%20phone%20field", wait: 2500 },
   { name: "pull-to-find", path: "/projects", drag: true },
   { name: "chat", path: "/chat" },
-  { name: "chat-project", path: "/chat", script: `click('.chat-projects a.thread-row'); await wait(1500);` },
-  { name: "chat-session", path: "/chat", script: `click('.chat-recent a.thread-row'); await wait(2500);` },
-  { name: "needs-draft", path: "/now", script: `const a = document.querySelector('a[href^="/needs/"]'); if (!a) throw new Error("no held item on Now"); a.click(); await wait(1500);` },
+  { name: "chat-project", path: "/chat", script: `await click('.chat-projects a.thread-row'); await wait(1500);` },
+  { name: "chat-session", path: "/chat", script: `await click('.chat-recent a.thread-row'); await wait(2500);` },
+  // Sending from the phone: the fake claude streams an echo back; then a permission ask inline.
+  { name: "chat-send", path: "/chat", script: `await click('.chat-recent a.thread-row:nth-of-type(2)'); await wait(2500);
+      const ta = document.querySelector('.composer textarea'); ta.value = 'hello from the phone'; ta.dispatchEvent(new Event('input'));
+      document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); for (let i = 0; i < 80 && !document.body.innerText.includes('echo: hello from the phone'); i++) await wait(100);
+      if (!document.body.innerText.includes('hello from the phone')) throw new Error('the sent line is not in the session');` },
+  { name: "chat-ask", path: "/chat", script: `await click('.chat-recent a.thread-row'); await wait(2500);
+      const ta = document.querySelector('.composer textarea'); ta.value = 'write notes.txt'; ta.dispatchEvent(new Event('input'));
+      document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); await waitFor('.ask-card', 10000).catch(() => null);
+      if (!document.querySelector('.ask-card')) throw new Error('no ask card for the permission question');` },
+  { name: "needs-draft", path: "/now", script: `await click('a[href^="/needs/"]'); await wait(1500);` },
   { name: "agents", path: "/agents" },
   { name: "settings", path: "/settings" },
   { name: "offline", path: "/chat", offline: true },
