@@ -12,9 +12,6 @@ Vyre runs Claude Code on a server you own and puts it on your Mac and your phone
 your Mac, Vyre sets up the server over SSH, and you finish in the browser. Setup takes about ten
 minutes. Why it works this way is in [ADR 0008](../adr/0008-install-journey.md).
 
-> [!GAP]
-> The start page on vyre.run is older than this page. Where they differ, follow this one. See [known gaps](../known-gaps.md#the-vyrerunstart-page-is-older-than-these-docs).
-
 ## What you need
 
 - A Mac with Node 22.5 or newer (`node --version`) and Claude Code.

@@ -68,10 +68,3 @@ The description of `vault.caps` (and so the [tools reference](reference/tools.md
 off by default. vyred returns `reveal: true`: the Deck can reveal a field, behind presence.
 
 Owner: core/vault (the lead routes it). Page: [the Vault](using/vault.md).
-
-## The vyre.run/start page is older than these docs
-
-The start page on vyre.run still says to use a Cloudflare token for your address and to approve
-the Mac with `vyre link approve` on the box. Follow [onboarding](get-started/onboarding.md).
-
-Owner: integrator. Page: [onboarding](get-started/onboarding.md).
