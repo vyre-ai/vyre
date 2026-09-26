@@ -21,8 +21,7 @@ test("up: over SSH, the tunnel line points at the address the person connected t
 
 import fs from "node:fs";
 import path from "node:path";
-import { up } from "./up.js";
-import * as tailnet from "../tailnet.js";
+import { up, mac } from "./up.js";
 import * as config from "../../config/index.js";
 import { tempHome } from "../../../test/helpers.js";
 
@@ -47,14 +46,20 @@ const running = peers => ({
 });
 
 /** Deps with fakes. `answering` is the set of addresses whose health answers. */
-function fakes(t, { answering = [], tools = {}, answers = [], tty = true } = {}) {
+function fakes(t, { answering = [], found = [], tools = {}, answers = [], tty = true } = {}) {
   const lines = [];
   t.mock.method(console, "log", (...a) => { lines.push(a.join(" ")); });
   const calls = [], added = [], opened = [];
   const deps = {
     bring: async () => ({ ok: true, note: null }),
-    call: async (tool, input) => { calls.push([tool, input]); return tools[tool] ? tools[tool](input) : { error: { code: "no_such_tool", message: tool } }; },
-    tailnet: { status: tailnet.status, boxes: tailnet.boxes, probe: async a => answering.includes(a.replace(/\/$/, "")) ? { version: "0.1.0", role: "box" } : null },
+    call: async (tool, input) => {
+      calls.push([tool, input]);
+      if (tools[tool]) return tools[tool](input);
+      if (tool === "link.find") return { data: { boxes: found.map(address => ({ address, node: "" })), paired: null } };
+      return { error: { code: "no_such_tool", message: tool } };
+    },
+    health: async a => answering.includes(a.replace(/\/$/, "")) ? { version: "0.1.0", role: "box" } : null,
+    openCapsule: async () => { calls.push(["capsule"]); return true; },
     io: { tty, ask: async q => { lines.push("? " + q); return answers.shift() ?? ""; } },
     addBox: async (target, opts) => { added.push(target); return 0; },
     openUrl: url => opened.push(url),
@@ -80,18 +85,18 @@ test("up --json on a Mac with no box and none found: one object, box null, not r
 
 test("up on a Mac: exactly one box answers on the tailnet, so it is saved and the ending prints", async t => {
   world(t, running([peer("vyre"), peer("vyre-2", OTHER), peer("vyre-3", ME, { Online: false }), peer("printer")]));
-  const f = fakes(t, { answering: [BOX] });
+  const f = fakes(t, { answering: [BOX], found: [BOX] });
   assert.equal(await up([], f.deps), 0);
   assert.equal(config.load().network.box, BOX);
   assert.match(f.text(), /Vyre is ready\./);
   assert.match(f.text(), /your box\s+https:\/\/vyre\.example-tail\.ts\.net/);
-  assert.equal(f.calls[0][0], "link.status", "pairing is looked at; no_such_tool is skipped quietly");
+  assert.deepEqual(f.calls.map(c => c[0]), ["link.find", "link.status", "capsule"], "pairing is looked at; no_such_tool is skipped quietly");
   assert.doesNotMatch(f.text(), /link:/);
 });
 
 test("up --json on a Mac with its box answering: ready, and the box named", async t => {
   world(t, running([peer("vyre")]));
-  const f = fakes(t, { answering: [BOX] });
+  const f = fakes(t, { answering: [BOX], found: [BOX] });
   assert.equal(await up(["--json"], f.deps), 0);
   const o = JSON.parse(f.lines[0]);
   assert.equal(f.lines.length, 1);
@@ -100,23 +105,23 @@ test("up --json on a Mac with its box answering: ready, and the box named", asyn
   assert.equal(o.url, null);
 });
 
-test("up on a Mac: two boxes answer; with a terminal it asks which, without one it lists them and exits 1", async t => {
+test("up on a Mac: two boxes answer; with a terminal it asks which, without one it lists them", async t => {
   world(t, running([peer("vyre"), peer("vyre-2")]));
   const two = [BOX, "https://vyre-2.example-tail.ts.net"];
-  const quiet = fakes(t, { answering: two, tty: false });
-  assert.equal(await up([], quiet.deps), 1);
+  const quiet = fakes(t, { answering: two, found: two, tty: false });
+  assert.equal(await up([], quiet.deps), 0);
   assert.match(quiet.text(), /1\s+https:\/\/vyre\.example/);
   assert.match(quiet.text(), /2\s+https:\/\/vyre-2\.example/);
   assert.equal(config.load().network.box, undefined, "nothing saved without a choice");
   t.mock.restoreAll();
 
-  const asked = fakes(t, { answering: two, answers: ["2"] });
+  const asked = fakes(t, { answering: two, found: two, answers: ["2"] });
   assert.equal(await up([], asked.deps), 0);
   assert.equal(config.load().network.box, two[1]);
   t.mock.restoreAll();
 
   config.save({ network: { box: null } });
-  const j = fakes(t, { answering: two });
+  const j = fakes(t, { answering: two, found: two });
   assert.equal(await up(["--json"], j.deps), 1);
   assert.equal(JSON.parse(j.lines[0]).error.code, "several_boxes");
 });
@@ -161,13 +166,13 @@ test("up on a Mac: a known box that does not answer says why and exits 1", async
   assert.equal(JSON.parse(j.lines[0]).error.code, "box_unreachable");
 });
 
-test("up on a Mac: an unpaired box is paired through link.pair", async t => {
+test("up on a Mac: an unpaired box starts pairing through link.pair and shows the code", async t => {
   world(t, running([]));
   config.save({ network: { box: BOX } });
-  const f = fakes(t, { answering: [BOX], tools: { "link.status": () => ({ data: { paired: false } }), "link.pair": () => ({ data: { paired: true } }) } });
+  const f = fakes(t, { answering: [BOX], tools: { "link.status": () => ({ data: { linked: false, pending: null } }), "link.pair": () => ({ data: { code: "123-456" } }) } });
   assert.equal(await up([], f.deps), 0);
-  assert.deepEqual(f.calls.map(c => c[0]), ["link.status", "link.pair"]);
-  assert.match(f.text(), /paired with your box/);
+  assert.deepEqual(f.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
+  assert.match(f.text(), /vyre link approve 123-456/);
 });
 
 test("up --box on a Mac: the one-time link is printed and opened; --json gives url and port", async t => {
@@ -191,7 +196,8 @@ test("up on a box after onboarding: the ending block, the same as on the Mac", a
   world(t, running([]));
   config.save({ role: "box", onboard: { assistant: "Juno" } });
   const done = { data: { url: null, port: null, user: "alex", address: BOX } };
-  const f = fakes(t, { answering: [BOX], tools: { "onboard.link": () => done } });
+  const serving = () => ({ data: { phase: "serving" } });
+  const f = fakes(t, { tools: { "onboard.link": () => done, "names.status": serving } });
   f.deps.platform = "linux";
   assert.equal(await up([], f.deps), 0);
   assert.match(f.text(), /Vyre is ready\./);
@@ -199,9 +205,83 @@ test("up on a box after onboarding: the ending block, the same as on the Mac", a
   assert.doesNotMatch(f.text(), /your address:/);
   t.mock.restoreAll();
 
-  const j = fakes(t, { answering: [BOX], tools: { "onboard.link": () => done } });
+  const j = fakes(t, { tools: { "onboard.link": () => done, "names.status": serving } });
   assert.equal(await up(["--json"], j.deps), 0);
   const o = JSON.parse(j.lines[0]);
   assert.equal(o.address, BOX);
   assert.equal(o.ready, true);
+});
+
+/** mac() with a fake box and link; returns what it called and printed. */
+async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true } = {}) {
+  const calls = [], lines = [], saved = [];
+  const log = console.log;
+  console.log = (...a) => lines.push(a.join(" "));
+  let code;
+  try {
+    code = await mac(box, { capsule }, {
+      health: async () => healthy,
+      tool: async (name, input) => {
+        calls.push([name, input]);
+        return name === "link.status" ? { data: status } : name === "link.find" ? { data: { boxes: found, paired: null } } : { data: pair };
+      },
+      save: c => saved.push(c),
+      platform,
+      openCapsule: async () => { calls.push(["capsule"]); return opened; },
+    });
+  } finally { console.log = log; }
+  return { code, calls, saved, text: lines.join("\n") };
+}
+
+test("up on a Mac: no box given and none found says how to point at one, and does nothing else", async () => {
+  const r = await runMac(undefined);
+  assert.equal(r.code, 0);
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.find"]);
+  assert.deepEqual(r.saved, []);
+  assert.match(r.text, /vyre up --connect/);
+});
+
+test("up on a Mac: the one box found on the tailnet is saved and paired with", async () => {
+  const r = await runMac(undefined, { found: [{ address: "https://alex.vyre.run", node: "box" }] });
+  assert.deepEqual(r.saved, [{ network: { box: "https://alex.vyre.run" } }]);
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.find", "link.status", "link.pair", "capsule"]);
+});
+
+test("up on a Mac: two boxes found are listed, and neither is picked", async () => {
+  const r = await runMac(undefined, { found: [{ address: "https://a.vyre.run" }, { address: "https://b.vyre.run" }] });
+  assert.deepEqual(r.saved, []);
+  assert.match(r.text, /a\.vyre\.run[\s\S]*b\.vyre\.run/);
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.find"]);
+});
+
+test("up on a Mac: an unreachable box stops before pairing or the Capsule", async () => {
+  const r = await runMac("https://alex.vyre.run", { healthy: false });
+  assert.equal(r.code, 1);
+  assert.deepEqual(r.calls, []);
+});
+
+test("up on a Mac: not paired starts pairing, prints the code to approve, then opens the Capsule", async () => {
+  const r = await runMac("https://alex.vyre.run");
+  assert.equal(r.code, 0);
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
+  assert.deepEqual(r.calls[1][1], { box: "https://alex.vyre.run" });
+  assert.match(r.text, /vyre link approve 123-456/);
+});
+
+test("up on a Mac: a pairing already waiting shows its code instead of starting another", async () => {
+  const r = await runMac("https://alex.vyre.run", { status: { linked: false, pending: { code: "654-321" } } });
+  assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "capsule"]);
+  assert.match(r.text, /vyre link approve 654-321/);
+});
+
+test("up on a Mac: already linked goes straight to the Capsule; --no-capsule skips it", async () => {
+  const linked = { linked: true };
+  assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked })).calls.map(c => c[0]), ["link.status", "capsule"]);
+  assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked, capsule: false })).calls.map(c => c[0]), ["link.status"]);
+});
+
+test("up on a Mac: with no Capsule installed it points at the download", async () => {
+  const r = await runMac("https://alex.vyre.run", { status: { linked: true }, opened: false });
+  assert.equal(r.code, 0);
+  assert.match(r.text, /vyre capsule install/);
 });

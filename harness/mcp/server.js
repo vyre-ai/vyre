@@ -11,6 +11,8 @@ import readline from "node:readline";
 import { request, call } from "../../core/daemon/client.js";
 import { ensureUp } from "../../core/cli/daemonctl.js";
 import { VERSION } from "../../core/daemon/index.js";
+import { home, paths } from "../../core/config/index.js";
+import { readKey } from "../../core/switchboard/sessions.js";
 
 const PROTOCOL = "2025-06-18";
 /** @type {Map<string, string>} MCP name -> Vyre tool name */
@@ -58,7 +60,10 @@ async function handle(msg) {
       if (!names.size) await tools();
       const tool = names.get(params?.name) || String(params?.name || "");
       // agents.ask waits for a whole turn of another session, which can take minutes.
-      const r = await call(tool, scoped(tool, params?.arguments || {}), { caller: CALLER, timeout: tool === "agents.ask" ? 600_000 : 120_000 });
+      // Outside an agent's thread, say which session this is: the key the SessionStart hook of our
+      // claude process (our parent) was given. Read on every call, since /clear starts a new one.
+      const session = AGENT ? null : readKey(paths(home()).sessions, process.ppid);
+      const r = await call(tool, scoped(tool, params?.arguments || {}), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000 });
       if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
       return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
     }

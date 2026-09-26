@@ -1,14 +1,20 @@
 // @ts-check
-// Ask: talk to the assistant or any agent, and see when memory answered with no model used.
-// Board: PhoneAsk (phone). On desktop the same thing as a centred column.
+// Ask: talk to the assistant or any agent. Board: PhoneAsk (phone). On desktop the same thing as
+// a centred column.
 //
-// Tools: agents.list, agents.history {limit}, agents.ask {agent, text, model?} (switchboard),
-// memory.relevant {text} for "From memory" hints while typing. Events: thread.text, to fill an
-// answer that arrives in the agent's thread after agents.ask returns.
+// Tools: agents.list, agents.ask {agent, text, surface?, wait?} (switchboard's real reply is
+// {agent, thread, text, ok, cost_usd?, note?, ask?}: no recall step, so "answer" reads `text`;
+// `ok:false` with empty text is not a tool error, it means the turn stopped short, e.g. `ask` is
+// a raised permission the thread is waiting on, answered from the thread itself via its "Open
+// thread" link). memory.relevant {text} for "From memory" hints while typing (unrelated to the
+// reply itself). Events: thread.text, to fill an answer that streams in after agents.ask's own
+// wait times out.
 //
-// Assumed shapes (switchboard to confirm):
-//   agents.ask     → { thread, project?, answer?: string, recalled?: { answer, ms, sources: [{ text, thread, threadName, who, at, project? }] } }
-//   agents.history → [{ at, agent, text, answer?, recalled?, thread, project? }]
+// agents.history does not exist as a switchboard tool; the call below degrades to an empty log
+// rather than a crash (attempt() treats a missing tool as "module not running", which understates
+// it here since agents IS running, only this one lookup is not). The recalledBlock/"Ask a model"
+// path (x.recalled) never triggers today, since nothing sets it; left in place for when a
+// recall-first answer exists, rather than ripped out for a feature switchboard may still add.
 
 import { h, put, link } from "../js/dom.js";
 import { attempt } from "../js/api.js";
@@ -235,10 +241,14 @@ export default async function ask(ctx) {
     send.disabled = false;
     if (current !== x) return;
     if (r.error) { x.status = why(r.error); drawLatest(x); input.value = input.value || text; return; }
+    // agents.ask's real reply is {agent,thread,text,ok,note?,ask?}: no recall step, "answer" is
+    // "text". ok:false with no text means it stopped short (a permission question, or the thread
+    // stopped) rather than a tool-call failure, so it is not r.error.
     const d = r.data || {};
-    Object.assign(x, { thread: d.thread || null, project: d.project || null, answer: typeof d.answer === "string" ? d.answer : null, recalled: d.recalled || null });
-    x.status = x.answer || x.recalled ? "" : `Sent to ${agent}. The answer shows here when it comes.`;
-    x.waiting = x.answer || x.recalled ? null : x.thread;
+    const text_ = typeof d.text === "string" ? d.text : "";
+    Object.assign(x, { thread: d.thread || null, project: d.project || null, answer: text_ || null, ask: d.ask || null });
+    x.status = text_ ? "" : d.ask ? `${agent} needs a permission answered before it can reply.` : d.note || `Sent to ${agent}. The answer shows here when it comes.`;
+    x.waiting = text_ ? null : x.thread;
     drawLatest(x);
     toBottom();
   });

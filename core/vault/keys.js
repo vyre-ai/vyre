@@ -44,19 +44,24 @@ export function keychainWriteCommand({ account, hex, keychain }) {
 }
 
 /**
- * Run `security` and collect its output.
+ * Run `security` and collect its output. Under heavy concurrent `security` load (many
+ * processes hammering the keychain daemon at once) the child can exit before this finishes
+ * writing its stdin; that is a plain EPIPE on `p.stdin`, not a crash, so it is caught here and
+ * turned into a failing result `securityRetry` can retry, instead of an uncaught rejection that
+ * skips the retry loop entirely.
  * @param {string[]} argv @param {string} [stdin]
  * @returns {Promise<{ code: number, out: string, err: string }>}
  */
 function security(argv, stdin) {
   return new Promise((resolve, reject) => {
     const p = spawn("security", argv, { stdio: ["pipe", "pipe", "pipe"] });
-    let out = "", err = "";
+    let out = "", err = "", stdinFailed = false;
     p.stdout.on("data", d => { out += d; });
     p.stderr.on("data", d => { err += d; });
+    p.stdin.on("error", () => { stdinFailed = true; });
     p.on("error", reject);
-    p.on("close", code => resolve({ code: code ?? -1, out, err }));
-    p.stdin.end(stdin ?? "");
+    p.on("close", code => resolve({ code: stdinFailed ? -1 : (code ?? -1), out, err }));
+    try { p.stdin.end(stdin ?? ""); } catch { stdinFailed = true; }
   });
 }
 
@@ -68,14 +73,17 @@ const NOT_FOUND = 44;
  * just woken), and a vault that cannot read its key for one second should not fail a release.
  * Every command here is safe to repeat: read, add with -U, delete. `security -i` exits 0 when a
  * command inside it fails and reports the failure on stderr, so with stdin that counts too.
+ * A spawn-level failure (ENOENT, or a stdin EPIPE from a child that exited early under load)
+ * rejects instead of resolving; that is retried the same as a bad exit code.
  * @param {string[]} argv @param {string} [stdin]
  */
 async function securityRetry(argv, stdin) {
   const failed = r => r.code !== 0 ? r.code !== NOT_FOUND : stdin !== undefined && r.err.trim() !== "";
-  let r = await security(argv, stdin);
+  const run = () => security(argv, stdin).catch(e => ({ code: -1, out: "", err: String(e && e.message || e) }));
+  let r = await run();
   for (let i = 0; i < 3 && failed(r); i++) {
     await new Promise(res => setTimeout(res, 100 * 2 ** i));
-    r = await security(argv, stdin);
+    r = await run();
   }
   return r;
 }

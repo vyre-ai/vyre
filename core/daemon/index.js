@@ -49,7 +49,7 @@ export async function start(opts = {}) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, handler });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
@@ -65,6 +65,21 @@ export async function start(opts = {}) {
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
+  // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
+  // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
+  // server.close() would wait on a Glass viewer forever.
+  const upgraded = new Set();
+  server.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url || "/", "http://vyred");
+    const m = /^\/v1\/streams\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(url.pathname);
+    const u = m && registry.upgrades.get(`${m[1]}/${m[2]}`);
+    if (!u) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
+    const claimed = String(req.headers["x-vyre-caller"] || "local");
+    upgraded.add(socket);
+    socket.on("close", () => upgraded.delete(socket));
+    try { u.handler(req, socket, head, { caller: claimed.startsWith("module:") ? "local" : claimed, url }); }
+    catch (e) { log(`stream ${m[1]}/${m[2]} failed: ${/** @type {Error} */ (e).message}`); socket.destroy(); }
+  });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
   fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
@@ -74,6 +89,10 @@ export async function start(opts = {}) {
   const stop = async () => {
     if (stopped) return; stopped = true;
     for (const end of streams) end();
+    for (const s of upgraded) s.destroy();
+    // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close
+    // what is left.
+    server.closeAllConnections();
     await new Promise(r => server.close(() => r(undefined)));
     await registry.stop();
     db.close();
@@ -101,7 +120,7 @@ async function body(req) {
 
 /**
  * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
- *   eventType?: string, headers?: Record<string, string> }} Policy
+ *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
@@ -124,11 +143,25 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   // Naming an agent ("mcp:agent:<name>", "harness:agent:<name>") is a claim Memory, the Gate and
   // the Switchboard act on, and naming the assistant reaches every project. So it must come with
   // the key the Switchboard put in that agent's thread (x-vyre-agent-key); without it, nothing.
+  // What vyred has checked about the caller, which tools get beside it: run(input, { caller, thread, agent, peer }).
+  // The tailnet peer a network listener established (node, stableId, login) rides here too.
+  /** @type {{ thread?: string, agent?: string, peer?: any }} */
+  const via = policy.peer ? { peer: policy.peer } : {};
+  // A listener's own identity (policy.caller) is established by the listener, not claimed.
   const said = policy.caller ? null : AGENT_CLAIM.exec(caller);
   if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
+    Object.assign(via, { thread: v.data.thread, agent: said[1] });
+  } else if (req.headers["x-vyre-session"]) {
+    // Any other caller may say which session it is in (the MCP server does, from the key its
+    // session's SessionStart hook was given). A claim that does not check out is refused.
+    const session = String(req.headers["x-vyre-session"]);
+    const key = String(req.headers["x-vyre-session-key"] || "");
+    const v = key ? await registry.call("threads.vouch", { session, key }, "module:vyred") : null;
+    if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
+    via.thread = v.data.thread;
   }
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
@@ -142,7 +175,7 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const result = await registry.call(name, await body(req), caller);
+    const result = await registry.call(name, await body(req), caller, via);
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "denied" ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }
@@ -165,6 +198,8 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
     return stream(req, res, url, events, streams);
   }
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
+  const own = registry.routes.get(url.pathname);
+  if (own) return own(req, res, { caller, url });
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }

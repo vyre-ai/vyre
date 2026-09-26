@@ -26,6 +26,8 @@ import { out, dim, signal, beacon } from "../style.js";
 export const CAPSULE = path.join(REPO, "local", "capsule");
 const DIST = path.join(CAPSULE, "dist");
 const APP = path.join(DIST, "Vyre-darwin-" + process.arch, "Vyre.app");
+/** Where a downloaded Vyre.app is put. It carries its own helpers and has no source to compare. */
+export const INSTALLED = ["/Applications/Vyre.app", path.join(process.env.HOME || "", "Applications", "Vyre.app")];
 
 /** The Electron binary installed for the Capsule, or null. Never the root package's. */
 export function electron(dir = CAPSULE) {
@@ -56,9 +58,20 @@ export function packaged(dir = CAPSULE, app = APP) {
   return { bin, fresh: stamp === sourceHash(dir) };
 }
 
-/** What the app is told: where vyred is, and where its helpers are. */
-function env() {
-  return { ...process.env, VYRE_SOCKET: config.paths().socket, VYRE_CAPSULE_BIN: path.join(CAPSULE, "bin") };
+/** An installed Vyre.app, or null. */
+export function installed(list = INSTALLED) {
+  for (const app of list) { const bin = path.join(app, "Contents", "MacOS", "Vyre"); if (fs.existsSync(bin)) return bin; }
+  return null;
+}
+
+/**
+ * What the app is told: where vyred is, and, for the source or a dist build, where its helpers
+ * are. An installed app uses the helpers in its own Resources, which is what macOS granted.
+ */
+function env({ own = false } = {}) {
+  const e = { ...process.env, VYRE_SOCKET: config.paths().socket };
+  if (!own) e.VYRE_CAPSULE_BIN = path.join(CAPSULE, "bin");
+  return e;
 }
 
 function helpersBuilt() { return fs.existsSync(path.join(CAPSULE, "bin", "hotkey")); }
@@ -81,8 +94,11 @@ async function open(flags) {
   }
 
   const pkg = packaged();
-  let bin = null, argv = args;
+  const inst = installed();
+  let bin = null, argv = args, own = false;
   if (pkg.bin && pkg.fresh) bin = pkg.bin;
+  // No dist build of this source: a Vyre.app the user installed (the download) is the Capsule.
+  else if (inst && !(pkg.bin && e)) { bin = inst; own = true; }
   else if (e) {
     if (pkg.bin) out(dim("  The packaged app is older than its source, so this runs the source. vyre capsule build --app repackages it."));
     bin = e; argv = [CAPSULE, ...args];
@@ -95,7 +111,7 @@ async function open(flags) {
   const fd = fs.openSync(log, "a");
   // Detached: the Capsule lives in the menu bar and outlasts this terminal. If one is already
   // running, this second launch tells it to show itself and exits.
-  const child = spawn(bin, argv, { detached: true, stdio: ["ignore", fd, fd], env: env() });
+  const child = spawn(bin, argv, { detached: true, stdio: ["ignore", fd, fd], env: env({ own }) });
   child.unref();
   out(`  Capsule ${signal("open")} ${dim("· press Control twice anywhere · log " + log)}`);
   return 0;
@@ -127,7 +143,8 @@ async function build(flags) {
     ignore: [/^\/(dist|swift|bin)(\/|$)/, /\.test\.js$/, /^\/build\.sh$/, /^\/module\.json$/, /^\/index\.js$/],
     extraResource: [path.join(CAPSULE, "bin")],
     asar: true, prune: true, quiet: true,
-    extendInfo: { LSUIElement: true },
+    // Contacts: the helper's ask is credited to this app, and macOS refuses it without a reason.
+    extendInfo: { LSUIElement: true, NSContactsUsageDescription: "Vyre's Capsule shows matching contacts as you type. They stay on this Mac." },
   });
   fs.writeFileSync(path.join(made, "stamp.json"), JSON.stringify({ source, at: new Date().toISOString() }) + "\n");
   out(`  packaged ${made}/Vyre.app ${dim("· source " + source)}`);

@@ -4,3 +4,7 @@ node_modules/
 .env
 .env.*
 coverage/
+site/box/
+site/install.sh
+site/_redirects
+__pycache__/
