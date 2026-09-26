@@ -139,6 +139,7 @@ struct AskItem: Identifiable, Equatable, Sendable {
     let at: Double
     var agent: String?
     var threadName: String?
+    var project: String?
 
     init(_ j: JSON) {
         id = j["id"].text
@@ -212,6 +213,7 @@ final class NeedsStore {
                     let rec = threads.first { $0["id"].string == ask.thread }
                     ask.agent = rec?["agent"].string
                     ask.threadName = rec?["name"].string
+                    ask.project = rec?["project"].string
                     return ask
                 }
             }
