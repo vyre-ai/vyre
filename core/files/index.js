@@ -21,6 +21,7 @@ import { StringDecoder } from "node:string_decoder";
 import { guard } from "./safety.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
+import { drive } from "./drive.js";
 
 const run = promisify(execFile);
 const KIB = 1024, MIB = 1024 * KIB, GIB = 1024 * MIB;
@@ -308,6 +309,9 @@ export default {
         return chunk(p, offset, length);
       },
     });
+
+    // Taildrive: the box's chosen folders, mounted on the paired Mac (drive.js).
+    drive(ctx, { role, guard: g, roots });
 
     return { async stop() {} };
   },
