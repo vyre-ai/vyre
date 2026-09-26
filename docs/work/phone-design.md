@@ -3,9 +3,10 @@
 Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: phone-design
 
 ## Done
-- docs/design/phone.md: the phone design (Direction B "Instrument" with a grouped Needs you list,
-  swipe to approve or deny, a detail sheet per item with Open session). Picked by the user
-  2026-09-27 from two directions of mockups.
+- docs/design/phone.md: the phone design. The user's pick (2026-09-27): Direction B's shell (no
+  tab bar, swiped pages, the floating Capsule) with Direction A's screens (Chat, Find, Agents,
+  the approval sheet), and A's grouped Needs you list with swipe and a detail sheet with Open
+  session.
 
 ## Doing
 - phone.md pushed and handed to pwa and mobile; waiting on the desktop pick to converge the

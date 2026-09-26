@@ -6,12 +6,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### The phone's design
 
-- docs/design/phone.md sets the phone app's design for the PWA and the native apps: three pages
-  (Now, Chats, Agents) swiped sideways, the floating Capsule for ask, find and run, Needs you as a
-  list whose rows swipe to approve or deny and open a detail sheet with Open session, the chat
-  timeline, and agent panels. Colour roles use the Deck's names (deck/css/deck.css). Native
-  approvals are a device-key signature after Face ID (ADR 0018), the PWA's a passkey; both are
-  the same box-checked presence proof. Docs only; no code changes.
+- docs/design/phone.md sets the phone app's design for the PWA and the native apps: no tab bar,
+  three pages (Now, Chats, Agents) swiped sideways and the floating Capsule for ask, find and run,
+  with native-feeling screens (grouped cards, sentence-case buttons, standard sheets). Needs you is
+  a list whose rows swipe to approve or deny and open a detail sheet with Open session. Colour
+  roles use the Deck's names (deck/css/deck.css). Native approvals are a device-key signature
+  after Face ID (ADR 0018), the PWA's a passkey; both are the same box-checked presence proof.
+  Docs only; no code changes.
 
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
