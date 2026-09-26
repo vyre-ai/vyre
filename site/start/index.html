@@ -127,7 +127,13 @@
         <div class="term-row"><pre>npm install -g https://vyre.run/box/vyre.tgz</pre><button class="btn btn-line btn-sm" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" aria-label="Copy the command npm install -g https://vyre.run/box/vyre.tgz"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
         <div class="term-row"><pre>vyre up --connect &lt;you&gt;.vyre.run</pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre up --connect &lt;you&gt;.vyre.run" aria-label="Copy the command vyre up --connect &lt;you&gt;.vyre.run"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
       </div>
-        <p><code>vyre up</code> on a Mac sets its role to <code>local</code>, starts vyred for this Mac, links it to your box, and opens the Capsule. The install is about 480 MB, most of it the optional local embedding model that lets search find things by meaning. Search still works without it, as full text.</p>
+        <p><code>vyre up</code> on a Mac sets its role to <code>local</code>, starts vyred for this Mac, and checks that your box answers (the Mac must be on your tailnet). Then it pairs this Mac with the box and prints a code:</p>
+        <div class="term-block">
+          <div class="term-cap"><span class="lbl">Output of vyre up</span></div>
+<pre class="term-out">  pair this Mac: on the box, run vyre link approve 123-456</pre>
+        </div>
+        <p>Run that line on the server (<code>ssh &lt;you&gt;@&lt;server&gt;</code>, then <code>vyre link approve 123-456</code>). The code expires after a few minutes; <code>vyre up</code> again prints a fresh one. <code>vyre link</code> on the Mac says when it is paired. Last, <code>vyre up</code> opens the Capsule if you have installed it (next step).</p>
+        <p>The install is about 480 MB, most of it the optional local embedding model that lets search find things by meaning. Search still works without it, as full text.</p>
         <p>To use Vyre's tools inside Claude Code on the Mac:</p>
       <div class="term-block">
         <div class="term-row"><pre>claude --plugin-dir "$(npm root -g)/vyre/harness"</pre><button class="btn btn-line btn-sm" type="button" data-copy="claude --plugin-dir &quot;$(npm root -g)/vyre/harness&quot;" aria-label="Copy the command claude --plugin-dir &quot;$(npm root -g)/vyre/harness&quot;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
@@ -140,13 +146,13 @@
       <div class="body-col">
         <h2 id="capsule-h" class="h2">The Capsule</h2>
         <p>Download <a href="/box/Vyre-mac.zip">vyre.run/box/Vyre-mac.zip</a>, unzip it, and move <code>Vyre.app</code> to Applications before you open it. Opened from Downloads, macOS runs it from a temporary copy, and the permissions you grant it do not stick.</p>
-        <p>The app is not signed or notarized yet, so macOS stops it the first time:</p>
+        <p>The app is not signed with a Developer ID or notarized yet, so macOS stops it the first time:</p>
         <ol class="sub">
           <li><span>In Finder, right-click (or Control-click) <code>Vyre.app</code> and choose <strong>Open</strong>.</span></li>
-          <li><span>macOS says it cannot check the app for malicious software. Choose <strong>Open</strong> again. On recent macOS the dialog may offer only <strong>Done</strong>. If so, open System Settings, then Privacy &amp; Security, scroll to the note about Vyre, and choose <strong>Open Anyway</strong>.</span></li>
+          <li><span>macOS says it cannot check the app for malicious software. Choose <strong>Open</strong> again. On recent macOS the dialog may offer only <strong>Done</strong>. If so, open System Settings, then Privacy &amp; Security, scroll to the note about Vyre, and choose <strong>Open Anyway</strong>. If you prefer the terminal, this does the same (it removes the download mark macOS checks): <code>xattr -dr com.apple.quarantine /Applications/Vyre.app</code></span></li>
           <li><span>Grant Input Monitoring when it asks: Control twice opens the Capsule from any app, and macOS needs that permission to see the key. Contacts is optional, for contact results.</span></li>
         </ol>
-        <p>After the first open it starts normally. Press Control twice anywhere to open it.</p>
+        <p>After the first open it starts normally. Run <code>vyre capsule</code> (or <code>vyre up</code> again) so it opens wired to this Mac's vyred, then press Control twice anywhere to open it.</p>
       </div>
     </section>
 
@@ -161,6 +167,8 @@
             <li><strong>The image.</strong> There is no published image yet, so each server builds its own from the tarball. <code>vyre update</code> rebuilds it.</li>
             <li><strong>Signing.</strong> The Mac app is unsigned and not notarized, hence the right-click, Open.</li>
             <li><strong>Names.</strong> <code>&lt;you&gt;.vyre.run</code> needs your own Cloudflare token for now. The hosted name directory that will claim a name without one is designed (ADR 0002) and not built.</li>
+            <li><strong>Pairing.</strong> Approve a Mac from the box's terminal (<code>vyre link approve</code>). Approving from the Deck on another device waits on the box passing the caller's tailnet node through. Pairing is tested between two vyreds with a simulated tailnet, not yet against a real box.</li>
+            <li><strong>The Capsule zip</strong> is built on the maintainer's Mac with ad-hoc signed helpers. If macOS refuses to run it, build and run the Capsule from the npm install instead: <code>vyre capsule build</code> (needs the Xcode command line tools), then <code>vyre capsule --dev</code>.</li>
             <li><strong>Updates.</strong> Nothing updates itself. On the server, <code>vyre update</code>. On the Mac, run the <code>npm install -g</code> line again, and download the zip again.</li>
           </ul>
         </div>
