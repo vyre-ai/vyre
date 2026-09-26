@@ -644,3 +644,12 @@ test("learned skills: the account's and the project's folders load as plugins; l
   await d.registry.call("threads.launch", { cwd: work, prompt: "distil", plugin: false, tools: "none", once: true, plugins: [own] }, "module:learn");
   assert.deepEqual(dirsOf((await until(() => launches()[3], "the job")).argv), [own]);
 });
+
+test("agents: the assistant's brief says how to watch and drive threads for the user; an agent's does not", async () => {
+  const { preamble } = await import("../agents/index.js");
+  const brief = preamble({ name: "juno", kind: "assistant", projects: "*" });
+  assert.match(brief, /threads_watch with \{thread, notify: "capsule", note: "<a short label>"\}/);
+  assert.match(brief, /call threads_send, then set that watch/);
+  assert.match(brief, /Do not poll threads_get/);
+  assert.doesNotMatch(preamble({ name: "scout", kind: "agent", projects: ["harlow"] }), /threads_watch/);
+});

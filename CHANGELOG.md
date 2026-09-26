@@ -107,6 +107,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- The assistant's brief says how to act for the user on threads: `threads_watch {thread, notify:
+  "capsule", note}` to watch one, `threads_send` and then a watch to drive one, and no polling,
+  since the Capsule reports the watch when it fires.
 - Usage metering: every turn is a row (`threads_turns`: thread, agent, auth, cost, duration,
   input/output/cache tokens), and `thread.finished` carries `tokens`. `agents.usage {agent?, since?}`
   returns, per agent, `{agent, kind, auth, turns, threads, duration_ms, cost_usd, api_cost_usd,
