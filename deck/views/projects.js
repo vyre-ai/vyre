@@ -446,15 +446,26 @@ async function threadPane(ctx, id, o) {
   put(body, stream);
   let toolGroup = /** @type {HTMLElement|null} */ (null);
   const byMsg = new Map();
+  // A live message streams as several thread.text events: partials carry only `delta` (no
+  // `text`), so they are accumulated here; the final event carries the whole `text`, which
+  // replaces the accumulated buffer outright rather than trusting the deltas summed to it.
+  const textBuf = new Map();
   const pendingEcho = new Set();
   /** @type {any[]} */ const liveTools = [];
+  // switchboard sends "started" and "done" as two separate thread.tool events sharing one id, and
+  // withholds the result text by design (spec: events stay small); "done" only marks the started
+  // line as failed, it never draws a second line.
+  const toolLines = new Map();
   const asks = new Map();
   const scrollDown = () => { body.scrollTop = body.scrollHeight; ctx.root.scrollTop = ctx.root.scrollHeight; };
 
   const addTool = ev => {
+    if (ev.phase === "done") { if (ev.error) toolLines.get(ev.id)?.querySelector(".tl-dot")?.classList.add("beacon"); return; }
     if (isRecall(ev.tool)) { toolGroup = null; stream.append(recalledBlock(ev, o.project)); return; }
     if (!toolGroup) { toolGroup = h("div", { class: "th-tools" }); stream.append(toolGroup); }
-    toolGroup.append(toolLine(ev));
+    const el = toolLine(ev);
+    if (ev.id) toolLines.set(ev.id, el);
+    toolGroup.append(el);
   };
   const addEvent = (ev, live) => {
     const type = ev.type;
@@ -463,11 +474,19 @@ async function threadPane(ctx, id, o) {
       toolGroup = null;
       if (ev.recalled) { stream.append(recalledBlock({ result: ev.recalled.text || ev.text, from: ev.recalled.from, session: ev.recalled.session }, o.project)); return; }
       const key = ev.message || ev.msg || null;
-      if (live && key && byMsg.has(key)) { put(byMsg.get(key), ev.text || ""); return; }
+      const text = typeof ev.text === "string" ? ev.text
+        : key && typeof ev.delta === "string" ? textBuf.set(key, (textBuf.get(key) || "") + ev.delta).get(key)
+        : ev.text || "";
+      if (live && key && byMsg.has(key)) { put(byMsg.get(key), text); return; }
       if (live && ev.role === "user" && pendingEcho.has(ev.text)) { pendingEcho.delete(ev.text); return; }
-      const m = message(ev.role === "user" ? "user" : "assistant", ev.role === "user" ? "You" : (agent || "Claude"), ev.at, ev.text || "");
+      const m = message(ev.role === "user" ? "user" : "assistant", ev.role === "user" ? "You" : (agent || "Claude"), ev.at, text);
       if (key) byMsg.set(key, /** @type {HTMLElement} */ (m.querySelector(".th-text")));
       stream.append(m);
+    } else if (type === "thread.sent") {
+      // Another surface's own keystrokes: this surface already echoed its own (o.append, below).
+      if (ev.surface === "deck") return;
+      toolGroup = null;
+      stream.append(message("user", ev.surface || "Another surface", ev.at, ev.text || ""));
     } else if (type === "ask.raised") {
       toolGroup = null;
       const a = normAsk(ev.ask || ev, ev.at);
@@ -500,7 +519,7 @@ async function threadPane(ctx, id, o) {
   // Live: follow the thread as it runs.
   const mine = e => e.thread === id || e.payload?.thread === id || e.payload?.session === id;
   const fromEvent = e => ({ type: e.type, at: e.at, ...(e.payload || {}) });
-  for (const t of ["thread.text", "thread.tool", "thread.finished", "ask.raised", "ask.answered"]) {
+  for (const t of ["thread.text", "thread.tool", "thread.finished", "thread.sent", "ask.raised", "ask.answered"]) {
     ctx.on(t, e => {
       if (!mine(e)) return;
       const stick = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
@@ -518,7 +537,7 @@ async function threadPane(ctx, id, o) {
   ctx.on("file.touched", e => { if (e.payload?.session === id) drawFilesFromEvents(); });
 
   drawComposer(ctx, compose, {
-    id, agent, lease: thread?.lease?.surface || null, swMissing: swMissing && !thread, recorded: !!recorded,
+    id, agent, lease: thread?.holder || null, swMissing: swMissing && !thread, recorded: !!recorded,
     append: text => {
       pendingEcho.add(text);
       toolGroup = null;
@@ -688,6 +707,9 @@ function drawComposer(ctx, box, o) {
     const r = await attempt("threads.send", { thread: o.id, text });
     send.disabled = false;
     if (r.error) { put(note, r.error.missing ? "The switchboard module is not running." : String(r.error.message)); return; }
+    // threads.send answers {sent:false,...} rather than an error when the lease was taken back
+    // between the check above and this call.
+    if (r.data && r.data.sent === false) { holder = r.data.holder || null; draw(); return; }
     input.value = "";
     o.append(text);
     put(note, "");

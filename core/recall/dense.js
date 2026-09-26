@@ -20,17 +20,32 @@ import { DIM } from "./embed.js";
 const breathe = () => new Promise(r => setImmediate(r));
 
 /**
+ * Chunk vectors cost ~1.5KB each (DIM*4 bytes plus four Int32 columns and a role byte); with no
+ * cap a large corpus grows this in-memory index without bound, which is the one thing "Light by
+ * default" (docs/SPEC.md section 2, principle 8) does not allow a cache to do. 50,000 chunks is
+ * about 78MB — comfortably inside vyred's 150MB idle budget alongside everything else it holds —
+ * and far past what a normal corpus reaches today (37,000 chunks measured at ~57MB). Past the
+ * cap, the oldest sessions drop out of the dense index first; full-text search still covers them,
+ * same as it already covers any turn whose vector has not been computed yet.
+ */
+export const DEFAULT_MAX_CHUNKS = 50_000;
+
+/**
  * @typedef {{ rid: number, session: string, seq: number, score: number, off: number }} DenseHit
  */
 
 export class Dense {
-  /** @param {import("node:sqlite").DatabaseSync} db */
-  constructor(db) {
+  /**
+   * @param {import("node:sqlite").DatabaseSync} db
+   * @param {{ maxChunks?: number }} [opts]
+   */
+  constructor(db, { maxChunks = DEFAULT_MAX_CHUNKS } = {}) {
     this.db = db;
+    this.maxChunks = maxChunks > 0 ? maxChunks : Infinity;
     /** @type {Promise<any> | null} */
     this.building = null;
     /** @type {null | { n: number, vecs: Float32Array, rid: Int32Array, off: Int32Array, sess: Int32Array, seq: Int32Array, role: Uint8Array,
-     *   sessions: string[], cwds: (string|null)[], sid: Map<string, number>, has: Set<number>, ms: number, bytes: number, gen: string }} */
+     *   sessions: string[], cwds: (string|null)[], sid: Map<string, number>, has: Set<number>, ms: number, bytes: number, gen: string, capped: boolean }} */
     this.index = null;
     /** Vectors that arrived while a build was reading, applied when it finishes. */
     /** @type {any[]} */
@@ -79,6 +94,9 @@ export class Dense {
     if (x.gen !== this.generation()) { this.index = null; return; }
     if (x.has.has(item.rid)) return;
     const chunks = item.chunks.filter(c => c.v && c.v.length === DIM);
+    // Past the chunk cap, appending would grow memory without bound: drop the index instead, and
+    // the next search rebuilds it under the cap with the oldest sessions left out.
+    if (x.n + chunks.length > this.maxChunks) { this.index = null; return; }
     if (!chunks.length) return;
     if (x.n + chunks.length > x.rid.length) grow(x, Math.max(x.rid.length * 2, x.n + chunks.length, 64));
     let si = x.sid.get(item.session);
@@ -123,7 +141,29 @@ export class Dense {
     for (const s of /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions").all())) {
       sid.set(s.id, sessions.length); sessions.push(s.id); cwds.push(s.cwd ?? null);
     }
-    const total = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM recall_vectors WHERE length(v) = ?").get(DIM * 4)).n);
+    const raw = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM recall_vectors WHERE length(v) = ?").get(DIM * 4)).n);
+    // Past the cap, keep whole sessions rather than an arbitrary prefix of rows, and keep the
+    // most recently ended ones: a session's chunks are looked up together (best chunk per turn),
+    // and recency is the same rule the indexer already uses to prioritize embedding itself.
+    /** @type {Set<string> | null} */
+    let allowed = null;
+    let total = raw;
+    if (raw > this.maxChunks) {
+      const bySession = /** @type {any[]} */ (db.prepare(`
+        SELECT v.session AS session, COUNT(*) AS n FROM recall_vectors v
+        JOIN recall_sessions s ON s.id = v.session
+        WHERE length(v.v) = ? GROUP BY v.session ORDER BY s.ended DESC`).all(DIM * 4));
+      allowed = new Set();
+      let kept = 0;
+      for (const r of bySession) {
+        const n = Number(r.n);
+        if (kept > 0 && kept + n > this.maxChunks) continue;
+        allowed.add(String(r.session));
+        kept += n;
+        if (kept >= this.maxChunks) break;
+      }
+      total = Math.min(kept, this.maxChunks);
+    }
     const vecs = new Float32Array(total * DIM);
     const rid = new Int32Array(total), off = new Int32Array(total), sess = new Int32Array(total), seq = new Int32Array(total);
     const role = new Uint8Array(total);
@@ -140,6 +180,7 @@ export class Dense {
         if (n >= total) break;
         const b = /** @type {Uint8Array} */ (r.v);
         if (!b || b.length !== DIM * 4) continue;               // a turn with nothing to embed
+        if (allowed && !allowed.has(String(r.session))) continue; // evicted: past the chunk cap
         const k = r.session + "\0" + r.seq;
         const id = rowids.get(k), si = sid.get(r.session);
         if (id === undefined || si === undefined) continue;     // a vector whose turn is gone
@@ -157,7 +198,7 @@ export class Dense {
     const has = new Set();
     for (let i = 0; i < n; i++) has.add(rid[i]);
     this.builds++;
-    this.index = { n, vecs, rid, off, sess, seq, role, sessions, cwds, sid, has, ms: Date.now() - t0, bytes, gen };
+    this.index = { n, vecs, rid, off, sess, seq, role, sessions, cwds, sid, has, ms: Date.now() - t0, bytes, gen, capped: allowed !== null };
     return this.index;
   }
 
@@ -167,9 +208,9 @@ export class Dense {
     return x.n;
   }
 
-  /** Size and build time, for recall.status. */
+  /** Size and build time, for recall.status. capped: true means the oldest sessions were left out. */
   stats() {
-    return this.index ? { chunks: this.index.n, bytes: this.index.bytes, ms: this.index.ms } : null;
+    return this.index ? { chunks: this.index.n, bytes: this.index.bytes, ms: this.index.ms, capped: this.index.capped } : null;
   }
 
   /**

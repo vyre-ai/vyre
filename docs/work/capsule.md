@@ -69,6 +69,21 @@ answered. Screen-recorded or screenshotted against the boards.
   user's ⌘⏎ to take the lease, `threads.answer {surface}`, `thread.text {delta}`, `thread.stopped`.
   Tested against fakes only until the switchboard merges.
 
+- Local results (proposal `docs/proposals/capsule-replaces-spotlight.md`, milestones 1 and 2 and
+  settings; double-Control stays the only hotkey, no ⌘Space, no first-run handoff, by the user's
+  decision). A bare query ranks apps, System Settings panes, the calculator and unit converter,
+  contacts, a definition ("define x"), files and folders (`mdfind`), and Vyre's agents, projects
+  and threads in one list (`route.rank`), lifted by frecency from picks. Enter opens a strong
+  local match unless the words read as a question (`route.intent`); otherwise the ask row, which
+  names the assistant, is highlighted. Tab always asks. Works with vyred down. Contacts: typing
+  never raises the macOS dialog; a "Show contacts here" row does, only when picked.
+- Measured on this Mac (M-series, Darwin 25), from a test run with the window shown inactive:
+  double-Control (second release, from `hotkey --simulate`, modifier flags only) to two frames
+  after the page hears it, n=10: median 47 ms, 38 to 74 ms. Keystroke to local results painted,
+  n=103: median 11 ms, p90 18 ms. Keystroke to file results painted (includes the 90 ms pause
+  for typing to stop), n=12: median 273 ms, p90 322 ms. `mdfind -onlyin ~` alone is 155 to
+  480 ms, so files are the slow part.
+
 ## Doing
 - Nothing in progress.
 
@@ -77,6 +92,10 @@ answered. Screen-recorded or screenshotted against the boards.
    `threads.answer`, and `thread.text` deltas. Adjust `lib/state.js` if its payloads differ.
 2. An open card does not yet repaint on `gate.revised` from another surface (Send still sends what
    the card shows). Fill a login into the front app with `vault.fill`.
+3. Files: a long-lived `NSMetadataQuery` in `bin/local` if `mdfind`'s spawn cost stays the
+   bottleneck. Recent files (`kMDItemLastUsedDate`). Boards for the local-results list.
+4. Contacts from the packaged app: the dialog is credited to the responsible process, so
+   Vyre.app's Info.plist needs `NSContactsUsageDescription`; check it in `build --app`.
 3. hands-mac: port `cursor.swift`, so each act shows where it landed, and `axwatch.swift`, to
    observe on change rather than on call.
 4. `vyre-launcher` as a signed `.app` with a launchd plist, so vyred on the Mac keeps one
