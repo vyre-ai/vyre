@@ -70,6 +70,59 @@ export function list(folders) {
   return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
 }
 
+/**
+ * One session's file by its exact id, without listing everything: one readdir per folder and a
+ * stat per project folder. For a session nothing has indexed yet (a thread that started a moment
+ * ago). The fullest copy wins, as in list(). Null when there is none, or the id is not an id.
+ * @param {string[]} folders @param {string} id
+ * @returns {Entry | null}
+ */
+export function find(folders, id) {
+  const m = /^([A-Za-z0-9_-]{1,128})(?:\/(agent-[A-Za-z0-9_-]{1,128}))?$/.exec(String(id));
+  if (!m) return null;
+  /** @type {Entry | null} */
+  let best = null;
+  for (const folder of folders) {
+    for (const project of readdir(folder)) {
+      if (!project.isDirectory()) continue;
+      const file = m[2] ? path.join(folder, project.name, m[1], "subagents", `${m[2]}.jsonl`) : path.join(folder, project.name, `${m[1]}.jsonl`);
+      let st;
+      try { st = fs.statSync(file); } catch { continue; }
+      if (!st.isFile()) continue;
+      const e = { id: String(id), file, parent: m[2] ? m[1] : null, size: st.size, mtime: Math.floor(st.mtimeMs) };
+      if (!best || e.size > best.size || (e.size === best.size && e.file < best.file)) best = e;
+    }
+  }
+  return best;
+}
+
+/**
+ * What a session is, from the head of its file only: its folder and, if named early, its name.
+ * For a session not indexed yet, where reading the whole file for a label is not worth it.
+ * @param {string} file
+ * @returns {{ cwd: string|null, name: string|null }}
+ */
+export function peek(file) {
+  const out = { cwd: /** @type {string|null} */ (null), name: /** @type {string|null} */ (null) };
+  let fd;
+  try {
+    fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(256 * 1024);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    let pos = 0;
+    while (pos < n) {
+      let end = buf.indexOf(0x0a, pos);
+      if (end < 0 || end > n) break;
+      const o = parse(buf, pos, end);
+      pos = end + 1;
+      if (!o || typeof o !== "object") continue;
+      if (o.type === "custom-title" && typeof o.customTitle === "string" && o.customTitle.trim()) out.name = redact(o.customTitle.trim().slice(0, 120)).text;
+      if (out.cwd === null && typeof o.cwd === "string" && o.cwd) out.cwd = o.cwd;
+    }
+  } catch { /* no head is no label */ } finally { if (fd !== undefined) fs.closeSync(fd); }
+  return out;
+}
+
 /** @param {string} dir */
 function readdir(dir) {
   try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }

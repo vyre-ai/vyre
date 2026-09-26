@@ -30,7 +30,7 @@ import { search, thread, sessions } from "./search.js";
 import { evaluate } from "./eval.js";
 import { load as loadModel, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { Dense } from "./dense.js";
-import { blocks } from "../transcripts/index.js";
+import { blocks, find, peek } from "../transcripts/index.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -55,7 +55,7 @@ export function readable(folders) {
 }
 
 /**
- * A session's row by id or an unambiguous prefix of one, the way recall.thread finds it.
+ * A session's row by id or an unambiguous prefix of one, the way recall.thread finds it, or null.
  * @param {import("node:sqlite").DatabaseSync} db @param {string} session
  * @returns {any}
  */
@@ -63,11 +63,10 @@ function sessionRow(db, session) {
   let row = db.prepare("SELECT id, file, cwd, name, title FROM recall_sessions WHERE id = ?").get(session);
   if (!row) {
     const like = db.prepare("SELECT id, file, cwd, name, title FROM recall_sessions WHERE substr(id, 1, ?) = ? LIMIT 2").all(session.length, session);
-    if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
+    if (like.length > 1) throw Object.assign(new Error(`more than one session starts with ${session}`), { code: "ambiguous" });
     row = like[0];
   }
-  if (!row) throw new Error(`no session ${session}`);
-  return row;
+  return row || null;
 }
 
 export default {
@@ -204,7 +203,15 @@ export default {
       // handed to Claude over MCP or to an agent. callers is an allowlist, so every "mcp" is out.
       callers: ["cli", "local", "deck", "capsule", "module"],
       run: async input => {
-        const row = sessionRow(db, input.session);
+        // A thread that started a moment ago has a transcript before any pass has indexed it, so
+        // an id Recall does not know yet is looked for on disk (exact ids only). No file at all
+        // is "not_found", which the Deck takes quietly.
+        let row = sessionRow(db, input.session);
+        if (!row) {
+          const e = find(folders, input.session);
+          if (!e) throw Object.assign(new Error(`no session ${input.session}`), { code: "not_found" });
+          row = { id: e.id, file: e.file, ...peek(e.file), title: null };
+        }
         const { id, cwd, name, title } = row;
         return { session: { id, cwd, name, title }, ...blocks(String(row.file), { from: input.from, limit: input.limit, before: input.before }) };
       },
