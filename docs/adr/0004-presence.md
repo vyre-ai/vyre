@@ -230,7 +230,11 @@ module caller and hands the person a Deck link carrying it. Pairing and every la
 the box use a passkey. Claude's sessions share the box's socket and can ask onboarding for a fresh code,
 so on the box a code enrolls a passkey only from `tailnet:<network.owner>`, which is reachable
 only over WireGuard from another of the owner's devices. The passkey must also be for the box's
-own address (the host of `network.address`), whatever the request names. On a Mac, `ssh localhost` gives a model a login terminal in the same way
+own address (the host of `network.address`), whatever the request names. Onboarding hands the
+code only to the box's own socket and its loopback page, never to a tailnet caller. So Claude on
+the box can hold a code but cannot be the owner on the tailnet, and Claude on the Mac is the
+owner on the tailnet but never sees a code. What is left needs the two to pass a code between
+them through some other channel, and it closes when sessions run in their own container. On a Mac, `ssh localhost` gives a model a login terminal in the same way
 when Remote Login is on. That is one more reason `vyre` uses Touch ID first.
 
 **Box identity.** `tailnet:<login>` is an owner device, not a person. Claude on the Mac shares
