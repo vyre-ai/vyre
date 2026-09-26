@@ -52,11 +52,11 @@ docs/design/deck-directions/vyre.css), so a phone view and a Deck view read the 
 | `--signal-wash` | rgba(198,243,107,0.12) | rgba(70,112,12,0.10) | The Ask row in Find, added diff lines |
 | `--match` (phone) | rgba(198,243,107,0.20) | rgba(70,112,12,0.16) | Search match highlight, the Open session flash |
 | `--beacon-ink` / `--beacon-dot` | #B8A4FF / #B8A4FF | #5B3FC4 / #5B3FC4 | Attention: needs you. Nothing else |
-| `--beacon-wash` | rgba(184,164,255,0.12) | rgba(91,63,196,0.08) | Behind a held item |
+| `--beacon-wash` | rgba(184,164,255,0.12) | rgba(91,63,196,0.08) | Not used on the phone: held, ask and question cards are neutral |
 | `--beacon-badge-ink` (phone) | #0E0D0C | #F4F1EA | Count text on a `--beacon-dot` badge |
 | `--recall` | #EBC76B | #7E5B0C | Came from memory |
 | `--recall-wash` | rgba(235,199,107,0.10) | rgba(126,91,12,0.08) | Behind a recalled block |
-| `--del-wash` | #1E1C1A | #FBFAF6 | Deleted diff lines, with `--label` text |
+| `--del-wash` | rgba(140,135,125,0.14) | rgba(107,102,93,0.10) | Deleted diff lines, with `--text-2` text (`--label` is 4.49:1 there) |
 | `--code-bg` | rgba(14,13,12,0.55) | rgba(20,19,17,0.04) | Command blocks, the live console |
 | `--mark-wire` / `--mark-dot` | #F1EEE6 / #C6F36B | #141311 / #141311 | The mark |
 | `--scrim` (phone) | rgba(0,0,0,0.62) | rgba(20,19,17,0.34) | Behind a sheet |
@@ -67,7 +67,10 @@ honey and teal (docs/design/deck-directions/Attention.dc.html). Swapping it is o
 change the three `--beacon-*` values. Every pair above passes WCAG AA.
 
 The mark's dot is Signal (dark) or Ink (paper) when nothing is waiting, and the attention colour
-when anything needs you. A deleted line in a diff is `--label` on `--del-wash`, never attention.
+when anything needs you. A deleted line in a diff is `--text-2` on `--del-wash`, never attention.
+
+The attention colour is only ever a dot and a label ("kit is waiting on you", "Held 4 min").
+Held, ask and question cards are neutral: `--panel` with a `--rule-strong` border, no wash.
 
 Errors and destructive actions carry no colour:
 
@@ -79,10 +82,17 @@ Errors and destructive actions carry no colour:
   label carries the count ("Delete 214 files") and needs a 0.6 s hold (with a fill that tracks the
   hold, and a haptic at the end). The safe choice ("Keep it") is never the primary fill either.
   Deny and Discard on a held item are not destructive (the item can be held again, and Discard
-  has Undo), so they are plain outline buttons.
+  has Undo), so they are ordinary secondary buttons.
 
-Text on tints: on paper, `--label` measures 4.48:1 on `--recall-wash`, `--signal-wash` and
-`--beacon-wash`, just under AA, so meta text on a tinted block uses `--text-2` instead. Input
+Buttons, the same three kinds as the Deck:
+
+- **Primary**: `--primary-bg` with `--primary-ink` (ink on lime in dark, paper on ink in paper).
+  One per view.
+- **Secondary**: `--text` on `--hover`, `--rule-strong` border.
+- **Ghost** (text-only, like "Details" or "Open session"): full `--text`, 600, never `--text-2`.
+
+Text on tints: on paper, `--label` measures 4.48:1 on `--recall-wash` and `--signal-wash`,
+just under AA, so meta text on a tinted block uses `--text-2` instead. Input
 placeholders are `--label` at full opacity (browsers default to a lighter grey that fails).
 
 Theme follows the system (`prefers-color-scheme`), with Dark, Paper and System in Settings.
@@ -264,10 +274,11 @@ Body by kind:
   on the left in 15 `--label`, value on the right in 15 `--text`: Remote, Branch, Changes ("6
   files +412 -38", counts in 13 mono `--text-2`), Held by ("Your rule: pushes ask first"). Tap
   Changes to expand the files, each with its counts; tap a file for its diff (+ lines on
-  `--signal-wash`, - lines on `--del-wash` with `--label` text).
-- **Draft (held at the Gate).** To and Subject as editable fact rows, then the body as an
-  editable text area (the same editing as the Deck, js/editable.js). The sources it drew from, if
-  any, in a `--recall-wash` block. An edit changes the primary to "Send edited".
+  `--signal-wash`, - lines on `--del-wash` with `--text-2` text).
+- **Draft (held at the Gate).** To, Subject and Body edit in place: tap into them. There is no
+  Edit button, and the only actions are Send and Discard (the same editing as the Deck,
+  js/editable.js). The sources it drew from, if any, in a `--recall-wash` block. An edit changes
+  the primary to "Send edited".
 - **Question.** The question in Lead type, then the choices as full-width rows (radius 10,
   `--rule-strong` border, 52 tall, the choice in Row title and its note in Meta). Tap a choice
   to select it (`--signal-wash` fill, `--focus` border); the last row is a free-text field
@@ -277,11 +288,11 @@ Action area (8 between buttons, 34 bottom):
 
 - Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: Face ID glyph (22) +
   "Approve with Face ID" ("with Touch ID", "with fingerprint", "with passkey" by device). Under
-  it, two outline buttons side by side, 46 tall, radius 12, `--rule-strong` border: "Always in
+  it, two secondary buttons side by side, 46 tall, radius 12: "Always in
   <project>" (approves and writes the rule, after the same presence check) and "Deny". Where
   `ask.always_project` is null, Deny takes the full width.
-- Draft: "Send with Face ID" primary; "Discard" outline.
-- Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" outline. No
+- Draft: "Send with Face ID" primary; "Discard" secondary. Nothing else.
+- Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" secondary. No
   presence check unless the tool asks for one.
 - The primary runs the presence check, the same box-verified proof per ADR 0004 on every
   surface. The PWA uses a WebAuthn passkey assertion. The native apps use a device-key signature
@@ -327,11 +338,12 @@ gap of more than an hour ("Today 12:01"):
   `--label` ("+412 -38", "42 passed"). Tap expands the row in place: the full command, output
   (mono 12/19, 12 lines then "Show all"), or the diff.
 - **Streaming**: the reply grows in 17/24 with a 2 x 19 `--text` caret at the end.
-- **Approval card (an ask in this session)**: `--beacon-wash` fill, radius 12, 14 padding, 10
+- **Approval card (an ask in this session)**: `--panel` fill, `--rule-strong` border, no wash,
+  radius 12, 14 padding, 10
   between parts. A 7 px `--beacon-dot` and "<agent> is waiting on you" in 13/600
-  `--beacon-ink`, "Details" on the right in 13 `--text-2` (opens the detail sheet). The command
+  `--beacon-ink`, "Details" on the right, a ghost in 13/600 `--text` (opens the detail sheet). The command
   in a mono block (`--bg`, radius 6, 10 x 12, 14/20). One Meta `--text-2` line of facts ("3
-  commits · 6 files · harlow-legal/reports"). Then Deny (outline) and Approve (primary, Face ID
+  commits · 6 files · harlow-legal/reports"). Then Deny (secondary) and Approve (primary, Face ID
   glyph) side by side, 44 tall, radius 10, 15/600. Answered, it shrinks to one Meta line:
   "Approved by you, 12:07".
 - **Question card**: the same card with the choices as rows inside it.
@@ -384,7 +396,7 @@ Under the header, one Secondary `--label` line: "1 working, 1 idle".
   - The live console: `--code-bg` / `--bg`, `--rule` border, radius 8, 10 x 12, mono 12/19
     `--text-2`, the last 3 lines (the command in `--label`), a block caret on the last.
   - "Step 3 of 5" in 13 `--text-2` and a 3 px progress bar filling the rest of the row.
-  - Watch (eye glyph) and Pause (pause glyph) outline buttons side by side, 40 tall, radius 10,
+  - Watch (eye glyph) and Pause (pause glyph) secondary buttons side by side, 40 tall, radius 10,
     15/600.
   - The projects it may work in as chips: 13, 3 x 8 padding, radius 4, `--rule-strong` border,
     `--text-2`.
