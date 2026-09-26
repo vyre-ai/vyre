@@ -4,6 +4,57 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Gate
+
+- `core/gate`: the only way out for an agent (sections 7.7 and 11, floor rules 1 and 2). An agent
+  calls `gate.request {kind: send|spend|delete, via, to, content}`; the item is held until a person
+  approves the final content with `gate.approve {id, edited?}` or discards it with `gate.reject`.
+  `gate.held`, `gate.get` (draft, final and a word-level diff) and `gate.senders` complete the set.
+  A model never approves: every `mcp` caller is refused, and a module may approve only when
+  `gate.approvers` in config.json names it (default `chat`, which checks the owner pressed the button).
+- Senders are configured by the person in config.json: `gmail` (a hand-built RFC 822 message to the
+  Gmail send endpoint) and `http` (exact-origin allowlist, `{{vault}}` only in headers or the body,
+  redirects never followed). The credential is fetched from the Vault at the moment of sending
+  (`needs.vault: ["per-sender"]`, each item granted to `gate`), or added by the owner's Vyre through
+  `vault.relay` for a sender with a relayed pass, and results and errors are scrubbed of it.
+- Events `gate.held`, `gate.released`, `gate.failed` and `gate.rejected` say what and where, never
+  the content: a draft is the user's words and every module reads the log. A failed send returns to
+  held with its error so the user can try again; two Sends at once send once.
+- What the user changed before approving is taught to Memory as `draft.edited` (the recipient, the
+  agent and the diff, keyed `gate:<id>`), the first of the Gate's learning signals (section 7.11).
+- `gate.route` (internal) tells harness.rules to deny a sending MCP tool inside an agent's thread and
+  point the agent at `gate_request`; the user's own sessions keep the interim ask-first rule.
+- An item left in "sending" by a vyred that stopped mid-send goes back to held on the next start,
+  marked as possibly sent, so the person decides rather than the Gate sending twice.
+- `core/harness`: harness.rules asks `gate.route` about a floor rule 1 send when the call comes from
+  an agent's thread. Without the Gate running, the ask-first rule still applies.
+- `core/modules`: `ctx.vault.fetch` accepts any `per-<thing>` declaration, not only `per-watcher`,
+  so the Gate (`per-sender`) and agents (`per-agent`) can fetch items named at run time.
+
+#### Chat
+
+- Mattermost ships as a compose fragment for the box (`modules/chat/compose.yml`: 11.7 ESR, Postgres
+  16, loopback only, sign-up and telemetry off), with an `mmctl` bootstrap in `SETUP.md` that pipes
+  the bot and slash tokens straight into the Vault. Not yet run under Docker.
+- `modules/chat`: Mattermost as a surface over the same real sessions (section 9). A channel per
+  project and a thread per session; `thread.started`, finished text, what other surfaces typed,
+  `ask.raised` and `gate.held` become posts, and answered or released ones are patched in place
+  with their buttons gone. The owner's replies go to `threads.send` (taking the keyboard, and
+  saying who had it), a root post starts a session in that project, and buttons call
+  `threads.answer`, `gate.approve` and `gate.reject`. Editing a held draft is a Mattermost
+  interactive dialog filled with the draft, since that renders natively in the phone apps and a
+  plugin panel does not. `/vyre held|send|discard|new` covers the rest.
+- Why polling and not the websocket: no dependency, nothing to reconnect after Mattermost
+  restarts, and `since` turns a missed interval into a delay rather than a lost message.
+- Only the configured owner is obeyed. Every button carries its id and a per-install hook
+  secret, so a request that did not come from a post Chat made is refused even with a real id;
+  the slash token is compared in constant time. The bot token is a vault item fetched per
+  request through a thunk (the prototype's lesson), so it never sits in an object that gets
+  logged; a test checks it is absent from events, logs, status, tables and posts.
+- Unconfigured, Chat starts idle and `chat.status` names what is missing; Mattermost down is a
+  `failed` state that retries, never a failed vyred.
+- `package.json`: the test glob now includes `modules/**/*.test.js`.
+
 #### Learning
 
 - Drafts the user edited before approving are signals. Learning subscribes to the Gate's

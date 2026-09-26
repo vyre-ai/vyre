@@ -1,0 +1,117 @@
+# Mattermost for Vyre's Chat surface (docs/SPEC.md section 9, modules/chat).
+#
+# A fragment, not a whole stack: the box's compose pulls it in with a top-level `include:`.
+# Chat drives the same Claude Code sessions as the terminal, so Mattermost is only the place the
+# words appear. It holds no credential of Vyre's; the bot token and the slash token live in the
+# Vault (see SETUP.md).
+#
+# Assumptions for the box's compose to reconcile:
+#   - The shared network is called `vyre`, and this file declares it. If the box declares it too,
+#     make this one `external: true` or drop it here.
+#   - vyred is reachable from containers as `vyred` (a service or a host alias on that network),
+#     and Chat's listener is on vyred port 8766 (config `chat.listen.port`). Mattermost only
+#     calls hosts named in AllowedUntrustedInternalConnections, so the name must match.
+#   - vyred reaches Mattermost at http://mattermost:8065 from the network, or at
+#     http://127.0.0.1:8065 when vyred runs on the host.
+#   - Mattermost is published on loopback only. The tailnet sees it through `tailscale serve`,
+#     at VYRE_CHAT_URL (for example https://alex.vyre.run/chat or a chat. subdomain).
+#
+# Required env: VYRE_CHAT_URL, VYRE_CHAT_DB_PASSWORD. Nothing here runs without them.
+
+name: vyre-chat
+
+services:
+  mattermost:
+    # 11.7 is the Extended Support Release current in September 2026 (supported to May 2027).
+    image: mattermost/mattermost-team-edition:11.7.2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8065:8065"
+    networks: [vyre]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    tmpfs:
+      - /tmp
+    volumes:
+      - mm-config:/mattermost/config
+      - mm-data:/mattermost/data
+      - mm-logs:/mattermost/logs
+      - mm-plugins:/mattermost/plugins
+      - mm-client-plugins:/mattermost/client/plugins
+    environment:
+      TZ: UTC
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: "postgres://mattermost:${VYRE_CHAT_DB_PASSWORD:?set VYRE_CHAT_DB_PASSWORD}@postgres:5432/mattermost?sslmode=disable&connect_timeout=10"
+      MM_SERVICESETTINGS_SITEURL: "${VYRE_CHAT_URL:?set VYRE_CHAT_URL}"
+      MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+      # mmctl --local, for SETUP.md and a later `vyre chat setup`. The socket stays inside the container.
+      MM_SERVICESETTINGS_ENABLELOCALMODE: "true"
+      # The bot, its token, the /vyre command, and the buttons that call back into vyred.
+      MM_SERVICESETTINGS_ENABLEBOTACCOUNTCREATION: "true"
+      MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: "true"
+      MM_SERVICESETTINGS_ENABLECOMMANDS: "true"
+      MM_SERVICESETTINGS_ENABLEINCOMINGWEBHOOKS: "true"
+      MM_SERVICESETTINGS_ENABLEOUTGOINGWEBHOOKS: "true"
+      MM_SERVICESETTINGS_ENABLEPOSTUSERNAMEOVERRIDE: "false"
+      MM_SERVICESETTINGS_ENABLEPOSTICONOVERRIDE: "false"
+      MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS: "vyred"
+      # No outside sign-in and no open sign-up: the owner is created by mmctl.
+      MM_SERVICESETTINGS_ENABLEOAUTHSERVICEPROVIDER: "false"
+      MM_GITLABSETTINGS_ENABLE: "false"
+      MM_GOOGLESETTINGS_ENABLE: "false"
+      MM_OFFICE365SETTINGS_ENABLE: "false"
+      MM_OPENIDSETTINGS_ENABLE: "false"
+      MM_TEAMSETTINGS_ENABLEOPENSERVER: "false"
+      MM_TEAMSETTINGS_ENABLEUSERCREATION: "false"
+      # Nothing about the user leaves the box (principle 2).
+      MM_LOGSETTINGS_ENABLEDIAGNOSTICS: "false"
+      MM_SERVICESETTINGS_ENABLESECURITYFIXALERT: "false"
+      MM_PLUGINSETTINGS_ENABLEMARKETPLACE: "false"
+      MM_PLUGINSETTINGS_ENABLEREMOTEMARKETPLACE: "false"
+      MM_PLUGINSETTINGS_AUTOMATICPREPACKAGEDPLUGINS: "false"
+      # Phone notifications go through Mattermost's public push proxy by default. They carry only
+      # the post's id unless the user changes the contents setting; turn off with VYRE_CHAT_PUSH=false.
+      MM_EMAILSETTINGS_SENDPUSHNOTIFICATIONS: "${VYRE_CHAT_PUSH:-true}"
+      MM_EMAILSETTINGS_PUSHNOTIFICATIONSERVER: "${VYRE_CHAT_PUSH_SERVER:-https://push-test.mattermost.com}"
+      MM_EMAILSETTINGS_PUSHNOTIFICATIONCONTENTS: "${VYRE_CHAT_PUSH_CONTENTS:-id_loaded}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8065/api/v4/system/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  postgres:
+    image: postgres:16.10-alpine
+    restart: unless-stopped
+    networks: [vyre]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 100
+    volumes:
+      - mm-db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: mattermost
+      POSTGRES_DB: mattermost
+      POSTGRES_PASSWORD: "${VYRE_CHAT_DB_PASSWORD:?set VYRE_CHAT_DB_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mattermost -d mattermost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  vyre:
+    name: vyre
+
+volumes:
+  mm-config:
+  mm-data:
+  mm-logs:
+  mm-plugins:
+  mm-client-plugins:
+  mm-db:
