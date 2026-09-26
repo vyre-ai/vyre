@@ -28,11 +28,15 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Autofill: fill listener, pairing, unlock sessions, origin-bound fill, Chrome extension
   (`fill.js`, `modules/vault-extension/`, `docs/adr/0001-autofill.md`).
 - Sealed backup and restore (`backup.js`), and 1Password `.1pux` import (`zip.js`).
+- Relayed passes bound to the holder's Tailscale login behind `tailscale serve`
+  (`vault.relay.identity: "tailscale"`).
+- Keychain tests that hold up under parallel runs (`testing.js`): a unique keychain per test,
+  taken off the search list under a machine-wide lock, `security` retried when busy.
 
 ## Doing
 
-- The relayed pass between two machines on the tailnet, with the box workstream's Docker
-  Compose stack and tailscale sidecar.
+- The relayed pass between two machines on the tailnet, end to end through the box
+  workstream's Docker Compose stack and tailscale sidecar. Waiting on that stack reaching main.
 
 ## Next
 
