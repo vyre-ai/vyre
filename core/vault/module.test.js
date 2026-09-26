@@ -10,11 +10,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempKeychain, onSearchList } from "./testing.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -170,14 +171,7 @@ test("vault: under tests, the keychain keystore refuses the real login keychain"
 });
 
 test("vault: the keychain keystore, in a temporary keychain, survives a restart", { skip: process.platform !== "darwin" }, async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-kc-"));
-  const kc = path.join(dir, "test.keychain-db");
-  const pw = crypto.randomBytes(12).toString("hex");
-  const searchList = () => execFileSync("security", ["list-keychains", "-d", "user"], { encoding: "utf8" });
-  const listed = searchList();
-  execFileSync("security", ["create-keychain", "-p", pw, kc]);
-  execFileSync("security", ["unlock-keychain", "-p", pw, kc]);
-  t.after(() => { try { execFileSync("security", ["delete-keychain", kc]); } catch {} fs.rmSync(dir, { recursive: true, force: true }); });
+  const kc = await tempKeychain(t);
 
   const value = fake("kc");
   const first = await boot(t, { keystore: "keychain", keychain: kc });
@@ -190,7 +184,7 @@ test("vault: the keychain keystore, in a temporary keychain, survives a restart"
   t.after(() => again.d.stop());
   const used = await again.as("cli")("probe.use", { name: "api-token" });
   assert.equal(used.data?.sha, sha(value), JSON.stringify(used.error));
-  assert.equal(searchList(), listed, "the user's keychain search list changed");
+  assert.equal(await onSearchList(kc), false, "the test keychain joined the user's search list");
 });
 
 /** Every file under a folder, as raw bytes. */

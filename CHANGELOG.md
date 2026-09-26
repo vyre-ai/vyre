@@ -158,6 +158,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Tests prove no value appears in events, logs, `vault.list`, the audit trail, the MCP server's
   tool list, the HTTP API or any file under either home. Under `node --test` the keychain
   keystore refuses the login keychain; its own test uses a temporary keychain.
+- The keychain keystore retries `security` when the keychain daemon is busy (reads, `-U` writes
+  and deletes are safe to repeat). Keychain tests share `core/vault/testing.js`: a keychain with a
+  unique name per test, taken off the user's search list under a machine-wide lock, never a
+  rewrite of the whole list, and cleanup registered first. Ten parallel runs pass together.
 - Autofill (`docs/adr/0001-autofill.md`): a fill listener (`vault.fill: {host, port}` in
   config) that only paired browser extensions reach. Pairing is a one-time code from `vyre vault
   pair`; nothing is filled until the person unlocks with their unlock passphrase (or the vault
