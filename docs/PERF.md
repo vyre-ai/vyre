@@ -129,11 +129,11 @@ Verified what `glass`/`computers` described:
 - `core/glass/`: no `setInterval`/`setTimeout` anywhere; confirmed.
 - `core/computers/glass.js`: the RFB/WebSocket relay itself never originates a ping — it only
   echoes back `ping` control frames it receives (both instances found are `if (f.control ===
-  "ping") socket.write(...)`, reactive, not a timer). Couldn't find a self-initiated 30s ping
-  interval anywhere in `core/computers` or the vendored `deck/glass/vendor/novnc`; if there's a
-  30s cadence per open viewer it's likely the browser's own WebSocket keepalive, not Vyre code —
-  doesn't change the audit either way, since it only exists while a viewer socket is open
-  (active use, not idle).
+  "ping") socket.write(...)`, reactive, not a timer). Not on main at the time of this audit — found and verified afterward on `work/glass`
+  (4045c68): `core/computers/glass.js:77-178` runs the 30s keepalive as `setInterval`, `unref()`'d,
+  cleared in `closeAll`, closing after two missed pongs and renewing the keyboard hold on pong —
+  matches the description exactly. Not an idle-budget concern regardless, since it only exists
+  per open viewer socket (active use, never idle).
 
 **One real finding, not what was described but a genuine idle-budget violation**:
 `core/computers/index.js:70-79` runs `setInterval(sweep, sweepMs)` with `sweepMs` defaulting to
