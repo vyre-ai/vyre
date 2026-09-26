@@ -299,6 +299,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Result rows look native: each has its real picture (a 24 px box that never moves when the
+  icon lands), its name, where it is, and its kind or the key that takes it, with the selected
+  row in Signal. Vyre's own kinds (agents, the assistant, projects, threads, memory in Recall gold,
+  the vault, box files, held items in Beacon, quick answers) are drawn as one set of glyphs.
+- A question shows "Ask Claude", the assistant and "deeper" as the top rows, each naming its
+  destination. Enter streams the answer in place, rendered from markdown (built node by node,
+  never as HTML), with Copy, a one-press deeper retry, the model, cost and time, and what memory
+  said in gold. Esc stops a streaming answer; the next Esc closes. Follow-ups go to the same
+  thread. Enter pressed before the destination for the new words is worked out shows it and
+  sends nothing.
+- Files rank a little below the same match on an app or a pane, and at most four show beside
+  other results. Icons from the first build were drawn a quarter size; the cache moved to
+  `icons-2`.
 - Real icons, fetched by `bin/local` in batches off the main thread: app bundle icons,
   system type icons or QuickLook thumbnails for files, each settings pane's own icon (resolved
   from its extension bundle), and contact photos when Contacts is already allowed. `lib/icons.js`

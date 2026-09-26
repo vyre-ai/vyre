@@ -202,6 +202,8 @@ const RESULT_ORDER = { calc: 0, app: 1, setting: 2, agent: 3, project: 4, thread
  *   boost?: (id: string, query: string) => number, limit?: number }} src
  * @returns {Result[]}
  */
+const FILES_WITH_OTHERS = 4;
+
 export function rank(query, { local = [], files = [], extra = [], cat = null, boost = () => 0, limit = 8 }) {
   const q = String(query || "").trim();
   if (!q) return [];
@@ -209,7 +211,12 @@ export function rank(query, { local = [], files = [], extra = [], cat = null, bo
   const all = [...local];
   const score = (r, label = r.label) => { const m = match(q, label); return m > 0 ? m + boost(r.id, q) : 0; };
   // A file only on scattered letters is noise in a launcher; it needs at least a substring.
-  for (const r of files) { const s = score(r); if (s >= 0.5) all.push({ ...r, score: s }); }
+  // Files count a little less than the same match on an app or a pane: "calcu" is the Calculator
+  // before a file named Calcutta. And a few of them at most, when anything else matched.
+  const fileRows = [];
+  for (const r of files) { const s = score(r); if (s >= 0.5) fileRows.push({ ...r, score: s * 0.9 }); }
+  fileRows.sort((a, b) => b.score - a.score);
+  all.push(...fileRows.slice(0, all.length ? FILES_WITH_OTHERS : limit));
   if (cat) for (const c of candidates(cat)) {
     // A thread named only by its id is not something anyone types.
     const s = score(c);

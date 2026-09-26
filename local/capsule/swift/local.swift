@@ -215,8 +215,9 @@ func png(_ img: NSImage, px: Int, fill: Bool) -> Data? {
     guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4,
                                      hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
           let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
-    let pt = CGFloat(px) / 2
-    rep.size = NSSize(width: pt, height: pt)
+    // Drawn in pixels: the context takes the bitmap's size when it is made, so a point size set
+    // afterwards shrank every icon into the bottom-left quarter.
+    let pt = CGFloat(px)
     let w = max(img.size.width, 1), h = max(img.size.height, 1)
     let k = fill ? max(pt / w, pt / h) : min(pt / w, pt / h)
     let rect = NSRect(x: (pt - w * k) / 2, y: (pt - h * k) / 2, width: w * k, height: h * k)
