@@ -32,6 +32,13 @@ export const HUMAN_ONLY = new Set([
   // A person's hands on an agent's computer, and a new machine joined to this one.
   "computers.takeover", "computers.giveback", "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
+  // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
+  // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
+  // and the sites that leave through the owner's Mac.
+  "files.drive.share", "files.drive.unshare",
+  "network.guests.add", "network.guests.remove", "network.guests.enable",
+  "hooks.enable", "hooks.open", "hooks.close",
+  "computers.tailnet.set", "computers.egress.set",
 ]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
