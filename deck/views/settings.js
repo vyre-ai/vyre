@@ -7,7 +7,7 @@
 // blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box), agents.list and
 // agents.update (switchboard), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
-// Connections is drawn by views/connections.js (the connectors workstream, ADR 0015).
+// Connections is drawn by views/connections.js (the connectors workstream, ADR 0016).
 
 import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt, modules, canProve, callWithCode } from "../js/api.js";

@@ -7,7 +7,7 @@
 // MCP names allow letters, digits, "_" and "-", so "recall.search" is offered as
 // "recall_search". Tools named harness.* are the hooks' own and are not offered.
 //
-// It also offers the MCP hub's tools (ADR 0015 decision 5), from the hub's cache so listing never
+// It also offers the MCP hub's tools (ADR 0016 decision 5), from the hub's cache so listing never
 // starts a server: each under its own "<server>__<tool>" name, which no module tool can take
 // (those have one underscore between words), and each call goes to mcp.call. Both the listing
 // and the call carry the session, so the hub scopes them by this session's project.

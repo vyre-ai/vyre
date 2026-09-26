@@ -1,6 +1,6 @@
 // @ts-check
 // Settings, Connections: the MCP servers behind the hub and the Google accounts Vyre can use
-// (ADR 0015). One section of deck/views/settings.js, drawn here so the connectors workstream owns
+// (ADR 0016). One section of deck/views/settings.js, drawn here so the connectors workstream owns
 // it. No board of its own: the Settings rows and TOKENS.md, like the rest of that page.
 //
 // The page only ever holds vault item NAMES. mcp.servers and google.accounts carry names and
@@ -22,7 +22,7 @@ import { attempt as apiAttempt } from "../js/api.js";
 import { withPresence } from "./memory-presence.js";
 import { since } from "../js/fmt.js";
 
-/** Vault kinds that make sense for each way of using an item (ADR 0015, decision 2). */
+/** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
 export const ITEM_KINDS = {
   bearer: ["api-key", "secret"],
   env: ["api-key", "secret", "env-set"],
