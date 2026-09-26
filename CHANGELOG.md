@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre capsule install` builds; nothing is downloaded
+
+- The Vyre-mac.zip download is retired. `vyre capsule install` now builds the native Capsule on
+  this Mac (the same local build `vyre capsule` runs, with the signing-identity offer) without
+  opening it. `core/cli/commands/capsule-install.js` and its tests are removed, as is the
+  `box/Vyre-mac.sha256` pin.
+
 #### Memory as one line, and answers that read calmly
 
 - Memory shows one answer line or nothing: the answer, a three-bar cue for how sure memory is,
