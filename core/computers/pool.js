@@ -17,6 +17,7 @@
 
 import crypto from "node:crypto";
 import { PORTS, SIZE } from "./driver/index.js";
+import { chromeEnv } from "./egress.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE computers_computers (
@@ -24,6 +25,9 @@ export const MIGRATIONS = [
      vnc_password TEXT NOT NULL, helper_token TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0,
      created INTEGER NOT NULL, updated INTEGER NOT NULL
    );`,
+  // What the container's Chrome was made with for config glass.egress (the PAC data: URL, or ""),
+  // so a change reaches a computer the next time it starts rather than never (egress.js).
+  `ALTER TABLE computers_computers ADD COLUMN egress TEXT NOT NULL DEFAULT '';`,
 ];
 
 /** How long a Glass ticket lives: long enough to open a WebSocket, too short to be worth stealing. */
@@ -46,7 +50,8 @@ export class Pool {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, driver: import("./driver/index.js").Driver|null,
    *   call: (tool: string, input: any) => Promise<any>, emit: (type: string, payload: any, where?: any) => any,
-   *   log?: (m: string) => void, config?: any, now?: () => number }} deps
+   *   log?: (m: string) => void, config?: any, now?: () => number, egress?: () => any }} deps
+   *   egress reads config glass.egress when a computer is made, so a change needs no restart.
    */
   constructor(deps) {
     const c = deps.config || {};
@@ -56,6 +61,7 @@ export class Pool {
     this.emit = deps.emit;
     this.log = deps.log || (() => {});
     this.now = deps.now || (() => Date.now());
+    this.egress = deps.egress || (() => undefined);
     this.opts = {
       screens: Math.max(1, Number(c.screens || 2)),
       idleMs: Number(c.idleMs ?? 60_000),
@@ -307,6 +313,17 @@ export class Pool {
     const d = /** @type {import("./driver/index.js").Driver} */ (this.driver);
     let r = this.rowFor(agent);
     let st = r.container ? await d.inspect(r.container) : { state: "missing", host: null };
+    // Chrome's proxy script is fixed when the container is made. A stopped computer whose script
+    // no longer matches config glass.egress is made again (its home volume stays, so its Chrome
+    // profile and sign-ins do too); a running or frozen one keeps what it has until it stops.
+    const egress = chromeEnv(this.egress());
+    const want = egress.VYRE_PROXY_PAC || "";
+    if (st.state === "exited" && String(r.egress || "") !== want) {
+      await d.remove(String(r.container));
+      this.set(agent, { container: null, state: "none" });
+      this.log(`${agent}'s computer made again: its egress setting changed`);
+      st = { state: "missing", host: null };
+    }
     if (st.state === "missing") {
       // Fresh secrets with every new container: the old ones died with the old container.
       this.set(agent, { vnc_password: vncPassword(), helper_token: helperToken() });
@@ -314,11 +331,11 @@ export class Pool {
       const { w, h } = this.opts.size;
       const { id } = await d.create({
         agent, image: this.opts.image, network: this.opts.network, cpus: this.opts.cpus, memoryMb: this.opts.memoryMb, size: this.opts.size,
-        env: { VNC_PASSWORD: r.vnc_password, COMPUTERD_TOKEN: r.helper_token, SCREEN: `${w}x${h}` },
+        env: { VNC_PASSWORD: r.vnc_password, COMPUTERD_TOKEN: r.helper_token, SCREEN: `${w}x${h}`, ...egress },
         labels: { [`${this.opts.prefix}.computer`]: agent, [`${this.opts.prefix}.managed`]: "true" },
         volume: `${this.opts.prefix}-home-${agent}`,
       });
-      this.set(agent, { container: id, state: "stopped" });
+      this.set(agent, { container: id, state: "stopped", egress: want });
       this.emit("computer.created", { agent });
       this.log(`${agent}'s computer created`);
       st = { state: "exited", host: null };

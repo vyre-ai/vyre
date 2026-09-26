@@ -74,7 +74,8 @@ export function privateSocketDir() {
 
 /** @typedef {{ name?: string, role: "box"|"local", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
- *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any }} Config */
+ *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
+ *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } } }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
@@ -86,6 +87,9 @@ function defaults() {
     transcripts: [path.join(os.homedir(), ".claude", "projects"), path.join(os.homedir(), ".claude", "projects-archive")],
     modules: { enable: [], disable: [] },
     network: { tailscale: false },
+    // Off: no computer's Chrome goes out through the user's Mac until the owner lists sites
+    // (core/computers/egress.js, box/compose.egress.yml).
+    glass: { egress: { enabled: false, sites: [] } },
   };
 }
 
@@ -107,6 +111,7 @@ export function load(root = home()) {
     me: { ...d.me, ...(user.me || {}) },
     modules: { ...d.modules, ...(user.modules || {}) },
     network: { ...d.network, ...(user.network || {}) },
+    glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
   };
   c.projectsDir = untilde(c.projectsDir);
   c.roots = (c.roots || []).map(untilde);
