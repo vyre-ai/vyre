@@ -9,15 +9,21 @@ import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 import { softCorrection, wordsKey } from "./signals.js";
 import { parseAnswer } from "./jobs.js";
 
 const DASH = "\u2014";
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 
-/** Projects: harlow-site owns <home>/w/harlow-site, bramble-app owns <home>/w/bramble-app. */
-function fakeProjects(home) {
-  const w = path.join(home, "w");
+/**
+ * Projects: harlow-site owns <w>/harlow-site, bramble-app owns <w>/bramble-app. The work folder
+ * sits outside the Vyre home, as a user's does: inside it, the floor (ADR 0004) would refuse
+ * every write as Vyre's own state before the Harness could learn from it.
+ */
+function fakeProjects(home, t) {
+  const w = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));
+  t.after(() => fs.rmSync(w, { recursive: true, force: true }));
   const src = `const W = ${JSON.stringify(w)};
   const P = [{ slug: "harlow-site", name: "Harlow Site", home: W + "/harlow-site", workspaces: [W + "/harlow-site"] },
              { slug: "bramble-app", name: "Bramble App", home: W + "/bramble-app", workspaces: [W + "/bramble-app"] }];
@@ -64,7 +70,7 @@ async function learning(t, { projects = false, switchboard = false, memory = fal
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local", ...config }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(HERE, "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
-  const where = projects ? fakeProjects(home) : null;
+  const where = projects ? fakeProjects(home, t) : null;
   const extra = [...(projects ? discover([path.join(home, "mods")]) : []), ...(switchboard ? fakeSwitchboard(home) : []), ...(memory ? fakeMemory(home) : [])];
   await reg.start([...core, ...extra], { role: "local" });
   t.after(async () => { await reg.stop(); db.close(); });

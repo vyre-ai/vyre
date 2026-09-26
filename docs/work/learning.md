@@ -129,6 +129,8 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   Bash, ADR 0004). `script` or a hand-written client gets round this, so weakens() also asks
   before a model's shell reaches any of these tools. When `core/presence/index.js` exists the
   CLI skips the step and vyred decides.
+  (Since the merge with security: the stopgap is gone. vyred checks `presence` for these tools,
+  and `vyre learn` proves it through `callAsPerson`, as `vyre call` does.)
 - A forged enrich: the same prompt_id is a duplicate (nothing reset, answered or proposed). A new
   prompt before the last turn passed a Stop keeps its blocks, owed lessons and (when it changed
   files) its start; its no declines nothing, its yes still accepts. `learn_turns.stopped` records

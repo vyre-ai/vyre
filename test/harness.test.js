@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { interactiveFrom } from "../core/harness/index.js";
 import { tempHome } from "./helpers.js";
+import { SCRATCH } from "./scratch.mjs";
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "harness");
 
@@ -167,7 +168,7 @@ test("hooks: with vyred down and lessons.json deleted, the lessons still hold, r
   assert.equal(JSON.parse(w.out).hookSpecificOutput.permissionDecision, "deny");
   const g = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", tool_name: "Bash",
     tool_input: { command: `echo '{}' > ${root}/lessons.json` } }, env);
-  assert.equal(JSON.parse(g.out).hookSpecificOutput.permissionDecision, "ask", "rewriting the snapshot is asked, offline too");
+  assert.equal(JSON.parse(g.out).hookSpecificOutput.permissionDecision, "deny", "rewriting the snapshot is refused, offline too (the floor, ADR 0004)");
   const back = await hook("stop", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", hook_event_name: "Stop", stop_hook_active: false,
     last_assistant_message: "Sure \u2014 here it is" }, env);
   assert.equal(JSON.parse(back.out).decision, "block");
@@ -175,7 +176,10 @@ test("hooks: with vyred down and lessons.json deleted, the lessons still hold, r
 
 test("hooks: with vyred down and no lesson, running a hook by hand and changing the loaded hooks are still asked", async t => {
   const root = tempHome(t);
-  const plugin = path.join(root, "plugin");
+  // The loaded plugin lives outside the Vyre home, as it does for a user: inside it, the floor
+  // (ADR 0004) would deny it as Vyre's own state before the hooks' guard could ask.
+  const plugin = fs.mkdtempSync(path.join(SCRATCH, "vyre-plugin-"));
+  t.after(() => fs.rmSync(plugin, { recursive: true, force: true }));
   const env = { VYRE_HOME: root, CLAUDE_PLUGIN_ROOT: plugin };
   const rules = async tool_input => {
     const r = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: plugin, tool_name: tool_input.command ? "Bash" : "Edit", tool_input }, env);
@@ -183,7 +187,7 @@ test("hooks: with vyred down and no lesson, running a hook by hand and changing 
   };
   assert.equal(await rules({ command: "echo '{\"prompt\":\"no\"}' | node ./hooks/hook.js enrich" }), "ask");
   assert.equal(await rules({ file_path: path.join(plugin, "hooks", "hooks.json") }), "ask");
-  assert.equal(await rules({ command: `sqlite3 ${root}/vyre.db 'delete from learn_lessons'` }), "ask");
+  assert.equal(await rules({ command: `sqlite3 ${root}/vyre.db 'delete from learn_lessons'` }), "deny", "the floor refuses Vyre's store outright");
   assert.equal(await rules({ command: "npm test" }), null);
 });
 

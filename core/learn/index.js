@@ -108,9 +108,9 @@ const OWNER = ["cli", "local", "deck", "capsule"];
 /**
  * Who may call the human-only tools (accept, retire, relax, skill-install, skill-retire,
  * skill-dismiss): only a surface that names itself. Not "local", which any socket client gets by
- * sending no header, nor MCP, agents or hooks. STOPGAP until ADR 0004's registry enforces the
- * `presence` these tools declare: a model can still claim "cli", so the CLI asks the person at a
- * terminal (core/cli/confirm.js) and weakens() asks before a model's shell reaches these tools.
+ * sending no header, nor MCP, agents or hooks. A model can still claim "cli", so vyred also
+ * checks the `presence` these tools declare (ADR 0004), and weakens() asks before a model's shell
+ * reaches them.
  */
 const HUMAN = ["cli", "deck", "capsule"];
 /**

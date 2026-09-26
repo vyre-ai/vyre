@@ -19,6 +19,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   autostart in vyred, the Capsule's own `/usr/bin/open` (a copy of the rule in
   `local/capsule/lib/dialogs.js`, since the packaged app carries no `core`), the hands-mac
   Accessibility helper, and `security` on the login keychain (a test keychain file still works).
+- Nor does presence write its terminal code under tests: it would land in a login terminal the
+  user holds. `tty` is not offered then, and a challenge for it answers `no_dialog`.
+
+#### Learning meets presence
+
+- The `confirm.js` stopgap is gone. `vyre learn` asks for the human-only learn tools through
+  `callAsPerson`, as `vyre call` does, and vyred checks the proof (ADR 0004). The CLI tests assert
+  refusals against the real verifier and approvals with `upPresent`.
+- The floor's list named `learn.skill_install`, a tool that does not exist; it is
+  `learn.skill-install`, and the Deck's Install button called the same wrong name. A test fails
+  when the list names a tool no shipped module declares (`vault.export` is held in reserve).
 
 #### Presence: a person proves they are there (ADR 0004)
 
@@ -52,7 +63,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `test/fixtures/vyred-present.js` for CLI tests. That fixture refuses any home outside the temp folder.
 - After review with the other workstreams:
   - The floor's list now covers the vault's value-out tools, `learn.relax` and
-    `learn.skill_install`, `computers.takeover` and `computers.giveback`, and `link.pair.approve`.
+    `learn.skill-install`, `computers.takeover` and `computers.giveback`, and `link.pair.approve`.
   - Tools get `presence: { method, keyId }` in run()'s context, never the proof.
   - On the box, a terminal code only enrolls the first passkey, since a model on the Mac can
     usually SSH into a login terminal there.
@@ -82,8 +93,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   forwards its own re-serialisation, never the caller's bytes. Attached (upgraded) exec is
   refused. The proxy runs from the vyre image as uid 1000 in the socket's group, with a read-only
   root and no capabilities. `install-box.sh` writes that group to `/srv/vyre/.env` as
-  `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It needs `policy.js` from
-  work/computers: until that merges, `main.js` stops at start with a clear error.
+  `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It checks creates with
+  Computers' own `policy.js`.
 
 #### `vyre link` points to the Deck
 
