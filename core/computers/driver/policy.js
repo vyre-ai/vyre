@@ -23,11 +23,13 @@
 //   - allowlist the endpoints themselves (create, start, stop, pause, unpause, inspect, list,
 //     remove, exec and exec-start on computer containers, volume inspect) and keep everything
 //     else shut, /containers/*/archive, /images/create and /build above all;
-//   - never let this file's exec check stand in for keeping Claude's own sessions off this
-//     network at all: an exec allowed onto ANY agent's computer is still cross-agent access
-//     (agent B's Chrome profile and session, read from a call that only ever claimed to be
-//     acting for A), and no label check closes that - only vyred being the only caller who can
-//     reach exec at all does. Noted below as residual until sessions have their own container.
+//   - never let this file's exec check, or allowCreate's own labels check, stand in for keeping
+//     Claude's own sessions off this network at all: a caller naming a DIFFERENT agent still
+//     reaches that agent's real computer and its real home volume, since both checks only ask
+//     "is this a computer" and "does the claim match what is really there," never "is the
+//     caller allowed to act as this particular agent." No label check closes that - only vyred
+//     being the only caller who can reach these endpoints at all does. Noted below on both
+//     functions as residual until Claude's sessions have their own container.
 
 /**
  * Every container and volume this file's own labels touch carries a fixed `run.vyre: "1"` marker
@@ -52,6 +54,29 @@ export function computerLabels(labels) {
 
 /** @param {Record<string, any>} labels */
 export const isComputerLabels = labels => computerLabels(labels) !== null;
+
+/**
+ * Like `computerLabels`, but for a request that has not been created yet, where the caller
+ * chooses every label in the body — including which prefix to use, and with `.find()`, which of
+ * two pairs to match if it sends more than one. Pinning to the box's own configured
+ * `labelPrefix` closes both: only `${labelPrefix}.managed`/`${labelPrefix}.computer` count, and
+ * any OTHER `*.managed`/`*.computer`-shaped key anywhere in the labels refuses the whole body,
+ * rather than being silently ignored (security, 26 Sep — a caller was otherwise free to pick its
+ * own prefix, and with it the volume name `isVolumeMount` derives from it).
+ * @param {Record<string, any>} labels @param {string} labelPrefix
+ * @returns {{ prefix: string, agent: string } | null}
+ */
+function claimedComputerLabels(labels, labelPrefix) {
+  if (!labels || typeof labels !== "object") return null;
+  if (labels["run.vyre"] !== "1") return null;
+  const shaped = k => k.endsWith(".managed") || k.endsWith(".computer");
+  const others = Object.keys(labels).filter(k => shaped(k) && k !== `${labelPrefix}.managed` && k !== `${labelPrefix}.computer`);
+  if (others.length) return null;
+  if (labels[`${labelPrefix}.managed`] !== "true") return null;
+  const agent = labels[`${labelPrefix}.computer`];
+  if (typeof agent !== "string" || !/^[a-z][a-z0-9-]{0,40}$/.test(agent)) return null;
+  return { prefix: labelPrefix, agent };
+}
 
 /**
  * Refuse anything not in `allowed`, keyed by name, each an exact-match value or a `(v) => bool`
@@ -87,8 +112,9 @@ const isEmptyObj = v => v && typeof v === "object" && !Array.isArray(v) && Objec
 const FORBIDDEN_CAPS = new Set(["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_RAWIO"]);
 
 /**
- * @param {{ network: string, image: string, capAdd?: string[] }} config the box's own
- *   computers.network / computers.image / computers.capAdd, never taken from the request
+ * @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config the
+ *   box's own computers.network / computers.image / computers.labelPrefix / computers.capAdd,
+ *   never taken from the request
  */
 function hostConfigShape(config, expectAgent) {
   const capAdd = new Set((config.capAdd || []).map(String));
@@ -128,8 +154,8 @@ function hostConfigShape(config, expectAgent) {
  * before allowing the create, and refuse unless that volume's own labels already name this same
  * agent (security, 26 Sep). This function checks what the body claims; it cannot check what the
  * Engine already has under that name.
- * @param {any} m @param {{ network: string, image: string, capAdd?: string[] }} config
- * @param {{ prefix: string, agent: string }} expectAgent from the body's own top-level Labels
+ * @param {any} m @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config
+ * @param {{ prefix: string, agent: string }} expectAgent from the body's own top-level Labels, pinned to config.labelPrefix
  */
 function isVolumeMount(m, config, expectAgent) {
   if (!m || typeof m !== "object") return false;
@@ -138,12 +164,12 @@ function isVolumeMount(m, config, expectAgent) {
   if (m.Source !== `${expectAgent.prefix}-home-${expectAgent.agent}`) return false;
   const opts = m.VolumeOptions;
   if (!opts || typeof opts !== "object") return false;
-  const got = computerLabels(opts.Labels);
-  return Boolean(got && got.prefix === expectAgent.prefix && got.agent === expectAgent.agent);
+  const got = claimedComputerLabels(opts.Labels, config.labelPrefix);
+  return Boolean(got && got.agent === expectAgent.agent);
 }
 
 /**
- * @param {{ network: string, image: string, capAdd?: string[] }} config
+ * @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config
  */
 function bodyShape(config) {
   return {
@@ -154,11 +180,14 @@ function bodyShape(config) {
     Image: { required: true, is: eq(config.image) },
     Hostname: { required: true, is: v => isStr(v) && /^[a-z][a-z0-9-]{0,40}$/.test(v) },
     Env: { required: true, is: v => Array.isArray(v) && v.every(e => isStr(e) && /^[A-Z_][A-Z0-9_]*=/.test(e)) },
-    Labels: { required: true, is: isComputerLabels },
+    // Pinned to config.labelPrefix, not just any *.managed/*.computer pair the body picks: a
+    // caller choosing its own prefix would also choose the volume Source isVolumeMount derives
+    // from it (security, 26 Sep).
+    Labels: { required: true, is: (v, body) => Boolean(claimedComputerLabels(v, config.labelPrefix)) },
     ExposedPorts: { required: true, is: v => v && typeof v === "object" && !Array.isArray(v)
       && Object.keys(v).every(p => /^\d{1,5}\/tcp$/.test(p)) && Object.values(v).every(isEmptyObj) },
     HostConfig: { required: true, is: (v, body) => {
-      const expectAgent = computerLabels(body.Labels);
+      const expectAgent = claimedComputerLabels(body.Labels, config.labelPrefix);
       return Boolean(expectAgent) && checkShape(v, hostConfigShape(config, expectAgent), "HostConfig") === null;
     } },
   };
@@ -187,11 +216,19 @@ function checkBodyShape(obj, allowed, where) {
  * The proxy must still do its own part beside this: inspect an existing volume of the derived
  * name before letting a create reuse it (see `isVolumeMount`'s doc), and allowlist which
  * endpoints reach the Engine at all.
- * @param {any} body @param {{ network: string, image: string, capAdd?: string[] }} config
+ *
+ * Residual, not closed by this check (security, 26 Sep): a caller naming a different agent in
+ * Labels gets that agent's own existing volume back (its Source is derived from the claim, and
+ * the proxy's own volume check then finds that agent's real labels on it, which match) — cross-
+ * agent access to a home volume, the same class as `allowExec`'s residual below and closed the
+ * same way, once Claude's own sessions are off this network and vyred is the only caller left.
+ * @param {any} body @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config
  * @returns {{ ok: true } | { ok: false, why: string }}
  */
 export function allowCreate(body, config) {
-  if (!config || !isStr(config.network) || !isStr(config.image)) throw new Error("allowCreate needs the box's own computers.network and computers.image, never taken from the request");
+  if (!config || !isStr(config.network) || !isStr(config.image) || !isStr(config.labelPrefix)) {
+    throw new Error("allowCreate needs the box's own computers.network, computers.image and computers.labelPrefix, never taken from the request");
+  }
   const why = checkBodyShape(body, bodyShape(config), "body");
   return why ? { ok: false, why } : { ok: true };
 }

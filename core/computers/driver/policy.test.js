@@ -37,7 +37,7 @@ const SPEC = {
   // "run.vyre.computers" prefix realBody() configures below, the same way pool.js would build it.
   volume: "run.vyre.computers-home-kit",
 };
-const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1" };
+const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPrefix: "run.vyre.computers" };
 
 /** The real body docker.js sends for the box's own configured prefix, from a real driver call. */
 async function realBody(t, opts = {}) {
@@ -98,6 +98,21 @@ test("policy: refuses any bind mount, the docker socket most of all", async t =>
   assert.equal(allowCreate(extra, CONFIG).ok, false, "a second, extra mount is refused even if the first is fine");
 });
 
+test("policy: the label prefix is the box's own config, never the caller's choice", async t => {
+  // A caller picking its own prefix would also pick the volume Source derived from it.
+  const own = await mutate(t, b => {
+    b.Labels = { "attacker.managed": "true", "attacker.computer": "kit", "run.vyre": "1" };
+    b.HostConfig.Mounts[0].Source = "attacker-home-kit";
+    b.HostConfig.Mounts[0].VolumeOptions.Labels = { ...b.Labels };
+    return b;
+  });
+  assert.equal(allowCreate(own, CONFIG).ok, false);
+  // A body naming the box's real prefix AND a second, different one is not silently resolved by
+  // matching only the first pair .find() would see - it is refused outright.
+  const ambiguous = await mutate(t, b => { b.Labels["sneaky.managed"] = "true"; b.Labels["sneaky.computer"] = "pax"; return b; });
+  assert.equal(allowCreate(ambiguous, CONFIG).ok, false);
+});
+
 test("policy: Source must be the derived name, not any volume the labels happen to also name", async t => {
   // The real hole this closes: an existing volume's own labels are ignored by Docker once it
   // already exists, so naming one directly (vyred's own home, or another agent's) would mount it
@@ -153,7 +168,8 @@ test("policy: computerLabels ties the managed and computer keys to the same pref
   assert.equal(isComputerLabels({ "run.vyre": "1", "vyre.managed": "true", "vyre.computer": "kit" }), true);
 });
 
-test("policy: allowCreate needs the box's own network and image, and never trusts the request for either", () => {
-  assert.throws(() => allowCreate({}, {}), /computers\.network|computers\.image/);
+test("policy: allowCreate needs the box's own network, image and labelPrefix, and never trusts the request for any of them", () => {
+  assert.throws(() => allowCreate({}, {}), /computers\.network|computers\.image|computers\.labelPrefix/);
+  assert.throws(() => allowCreate({}, { network: "vyre-computers", image: "vyre/computer:0.1" }), /labelPrefix/);
   assert.throws(() => allowCreate({}, undefined));
 });
