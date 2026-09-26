@@ -34,3 +34,11 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
 - A contract change (tool input, event payload, route) goes in "Changed contracts" before it
   merges, so dependents see it.
 - Merge to `main` only with the full suite green: `npm test`.
+
+## ADR numbers
+
+Claim the next number here before writing the ADR, so two workstreams never take the same one.
+
+| ADR | Workstream | Title |
+|---|---|---|
+| 0022 | capsule-apps | @App targets: every Mac app from the Capsule |
