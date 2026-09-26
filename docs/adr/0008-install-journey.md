@@ -186,12 +186,15 @@ connection learns the box's node; everything after is pinned to it, and the appr
 box is what makes the pin trustworthy. Approval comes from the box itself (`vyre link approve
 <code>`) or from another of the owner's devices in the Deck, never from the Mac asking.
 
-- **Door A approves for the person.** `vyre box add` has just reached the server over SSH, which
-  proves the person owns it. So after `link.pair` returns the code, it runs `vyre link approve
-  <code>` on the box over the same connection. Nobody types the code.
+- **Door A approves over SSH on a fresh box.** `vyre box add` has just reached the server over
+  SSH, which proves the person owns it. After `link.pair` returns the code it runs `vyre link
+  approve <code>` over `ssh -t`; with no passkey enrolled yet, vyred proves presence with a code
+  it writes to that terminal, which the person types back (ADR 0004). Once the box has a
+  passkey, approval needs the Deck, and `box add` says so.
 - **Door B shows the code.** `vyre up` on the Mac finds the box (`link.find`: online peers of the
-  same tailnet that answer as a box, pinned to the peer's node), starts pairing, and prints the
-  code with where to approve it: the Deck on the phone, or `vyre link approve` on the server.
+  same tailnet that answer as a box, pinned to the peer's node), starts pairing, and asks for the
+  approval in the Deck, where the passkey is. `vyre link approve` on the server is only for a box
+  with no passkey yet.
 - **Owner mismatch.** The box serves only `network.owner` (ADR 0002). A Mac signed in to Tailscale
   as someone else gets `not_owner`, and `vyre up` says to sign the Mac in as the box's owner.
 

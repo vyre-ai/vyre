@@ -295,7 +295,9 @@ async function pairOver(r, address, env, tool) {
   if (st.data && st.data.linked) return;
   const p = await tool("link.pair", { box: address });
   if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
-  const a = await r.run(vyre(["link", "approve", String(p.data.code)], env));
+  // On a box with no passkey yet, approving proves presence with a code vyred writes to this
+  // terminal, so it runs with one (-t). With a passkey enrolled it needs the Deck instead.
+  const a = await r.run(vyre(["link", "approve", String(p.data.code)], env), { tty: Boolean(process.stdin.isTTY) });
   if (a.code === 0) out(`  ${signal("paired")} ${dim("· this Mac and your box work as one")}`);
   // Once the box has a passkey, approving needs a person on a device (the presence floor), not SSH.
   else out(beacon("  pairing is waiting for approval: ") + `approve "${os.hostname()}" in the Deck on your phone ${dim(`(code ${p.data.code})`)}`);

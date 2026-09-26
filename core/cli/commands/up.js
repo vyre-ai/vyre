@@ -304,8 +304,8 @@ async function pair(box, tool, say) {
     code = p.data && p.data.code;
   }
   if (code) {
-    say(`  pair this Mac: on the box, run ${signal("vyre link approve " + code)}`);
-    say(dim("  or approve it in the Deck on another of your devices. vyre link shows when it is done."));
+    say(`  Approve this Mac in your Deck: it asks for your passkey and names this Mac (${os.hostname()}). Code: ${signal(code)}`);
+    say(dim(`  First time on this box, with no passkey yet? On the box, run vyre link approve ${code}. vyre link shows when it is done.`));
   }
   return false;
 }
