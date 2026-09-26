@@ -53,6 +53,9 @@ public final class CapsuleModel: ObservableObject {
     private var partial: [String: [ResultItem]] = [:]
     private var replySub: VyredSubscription?
     private var recallTask: Task<Void, Never>?
+    /// Slow providers whose rows are still from the previous keystroke.
+    private var stale = Set<String>()
+    private var staleTimer: Timer?
     /// Asked to close the panel (an action finished with .close).
     public var onClose: ((String?) -> Void)?
     /// Asked to step aside for the front app.
@@ -107,7 +110,8 @@ public final class CapsuleModel: ObservableObject {
         let t = token
         line = nil
         confirming = nil
-        partial = [:]
+        // Rows of slow providers stay until replaced; the instant ones are recomputed below.
+        partial["calc"] = nil; partial["commands"] = nil; partial["ext-commands"] = nil
         let q = Query(text, front: front)
         // `@` being typed: the list is what it can name, nothing else.
         if target == nil, let m = Route.mention(text).completing {
@@ -125,7 +129,7 @@ public final class CapsuleModel: ObservableObject {
             return
         }
         recall(q.text, token: t)
-        if q.normalized.isEmpty { groups = []; selected = 0; return }
+        if q.normalized.isEmpty { partial = [:]; groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [c] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
@@ -134,12 +138,29 @@ public final class CapsuleModel: ObservableObject {
             return ResultItem(id: "ext:" + c.id, kind: "command", title: c.title, subtitle: c.subtitle, icon: c.icon,
                               section: .commands, score: s, actions: c.actions)
         }
-        publish()
+        // Quick providers answer in this frame. The rest keep their rows from the last key until
+        // their new ones land (or 300 ms pass), so nothing blinks out and back while typing.
         for p in providers + extensionProviders {
+            if let now = p as? ImmediateResults { partial[p.id] = now.resultsNow(for: q) }
+        }
+        publish()
+        for p in providers + extensionProviders where !(p is ImmediateResults) {
             Task { @MainActor in
                 let rows = await p.results(for: q)
                 guard t == self.token else { return }
                 self.partial[p.id] = rows
+                self.stale.remove(p.id)
+                self.publish()
+            }
+        }
+        let pending = Set((providers + extensionProviders).filter { !($0 is ImmediateResults) }.map(\.id))
+        stale = pending
+        staleTimer?.invalidate()
+        staleTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, t == self.token, !self.stale.isEmpty else { return }
+                for id in self.stale { self.partial[id] = nil }
+                self.stale = []
                 self.publish()
             }
         }

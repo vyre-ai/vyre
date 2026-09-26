@@ -189,6 +189,12 @@ public protocol ResultProvider: AnyObject, Sendable {
     func cool()
 }
 
+/// A quick provider that can answer in the keystroke's own frame, from memory, without a Task
+/// hop: its rows are drawn with the text that asked for them.
+public protocol ImmediateResults: ResultProvider {
+    func resultsNow(for query: Query) -> [ResultItem]
+}
+
 public extension ResultProvider {
     var sendsQuery: String? { nil }
     func warm() {}

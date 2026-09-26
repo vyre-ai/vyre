@@ -41,7 +41,9 @@ case "$mode" in
     } > "$main"
     bin="$out/capsule-tests"
     # shellcheck disable=SC2046
-    swiftc -Onone -target "$target" -o "$bin" $(sources) "$reg" $(find "$here/Tests" -name '*.swift' | LC_ALL=C sort) "$main"
+    # VYRE_CAPSULE_OPT=1 builds the tests as the app is built (-O), for timing checks.
+    opt=-Onone; [ "${VYRE_CAPSULE_OPT:-}" = 1 ] && opt=-O
+    swiftc "$opt" -target "$target" -o "$bin" $(sources) "$reg" $(find "$here/Tests" -name '*.swift' | LC_ALL=C sort) "$main"
     shift || true
     VYRE_CAPSULE_TEST=1 "$bin" "$@"
     ;;

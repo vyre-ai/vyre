@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Typing into the native Capsule no longer jumps or flickers
+
+- The area under the bar has one fixed height while anything is shown there, as Spotlight's
+  does, so results, memory and answers arriving in waves never resize the panel mid-word (14
+  size changes over 20 keys before, 0 after).
+- Apps and settings answer in the keystroke's own frame (`ImmediateResults`), and slower
+  providers keep their rows until their new ones land (or 300 ms pass), so rows no longer blink
+  out and back (7 flickers before, 0 after). Rows redraw only when what they show changes.
+- `Tests/TypingPerfTests.swift` types 20 keys into an off-screen panel with results in waves and
+  checks keystroke-to-paint p95 under 16 ms (7.9 ms, optimised build), no size change while
+  typing, no flicker, and no main-thread pass over 16 ms (longest 10.3 ms).
+
 #### The native Capsule loads extensions
 
 - The host makes each extension build.sh registers and routes to it: its rows and commands in
