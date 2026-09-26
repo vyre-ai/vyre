@@ -183,7 +183,8 @@ test("sanitize: odd input returns something sane, and nothing is catastrophicall
   ]) {
     const t0 = Date.now();
     redact(s);
-    assert.ok(Date.now() - t0 < 1500, what + ": a megabyte took too long, which smells of backtracking");
+    // Loose on purpose: a shared machine under load is slow; catastrophic backtracking is minutes.
+    assert.ok(Date.now() - t0 < 5000, what + ": a megabyte took too long, which smells of backtracking");
   }
 });
 

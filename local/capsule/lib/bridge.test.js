@@ -1,7 +1,8 @@
 // @ts-check
-// The bridge against a real vyred in a temp home, seeded with the fictional corpus. The
-// switchboard and the Gate are faked at the client, not as modules, so these tests keep passing
-// when the real ones merge and register the same tool names.
+// The bridge against a real vyred in a temp home, seeded with the fictional corpus. The first
+// tests fake the switchboard and the Gate at the client, in their real shapes, for the cases a
+// real run cannot stage cheaply; the "real switchboard" tests at the end run core threads and
+// agents with the fake `claude`, and the real Gate test runs core/gate.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -268,4 +269,205 @@ test("bridge: the real Gate holds a draft, the Capsule opens it, and Send sends 
   const mime = Buffer.from(JSON.parse(got[0]).raw, "base64url").toString();
   assert.equal(Buffer.from(mime.split("\r\n\r\n")[1], "base64").toString(), "Hi Dana, the numbers are on slide 6.", "what the user left on screen is what went");
   assert.deepEqual(b.waiting, []);
+});
+
+// ------------------------------------------------------------ the real switchboard
+// vyred in a temp home with core threads and agents running, and the fake `claude` standing in
+// for Claude Code (core/switchboard/testing/fake-claude.js echoes, and asks before a Write). The
+// Bridge talks to it exactly as the Capsule does: client(socket), caller "capsule", and the live
+// event stream folded in through onEvent.
+
+const FAKE = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../../core/switchboard/testing/fake-claude.js");
+
+async function until(fn, what, ms = 8000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > end) throw new Error("timed out waiting for " + what);
+    await new Promise(r => setTimeout(r, 20));
+  }
+}
+
+async function live(t) {
+  fs.chmodSync(FAKE, 0o755);
+  const was = process.env.VYRE_CLAUDE_BIN;
+  process.env.VYRE_CLAUDE_BIN = FAKE;
+  t.after(() => { if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; });
+  const root = tempHome(t);
+  const empty = fs.mkdtempSync(path.join(root, "transcripts-"));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [empty], roots: [], projectsDir: path.join(root, "projects"),
+    modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli", timeout: 20_000 });
+  const work = fs.mkdtempSync(path.join(root, "work-"));
+  const c = client(d.paths.socket);
+  const b = new Bridge(c);
+  const events = [];
+  const s = stream(c.socket, { since: (await c.get("/v1/health")).data.last_event, onEvent: e => { events.push(e); b.onEvent(e); } });
+  t.after(() => s.stop());
+  await until(() => true, "");
+  return { root, d, c, b, cli, work, events };
+}
+
+const holderOf = async (cli, thread) => (await cli("threads.get", { thread, limit: 1 })).data.thread.holder;
+
+test("real switchboard: every tool the Capsule calls is open to the capsule caller", async t => {
+  const { c, b } = await live(t);
+  await b.refresh();
+  for (const tool of ["agents.list", "agents.ask", "agents.threads", "threads.list", "threads.start", "threads.send", "threads.lease",
+    "threads.release", "threads.asks", "threads.answer", "threads.get", "projects.list"]) assert.ok(b.has(tool), `${tool} is listed for capsule`);
+  const mf = JSON.parse(fs.readFileSync(path.resolve(path.dirname(FAKE), "..", "module.json"), "utf8"));
+  assert.ok(mf.does.tools.includes("threads.asks"));
+  assert.equal((await c.call("threads.asks")).error, undefined);
+});
+
+test("real switchboard: the assistant is the default, and its reply streams into the snapshot", async t => {
+  const { b, cli } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  await b.refresh();
+  assert.equal(b.snapshot().assistant, "juno");
+  const d = await b.destinations(null, "what is left this week");
+  assert.deepEqual([d.options[0].kind, d.options[0].agent, d.unavailable], ["assistant", "juno", null]);
+  const sent = await b.send(d.options[0], "what is left this week");
+  assert.equal(sent.error, undefined, sent.error);
+  assert.match(String(sent.thread), /^[0-9a-f-]{36}$/);
+  await until(() => b.snapshot().reply?.finished, "the reply to finish");
+  const snap = b.snapshot();
+  assert.equal(snap.reply?.thread, sent.thread);
+  assert.equal(snap.reply?.text, "echo: what is left this week");
+  assert.equal(snap.reply?.ok, true);
+  // agents.ask with wait:false keeps the keyboard for the Capsule until it closes.
+  assert.equal(await holderOf(cli, sent.thread), "capsule");
+  await b.releaseLease();
+  assert.equal(await holderOf(cli, sent.thread), null);
+  // A second question goes to the same thread, and streams again.
+  await b.refresh();
+  const again = await b.send((await b.destinations(null, "and next week")).options[0], "and next week");
+  assert.equal(again.thread, sent.thread, "the assistant's current thread");
+  await until(() => b.snapshot().reply?.finished && b.snapshot().reply?.text === "echo: and next week", "the second reply");
+  await b.releaseLease();
+
+  // The Deck holds the assistant's thread: agents.ask is refused, the Capsule says who, and
+  // takes the keyboard only when the user chooses to.
+  await cli("threads.lease", { thread: sent.thread, surface: "deck" });
+  const held = await b.send((await b.destinations(null, "one more")).options[0], "one more");
+  assert.equal(held.holder, "deck");
+  assert.match(String(held.error), /deck has the keyboard in juno's thread/);
+  assert.equal(await holderOf(cli, sent.thread), "deck");
+  const took = await b.send((await b.destinations(null, "one more")).options[0], "one more", { take: true });
+  assert.deepEqual(took, { thread: sent.thread });
+  await until(() => b.snapshot().reply?.finished && b.snapshot().reply?.text === "echo: one more", "the reply after taking it");
+  await b.releaseLease();
+});
+
+test("real switchboard: @agent asks it through agents.ask, and its threads come from agents.threads", async t => {
+  const { b, cli } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  assert.ok((await cli("agents.create", { name: "kit", projects: [] })).data);
+  await b.refresh();
+  const kit = b.complete("kit")[0];
+  assert.deepEqual([kit.kind, kit.id], ["agent", "kit"]);
+  const first = await b.destinations(kit, "hello");
+  assert.equal(first.options[0].kind, "agent", "no threads yet: its current thread, started by agents.ask");
+  const sent = await b.send(first.options[0], "hello");
+  assert.equal(sent.error, undefined, sent.error);
+  await until(() => b.snapshot().reply?.finished, "kit's reply");
+  assert.equal(b.snapshot().reply?.text, "echo: hello");
+  await b.releaseLease();
+  await b.refresh();
+  assert.equal(b.catalog.agents?.find(a => a.name === "kit")?.thread, sent.thread);
+  // Its thread is named after it, so words that name it pick that thread, typed into directly.
+  const d = await b.destinations(kit, "kit, the numbers please");
+  assert.equal(d.options[0].kind, "thread");
+  assert.equal(d.options[0].thread, sent.thread);
+  const typed = await b.send(d.options[0], "numbers please");
+  assert.equal(typed.error, undefined, typed.error);
+  await until(() => b.snapshot().reply?.finished && b.snapshot().reply?.text === "echo: numbers please", "the typed reply");
+});
+
+test("real switchboard: @thread types with the lease, is refused while another surface holds it, and takes it only when asked", async t => {
+  const { b, cli, work } = await live(t);
+  const started = await cli("threads.start", { cwd: work, name: "Harlow site copy" });
+  const id = started.data.id;
+  assert.equal(started.data.holder, "cli");
+  await cli("threads.release", { thread: id, surface: "cli" });
+  await b.refresh();
+  const cand = b.complete("harlow")[0];
+  assert.deepEqual([cand.kind, cand.id], ["thread", id], "headless threads from threads.list are @-able");
+  const d = await b.destinations(cand, "tighten the intro");
+  assert.deepEqual([d.options[0].kind, d.options[0].thread, d.unavailable], ["thread", id, null]);
+  const sent = await b.send(d.options[0], "tighten the intro");
+  assert.deepEqual(sent, { thread: id }, "a free thread is taken by typing");
+  assert.equal(await holderOf(cli, id), "capsule");
+  await until(() => b.snapshot().reply?.finished, "the thread's reply");
+  assert.equal(b.snapshot().reply?.text, "echo: tighten the intro");
+  assert.equal(b.snapshot().reply?.lease, "capsule");
+
+  // Another surface takes it: the Capsule is refused, told who, and does not take it back.
+  assert.equal((await cli("threads.lease", { thread: id, surface: "deck" })).data.previous, "capsule");
+  await until(() => b.snapshot().reply?.lease === "deck", "lease.changed to reach the reply");
+  const refused = await b.send(d.options[0], "and the footer");
+  assert.equal(refused.holder, "deck");
+  assert.match(String(refused.error), /deck has the keyboard/);
+  assert.equal(await holderOf(cli, id), "deck", "not taken");
+  const took = await b.send(d.options[0], "and the footer", { take: true });
+  assert.deepEqual(took, { thread: id });
+  assert.equal(await holderOf(cli, id), "capsule");
+  await until(() => b.snapshot().reply?.finished && b.snapshot().reply?.text === "echo: and the footer", "the reply after taking it");
+  await b.releaseLease();
+  assert.equal(await holderOf(cli, id), null, "closing gives the keyboard back");
+});
+
+test("real switchboard: a new thread in a project streams back, and its keyboard goes back on close", async t => {
+  const { b, cli, work } = await live(t);
+  assert.ok((await cli("projects.create", { name: "Harlow Legal", home: work })).data);
+  await b.refresh();
+  const p = b.complete("harlow")[0];
+  assert.equal(p.kind, "project");
+  const d = await b.destinations(p, "draft the intake page");
+  assert.equal(d.options[0].kind, "new-thread");
+  const sent = await b.send(d.options[0], "draft the intake page");
+  assert.equal(sent.error, undefined, sent.error);
+  await until(() => b.snapshot().reply?.finished, "the new thread's reply");
+  assert.equal(b.snapshot().reply?.text, "echo: draft the intake page");
+  assert.equal(await holderOf(cli, sent.thread), "capsule");
+  await b.releaseLease();
+  assert.equal(await holderOf(cli, sent.thread), null);
+});
+
+test("real switchboard: a thread's question waits, survives a reconnect through threads.asks, and is answered", async t => {
+  const { root, b, cli, work, c } = await live(t);
+  await b.refresh();
+  const target = path.join(work, "notes.txt");
+  const id = (await cli("threads.start", { cwd: work, name: "Notes", prompt: `write ${target}` })).data.id;
+  await until(() => b.snapshot().waiting.length === 1, "ask.raised in waiting");
+  const w = b.snapshot().waiting[0];
+  assert.equal(w.source, "ask");
+  assert.equal(w.thread, id);
+  assert.equal(w.tool, "Write");
+  assert.match(w.title, /asks to Write .*notes\.txt/);
+
+  // A Capsule opened after the question was raised still sees it (threads.asks, not the stream).
+  const later = new Bridge(c);
+  await later.refresh();
+  assert.deepEqual(later.waiting.map(x => x.id), [w.id]);
+  assert.match(later.waiting[0].title, /^Notes asks to Write/, "named by its thread");
+
+  assert.deepEqual(await later.answer(later.waiting[0], "allow"), { ok: true });
+  await until(() => fs.existsSync(target), "the file the answer allowed");
+  await until(() => b.snapshot().waiting.length === 0, "ask.answered to remove it from the other Capsule");
+  assert.deepEqual(later.waiting, []);
+  const answered = (await cli("threads.get", { thread: id })).data.events.find(e => e.type === "ask.answered");
+  assert.equal(answered.payload.by, "capsule");
+  assert.ok(root);
+});
+
+test("real switchboard: a session the switchboard never started cannot be typed into, and says so in words", async t => {
+  const { b } = await live(t);
+  await b.refresh();
+  const r = await b.send({ kind: "thread", thread: "11111111-aaaa-4000-8000-000000000001", meta: "" }, "hello");
+  assert.ok(r.error);
+  assert.doesNotMatch(String(r.error), /^no thread/);
 });

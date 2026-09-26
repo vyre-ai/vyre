@@ -120,7 +120,7 @@ const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.t
   "thread.picked", "thread.unpicked", "tool.held", "turn.completed", "file.touched",
   "gate.held", "gate.released", "gate.failed", "gate.rejected",
   "lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired",
-  "onboard.progress", "vault.item-added", "vault.granted", "vault.revoked", "pass.created", "pass.revoked"]);
+  "onboard.stepped", "onboard.finished", "vault.item-added", "vault.granted", "vault.revoked", "pass.created", "pass.revoked"]);
 
 /**
  * Listen to vyred's events. type is "thread.text", "thread.*" or "*"; a prefix type hears only

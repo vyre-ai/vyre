@@ -30,6 +30,10 @@ export function paths(root = home()) {
     modules: path.join(root, "modules"),
     watchers: path.join(root, "watchers"),
     logs: path.join(root, "logs"),
+    models: path.join(root, "models"),
+    certs: path.join(root, "certs"),
+    names: path.join(root, "names"),
+    env: path.join(root, "env"),
     socket: socketPath(root),
     pid: path.join(root, "vyred.pid"),
   };
@@ -63,9 +67,13 @@ export function privateSocketDir() {
   return dir;
 }
 
+/** @typedef {{ tailscale: boolean, address?: string, owner?: string, domain?: string, via?: "vyre.run"|"ts.net",
+ *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string }} Network
+ * address is the https URL the Deck is served at; owner the one Tailscale login served there (ADR 0002). */
+
 /** @typedef {{ name?: string, role: "box"|"local", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
- *   modules: { enable: string[], disable: string[] }, network: { tailscale: boolean, address?: string } }} Config */
+ *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
@@ -104,6 +112,40 @@ export function load(root = home()) {
   c.transcripts = (c.transcripts || []).map(untilde);
   if (!["box", "local"].includes(c.role)) { problems.push(`role "${c.role}" is not box or local; using ${d.role}`); c.role = d.role; }
   return { ...c, problems };
+}
+
+/**
+ * Merge a change into config.json and write it atomically at 0600. Only what the user or the
+ * onboarding set is written, never the defaults. Objects merge one level deep (network, me, ...);
+ * a key set to null is removed. `live`, when given, is a loaded config to update in place.
+ * @param {Record<string, any>} patch
+ * @param {string} [root]
+ * @param {Record<string, any>} [live]
+ */
+export function save(patch, root = home(), live) {
+  const p = paths(root);
+  let user = {};
+  try { user = JSON.parse(fs.readFileSync(p.config, "utf8")); } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") throw e; }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete user[k];
+    else if (v && typeof v === "object" && !Array.isArray(v) && user[k] && typeof user[k] === "object" && !Array.isArray(user[k])) {
+      user[k] = { ...user[k], ...v };
+      for (const [kk, vv] of Object.entries(v)) if (vv === null) delete user[k][kk];
+    } else user[k] = v;
+  }
+  fs.mkdirSync(p.root, { recursive: true, mode: 0o700 });
+  const tmp = `${p.config}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(user, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, p.config);
+  // vyred's modules share one loaded config object; mirror the change into it so they all see it.
+  if (live) for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete live[k];
+    else if (v && typeof v === "object" && !Array.isArray(v)) {
+      live[k] = { ...(live[k] || {}), ...v };
+      for (const [kk, vv] of Object.entries(v)) if (vv === null) delete live[k][kk];
+    } else live[k] = v;
+  }
+  return user;
 }
 
 /** Create the data folders if they are missing. Safe to call every start. */

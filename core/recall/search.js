@@ -39,7 +39,7 @@ export function anyOf(/** @type {string} */ q) {
 
 /**
  * @typedef {{ q: string, limit?: number, project_cwds?: string[], role?: "user"|"assistant", hybrid?: boolean,
- *             per_session?: number, candidates?: number }} Query
+ *             per_session?: number, candidates?: number, floor?: number, dense_weight?: number }} Query
  * @typedef {{ session: string, seq: number, role: string, ts: number, text: string, snippet: string,
  *             score: number, name: string|null, title: string|null, cwd: string|null }} Hit
  */
@@ -94,6 +94,15 @@ export function floorFor(/** @type {number} */ n) {
 export const DENSE_K = 200;
 /** The reciprocal-rank constant: the usual 60, so the top few of each list stay close. */
 const RRF = 60;
+/**
+ * How much a dense rank counts against a keyword rank. Swept on 97 real questions with known
+ * answers (one turn each, paraphrased by a model from sampled turns) against a 38,583-chunk
+ * real corpus, at the shipped floor: hybrid MRR/recall@10 were 0.560/0.876 at 0.15, 0.544/0.856
+ * at 0.25, 0.510/0.845 at 0.5, and 0.485/0.763 at 1 (equal weight). Keyword alone scored
+ * 0.572/0.866, dense alone 0.327/0.515. Lower weight scored a little higher on this one batch;
+ * 0.25 is kept rather than chased down to 0.15 on a single run's numbers. See docs/work/recall.md.
+ */
+export const DENSE_WEIGHT = 0.25;
 
 /**
  * Search. Hybrid when there are vectors and an embedder, keyword otherwise; every way the
@@ -131,7 +140,7 @@ export async function search(db, query, embedder = null, dense = null) {
       const qv = await embedder.embed(q);
       const cwds = opts.cwds.map(c => String(c).replace(/\/+$/, "")).filter(Boolean);
       const keep = cwds.length ? (/** @type {string|null} */ cwd) => !!cwd && cwds.some(c => cwd === c || cwd.startsWith(c + "/")) : undefined;
-      const near = await dense.search(qv, { k: DENSE_K, floor: floorFor(await dense.size()), role: opts.role, keep });
+      const near = await dense.search(qv, { k: DENSE_K, floor: query.floor ?? floorFor(await dense.size()), role: opts.role, keep });
       used = (dense.stats()?.chunks || 0) > 0;
       const fetch = db.prepare(`SELECT t.rowid AS rid, t.session, t.seq, t.role, t.ts, t.text, s.name, s.title, s.cwd
         FROM recall_turns t JOIN recall_sessions s ON s.id = t.session WHERE t.rowid = ?`);
@@ -151,9 +160,11 @@ export async function search(db, query, embedder = null, dense = null) {
   }
   if (!pool.size) return { hits: [], hybrid: used };
 
-  const top = 2 / (RRF + 1);
+  // floor and dense_weight are knobs for the eval harness, not part of the tool's input.
+  const dw = query.dense_weight ?? DENSE_WEIGHT;
+  const top = (1 + dw) / (RRF + 1);
   for (const c of pool.values()) {
-    const r = (c.krank !== undefined ? 1 / (RRF + 1 + c.krank) : 0) + (c.drank !== undefined ? 1 / (RRF + 1 + c.drank) : 0);
+    const r = (c.krank !== undefined ? 1 / (RRF + 1 + c.krank) : 0) + (c.drank !== undefined ? dw / (RRF + 1 + c.drank) : 0);
     c.score = used ? r / top : r * (RRF + 1);
   }
 

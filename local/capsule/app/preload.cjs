@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld("vyre", {
   send: (dest, text, opts) => ipcRenderer.invoke("capsule:send", dest, text, opts),
   held: id => ipcRenderer.invoke("capsule:held", id),
   answer: (item, decision, edited) => ipcRenderer.invoke("capsule:answer", item, decision, edited),
+  // Local results: apps, settings, the calculator, contacts (quick), then files too (full).
+  quick: text => ipcRenderer.invoke("capsule:quick", text),
+  full: text => ipcRenderer.invoke("capsule:full", text),
+  pick: (result, query) => ipcRenderer.invoke("capsule:pick", result, query),
+  timing: t => ipcRenderer.send("capsule:timing", t),
   // The page says how tall it is; the window follows. Width never changes.
   size: h => ipcRenderer.send("capsule:size", h),
   // Escape: the window goes away, which is the only reliable way to hand the keyboard back.
