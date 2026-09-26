@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Link and the real Tailscale
+
+- `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or
+  `tailscale` on the PATH) for whois and status. A test that ran `vyre up` on a Mac could
+  therefore query the user's real Tailscale. The link now uses `VYRE_TAILSCALE_BIN` when it is
+  set. Under `node --test` it never uses the real binary unless a test opts in with
+  `VYRE_TEST_REAL_TAILSCALE=1`. Without one, whois answers "unknown peer" and the peer list is
+  empty. A test fails if the real app is resolved during tests.
+
 #### Release
 
 - `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
