@@ -18,7 +18,6 @@
 // the address the fake box tailscale reports once it is Running.
 
 import fs from "node:fs";
-import https from "node:https";
 import os from "node:os";
 import net from "node:net";
 import path from "node:path";
@@ -225,35 +224,21 @@ export async function browser(url) {
 }
 
 /**
- * The browser once the address is served: the onboarding page moves to https://<ts.net name>
- * and the loopback link stops working (deck/onboard/onboard.js), since the Mac takes the tunnel
- * down as soon as the address step is done. The name does not resolve here, so this connects to
- * the fake tailnet's 127.0.0.1 and names the host the way the browser would.
- * @param {{ tailnetPort: number, cert: { crt: string } }} rig
+ * The box's own terminal, `vyre call <tool>` through the host wrapper, for what the page does
+ * once the address serves. The page moves to https://<ts.net name> and the loopback link stops
+ * working: box add takes the tunnel down as soon as it sees the address step done. The harness
+ * cannot follow the page there, since the box answers only its owner at the address and a
+ * caller on 127.0.0.1 is not a tailnet address (the same gap as linking, below), so the rest of
+ * the onboarding runs from the box's terminal, which may call every onboarding tool.
+ * @param {{ server: (cmd: string, o?: any) => Running, env: { server: Record<string, string> } }} rig
  */
-export function atAddress(rig) {
-  const host = `${TS_NAME}:${rig.tailnetPort}`;
-  const ca = fs.readFileSync(rig.cert.crt);
+export function terminal(rig) {
+  const wrapper = `env VYRE_DIR=${rig.env.server.VYRE_DIR} ${rig.env.server.VYRE_WRAPPER}`;
   /** @returns {Promise<any>} the tool's data; throws with its error */
-  function tool(name, input = {}) {
-    const body = JSON.stringify(input);
-    return new Promise((resolve, reject) => {
-      const req = https.request({ host: "127.0.0.1", port: rig.tailnetPort, servername: TS_NAME, ca, method: "POST", path: `/v1/tools/${name}`, timeout: 20_000,
-        headers: { host, origin: `https://${host}`, "content-type": "application/json", "content-length": Buffer.byteLength(body) } }, res => {
-        let text = "";
-        res.setEncoding("utf8");
-        res.on("data", c => { text += c; });
-        res.on("end", () => {
-          try {
-            const j = JSON.parse(text);
-            if (j.error) reject(new Error(`${name}: ${j.error.code}: ${j.error.message}`)); else resolve(j.data);
-          } catch { reject(new Error(`${name}: ${res.statusCode} ${text.slice(0, 200)}`)); }
-        });
-      });
-      req.on("timeout", () => req.destroy(new Error(`${name}: timed out`)));
-      req.on("error", reject);
-      req.end(body);
-    });
+  async function tool(name, input = {}) {
+    const r = await rig.server(`${wrapper} call ${name} '${JSON.stringify(input)}'`, { timeout: 30_000 }).done;
+    if (r.code !== 0) throw new Error(`${name}: ${r.out.trim()}`);
+    return JSON.parse(r.out.slice(r.out.search(/^[{[]/m)));
   }
   return { tool };
 }

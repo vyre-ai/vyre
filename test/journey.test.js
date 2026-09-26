@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { makeRig, browser, atAddress, until, TARGET, TS_NAME } from "./journey/rig.js";
+import { makeRig, browser, terminal, until, TARGET, TS_NAME } from "./journey/rig.js";
 import { ending } from "../core/cli/ending.js";
 
 /** @type {Awaited<ReturnType<typeof makeRig>> | null} */
@@ -85,9 +85,10 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
     t.diagnostic(rig.cert ? "JOURNEY_SKIP_NAME: the address step is skipped" : "no openssl to make a certificate: the address step is skipped");
     await b.tool("onboard.skip", { step: "name" });
   }
-  // With the address served, the page carries on there: box add takes the tunnel down as soon
-  // as it sees the address step done, so the loopback link may already be gone.
-  const page = address ? atAddress(/** @type {any} */ (rig)) : b;
+  // With the address served, the page carries on there, and box add takes the tunnel down as
+  // soon as it sees the address step done, so the loopback link may already be gone: the rest
+  // runs from the box's terminal (rig.js terminal says why not from the address).
+  const page = address ? terminal(rig) : b;
   // History: a fresh box has no sessions, so the step is already done and indexes nothing.
   const status = await page.tool("onboard.status");
   assert.equal(status.steps.history, "done");
