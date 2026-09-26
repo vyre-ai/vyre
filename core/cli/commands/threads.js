@@ -180,7 +180,11 @@ async function resolveAsk(ref) {
  * Resolves to an exit code.
  */
 async function watch(id) {
+  // Ctrl-C while the history loads ends the watch quietly, as it does once streaming.
+  const early = () => process.exit(0);
+  process.once("SIGINT", early);
   const g = await tool("threads.get", { thread: id, limit: 100 });
+  process.off("SIGINT", early);
   if (!g) return 1;
   const t = g.thread;
   out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), t.status, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);

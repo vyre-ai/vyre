@@ -20,6 +20,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { up, claude, resume, startThread } from "./projects.js";
 import { runScreen } from "../screen/index.js";
 import { load } from "../screen/live.js";
+import { EXIT } from "../kit.js";
 
 // ------------------------------------------------------------ what is on the list
 
@@ -270,7 +271,7 @@ export default {
   name: "home", hidden: true, summary: "your projects, a new session, and your agents",
   /** @param {string[]} args */
   async run(args = []) {
-    if (!(await up())) return 1;
+    if (!(await up())) return EXIT.UNREACHABLE;
     if (args.includes("--json")) {
       const d = await load();
       process.stdout.write(JSON.stringify({ projects: d.projects, agents: d.agents, here: d.here, threads: d.threads, asks: d.asks, drafts: d.drafts }) + "\n");
