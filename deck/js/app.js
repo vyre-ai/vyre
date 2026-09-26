@@ -19,6 +19,7 @@ import { when, base, initials } from "./fmt.js";
 import * as pwa from "./pwa.js";
 // Loaded with the shell, not with Now, so it hears Chrome's one beforeinstallprompt.
 import "./phone-setup.js";
+import { isMac, machineChip } from "./machine.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -134,7 +135,8 @@ window.addEventListener("deck:rail", e => { railOwned = true; put(pins, /** @typ
 async function drawRail() {
   const r = await attempt("projects.list");
   if (railOwned) return;
-  info.projects = r.data?.projects || [];
+  // Pins open a board on this machine, so a paired Mac's projects (on the box) are not pinned here.
+  info.projects = (r.data?.projects || []).filter(p => !isMac(p));
   const pins_ = pinned();
   const chosen = pins_.length ? pins_.map(s => info.projects.find(p => p.slug === s)).filter(Boolean)
     : [...info.projects].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
@@ -177,7 +179,8 @@ async function search() {
     hits = r.data.map(t => ({ href: threadHref(t.session) }));
     put(pop, r.data.map((t, i) => link(hits[i].href, { role: "option", id: "hit-" + i, onclick: () => closeSearch() },
       h("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px" } },
-        h("span", { class: "small ellipsis" }, t.name || t.title || t.session),
+        h("span", { class: "small ellipsis", style: { flexGrow: "1" } }, t.name || t.title || t.session),
+        machineChip(t),
         h("span", { class: "code", style: { flexShrink: "0" } }, when(t.ts))),
       h("div", { class: "small muted", style: { marginTop: "2px" } }, snippet(t.snippet || t.text)),
       h("div", { class: "code faint", style: { marginTop: "2px" } }, base(t.cwd), " · ", t.role))));

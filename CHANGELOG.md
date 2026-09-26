@@ -294,6 +294,53 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the test box. A failed install leaves no half-written tree, says why, and `--setup` tries again. New
   config keys `recall.embedder` (where it goes) and `recall.npm`.
 - `scripts/release-check.sh` now fails on any optional dependency and on an install over 10 MB.
+#### The box reads the paired Mac through the link
+
+- The link runs box to Mac as well, with no port open on the Mac. While paired, the Mac holds one
+  request to the box's new `link.serve` open (60 s, then it asks again), runs the question it gets
+  and answers with `link.reply`. When a call to the box fails the loop stops, and the next call
+  that reaches the box (the minute's heartbeat at the latest) starts it again, so nothing polls
+  faster than a minute. Both tools check the pairing key and the Mac's pinned node.
+- `link.macs.call { tool, input, timeout? }` (box, modules only) asks every paired Mac and answers
+  `[{ mac, name, ok, data?, error? }]`: `mac_offline` at once for a Mac that is not polling,
+  `timeout` after up to 15 s (5 s by default), or the Mac's own error. `link.macs` lists the paired
+  Macs with `online` and `lastServe`, for surfaces. The Mac's `link.status` says `serving`.
+- Only `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread` and
+  `threads.list` cross (`core/link/allow.js`), refused at the box before queueing and again at the
+  Mac before running. The Mac runs them as `module:link`. Nothing a Mac answers is stored on the box.
+- The link's test harness (`pair`, the simulated tailnet) moved to `test/link-harness.js`;
+  `test/link-federation.test.js` covers the reverse channel.
+- On the box, `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`,
+  `recall.thread` and `threads.list` take in the paired Macs' rows for the person (the Deck, the
+  terminal, the Capsule, the owner over the tailnet), and for a module only when it passes
+  `machines: "all"`. `machines: "local"` asks for the box's rows alone; agents, MCP and guests get
+  them always. Every row of a federated answer carries `source` ("box" or "mac") and `machine`.
+  The catalogue merges by its own order and applies the limit to the merged list, with
+  `sources: [{ source, machine, ok, error?, total? }]` (box first); search merges by score,
+  sessions and threads by recency, capped at each tool's limit. `recall.thread` asks the Macs only
+  for a session the box does not have, or when given `source: "mac"`. A Mac that is away shows as
+  `ok: false, error: "mac_offline"` and the box answers with its own rows at once. On a Mac
+  nothing changes, so the Mac never asks the box back. The shared piece is
+  `core/modules/federate.js`; `test/federation-reads.test.js` covers it end to end.
+- Onboarding's history step on the box counts the paired Mac's sessions, lists them per machine
+  (`history.machines`), and says "Your Mac (<name>) is offline, so its sessions do not show here
+  yet" when the Mac is paired but away and nothing is here.
+- `recall.sessions` takes `ids` (exact session ids). On the box, `projects.threads` resolves a pick
+  the box has no session for by asking the paired Macs once for those ids, for the person (or a
+  module passing `machines: "all"`): a Mac session picked into a box project comes back with its
+  name, folder and times and `source: "mac"`, `machine`, and is never stored. With the Mac away,
+  or for an agent, it stays `missing: true`. The project's brief stays the box's own.
+- The Deck shows a machine chip (`deck/js/machine.js`) on the paired Mac's rows in Chat's list and
+  rail, Now's working threads and recent sessions, search results, and a project's threads, and
+  reads those threads only: no composer, keyboard, Take or Watch, and "On alex-mac. Open it there
+  to continue." in their place. A Mac project is listed without a board or a pin, and picking goes
+  into the box's projects only. A paired Mac that is away shows as one quiet "alex-mac offline"
+  chip in Chat's header and Now's Working, from `link.macs`, read with each refresh and never while
+  the page is hidden. Fixtures: a Mac thread in `threads.list`, and `deck/fixtures/link.json`.
+- A Mac that unpaired while its heartbeat was out could leave a link.json with no box in it, and
+  `vyre link status` then failed until the file was removed. The heartbeat's answer is now dropped
+  when the pairing it asked about is gone.
+
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
 - Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
