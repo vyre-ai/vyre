@@ -537,7 +537,11 @@ function cleanup() {
   if (!KEEP) { try { fs.rmSync(HOME, { recursive: true, force: true }); } catch {} }
   else console.log(`  kept ${HOME}`);
 }
-process.on("SIGINT", () => { console.log("\n  interrupted"); cleanup(); process.exit(130); });
+// Ctrl-C, a closed terminal, or a pkill: every one ends the run without leaving vyred behind.
+// (A pkill once left a vyred running with its home deleted under it.)
+for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) {
+  process.on(sig, () => { console.log(`\n  interrupted (${sig})`); cleanup(); process.exit(code); });
+}
 
 let code = 1;
 try { code = await main(); }
