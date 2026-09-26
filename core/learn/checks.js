@@ -523,13 +523,16 @@ function withoutMessages(command) {
   return command.replace(/(\bgit\b[^;&|\n]*?\s)(-[a-zA-Z]*m|--message)(?:=|\s+)("(?:[^"\\]|\\.)*"|'[^']*'|\S+)/g, "$1$2 ''");
 }
 
+/** A hook's entry: hook.js, or the launcher hooks/run.js that an installed plugin starts from. */
+const HOOK_FILE = /(^|\/)hook\.js$|(^|\/)hooks\/run\.js$/;
+
 /** Does a shell command run a hook by hand (`node hooks/hook.js enrich`, `... | ./hook.js`)? */
 function runsHook(c) {
   return c.split(/\|\|?|&&|;|\n|\$\(|`/).some(seg => {
     const words = seg.trim().split(/\s+/).filter(w => !/^\w+=/.test(w));
     const prog = (words[0] || "").split("/").pop() || "";
-    if (/(^|\/)hook\.js$/.test(words[0] || "")) return true;
-    return RUNNERS.has(prog) && words.slice(1).some(w => /(^|\/)hook\.js$/.test(w));
+    if (HOOK_FILE.test(words[0] || "")) return true;
+    return RUNNERS.has(prog) && words.slice(1).some(w => HOOK_FILE.test(w));
   });
 }
 
