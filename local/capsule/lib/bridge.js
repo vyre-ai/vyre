@@ -48,7 +48,9 @@ export const HEALTH_EVERY = 60_000;
 
 /**
  * The line a person reads about the box's connection: "direct 12 ms", "relayed via fra 80 ms",
- * with the last handshake. Null when there is nothing to say (no box, no link module).
+ * with the last handshake and the dot's colour. Null when there is nothing to say (no box, no
+ * link module). The Deck says the same in deck/js/health.js; a packaged Capsule carries only
+ * local/capsule/, so the words are written again here rather than imported.
  * @param {any} x link.health's answer @param {number} now
  */
 export function linkLine(x, now) {
@@ -57,7 +59,10 @@ export function linkLine(x, now) {
   const path = x.path === "direct" ? `direct${ms}` : x.path === "relay" ? `relayed${x.relay ? ` via ${x.relay}` : ""}${ms}`
     : x.path === "peer-relay" ? `peer relay${ms}` : x.why === "the node is offline" ? "offline" : "unknown";
   const hs = typeof x.lastHandshake === "number" ? route.age(x.lastHandshake, now) : null;
-  return { path, handshake: hs ? `last handshake ${hs === "now" ? "just now" : `${hs} ago`}` : null, relayed: x.path === "relay" || x.path === "peer-relay" };
+  const relayed = x.path === "relay" || x.path === "peer-relay";
+  // The dot's colour, as the Deck draws it (deck/js/health.js): green direct, amber relayed, grey unknown.
+  const dot = x.path === "direct" ? "direct" : relayed ? "relayed" : "unknown";
+  return { path, handshake: hs ? `last handshake ${hs === "now" ? "just now" : `${hs} ago`}` : null, relayed, dot };
 }
 
 export class Bridge extends EventEmitter {
@@ -697,7 +702,7 @@ export class Bridge extends EventEmitter {
     return {
       up: this.up,
       has: { agents: this.has("agents.list"), threads: this.has("threads.send"), gate: this.has("gate.held"), recall: this.has("recall.search"),
-        quick: this.has("threads.start"), stop: this.has("threads.stop") },
+        quick: this.has("threads.start"), stop: this.has("threads.stop"), send: this.has("files.send") && Boolean(this.catalog.box) },
       assistant: ((this.catalog.agents || []).find(a => a.kind === "assistant") || {}).name || null,
       waiting: this.waiting.map(w => ({ ...w, age: route.age(w.at, this.now()) })),
       // What counts toward the Beacon dot and the tray badge: proposed lessons are quiet.

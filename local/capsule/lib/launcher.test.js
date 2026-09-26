@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Apps, Frecency } from "./local.js";
-import { Launcher, defineWord } from "./launcher.js";
+import { Launcher, defineWord, SEND_TIMEOUT } from "./launcher.js";
 import { rank, intent, questionLike } from "./route.js";
 
 function appsIn(t, names) {
@@ -140,8 +140,8 @@ test("launcher: pick opens only what it made, and copies a sum", async t => {
 /** A fake vyred: `answers[tool]` is a value or (input) => value, each after `delay[tool]` ms. */
 function fakeVyred(answers, delay = {}) {
   const calls = [];
-  const fn = (tool, input) => {
-    calls.push([tool, input]);
+  const fn = (tool, input, opts) => {
+    calls.push(opts ? [tool, input, opts] : [tool, input]);
     const a = answers[tool];
     const v = typeof a === "function" ? a(input) : a ?? { error: { code: "unknown_tool", message: tool } };
     return new Promise(res => setTimeout(() => res(v), delay[tool] || 0));
@@ -261,4 +261,6 @@ test("launcher: send hands a Mac file to files.send and says what vyred said", a
   assert.match((await l.send({ ...file, target: "/h/.env" })).error || "", /not available/);
   assert.match((await l.send({ ...file, kind: "boxfile" })).error || "", /only a file on this Mac/);
   assert.equal(v.calls.filter(c => c[0] === "files.send").length, 2, "a box file never reaches files.send");
+  assert.deepEqual(v.calls.find(c => c[0] === "files.send")?.[2], { timeout: SEND_TIMEOUT }, "a send waits as long as vyre send does");
+  assert.ok(SEND_TIMEOUT > 60 * 60_000, "longer than files.send's own hour for Taildrop");
 });

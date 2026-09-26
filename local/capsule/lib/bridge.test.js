@@ -775,7 +775,7 @@ test("bridge: the box's connection is asked on open at most once a minute, and r
   await b.refresh();
   assert.equal(b.snapshot().link, null, "nothing is asked until the Capsule opens");
   await b.linkHealth();
-  assert.deepEqual(b.snapshot().link, { path: "relayed via fra 80 ms", handshake: "last handshake 3 min ago", relayed: true });
+  assert.deepEqual(b.snapshot().link, { path: "relayed via fra 80 ms", handshake: "last handshake 3 min ago", relayed: true, dot: "relayed" });
   answer = { ...answer, path: "direct", relay: null, latencyMs: 12 };
   clock.t += 59_000;
   await b.linkHealth();
@@ -783,6 +783,7 @@ test("bridge: the box's connection is asked on open at most once a minute, and r
   clock.t += 1_000;
   await b.linkHealth();
   assert.equal(b.snapshot().link?.path, "direct 12 ms");
+  assert.equal(b.snapshot().link?.dot, "direct", "the dot is green on a direct path");
   assert.equal(f.calls.filter(([tool]) => tool === "link.health").length, 2);
 });
 
@@ -796,5 +797,8 @@ test("bridge: no paired box, no connection line", async t => {
   assert.equal(f.calls.length, 0, "link.health is not asked without a box");
   assert.equal(linkLine({ path: "peer-relay", latencyMs: 30, lastHandshake: null }, 0)?.path, "peer relay 30 ms");
   assert.equal(linkLine({ path: "unknown", why: "the node is offline" }, 0)?.path, "offline");
+  assert.equal(linkLine({ path: "peer-relay", latencyMs: 30, lastHandshake: null }, 0)?.dot, "relayed");
+  assert.equal(linkLine({ path: "unknown", why: "the node is offline" }, 0)?.dot, "unknown");
+  assert.equal(b.snapshot().has.send, false, "nothing is sent without a paired box");
   assert.equal(linkLine(null, 0), null);
 });
