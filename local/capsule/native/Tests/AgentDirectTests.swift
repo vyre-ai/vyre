@@ -42,6 +42,8 @@ let agentDirectSuite = Suite("agent direct") { t in
             await MainActor.run { m.selected = 0; m.run() }
             _ = await until { !v.callsOf("agents.ask").isEmpty }
             let pending = await MainActor.run { said(m) }
+            // vyred's ids only grow: the history ended at 3, so the stream goes on from there.
+            for _ in 0..<3 { _ = v.emit("clock.tick") }
             _ = v.emit("thread.sent", thread: "tj", ["text": "what is first?", "surface": "capsule"])
             _ = v.emit("thread.text", thread: "tj", ["message": "m2", "delta": "The Harlow "])
             _ = v.emit("thread.text", thread: "tj", ["message": "vyre", "text": "Claude's five-hour usage limit is at 85%.", "done": true, "notice": true])
