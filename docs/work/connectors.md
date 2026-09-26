@@ -50,27 +50,19 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 
 ## Doing
 
-Connect Google as smoothly as the rest (lead, 2026-09-27). Plan:
-1. (done) Backend (`core/google/connect.js` + tools in index.js): `google.connect {name, client}`
-   (people only) starts an installed-app OAuth flow with PKCE S256 and a state, on a one-shot
-   loopback listener at 127.0.0.1:0 that lives only while a flow is open (10 min cap), and
-   returns `{ id, url }`. `google.connect.finish {id, url}` takes the address the browser landed
-   on, for a Deck on another device. Finishing exchanges the code, reads the address from the
-   id_token, puts a new env-set item `google-<name>` (client_id, client_secret, refresh_token,
-   token_uri) as module:google with grants [google], adds the account, emits
-   `google.connected {id, name, email}` (never a value). Fake Google grows an authorization_code
-   grant.
-2. (done) DWD helper: `google.test` on a service account returns its `client_id` (a public number) and
-   the exact scope line for the admin console.
-3. (done) Deck: Google form becomes "Sign in with Google" (pick or name the OAuth client item, grant it
-   with presence, open the consent page, wait for `google.connected`, paste box as a fallback),
-   "Service account" (with the admin-console helper and copy buttons), and "Refresh token item".
-4. CLI `vyre connect add google --sign-in` prints the URL and waits (later, if time).
+- Nothing in flight. Main has the hub, Google and the google.connect backend (d0e35c3, merged at
+  53a994a). Waiting on the lead to approve the rest: the Deck sign-in form and admin-console
+  helper (2483c77), the pre-opened tab fix (672b709) and the google.test description (7e03b8c).
+  After main was merged back: 114/114 connectors tests green on the test box.
 
 ## Next
 
-- Docs pages via the docs team (asked them which pages carry the connectors owner line).
-- The real-account run only after the user connects one himself.
+- Docs: patch for docs/using/connectors.md and docs/build/mcp-hub.md sent to the docs team
+  (scratchpad docs-connectors.patch, against work/docs 502b97e). They apply it once the Deck
+  form reaches main too.
+- CLI `vyre connect add google <name> --sign-in` (prints the URL, waits for google.connected,
+  takes a pasted address) if the lead wants it.
+- The real-account Google run only after the user connects one himself.
 
 ## Needs from others
 
