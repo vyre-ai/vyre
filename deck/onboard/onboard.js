@@ -165,8 +165,8 @@ const SCREENS = {
       if (n !== seq) return;
       if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the box module runs.")); }
       else if (r.error) put(status, String(r.error.message));
-      else if (r.data.available) { ok = true; put(status, icon("check", 14), `${r.data.address || v + ".vyre.run"} is free.`); }
-      else put(status, `${v}.vyre.run is taken${r.data.reason ? ": " + r.data.reason : "."} Try another.`);
+      else if (r.data.available) { ok = true; put(status, icon("check", 14), `${v}.vyre.run is free.`); }
+      else put(status, `${v}.vyre.run cannot be yours${r.data.why ? ": " + r.data.why : "."} Try another.`);
       sync();
     };
     let t = 0;
@@ -243,6 +243,23 @@ const SCREENS = {
         const r = await attempt("onboard.claude", { mode: "setup-token" });
         if (r.error) { put(msg, String(r.error.message)); return; }
         if (r.data.url) window.open(r.data.url, "_blank", "noopener");
+        if (r.data.needsCode) {
+          // Claude's page ends by showing a code; it goes back to the sign-in waiting on the box.
+          const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", autocomplete: "off", id: "claude-code", placeholder: "Paste the code Claude shows", "aria-label": "Code from Claude" }));
+          const note = h("div", { class: "check-line", "aria-live": "polite" });
+          put(msg, h("div", { class: "field" }, h("label", { for: "claude-code" }, "Sign in in the other tab, then paste the code it shows"), codeIn,
+            h("a", { class: "link", href: r.data.url, target: "_blank", rel: "noopener" }, "Open it again")), note);
+          s.foot({ label: "Finish sign-in", run: async () => {
+            const code = codeIn.value.trim();
+            if (!code) { put(note, "Paste the code first."); return; }
+            put(note, h("span", { class: "busy-inline faint" }, "Checking with Claude"));
+            const c = await attempt("onboard.claude", { mode: "setup-token", code });
+            if (c.error) { put(note, String(c.error.message)); return; }
+            render();
+          } });
+          later(() => codeIn.focus(), 0);
+          return;
+        }
         put(msg, h("span", { class: "busy-inline faint" }, "Waiting for you to finish signing in, in the other tab. "),
           r.data.url ? h("a", { class: "link", href: r.data.url, target: "_blank", rel: "noopener" }, "Open it again") : null);
         every(async () => {
@@ -363,6 +380,8 @@ const SCREENS = {
       h("p", { class: "small muted", style: { marginTop: "-12px" } }, "A project is a client or a piece of work: pick the sessions that belong to it. A session can be in several."),
       made, picker));
     s.foot({ label: "Continue", run: s.next });
+    // Reading starts when this screen opens; the box keeps going after the person moves on.
+    attempt("onboard.history", { action: "start" });
 
     const drawMeter = async () => {
       const r = await attempt("recall.status");
