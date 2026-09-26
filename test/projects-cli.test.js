@@ -21,7 +21,8 @@ function world(t) {
   // Registered before tempHome so vyred is stopped while its home still exists: after-hooks run
   // in the order they were added, and a daemon whose home was deleted first is left running.
   t.after(() => run(["down"]));
-  const root = tempHome(t);
+  // Real paths, as Claude Code records them: on macOS the temp folder is a symlink.
+  const root = fs.realpathSync(tempHome(t));
   const work = path.join(root, "alex", "Work");
   const moved = SESSIONS.map(s => ({ ...s, cwd: s.cwd.replace(path.join(HOME, "Work"), work).replace(HOME, path.join(root, "alex")) }));
   for (const s of moved) fs.mkdirSync(s.cwd, { recursive: true });

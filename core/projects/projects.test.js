@@ -18,7 +18,8 @@ const ID = { site: SESSIONS[0].id, intake: SESSIONS[1].id, northwind: SESSIONS[2
 
 /** A temp world: the corpus seeded with its folders moved under a temp root, and a Projects over it. */
 function world(t, { call, sessions = SESSIONS } = {}) {
-  const root = tempHome(t);
+  // Real paths, as Claude Code records them: on macOS the temp folder is a symlink.
+  const root = fs.realpathSync(tempHome(t));
   const home = path.join(root, "alex");
   const moved = sessions.map(s => ({ ...s, cwd: s.cwd.replace(HOME, home) }));
   for (const s of moved) fs.mkdirSync(s.cwd, { recursive: true });
@@ -262,4 +263,33 @@ test("tools: projects.of answers the Harness's shape for a subfolder, and null o
     const ctx = await d.registry.call("projects.context", { project: of.data.slug });
     assert.match(ctx.data.text, /"Harlow Legal"/);
   } finally { await d.stop(); }
+});
+
+test("projects: a catalogue search costs one Recall call and no per-session path lookups, however big the index", async t => {
+  // 2,000 sessions in folders that no longer exist, as on a real machine after a year of work.
+  const many = Array.from({ length: 2000 }, (_, i) => ({
+    id: `22222222-bbbb-4000-8000-${String(i).padStart(12, "0")}`, cwd: `${HOME}/Old/gone-${i % 400}/deep/er`,
+    name: i % 7 ? undefined : `Weekly review ${i}`, start: Date.parse("2026-08-01T00:00:00Z") + i * 60_000,
+    turns: [{ role: /** @type {const} */ ("user"), text: `weekly review number ${i}` }],
+  }));
+  const w = world(t, { sessions: [...SESSIONS, ...many] });
+  const calls = [];
+  const recallCall = fakeRecall(w.db);
+  w.P.call = async (tool, input) => { calls.push(tool); return recallCall(tool, input); };
+  w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site"), threads: [ID.hub] });
+  w.P.create({ name: "Northwind", home: path.join(w.work, "northwind") });
+
+  const realpath = fs.realpathSync;
+  let lookups = 0;
+  fs.realpathSync = /** @type {any} */ ((...a) => { lookups++; return realpath(...a); });
+  t.after(() => { fs.realpathSync = realpath; });
+  const t0 = performance.now();
+  const r = await w.P.catalog({ q: "weekly review", limit: 50 });
+  const ms = performance.now() - t0;
+  fs.realpathSync = realpath;
+
+  assert.deepEqual(calls, ["recall.search"], "the catalogue called Recall more than once for one search");
+  assert.ok(lookups < 20, `${lookups} realpath lookups for one search; session folders must not be resolved one by one`);
+  assert.ok(r.total > 50 && r.sessions.length === 50);
+  assert.ok(ms < 500, `a catalogue search over 2,000 sessions took ${Math.round(ms)}ms`);
 });
