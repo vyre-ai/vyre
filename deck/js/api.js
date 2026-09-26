@@ -36,6 +36,15 @@ export class ApiError extends Error {
   }
 }
 
+/** Whether the box answered the last call or the event stream, for the shell's offline line. */
+export let reachable = true;
+/** @param {boolean} ok */
+function reach(ok) {
+  if (ok === reachable) return;
+  reachable = ok;
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:reach", { detail: ok }));
+}
+
 /** Extra headers for every call (the onboarding token). */
 const headers = {};
 export function setHeader(name, value) { if (value) headers[name] = value; else delete headers[name]; }
@@ -59,8 +68,11 @@ export async function call(name, input = {}, opts = {}) {
     });
     body = await res.json().catch(() => null);
   } catch {
+    reach(false);
     return fallback(name, input, new ApiError("offline", "vyred did not answer", name));
   }
+  // The service worker answers a read it kept with offline: true; the box itself was not reached.
+  reach(!body?.offline);
   if (body && "data" in body && !body.error) return body.data;
   const err = new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
   if (err.missing || res.status === 404) return fallback(name, input, err);
@@ -231,6 +243,9 @@ export function on(type, fn) {
     const s = headers["x-vyre-onboard"];
     source = new EventSource("/v1/events/stream?since=latest" + (s ? `&s=${encodeURIComponent(s)}` : ""));
     for (const t of known) source.addEventListener(t, deliver);
+    source.addEventListener("open", () => reach(true));
+    // EventSource retries on its own; CLOSED means it gave up (a 403, say), CONNECTING a lost box.
+    source.addEventListener("error", () => { if (source && source.readyState !== EventSource.OPEN) reach(false); });
   }
   return () => { subs.delete(sub); };
 }

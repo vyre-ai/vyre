@@ -9,9 +9,15 @@
 // for threads.get, only its transcript: it is read from recall.thread and followed through
 // session.indexed, which Recall emits when that session's turn completes. Once a send adopts it
 // (threads.send resumes it headless), thread.* events arrive for it and the view follows those
-// instead, so no turn shows twice. Nothing here uses innerHTML: text is untrusted (it is the model's own
-// output, or another person's), so it goes through lib/markdown.js, which never parses it as
-// markup, or through document.createTextNode directly.
+// instead, so no turn shows twice.
+//
+// The timeline is its own scroll container. It follows the bottom while a reply streams as long as
+// the reader was at the bottom (a scroll listener keeps that one flag); scrolled up to read, new
+// content leaves the reading place alone and shows a "Jump to latest" pill instead.
+//
+// Nothing here uses innerHTML: text is untrusted (it is the model's own output, or another
+// person's), so it goes through lib/markdown.js, which never parses it as markup, or through
+// document.createTextNode directly.
 
 import { h, put, add, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
@@ -42,6 +48,13 @@ export function mountSession(container, opts) {
   let turnSeq = 0;
   let lastMessageEl = null, lastMessageId = null;
   const timeline = h("div", { class: "thread-view" });
+  /** Whether the reader is at the bottom, so new content should keep it in view. */
+  let following = true;
+  const jump = h("button", { class: "jump-latest", type: "button", hidden: true, onclick: () => toBottom() }, icon("chevron", 12), "Jump to latest");
+  timeline.addEventListener("scroll", () => {
+    following = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 40;
+    if (following) jump.hidden = true;
+  }, { passive: true });
   const head = h("div", { class: "session-head" });
   const leaseBar = h("div", { class: "lease-bar" });
   const record = { current: /** @type {any} */ (null) };
@@ -50,7 +63,7 @@ export function mountSession(container, opts) {
 
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
 
-  put(container, head, timeline, leaseBar, composer.el);
+  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   async function boot() {
@@ -64,7 +77,7 @@ export function mountSession(container, opts) {
       timeline.replaceChildren();
       if (!t.data.turns.length) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
       appendTurns(t.data.turns);
-      timeline.scrollTop = timeline.scrollHeight;
+      toBottom();
       return;
     }
     record.current = r.data.thread;
@@ -72,7 +85,7 @@ export function mountSession(container, opts) {
     timeline.replaceChildren();
     for (const e of r.data.events) applyEvent(e, false);
     for (const a of r.data.asks) upsertRow("ask:" + a.id, () => askCard({ ...a, agent: record.current?.agent }));
-    timeline.scrollTop = timeline.scrollHeight;
+    toBottom();
     fetchMemory();
   }
 
@@ -118,15 +131,18 @@ export function mountSession(container, opts) {
         recorded.again = false;
         const r = await attempt("recall.thread", { session: thread, from: recorded.next, limit: 400 });
         if (!recorded.on || r.error) break;
-        const stick = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 40;
         if (r.data.turns.length) timeline.querySelector(".th-wait")?.remove();
         if (r.data.session) { recorded.session = r.data.session; drawHead(); }
         appendTurns(r.data.turns);
-        if (stick) timeline.scrollTop = timeline.scrollHeight;
+        if (r.data.turns.length) grew();
       } while (recorded.again);
     } finally { recorded.busy = false; }
   }
   async function take() { await attempt("threads.lease", { thread }); }
+
+  function toBottom() { timeline.scrollTop = timeline.scrollHeight; following = true; jump.hidden = true; }
+  /** New content landed: keep following it, or say it is there without moving the reader. */
+  function grew() { if (following) toBottom(); else jump.hidden = false; }
 
   function dayLabel(at) {
     const d = new Date(at);
@@ -202,7 +218,8 @@ export function mountSession(container, opts) {
     }
     if (e.type === "thread.stopped") { timeline.append(h("div", { class: "turn-foot" }, icon("terminal", 12), "session stopped" + (p.reason ? ": " + p.reason : ""))); return; }
     if (e.type === "ask.raised") { upsertRow("ask:" + p.ask, () => askCard({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, agent: record.current?.agent })); return; }
-    if (e.type === "ask.answered") { const el = rows.get("ask:" + p.ask); if (el) el.remove(); return; }
+    // Answered here or on another screen: the card says what was decided rather than vanishing.
+    if (e.type === "ask.answered") { const el = /** @type {any} */ (rows.get("ask:" + p.ask)); if (el?.answered) el.answered(p.decision); else if (el) el.remove(); return; }
     if (e.type === "gate.held" || e.type === "gate.revised") { upsertRow("gate:" + p.id, () => gateCard({ id: p.id })); const el = rows.get("gate:" + p.id); if (el && el.refresh && live) el.refresh(); return; }
     if (e.type === "gate.released" || e.type === "gate.rejected") { const el = rows.get("gate:" + p.id); if (el && el.refresh) el.refresh(); return; }
     if (e.type === "lease.changed") { drawHead(); return; }
@@ -272,30 +289,36 @@ export function mountSession(container, opts) {
   async function fetchMemory() {
     const r = await attempt("memory.facts", { thread, ...(record.current?.project ? { room: record.current.project } : {}), limit: 50 });
     if (r.error || !r.data || !r.data.facts) return;
+    const n = timeline.scrollHeight;
     for (const f of r.data.facts) {
       if (shownFacts.has(f.id)) continue;
       shownFacts.add(f.id);
       insertFact(f);
     }
+    if (timeline.scrollHeight !== n) grew();
   }
 
   boot();
 
+  /** A live event for this thread. What it adds follows the bottom or shows the pill; a message
+   * typed into the session (here or elsewhere) brings the reader down to it. */
+  const onLive = e => { if (e.thread !== thread) return; const n = timeline.scrollHeight; applyEvent(e, true);
+    if (e.type === "thread.sent") toBottom(); else if (timeline.scrollHeight !== n) grew(); };
   const offs = [
-    on("thread.*", e => { if (e.thread === thread) { const stick = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 40; applyEvent(e, true); if (stick) timeline.scrollTop = timeline.scrollHeight; } }),
-    on("ask.raised", e => { if (e.thread === thread) applyEvent(e, true); }),
-    on("ask.answered", e => { if (e.thread === thread) applyEvent(e, true); }),
-    on("gate.held", e => { if (e.thread === thread) applyEvent(e, true); }),
-    on("gate.revised", e => { if (e.thread === thread) applyEvent(e, true); }),
-    on("gate.released", e => { if (e.thread === thread) applyEvent(e, true); }),
-    on("gate.rejected", e => { if (e.thread === thread) applyEvent(e, true); }),
+    on("thread.*", onLive),
+    on("ask.raised", onLive),
+    on("ask.answered", onLive),
+    on("gate.held", onLive),
+    on("gate.revised", onLive),
+    on("gate.released", onLive),
+    on("gate.rejected", onLive),
     on("lease.changed", e => { if (e.thread === thread) applyEvent(e, true); }),
     // memory.curated {nodes, edges, ms, updated} carries no thread (intelligence): it only says
     // the graph changed, so refetch this open thread and let fetchMemory's id-dedup filter it.
     on("memory.curated", () => fetchMemory()),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) === thread) readMore(); }),
   ];
-  return () => { for (const off of offs) off(); };
+  return () => { for (const off of offs) off(); composer.stop(); };
 }
 
 /** The last two folders of a path, which is what tells sessions apart: …/alex/Work. */

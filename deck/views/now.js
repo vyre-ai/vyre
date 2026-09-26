@@ -11,6 +11,7 @@ import { attempt } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
+import { setupCard } from "../js/phone-setup.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 
 /** @param {any} ctx */
@@ -28,6 +29,8 @@ export default async function now(ctx) {
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
+      // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
+      setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, working, learned, recentProjects)));
 
