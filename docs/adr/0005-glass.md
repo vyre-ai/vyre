@@ -1,7 +1,7 @@
 # ADR 0005 · Glass: a remote computer you can watch, take over, sign in on and browse
 
 Status: accepted, 26 Sep 2026 · Workstream: glass · Spec: sections 5, 7.9, 9 and 11 (floor rules
-4, 5 and 8) · Builds on: ADR 0003 (the stream), ADR 0004 (presence), ADR 0001 addendum A (autofill)
+4, 5 and 8) · Builds on: ADR 0003 (the stream), ADR 0004 (presence), ADR 0010 (vault autofill)
 
 ## The problem
 
@@ -139,10 +139,10 @@ Encrypting the volumes at rest is a box decision we hand to security and box.
 
 **Vault fill into the remote Chrome** comes after the shield. A person picks a login in Glass;
 vyred shields the computer, checks the top frame's exact origin against the login's hosts (the
-rule in ADR 0001 addendum A), sends the username and password with CDP `Input.insertText` into
+rule in ADR 0010), sends the username and password with CDP `Input.insertText` into
 the fields it just checked, checks the origin again, and keeps the shield up through submit. The
 value exists only in vyred's memory and one CDP frame. It is a vault route that needs presence,
-never a tool an agent can see; the vault owns it (an addendum B to ADR 0001). Glass only shows
+never a tool an agent can see; the vault owns it (an addendum to ADR 0010). Glass only shows
 the button.
 
 ### 4. Files: one browser, three targets, bytes on ticketed routes

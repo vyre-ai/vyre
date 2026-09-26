@@ -29,7 +29,7 @@ in the agent's home and a box folder; secret paths are refused; everything is to
 - computers: the relay and image fixes in ADR 0005 decision 1; `computers.shield`;
   `computers.helper`; accept the computerd `/fs` routes.
 - security: `computers.takeover` and `computers.giveback` on the human-only list.
-- vault: the remote fill route (ADR 0001 addendum B).
+- vault: the remote fill route (an addendum to ADR 0010).
 - link: keep the denied-path list equal to `core/glass/guard.js`; a `mac` target later.
 - capsule: an "Open Glass" action for threads whose agent has a computer.
 - deck: the `/glass/:target` route (the loader is already there).
