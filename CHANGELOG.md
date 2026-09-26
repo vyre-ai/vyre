@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Files: in step with Glass
+
+- The files guard also refuses a browser's `Cookies`, `Login Data` and `Web Data` files and any
+  folder named `secrets`, as Glass's guard does. On a Mac the default root is the home folder,
+  which holds every Chrome profile.
+
 #### Link and the real Tailscale
 
 - `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or

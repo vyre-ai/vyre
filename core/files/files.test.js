@@ -421,3 +421,18 @@ test("files: a Keynote package named *.key is reachable; key files are refused b
   assert.ok(found.includes("Budget.key"));
   assert.ok(!found.some(n => ["server.key", "budget-deploy.txt", "budget-tls"].includes(n)), found.join());
 });
+
+test("files: a browser's cookies and saved logins, and a secrets folder, are never served", async t => {
+  const { work, vyreHome } = workspace(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
+  const profile = path.join(work, "chrome", "Default");
+  for (const f of ["Cookies", "Login Data", "Web Data", "Bookmarks"]) put(path.join(profile, f), "budget\n");
+  put(path.join(work, "secrets", "budget.txt"), "budget\n");
+  for (const f of [path.join(profile, "Cookies"), path.join(profile, "Login Data"), path.join(profile, "Web Data"), path.join(work, "secrets", "budget.txt")]) {
+    await refused(reg, "files.stat", { path: f });
+    await refused(reg, "files.fetch", { path: f });
+  }
+  assert.ok(!(await reg.call("files.stat", { path: path.join(profile, "Bookmarks") })).error);
+  const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.path);
+  assert.ok(!found.some(p => /Cookies|Login Data|Web Data|secrets/.test(p)), found.join());
+});
