@@ -10,7 +10,7 @@
 // edit that would weaken a lesson comes back refused, and the refusal is shown as it is.
 //
 // Follows lesson.* events and repaints only the row they name. Tools: learn.lessons, learn.stats,
-// learn.skills, learn.accept, learn.edit, learn.retire, learn.relax, learn.skill_install,
+// learn.skills, learn.accept, learn.edit, learn.retire, learn.relax, learn.skill-install,
 // learn.skill_retire.
 
 import { h, put, link, empty } from "../js/dom.js";
@@ -266,7 +266,7 @@ export default async function lessons(root, ctx, o) {
             k.description ? h("div", { class: "small muted" }, k.description) : null,
             h("div", { class: "ml-counts" }, h("span", { class: "code" }, [steps.length ? plural(steps.length, "step") : null, k.sessions ? `seen clean in ${plural(k.sessions, "session")}` : null].filter(Boolean).join(" · ")))),
           h("div", { class: "ml-act" },
-            h("button", { type: "button", class: "btn btn-sm", onclick: () => run("learn.skill_install", "Installed.", "Install") }, "Install"),
+            h("button", { type: "button", class: "btn btn-sm", onclick: () => run("learn.skill-install", "Installed.", "Install") }, "Install"),
             h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => run("learn.skill_retire", "Dismissed.", "Dismiss") }, "Dismiss")),
           msg);
         return el;

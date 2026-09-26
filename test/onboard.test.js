@@ -111,7 +111,7 @@ test("onboard: the loopback listener refuses other hosts, forms and other origin
   assert.equal(cross.status, 403);
 });
 
-test("onboard: skipping, a bad token and a missing Cloudflare token all say why; a good token goes to the vault", async t => {
+test("onboard: skipping and a bad token say why, a good token goes to the vault, and no zone token means the ts.net address", async t => {
   const { root } = await box(t, { vault: { keystore: "file" } });
   const { url, port } = (await call("onboard.link", {}, { root })).data;
   const base = `http://127.0.0.1:${port}`;
@@ -131,10 +131,11 @@ test("onboard: skipping, a bad token and a missing Cloudflare token all say why;
   assert.equal(item.origin, "module:onboard");
   assert.ok(JSON.stringify(item.grants).includes("agents"), "the agents module may read it");
   const check = await (await tool(base, cookie, "onboard.name", { name: "alex" })).json();
+  // No zone token: the address is the ts.net one, so there is nothing on vyre.run to check.
   assert.equal(check.data.valid, true);
-  assert.equal(check.data.available, false);
-  assert.match(check.data.why, /CLOUDFLARE_VYRE_TOKEN/);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, undefined, "an unchecked name is not saved");
+  assert.equal(check.data.available, true);
+  assert.equal(check.data.via, "ts.net");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, "alex");
 });
 
 test("onboard: a new link voids the old unredeemed one; the owner arriving on the tailnet closes the door", async t => {
