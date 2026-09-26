@@ -86,6 +86,9 @@ without editing Capsule files:
   memoLines/quickAppend), Catalog.swift, Reply.notice/queued, `@` chip and sends (threads.send
   with the queue, agents.ask, threads.start in a project). Tests: said 7, capsule model 2 (memory
   goes with a quick question; a queued send is said and marked handed over). Swift 171/172.
+- Done 2026-09-27 (uncommitted during ci's git freeze, commit when ci says done): the host loads
+  extensions (ExtensionHost.swift), VyredLink.stream, CapsuleHost.sessionWindow. With sight's
+  folder in a scratch copy: 184/185, app builds with SightExtension registered.
 - Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
 
 ## Next
@@ -112,4 +115,8 @@ without editing Capsule files:
 - mobile: reuses the Capsule's design language (`Sources/UI/Theme.swift`).
 
 ## Changed contracts
-- (none yet)
+- Kit (Sources/Kit/Extension.swift), for extensions: `VyredLink.stream(_:onMessage:onClose:)`
+  with `VyredStream` and `VyredStreamFailure` (default fails, so fakes conform);
+  `CapsuleHost.sessionWindow(owner:) -> SessionWindow` (default is a do-nothing window). Chords:
+  Option or Control chords go to extensions first; the Capsule's own keys use Command and Shift.
+- `vyre capsule` opens the native app on a Mac; `--electron` / VYRE_CAPSULE=electron for Electron.

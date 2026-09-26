@@ -11,6 +11,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     let vyred: VyredClient
     let model: CapsuleModel
     var panel: PanelController!
+    var extensions: ExtensionHost!
     let hotkeys = Hotkeys()
     var status: NSStatusItem?
 
@@ -26,6 +27,10 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         panel = PanelController(model: model)
+        extensions = ExtensionHost(model: model)
+        extensions.panel = panel
+        panel.extensions = extensions
+        extensions.load(extensionTypes)
         hotkeys.fire = { [weak self] front in self?.panel.toggle(front: front) }
         hotkeys.start()
         (model.providers.first as? AppsProvider)?.refreshIfChanged(wait: false)

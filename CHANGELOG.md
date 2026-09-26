@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The native Capsule loads extensions
+
+- The host makes each extension build.sh registers and routes to it: its rows and commands in
+  the list, chords with Option or Control while the panel is key (Option-Return is sight's
+  talk), its side panel beside the list, and show and hide. `Sources/Host/ExtensionHost.swift`.
+- `VyredLink.stream(path:onMessage:onClose:)` opens a WebSocket to a vyred stream as the
+  capsule caller, so an extension needs no socket code of its own. `Sources/Vyred/Stream.swift`.
+- `CapsuleHost.sessionWindow(owner:)`: the one Capsule-owned window an extension may use, for
+  the side view's session panel, animated by the Capsule. `Sources/Kit/Extension.swift`.
+
 #### The native Capsule reads memory and queues for a busy session
 
 - Typing three letters or more asks memory (memory.relevant and recall.search) a moment after

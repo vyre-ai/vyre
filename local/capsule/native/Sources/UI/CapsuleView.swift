@@ -16,7 +16,17 @@ struct CapsuleView: View {
             bar
             if model.asked != nil { Rule(); answer }
             if model.showsMemory, let m = model.memory { Rule(); MemoryBox(memory: m) }
-            if !model.groups.isEmpty { Rule(); results }
+            if !model.groups.isEmpty || side != nil {
+                Rule()
+                HStack(alignment: .top, spacing: 0) {
+                    if !model.groups.isEmpty { results }
+                    if let side {
+                        Rectangle().fill(Theme.rule).frame(width: 1)
+                        side.frame(width: CapsuleLayout.sideWidth).frame(maxHeight: .infinity, alignment: .top)
+                    }
+                }
+                .frame(height: max(resultsHeight, side == nil ? 0 : CapsuleLayout.sideMin))
+            }
             if let line = model.line, !line.isEmpty { Rule(); lineView(line) }
         }
         .frame(width: Theme.width)
@@ -137,6 +147,9 @@ struct CapsuleView: View {
 
     var resultsHeight: CGFloat { CapsuleLayout.resultsHeight(model.groups) }
 
+    /// An extension's side panel for the selected row, or the one it asked to show.
+    private var side: AnyView? { _ = model.panelTick; return model.panelFor?(model.current) }
+
     private func lineView(_ s: String) -> some View {
         Text(s).font(Theme.subtitle).foregroundColor(Theme.stone)
             .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
@@ -144,6 +157,8 @@ struct CapsuleView: View {
 }
 
 enum CapsuleLayout {
+    static let sideWidth: CGFloat = 260
+    static let sideMin: CGFloat = 180
     static func resultsHeight(_ groups: [CapsuleModel.Group]) -> CGFloat {
         var h: CGFloat = 6, rows = 0
         for g in groups {

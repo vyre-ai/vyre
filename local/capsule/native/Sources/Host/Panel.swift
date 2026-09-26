@@ -41,6 +41,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var top: CGFloat = 0
     private var hiddenAt = Date.distantPast
     var onShownChange: ((Bool) -> Void)?
+    var extensions: ExtensionHost?
 
     init(model: CapsuleModel) {
         self.model = model
@@ -69,6 +70,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         // A second open within a moment of closing is the same gesture landing twice.
         if Date().timeIntervalSince(hiddenAt) > 30 { model.reset() }
         model.willShow(front: front)
+        extensions?.willShow(front: front)
         let screen = Self.screenUnderMouse()
         let f = screen.frame
         top = f.maxY - (f.height * Theme.topFraction).rounded()
@@ -89,6 +91,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         stopKeys()
         hiddenAt = Date()
         model.didHide()
+        extensions?.didHide()
         onShownChange?(false)
     }
 
@@ -120,7 +123,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             if let n = model.reply?.notice, !n.isEmpty { h += 22 }
         }
         if model.showsMemory, let m = model.memory { h += 1 + MemoryBox.height(m) }
-        if !model.groups.isEmpty { h += 1 + CapsuleLayout.resultsHeight(model.groups) }
+        let side = model.panelFor?(model.current) != nil
+        if !model.groups.isEmpty || side { h += 1 + max(model.groups.isEmpty ? 0 : CapsuleLayout.resultsHeight(model.groups), side ? CapsuleLayout.sideMin : 0) }
         if let l = model.line, !l.isEmpty { h += 31 }
         return h
     }
@@ -157,8 +161,25 @@ final class PanelController: NSObject, NSWindowDelegate {
         keys = nil; clickAway = nil
     }
 
+    static func chord(_ e: NSEvent) -> KeyShortcut? {
+        let key: String
+        switch e.keyCode {
+        case 36, 76: key = "return"
+        case 49: key = "space"
+        case 48: key = "tab"
+        case 51: key = "delete"
+        default: guard let c = e.charactersIgnoringModifiers?.lowercased(), !c.isEmpty else { return nil }; key = c
+        }
+        let f = e.modifierFlags
+        return KeyShortcut(key, command: f.contains(.command), option: f.contains(.option), shift: f.contains(.shift), control: f.contains(.control))
+    }
+
     private func key(_ e: NSEvent) -> Bool {
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
+        // Chords with Option or Control are the extensions' (Option-Return talks). The Capsule's own
+        // keys use Command and Shift only, so they win a clash by never reaching here.
+        if e.modifierFlags.contains(.option) || e.modifierFlags.contains(.control), let c = Self.chord(e),
+           extensions?.handle(chord: c) == true { return true }
         switch e.keyCode {
         case 53: // escape
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }

@@ -36,6 +36,12 @@ public final class CapsuleModel: ObservableObject {
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
     @Published public var target: VyreCandidate? { didSet { if target != oldValue { search() } } }
     public private(set) var catalog = VyreCatalog.empty
+    /// What extensions add (ExtensionHost.load): rows, named commands, and side panels.
+    var extensionProviders: [ResultProvider] = []
+    var extensionCommands: [CapsuleCommand] = []
+    var panelFor: ((ResultItem?) -> AnyView?)?
+    /// Bumped when an extension shows or hides its panel, so the view draws it again.
+    @Published var panelTick = 0
 
     public var front: FrontApp?
     public let icons = IconCache()
@@ -66,7 +72,7 @@ public final class CapsuleModel: ObservableObject {
 
     public func willShow(front: FrontApp?) {
         self.front = front
-        providers.forEach { $0.warm() }
+        (providers + extensionProviders).forEach { $0.warm() }
         vyred.follower.setShown(true)
         if !vyred.follower.started { vyred.follower.start() }
         Task { @MainActor [vyred] in
@@ -79,7 +85,7 @@ public final class CapsuleModel: ObservableObject {
     }
 
     public func didHide() {
-        providers.forEach { $0.cool() }
+        (providers + extensionProviders).forEach { $0.cool() }
         icons.cool()
         frecency.flush()
         vyred.follower.setShown(false)
@@ -122,8 +128,14 @@ public final class CapsuleModel: ObservableObject {
         if q.normalized.isEmpty { groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [c] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
+        partial["ext-commands"] = extensionCommands.compactMap { c in
+            let s = Match.score(q.normalized, c.title, synonyms: c.keywords)
+            guard s >= 0.5 else { return nil }
+            return ResultItem(id: "ext:" + c.id, kind: "command", title: c.title, subtitle: c.subtitle, icon: c.icon,
+                              section: .commands, score: s, actions: c.actions)
+        }
         publish()
-        for p in providers {
+        for p in providers + extensionProviders {
             Task { @MainActor in
                 let rows = await p.results(for: q)
                 guard t == self.token else { return }

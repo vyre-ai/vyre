@@ -19,10 +19,11 @@
 //   - act on the app that was in front (host.stepAside then its own work)
 //   - claim a key chord while the Capsule is open (keyChords), never globally
 //
-// What it cannot do: take the keyboard while the Capsule is hidden, open a window of its own over
-// the user's work, or run anything between cool() and the next warm() unless it declares
+// What it cannot do: take the keyboard while the Capsule is hidden, open a window of its own (the
+// one exception is the Capsule-owned session panel, host.sessionWindow, for the side view), or run anything between cool() and the next warm() unless it declares
 // `runsHidden` and says why (the Capsule's perf check lists it).
 
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -77,10 +78,50 @@ public protocol VyredLink: AnyObject, Sendable {
     /// Follow events whose type matches a pattern ("thread.text", "hands.*"). The handler runs on
     /// the main actor. Returns a token; cancel it in capsuleDidHide unless you declared runsHidden.
     func on(_ pattern: String, _ handler: @escaping @MainActor (VyredEvent) -> Void) -> VyredSubscription
+    /// Open a WebSocket to one of vyred's streams ("/v1/streams/voice/listen") as the "capsule"
+    /// caller. `onMessage` gets each JSON text frame and `onClose` runs once, both off the main
+    /// thread. Nothing is open before this or after close().
+    func stream(_ path: String, onMessage: @escaping @Sendable ([String: Any]) -> Void,
+                onClose: @escaping @Sendable () -> Void) async -> Result<VyredStream, VyredStreamFailure>
 }
 
 public extension VyredLink {
     func call(_ tool: String, _ input: [String: Any] = [:]) async -> VyredResult { await call(tool, input, presence: false) }
+    func stream(_ path: String, onMessage: @escaping @Sendable ([String: Any]) -> Void,
+                onClose: @escaping @Sendable () -> Void) async -> Result<VyredStream, VyredStreamFailure> {
+        .failure(VyredStreamFailure(code: "refused", message: "This link to vyred has no streams."))
+    }
+}
+
+/// An open stream: JSON and binary frames out, close when done.
+public protocol VyredStream: AnyObject, Sendable {
+    func sendBinary(_ d: Data)
+    func sendJSON(_ obj: [String: Any])
+    func close()
+}
+
+/// Why a stream did not open, in words to show. Codes: unreachable, timeout, refused, not_found.
+public struct VyredStreamFailure: Error, Sendable, Equatable {
+    public var code: String
+    public var message: String
+    public init(code: String, message: String) { self.code = code; self.message = message }
+}
+
+/// The one window the Capsule lets an extension put on screen besides the panel: the session
+/// panel (the assistant beside the user's work in the side view). The Capsule owns it, so it can
+/// animate it (AX cannot animate another app's window), keep it on the user's Space, and close it
+/// when the side view closes. It never takes focus from the app the user is in unless they click
+/// it, and it opens only because the user asked for something that needs it (a command).
+@MainActor
+public protocol SessionWindow: AnyObject {
+    var isOpen: Bool { get }
+    /// Its frame in screen coordinates (AppKit, bottom-left origin).
+    var frame: NSRect { get }
+    /// Show `content` at `frame`. Replaces what it showed before.
+    func show(_ content: AnyView, frame: NSRect)
+    /// Move or resize; animated over `duration` seconds when > 0 (0.25 is the Capsule's pace).
+    func setFrame(_ frame: NSRect, duration: TimeInterval)
+    func close()
 }
 
 public enum VyredResult: @unchecked Sendable {
@@ -131,6 +172,24 @@ public protocol CapsuleHost: AnyObject {
     /// A macOS notification, only if the Capsule is hidden; otherwise said under the box.
     func notify(title: String, body: String)
     func log(_ message: String)
+    /// The session panel, owned by the Capsule, one for all extensions. `owner` is the extension's
+    /// id; a second owner gets the same window and the first is told nothing, so take it only
+    /// from a command the user ran.
+    func sessionWindow(owner: String) -> SessionWindow
+}
+
+public extension CapsuleHost {
+    /// A host with no windows (a test's fake host) hands out one that shows nothing.
+    func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+}
+
+@MainActor
+final class NoSessionWindow: SessionWindow {
+    var isOpen: Bool { false }
+    var frame: NSRect { .zero }
+    func show(_ content: AnyView, frame: NSRect) {}
+    func setFrame(_ frame: NSRect, duration: TimeInterval) {}
+    func close() {}
 }
 
 /// True only when a person has said dialogs may appear (the lead sets VYRE_TEST_DIALOGS=1 for a
