@@ -55,7 +55,7 @@ const val SURFACE = "android"
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FindScreen() {
+fun FindScreen(onClose: () -> Unit = {}) {
     val app = LocalApp.current
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
@@ -164,8 +164,9 @@ fun FindScreen() {
     }
 
     Page(top = {
-        BrandBar()
-        Text("Find", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s, bottom = Space.m))
+        // The Capsule, opened (phone.md section 7): the keyboard comes up with it.
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+        SheetTop("Find", onClose)
         InputBox(q, { q = it; note = null }, "Find or ask, @agent, tell or watch", imeAction = ImeAction.Go, onGo = { go() }, focusRequester = focus,
             trailing = {
                 // Voice needs on-device recognition (ADR 0018 section 8); this build has none yet.
@@ -174,7 +175,7 @@ fun FindScreen() {
                     contentAlignment = androidx.compose.ui.Alignment.Center,
                 ) { Label("Mic", color = V.c.rule) }
             })
-        Label(hint ?: "Voice is not in this build yet. Type instead.", Modifier.padding(top = Space.s), color = if (hint != null) V.c.secondary else V.c.label)
+        Label(hint ?: "Voice is not in this build yet. Type instead.", Modifier.padding(top = Space.s), color = if (hint != null) V.c.text2 else V.c.label)
     }) {
         note?.let { n -> item { Quiet(n) } }
         if (busy) item { Quiet("Sending") }

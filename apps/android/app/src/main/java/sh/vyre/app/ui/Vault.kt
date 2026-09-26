@@ -101,10 +101,10 @@ fun VaultScreen(back: String, onBack: () -> Unit) {
             val live = session?.takeIf { tick >= 0 && it.live() }
             if (live != null) {
                 val left = ((live.lastUsed + live.idleMs - System.currentTimeMillis()) / 60_000).coerceAtLeast(0)
-                Text("Open: reveals need no fingerprint for about ${left + 1} min more, or until you close it.", style = Type.small, color = c.secondary)
+                Text("Open: reveals need no fingerprint for about ${left + 1} min more, or until you close it.", style = Type.small, color = c.text2)
                 VButton("Close now", onClick = { closeSession() }, modifier = Modifier.padding(top = Space.s))
             } else {
-                Text("Each value needs your fingerprint. To reveal several in a row, keep the vault open for 5 minutes.", style = Type.small, color = c.secondary)
+                Text("Each value needs your fingerprint. To reveal several in a row, keep the vault open for 5 minutes.", style = Type.small, color = c.text2)
                 VButton("Keep open 5 min", onClick = { openSession() }, modifier = Modifier.padding(top = Space.s))
             }
             note?.let { Quiet(it) }
@@ -185,8 +185,8 @@ fun VaultItemScreen(name: String, onBack: () -> Unit) {
         item {
             Text(name, style = Type.h2, color = c.text)
             Text(dots(rec.str("kind"), rec.str("vault"), rec.str("updated")?.let { u -> u.toLongOrNull()?.let { ms -> sh.vyre.app.data.ago(ms) + " ago" } ?: u }),
-                style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
-            rec.str("description")?.let { d -> Text(d, style = Type.small, color = c.secondary, modifier = Modifier.padding(top = Space.s)) }
+                style = Type.monoSmall, color = c.text2, modifier = Modifier.padding(top = 4.dp))
+            rec.str("description")?.let { d -> Text(d, style = Type.small, color = c.text2, modifier = Modifier.padding(top = Space.s)) }
             if (load.v.error != null) Quiet(load.v.error!!.plain(), "failed")
             if (load.v.loading && rec == null) Quiet("Loading")
         }
@@ -222,12 +222,12 @@ fun VaultItemScreen(name: String, onBack: () -> Unit) {
             val hosts = rec.strings("hosts")
             if (hosts.isNotEmpty() || rec.str("url") != null) item {
                 SectionHead("Used on")
-                Text((listOfNotNull(rec.str("url")) + hosts).distinct().joinToString("\n"), style = Type.monoSmall, color = c.secondary)
+                Text((listOfNotNull(rec.str("url")) + hosts).distinct().joinToString("\n"), style = Type.monoSmall, color = c.text2)
             }
             val grants = rec.at("grants").arr
             if (grants.isNotEmpty()) item {
                 SectionHead("Granted to · ${grants.size}")
-                Text(grants.joinToString("\n") { g -> dots(g.str("module"), g.str("watcher")) }, style = Type.monoSmall, color = c.secondary)
+                Text(grants.joinToString("\n") { g -> dots(g.str("module"), g.str("watcher")) }, style = Type.monoSmall, color = c.text2)
             }
         }
         note?.let { n -> item { Quiet(n) } }

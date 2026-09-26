@@ -60,16 +60,16 @@ import sh.vyre.app.design.VButton
 fun NeedCard(label: String, meta: String, title: @Composable () -> Unit, sub: String?, onClick: () -> Unit) {
     val c = V.c
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(Radius.panel)).background(c.ground).background(c.beaconWash)
+        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(Radius.panel)).background(c.bg).background(c.beaconWash)
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = Space.l, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Dot(c.beaconDot); Spacer(Modifier.width(Space.s)); Label(label, Modifier.weight(1f), c.beacon)
-            Text(meta, style = Type.monoSmall, color = c.secondary)
+            Dot(c.beaconDot); Spacer(Modifier.width(Space.s)); Label(label, Modifier.weight(1f), c.beaconInk)
+            Text(meta, style = Type.monoSmall, color = c.text2)
         }
         title()
-        if (!sub.isNullOrEmpty()) Text(sub, style = Type.small, color = c.secondary, maxLines = 2)
+        if (!sub.isNullOrEmpty()) Text(sub, style = Type.small, color = c.text2, maxLines = 2)
     }
 }
 
@@ -106,15 +106,15 @@ fun HeldItem(id: String, onDone: (String) -> Unit, inline: Boolean = false) {
         if (!inline) {
             Text(Held.title(item), style = Type.h2, color = c.text, modifier = Modifier.padding(top = Space.s))
             val who = listOfNotNull(item.str("agent")?.let { "$it wrote this ${ago(item.str("at")?.toLongOrNull())} ago." }, item.str("why")).joinToString(" ")
-            if (who.isNotEmpty()) Text(who, style = Type.small, color = c.secondary, modifier = Modifier.padding(top = 4.dp, bottom = Space.l))
+            if (who.isNotEmpty()) Text(who, style = Type.small, color = c.text2, modifier = Modifier.padding(top = 4.dp, bottom = Space.l))
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = Space.s)) {
-                Dot(c.beaconDot); Spacer(Modifier.width(Space.s)); Label("Held at the Gate", Modifier.weight(1f), c.beacon)
-                Text(item.str("agent").orEmpty(), style = Type.monoSmall, color = c.secondary)
+                Dot(c.beaconDot); Spacer(Modifier.width(Space.s)); Label("Held at the Gate", Modifier.weight(1f), c.beaconInk)
+                Text(item.str("agent").orEmpty(), style = Type.monoSmall, color = c.text2)
             }
             Text(Held.title(item), style = Type.h3, color = c.text)
         }
-        if (err != null && state == "held") Text("Held again: $err", style = Type.small, color = c.beacon, modifier = Modifier.padding(vertical = Space.s))
+        if (err != null && state == "held") Text("Held again: $err", style = Type.small, color = c.beaconInk, modifier = Modifier.padding(vertical = Space.s))
 
         Hairline()
         for (f in fields) FieldRow(f, values[f.key] ?: f.original, editing == f.key, enabled = state == "held" && !busy,
@@ -145,7 +145,7 @@ fun HeldItem(id: String, onDone: (String) -> Unit, inline: Boolean = false) {
             }
             else -> Quiet(when (state) { "sent" -> "Sent."; "rejected" -> "Discarded."; "sending" -> "Sending"; else -> state })
         }
-        note?.let { Text(it, style = Type.small, color = c.secondary, modifier = Modifier.padding(top = Space.s)) }
+        note?.let { Text(it, style = Type.small, color = c.text2, modifier = Modifier.padding(top = Space.s)) }
     }
 }
 
@@ -204,21 +204,21 @@ fun AskItem(ask: JsonElement, agent: String?, onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Dot(c.beaconDot); Spacer(Modifier.width(Space.s)); Label("Permission", Modifier.weight(1f), c.beacon)
-            Text(listOfNotNull(agent, ago(ask.str("at")?.toLongOrNull()).takeIf { it.isNotEmpty() }).joinToString(" · "), style = Type.monoSmall, color = c.secondary)
+            Dot(c.beaconDot); Spacer(Modifier.width(Space.s)); Label("Permission", Modifier.weight(1f), c.beaconInk)
+            Text(listOfNotNull(agent, ago(ask.str("at")?.toLongOrNull()).takeIf { it.isNotEmpty() }).joinToString(" · "), style = Type.monoSmall, color = c.text2)
         }
         Text(buildAnnotatedString {
             withStyle(SpanStyle(fontFamily = Type.bodyStrong.fontFamily, fontWeight = Type.bodyStrong.fontWeight)) { append("May I run ") }
             withStyle(SpanStyle(fontFamily = Type.code.fontFamily)) { append(summary) }
         }, style = Type.body, color = c.text)
-        ask.str("destination")?.let { Text(it, style = Type.monoSmall, color = c.secondary) }
-        ask.str("reason")?.let { Text(it, style = Type.small, color = c.secondary) }
+        ask.str("destination")?.let { Text(it, style = Type.monoSmall, color = c.text2) }
+        ask.str("reason")?.let { Text(it, style = Type.small, color = c.text2) }
         val decided = ask.str("decision")
         if (decided != null && decided != "null") Label(decided)
         else Row(horizontalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.padding(top = Space.s)) {
             VButton("Allow", onClick = { answer("allow") }, kind = ButtonKind.Primary, enabled = !busy, modifier = Modifier.weight(1f).semantics { onClick("Allow $summary") { answer("allow"); true } })
             VButton("Deny", onClick = { answer("deny") }, enabled = !busy, modifier = Modifier.weight(1f))
         }
-        note?.let { Text(it, style = Type.small, color = c.secondary) }
+        note?.let { Text(it, style = Type.small, color = c.text2) }
     }
 }

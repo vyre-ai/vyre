@@ -53,6 +53,7 @@
                 <data android:scheme="vyre" android:host="settings" />
                 <data android:scheme="vyre" android:host="now" />
                 <data android:scheme="vyre" android:host="projects" />
+                <data android:scheme="vyre" android:host="chats" />
                 <data android:scheme="vyre" android:host="find" />
                 <data android:scheme="vyre" android:host="agents" />
                 <data android:scheme="vyre" android:host="chat" />

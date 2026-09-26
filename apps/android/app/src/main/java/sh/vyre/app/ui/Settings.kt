@@ -31,7 +31,7 @@ import sh.vyre.app.design.VButton
 import sh.vyre.app.presence.SignIn
 import sh.vyre.app.push.PushRegistration
 
-/** Settings: theme, the box, this phone's key, notifications, sign out. */
+/** Settings, a sheet from the avatar: the Vault, theme, the box, this phone's key, notifications, sign out. */
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     val app = LocalApp.current
@@ -66,8 +66,8 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    Page(top = { BackBar("Now", onBack) }) {
-        item { Text("Settings", style = Type.h2, color = c.text) }
+    // A sheet over Now, from the avatar (phone.md section 3).
+    Page(top = { SheetTop("Settings", onBack) }) {
 
         item {
             SectionHead("Vault")
@@ -90,30 +90,30 @@ fun SettingsScreen(onBack: () -> Unit) {
                 h != null -> dots("version ${h.str("version") ?: "?"}", h.str("role"), h.str("uptime")?.toDoubleOrNull()?.let { "up ${(it / 3600).toInt()} h" })
                 health.v.error != null -> health.v.error!!.plain()
                 else -> "Checking"
-            }, style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
-            Text("To use another box, sign out and sign in there.", style = Type.small, color = c.secondary, modifier = Modifier.padding(top = Space.s))
+            }, style = Type.monoSmall, color = c.text2, modifier = Modifier.padding(top = 4.dp))
+            Text("To use another box, sign out and sign in there.", style = Type.small, color = c.text2, modifier = Modifier.padding(top = Space.s))
         }
 
         item {
             SectionHead("This phone")
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(SignIn.deviceName(), style = Type.body, color = c.text)
-                Text(dots("key ${keyId ?: "none"}", app.key.hardware()), style = Type.monoSmall, color = c.secondary)
-                app.key.canAuthenticate()?.let { Text(it, style = Type.small, color = c.beacon) }
-                Text("Approving, answering and the vault need your fingerprint and this key. It never leaves the phone.", style = Type.small, color = c.secondary)
+                Text(dots("key ${keyId ?: "none"}", app.key.hardware()), style = Type.monoSmall, color = c.text2)
+                app.key.canAuthenticate()?.let { Text(it, style = Type.small, color = c.beaconInk) }
+                Text("Approving, answering and the vault need your fingerprint and this key. It never leaves the phone.", style = Type.small, color = c.text2)
             }
         }
 
         item {
             SectionHead("Notifications")
-            Text(PushRegistration.device(activity)?.let { "On, as device $it." } ?: "Off.", style = Type.small, color = c.secondary)
+            Text(PushRegistration.device(activity)?.let { "On, as device $it." } ?: "Off.", style = Type.small, color = c.text2)
             VButton("Turn on", onClick = { scope.launch { push = PushRegistration.subscribe(activity, app.client) ?: "On." } }, modifier = Modifier.padding(top = Space.s))
             push?.let { Quiet(it) }
         }
 
         item {
             SectionHead("Sign out")
-            Text("The box forgets this phone's key; this phone forgets the key, the box address and what it kept.", style = Type.small, color = c.secondary)
+            Text("The box forgets this phone's key; this phone forgets the key, the box address and what it kept.", style = Type.small, color = c.text2)
             Row(horizontalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.padding(top = Space.s)) {
                 VButton(if (busy) "Signing out" else "Sign out", onClick = { signOut() }, enabled = !busy, kind = ButtonKind.Beacon)
                 if (offerLocal) VButton("Forget on this phone only", onClick = { app.wipe() }, kind = ButtonKind.Quiet)
@@ -124,7 +124,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         item {
             SectionHead("About")
             Label("Vyre for Android ${sh.vyre.app.BuildConfig.VERSION_NAME}")
-            Text("Instrument Sans and JetBrains Mono, both under the SIL Open Font License.", style = Type.small, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
+            Text("Instrument Sans and JetBrains Mono, both under the SIL Open Font License.", style = Type.small, color = c.text2, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

@@ -40,50 +40,74 @@ object Hex {
     val beaconDot = Color(0xFFE5532F)
 }
 
-/** The roles a screen asks for. Dark and paper fill them from the tokens. */
+/**
+ * The colour roles, named as the Deck names them (deck/css/deck.css; docs/design/phone.md
+ * section 2), so a phone view and a Deck view read the same variables: `--bg` is bg, `--text-2`
+ * is text2, `--beacon-ink` is beaconInk. Values are phone.md's, verbatim; rgba values are written
+ * as ARGB with alpha = round(a x 255).
+ */
 @Immutable
 data class VyreColors(
     val dark: Boolean,
-    val ground: Color,
+    /** --bg: the page ground. */
+    val bg: Color,
+    /** --panel: cards, sheets, the Capsule. */
     val panel: Color,
-    val raised: Color,
+    /** --hover: agent tiles, pressed rows, the Deny reveal. */
+    val hover: Color,
+    /** --rule: hairlines between rows. */
     val rule: Color,
+    /** --rule-strong: card and input borders, outline buttons. */
     val ruleStrong: Color,
-    val label: Color,
-    val secondary: Color,
+    /** --text: primary text. */
     val text: Color,
-    /** Focus rings and links. */
-    val focus: Color,
-    /** The one primary action: its fill and its ink. */
-    val primaryFill: Color,
+    /** --text-2: secondary text. */
+    val text2: Color,
+    /** --label: labels, meta, placeholders; the smallest text colour allowed. */
+    val label: Color,
+    /** --primary-bg / --primary-ink: the one primary button per view. */
+    val primaryBg: Color,
     val primaryInk: Color,
+    /** --focus: the focus ring, and links. */
+    val focus: Color,
+    /** --signal-wash: the Ask row in Find, added diff lines, a selected chip. */
     val signalWash: Color,
-    val recall: Color,
-    val recallWash: Color,
-    val beacon: Color,
+    /** --match: a search match, the Open session flash. */
+    val match: Color,
+    /** --beacon-ink / --beacon-dot / --beacon-wash: needs you, nothing else. */
+    val beaconInk: Color,
     val beaconDot: Color,
     val beaconWash: Color,
-    /** The mark's dot. */
-    val dot: Color,
-    /** Code blocks: carbon on dark, raised paper on light. */
-    val code: Color,
+    /** --recall / --recall-wash: came from memory. */
+    val recall: Color,
+    val recallWash: Color,
+    /** --del-wash: deleted diff lines, with --label text. */
+    val delWash: Color,
+    /** --code-bg: command blocks, the live console. */
+    val codeBg: Color,
+    /** --mark-wire / --mark-dot: the mark (the dot turns Beacon when something needs you). */
+    val markWire: Color,
+    val markDot: Color,
+    /** --scrim: behind a sheet. */
+    val scrim: Color,
 )
 
 val DarkColors = VyreColors(
-    dark = true, ground = Hex.graphite, panel = Hex.carbon, raised = Hex.raised, rule = Hex.rule,
-    ruleStrong = Hex.ruleStrong, label = Hex.ash, secondary = Hex.stone, text = Hex.bone, focus = Hex.signal,
-    primaryFill = Hex.signal, primaryInk = Hex.signalInk, signalWash = Hex.signalWash, recall = Hex.recall,
-    recallWash = Hex.recallWash, beacon = Hex.beacon, beaconDot = Hex.beacon, beaconWash = Hex.beaconWash,
-    dot = Hex.signal, code = Hex.carbon,
+    dark = true, bg = Color(0xFF0E0D0C), panel = Color(0xFF161513), hover = Color(0xFF1E1C1A),
+    rule = Color(0xFF2B2926), ruleStrong = Color(0xFF3A3733), text = Color(0xFFF1EEE6), text2 = Color(0xFFB3AEA4),
+    label = Color(0xFF8C877D), primaryBg = Color(0xFFC6F36B), primaryInk = Color(0xFF0E0D0C), focus = Color(0xFFC6F36B),
+    signalWash = Color(0x1FC6F36B), match = Color(0x33C6F36B), beaconInk = Color(0xFFFF7A59), beaconDot = Color(0xFFFF7A59),
+    beaconWash = Color(0x1FFF7A59), recall = Color(0xFFEBC76B), recallWash = Color(0x1AEBC76B), delWash = Color(0x248C877D),
+    codeBg = Color(0x8C0E0D0C), markWire = Color(0xFFF1EEE6), markDot = Color(0xFFC6F36B), scrim = Color(0x9E000000),
 )
 
 val PaperColors = VyreColors(
-    dark = false, ground = Hex.paper, panel = Hex.paperRaised, raised = Hex.paperRaised, rule = Hex.paperRule,
-    ruleStrong = Hex.paperRuleStrong, label = Hex.ink3, secondary = Hex.ink2, text = Hex.ink, focus = Hex.signalDeep,
-    // Primary buttons on paper stay ink with paper text (TOKENS.md).
-    primaryFill = Hex.ink, primaryInk = Hex.paper, signalWash = Color(0x1F46700C), recall = Hex.recallDeep,
-    recallWash = Color(0x1A7E5B0C), beacon = Hex.beaconDeep, beaconDot = Hex.beaconDot, beaconWash = Color(0x1FE5532F),
-    dot = Hex.ink, code = Hex.paperRaised,
+    dark = false, bg = Color(0xFFF4F1EA), panel = Color(0xFFFBFAF6), hover = Color(0x0B141311),
+    rule = Color(0xFFDCD7CC), ruleStrong = Color(0xFFC9C3B7), text = Color(0xFF141311), text2 = Color(0xFF4A463F),
+    label = Color(0xFF6B665D), primaryBg = Color(0xFF141311), primaryInk = Color(0xFFF4F1EA), focus = Color(0xFF46700C),
+    signalWash = Color(0x1A46700C), match = Color(0x2946700C), beaconInk = Color(0xFFC2411F), beaconDot = Color(0xFFE5532F),
+    beaconWash = Color(0x17E5532F), recall = Color(0xFF7E5B0C), recallWash = Color(0x147E5B0C), delWash = Color(0x1A6B665D),
+    codeBg = Color(0x0A141311), markWire = Color(0xFF141311), markDot = Color(0xFF141311), scrim = Color(0x57141311),
 )
 
 object Space {
@@ -96,8 +120,13 @@ object Space {
     val xxxl = 48.dp
     /** The page side gutter on a phone (TOKENS.md: 16px phone). */
     val gutter = 16.dp
-    /** 48dp touch targets. */
+    /** 48dp touch targets (phone.md asks 44 at least). */
     val target = 48.dp
+    /** The shell's header, under the status bar. */
+    val header = 48.dp
+    /** The floating Capsule's height, and the room pages leave under their last row (56 + 16). */
+    val capsule = 56.dp
+    val underCapsule = 72.dp
 }
 
 /** TOKENS.md shape: --r-1 chips, --r-2 buttons and inputs, --r-3 panels and the Capsule, --r-4 windows. */
@@ -109,6 +138,10 @@ object Radius {
     val r4 = 14.dp
     val chip = 4.dp
     val button = 6.dp
+    /** A card (phone.md: card 10). */
     val panel = 10.dp
+    /** A sheet's top corners. */
     val window = 14.dp
+    /** An agent tile at 32 px. */
+    val tile = 8.dp
 }

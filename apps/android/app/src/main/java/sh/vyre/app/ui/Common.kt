@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -68,6 +70,10 @@ val LocalApp = staticCompositionLocalOf<VyreApp> { error("no app") }
 val LocalActivity = staticCompositionLocalOf<MainActivity> { error("no activity") }
 /** Navigate to a route string ("thread/<id>", "needs/<id>", ...). */
 val LocalNav = staticCompositionLocalOf<(String) -> Unit> { {} }
+/** True inside the shell's pages and sheets: the header or the sheet owns the top inset, and pages leave room for the Capsule. */
+val LocalInShell = staticCompositionLocalOf { false }
+/** Show a short line over the Capsule (an Undo, a note). */
+val LocalToast = staticCompositionLocalOf<(Toast) -> Unit> { {} }
 /** Open a route on the tab it belongs to (a session on Chat from Now's "Open session"), as a link would. */
 val LocalGo = staticCompositionLocalOf<(String) -> Unit> { {} }
 
@@ -119,7 +125,7 @@ fun BrandBar(right: String? = null, action: (@Composable () -> Unit)? = null) {
         Spacer(Modifier.width(6.dp))
         Wordmark(22.dp)
         Spacer(Modifier.weight(1f))
-        if (right != null) Text(right, style = Type.monoSmall, color = V.c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (right != null) Text(right, style = Type.monoSmall, color = V.c.text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         if (action != null) { Spacer(Modifier.width(Space.m)); action() }
     }
 }
@@ -132,9 +138,20 @@ fun Avatar(initial: String, onClick: () -> Unit) {
         Modifier.size(Space.target).clickable(role = Role.Button, onClickLabel = "Settings", onClick = onClick).semantics { contentDescription = "Settings" },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(32.dp).background(c.raised, androidx.compose.foundation.shape.CircleShape)
+        Box(Modifier.size(32.dp).background(c.hover, androidx.compose.foundation.shape.CircleShape)
             .border(1.dp, c.ruleStrong, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
             Text(initial.take(2).uppercase().ifEmpty { "V" }, style = Type.button.copy(letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified), color = c.text)
+        }
+    }
+}
+
+/** A sheet's top row, 52 tall: its title in Group type, "Done" (17) on the right. */
+@Composable
+fun SheetTop(title: String, onDone: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = Type.group, color = V.c.text, modifier = Modifier.weight(1f))
+        Box(Modifier.heightIn(min = Space.target).clickable(role = Role.Button, onClick = onDone).padding(start = Space.m), contentAlignment = Alignment.Center) {
+            Text("Done", style = Type.input, color = V.c.text)
         }
     }
 }
@@ -160,9 +177,12 @@ fun BackBar(title: String, onBack: () -> Unit, right: (@Composable () -> Unit)? 
  */
 @Composable
 fun Page(top: @Composable ColumnScope.() -> Unit = {}, content: LazyListScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().background(V.c.ground).statusBarsPadding()) {
+    val shell = LocalInShell.current
+    // In the shell, pages leave 56 + 16 under their last row so it clears the Capsule (phone.md section 3).
+    val bottom = if (shell) Space.underCapsule + androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() else Space.xxl
+    Column(Modifier.fillMaxSize().background(if (shell) androidx.compose.ui.graphics.Color.Transparent else V.c.bg).then(if (shell) Modifier else Modifier.statusBarsPadding())) {
         Column(Modifier.padding(horizontal = Space.gutter), content = top)
-        LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(start = Space.gutter, end = Space.gutter, bottom = Space.xxl), content = content)
+        LazyColumn(Modifier.fillMaxSize(), state = rememberLazyListState(), contentPadding = PaddingValues(start = Space.gutter, end = Space.gutter, bottom = bottom), content = content)
     }
 }
 
@@ -177,7 +197,7 @@ fun Row2(title: String, sub: String? = null, onClick: (() -> Unit)? = null, lead
             if (leading != null) { leading(); Spacer(Modifier.width(Space.m)) }
             Column(Modifier.weight(1f)) {
                 Text(title, style = Type.body, color = V.c.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (!sub.isNullOrEmpty()) Text(sub, style = Type.monoSmall, color = subColor ?: V.c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (!sub.isNullOrEmpty()) Text(sub, style = Type.monoSmall, color = subColor ?: V.c.text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (trailing != null) trailing()
             else if (onClick != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = V.c.label, modifier = Modifier.size(18.dp))
@@ -191,7 +211,7 @@ fun Row2(title: String, sub: String? = null, onClick: (() -> Unit)? = null, lead
 fun Quiet(text: String, label: String? = null) {
     Column(Modifier.fillMaxWidth().padding(vertical = Space.l), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (label != null) Label(label)
-        Text(text, style = Type.small, color = V.c.secondary)
+        Text(text, style = Type.small, color = V.c.text2)
     }
 }
 

@@ -39,6 +39,9 @@ class Client(
     private val _offline = MutableStateFlow(false)
     /** True after a call could not reach the box, until the next one does. */
     val offline: StateFlow<Boolean> = _offline
+    private val _lastOk = MutableStateFlow<Long?>(null)
+    /** When the box last answered, for "Showing what it said at 12:04". */
+    val lastOk: StateFlow<Long?> = _lastOk
 
     var prover: Prover? = null
 
@@ -99,6 +102,7 @@ class Client(
             throw ApiError.Offline(e.message ?: "unreachable")
         }
         _offline.value = false
+        _lastOk.value = System.currentTimeMillis()
         resp.use { r -> decode(r.code, r.body?.string().orEmpty()) }
     }
 

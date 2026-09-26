@@ -146,7 +146,7 @@ fun ConfirmDialog(d: Decider) {
                 title = { Text(Held.title(p.item), style = Type.h3, color = c.text) },
                 text = {
                     Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Space.m)) {
-                        if (p.changed) Text("It changed while you read it. This is the new version.", style = Type.small, color = c.beacon)
+                        if (p.changed) Text("It changed while you read it. This is the new version.", style = Type.small, color = c.beaconInk)
                         for (f in Held.finalWords(p.item)) Column {
                             Label(if (f.key == "to") "Goes to" else f.label)
                             Text(f.original.ifEmpty { " " }, style = if (f.json || f.key == "url" || f.key == "method") Type.code else Type.body, color = c.text, modifier = Modifier.padding(top = 4.dp))
@@ -167,7 +167,7 @@ fun ConfirmDialog(d: Decider) {
                     Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Space.m)) {
                         Column { Label(a.str("tool") ?: "Runs"); Text(a.str("summary").orEmpty(), style = Type.code, color = c.text, modifier = Modifier.padding(top = 4.dp)) }
                         a.str("destination")?.let { Column { Label("Where"); Text(it, style = Type.code, color = c.text, modifier = Modifier.padding(top = 4.dp)) } }
-                        a.str("reason")?.let { Column { Label("Why"); Text(it, style = Type.body, color = c.secondary, modifier = Modifier.padding(top = 4.dp)) } }
+                        a.str("reason")?.let { Column { Label("Why"); Text(it, style = Type.body, color = c.text2, modifier = Modifier.padding(top = 4.dp)) } }
                     }
                 },
                 confirmButton = { VButton("Allow", onClick = { d.allow(p) }, kind = ButtonKind.Primary) },

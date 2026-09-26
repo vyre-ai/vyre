@@ -2,7 +2,7 @@ package sh.vyre.app.data
 
 /** Where a link opens in the app. Pure, so it is tested on the JVM. */
 object Links {
-    private val TABS = setOf("now", "projects", "chat", "find", "agents")
+    private val TABS = setOf("now", "chats", "agents", "find")
     private val ID = Regex("^[A-Za-z0-9_-]{1,128}$")
 
     /**
@@ -24,7 +24,9 @@ object Links {
             parts.size == 2 && parts[0] == "threads" && ID.matches(parts[1]) -> "thread/${parts[1]}"
             parts.size == 1 && parts[0] == "settings" -> "settings"
             parts.size == 1 && parts[0] in TABS -> "tab/${parts[0]}"
-            // Older names: the Capsule and Files became Find, More became Now's avatar.
+            // Older names: Chat and Projects became Chats (projects are its chips), the Capsule and
+            // Files became Find (the Capsule, opened), More became Now's avatar.
+            parts.size == 1 && parts[0] in setOf("chat", "projects") -> "tab/chats"
             parts.size == 1 && parts[0] in setOf("capsule", "files") -> "tab/find"
             parts.size == 1 && parts[0] == "more" -> "tab/now"
             else -> null
@@ -32,13 +34,13 @@ object Links {
     }
 
     /**
-     * The tab a route opens on: a held item or an ask on Now, a session on Chat (the exact session,
-     * pushed over the Chat list, so back lands on the list), Settings under Now's avatar.
+     * The page a route opens over (phone.md section 3: Now, Chats, Agents): a held item or an ask
+     * on Now, a session or a project on Chats (the exact session pushed over the list, so back
+     * lands on it), an agent on Agents. `tab/find` is the Capsule, opened; Settings is a sheet over Now.
      */
     fun tabOf(route: String): String = when {
         route.startsWith("tab/") -> route.removePrefix("tab/")
-        route.startsWith("thread/") -> "chat"
-        route.startsWith("project/") -> "projects"
+        route.startsWith("thread/") || route.startsWith("project/") -> "chats"
         route.startsWith("agent/") -> "agents"
         else -> "now"
     }

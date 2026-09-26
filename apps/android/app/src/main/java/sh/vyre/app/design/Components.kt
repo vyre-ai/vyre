@@ -56,29 +56,38 @@ fun Hairline(modifier: Modifier = Modifier, strong: Boolean = false) {
 
 enum class ButtonKind { Primary, Secondary, Quiet, Beacon }
 
-/** Mono 12 uppercase +0.12em. Primary is Signal: one per screen. */
+/**
+ * A button (phone.md section 2): sentence-case sans 15/600, 44 tall with radius 10, or [tall]
+ * (54, radius 12, 17/600) for a sheet's primary. Primary is --primary-bg, one per view; Secondary
+ * is an outline on --rule-strong; Quiet is text only.
+ */
 @Composable
-fun VButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true, leading: String? = null) {
+fun VButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true,
+            leading: String? = null, height: Dp = 44.dp, icon: (@Composable (Color) -> Unit)? = null) {
     val c = V.c
-    val shape = RoundedCornerShape(Radius.button)
+    val tall = height >= 46.dp
+    val shape = RoundedCornerShape(if (tall) 12.dp else 10.dp)
     val (fill, ink, border) = when (kind) {
-        ButtonKind.Primary -> Triple(c.primaryFill, c.primaryInk, Color.Transparent)
-        ButtonKind.Secondary -> Triple(c.ground, c.text, c.ruleStrong)
-        ButtonKind.Quiet -> Triple(Color.Transparent, c.secondary, Color.Transparent)
-        ButtonKind.Beacon -> Triple(c.beaconWash, c.beacon, Color.Transparent)
+        ButtonKind.Primary -> Triple(c.primaryBg, c.primaryInk, Color.Transparent)
+        ButtonKind.Secondary -> Triple(Color.Transparent, c.text, c.ruleStrong)
+        ButtonKind.Quiet -> Triple(Color.Transparent, c.text2, Color.Transparent)
+        ButtonKind.Beacon -> Triple(c.beaconWash, c.beaconInk, Color.Transparent)
     }
+    val tint = if (enabled) ink else c.label
     Row(
-        modifier.heightIn(min = Space.target).widthIn(min = 64.dp).clip(shape).background(if (enabled) fill else c.raised)
-            .border(1.dp, border, shape).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = Space.l),
+        modifier.heightIn(min = height).widthIn(min = 64.dp).clip(shape).background(if (enabled) fill else if (kind == ButtonKind.Primary) c.hover else Color.Transparent)
+            .border(1.dp, if (enabled) border else if (kind == ButtonKind.Secondary) c.rule else Color.Transparent, shape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = Space.l),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
-        Text((if (leading != null) "$leading  " else "") + text.uppercase(), style = Type.button, color = if (enabled) ink else c.label, textAlign = TextAlign.Center, maxLines = 1)
+        if (icon != null) { icon(tint); androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp)) }
+        Text((if (leading != null) "$leading  " else "") + text, style = if (height >= 54.dp) Type.buttonLarge else Type.button, color = tint, textAlign = TextAlign.Center, maxLines = 1)
     }
 }
 
 /** The Lead mark, drawn from its 24 grid: one wire bent into a v, the dot leaving its end. */
 @Composable
-fun Mark(size: Dp = 24.dp, wire: Color = V.c.text, dot: Color = V.c.dot, modifier: Modifier = Modifier) {
+fun Mark(size: Dp = 24.dp, wire: Color = V.c.text, dot: Color = V.c.markDot, modifier: Modifier = Modifier) {
     Canvas(modifier.size(size)) {
         val u = this.size.width / 24f
         val p = Path().apply { moveTo(3.5f * u, 5.5f * u); lineTo(12f * u, 19.5f * u); lineTo(17.96f * u, 9.69f * u) }
@@ -115,13 +124,15 @@ fun Dot(color: Color, size: Dp = 6.dp, modifier: Modifier = Modifier) {
     Box(modifier.size(size).clip(RoundedCornerShape(50)).background(color))
 }
 
+/** A filter chip (phone.md: 30 tall, radius 8, 13/600): selected is --text fill with --bg words, the others an outline. */
 @Composable
-fun Chip(text: String, onClick: () -> Unit, selected: Boolean = false, modifier: Modifier = Modifier, style: TextStyle = Type.monoSmall) {
+fun Chip(text: String, onClick: () -> Unit, selected: Boolean = false, modifier: Modifier = Modifier) {
     val c = V.c
-    val shape = RoundedCornerShape(Radius.chip)
-    Box(
-        modifier.heightIn(min = 36.dp).clip(shape).background(if (selected) c.signalWash else Color.Transparent)
-            .border(1.dp, if (selected) c.focus else c.rule, shape).clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = Space.m, vertical = Space.s), contentAlignment = Alignment.Center,
-    ) { Text(text, style = style, color = c.text, maxLines = 1) }
+    val shape = RoundedCornerShape(8.dp)
+    Box(modifier.heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(Modifier.heightIn(min = 30.dp).clip(shape).background(if (selected) c.text else Color.Transparent)
+            .border(1.dp, if (selected) c.text else c.ruleStrong, shape).padding(horizontal = Space.m, vertical = 5.dp), contentAlignment = Alignment.Center) {
+            Text(text, style = Type.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight(600)), color = if (selected) c.bg else c.text2, maxLines = 1)
+        }
+    }
 }

@@ -84,21 +84,21 @@ fun NowScreen() {
     val decide = rememberDecider { load.refresh() }
     ConfirmDialog(decide)
 
-    Page(top = { BrandBar(host) { Avatar(sh.vyre.app.data.initials(owner.v.value, host)) { nav("settings") } } }) {
+    Page {
         item {
             Text(if (d == null) " " else needsLine(needs), style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s))
             val assistant = d?.agents?.firstOrNull { it.str("kind") == "assistant" }
             if (assistant != null) Text(buildAnnotatedString {
                 withStyle(SpanStyle(color = V.c.label)) { append(sh.vyre.app.data.Speaker.assistant(d.agents) + " · ") }
                 append(assistant.str("doing").orEmpty())
-            }, style = Type.monoSmall, color = V.c.secondary, modifier = Modifier.padding(top = 4.dp))
+            }, style = Type.monoSmall, color = V.c.text2, modifier = Modifier.padding(top = 4.dp))
             if (offline) Quiet("Showing what this phone kept. Can't reach the box.", "offline")
             d?.note?.let { Quiet(it) }
             DecideNote(decide)
         }
         loadState(load.v, empty = false, emptyText = "")
         if (d != null && needs > 0) {
-            item { SectionHead("Needs you · $needs", color = V.c.beacon) }
+            item { SectionHead("Needs you · $needs", color = V.c.beaconInk) }
             items(d.held, key = { "h" + it.str("id") }) { h ->
                 val id = h.str("id") ?: return@items
                 Swipe(onRight = { decide.approve(id) }, rightLabel = Held.action(h.str("kind")), onLeft = { decide.reject(h) }, leftLabel = "Discard") {
@@ -173,7 +173,7 @@ fun NeedsScreen(id: String, onBack: () -> Unit) {
     // The held item's brief, for its thread (gate.held carries it; the item view reads gate.get itself).
     val brief = rememberLoad("brief", id) { runCatching { app.client.call("gate.held").arr.firstOrNull { it.str("id") == id } }.getOrNull() }
     val go = LocalGo.current
-    Page(top = { BackBar("Now", onBack) { androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) { sh.vyre.app.design.Dot(V.c.beaconDot); androidx.compose.foundation.layout.Spacer(Modifier.padding(horizontal = 4.dp)); Label("Needs you", color = V.c.beacon) } } }) {
+    Page(top = { BackBar("Now", onBack) { androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) { sh.vyre.app.design.Dot(V.c.beaconDot); androidx.compose.foundation.layout.Spacer(Modifier.padding(horizontal = 4.dp)); Label("Needs you", color = V.c.beaconInk) } } }) {
         item {
             val ask = load.v.value
             when {

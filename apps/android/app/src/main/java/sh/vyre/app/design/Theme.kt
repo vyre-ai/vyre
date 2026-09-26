@@ -15,12 +15,12 @@ object V {
     val c: VyreColors @Composable get() = LocalVyre.current
 }
 
-/** Dark is Graphite, the default (TOKENS.md: "Colour: dark (default)"); Paper is the light one; System follows the phone. */
-enum class ThemeChoice(val label: String) { Dark("Graphite"), Paper("Paper"), System("Like the phone") }
+/** Dark (Graphite), Paper, and System, the default, which follows the phone (phone.md section 2). */
+enum class ThemeChoice(val label: String) { Dark("Dark"), Paper("Paper"), System("System") }
 
-/** Graphite by default, unless Settings picks Paper or the phone's setting. */
+/** The theme follows the phone (phone.md section 2), unless Settings picks Dark or Paper. */
 @Composable
-fun VyreTheme(choice: ThemeChoice = ThemeChoice.Dark, content: @Composable () -> Unit) {
+fun VyreTheme(choice: ThemeChoice = ThemeChoice.System, content: @Composable () -> Unit) {
     val dark = when (choice) {
         ThemeChoice.System -> isSystemInDarkTheme()
         ThemeChoice.Dark -> true
@@ -28,15 +28,15 @@ fun VyreTheme(choice: ThemeChoice = ThemeChoice.Dark, content: @Composable () ->
     }
     val c = if (dark) DarkColors else PaperColors
     val scheme = if (dark) darkColorScheme(
-        primary = c.primaryFill, onPrimary = c.primaryInk, background = c.ground, onBackground = c.text,
-        surface = c.ground, onSurface = c.text, surfaceVariant = c.panel, onSurfaceVariant = c.secondary,
-        surfaceContainer = c.panel, surfaceContainerHigh = c.raised, surfaceContainerLow = c.panel,
-        outline = c.ruleStrong, outlineVariant = c.rule, error = c.beacon, secondary = c.secondary,
+        primary = c.primaryBg, onPrimary = c.primaryInk, background = c.bg, onBackground = c.text,
+        surface = c.bg, onSurface = c.text, surfaceVariant = c.panel, onSurfaceVariant = c.text2,
+        surfaceContainer = c.panel, surfaceContainerHigh = c.hover, surfaceContainerLow = c.panel,
+        outline = c.ruleStrong, outlineVariant = c.rule, error = c.beaconInk, secondary = c.text2,
     ) else lightColorScheme(
-        primary = c.primaryFill, onPrimary = c.primaryInk, background = c.ground, onBackground = c.text,
-        surface = c.ground, onSurface = c.text, surfaceVariant = c.panel, onSurfaceVariant = c.secondary,
-        surfaceContainer = c.panel, surfaceContainerHigh = c.raised, surfaceContainerLow = c.panel,
-        outline = c.ruleStrong, outlineVariant = c.rule, error = c.beacon, secondary = c.secondary,
+        primary = c.primaryBg, onPrimary = c.primaryInk, background = c.bg, onBackground = c.text,
+        surface = c.bg, onSurface = c.text, surfaceVariant = c.panel, onSurfaceVariant = c.text2,
+        surfaceContainer = c.panel, surfaceContainerHigh = c.hover, surfaceContainerLow = c.panel,
+        outline = c.ruleStrong, outlineVariant = c.rule, error = c.beaconInk, secondary = c.text2,
     )
     CompositionLocalProvider(LocalVyre provides c) {
         MaterialTheme(colorScheme = scheme, typography = MaterialTheme.typography.let {

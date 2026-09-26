@@ -43,6 +43,10 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -77,53 +81,45 @@ import sh.vyre.app.design.Type
 import sh.vyre.app.design.V
 import sh.vyre.app.design.VButton
 
-/** Projects (a tab, as in the PWA): the projects on the box; a project opens its sessions. */
-@Composable
-fun ProjectsScreen() {
-    val app = LocalApp.current
-    val nav = LocalNav.current
-    val load = rememberLoad("projects") { app.client.call("projects.list") }
-    val projects = load.v.value.at("projects").arr
-    Page(top = { BrandBar() }) {
-        item { Text("Projects", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s)) }
-        item { SectionHead("Projects · ${projects.size}") }
-        loadState(load.v, projects.isEmpty(), "No projects yet. Make one on the Mac with vyre new.")
-        items(projects, key = { "p" + it.str("slug") }) { p ->
-            Row2(p.str("name") ?: p.str("slug").orEmpty(),
-                dots(p.str("org"), "${p.str("threads") ?: 0} sessions", ago(p.str("last")?.toLongOrNull())),
-                onClick = { nav("project/${p.str("slug")}") })
-        }
-    }
-}
-
 /**
- * Chat (a tab): sessions and threads. Live ones first (running, starting, waiting), then the
- * others from the last day; each opens the thread.
+ * Chats (a page): sessions, newest first, filtered by the project chips across the top (All,
+ * then each project; phone.md section 6, which replaces the old Projects tab). Live ones first.
  */
 @Composable
 fun ChatScreen() {
     val app = LocalApp.current
     val nav = LocalNav.current
     val load = rememberLoad("threads-all") { app.client.call("threads.list", input("all" to true)).arr.toList() }
+    val projects = rememberLoad("projects") { app.client.call("projects.list").at("projects").arr.toList() }
     OnEvents("thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered") { load.refresh() }
-    val all = load.v.value.orEmpty().sortedByDescending { it.str("last")?.toLongOrNull() ?: 0 }
+    var chip by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val all = load.v.value.orEmpty().filter { chip == null || it.str("project") == chip }.sortedByDescending { it.str("last")?.toLongOrNull() ?: 0 }
     val live = all.filter { it.str("status") in setOf("working", "starting", "waiting") }
     val rest = all.filter { it !in live }
-    Page(top = { BrandBar() }) {
-        item { Text("Chat", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s)) }
-        item { SectionHead("Live · ${live.size}") }
-        if (load.v.value != null && live.isEmpty()) item { Quiet("No session is running. Start one from a project.") }
+    Page(top = {
+        ProjectChips(projects.v.value.orEmpty(), chip) { chip = it }
+    }) {
+        if (live.isNotEmpty()) item { SectionHead("Live · ${live.size}") }
         items(live, key = { "l" + it.str("id") }) { t ->
             Row2(label(t), dots(t.str("agent"), t.str("project"), if (t.str("status") == "waiting") "waiting on you" else t.str("status")),
-                subColor = if (t.str("status") == "waiting") V.c.beacon else null,
-                leading = { Dot(if (t.str("status") == "waiting") V.c.beaconDot else V.c.focus) },
+                subColor = if (t.str("status") == "waiting") V.c.beaconInk else null,
+                leading = { Dot(if (t.str("status") == "waiting") V.c.beaconDot else V.c.text) },
                 onClick = { nav("thread/${t.str("id")}") })
         }
-        item { SectionHead("Sessions · ${rest.size}") }
-        loadState(load.v, all.isEmpty(), "No session in the last day.")
+        if (live.isNotEmpty() && rest.isNotEmpty()) item { SectionHead("Earlier · ${rest.size}") }
+        loadState(load.v, all.isEmpty(), if (chip == null) "No sessions yet." else "No sessions in this project in the last day.")
         items(rest, key = { "s" + it.str("id") }) { t ->
             Row2(label(t), dots(t.str("agent"), t.str("project"), ago(t.str("last")?.toLongOrNull())), onClick = { nav("thread/${t.str("id")}") })
         }
+    }
+}
+
+/** The chips over Chats (phone.md section 6): All, then each project. */
+@Composable
+private fun ProjectChips(projects: List<JsonElement>, selected: String?, pick: (String?) -> Unit) {
+    val items = listOf<Pair<String?, String>>(null to "All") + projects.mapNotNull { p -> p.str("slug")?.let { it to (p.str("name") ?: it) } }
+    androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+        items(items, key = { it.first ?: "*" }) { (slug, name) -> sh.vyre.app.design.Chip(name, onClick = { pick(slug) }, selected = slug == selected) }
     }
 }
 
@@ -141,7 +137,7 @@ fun ProjectScreen(slug: String, onBack: () -> Unit) {
     Page(top = { BackBar("Projects", onBack) }) {
         item {
             Text(p?.str("name") ?: slug, style = Type.h2, color = V.c.text)
-            p?.at("people")?.arr?.takeIf { it.isNotEmpty() }?.let { people -> Text(people.joinToString(", ") { it.str("name").orEmpty() }, style = Type.small, color = V.c.secondary) }
+            p?.at("people")?.arr?.takeIf { it.isNotEmpty() }?.let { people -> Text(people.joinToString(", ") { it.str("name").orEmpty() }, style = Type.small, color = V.c.text2) }
             SectionHead("New session")
             Composer(prompt, { prompt = it }, placeholder = "What should it do?", busy = busy, onSend = {
                 busy = true; note = null
@@ -240,7 +236,7 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
     val status = transcript.status ?: record.str("status")
     val c = V.c
 
-    Column(Modifier.fillMaxSize().background(c.ground).statusBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().background(c.bg).statusBarsPadding().imePadding()) {
         Column(Modifier.padding(horizontal = Space.gutter)) {
             BackBar(record.str("project") ?: "Chat", onBack) {
                 if (status == "working" || status == "waiting" || status == "starting")
@@ -276,7 +272,7 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
                         busy = false
                     }
                 })
-            note?.let { Text(it, style = Type.small, color = c.secondary, modifier = Modifier.padding(top = 4.dp)) }
+            note?.let { Text(it, style = Type.small, color = c.text2, modifier = Modifier.padding(top = 4.dp)) }
         }
     }
 }
@@ -287,7 +283,7 @@ fun LineView(l: Line, who: String?) {
     when (l) {
         is Line.User -> Column(Modifier.fillMaxWidth()) {
             Label(dots(who ?: Speaker.YOU, ago(l.at)))
-            Text(l.text, style = Type.body, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
+            Text(l.text, style = Type.body, color = c.text2, modifier = Modifier.padding(top = 4.dp))
         }
         is Line.Assistant -> Column(Modifier.fillMaxWidth()) {
             if (who != null) Label(who, Modifier.padding(bottom = 4.dp))
@@ -300,7 +296,7 @@ fun LineView(l: Line, who: String?) {
             "reason" to (l.reason?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull),
             "decision" to (l.decision?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull))), null, onDone = {})
         is Line.Held -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.panel)).background(c.beaconWash).padding(Space.l)) {
-            if (l.state == "held") HeldItem(l.id, onDone = {}, inline = true) else Text(if (l.state == "sent") "Sent after you approved it." else "Discarded.", style = Type.small, color = c.secondary)
+            if (l.state == "held") HeldItem(l.id, onDone = {}, inline = true) else Text(if (l.state == "sent") "Sent after you approved it." else "Discarded.", style = Type.small, color = c.text2)
         }
         is Line.Finished -> Row(verticalAlignment = Alignment.CenterVertically) {
             Hairline(Modifier.weight(1f)); Spacer(Modifier.width(Space.s))
@@ -328,13 +324,13 @@ fun ToolBlock(l: Line.Tools) {
             Spacer(Modifier.width(Space.s))
             Text(last.summary, style = Type.monoSmall, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         }
-        if (!open && last.destination != null && last.destination != last.summary) Text(last.destination, style = Type.monoSmall, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 14.dp))
+        if (!open && last.destination != null && last.destination != last.summary) Text(last.destination, style = Type.monoSmall, color = c.text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 14.dp))
         if (open) for (t in l.calls) Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.Top) {
             Dot(if (t.error) c.beaconDot else if (!t.done) c.text else c.label, modifier = Modifier.padding(top = 5.dp))
             Spacer(Modifier.width(Space.s))
             Column(Modifier.weight(1f)) {
                 Text("${t.tool}  ${t.summary}", style = Type.monoSmall, color = c.text)
-                if (t.destination != null && t.destination != t.summary) Text(t.destination, style = Type.monoSmall, color = c.secondary)
+                if (t.destination != null && t.destination != t.summary) Text(t.destination, style = Type.monoSmall, color = c.text2)
             }
             if (t.error) Label("failed")
         }
@@ -356,7 +352,7 @@ fun Composer(value: String, onChange: (String) -> Unit, placeholder: String, bus
                 decorationBox = { inner -> if (value.isEmpty()) Text(placeholder, style = Type.body, color = c.label); inner() })
         }
         val can = value.isNotBlank() && !busy
-        Column(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.button)).background(if (can) c.primaryFill else c.raised)
+        Column(Modifier.size(44.dp).clip(RoundedCornerShape(Radius.button)).background(if (can) c.primaryBg else c.hover)
             .clickable(enabled = can, role = Role.Button, onClickLabel = "Send", onClick = onSend), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Icon(Icons.AutoMirrored.Filled.ArrowForward, "Send", tint = if (can) c.primaryInk else c.label, modifier = Modifier.size(20.dp))
         }

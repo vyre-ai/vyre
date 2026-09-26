@@ -48,14 +48,13 @@ fun AgentsScreen() {
     val load = rememberLoad("agents") { app.client.call("agents.list").arr.toList() }
     OnEvents("thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered") { load.refresh() }
     val list = load.v.value.orEmpty()
-    Page(top = { BrandBar() }) {
-        item { Text("Agents", style = Type.h1, color = V.c.text, modifier = Modifier.padding(top = Space.s)) }
+    Page {
         item { SectionHead("Agents · ${list.size}") }
         loadState(load.v, list.isEmpty(), "No agents on this box yet.")
         items(list, key = { "a" + it.str("name") }) { a ->
             val doing = a.str("doing")
             Row2(a.str("name").orEmpty(), dots(if (a.str("kind") == "assistant") "assistant" else null, doing, sh.vyre.app.data.Speaker.model(a.str("model"))),
-                subColor = if (doing == "waiting on your answer") V.c.beacon else null,
+                subColor = if (doing == "waiting on your answer") V.c.beaconInk else null,
                 leading = { Dot(when (doing) { "working", "starting" -> V.c.focus; "waiting on your answer" -> V.c.beaconDot; else -> V.c.label }) },
                 onClick = { nav("agent/" + android.net.Uri.encode(a.str("name").orEmpty())) })
         }
@@ -83,11 +82,11 @@ fun AgentScreen(name: String, back: String, onBack: () -> Unit) {
     Page(top = { BackBar(back, onBack) }) {
         item {
             Text(name, style = Type.h2, color = c.text)
-            Text(dots(a.str("kind"), a.str("doing"), sh.vyre.app.data.Speaker.model(a.str("model")), a.str("auth")), style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
+            Text(dots(a.str("kind"), a.str("doing"), sh.vyre.app.data.Speaker.model(a.str("model")), a.str("auth")), style = Type.monoSmall, color = c.text2, modifier = Modifier.padding(top = 4.dp))
             if (agent.v.error != null) Quiet(agent.v.error!!.plain(), "failed")
             val projects = a.strings("projects")
             val scopeLine = if (projects == listOf("*")) "Every project" else projects.joinToString(", ").ifEmpty { null }
-            scopeLine?.let { Text(it, style = Type.small, color = c.secondary, modifier = Modifier.padding(top = 2.dp)) }
+            scopeLine?.let { Text(it, style = Type.small, color = c.text2, modifier = Modifier.padding(top = 2.dp)) }
         }
         if (u != null) item {
             SectionHead("Spend")
@@ -158,7 +157,7 @@ fun MemoryScreen(start: String, back: String, onBack: () -> Unit) {
         if (node != null) item {
             SectionHead(node.str("label") ?: about, dots(node.str("kind"), node.str("age")))
             Text(dots(node.long("sessions")?.let { "$it sessions" }, node.long("mentions")?.let { "$it mentions" }, if (node.str("pinned") == "true") "pinned" else null, if (node.str("muted") == "true") "muted" else null),
-                style = Type.monoSmall, color = c.secondary)
+                style = Type.monoSmall, color = c.text2)
         } else item { SectionHead(if (about.isBlank()) "Recent · ${facts.size}" else "About $about · ${facts.size}") }
         loadState(load.v, facts.isEmpty(), if (about.isBlank()) "Nothing learned yet." else "Nothing is known about \"$about\".")
         items(facts, key = { "f" + it.str("id") }) { f ->
@@ -194,7 +193,7 @@ fun FactScreen(id: String, back: String, onBack: () -> Unit) {
         item {
             Text(f.str("text") ?: id, style = Type.h3, color = c.text)
             Text(dots(f.str("age"), f.double("confidence")?.let { "${(it * 100).toInt()}% sure" }, f.str("origin"), f.long("evidence")?.let { "$it sources" }),
-                style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
+                style = Type.monoSmall, color = c.text2, modifier = Modifier.padding(top = 4.dp))
             if (load.v.error != null) Quiet(load.v.error!!.plain(), "failed")
         }
         val sid = subject.str("id")

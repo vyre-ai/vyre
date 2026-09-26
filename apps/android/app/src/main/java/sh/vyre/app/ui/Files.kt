@@ -86,7 +86,7 @@ fun FileScreen(path: String, back: String, onBack: () -> Unit) {
         item {
             Text(s.str("name") ?: path.substringAfterLast('/'), style = Type.h2, color = c.text)
             Text(dots(s.str("kind"), bytes(s.long("size")), s.str("mtime")?.let { runCatching { sh.vyre.app.data.ago(Instant.parse(it).toEpochMilli()) + " ago" }.getOrNull() }),
-                style = Type.monoSmall, color = c.secondary, modifier = Modifier.padding(top = 4.dp))
+                style = Type.monoSmall, color = c.text2, modifier = Modifier.padding(top = 4.dp))
             Text(path, style = Type.monoSmall, color = c.label, modifier = Modifier.padding(top = 2.dp))
             if (stat.v.error != null) Quiet(stat.v.error!!.plain(), "failed")
         }
@@ -109,7 +109,7 @@ fun FileScreen(path: String, back: String, onBack: () -> Unit) {
                     else Quiet("The image could not be read.")
                     p.str("note")?.let { Quiet(it) }
                 }
-                p.at("text") != null -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.button)).background(if (c.dark) c.code else c.raised)
+                p.at("text") != null -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.button)).background(c.codeBg)
                     .horizontalScroll(rememberScrollState()).padding(Space.m)) {
                     Text(p.str("text").orEmpty(), style = Type.code, color = c.text, softWrap = false)
                     if (p.bool("truncated") == true) Text("The rest is not shown.", style = Type.small, color = c.label, modifier = Modifier.padding(top = Space.s))

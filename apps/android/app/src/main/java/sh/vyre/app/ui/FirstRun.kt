@@ -130,7 +130,7 @@ fun FirstRun() {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.padding(top = Space.l)) {
                 Text("Find your box.", style = Type.h1, color = c.text)
-                Text("Type the box's address, the name your Deck opens at. Only your tailnet can reach it.", style = Type.body, color = c.secondary)
+                Text("Type the box's address, the name your Deck opens at. Only your tailnet can reach it.", style = Type.body, color = c.text2)
             }
         }
         item {
@@ -141,14 +141,14 @@ fun FirstRun() {
                     VButton(if (busy) "Signing in" else if (waiting) "Open the page again" else "Sign in", onClick = { signIn() },
                         kind = ButtonKind.Primary, enabled = !busy && typed.isNotBlank(), modifier = Modifier.weight(1f))
                 }
-                line?.let { Text(it, style = Type.small, color = c.secondary, modifier = Modifier.padding(top = Space.s)) }
+                line?.let { Text(it, style = Type.small, color = c.text2, modifier = Modifier.padding(top = Space.s)) }
             }
         }
         if (BuildConfig.DEBUG && BuildConfig.DEFAULT_ADDRESS.isNotEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.padding(top = Space.xl)) {
                 Hairline()
                 Label("Debug build", Modifier.padding(top = Space.m))
-                Text("The test world (apps/test/world.js) at ${BuildConfig.DEFAULT_ADDRESS}: a fictional box, enrolled with a one-time code.", style = Type.small, color = c.secondary)
+                Text("The test world (apps/test/world.js) at ${BuildConfig.DEFAULT_ADDRESS}: a fictional box, enrolled with a one-time code.", style = Type.small, color = c.text2)
                 VButton("Use the test world", onClick = { testWorld(BuildConfig.DEFAULT_ADDRESS) }, enabled = !busy)
             }
         }
@@ -157,7 +157,7 @@ fun FirstRun() {
                 Hairline()
                 Label("How signing in works", Modifier.padding(top = Space.m))
                 Text("This phone makes a key that never leaves it. Your Deck's passkey approves it once; after that, your fingerprint on this phone approves drafts, answers sessions and opens the vault.",
-                    style = Type.small, color = c.secondary)
+                    style = Type.small, color = c.text2)
             }
         }
     }

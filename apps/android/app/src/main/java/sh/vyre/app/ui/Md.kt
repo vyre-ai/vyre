@@ -45,14 +45,14 @@ fun Md(text: String, modifier: Modifier = Modifier) {
             for (b in blocks) when (b) {
                 is Markdown.Block.Para -> Text(spans(b.spans, c), style = Type.body, color = c.text)
                 is Markdown.Block.Heading -> Text(spans(b.spans, c), style = if (b.level <= 2) Type.h3 else Type.bodyStrong, color = c.text)
-                is Markdown.Block.Quote -> Text(spans(b.spans, c), style = Type.body, color = c.secondary, modifier = Modifier.padding(start = Space.m))
+                is Markdown.Block.Quote -> Text(spans(b.spans, c), style = Type.body, color = c.text2, modifier = Modifier.padding(start = Space.m))
                 is Markdown.Block.Bullets -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (i in b.items) Row { Text("•", style = Type.body, color = c.label, modifier = Modifier.width(18.dp)); Text(spans(i, c), style = Type.body, color = c.text) }
                 }
                 is Markdown.Block.Numbered -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     b.items.forEachIndexed { n, i -> Row { Text("${b.start + n}.", style = Type.code, color = c.label, modifier = Modifier.width(28.dp)); Text(spans(i, c), style = Type.body, color = c.text) } }
                 }
-                is Markdown.Block.Code -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.button)).background(if (c.dark) c.code else c.raised)
+                is Markdown.Block.Code -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.button)).background(c.codeBg)
                     .horizontalScroll(rememberScrollState()).padding(Space.m)) {
                     Text(b.text, style = Type.code, color = c.text, softWrap = false)
                 }
@@ -64,7 +64,7 @@ fun Md(text: String, modifier: Modifier = Modifier) {
 fun spans(list: List<Markdown.Span>, c: VyreColors): AnnotatedString = buildAnnotatedString {
     for (s in list) when (s) {
         is Markdown.Span.Text -> append(s.text)
-        is Markdown.Span.Code -> withStyle(SpanStyle(fontFamily = Mono, background = if (c.dark) c.code else c.raised)) { append(s.text) }
+        is Markdown.Span.Code -> withStyle(SpanStyle(fontFamily = Mono, background = c.codeBg)) { append(s.text) }
         is Markdown.Span.Bold -> withStyle(SpanStyle(fontWeight = FontWeight(600))) { append(s.text) }
         is Markdown.Span.Italic -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(s.text) }
         // Only http(s) links are ever made; they open in the browser, not in the app.
