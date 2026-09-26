@@ -54,7 +54,45 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   index is available, reports counts and timings only.
 
 ## Done
+- Curator, graph, module, CLI (`core/memory/`, `core/cli/commands/memory.js`), on `work/memory`.
+- Every "Done when" item above holds against `seedRecall()`, including a working `memory.why`
+  for every fact. Idempotency, bi-temporal and rewrite tests pass.
+- Smoke run on a temp copy of a real 103k-turn index (counts and timings only): 1,581 nodes,
+  6,591 edges, 842 open facts. First pass 6.7s; nothing new 5ms; one new turn 1.2s with the
+  event loop never blocked more than about 180ms; `memory.relevant` p50 0.06ms, p95 1.4ms.
+
 ## Doing
+
 ## Next
+- The first derive after vyred starts blocks the event loop for up to about 600ms on a large
+  corpus (building the rowid map). Split it further if the Enrich hook ever feels it.
+- `ctx.memory.teach(kind, fact)` (SPEC 5.2) is not in the loader yet; when it lands, taught facts
+  become observations with their own source, and the curator keeps being the only writer.
+- Short forms for people's first names are measured but few pass the 0.6 floor; that is by
+  design. Revisit if the Enrich hook misses obvious first-name references.
+
 ## Needs from others
+- recall: emit `session.indexed {session, from, to, rewritten}` after each index write. Memory
+  also copes without it (it compares `recall_sessions.turns` with what it has read on every pass,
+  and treats a shrunk session as rewritten), but the event is what makes it prompt.
+- recall: keep turn text in `recall_turns` as the contract says; Memory reads it by rowid and
+  measures short forms with rowid-only `MATCH` queries.
+
 ## Changed contracts
+None to other modules' contracts. New, for dependents:
+
+- `memory.facts {about?, project_cwds?, limit?}` returns `{ about, facts }`. `about` is the
+  resolved node (`{id, label, kind, role, sessions, mentions, first, last, age, pinned, muted}`)
+  or null. With `project_cwds`, facts are about what sessions in those folders (or under them)
+  name, outside parties only, pinned first, muted left out.
+- A fact: `{ id: "src|rel|dst", text, subject, rel, object, confidence, since, until, seen,
+  age, source: {session, seq, name}, evidence }`. `rel` is one of `works_at`, `has_email`,
+  `has_domain`, `at_domain`, `owned_by`, `mentioned_in`. `until` is set on a closed edge.
+- `memory.relevant {text, project_cwds?, limit?}` returns `[{ id, text, matched, confidence,
+  age, seen, source, score }]`, at most `limit` (default 5), or `[]`. Only things the text
+  names count; the user's own things, tools and hubs never appear.
+- `memory.why {fact, limit?}` takes a fact id or a name; returns `{ fact, turns: [{session, seq,
+  name, role, ts, age, text}], gone }`.
+- `memory.pin` / `memory.mute {node, scope?, off?}`: scope `*` (default) or a project folder.
+- `memory.curate {full?}` returns `{ recall, sessions, turns, nodes, edges, changed, ms }`.
+- Event `memory.curated {nodes, edges, ms}`, only when the graph changed.

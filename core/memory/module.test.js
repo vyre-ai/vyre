@@ -1,0 +1,75 @@
+// @ts-check
+// The memory module inside a real vyred: tools over the socket, the session.indexed event, and
+// a daemon with no Recall index at all.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { open } from "../store/index.js";
+import { start } from "../daemon/index.js";
+import { call, request } from "../daemon/client.js";
+import { SESSIONS, seedRecall } from "../../test/fixtures/corpus.js";
+import { tempHome } from "../../test/helpers.js";
+
+function seeded(t, { recall = true } = {}) {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ me: { domains: ["riverastudio.com"] } }));
+  if (recall) { const db = open(path.join(root, "vyre.db")); seedRecall(db); db.close(); }
+  return root;
+}
+
+test("memory module: curates in the background and answers every tool over the socket", async t => {
+  const root = seeded(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const mods = (await request("GET", "/v1/modules", undefined, { root })).data;
+  assert.equal(mods.find(m => m.name === "memory")?.state, "running");
+
+  const cur = await call("memory.curate", {}, { root });
+  assert.ok(cur.data.nodes > 0, JSON.stringify(cur));
+  const facts = (await call("memory.facts", { about: "Harlow" }, { root })).data;
+  assert.equal(facts.about.label, "Harlow Legal");
+  assert.ok(facts.facts.some(f => f.text === "Dana Reyes works at Harlow Legal"));
+  const rel = (await call("memory.relevant", { text: "is the Northwind watcher still running?" }, { root })).data;
+  assert.ok(rel.length > 0 && rel.every(f => f.text.includes("Northwind Bakery")));
+  const why = (await call("memory.why", { fact: facts.facts[0].id }, { root })).data;
+  assert.ok(why.turns.length > 0);
+  assert.equal((await call("memory.pin", { node: "Sam Okafor" }, { root })).data.mode, "pin");
+  assert.equal((await call("memory.mute", { node: "Sam Okafor", off: true }, { root })).data.mode, null);
+  const stats = (await call("memory.stats", {}, { root })).data;
+  assert.equal(stats.recall, true);
+  assert.equal(stats.focus, 1);
+  assert.equal((await call("memory.relevant", {}, { root })).error.code, "bad_input");
+  const ev = (await request("GET", "/v1/events?type=memory.curated", undefined, { root })).data;
+  assert.ok(ev.length >= 1 && ev[0].payload.nodes > 0, "memory.curated was not emitted");
+});
+
+test("memory module: session.indexed with rewritten re-reads that session", async t => {
+  const root = seeded(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await call("memory.curate", {}, { root });
+  const db = open(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  const s = SESSIONS[2];
+  db.prepare("DELETE FROM recall_turns WHERE session = ?").run(s.id);
+  db.prepare("INSERT INTO recall_turns (session, seq, role, ts, text) VALUES (?,?,?,?,?)").run(s.id, 0, "user", s.start, "Northwind invoices, compacted.");
+  db.prepare("UPDATE recall_sessions SET turns = 1 WHERE id = ?").run(s.id);
+  const done = new Promise(resolve => { const off = d.events.on("memory.curated", e => { off(); resolve(e); }); });
+  d.events.emit("recall", "session.indexed", { session: s.id, from: 0, to: 0, rewritten: true });
+  await done;
+  const about = (await call("memory.facts", { about: "Sam Okafor" }, { root })).data;
+  assert.equal(about.about, null, "Sam Okafor was only named in the rewritten transcript");
+});
+
+test("memory module: with no Recall index vyred still starts and memory answers with nothing", async t => {
+  const root = seeded(t, { recall: false });
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  assert.equal((await request("GET", "/v1/modules", undefined, { root })).data.find(m => m.name === "memory")?.state, "running");
+  const cur = (await call("memory.curate", {}, { root })).data;
+  assert.equal(cur.recall, false);
+  assert.deepEqual((await call("memory.relevant", { text: "Harlow Legal" }, { root })).data, []);
+  assert.equal((await call("memory.stats", {}, { root })).data.recall, false);
+});
