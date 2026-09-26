@@ -98,6 +98,8 @@ const MIGRATIONS = [
   // stopped: whether the thread's turn has passed a Stop. A prompt that arrives while it has not
   // (a forged enrich, or a turn the user interrupted) does not wipe the turn's edits or its count.
   `ALTER TABLE learn_turns ADD COLUMN stopped INTEGER NOT NULL DEFAULT 1;`,
+  // PreToolUse and a revert look writes up by path.
+  `CREATE INDEX learn_writes_path ON learn_writes (path, done);`,
 ];
 
 export { MAX_BLOCKS };
@@ -445,8 +447,11 @@ export default {
       const words = String(shape).split(" ");
       if (!words[0] || words[0].startsWith("<")) return;
       const since = now() - 14 * DAY;
-      const no = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM learn_signals WHERE key = ? AND kind IN ('declined','denied') AND at >= ?").get(key, since)).n);
-      if (no < 3) return;
+      // A missing PostToolUse cannot tell the user's no from a Claude Code settings rule that refused
+      // the call, so one session is not enough: 3 nos, in at least 2 sessions.
+      const counts = /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n, COUNT(DISTINCT session) AS sessions FROM learn_signals WHERE key = ? AND kind IN ('declined','denied') AND at >= ?").get(key, since));
+      const no = Number(counts.n);
+      if (no < 3 || Number(counts.sessions) < 2) return;
       const yes = db.prepare("SELECT 1 FROM learn_signals WHERE key = ? AND kind = 'allowed' AND at >= ? LIMIT 1").get(key, since)
         || db.prepare("SELECT 1 FROM learn_calls WHERE shape = ? AND outcome = 'ok' AND at >= ? LIMIT 1").get(shape, since);
       if (yes) return;
@@ -571,6 +576,8 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" }, ...changeSchema } },
       run: async ({ id, ...change }) => {
         const l = must(id);
+        // A proposal is accepted as the user was shown it; changing it first would accept something else.
+        if (l.status === "proposed") throw new Error(`lesson ${id} is proposed: the user accepts it as they were shown it, then it can be tightened`);
         clean(change);
         if (change.scope !== undefined) change.scope = await slugged(change.scope);
         const loose = loosens(l, change);
@@ -917,7 +924,7 @@ export default {
       description: "What the hooks ask. stage tool: may this call run, given the lessons? stage stop: may this turn end, given its final reply and the files it changed? stage brief: every active lesson, for the start of a thread.",
       input: { type: "object", required: ["stage"], properties: { stage: { type: "string", enum: ["tool", "stop", "brief"] }, session: { type: "string" }, prompt_id: { type: "string" },
         cwd: { type: "string" }, agent: { type: "string" }, tool_name: { type: "string" }, tool_input: { type: "object" }, tool_use_id: { type: "string" }, plugin_root: { type: "string" },
-        text: { type: "string" }, stop_hook_active: { type: "boolean" } } },
+        text: { type: "string" }, stop_hook_active: { type: "boolean" }, headless: { type: "boolean" } } },
       run: async input => {
         const lessons = await inScope(active(), input);
         if (input.stage === "brief") {
@@ -944,7 +951,7 @@ export default {
       const guard = weakens(tool_name, tool_input, { home: root, cwd, pluginRoot: plugin_root ?? null, lessons: active().length > 0 });
       if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.`, lesson: null };
       const t = turn(session, prompt_id);
-      const last = (await touchedSince(session, 0))[0];
+      const last = (await touchedSince(session, 0, 1))[0];
       const ran = db.prepare("SELECT command FROM learn_commands WHERE session = ? AND at > ?").all(session, last ? last.at : -1).map(r => r.command);
       if (tool_name === "Bash" && typeof tool_input.command === "string") db.prepare("INSERT INTO learn_commands (session, command, at) VALUES (?,?,?)").run(session, tool_input.command.slice(0, 2000), now());
       // A file Claude is about to change: its hash now, to tell a revert later.
@@ -975,7 +982,7 @@ export default {
     };
 
     /** Stop. Returns { decision: "block", reason } to send the turn back, or { decision: null }. */
-    const stop = async (lessons, session, { prompt_id, text, stop_hook_active }) => {
+    const stop = async (lessons, session, { prompt_id, text, stop_hook_active, headless }) => {
       const t = turn(session, prompt_id);
       // Claude Code says whether this Stop follows one of ours. When it does not, this is the
       // turn's first try at ending, whatever the count says.
@@ -1005,7 +1012,7 @@ export default {
       for (const { l } of failed) await broke(l, session, owe, "stop");
       saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]), stopped: 1 });
       if (session) {
-        try { await ended(session, t, rows, commands); } catch (e) { ctx.log("turn not read: " + /** @type {Error} */ (e).message); }
+        try { await ended(session, t, rows, commands, Boolean(headless)); } catch (e) { ctx.log("turn not read: " + /** @type {Error} */ (e).message); }
       }
       return { decision: null, broken: failed.map(f => f.l.id) };
     };
@@ -1016,11 +1023,14 @@ export default {
      * test-fix run, and edits with no test after them a proposal; the turn's steps are
      * fingerprinted for skills; the project's recent writes are statted for reverts.
      */
-    const ended = async (session, t, rows, commands) => {
+    const ended = async (session, t, rows, commands, headless = false) => {
       const project = t.project ?? null;
       const calls = db.prepare("SELECT * FROM learn_calls WHERE session = ? AND at >= ? ORDER BY at").all(session, t.started || 0);
       for (const c of calls) {
         if (c.outcome != null) continue;
+        // Headless, no one was there to say no: a call that did not run was refused by settings or
+        // the permission mode, and a real answer comes as ask.answered. Nothing is inferred.
+        if (headless) { setOutcome(c.id, "unanswered"); continue; }
         if (c.held === "deny") { setOutcome(c.id, "held"); continue; }
         const shape = c.shape ? String(c.shape) : null;
         const key = shape ? sig.commandKey(shape) : sig.toolKey(c.tool);

@@ -232,6 +232,47 @@ test("declined: a command the user said no to 3 times in 14 days, never yes, pro
   assert.equal(held.data.decision, "ask");
 });
 
+test("declined: three nos in one session propose nothing; a headless thread declines nothing", async t => {
+  const { reg, say, stop, signals, lessons } = await learning(t);
+  const cwd = "/w/harlow-site";
+  // One session: a settings rule refusing the call looks the same as the user's no.
+  for (const p of ["p1", "p2", "p3"]) {
+    await say("clean up", "s1", p);
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "s1", prompt_id: p, tool_use_id: uid() });
+    await stop("s1", p);
+  }
+  assert.equal(signals("declined").length, 3);
+  assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 0, "one session is not enough");
+  // Our own headless child: no one was there to say no.
+  await say("clean up", "h1", "p1");
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "h1", prompt_id: "p1", tool_use_id: uid() });
+  await stop("h1", "p1", { headless: true });
+  assert.equal(signals("declined").length, 3, "nothing inferred headless");
+  assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 0);
+});
+
+test("learn.edit refuses a proposed lesson: the user accepts what they were shown", async t => {
+  const { reg, say, lessons } = await learning(t);
+  await say("never use em dashes in anything you write", "s1", "p1");
+  const [l] = await lessons();
+  assert.equal(l.status, "proposed");
+  const r = await reg.call("learn.edit", { id: l.id, level: "block", rule: "Never use em dashes, or anything else." });
+  assert.match(r.error.message, /proposed/);
+  assert.equal((await lessons())[0].rule, l.rule);
+});
+
+test("PreToolUse asks the Harness for one row, and writes are found by path through an index", async t => {
+  const { reg, db, say } = await learning(t);
+  const seen = [];
+  const call = reg.call.bind(reg);
+  reg.call = async (tool, input, ...rest) => { if (tool === "harness.touched") seen.push(input.limit); return call(tool, input, ...rest); };
+  await say("fix it", "s1", "p1");
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd: "/w/harlow-site", session: "s1", prompt_id: "p1", tool_use_id: uid() });
+  assert.deepEqual(seen.slice(-1), [1]);
+  const plan = db.prepare("EXPLAIN QUERY PLAN SELECT * FROM learn_writes WHERE path = ? AND done = 0 AND h1 IS NOT NULL").all("/x").map(r => String(r.detail)).join(" ");
+  assert.match(plan, /USING INDEX learn_writes_path/);
+});
+
 test("declined: an allowed run of the same shape means no proposal", async t => {
   const { reg, say, stop, lessons, events } = await learning(t);
   const cwd = "/w/harlow-site";

@@ -98,6 +98,36 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
 ## Doing
 - Nothing; waiting for review.
 
+## Review fixes (26 Sep 2026)
+- Human-only learn tools (`accept`, `retire`, `relax`, `skill-install`, `skill-retire`,
+  `skill-dismiss`) take only `cli`, `deck` and `capsule`; `local` (any socket client with no
+  header) is refused. STOPGAP until security's registry enforces `presence`: `vyre learn` and
+  `vyre call` ask the person at a terminal to type the id back (`core/cli/confirm.js`), after
+  checking stdin and stdout are terminals and `/dev/tty` opens (it fails with ENXIO in Claude's
+  Bash, ADR 0004). `script` or a hand-written client gets round this, so weakens() also asks
+  before a model's shell reaches any of these tools. When `core/presence/index.js` exists the
+  CLI skips the step and vyred decides.
+- A forged enrich: the same prompt_id is a duplicate (nothing reset, answered or proposed). A new
+  prompt before the last turn passed a Stop keeps its blocks, owed lessons and (when it changed
+  files) its start; its no declines nothing, its yes still accepts. `learn_turns.stopped` records
+  a passed Stop; offline keeps the same flag in the session file. Running `hook.js` by hand is asked.
+- weakens(): `vyre learn scope`, `vyre learn skills install|retire|dismiss`, `claude plugin
+  disable|uninstall|remove`, `~/.claude/plugins/` and `~/.claude` itself, scripts that name a
+  human-only tool and a route to vyred. Always on (online and offline) for the store, socket,
+  `learned/`, hooks, plugins and human-only tools; lesson files, lesson commands and stopping
+  vyred still wait for an active lesson. Store names count only inside the home (bare only with
+  cwd there), hooks only under the loaded plugin root (`CLAUDE_PLUGIN_ROOT`, or the hook's own
+  folder, passed as `plugin_root` to `harness.rules`), and `git -m` messages are ignored.
+- distill(): questions, firm words not at the start of a clause said to Claude, and "yet", "for
+  now", "here", "this time", "for this PR" are not rules; softCorrection needs a habit after
+  stop or quit ("stop the server" is a task).
+- Declined: Claude Code settings refusals cannot be told from the user's no, so a proposal needs 3
+  nos in at least 2 sessions, and headless threads (`VYRE_THREAD` equals the session) infer none.
+- `learn.edit` refuses a proposed lesson. PreToolUse asks `harness.touched` for 1 row; an index
+  on `learn_writes (path, done)`.
+- Note: `node --test core/learn/` runs the folder as one module (1 test); use
+  `node --test core/learn/*.test.js`.
+
 ## Next
 1. A live headless check of PostToolUseFailure, declined calls and a revert, as was done for
    the first lessons.
@@ -117,6 +147,12 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
    missed. A command from another session's Claude (a git checkout there) still reads as the user.
 
 ## Needs from others
+- security: the registry must enforce `presence` on `learn.accept`, `learn.retire`,
+  `learn.relax`, `learn.skill-install`, `learn.skill-retire` and `learn.skill-dismiss` whatever
+  the caller claims. Until it does, any process can claim `cli` (daemon/client.js defaults to it);
+  Learning's stopgap is the CLI's terminal check and weakens() asks. When your registry lands,
+  add `core/presence/index.js` and the CLI stops asking for the id (it needs to answer your
+  challenges instead).
 - switchboard: agent threads should also load `<home>/learned/agents/<name>` (`learnedDirs`
   loads the account's and the project's only). `threads.launch` is called with `once: true`
   (the ADR says one-shot; there is no `oneshot` option) plus `plugin: false, tools: "none",

@@ -81,7 +81,9 @@ async function main() {
       ...(typeof h.error === "string" ? { error_head: h.error.slice(0, 200) } : {}), ...(h.is_interrupt === true ? { interrupted: true } : {}) }, opts);
   } else if (piece === "stop") {
     const text = typeof h.last_assistant_message === "string" ? h.last_assistant_message : undefined;
-    const r = await call("harness.stop", { ...base, text, stop_hook_active: Boolean(h.stop_hook_active) }, opts);
+    // Our own headless child (VYRE_THREAD is its session id) has no one to decline a call.
+    const headless = Boolean(process.env.VYRE_THREAD) && process.env.VYRE_THREAD === h.session_id;
+    const r = await call("harness.stop", { ...base, text, stop_hook_active: Boolean(h.stop_hook_active), ...(headless ? { headless: true } : {}) }, opts);
     const d = down(r) ? offlineStop({ ...offline, text, stop_hook_active: Boolean(h.stop_hook_active) }) : r.data;
     // Stop's answer is top level, not hookSpecificOutput. The reason goes to Claude, which continues.
     if (d && d.decision === "block") process.stdout.write(JSON.stringify({ decision: "block", reason: d.reason }));

@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Learning: review fixes (ADR 0007, decision 11)
+
+- The human-only learn tools (accept, retire, relax, skill-install, skill-retire, skill-dismiss)
+  refuse the `local` caller. Until ADR 0004's registry enforces presence, `vyre learn` and
+  `vyre call` ask the person at a terminal to type the id back, and refuse with no terminal or no
+  `/dev/tty` (Claude's Bash has neither). New `core/cli/confirm.js`.
+- A forged enrich no longer restarts the turn: the same prompt_id is a duplicate, and a prompt
+  before the last turn passed a Stop keeps its edits and send-back count and declines nothing.
+  Offline the same. A migration adds `learn_turns.stopped`.
+- weakens() asks for `vyre learn scope`, `vyre learn skills install|retire|dismiss`, `claude
+  plugin disable|uninstall|remove`, writes under `~/.claude/plugins/`, running `hook.js` by hand,
+  and scripts that call a human-only tool through vyred. The store, `learned/`, hooks, plugins
+  and human-only tools are guarded with no lesson active. Store names count only in the home,
+  hooks only under the loaded plugin root (`plugin_root` on `harness.rules`), and git `-m`
+  messages are ignored.
+- distill() skips questions, firm words about someone else, and instructions for now ("yet",
+  "for now", "here", "this time", "for this PR"); "stop the server" is not a soft correction.
+- A declined-command proposal needs 3 nos in at least 2 sessions; headless threads infer none.
+- `learn.edit` refuses a proposed lesson. PreToolUse fetches 1 `harness_files` row; index
+  `learn_writes (path, done)`.
+
 #### Learning: more signals, behaviour proposals, jobs, scope, metrics and skills (ADR 0007, decisions 6 to 10 and 12)
 
 - Check kinds `tool` (a tool or shell command ruled out, optionally `instead`), `path` (files
