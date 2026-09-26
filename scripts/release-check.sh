@@ -1,9 +1,10 @@
 #!/bin/sh
 # release-check.sh: everything that must hold before a release goes out.
 #
-#   scripts/release-check.sh [--skip-tests] [--claude] [--live]
+#   scripts/release-check.sh [--skip-tests] [--perf] [--claude] [--live]
 #
-#   1. the suite (npm test), unless --skip-tests
+#   1. the suite (npm test), unless --skip-tests; with --perf, then scripts/perf-check (idle
+#      budgets, SPEC section 2 principle 8; about a minute; a busy machine can fail it)
 #   2. npm pack, and the tarball holds what it should and nothing it should not
 #   3. a global install of that tarball into a temp prefix, never the real one
 #   4. vyre up, status, modules, call and down, in a temp HOME and VYRE_HOME
@@ -17,14 +18,16 @@
 set -eu
 
 TESTS=1
+PERF=0
 CLAUDE=0
 LIVE=0
 for a in "$@"; do
   case "$a" in
     --skip-tests) TESTS=0 ;;
+    --perf) PERF=1 ;;
     --claude) CLAUDE=1 ;;
     --live) LIVE=1 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "release-check: unknown option $a" >&2; exit 1 ;;
   esac
 done
@@ -52,6 +55,12 @@ if [ "$TESTS" = 1 ]; then
   step "suite"
   (cd "$repo" && npm test >"$work/test.log" 2>&1) || { tail -n 40 "$work/test.log"; fail "npm test (log above)"; }
   ok "$(grep -E '^[^ ]+ (tests|pass|fail) ' "$work/test.log" | tr '\n' ' ')"
+fi
+
+if [ "$PERF" = 1 ]; then
+  step "perf"
+  (cd "$repo" && nice -n 10 node scripts/perf-check >"$work/perf.log" 2>&1) || { tail -n 30 "$work/perf.log"; fail "perf-check (log above)"; }
+  ok "idle budgets hold"
 fi
 
 step "pack"
