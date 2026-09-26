@@ -24,6 +24,13 @@ Recall gold marks only what came from memory, Beacon only what needs the user.
 - **Security.** Never render a vault value (there is no API for it, so don't build one). Text
   from threads is untrusted: always textContent, never innerHTML.
 
+## Onboarding (first screen)
+
+`deck/onboard/`: the six-step onboarding in spec section 1, one step a screen, each skippable,
+with live progress for Tailscale sign-in and history indexing. It calls the box stream's
+`onboard.*` tools; build against fixtures until they land. There is no board for it yet:
+design it from the tokens and the Deck boards, and add a board to `docs/design/boards/`.
+
 ## Needs
 
 Projects/recall/memory tools land with M1; threads with the switchboard stream. Build against

@@ -32,15 +32,34 @@ Claude Code itself:
   holds no user data.
 - **Not an IDE or a chat app.** It uses Claude Code for coding and Mattermost for chat.
 
-### Install
+### Install and onboarding
+
+Installed like a self-hosted server app (n8n, a media server): one line from the landing page,
+then a visual onboarding in the browser. The terminal does as little as possible.
 
 ```
 npm install -g vyre
 vyre up
 ```
 
-`vyre up` sets up the machine it runs on, joins it to your Tailscale network, reserves your
-name and ends at `your address: <you>.vyre.run`. Then `vyre` in any terminal opens your projects.
+`vyre up` starts vyred and prints one link: `http://127.0.0.1:<port>/onboard?t=<one-time token>`
+(on a headless server, the same link over an SSH tunnel, printed with the exact `ssh -L` line).
+The onboarding is the Deck's first screen, and walks through, one step a screen:
+
+1. **You.** Your name, which becomes `<you>.vyre.run`, checked for availability.
+2. **Claude Code.** Detects `claude`; signs in with your subscription (`claude setup-token`) or
+   an API key, stored in the Vault. Nothing is typed into a terminal.
+3. **Tailscale.** Detects it, or shows the one install command for this OS; then "Connect" opens
+   Tailscale's own sign-in and waits until this machine is on your tailnet.
+4. **Your address.** Reserves the name, points it at the tailnet address, gets the certificate,
+   then switches the page to `https://<you>.vyre.run`. From here the loopback link stops working.
+5. **Your history.** Finds existing Claude Code sessions, indexes them in the background with a
+   progress bar, and lets you make your first projects by picking sessions from the catalogue.
+6. **Your devices.** A QR code for the phone, and the Mac download for the Capsule.
+
+Every step can be skipped and finished later from Settings; each is also a `vyre` command for
+people who prefer the terminal. The loopback onboarding link is single-use, expires after an
+hour, and is the only route vyred serves before an owner exists.
 
 ---
 

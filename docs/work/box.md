@@ -29,6 +29,16 @@ user's own tailnet, with HTTPS and no separate login.
   for the ts.net name as the fallback.
 - **Mac role.** On a Mac, `vyre up` sets role `local` and connects to the box over the tailnet.
 
+## Onboarding (with the deck stream)
+
+The user installs from the landing page and sets Vyre up in a browser, like n8n on a server
+(spec section 1, "Install and onboarding"). Box owns the steps' tools; deck owns the screens.
+Tools: `onboard.status`, `onboard.claude` (setup-token or API key into the Vault),
+`onboard.tailscale` (detect, start `tailscale up`, report its login URL, wait for the node),
+`onboard.name` (check, reserve, DNS, certificate), `onboard.finish`. Before an owner exists,
+vyred serves only `/onboard` and these tools, on loopback, behind the one-time token; after, the
+loopback listener closes. A headless box prints the `ssh -L` line to reach it.
+
 ## Needs from the user (stop and ask when you reach them)
 
 A Linux box on the tailnet with SSH, the Cloudflare token in the env, and the name to claim.
