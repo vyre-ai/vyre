@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connectors (ADR 0015)
+
+- A module can now be a way out through the Gate. `gate.offer { name, tool, kinds?, content? }`
+  (internal, modules only) registers a sender named in the module's own namespace whose `tool` is
+  one of its own; after the user approves, the Gate calls that tool as `module:gate` with exactly
+  the approved content. The MCP hub and native Google need this to hold their sends. Offers live in
+  memory, so an item held under a module that has not started yet stays held, and Approve says
+  which module to start.
+
 #### Presence: a person proves they are there (ADR 0004)
 
 - A model could approve its own held email. The caller is only a header on a socket the user

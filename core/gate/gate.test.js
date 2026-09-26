@@ -287,3 +287,84 @@ test("gate: a revision the sender would refuse is refused, and a sent item canno
   await gate.approve({ id });
   assert.throws(() => gate.revise({ id, edited: { body: "late" } }), /already sent/);
 });
+
+/** A Gate whose module senders call a fake module tool that records what it got. */
+function withModule({ db, fail } = {}) {
+  db = db || new DatabaseSync(":memory:");
+  if (!db.prepare("SELECT name FROM sqlite_master WHERE name = 'gate_items'").get()) for (const m of MIGRATIONS) db.exec(m);
+  const calls = [];
+  const gate = new Gate({ db, types: fakeTypes().types, senders: { mail: { type: "fake", vault: "work-mail-token" } },
+    emit: () => {}, fetchCredential: async () => "", relay: async () => ({}),
+    call: async (tool, input) => { calls.push({ tool, input }); return fail ? { error: { code: "failed", message: fail } } : { data: { posted: input.id } }; } });
+  return { gate, calls, db };
+}
+const offerBoard = gate => gate.offer({ name: "courier:board", tool: "courier.release", content: { summary: "string", text: "string" } }, "module:courier");
+
+test("gate: a module's sender is held, edited, approved and sent through the module's own tool", async () => {
+  const { gate, calls } = withModule();
+  assert.deepEqual(offerBoard(gate), { name: "courier:board", kinds: ["send", "spend", "delete"] });
+  assert.deepEqual(gate.senders().find(s => s.name === "courier:board"),
+    { name: "courier:board", type: "module", module: "courier", kinds: ["send", "spend", "delete"], content: { summary: "string", text: "string" } });
+  const { id } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update for Northwind Bakery", text: "Ovens are in." } }, { agent: "kit" });
+  assert.equal(gate.held()[0].summary, "Weekly update for Northwind Bakery");
+  assert.equal(calls.length, 0);
+  const out = await gate.approve({ id, edited: { text: "Ovens are in, and the new mixer ships Friday." } });
+  assert.deepEqual(out, { id, state: "sent", result: { posted: id } });
+  assert.deepEqual(calls, [{ tool: "courier.release", input: { id, to: ["#northwind"], content: { summary: "Weekly update for Northwind Bakery", text: "Ovens are in, and the new mixer ships Friday." } } }]);
+});
+
+test("gate: summary falls back from summary to subject to tool to the sender's name", () => {
+  const { gate } = withModule();
+  offerBoard(gate);
+  const at = content => gate.brief(gate.row(gate.request({ kind: "send", via: "courier:board", to: "x", content }).id)).summary;
+  assert.equal(at({ subject: "A subject" }), "A subject");
+  assert.equal(at({ tool: "board_post" }), "board_post");
+  assert.equal(at({}), "courier:board");
+  assert.equal(at({ summary: "x".repeat(300) }).length, 120);
+});
+
+test("gate: a module offers only its own names and tools, never a configured sender's", () => {
+  const { gate } = withModule();
+  assert.throws(() => gate.offer({ name: "mail", tool: "mail.release" }, "module:mail"), /configured in config.json/);
+  assert.throws(() => gate.offer({ name: "google:mail", tool: "courier.release" }, "module:courier"), /may offer only a sender named courier/);
+  assert.throws(() => gate.offer({ name: "courierx", tool: "courier.release" }, "module:courier"), /may offer only a sender named courier/);
+  assert.throws(() => gate.offer({ name: "courier-x", tool: "vault.release" }, "module:courier"), /one of its own tools/);
+  assert.throws(() => gate.offer({ name: "courier", tool: "courier.release" }, "mcp"), /only a module/);
+  assert.throws(() => gate.offer({ name: "courier", tool: "courier.release", kinds: ["broadcast"] }, "module:courier"), /kinds must be/);
+  // Offering again at the next start replaces the last.
+  offerBoard(gate);
+  gate.offer({ name: "courier:board", tool: "courier.post", kinds: ["send"] }, "module:courier");
+  assert.equal(gate.senders().filter(s => s.name === "courier:board").length, 1);
+  assert.deepEqual(gate.senders().find(s => s.name === "courier:board").kinds, ["send"]);
+  assert.throws(() => gate.request({ kind: "delete", via: "courier:board", to: "x", content: {} }), /does not delete/);
+  assert.throws(() => gate.request({ kind: "send", via: "courier:board", to: "x", content: [] }), /content must be an object/);
+});
+
+test("gate: a module sender's error sends it back to held, and reject never calls it", async () => {
+  const { gate, calls } = withModule({ fail: "the board is read-only today" });
+  offerBoard(gate);
+  const { id } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { text: "hi" } });
+  const out = await gate.approve({ id });
+  assert.equal(out.state, "failed");
+  assert.equal(out.error, "the board is read-only today");
+  assert.equal(gate.held()[0].error, "the board is read-only today");
+  const { id: id2 } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { text: "hi" } });
+  const before = calls.length;
+  gate.reject({ id: id2 });
+  assert.equal(calls.length, before);
+});
+
+test("gate: after a restart, an item held under a module sender not yet offered stays listed and held", async () => {
+  const first = withModule();
+  offerBoard(first.gate);
+  const { id } = first.gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update", text: "hi" } });
+  const { gate, calls } = withModule({ db: first.db });
+  assert.equal(gate.held()[0].summary, "");
+  assert.equal(gate.get({ id }).state, "held");
+  await assert.rejects(gate.approve({ id }), /the courier:board sender is not available; is the courier module running\?/);
+  assert.equal(gate.get({ id }).state, "held");
+  assert.equal(calls.length, 0);
+  offerBoard(gate);
+  assert.equal(gate.held()[0].summary, "Weekly update");
+  assert.equal((await gate.approve({ id })).state, "sent");
+});

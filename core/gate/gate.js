@@ -30,6 +30,9 @@ export const MIGRATIONS = [
    CREATE INDEX gate_items_state ON gate_items (state, at);`,
   // Where the agent first addressed it, so a revision that changes `to` still counts as an edit.
   `ALTER TABLE gate_items ADD COLUMN draft_dest TEXT;`,
+  // The module whose offered sender an item was held under, so after a restart, before that module
+  // offers again, Approve can say which module to start rather than "no such sender".
+  `ALTER TABLE gate_items ADD COLUMN sender_module TEXT;`,
 ];
 
 export const KINDS = ["send", "spend", "delete"];
@@ -40,12 +43,30 @@ const MAX_SNIPPETS = 12, SNIPPET = 160, MAX_WORDS = 1500;
 
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const isObject = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * A sender a module offered (gate.offer). The Gate holds, shows and records it like any other;
+ * the module's own internal tool sends exactly the approved content, and checks the rest itself.
+ * @param {{ name: string, tool: string, kinds: string[], content: Record<string, string> }} o
+ */
+const moduleType = o => ({
+  kinds: o.kinds, content: o.content,
+  check(to, c) { if (!isObject(c)) throw new Error("content must be an object"); },
+  summary: (to, c) => cut(String(c.summary || c.subject || c.tool || o.name), 120),
+  async send(to, c, s, deps) {
+    const r = await deps.call(o.tool, { id: deps.id, to, content: c });
+    if (r && r.error) throw new Error(r.error.message || r.error.code || `${o.tool} failed`);
+    return r ? r.data : null;
+  },
+});
 
 /**
  * @typedef {{ db: import("node:sqlite").DatabaseSync, emit: (type: string, payload: any, where?: any) => any,
  *   fetchCredential: (item: string, field?: string) => Promise<string>, relay: (input: any) => Promise<any>,
  *   teach?: (kind: string, fact: any) => Promise<any>, senders?: Record<string, any>, fetch?: typeof fetch,
- *   now?: () => number, types?: Record<string, any>, log?: (m: string) => void }} GateDeps
+ *   now?: () => number, types?: Record<string, any>, log?: (m: string) => void,
+ *   call?: (tool: string, input: any) => Promise<any> }} GateDeps
  */
 
 export class Gate {
@@ -62,6 +83,28 @@ export class Gate {
       if (bad) deps.log?.(`gate: ${bad}; it is left out`);
       else this.senderConfig[name] = s;
     }
+    /** Senders modules offered since this vyred started, by name. @type {Record<string, any>} */
+    this.offered = {};
+  }
+
+  /**
+   * A module offers a sender of its own: a name in its namespace and one of its own tools that
+   * sends. Offering the same name again replaces it, since a module offers at every start.
+   * @param {{ name: string, tool: string, kinds?: string[], content?: Record<string, string> }} input
+   * @param {string} caller
+   */
+  offer({ name, tool, kinds, content }, caller) {
+    const m = /^module:(.+)$/.exec(String(caller || ""))?.[1];
+    if (!m) throw new Error("only a module offers a sender");
+    name = String(name || ""); tool = String(tool || "");
+    if (!(name === m || name.startsWith(m + ":") || name.startsWith(m + "-"))) throw new Error(`${m} may offer only a sender named ${m}, ${m}:<name> or ${m}-<name>`);
+    if (!tool.startsWith(m + ".")) throw new Error(`${m} may offer only one of its own tools (${m}.<name>) to send`);
+    if (this.senderConfig[name]) throw new Error(`${name} is a sender configured in config.json`);
+    if (this.offered[name] && this.offered[name].module !== m) throw new Error(`${name} is already offered by ${this.offered[name].module}`);
+    if (kinds !== undefined && (!Array.isArray(kinds) || !kinds.length || kinds.some(k => !KINDS.includes(k)))) throw new Error(`kinds must be some of ${KINDS.join(", ")}`);
+    if (content !== undefined && !isObject(content)) throw new Error("content must be an object describing what the sender takes");
+    this.offered[name] = { module: m, name, tool, kinds: kinds || [...KINDS], content: content || {} };
+    return { name, kinds: this.offered[name].kinds };
   }
 
   /**
@@ -79,16 +122,24 @@ export class Gate {
     return Object.entries(this.senderConfig).map(([name, s]) => {
       const t = this.types[s.type];
       return { name, type: s.type, kinds: s.kinds || t.kinds, content: t.content, ...(s.hosts ? { hosts: s.hosts } : {}) };
-    });
+    }).concat(Object.values(this.offered).map(o => ({ name: o.name, type: "module", module: o.module, kinds: o.kinds, content: o.content })));
   }
 
   sender(via) {
     const s = this.senderConfig[via];
+    const o = s ? null : this.offered[via];
+    if (o) return { s: { type: "module", module: o.module }, t: moduleType(o) };
     if (!s) {
-      const names = Object.keys(this.senderConfig);
+      const names = [...Object.keys(this.senderConfig), ...Object.keys(this.offered)];
       throw new Error(`no sender "${via}"${names.length ? `; the senders are ${names.join(", ")}` : "; none is configured (gate.senders in config.json)"}`);
     }
     return { s, t: this.types[s.type] };
+  }
+
+  /** A held item's sender, or why a module's one is not here (its module has not offered it since vyred started). */
+  senderOf(r) {
+    if (r.sender_module && !this.senderConfig[r.via] && !this.offered[r.via]) throw new Error(`the ${r.via} sender is not available; is the ${r.sender_module} module running?`);
+    return this.sender(r.via);
   }
 
   /**
@@ -106,9 +157,9 @@ export class Gate {
     if (!content || typeof content !== "object" || Array.isArray(content)) throw new Error("content must be an object");
     t.check(dest, content, s);
     const id = crypto.randomBytes(9).toString("hex");
-    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held')`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
-      why ? cut(String(why), 1000) : null, agent, thread || null, project || null);
+    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state, sender_module)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
+      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null);
     const summary = t.summary(dest, content);
     this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
     return { id, state: "held", message: `Held at the Gate as ${id}. The user sees it, with where it is going, and nothing goes out until they approve it. Do not send it another way.` };
@@ -125,7 +176,7 @@ export class Gate {
 
   brief(r) {
     const draft = json(r.final, null) || json(r.draft, {});
-    const t = this.types[this.senderConfig[r.via]?.type];
+    const t = this.senderConfig[r.via] || this.offered[r.via] ? this.sender(r.via).t : null;
     return { id: r.id, kind: r.kind, via: r.via, to: json(r.dest, []), summary: t ? t.summary(json(r.dest, []), draft) : "",
       why: r.why, agent: r.agent, thread: r.thread, project: r.project, at: r.at, ...(r.error ? { error: r.error } : {}) };
   }
@@ -151,7 +202,7 @@ export class Gate {
   async approve({ id, edited, by }) {
     const r = this.row(id);
     if (r.state !== "held") throw new Error(`${id} is already ${r.state}`);
-    const { s, t } = this.sender(r.via);
+    const { s, t } = this.senderOf(r);
     const draft = json(r.draft, {});
     const { dest, final } = this.merge(r, edited);
     const taken = this.db.prepare("UPDATE gate_items SET state = 'sending', final = ?, dest = ?, by = ? WHERE id = ? AND state = 'held'")
@@ -159,7 +210,7 @@ export class Gate {
     if (Number(taken.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
     const w = where(r.thread, r.project);
     try {
-      const result = await t.send(dest, final, s, { fetchCredential: this.deps.fetchCredential, relay: this.deps.relay, fetch: this.deps.fetch });
+      const result = await t.send(dest, final, s, { fetchCredential: this.deps.fetchCredential, relay: this.deps.relay, fetch: this.deps.fetch, call: this.deps.call, id });
       this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, error = NULL, decided = ? WHERE id = ?").run(JSON.stringify(result ?? null), this.now(), id);
       const edits = diff(draft, final);
       const changed = edits.removed.length > 0 || edits.added.length > 0 || JSON.stringify(dest) !== (r.draft_dest ?? r.dest);
@@ -182,7 +233,7 @@ export class Gate {
    * @param {any} r the row @param {any} edited
    */
   merge(r, edited) {
-    const { s, t } = this.sender(r.via);
+    const { s, t } = this.senderOf(r);
     const base = json(r.final, null) || json(r.draft, {});
     let dest = json(r.dest, []);
     if (edited === undefined) return { dest, final: base };

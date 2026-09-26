@@ -11,7 +11,7 @@ import path from "node:path";
 import http from "node:http";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, writeModule } from "../../test/helpers.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 
@@ -109,4 +109,49 @@ test("gate: a module not named in gate.approvers cannot approve", async t => {
   const { id } = (await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "s", body: "b" } }, { root, caller: "mcp" })).data;
   const r = await d.registry.call("gate.approve", { id }, "module:chat");
   assert.match(r.error.message, /may not approve for the user/);
+});
+
+// A module that is its own way out: it offers a sender at start, and the Gate calls its internal
+// release tool with exactly what the user approved.
+const COURIER = `export default { async start(ctx) {
+  const got = [];
+  ctx.tool("courier.release", { internal: true, run: (input, { caller }) => { got.push({ input, caller }); return { posted: true }; } });
+  ctx.tool("courier.got", { run: () => got });
+  ctx.tool("courier.spoof", { run: async ({ name, tool }) => ctx.call("gate.offer", { name, tool }) });
+  const r = await ctx.call("gate.offer", { name: "courier:board", tool: "courier.release", content: { text: "string" } });
+  if (r.error) throw new Error(r.error.message);
+  return {};
+} };`;
+
+test("gate: a module offers a sender, and the user's edited approval reaches its release tool as module:gate", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
+    gate: { senders: { mail: { type: "gmail", vault: "work-mail-token" } } } }));
+  writeModule(path.join(root, "modules"), "courier", { requires: ["gate"], does: { tools: ["courier.release", "courier.got", "courier.spoof"] } }, COURIER);
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const local = (tool, input = {}) => call(tool, input, { root, caller: "local" });
+  assert.equal(d.registry.status().find(m => m.name === "courier")?.state, "running");
+  assert.equal((await local("gate.offer", { name: "x", tool: "x.y" })).error.code, "no_such_tool", "modules only");
+  assert.ok((await local("gate.senders")).data.some(s => s.name === "courier:board" && s.type === "module"));
+
+  const ask = () => call("gate.request", { kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update", text: "Ovens are in." } }, { root, caller: "mcp" });
+  const { id } = (await ask()).data;
+  assert.equal((await local("gate.held")).data[0].summary, "Weekly update");
+  assert.deepEqual((await local("courier.got")).data, []);
+  const out = await local("gate.approve", { id, edited: { text: "Ovens are in. The mixer ships Friday." } });
+  assert.equal(out.data.state, "sent", JSON.stringify(out));
+  assert.deepEqual(out.data.result, { posted: true });
+  assert.deepEqual((await local("courier.got")).data, [{ caller: "module:gate",
+    input: { id, to: ["#northwind"], content: { summary: "Weekly update", text: "Ovens are in. The mixer ships Friday." } } }]);
+
+  // Reject never reaches the module.
+  const { id: id2 } = (await ask()).data;
+  assert.equal((await local("gate.reject", { id: id2 })).data.state, "rejected");
+  assert.equal((await local("courier.got")).data.length, 1);
+
+  // Someone else's name, someone else's tool, or a configured sender's name: refused.
+  assert.match((await local("courier.spoof", { name: "google:mail", tool: "courier.release" })).data.error.message, /may offer only a sender named courier/);
+  assert.match((await local("courier.spoof", { name: "courier:x", tool: "vault.release" })).data.error.message, /one of its own tools/);
+  assert.match((await local("courier.spoof", { name: "mail", tool: "courier.release" })).data.error.message, /may offer only a sender named courier/);
 });
