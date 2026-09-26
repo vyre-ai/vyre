@@ -75,7 +75,8 @@ export function privateSocketDir() {
 /** @typedef {{ name?: string, role: "box"|"local", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any,
- *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } } }} Config */
+ *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
+ *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> } }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
@@ -90,6 +91,8 @@ function defaults() {
     // Off: no computer's Chrome goes out through the user's Mac until the owner lists sites
     // (core/computers/egress.js, box/compose.egress.yml).
     glass: { egress: { enabled: false, sites: [] } },
+    // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
+    hooks: { enabled: false, port: 7310, routes: {} },
   };
 }
 
@@ -112,6 +115,7 @@ export function load(root = home()) {
     modules: { ...d.modules, ...(user.modules || {}) },
     network: { ...d.network, ...(user.network || {}) },
     glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
+    hooks: { ...d.hooks, ...(user.hooks || {}) },
   };
   c.projectsDir = untilde(c.projectsDir);
   c.roots = (c.roots || []).map(untilde);
