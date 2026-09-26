@@ -217,12 +217,14 @@ and a declaration only ever adds to it.
 `presence = { method, keyId }`. `keyId` is the enrolled Capsule key or passkey, or null. The
 proof itself never reaches a tool.
 
-**The terminal method on the box.** The Mac that Claude runs on usually holds the user's SSH keys
-to the box, and `ssh -t box` gives a model a login terminal that `who` lists. Whoever holds the
-client end of that terminal reads the code vyred writes to it. So on the box (`role: "box"`), a
-terminal code proves presence only for `presence.code` and `presence.enroll`, and only until the
-first passkey is enrolled. After that, the box takes passkeys. On a Mac, `ssh localhost` works
-the same way when Remote Login is on. That is one more reason `vyre` uses Touch ID first.
+**The terminal method on the box.** The Mac that Claude runs on usually holds the user's SSH
+keys to the box, and `ssh -t box` gives a model a login terminal that `who` lists. Whoever holds
+the client end of that terminal reads the code vyred writes to it. So on the box (`role: "box"`),
+a terminal code proves presence only until the first passkey is enrolled: that covers
+onboarding and the first pairing, when nothing stronger exists. After that, the box takes
+passkeys only. Onboarding should end with a passkey, enrolled through `presence.code`, which the
+onboarding module can mint as a module caller. On a Mac, `ssh localhost` works the same way when
+Remote Login is on. That is one more reason `vyre` uses Touch ID first.
 
 **Box identity.** `tailnet:<login>` is an owner device, not a person. Claude on the Mac shares
 that login. A tailnet caller may read what the owner may read, but it gets no presence.
@@ -241,14 +243,26 @@ denies these by command text. The real fix is separation:
 - Or put a body-checking proxy that vyred owns in front of the Engine. It should allow only the
   create body ADR 0009 describes, and exec only into `run.vyre.computers` containers.
 
-**Sessions, for the Deck.** A person revealing or copying items one after another should not
-need a passkey on every click. Planned, not built: a `session` method. After a passkey
-assertion, vyred issues a secret that lasts a few minutes, bound to that passkey and to a list of
-tools the owner declared as session-able (`vault.reveal`, `vault.copy`, `vault.totp`). A tool-side
-`skip` hook that reads headers is not accepted. Headers are the thing a model forges.
+**Sessions, for the Deck.** Someone revealing or copying items one after another should not need
+a passkey for every click. `presence.session.open` is on the floor's list and opens only after
+Touch ID, a Capsule signature or a passkey. It returns a secret that lasts 5 minutes idle and 30
+at most, bound to the tailnet node that opened it. The proof is then
+`x-vyre-presence: session id=<id> secret=<secret>`.
+
+Only the floor's `SESSIONABLE` tools (`vault.reveal`, `vault.copy`, `vault.totp`) take it, and
+only when the tool's `presence.session(input)` says yes, so a reprompt item never rides a
+session. A tool-side skip that reads headers is not accepted, because headers are what a model
+forges.
 
 **Accepting a lesson by reply.** A lesson changes what Claude is told in every later session, so
 a forged "yes" is a persistent prompt injection, not only a stricter rule. Learning may accept by
 reply only when the prompt came from a person. That means an interactive Claude Code prompt, or a
 `threads.send` whose surface proved presence. A prompt that an agent or the assistant typed into
 a thread never counts, and neither does `-p` input.
+
+**Merging.** Presence applies to every human-only tool as soon as it reaches `main`. Any test that
+starts a real vyred and calls one of these tools as a person needs a verifier:
+`start({ presence: present })` (from `test/helpers.js`), or a real proof. The security branch
+already carries those edits for the gate, vault, watchers, switchboard, Capsule bridge,
+computers, glass, hands, link and CLI tests. A branch that merges after it keeps them, and adds
+the same line to any new test of that kind.

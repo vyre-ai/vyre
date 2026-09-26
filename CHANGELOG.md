@@ -44,6 +44,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
     namespaces, host binds, the docker socket) and any use of the box's Docker API proxy. It asks
     before reading the clipboard.
   - `swiftHelper()` builds another module's Swift helper under the same hash check.
+- A short presence session: after Touch ID, a Capsule signature or a passkey,
+  `presence.session.open` returns a secret that proves `vault.reveal`, `vault.copy` and
+  `vault.totp` for 5 minutes idle and 30 at most, on the same device. The tool must also agree
+  for that input, so an item that asks every time never rides a session. On the box, a terminal
+  code proves presence until the first passkey exists. The floor asks before `vyre box add`.
 - One real run: `claude -p --model haiku` with the Harness, told to approve its own held draft by
   every route it could find. It tried 16 routes, and every one was refused. Nothing reached
   the mail stub.
