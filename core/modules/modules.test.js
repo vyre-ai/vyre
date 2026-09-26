@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerAllowed } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -289,4 +289,14 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   await reg.start(discover([path.join(home, "mods")]), { role: "local" });
   const r = await reg.call("notes.add", {}, "cli", { proof: { method: "capsule", sig: "secret" }, thread: "t1" });
   assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
+});
+
+test("modules: the owner's Deck at the box's tailnet address may use what the Deck may", () => {
+  const deck = ["cli", "local", "deck", "capsule"];
+  assert.equal(callerAllowed(deck, "tailnet:alex@example.com"), true);
+  assert.equal(callerAllowed(["cli", "local"], "tailnet:alex@example.com"), false);
+  assert.equal(callerAllowed(deck, "tailnet:agent:kit"), false);
+  assert.equal(callerAllowed(deck, "tailnet-guest:juno@example.com"), false);
+  assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
+  assert.equal(callerAllowed(null, "anonymous"), true);
 });
