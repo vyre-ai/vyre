@@ -7,11 +7,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { LocalHelper, NOT_BUILT, toResults, toDefineResult, firstSentence } from "./helper.js";
 import { iconFile } from "./icons.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 const FAKE = `
 const mode = process.env.FAKE_MODE || "ok";
@@ -47,7 +47,7 @@ process.stdin.on("end", () => process.exit(0));
 
 /** A fake binary and a spawn that runs it with node. */
 function fake(t, mode = "ok") {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-local-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-local-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const bin = path.join(dir, "local.cjs");
   fs.writeFileSync(bin, FAKE);
@@ -220,7 +220,7 @@ test("helper: the real binary defines a word and reports Contacts status", { ski
 });
 
 test("helper: the real binary names icon files as icons.js does", { skip: !fs.existsSync(REAL) && "bin/local not built" }, async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-local-icons-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-local-icons-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const h = new LocalHelper(REAL);
   t.after(() => h.close());
@@ -294,7 +294,7 @@ test("helper: the real binary watches and writes a private pasteboard", { skip: 
     await other({ op: "clip.put", board, types: { "public.utf8-plain-text": "secret", [marker]: "" } });
     assert.equal((await other({ op: "clip.peek", board })).skipped, "marked", marker);
   }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-clip-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-clip-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "a.txt");
   fs.writeFileSync(file, "a");

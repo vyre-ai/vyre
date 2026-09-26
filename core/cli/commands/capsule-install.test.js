@@ -8,10 +8,10 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { install, expected, stray } from "./capsule-install.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 const mac = process.platform === "darwin";
 
@@ -32,7 +32,7 @@ test("capsule install: on Linux it says the Capsule is a Mac app", async t => {
 
 /** A zip holding a tiny Vyre.app, served with SHA256SUMS; a temp Applications folder. */
 async function setup(t, { sums, layout } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-capsule-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-capsule-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const app = path.join(dir, "src", "Vyre.app", "Contents");
   fs.mkdirSync(app, { recursive: true });

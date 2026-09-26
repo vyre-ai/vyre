@@ -9,7 +9,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import http from "node:http";
@@ -18,13 +17,14 @@ import { start } from "../../core/daemon/index.js";
 import { call } from "../../core/daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const HAVE_CHROME = fs.existsSync(CHROME_BIN);
 
 /** One headless Chrome, its own temp profile, killed and removed on teardown. */
 async function launchChrome(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-chrome-test-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-chrome-test-"));
   const logFile = path.join(dir, "chrome.log");
   const log = fs.openSync(logFile, "a");
   const child = spawn(CHROME_BIN, [

@@ -6,16 +6,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { Icons, iconFile, BATCH } from "./icons.js";
 import { LocalHelper } from "./helper.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** @param {import("node:test").TestContext} t */
 function tmp(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-icons-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-icons-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

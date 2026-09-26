@@ -27,3 +27,6 @@ const KEY = crypto.createHash("sha256").update(REPO_ROOT).digest("hex").slice(0,
 /** Every test temp dir in this checkout lives under here, never bare in $TMPDIR. */
 export const SCRATCH = path.join(os.tmpdir(), `vt-${KEY}`);
 fs.mkdirSync(SCRATCH, { recursive: true });
+// Product code that makes its own temp folders (backup staging, image thumbnails) puts them under
+// VYRE_TMPDIR when set; point it here, for this process and every vyre/vyred a test spawns.
+if (!process.env.VYRE_TMPDIR) process.env.VYRE_TMPDIR = SCRATCH;

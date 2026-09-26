@@ -8,19 +8,19 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { fingerprint, normalizeFingerprint, safetyWords, Share } from "./share.js";
 import { newIdentity } from "./crypto.js";
 import * as relay from "./relay.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 
 /** A Vault in a temp home, with its events and logs captured. */
 function mk(t, name, vault = {}) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-share-"));
+  const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-share-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   /** @type {{ type: string, payload: any }[]} */

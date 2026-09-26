@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Tests keep their temp folders under SCRATCH
+
+- Test runs kept leaving folders bare in `$TMPDIR` (`vyre-local-*`, `vyre-frec-*`, `vyre-clip-*`
+  and others). Every test that made a temp folder with `os.tmpdir()` now makes it under `SCRATCH`
+  (`test/scratch.mjs`, one folder per checkout) and removes it when the test ends.
+- The leaks at the source: `local/capsule/lib/local.test.js` never removed its folders (five a
+  run); the frecency tests there and in `launcher.test.js` removed the folder, then the 500 ms save
+  timer fired and made it again. Both now save before removing.
+- Product code that makes its own temp folders, backup staging (`core/names/backup.js`, used by
+  `vyre backup`) and image thumbnails (`core/files/index.js`), puts them under `VYRE_TMPDIR` when
+  it is set. `test/scratch.mjs` sets it to `SCRATCH`, so tests and every vyre or vyred they spawn
+  stay inside it. Both already removed their folder in a `finally`.
+- `vyre box` keeps its ssh control folder in `/tmp` (a socket path must be short), and now also
+  removes it when the process exits without calling close().
+- `local/capsule/build.sh` makes its plist under `$TMPDIR` and removes it on a signal as well
+  as on a normal exit.
+- The `npm test` leak guard (`test/tmp-guard.mjs`) also fails on new `vyre-*`, `vy-*`, `vssh-*`
+  and `computerd-*` entries left bare in `$TMPDIR`, counting only ones that did not exist before
+  the run and were changed after it began, so a sibling worktree's older leftovers do not count.
+
 #### Presence: a person proves they are there (ADR 0004)
 
 - A model could approve its own held email. The caller is only a header on a socket the user
