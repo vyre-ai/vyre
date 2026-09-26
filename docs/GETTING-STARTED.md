@@ -148,6 +148,12 @@ Not yet checked on a real server: the Tailscale sign-in, the certificate for you
 
 ## If something goes wrong
 
+Start with `vyre doctor`, on the Mac or on the server. It checks vyred, Tailscale on both ends
+(signed in, the same account, MagicDNS and HTTPS on), your phone on the tailnet, the box's
+address, a passkey for that address, pairing, Claude on the box and the Capsule, in under two
+seconds, and puts the one thing to do under each line that failed. `vyre doctor --json` gives the
+same list to a script.
+
 - The link says it expired or was used: run `vyre up` on the server for a new one.
 - The page will not load: check that the `ssh -N -L` line is still running, and that you opened
   `127.0.0.1:7300`, not `localhost:7300`.

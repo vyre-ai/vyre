@@ -23,7 +23,8 @@ const REFUSED = /needs a person at a terminal|needs presence by/;
 test("cli: up, status, call, down against a temp home", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
-  assert.match((await run(["up"], env)).out, /vyred running/);
+  // A fresh home gets the welcome; an existing one the status line.
+  assert.match((await run(["up"], env)).out, /Vyre is installed|vyred running/);
   assert.match((await run(["up"], env)).out, /already running/);
   assert.match((await run(["status"], env)).out, /modules running/);
   const echo = await run(["call", "system.echo", '{"text":"hi"}'], env);

@@ -217,7 +217,7 @@ test("box add: a finished box pairs this Mac and asks for the approval in the De
   assert.doesNotMatch(r.read("vyre.log"), /link approve/, "anything in the box's container could approve over SSH");
   assert.doesNotMatch(r.read("vyre.log"), /^up /m, "a finished box needs no link, tunnel or browser");
   assert.equal(r.read("opened"), "");
-  assert.match(text, /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
+  assert.match(text, /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
 });
 
 test("box add: with no passkey yet, the enrollment link opens before pairing", async t => {

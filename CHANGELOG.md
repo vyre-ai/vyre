@@ -14,6 +14,76 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A switchboard test compared a thread's status across two reads while it could still be
   starting; it now waits until the thread has started.
 
+#### A first index that the Mac does not feel
+
+- On a user's Mac the first `vyre up` held about 500% CPU for 7+ minutes while Recall embedded
+  their whole Claude Code history, and the machine glitched. Now:
+  - The search model runs in a process of its own at nice 19 (`core/recall/embed-worker.js`,
+    `spawnEmbedder`), with ONNX Runtime on one thread (`intraOpNumThreads` and
+    `interOpNumThreads` 1), and exits with vyred.
+  - Background work is paced: after each transcript file and each embedded turn it sleeps as long
+    again (`recall.duty`, default 0.5), and pauses while on battery under 30% (`recall.lowBattery`)
+    or while the load average is above the number of cores, looked at once a minute
+    (`core/recall/pace.js`).
+  - Keyword search works from the first indexed session. `vyre status` and `vyre doctor` say
+    where it stands: "indexing 1,234 of 5,678 sessions, low priority", then "search by meaning:
+    1,000 of 40,000 turns, low priority; keyword search works now", or why it is paused.
+    `recall.status` gains `progress { sessions, paused, priority }`.
+- Measured on the test box, 20,016 turns: vyred and the model together average 0.46 cores
+  (fake model, 60 s) and 0.41 cores (the real model, 120 s, download included), the model's
+  process at nice 19, keyword search answering throughout. `scripts/perf-check --first-run
+  [--real-model]` is that check; `core/recall/pace.test.js` measures the model process on the
+  fixture corpus (0.43 cores, budget 0.65).
+- `/v1/health` carries `memory` (rss, heapUsed, external, in MB); stress-drive samples it, reports
+  the JS heap's slope beside RSS, and leaves out the samples taken while it reads the log back.
+
+#### A temp home never reaches a real box
+
+- A first-run check on the test box, in a temp home with the real Tailscale, found the user's
+  live box through `link.find` and sent it a real pairing request (denied on the box). Now
+  `link.find` and `link.pair` refuse with `not_real_home` unless the home is `~/.vyre`, or
+  `VYRE_ALLOW_DIALOGS=1` or `VYRE_ALLOW_REAL_BOX=1` is set; never under tests. A fake tailscale
+  (`VYRE_TAILSCALE_BIN`), a box on loopback and the link tests' seams are not real boxes and pass.
+  `vyre up` says why when it is refused. `core/config/dialogs.js` (`realBoxAllowed`),
+  `core/link/mac.js`, `test/link-guard.test.js`.
+
+#### A first `vyre up` that says what it is and what to do next
+
+- Root cause of a user's broken first run: `vyre` on their PATH was an old prototype
+  (`~/.local/bin/vyre`, a link into the prototype's bin/), not the package npm had just installed.
+  Its `up` printed "vyred running", started the prototype's daemon, which opens Chrome on
+  about:blank for its own automation, and never made `~/.vyre`. The published vyre.tgz, run in a
+  temp home on the test box, prints the full line and makes `~/.vyre`.
+- `npm i -g vyre` now ends with the mark and "Vyre installed. Run: vyre up", written to the
+  terminal (npm hides a script's output), and warns when another `vyre` comes first on PATH, with
+  the `rm` and `hash -r` to fix it. `scripts/postinstall.mjs`, `core/cli/shadow.js`.
+- `vyre doctor` flags any other `vyre` on PATH, first or later.
+- The first `vyre up` on a machine (no home yet) opens with the mark, "Vyre is installed ·
+  0.0.1 · <commit>", and two sentences on what Vyre is, instead of a status line. The "Where
+  should Vyre run?" choices each say what they mean. Choice 3 asks for the box's address, says it
+  is asking the box to pair, and prints "Approve this Mac on your phone at <address>" with the
+  code. While that approval is pending, `vyre up` ends with "Once you approve it, run vyre up
+  again to finish." instead of "Vyre is ready."; `--json` says `ready: false, pairing`.
+- `vyre up --box` on a Mac says "Opening it in your browser now." before it opens the setup page,
+  and opens nothing when dialogs are off. `core/cli/brand.js`, `core/cli/commands/up.js`,
+  `core/cli/commands/box.js`.
+
+#### `vyre doctor`
+
+- One read-only command that checks what a first night trips on and says what to do: vyred
+  (version and commit), Tailscale here (signed in), MagicDNS and HTTPS on the tailnet, Tailscale
+  on the box (online, the same account), the phone online on the tailnet, the box's address
+  (resolves, answers, its version), a passkey enrolled for that address (the rpId), this Mac
+  paired (or the code waiting for approval), Claude signed in on the box, the Capsule (installed,
+  and whether Control twice works), and the install size. Each line is ✓, ✗ with the one-line
+  fix, or ? with why it could not be checked. Every check runs at once with its own 1.5 s
+  timeout and the run is cut off at 2 s (0.2 s on the test box). `--json` gives
+  `{ ok, role, ms, checks: [{ id, label, ok, detail, fix }] }`; exit 1 when anything failed.
+  `core/cli/commands/doctor.js`.
+- For it: `presence.keys` includes each key's `rp_id`; `core/cli/tailnet.js` status takes a
+  timeout and reports `magicDNS` and `certDomains`; new tool `capsule.report {ok, message}`
+  emits `capsule.hotkey`, for the Capsule app to say whether Control twice works (TCC holds
+  Vyre.app responsible, so only the app can know).
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
