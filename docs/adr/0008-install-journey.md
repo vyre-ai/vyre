@@ -73,8 +73,9 @@ The glue this ADR adds. Run on the Mac; everything on the server happens through
    printing one line per step as it completes. Ctrl-C leaves the box as it is; running `vyre box
    add` again resumes from where it stands, because every step is worked out from the box.
 7. **Finish on the Mac.** When the address serves, close the tunnel, save `network.box` and
-   `box.ssh` (`user@host`, for `vyre box update|backup|move|remove`), pair (section 3), start the
-   Mac's history index, offer the Capsule (section 6), and print the ending.
+   `box.ssh` (`user@host`, for `vyre box update|backup|move|remove`), pair and approve the code
+   over SSH (section 7), and print the ending. A box that already finished onboarding goes
+   straight here, so running `vyre box add` again is how a person resumes.
 
 Door B joins the same journey at step 5: its `vyre up` prints the link, and when the person later
 runs `vyre up` on their Mac, the Mac finds the box on the tailnet and does step 7.
@@ -94,11 +95,10 @@ runs `vyre up` on their Mac, the Mac finds the box on the tailnet and does step 
   an owner. A tagged node has no user, and falls back to ADR 0002's claim link.
 - **Names.** The box's Tailscale hostname is `vyre` (`VYRE_TS_HOSTNAME`; a second box is
   `vyre-2`). With MagicDNS, which is on by default, it is `vyre.<tailnet>.ts.net`.
-- **How the Mac finds the box.** `network.box` when set. Otherwise it scans `Peer` in `tailscale
-  status --json` for a peer with the same `UserID` as this Mac, online, whose `DNSName` starts
-  with `vyre`, and asks each `GET /v1/health`. One answer: that is the box. Several: it lists
-  them and asks. The vyre.run name, when there is one, is only ever a nicer spelling of the same
-  address.
+- **How the Mac finds the box.** `network.box` when set. Otherwise `link.find`: the online peers
+  in `tailscale status --json` that answer `GET /v1/health` as a box, at the name on their
+  certificate. One answer: that is the box. Several: `vyre up` lists them and asks. The vyre.run
+  name, when there is one, is only ever a nicer spelling of the same address.
 - **The Mac is never changed.** Vyre does not run `tailscale up`, `set` or `logout` on a Mac.
 
 ### 4. Names and certificates
@@ -179,17 +179,19 @@ and `vyre up` prints the same block every time after, so "is it done?" always ha
 
 ### 7. Pairing the Mac and the box
 
-**Trust is Tailscale identity in both directions; there is no shared secret.** The box serves
-only `network.owner`'s untagged devices (ADR 0002), which already includes the Mac. The Mac
-trusts a box when `tailscale whois` of its address names the Mac's own login and its
-certificate is valid for the address.
+**The Mac shows a code and the box's owner approves it** (the link module, `core/link`). The first
+connection learns the box's node; everything after is pinned to it, and the approval on that very
+box is what makes the pin trustworthy. Approval comes from the box itself (`vyre link approve
+<code>`) or from another of the owner's devices in the Deck, never from the Mac asking.
 
-**A code is shown only when trust by identity cannot decide**: when more than one box answers,
-or when the box's owner is not the Mac's login (a shared node, or a tagged box claimed by link).
-Then the Deck on the box shows a six-digit code under "A Mac wants to connect", and the person
-types it on the Mac (`vyre link <code>`). The link workstream owns the mechanics
-(`link.pair`, `link.status`, `ctx.remote`) and the offline behaviour; this ADR fixes only when a
-code is needed.
+- **Door A approves for the person.** `vyre box add` has just reached the server over SSH, which
+  proves the person owns it. So after `link.pair` returns the code, it runs `vyre link approve
+  <code>` on the box over the same connection. Nobody types the code.
+- **Door B shows the code.** `vyre up` on the Mac finds the box (`link.find`: online peers of the
+  same tailnet that answer as a box, pinned to the peer's node), starts pairing, and prints the
+  code with where to approve it: the Deck on the phone, or `vyre link approve` on the server.
+- **Owner mismatch.** The box serves only `network.owner` (ADR 0002). A Mac signed in to Tailscale
+  as someone else gets `not_owner`, and `vyre up` says to sign the Mac in as the box's owner.
 
 **Offline.** The Mac works alone for everything that is the Mac's (SPEC floor rule 9): the
 Capsule, local history, the vault's local items. Box features show "your box is not reachable"
@@ -230,5 +232,5 @@ On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an ol
 | `vyre box add|update|backup|move|remove`, `vyre up` on the Mac (discover, ask, ending), `vyre up --json`, `vyre capsule install`, the end-to-end harness, this ADR and JOURNEY.md | install |
 | `onboard.finish` creating the assistant and greeting; `onboard.you` without `names.check`; ts.net as the default in `onboard.name`, with the HTTPS-off check | box |
 | The finish screen (greeting, three ticks, Open Vyre), two QR codes, "Turn on HTTPS", the Mac card, the history wording | deck |
-| `link.pair`, `link.status`, `ctx.remote`, discovery hooks, offline behaviour | link |
+| `link.pair`, `link.find`, `link.status`, `ctx.remote`, offline behaviour | link |
 | `vyre.run/box` alias, `Vyre-mac.zip` and `SHA256SUMS`, GETTING-STARTED linking JOURNEY | release |
