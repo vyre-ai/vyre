@@ -56,12 +56,15 @@ export default {
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
     const folders = readable(ctx.config.transcripts || []);
-    // Every vector in memory for retrieval by meaning; dropped whenever a pass writes, rebuilt on
-    // the next hybrid search.
+    // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
+    // embedded, and rebuilt only when a rewrite deletes turns.
     const dense = new Dense(db);
     const indexer = new Indexer(db, {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       log: ctx.log,
+      // Each new vector goes straight into the dense index, so a pass never forces a rebuild.
+      // A rewrite moves the generation, and the index rebuilds itself on the next search.
+      onVector: item => dense.add(item),
     });
 
     let stopped = false;
@@ -80,7 +83,6 @@ export default {
         running = true;
         try {
           const s = await indexer.run(folders, { stopped: isStopped });
-          if (s.turns || s.reindexed) dense.invalidate();
           return s;
         }
         finally { running = false; vectorLoop(); }
@@ -132,7 +134,6 @@ export default {
             const e = await embedder();
             if (!e || stopped) break;
             const r = await indexer.vectorize(e, { stopped: isStopped });
-            if (r.turns) dense.invalidate();
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
           // Build the dense index now, in the background, so the first search does not pay for it.
