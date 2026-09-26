@@ -79,6 +79,9 @@ function limitNotice(l) {
   return `Claude's ${which}usage limit${pct}${when}.`;
 }
 
+/** A rate-limit warning is said in the thread from this much of the limit used. */
+export const LIMIT_NOTICE_AT = 0.8;
+
 /** The events a watch waits for, and the reason each gives. */
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
@@ -338,12 +341,16 @@ export class Switchboard {
 
   /**
    * Claude Code reported the subscription's rate limit: kept on the thread, emitted as
-   * thread.limit, and said in the thread when it is a warning or a refusal (once per status).
+   * thread.limit, and said in the thread only when it matters: 80% used or more, or refused
+   * (once per status). Claude Code warns from much lower (27% was seen), and a notice at 27% is
+   * noise in every reply.
    */
   limit(id, st, l, project) {
     this.db.prepare("UPDATE threads_runs SET last_limit = ? WHERE id = ?").run(JSON.stringify({ ...l, at: Date.now() }), id);
     this.emit("thread.limit", l, id, project);
-    if (l.status === "allowed" || st.limitStatus === l.status) { st.limitStatus = l.status; return; }
+    if (l.status === "allowed") { st.limitStatus = l.status; return; }
+    const loud = l.status === "rejected" || (typeof l.utilization === "number" && l.utilization >= LIMIT_NOTICE_AT);
+    if (!loud || st.limitStatus === l.status) return;
     st.limitStatus = l.status;
     this.emit("thread.text", { message: "vyre", text: limitNotice(l), done: true, notice: true }, id, project);
   }

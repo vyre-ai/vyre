@@ -633,6 +633,19 @@ test("usage on the subscription: turns and time, no dollars, and the rate-limit 
   assert.ok(juno.duration_ms >= 5);
 });
 
+test("rate limit: a warning under 80% is kept on the thread and not said in it", async t => {
+  const { root, tool } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  const r = (await tool("agents.ask", { agent: "juno", text: "lowlimit" })).data;
+  const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
+  assert.equal(limit.payload.utilization, 0.27);
+  await until(() => of(s.got, r.thread, "thread.finished")[0], "the turn");
+  assert.deepEqual(of(s.got, r.thread, "thread.text").filter(e => e.payload.notice), [], "27% is not worth a line in the reply");
+  assert.equal((await tool("agents.usage", {})).data.find(x => x.agent === "juno").limit.utilization, 0.27, "still recorded");
+});
+
 test("learned skills: the account's and the project's folders load as plugins; lean threads and jobs get only what they name", async t => {
   const { d, root, tool, work, launches } = await boot(t);
   assert.ok(!(await tool("projects.create", { name: "Harlow", home: work })).error);
