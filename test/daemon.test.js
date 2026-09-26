@@ -11,7 +11,7 @@ import { start } from "../core/daemon/index.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
 
-test("daemon: answers health, lists the system module and runs its tools", async t => {
+test("daemon: answers health, lists the system module and runs its tools", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -29,7 +29,7 @@ test("daemon: answers health, lists the system module and runs its tools", async
   assert.equal(last, Math.max(...ev.map(e => e.id)));
 });
 
-test("daemon: bad tool input is a 400 with a readable message", async t => {
+test("daemon: bad tool input is a 400 with a readable message", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -38,7 +38,7 @@ test("daemon: bad tool input is a 400 with a readable message", async t => {
   assert.match(r.error.message, /text is required/);
 });
 
-test("daemon: the socket is private and removed on stop", async t => {
+test("daemon: the socket is private and removed on stop", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   assert.equal(fs.statSync(d.paths.socket).mode & 0o777, 0o600, "other users on the machine could talk to vyred");
@@ -47,14 +47,14 @@ test("daemon: the socket is private and removed on stop", async t => {
   assert.equal(fs.existsSync(d.paths.pid), false);
 });
 
-test("daemon: a second vyred on the same home refuses to start", async t => {
+test("daemon: a second vyred on the same home refuses to start", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   await assert.rejects(start({ root, log: () => {} }), /already running/);
 });
 
-test("daemon: a stale socket from a crash is cleared, not fatal", async t => {
+test("daemon: a stale socket from a crash is cleared, not fatal", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   const sock = d.paths.socket;
@@ -65,7 +65,7 @@ test("daemon: a stale socket from a crash is cleared, not fatal", async t => {
   assert.ok((await request("GET", "/v1/health", undefined, { root })).data);
 });
 
-test("client: with no vyred running, calls degrade to an error instead of throwing", async t => {
+test("client: with no vyred running, calls degrade to an error instead of throwing", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const r = await call("system.echo", { text: "x" }, { root });
   assert.equal(r.error.code, "unreachable");
@@ -73,11 +73,22 @@ test("client: with no vyred running, calls degrade to an error instead of throwi
 
 import http from "node:http";
 
-/** Read an SSE stream until `n` events arrive. */
-function sse(socketPath, pathname, n) {
+/**
+ * Read an SSE stream until `n` events arrive. `onOpen`, if given, fires as soon as the response
+ * headers land — the daemon flushes those the moment it has registered its live listener (see
+ * core/daemon/index.js `stream()`), so this is the one reliable signal that emitting now will be
+ * seen, instead of a caller guessing with a fixed sleep and losing the event to a race on a
+ * loaded machine.
+ *
+ * Has its own hard timeout: without one, a daemon-side regression that drops or delays an event
+ * turns into this promise never settling, which hangs its test forever and, with it, the whole
+ * suite behind it — exactly the failure mode this helper exists to catch, not hide.
+ */
+function sse(socketPath, pathname, n, { onOpen, timeout = 5000 } = {}) {
   return new Promise((resolve, reject) => {
     const got = [];
     const req = http.request({ socketPath, path: pathname, method: "GET" }, res => {
+      if (onOpen) onOpen();
       let buf = "";
       res.setEncoding("utf8");
       res.on("data", c => {
@@ -86,57 +97,73 @@ function sse(socketPath, pathname, n) {
           const block = buf.slice(0, i); buf = buf.slice(i + 2);
           const data = block.split("\n").find(l => l.startsWith("data: "));
           if (data) got.push(JSON.parse(data.slice(6)));
-          if (got.length >= n) { req.destroy(); resolve(got); }
+          if (got.length >= n) { clearTimeout(timer); req.destroy(); resolve(got); }
         }
       });
     });
-    req.on("error", e => { if (got.length < n) reject(e); });
+    req.on("error", e => { if (got.length < n) { clearTimeout(timer); reject(e); } });
+    const timer = setTimeout(() => {
+      req.destroy();
+      reject(new Error(`sse: only ${got.length}/${n} events on ${pathname} within ${timeout}ms`));
+    }, timeout);
     req.end();
   });
 }
 
-test("daemon: the event stream replays the backlog, then goes live, filtered by type", async t => {
+test("daemon: the event stream replays the backlog, then goes live, filtered by type", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   d.events.emit("test", "thread.started", { n: 1 });
   d.events.emit("test", "file.touched", { n: 2 });
-  const pending = sse(d.paths.socket, "/v1/events/stream?type=thread.*", 2);
-  await new Promise(r => setTimeout(r, 50));
+  // Wait for the response headers, not a fixed sleep, before emitting the event this test
+  // expects to arrive live: on a loaded machine a guessed sleep can fire before the daemon has
+  // actually registered its live listener, and the emitted event is then lost for good (see
+  // core/daemon/index.js `stream()`, which now flushes headers exactly when that listener goes
+  // live, precisely so this signal exists).
+  let connected;
+  const opened = new Promise(r => { connected = r; });
+  const pending = sse(d.paths.socket, "/v1/events/stream?type=thread.*", 2, { onOpen: connected });
+  await opened;
   d.events.emit("test", "thread.stopped", { n: 3 });
   const got = await pending;
   assert.deepEqual(got.map(e => e.payload.n), [1, 3]);
 });
 
-test("daemon: since=latest skips the backlog and delivers only new events", async t => {
+test("daemon: since=latest skips the backlog and delivers only new events", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   d.events.emit("test", "thread.started", { n: 1 });
-  const pending = sse(d.paths.socket, "/v1/events/stream?since=latest&type=thread.*", 1);
-  await new Promise(r => setTimeout(r, 50));
+  let connected;
+  const opened = new Promise(r => { connected = r; });
+  const pending = sse(d.paths.socket, "/v1/events/stream?since=latest&type=thread.*", 1, { onOpen: connected });
+  await opened;
   d.events.emit("test", "thread.stopped", { n: 2 });
   assert.deepEqual((await pending).map(e => e.payload.n), [2]);
 });
 
-test("daemon: stop is not held open by a connected event stream", async t => {
+test("daemon: stop is not held open by a connected event stream", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   const req = http.request({ socketPath: d.paths.socket, path: "/v1/events/stream", method: "GET" }, res => res.resume());
   req.on("error", () => {});
+  t.after(() => req.destroy());
+  const opened = new Promise(resolve => req.once("response", resolve));
   req.end();
-  await new Promise(r => setTimeout(r, 50));
+  await opened;
   const t0 = Date.now();
   await d.stop();
   // Without the fix, stop() never returns at all (it hangs forever waiting on the
   // connected stream), so the guarantee this test protects is "resolves" vs "hangs",
   // not a particular speed. The bound stays wall-clock (there is no work counter for
   // "an unbounded hang") but is deliberately huge (measured ~5-10ms on this machine)
-  // so a busy shared machine running many concurrent suites never trips it by accident.
+  // so a busy shared machine running many concurrent suites never trips it by accident. The
+  // test's own { timeout } above is the backstop if stop() regresses to hanging outright.
   assert.ok(Date.now() - t0 < 15000, "stop waited on the stream");
 });
 
-test("daemon: non-API paths serve the Deck and never anything outside deck/", async t => {
+test("daemon: non-API paths serve the Deck and never anything outside deck/", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -147,7 +174,7 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
   }
 });
 
-test("daemon: a real directory under deck/ with no index.html of its own still gets the shell", async t => {
+test("daemon: a real directory under deck/ with no index.html of its own still gets the shell", { timeout: 20_000 }, async t => {
   // A view's own folder (deck/chat/, holding JS modules a view imports, not a page) is a real
   // directory. Before this fix, a bare request for it 404'd instead of falling back to the one
   // shell every client route shares, the way a path that is not a file at all already did.
@@ -172,7 +199,7 @@ test("daemon: a real directory under deck/ with no index.html of its own still g
   assert.equal(mod.body, "// not a page");
 });
 
-test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", async t => {
+test("daemon: on the socket, x-vyre-caller is a label and cannot claim another identity", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   let seen = [];
   const d = await start({ root, log: () => {}, rules: async c => { seen.push(c.caller); return { allow: true }; } });
@@ -187,7 +214,7 @@ test("daemon: on the socket, x-vyre-caller is a label and cannot claim another i
   assert.equal(seen.length, 6);
 });
 
-test("client: the first call after vyred restarts reaches the new vyred", async t => {
+test("client: the first call after vyred restarts reaches the new vyred", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   assert.ok((await call("system.echo", { text: "a" }, { root })).data);
@@ -197,7 +224,7 @@ test("client: the first call after vyred restarts reaches the new vyred", async 
   assert.deepEqual(await call("system.echo", { text: "b" }, { root }), { data: { text: "b" } });
 });
 
-test("daemon: no client on the socket can claim to be a module", async t => {
+test("daemon: no client on the socket can claim to be a module", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
@@ -207,7 +234,7 @@ test("daemon: no client on the socket can claim to be a module", async t => {
   assert.equal(seen, "local");
 });
 
-test("daemon: a request cannot claim the hook caller to reach a webhook-only tool", async t => {
+test("daemon: a request cannot claim the hook caller to reach a webhook-only tool", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "hooky", { does: { tools: ["hooky.in"] } },
     `export default { async start(ctx) { ctx.tool("hooky.in", { hook: true, run: async () => ({ reached: true }) }); return {}; } };`);

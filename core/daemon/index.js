@@ -219,6 +219,12 @@ function stream(req, res, url, events, streams) {
   const lastId = latest ? events.latestId() : Number(req.headers["last-event-id"] || sinceParam || 0);
   const match = type === "*" ? () => true : type.endsWith(".*") ? e => e.type.startsWith(type.slice(0, -1)) : e => e.type === type;
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
+  // Flush now, before any backlog write: an empty backlog would otherwise leave the client with
+  // no bytes at all until the first live event or the 15s heartbeat, so it has no way to tell
+  // "connected, listening" apart from "still connecting". A caller that emits right after opening
+  // the stream (a Deck view, or a test) can then race the listener registration below and lose
+  // that event to a window the client had no signal it needed to wait out.
+  res.flushHeaders();
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
   let cursor = lastId;
   // Backlog in pages, then live. Anything emitted while paging is caught by the cursor check.
