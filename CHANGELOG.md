@@ -65,6 +65,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   guests, agent nodes and egress. Chat and Glass carry a connection dot. Onboarding shows the
   HTTPS switch a ts.net address needs as plain steps, then offers Tailnet Lock. The Capsule sends
   a file to the box with option-return.
+- `scripts/perf-check` waits for Memory's startup pass to finish before it measures idle, so a
+  slow start on a loaded host is no longer counted as idle CPU.
 
 #### The Capsule is Spotlight's size
 

@@ -91,8 +91,8 @@ line (written only once the file is complete, with its final name after a rename
 received file: the event names it and that is all.
 
 **Known limit.** Taildrop delivers only between a person's own devices. A tagged box (`tag:server`,
-an auth-key install) is not one, and the Mac reports it. The person either signs the box in as
-their own login, or grants file sharing to the tag in the policy. See "Decisions needed".
+an auth-key install) is not one, and the Mac reports it. The box stays a tagged server, and the
+person grants file sharing to its tag in the policy (decided 27 Sep 2026).
 
 ## 3. Tailscale SSH for `vyre box add`
 
@@ -287,16 +287,27 @@ internet.
 
 ## Decisions needed
 
-1. Taildrive read-only or read-write (default ro); whether a share refuses a folder holding `.env`
-   or key files; whether the box's `projectsDir` moves to `/work/projects`.
-2. Taildrop to a tagged box: sign the box in as the owner, or grant file sharing to its tag.
-3. Egress: the sidecar design, its key renewal, and that any process in any computer can reach it.
-4. Part 9: the image change above (root at start, SETUID and SETGID, `setpriv` down), and whether
+Decided by the lead on 27 Sep 2026, to be built after this merge (docs/work/tailnet.md, "Next"):
+
+1. Taildrive: read-only by default, with a per-share read-write switch behind presence
+   (`files.drive.access`); a share refuses any folder the files guard flags anywhere inside it,
+   checked at share time and in the audit; the box's `projectsDir` moves to `/work/projects`.
+2. Taildrop: the box stays a tagged server; the person grants file sharing to its tag.
+3. Egress: the sidecar stays, renewed by a tag-scoped OAuth client; only a computer with egress on
+   may use it, through an authenticating front with per-computer credentials. The lock is per
+   computer, not per program inside it.
+4. `link.health` on the box answers modules and the owner only.
+
+Still open:
+
+5. Part 9: the image change above (root at start, SETUID and SETGID, `setpriv` down), and whether
    the root side must prove itself (an HMAC over a nonce) before vyred sends the key.
-5. Part 8: whether a guest may read one thread (`threads.get`), and whether `threads.list`, which
+6. Part 8: whether a guest may read one thread (`threads.get`), and whether `threads.list`, which
    shows every headless thread, is narrowed for guests.
-6. Part 10: keep dropping repeated bodies (it also merges two identical legitimate ones); a
+7. Part 10: keep dropping repeated bodies (it also merges two identical legitimate ones); a
    route's secret grant is module-wide today, not per route.
-7. Part 7: whether a policy grant naming a user of another tailnet reaches that user's shared-in
+8. Part 7: whether a policy grant naming a user of another tailnet reaches that user's shared-in
    node's whois caps. Until checked on a real tailnet, `vault.relay.grants: "require"` may refuse
    every shared-in holder.
+9. Company tailnets: grants and guests trust whoever edits the policy. Whether onboarding should
+   check that the owner alone edits it.

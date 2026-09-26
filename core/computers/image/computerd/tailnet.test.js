@@ -91,10 +91,12 @@ test("computerd tailnet: up starts a userspace tailscaled, hands the key over a 
 
 test("computerd tailnet: as any uid but root it refuses, and starts nothing", async t => {
   const f = fakes(t);
-  const tn = side(t, f, 1000);
+  // Not the runner's own uid, which the side treats as root (on the test box the runner is uid 1000).
+  const other = (process.getuid ? process.getuid() : 0) + 4242;
+  const tn = side(t, f, other);
   const st = await tn.handle("GET", "/tailnet");
   assert.equal(st.body.ready, false);
-  assert.match(st.body.why, /uid 1000, not root/);
+  assert.match(st.body.why, new RegExp(`uid ${other}, not root`));
   const up = await tn.handle("POST", "/tailnet/up", { authKey: KEY, hostname: "vyre-agent-kit", tag: "tag:vyre-agent" });
   assert.equal(up.status, 403);
   assert.deepEqual(f.argv(), [], "a binary ran");

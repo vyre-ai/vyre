@@ -36,37 +36,37 @@ Round 2 (parts 7 to 10 and integration):
 
 Tests: each branch was green on its own targeted files before merge (round 1: 258 of 258 on the
 merged branch; round 2: guests 194 + 26, vault 52, agent nodes 145, hooks 66, surfaces 209 with 6
-skipped). The merged round-2 run is in "Doing".
+skipped).
+
+Merged round 2, verified on the test box (27 Sep 2026, after merging main at bfbfd69 and the surfaces WIP
+2fdbae9), `nice -n 15`, Node 22.23:
+- The targeted run under "Doing": 803 tests, 785 pass, 12 skipped, 6 failed. One was ours
+  and is fixed: the computerd tailnet "any uid but root" test used uid 1000, which is the test box's
+  runner, whom the test treats as root; it now picks a uid that cannot collide (computerd: 11 of
+  11). The other five fail the same way on main on the test box, so they are not this branch's (listed
+  for the integrator under "Needs from others").
+- Deck and fixtures (surfaces WIP): `test/fixtures.test.js deck/test/*.test.js deck/js/*.test.js`,
+  35 of 35. `deck/views/settings.js` has no unit test; it passes `node --check`, and the three
+  fixtures it reads parse.
+
+Perf (scripts/perf-check on the test box, 20,016 turns, 23 modules, host load 4.4 to 5.1): CPU p95 0.00%,
+sustained 0.00%, mean 0.00%; RSS mean 94 to 107 MB, max 140 to 145 MB (budget 150; main measured
+147 MB max the same day); no recurring timer under 60 s. Before the fix below, the sustained CPU
+check failed at 13% on this branch: one CPU-second at +1.5 s into the idle window, which a CPU
+profile and a trace of Memory's pass showed to be the tail of startup curation (3.6 s on 20,000
+turns) running past perf-check's 250 ms settle, not idle work. perf-check now waits for
+`memory.curate`, which answers once that pass is done, before it starts the idle window.
 
 ## Doing
 
-PAUSED on the user's order (27 Sep 2026): the Mac was overloaded. Nothing may run on the Mac
-(no tests, no node). When the lead sends the go, tests run on the test box, not the Mac.
-
-- All ten parts are merged into work/tailnet. **The merged branch has NOT been tested yet.** Each
-  sub-branch was green on its own (counts under Done), but the combined run was killed twice by
-  the lead's `node --test` enforcer and then paused. First thing on resume: the targeted run
-  below, `nice -n 15`, on the test box.
-- The surfaces sub-worktree (../vyre-tailnet-surfaces, branch work/tailnet-surfaces) has
-  uncommitted edits from its agent: matching the Settings Network rows to the real tool shapes
-  (see "Real shapes" below). Its agent was told to WIP-commit and stop. Merge it into work/tailnet
-  once it is committed. The other sub-worktrees are merged and removed.
+Nothing. work/tailnet is ready for the lead to merge (verified under "Done"). The surfaces
+sub-worktree's WIP is merged; `../vyre-tailnet-surfaces` and its branch can be removed.
 
 Targeted run for the merged branch (one command, from the worktree root):
 `nice -n 15 node --test core/presence/*.test.js core/harness/*.test.js core/files/*.test.js core/hooks/*.test.js core/watchers/*.test.js core/computers/*.test.js core/computers/driver/*.test.js core/computers/image/computerd/*.test.js core/dockerproxy/*.test.js core/vault/grants.test.js core/vault/presence.test.js core/vault/share.test.js core/vault/relay.test.js core/vault/module.test.js core/vault/surfaces.test.js core/names/*.test.js core/link/*.test.js core/glass/*.test.js core/config/*.test.js core/modules/*.test.js core/cli/*.test.js core/cli/commands/box.test.js core/memory/access.test.js core/gate/*.test.js test/link.test.js test/guests.test.js test/daemon.test.js test/presence-bypass.test.js test/onboard.test.js test/hygiene.test.js deck/js/health.test.js deck/glass/*.test.js local/capsule/lib/*.test.js`.
-Likely breakage: `files.drive.share` is now on the floor's human-only list (8cb5c6d), and its
-round-1 tests may call it without the `present` verifier from test/helpers.js.
-
-Real shapes the Deck must read (surfaces agent's fix):
-- `hooks.list` returns `{ enabled, host, port, listening, error?, routes: [{ name, path, verify: { scheme, header, secret }, opened, deliveries, recent, funnel: { open, close } }] }`.
-- `hooks.status` returns `{ routes, node, funnel: { read, why?, serving }, urls, mismatches: [{ kind, route?, harmless, message, fix }], commands, docker }`.
-- Switches are the tools `hooks.enable {on}` and `network.guests.enable {on}` (both need presence), not config edits. The CLI is `vyre hooks on|off|open|close|status`.
-- `network.guests.list` returns `{ enabled, safe, people: [{ login, tools, allowed }] }`.
-- `computers.tailnet.status` returns `{ enabled, tag, applies, problem?, vault: { item, exists, granted, why? }, computers: [{ agent, running, node, stableId }] }`.
-
 ## Next
 
-The lead's decisions of 27 Sep 2026, to build on resume, in this order:
+After the merge. The lead's decisions of 27 Sep 2026, to build in this order:
 
 1. **link.health on the box: modules and the owner only.** In `core/link/box.js`, refuse
    `tailnet-guest:*` and `tailnet:agent:*`, and any tailnet login that is not the owner. Today any
@@ -137,7 +137,14 @@ only read-only checks on the test box.
 - watchers: review the new `on`/`where` event trigger and the `hook.delivery` hand-over.
 - capsule: repackage to pick up option-return send, the dot and the Taildrive open.
 - box: review the `/work` mount in the tailscale service and `box/compose.egress.yml`.
-- integrator: the full suite on the merge.
+- integrator: the full suite on the merge. Five tests fail on main on the test box as well as here, so
+  they are environment or main issues, not this branch's: `box add: sudo with a password adds the
+  account to the docker group...` (core/cli/commands/box.test.js:300; the test box's user is already in
+  the docker group), `install-box.sh: missing Docker is offered...` and `...without --yes and no
+  terminal...` (core/names/system.test.js:279, 286; the test box has Docker), `daemon: the presence
+  challenge route refuses what it cannot start` (test/daemon.test.js:320, 403 not 400), and
+  `bypass: a Bash tool call that tries it is denied...` (test/presence-bypass.test.js:129, Node
+  22's SQLite ExperimentalWarning lands in the JSON it parses).
 
 ## Decisions needed from the user
 
@@ -336,6 +343,8 @@ Listed by the area they touch, so the merge can go in order. Everything below is
   `SEND_TIMEOUT`, the box dot, Taildrive-first open.
 - **box**: the tailscale service mounts `vyre-work:/work:${VYRE_DRIVE_ACCESS:-ro}`; new
   `box/compose.egress.yml`.
+- **perf-check** (scripts/perf-check): waits for `memory.curate` after indexing, before the idle
+  window, so Memory's startup pass is not counted as idle work.
 - **config**: defaults for `glass.egress`, `computers.tailnet`, `hooks`, `network.guests`.
 
 Suggested merge order: link and names, daemon and presence, vault, files, computers, watchers and
