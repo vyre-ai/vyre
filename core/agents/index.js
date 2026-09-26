@@ -201,6 +201,8 @@ export default {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
         return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, computer: a.computer,
+          // The Deck's agent page shows and edits the job from this list.
+          instructions: a.instructions,
           auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) })));
       },
     });

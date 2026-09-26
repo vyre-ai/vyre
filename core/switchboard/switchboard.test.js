@@ -335,6 +335,7 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
 
   const list = (await tool("agents.list", {})).data;
   assert.deepEqual(list.map(a => [a.name, a.kind, a.doing]), [["juno", "assistant", "not started"], ["scout", "agent", "not started"]]);
+  assert.ok(list.every(a => "instructions" in a), "the Deck's agent page reads the job from the list");
 
   const who = (await tool("agents.ask", { agent: "scout", text: "whoami", surface: "capsule" })).data;
   assert.equal(who.text, "auth=subscription");
