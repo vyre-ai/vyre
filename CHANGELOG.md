@@ -4,6 +4,40 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Presence: a person proves they are there (ADR 0004)
+
+- A model could approve its own held email. The caller is only a header on a socket the user
+  owns, and Claude Code's Bash runs as that user, so `curl --unix-socket` with
+  `x-vyre-caller: cli`, or plain `vyre call gate.approve`, was enough. Human-only tools now need
+  a presence proof that vyred checks itself, whatever the caller claims. The floor keeps its own
+  list (`core/presence/index.js`: gate approve, revise and reject, threads.answer, vault put,
+  approve, unlock and offboard, learn accept and retire, and presence's own tools). Modules add to
+  it with `presence: true` or `presence: { summary(input) }`. Module callers are exempt.
+- The proofs: `touchid` (vyred shows the macOS dialog with the summary; one at a time, and it
+  waits 30 seconds after a cancel), `tty` (vyred writes a code to a login terminal that `who`
+  lists, and the person types it back), `capsule` (an Ed25519 signature from a key in the
+  keychain), `passkey` (a WebAuthn assertion from the Deck) and `code` (a one-time code for
+  enrolling a passkey). Each proof is bound to one tool and one input and is used once.
+  `POST /v1/presence/challenge` starts the tty and passkey proofs. `GET /v1/tools` marks presence tools.
+- `vyre call` and `vyre presence keys|code|remove` prove presence through `core/cli/presence.js`.
+  The CLI asks for a controlling terminal before any method. The Bash tool has none, so a model
+  cannot even make a Touch ID dialog appear through the CLI.
+- The floor closes the model's routes before they reach vyred, and does so in-process when vyred
+  is down too. It denies human-only `vyre` commands however they are quoted, escaped or wrapped
+  (`sh -c`, `eval`, `xargs`, `env`, `script`, `osascript`, `npx`, `node bin/vyre`). It denies
+  raw clients on vyred's socket, any `x-vyre-caller` or `x-vyre-presence` header, and reads or
+  writes of vyre.db, the socket, config, keys and logs, by path, by name or by glob. A vyre
+  command or socket target built at run time is asked about. `watchers/` stays open, and a
+  write into `modules/` is asked about.
+- The Touch ID helper (`core/presence/touchid/touchid.swift`) is built with `swiftc` into a
+  private temp folder on first use, and its hash is checked before every run.
+- Tests that exercise what happens after approval start vyred with `present` from
+  `test/helpers.js`, a verifier that always finds a person, or through
+  `test/fixtures/vyred-present.js` for CLI tests. That fixture refuses any home outside the temp folder.
+- One real run: `claude -p --model haiku` with the Harness, told to approve its own held draft by
+  every route it could find. It tried 16 routes, and every one was refused. Nothing reached
+  the mail stub.
+
 #### Link and the real Tailscale
 
 - `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or

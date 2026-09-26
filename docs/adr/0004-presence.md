@@ -79,7 +79,8 @@ A proof is bound to one tool and one input: the SHA-256 of the canonical JSON of
 sorted, no spaces). It is used once and expires after 2 minutes. A proof for "approve item A"
 cannot approve item B.
 
-The proof travels in one header, `x-vyre-presence: <method> k=v k=v ...`, with values in base64url.
+The proof travels in one header, `x-vyre-presence: <method> k=v k=v ...`. Binary values are
+base64url, and ids and codes are plain tokens in the same alphabet.
 
 | Method | Where | Proof | What the model cannot do |
 |---|---|---|---|
@@ -190,7 +191,8 @@ Two residual risks in the terminal method, both of which still need a person:
 - Owners of human-only tools add `presence: true` or a `presence.summary`, and their tests pass a
   proof or call through a registry without a verifier.
 - The CLI (`core/cli/presence.js`) handles `presence_required` itself: `touchid` on a Mac that
-  has it, else `tty`. `vyre call` and every command that reaches a presence tool go through it.
+  has it, else `tty`. For every method it first needs a controlling terminal, so a process
+  with none (the Bash tool) cannot even make a Touch ID dialog appear. `vyre call` and every command that reaches a presence tool go through it.
 - The Capsule enrolls a key at first run (with Touch ID) and signs presence calls. The Deck
   enrolls a passkey and sends assertions.
 - `GET /v1/tools` marks presence tools with `presence: true`, so a surface can prompt before it
