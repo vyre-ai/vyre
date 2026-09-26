@@ -25,6 +25,8 @@ export function mountSession(container, opts) {
   const { thread } = opts;
   /** @type {Map<string, HTMLElement>} keyed by message id, tool id, gate id or ask id */
   const rows = new Map();
+  /** @type {string[]} tool row keys, oldest first — only the last 6 stay in the timeline (Capsule shape) */
+  const toolKeys = [];
   let lastMessageEl = null, lastMessageId = null;
   const timeline = h("div", { class: "thread-view" });
   const head = h("div", { class: "session-head" });
@@ -43,7 +45,7 @@ export function mountSession(container, opts) {
     drawHead();
     timeline.replaceChildren();
     for (const e of r.data.events) applyEvent(e, false);
-    for (const a of r.data.asks) upsertRow("ask:" + a.id, () => askCard(a));
+    for (const a of r.data.asks) upsertRow("ask:" + a.id, () => askCard({ ...a, agent: record.current?.agent }));
     timeline.scrollTop = timeline.scrollHeight;
     fetchMemory();
   }
@@ -113,8 +115,14 @@ export function mountSession(container, opts) {
       return;
     }
     if (e.type === "thread.tool") {
-      if (p.phase === "started") upsertRow("tool:" + p.id, () => toolChip(p));
-      else { const el = rows.get("tool:" + p.id); if (el && el.setDone) el.setDone(p.error); }
+      if (p.phase === "started") {
+        const key = "tool:" + p.id;
+        upsertRow(key, () => toolChip(p));
+        toolKeys.push(key);
+        while (toolKeys.length > 6) { const old = toolKeys.shift(); rows.get(old)?.remove(); rows.delete(old); }
+      } else {
+        const el = rows.get("tool:" + p.id); if (el && el.setDone) el.setDone(p.error);
+      }
       return;
     }
     if (e.type === "thread.finished") {
@@ -124,7 +132,7 @@ export function mountSession(container, opts) {
       return;
     }
     if (e.type === "thread.stopped") { timeline.append(h("div", { class: "turn-foot" }, icon("terminal", 12), "session stopped" + (p.reason ? ": " + p.reason : ""))); return; }
-    if (e.type === "ask.raised") { upsertRow("ask:" + p.ask, () => askCard({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason })); return; }
+    if (e.type === "ask.raised") { upsertRow("ask:" + p.ask, () => askCard({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, agent: record.current?.agent })); return; }
     if (e.type === "ask.answered") { const el = rows.get("ask:" + p.ask); if (el) el.remove(); return; }
     if (e.type === "gate.held" || e.type === "gate.revised") { upsertRow("gate:" + p.id, () => gateCard({ id: p.id })); const el = rows.get("gate:" + p.id); if (el && el.refresh && live) el.refresh(); return; }
     if (e.type === "gate.released" || e.type === "gate.rejected") { const el = rows.get("gate:" + p.id); if (el && el.refresh) el.refresh(); return; }
@@ -148,23 +156,32 @@ export function mountSession(container, opts) {
   function noticeMsg(text, at) {
     return h("div", { class: "gate-note", style: { padding: "6px 0" } }, icon("clock", 12), " ", text, " ", h("span", { class: "msg-when" }, clock(at)));
   }
+  // One line per call, mono 11: "running · <summary>" / "done · <summary>" / "failed · <summary>"
+  // (failed in Beacon), indented 44px to line up under the reply text (Capsule shape).
   function toolChip(p) {
-    let expanded = false, done = false, error = false;
-    const chip = h("button", { class: "tool-chip", type: "button", "aria-expanded": "false", onclick: () => { expanded = !expanded; toggle(); } },
-      icon("chevron", 12, ), h("span", { class: "name" }, p.tool), h("span", { class: "sum ellipsis" }, p.summary || ""),
-      h("span", { class: "busy" }, "…"),
+    let expanded = false;
+    const word = h("span", { class: "tool-status" }, "running");
+    const line = h("button", { class: "tool-line", type: "button", "aria-expanded": "false", onclick: () => { expanded = !expanded; toggle(); } },
+      word, h("span", null, " · "), h("span", { class: "sum ellipsis" }, p.summary || p.tool),
     );
-    const detail = h("div", { class: "tool-detail", hidden: true }, h("div", { class: "lbl" }, "input"), h("div", { class: "code" }, p.summary || ""), p.destination ? h("div", { class: "code" }, "→ " + p.destination) : null);
-    const wrap = h("div", null, chip);
-    function toggle() { chip.setAttribute("aria-expanded", String(expanded)); if (expanded && !wrap.contains(detail)) wrap.append(detail); detail.hidden = !expanded; }
-    /** @type {any} */ (wrap).setDone = err => { done = true; error = !!err; chip.querySelector(".busy")?.remove(); if (error) chip.append(h("span", { class: "err" }, "failed")); };
+    const detail = h("div", { class: "tool-detail", hidden: true }, h("div", { class: "lbl" }, p.tool), h("div", { class: "code" }, p.summary || ""), p.destination ? h("div", { class: "code" }, "→ " + p.destination) : null);
+    const wrap = h("div", { class: "tool-row" }, line);
+    function toggle() { line.setAttribute("aria-expanded", String(expanded)); if (expanded && !wrap.contains(detail)) wrap.append(detail); detail.hidden = !expanded; }
+    /** @type {any} */ (wrap).setDone = err => { put(word, err ? "failed" : "done"); word.classList.toggle("err", !!err); };
     return wrap;
   }
 
   async function fetchMemory() {
     const r = await attempt("memory.thread", { thread });
     if (r.error || !r.data || !r.data.length) return;
-    for (const f of r.data) timeline.append(h("div", { class: "memory-fact" }, icon("memory", 14), h("span", null, f.text || f.fact || String(f))));
+    for (const f of r.data) {
+      const sources = f.sources || (f.source ? [f.source] : []);
+      timeline.append(h("div", { class: "memory-fact" },
+        h("h3", { class: "lbl" }, "From memory"),
+        h("div", { class: "fact" }, f.text || f.fact || String(f)),
+        sources.length ? h("div", { class: "sources" }, sources.map(s => h("span", { class: "source" }, icon("file", 12), typeof s === "string" ? s : (s.name || s.title || "")))) : null,
+      ));
+    }
   }
 
   boot();

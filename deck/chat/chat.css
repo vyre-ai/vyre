@@ -24,6 +24,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .rail-group:last-child { margin-bottom: 0; }
 .rail-sub { display: flex; flex-direction: column; gap: 2px; margin-left: 14px; }
 .rail-sub .rail-a { height: 28px; font-size: 13px; }
+/* Row selection (Capsule shape): Signal wash, the accessory on the right turns Signal too. */
+.rail-sub .rail-a[aria-current="page"] { background: var(--signal-wash); color: var(--text); }
+.rail-sub .rail-a[aria-current="page"] .count { color: var(--signal); }
 .rail-disclose { display: flex; align-items: center; gap: 6px; width: 100%; height: 26px; padding: 0 6px; background: transparent;
   border: none; color: var(--label); cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 500;
   letter-spacing: 0.1em; text-transform: uppercase; text-align: left; }
@@ -64,15 +67,16 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   animation: blink 900ms steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
-.tool-chip { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--rule); border-radius: var(--r-2);
-  background: transparent; color: var(--text-2); cursor: pointer; font-family: var(--mono); font-size: 12px; align-self: flex-start; max-width: 100%; }
-.tool-chip:hover { background: var(--hover); }
-.tool-chip .name { color: var(--text); }
-.tool-chip .sum { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-chip .err { color: var(--beacon-ink); }
-.tool-chip svg { flex-shrink: 0; transition: transform 120ms ease; }
-.tool-chip[aria-expanded="true"] svg.chev { transform: rotate(90deg); }
-.tool-detail { margin: 2px 0 4px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--r-2); background: var(--code-bg); }
+/* One line per tool call, mono 11, 44px left gutter to line up under the reply text (msg-av's
+   28px + the 12px gap between it and msg-body), last 6 kept (Capsule shape). */
+.tool-row { margin-left: 44px; max-width: calc(100% - 44px); }
+.tool-line { display: block; width: 100%; padding: 2px 0; border: none; background: transparent; text-align: left; cursor: pointer;
+  font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--text-2); }
+.tool-line .tool-status { color: var(--text); text-transform: lowercase; }
+.tool-line .tool-status.err { color: var(--beacon-ink); }
+.tool-line .sum { color: var(--text-2); }
+.tool-line:hover .sum { color: var(--text); }
+.tool-detail { margin: 4px 0 6px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--r-2); background: var(--code-bg); }
 .tool-detail .lbl { margin: 0 0 6px; }
 .tool-detail + .tool-detail { margin-top: 8px; }
 
@@ -83,21 +87,42 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .turn-foot { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--label); }
 .turn-foot .err { color: var(--beacon-ink); }
 
-.memory-fact { display: flex; gap: 8px; padding: 8px 10px; border-radius: var(--r-2); background: var(--recall-wash); color: var(--recall-ink);
-  font-size: 13px; line-height: 18px; align-self: flex-start; }
-.memory-fact svg { flex-shrink: 0; margin-top: 2px; }
+/* Shapes matched to the Capsule's (capsule teammate, 2026-09-27): same tokens, same grid, same
+   badge, so a held item or an ask looks the same wherever it appears. */
+
+.memory-fact { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r-2); background: var(--recall-wash);
+  align-self: flex-start; max-width: 100%; }
+.memory-fact .lbl { color: var(--recall-ink); margin: 0; }
+.memory-fact .fact { font-size: 13px; line-height: 18px; color: var(--text); }
+.memory-fact .sources { display: flex; flex-wrap: wrap; gap: 10px; }
+.memory-fact .source { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); }
+.memory-fact .source svg { flex-shrink: 0; color: var(--label); }
 
 .gate-card, .ask-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: var(--r-3); align-self: stretch; }
 .gate-card { background: var(--panel); border: 1px solid var(--rule); }
 .ask-card { background: var(--beacon-wash); border: 1px solid var(--beacon-rule); }
 .gate-row { display: flex; align-items: baseline; gap: 8px; }
-.gate-field { display: flex; flex-direction: column; gap: 4px; }
-.gate-field label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
-.gate-field .input { font-size: 14px; }
-.gate-field textarea.input { min-height: 90px; font-family: var(--sans); }
+.gate-title, .ask-title { font-size: 15px; line-height: 20px; color: var(--text); flex-grow: 1; }
+.gate-badge { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; border-radius: var(--r-1);
+  background: var(--beacon-wash); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; line-height: 14px;
+  font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; flex-shrink: 0; white-space: nowrap; }
+.gate-grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: baseline; }
+.gate-grid-row { display: contents; }
+.gate-key { font-size: 13px; color: var(--label); text-transform: capitalize; }
+.gate-val { font-size: 14px; color: var(--text-2); min-width: 0; }
+.gate-val.mono { font-family: var(--mono); font-size: 12px; }
+.gate-rule { height: 1px; background: var(--rule); margin: 2px 0; }
+.gate-body { font-size: 14px; line-height: 21px; color: var(--text); white-space: pre-wrap; }
+[contenteditable="plaintext-only"] { outline: none; border-bottom: 1px solid transparent; }
+[contenteditable="plaintext-only"]:focus { border-bottom-color: var(--focus); }
 .gate-actions { display: flex; align-items: center; gap: 8px; }
+.gate-actions .btn .kbd { margin-left: 2px; }
 .gate-note { font-size: 12px; line-height: 16px; color: var(--text-2); }
 .gate-resolved { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+
+.ask-grid { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+.ask-grid .gate-key { font-size: 13px; color: var(--label); }
+.ask-grid .gate-val { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
 
 .lease-bar { display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 20px; font-size: 12px; color: var(--label);
   border-top: 1px solid var(--rule); flex-shrink: 0; }
@@ -120,6 +145,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .thread-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--r-3); text-decoration: none; color: inherit; }
 .thread-row:hover { background: var(--hover); }
 .thread-row[aria-current="page"] { background: var(--signal-wash); }
+.thread-row[aria-current="page"] .dot.signal { background: var(--signal); }
 .thread-row .r1 { display: flex; align-items: center; gap: 10px; }
 .thread-row .r1 .title { font-size: 15px; line-height: 20px; font-weight: 600; flex-grow: 1; min-width: 0; }
 .thread-row .r1 .title.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
