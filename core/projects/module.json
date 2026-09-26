@@ -1,0 +1,16 @@
+{
+  "name": "projects",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "tools": [
+      "projects.list", "projects.create", "projects.add-threads", "projects.remove-threads",
+      "projects.catalog", "projects.of", "projects.threads", "projects.context"
+    ]
+  },
+  "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked"] },
+  "shows": { "cli": ["projects", "new", "open", "resume", "start", "context", "threads", "pick", "unpick"] },
+  "needs": {},
+  "teaches": {}
+}
