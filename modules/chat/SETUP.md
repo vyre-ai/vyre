@@ -40,7 +40,7 @@ Mattermost signs each slash request with a token; Chat compares it before doing 
 
 ```sh
 mm --json command create vyre --title "Vyre" --trigger-word vyre \
-  --url http://vyred:8766/chat/slash --method P --creator alex \
+  --url http://vyred:8766/chat/slash --post --creator alex \
   --autocomplete --autocompleteHint "held | send <id> | discard <id> | new <prompt>" \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).token))' \
   | vyre vault put chat-slash-token --kind api-key --description "Mattermost /vyre command token"
