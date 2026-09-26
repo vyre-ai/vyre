@@ -10,13 +10,16 @@
 .term-dot { background: var(--label); }
 .term[data-state="live"] .term-dot { background: var(--signal); }
 .term[data-state="connecting"] .term-dot, .term[data-state="waiting"] .term-dot { background: var(--recall); }
-.term[data-state="error"] .term-dot, .term[data-state="locked"] .term-dot { background: var(--beacon-dot); }
+.term[data-state="error"] .term-dot, .term[data-state="locked"] .term-dot, .term[data-state="blocked"] .term-dot { background: var(--beacon-dot); }
 .term-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-2);
   border-bottom: 1px solid var(--rule); background: var(--hover); }
 .term-screen { flex: 1 1 auto; min-height: 0; padding: 8px 4px 4px 10px; }
 .term-screen .xterm { height: 100%; }
 .term-screen .xterm-viewport { background-color: transparent !important; }
 .term[data-state="ended"] .term-screen { opacity: 0.7; }
+/* No live link: the note stands in place of the terminal. */
+.term[data-state="blocked"] .term-screen { display: none; }
+.term[data-state="blocked"] .term-note { flex: 1 1 auto; align-content: center; justify-content: center; text-align: center; border-bottom: 0; background: transparent; padding: 24px; }
 
 @media (max-width: 599px) {
   .term { border-radius: 0; border-left: 0; border-right: 0; }

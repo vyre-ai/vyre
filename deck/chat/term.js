@@ -10,12 +10,16 @@
 //  - a hidden tab keeps its socket (closing it would end the terminal 10 s later); reconnects
 //    after a drop wait for the tab to be visible, with a fresh ticket from term.attach, backing
 //    off 1, 2, 4 ... 30 s;
+//  - a path to the box that carries tool calls but not WebSockets (lib/term-link.js: two stream-less
+//    sockets in a row, each on a fresh ticket) shows a "needs the box link" state with Try again,
+//    and no reconnect loop;
 //  - the box replays the last 64 KB on every attach, so the screen is reset before each one;
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
+import { linkVerdict } from "./lib/term-link.js";
 
 /** Tickets term.open already issued, so the first mount needs no second round trip. One use, 30 s. */
 /** @type {Map<string, { path: string, cwd: string, until: number }>} */
@@ -107,6 +111,8 @@ export function mountTerminal(container, { term, onBack }) {
   const surface = surfaceId();
   let dead = false, ended = false;
   let backoff = 1, retry = 0;
+  /** How each socket since the last live stream ended: lib/term-link.js decides from these. */
+  /** @type {import("./lib/term-link.js").Attempt[]} */ let attempts = [];
   /** @type {WebSocket|null} */ let ws = null;
   /** @type {any} */ let xt = null;
   /** @type {any} */ let fit = null;
@@ -127,10 +133,10 @@ export function mountTerminal(container, { term, onBack }) {
     note, screen);
   put(container, root);
 
-  /** @param {"connecting"|"live"|"waiting"|"ended"|"locked"|"error"} state @param {string} [msg] @param {any} [action] */
+  /** @param {"connecting"|"live"|"waiting"|"ended"|"locked"|"error"|"blocked"} state @param {string} [msg] @param {any} [action] */
   function status(state, msg = "", action = null) {
     root.dataset.state = state;
-    word.textContent = { connecting: "Connecting", live: "Live", waiting: "Reconnecting", ended: "Ended", locked: "Locked", error: "Not connected" }[state];
+    word.textContent = { connecting: "Connecting", live: "Live", waiting: "Reconnecting", ended: "Ended", locked: "Locked", error: "Not connected", blocked: "No live link" }[state];
     if (msg || action) { put(note, h("span", null, msg), action ? [" ", action] : null); note.hidden = false; }
     else { put(note); note.hidden = true; }
   }
@@ -184,12 +190,18 @@ export function mountTerminal(container, { term, onBack }) {
     setWhere(r.data.cwd);
     const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + r.data.path;
     let sock;
-    try { sock = new WebSocket(url); } catch { later("The connection could not start."); return; }
+    try { sock = new WebSocket(url); }
+    catch {
+      attempts.push({ opened: false, data: false, code: 1006 });
+      if (linkVerdict(attempts) === "blocked") blocked(); else later("The connection could not start.");
+      return;
+    }
     sock.binaryType = "arraybuffer";
     ws = sock;
+    const seen = { opened: false, data: false, code: 0 };
     sock.onopen = () => {
       if (ws !== sock) return;
-      backoff = 1;
+      seen.opened = true;
       // What follows first is the box's replay of the recent screen: start from a clean one.
       xt.reset();
       status("live");
@@ -198,19 +210,33 @@ export function mountTerminal(container, { term, onBack }) {
     };
     sock.onmessage = e => {
       if (ws !== sock) return;
+      if (!seen.data) { seen.data = true; backoff = 1; attempts = []; }
       xt.write(typeof e.data === "string" ? enc.encode(e.data) : new Uint8Array(e.data));
     };
     sock.onclose = e => {
       if (ws !== sock) return;
       ws = null;
       if (dead) return;
+      seen.code = e.code;
       // The box closes with 1000 and a reason when the terminal itself ended.
       if (e.code === 1000 && /^(exited|closed|detached|stopped)$/.test(e.reason)) {
         finish(e.reason === "exited" ? "The shell exited." : e.reason === "closed" ? "The terminal was closed." : "The terminal ended.");
         return;
       }
+      if (!seen.data) {
+        attempts.push({ ...seen });
+        if (linkVerdict(attempts) === "blocked") { blocked(); return; }
+      }
       later("The connection dropped.");
     };
+  }
+
+  /** This path to the box does not carry live streams: say so and wait for a tap, never loop. */
+  function blocked() {
+    clearTimeout(retry);
+    try { xt?.reset(); } catch {}
+    status("blocked", "The terminal needs the box link. Your Deck reaches the box through a path that does not carry live streams yet.",
+      h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: () => { attempts = []; backoff = 1; connect(); } }, "Try again"));
   }
 
   /** Reconnect with a fresh ticket, backing off, only while the tab is visible. */
