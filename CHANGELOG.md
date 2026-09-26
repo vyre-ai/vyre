@@ -397,6 +397,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   moves. Without that, a stale snapshot scored a (session, seq) that now held different text.
 - `recall.status` and `vyre status` say "downloading the search model (23 MB, once)" while the
   first download runs.
+- An eval harness: `recall.eval` and `vyre recall eval <file>`. It runs a labelled set (each
+  question with the turns that answer it) three ways, keyword, dense and hybrid, and reports
+  MRR@10 and recall@10. It also checks the dense floor from both sides: nonsense that clears it,
+  and answers that fall under it. `test/fixtures/recall-eval.json` is a fictional set on the
+  fixture corpus. A set built from someone's own sessions stays outside the repo.
+- New vectors are appended to the dense index in place. Rebuilding it after every pass that
+  wrote anything cost a full read of every vector, one to six seconds, every few minutes for an
+  active session. Only a rewrite, which deletes turns, still rebuilds.
 - Dependency: `@huggingface/transformers`, optional, because it is the only way to run the
   embedding model locally from Node; without it search is full-text and says so.
 
