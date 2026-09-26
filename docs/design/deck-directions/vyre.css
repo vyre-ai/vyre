@@ -8,7 +8,7 @@
   --focus: #C6F36B; --signal-ink-text: #C6F36B; --signal-wash: rgba(198,243,107,0.12);
   --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10);
   --beacon-ink: #B8A4FF; --beacon-dot: #B8A4FF; --beacon-wash: rgba(184,164,255,0.12); --beacon-rule: rgba(184,164,255,0.32);
-  --del-wash: #1E1C1A; --match: rgba(198,243,107,0.20); --scrim: rgba(0,0,0,0.62); --code-bg: rgba(14,13,12,0.55);
+  --del-wash: rgba(140,135,125,0.14); --match: rgba(198,243,107,0.20); --scrim: rgba(0,0,0,0.62); --code-bg: rgba(14,13,12,0.55);
   --mark-wire: #F1EEE6; --mark-dot: #C6F36B;
   --light-top: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
   --popover: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);
@@ -21,7 +21,7 @@
   --focus: #46700C; --signal-ink-text: #46700C; --signal-wash: rgba(70,112,12,0.10);
   --recall: #7E5B0C; --recall-wash: rgba(126,91,12,0.08);
   --beacon-ink: #5B3FC4; --beacon-dot: #5B3FC4; --beacon-wash: rgba(91,63,196,0.08); --beacon-rule: rgba(91,63,196,0.32);
-  --del-wash: #FBFAF6; --match: rgba(70,112,12,0.16); --scrim: rgba(20,19,17,0.34); --code-bg: rgba(20,19,17,0.04);
+  --del-wash: rgba(107,102,93,0.10); --match: rgba(70,112,12,0.16); --scrim: rgba(20,19,17,0.34); --code-bg: rgba(20,19,17,0.04);
   --mark-wire: #141311; --mark-dot: #141311;
   --light-top: inset 0 1px 0 rgba(255,255,255,0.7), 0 24px 48px -24px rgba(20,19,17,0.22);
   --popover: 0 12px 24px -12px rgba(20,19,17,0.28);
@@ -79,26 +79,27 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .wm { stroke: var(--mark-wire); }
 
 /* Buttons (A: engraved mono, per TOKENS) */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px;
-  border-radius: 6px; border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
+.vy .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px;
+  border-radius: 6px; border: 1px solid var(--rule-strong); background: var(--hover); color: var(--text);
   font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500;
   letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; cursor: pointer; transition: background 120ms ease-out, border-color 120ms ease-out; }
-.btn:hover { background: var(--hover); }
-.btn-p { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
-.btn-p:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-g { border-color: transparent; color: var(--text-2); padding: 0 10px; }
-.btn-sm { height: 28px; padding: 0 10px; }
-.btn-bea { border-color: var(--beacon-rule); color: var(--beacon-ink); }
+.vy .btn:hover { border-color: var(--label); }
+.vy .btn-p { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
+.vy .btn-p:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.vy .btn-g { background: transparent; border-color: transparent; color: var(--text); padding: 0 10px; }
+.vy .btn-g:hover { background: var(--hover); }
+.vy .btn-sm { height: 28px; padding: 0 10px; }
 
 /* Buttons (B: sentence case sans) */
-.sbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px;
-  border-radius: 6px; border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
+.vy .sbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 14px;
+  border-radius: 6px; border: 1px solid var(--rule-strong); background: var(--hover); color: var(--text);
   font-size: 14px; line-height: 20px; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background 120ms ease-out; }
-.sbtn:hover { background: var(--hover); }
-.sbtn-p { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); font-weight: 600; }
-.sbtn-p:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.sbtn-g { border-color: transparent; color: var(--text-2); }
-.sbtn-sm { height: 30px; padding: 0 10px; font-size: 13px; }
+.vy .sbtn:hover { border-color: var(--label); }
+.vy .sbtn-p { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); font-weight: 600; }
+.vy .sbtn-p:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.vy .sbtn-g { background: transparent; border-color: transparent; color: var(--text); }
+.vy .sbtn-g:hover { background: var(--hover); }
+.vy .sbtn-sm { height: 30px; padding: 0 10px; font-size: 13px; }
 
 .ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px;
   border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; padding: 0; transition: background 120ms ease-out; }
@@ -162,6 +163,9 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .grow { flex: 1 1 auto; min-width: 0; }
 .trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Meta text on a tinted surface steps up one level: ash on a wash falls under 4.5:1. */
+.chip-on .t3, .choice-on .t3, .tile-on .t3, .gate .t3 { color: var(--text-2); }
+
 /* Chat components (shared by both directions) */
 .msg { display: flex; gap: 14px; }
 .msg-who { display: flex; align-items: center; gap: 8px; height: 28px; }
@@ -184,12 +188,15 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 
 .diff { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 21px; }
 .dl { display: grid; grid-template-columns: 44px 18px minmax(0, 1fr); white-space: pre; color: var(--text-2); }
-.dl .n { text-align: right; padding-right: 10px; color: var(--label); opacity: 0.8; }
+.dl .n { text-align: right; padding-right: 10px; color: var(--label); }
+.dl-add .n, .dl-del .n { color: var(--text-2); }
 .dl .s { color: var(--label); }
 .dl-add { background: var(--signal-wash); color: var(--text); }
 .dl-add .s { color: var(--signal-ink-text); }
-.dl-del { background: var(--del-wash); color: var(--label); }
-.dl-del .t { text-decoration: line-through; text-decoration-color: var(--rule-strong); }
+.dl-del { background: var(--del-wash); color: var(--text-2); }
+.dl-del .t { text-decoration: line-through; text-decoration-color: var(--label); }
+.dl-del .s { color: var(--text-2); }
+.choice-on .kbd, .tool-h:hover .tool-meta, .choice:hover .kbd { color: var(--text-2); }
 .dl-hunk { color: var(--label); padding-left: 62px; background: transparent; }
 .diff-add { color: var(--signal-ink-text); }
 
@@ -203,7 +210,11 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .choice-t { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--text); }
 .choice-d { font-size: 13px; line-height: 18px; color: var(--text-2); margin-top: 2px; }
 
-.gate { border: 0; border-radius: 10px; background: var(--beacon-wash); overflow: hidden; }
+.gate { border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--panel); overflow: hidden; box-shadow: var(--light-top); }
+.held { display: inline-flex; align-items: center; gap: 8px; }
+/* Draft fields edit in place: click a line to change it. No Edit button. */
+.draft-f { border-radius: 4px; padding: 2px 4px; margin: -2px -4px; cursor: text; }
+.draft-f:hover { background: var(--hover); box-shadow: inset 0 0 0 1px var(--rule-strong); }
 .gate-cmd { margin: 0 16px; padding: 10px 12px; border-radius: 6px; background: var(--bg); border: 1px solid var(--rule);
   font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13px; line-height: 20px; color: var(--text); }
 
@@ -219,7 +230,7 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .cchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: 6px; border: 0;
   background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; }
 .cchip:hover { background: var(--hover); color: var(--text); }
-.send { width: 32px; height: 32px; border-radius: 8px; border: 0; background: var(--primary-bg); color: var(--primary-ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.vy .send { width: 32px; height: 32px; border-radius: 8px; border: 0; background: var(--primary-bg); color: var(--primary-ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .send .ic { stroke-width: 2; }
 
 .empty-art { width: 56px; height: 56px; border-radius: 14px; border: 1px dashed var(--rule-strong); display: flex; align-items: center; justify-content: center; color: var(--label); }
@@ -234,7 +245,7 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .dA .nav-on { background: var(--hover); color: var(--text); font-weight: 500; }
 .dA .nav-on .ic { color: var(--signal-ink-text); }
 .dA .nav-ct { margin-left: auto; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: var(--label); }
-.dA .nav-need { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--beacon-wash); color: var(--beacon-ink);
+.dA .nav-need { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--beacon-dot); color: var(--primary-ink);
   font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; }
 .dA .rail-sec { padding: 18px 10px 6px; display: flex; align-items: center; }
 .dA .pin { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; color: var(--text-2); font-size: 13px; }
@@ -258,7 +269,7 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .dB .rb-on .ic { color: var(--signal-ink-text); }
 .dB .rb-badge { position: absolute; top: 5px; right: 9px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--beacon-dot);
   color: var(--primary-ink); font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
-.t-light .dB .rb-badge, .t-light.dB .rb-badge { color: #FBFAF6; }
+.t-light .dB .rb-badge, .t-light.dB .rb-badge { color: var(--primary-ink); }
 .dB .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .dB .top { height: 64px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 24px 0 32px; }
 .dB .cmd { width: 520px; height: 38px; border-radius: 10px; border: 1px solid var(--rule); background: var(--panel); display: flex; align-items: center; gap: 10px;
@@ -270,3 +281,8 @@ code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; fo
 .dB .tile { border: 1px solid var(--rule); border-radius: 10px; background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 10px; text-align: left; cursor: pointer; }
 .dB .tile:hover { border-color: var(--rule-strong); }
 .dB .tile-on { border-color: var(--focus); box-shadow: 0 0 0 3px var(--signal-wash); }
+
+/* A colour class on an engraved label wins over the label grey. */
+.lbl.bea { color: var(--beacon-ink); }
+.lbl.sig { color: var(--signal-ink-text); }
+.lbl.rec { color: var(--recall); }
