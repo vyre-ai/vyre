@@ -2,7 +2,7 @@
 # network (docs/work/computers.md, ADR 0003). Nothing here is published on the host; vyred is the
 # only thing that ever dials in, to 5900 (Xvnc, VNC auth) and 7000 (computerd, bearer token).
 # Chrome's own debugging port stays on 127.0.0.1 inside the container and is never a published
-# port of its own: computerd proxies it out authenticated (docs/adr/0005-cdp-proxy.md).
+# port of its own: computerd proxies it out authenticated (docs/adr/0012-cdp-proxy.md).
 #
 # UNVALIDATED: built by inspection, never `docker build`'d (no Linux Docker host in this session).
 # See docs/work/computers.md's "Needs from others" and the report to the lead for what to check
