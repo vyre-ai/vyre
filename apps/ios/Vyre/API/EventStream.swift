@@ -161,7 +161,8 @@ final class EventHub {
             if gotAny { backoff = 1 }
             state = .waiting(backoff)
             do { try await delay(backoff) } catch { break }
-            backoff = min(backoff * 2, 30)
+            // Only a connection that brought nothing doubles the next wait.
+            backoff = gotAny ? 1 : min(backoff * 2, 30)
         }
         if !Task.isCancelled { state = .stopped }
     }
