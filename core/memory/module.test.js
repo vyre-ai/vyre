@@ -65,6 +65,8 @@ test("memory module: session.indexed with rewritten re-reads that session", asyn
 
 test("memory module: with no Recall index vyred still starts and memory answers with nothing", async t => {
   const root = seeded(t, { recall: false });
+  // Recall is installed now, so turn it off the way a user would, to get a machine with no index.
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ modules: { disable: ["recall"] } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   assert.equal((await request("GET", "/v1/modules", undefined, { root })).data.find(m => m.name === "memory")?.state, "running");
