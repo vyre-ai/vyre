@@ -1,0 +1,63 @@
+{
+  "mcp.servers": [
+    { "name": "tracker", "transport": "stdio", "state": "running", "tools": 6, "lastUsed": "$ago:2h",
+      "auth": { "type": "env" }, "scope": { "projects": ["northwind-bakery"], "agents": "*" },
+      "command": "npx", "args": ["-y", "@northwind/tracker-mcp"], "env": { "TRACKER_TOKEN": "tracker-token" },
+      "headers": [], "vars": [], "policy": { "mode": { "create_issue": "write", "archive_board": "off" } }, "idle": 600000,
+      "token": "fixture-leak-7f3a9c" },
+    { "name": "docs", "transport": "http", "state": "stopped", "tools": null, "lastUsed": null,
+      "auth": { "type": "bearer", "item": "docs-api" }, "scope": { "projects": "*", "agents": "*" },
+      "url": "https://docs.example.com/mcp", "headers": [], "env": {}, "vars": [], "policy": {}, "idle": 600000 },
+    { "name": "crm", "transport": "sse", "state": "failed", "tools": 4, "lastUsed": "$ago:3d",
+      "error": "the server answered 401 after a token refresh",
+      "auth": { "type": "oauth", "item": "crm-oauth" }, "scope": { "projects": "*", "agents": ["juno"] },
+      "url": "https://crm.example.com/sse", "headers": [], "env": {}, "vars": [], "policy": {}, "idle": 600000 }
+  ],
+  "mcp.test": { "$by": "name", "cases": {
+    "tracker": { "ok": true, "ms": 412, "tools": [
+      { "name": "tracker__comment_on_issue", "tool": "comment_on_issue", "outward": true, "sends": true },
+      { "name": "tracker__create_issue", "tool": "create_issue", "outward": true },
+      { "name": "tracker__delete_issue", "tool": "delete_issue", "outward": true },
+      { "name": "tracker__get_issue", "tool": "get_issue", "outward": false },
+      { "name": "tracker__list_issues", "tool": "list_issues", "outward": false },
+      { "name": "tracker__search_issues", "tool": "search_issues", "outward": false },
+      { "name": "tracker__update_issue", "tool": "update_issue", "outward": true }
+    ] },
+    "crm": { "ok": false, "tools": [], "ms": 1830, "error": "the server answered 401 after a token refresh",
+      "stderr": ["crm-mcp 2.1.0 listening", "auth: token rejected"] },
+    "*": { "ok": false, "tools": [], "ms": 40, "error": "mcp cannot use the vault item yet: run vyre vault grant <item> mcp" }
+  } },
+  "mcp.add": { "name": "new-server", "transport": "stdio", "state": "stopped", "tools": null, "auth": { "type": "env" },
+    "scope": { "projects": "*", "agents": "*" }, "test": { "ok": false, "tools": [], "ms": 12, "error": "mcp cannot use the vault item yet" } },
+  "mcp.update": { "name": "tracker", "transport": "stdio", "state": "running" },
+  "mcp.remove": { "removed": "docs" },
+  "mcp.restart": { "state": "running" },
+  "google.accounts": [
+    { "name": "work", "email": "alex@harlowlegal.com", "auth": { "type": "service-account", "item": "harlow-google-sa", "subject": "alex@harlowlegal.com" }, "added": "$ago:9d" },
+    { "name": "bakery", "email": "alex@northwindbakery.com", "auth": { "type": "oauth", "item": "northwind-google" }, "added": "$ago:2d",
+      "refresh_token": "fixture-leak-7f3a9c" }
+  ],
+  "google.test": { "$by": "name", "cases": {
+    "work": { "ok": false, "account": "work",
+      "scopes": { "calendar.readonly": true, "calendar.events": true, "gmail.readonly": true, "gmail.compose": true, "gmail.send": false },
+      "error": "Refused: gmail.send. Allow https://www.googleapis.com/auth/gmail.send for this service account's client ID in the Google Workspace admin console, under Security, API controls, Domain-wide delegation." },
+    "*": { "ok": true, "account": "bakery",
+      "scopes": { "calendar.readonly": true, "calendar.events": true, "gmail.readonly": true, "gmail.compose": true, "gmail.send": true } }
+  } },
+  "google.add": { "name": "new-account", "email": "dana@harlowlegal.com", "auth": { "type": "oauth", "item": "northwind-google" } },
+  "google.remove": { "removed": true },
+  "vault.list": { "locked": false, "items": [
+    { "name": "tracker-token", "kind": "api-key", "fields": ["value"], "grants": [{ "module": "mcp" }], "value": "fixture-leak-7f3a9c" },
+    { "name": "docs-api", "kind": "secret", "fields": ["value"], "grants": [] },
+    { "name": "crm-oauth", "kind": "env-set", "fields": ["client_id", "client_secret", "refresh_token", "token_uri"], "grants": [{ "module": "mcp" }] },
+    { "name": "launch-env", "kind": "env-set", "fields": ["DATABASE_URL", "STRIPE_KEY"], "grants": [] },
+    { "name": "harlow-google-sa", "kind": "note", "fields": ["text"], "grants": [{ "module": "google" }] },
+    { "name": "northwind-google", "kind": "env-set", "fields": ["client_id", "client_secret", "refresh_token", "token_uri"], "grants": [{ "module": "google" }] },
+    { "name": "dana-google", "kind": "env-set", "fields": ["client_id", "client_secret", "refresh_token", "token_uri"], "grants": [] },
+    { "name": "harlow-drive", "kind": "login", "fields": ["username", "password"], "grants": [] },
+    { "name": "old-token", "kind": "api-key", "fields": ["value"], "grants": [], "state": "trashed" }
+  ] },
+  "vault.grant": { "grant": { "status": "active" } },
+  "projects.list": { "projects": [{ "slug": "harlow-legal", "name": "Harlow Legal" }, { "slug": "northwind-bakery", "name": "Northwind Bakery" }] },
+  "agents.list": [{ "name": "juno", "kind": "assistant" }, { "name": "kit", "kind": "agent" }]
+}

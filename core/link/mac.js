@@ -10,13 +10,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
+import { createHealth, unknown } from "./health.js";
 
 const MAX_BACKOFF = 30_000;
 
 /**
  * @param {any} ctx the module's context
  * @param {{ verify?: (ip: string) => Promise<any>, insecure?: boolean, heartbeat?: number, pollMs?: number,
- *   hostname?: string, timeout?: number, ttl?: number }} seam test seams; production passes nothing
+ *   hostname?: string, timeout?: number, ttl?: number, health?: { check: (which: any) => Promise<any> } }} seam test seams; production passes nothing
  */
 export function macSide(ctx, seam = {}) {
   const file = path.join(ctx.paths.root, "link.json");
@@ -33,6 +34,7 @@ export function macSide(ctx, seam = {}) {
   };
   const connect = (address, pin) => connector({ address, verify, pinned: () => pin, insecure: Boolean(seam.insecure), ...(seam.ttl !== undefined ? { ttl: seam.ttl } : {}) });
   let conn = saved ? connect(saved.box.address, saved.box.stableId) : null;
+  const health = seam.health || createHealth();
 
   const state = { reachable: false, lastSeen: /** @type {number|null} */ (null), error: /** @type {string|null} */ (null), failures: 0, nextTry: 0, announced: /** @type {boolean|null} */ (null) };
   /** @type {{ id: string, secret: string, code: string, expires: number, address: string, stableId: string, node?: string, timer?: any } | null} */
@@ -166,11 +168,21 @@ export function macSide(ctx, seam = {}) {
     input: { type: "object", properties: {} },
     run: async () => ({
       role: "local", linked: Boolean(saved && !saved.revoked),
-      box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null } : null,
+      box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null, stableId: saved.box.stableId || null } : null,
       reachable: state.reachable, lastSeen: state.lastSeen,
       pending: pairing ? { id: pairing.id, code: pairing.code, expires: pairing.expires } : null,
       ...(state.error ? { error: state.error } : {}),
     }),
+  });
+
+  ctx.tool("link.health", {
+    description: "How this Mac reaches its box right now: direct or relayed, latency, last handshake. Checked at most once a minute.",
+    input: { type: "object", properties: {} },
+    run: async () => {
+      if (!saved || saved.revoked) return unknown(saved ? "the box no longer knows this Mac; pair again" : "this Mac is not paired with a box", Date.now());
+      if (!saved.box.stableId) return unknown("the box's node is not known; pair again", Date.now());
+      return health.check({ stableId: saved.box.stableId });
+    },
   });
 
   ctx.tool("link.unpair", {

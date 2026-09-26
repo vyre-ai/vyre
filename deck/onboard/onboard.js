@@ -9,6 +9,7 @@ import { icon, mark, wordmark } from "../js/icons.js";
 import { base, when, plural } from "../js/fmt.js";
 import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
+import { LOCK, lockState, lockSteps } from "../js/lock.js";
 
 const STEPS = [
   { id: "you", title: "You" },
@@ -153,6 +154,58 @@ function handheld(os, name = "") {
   if (o === "android") return "Android phone";
   return null;
 }
+
+
+/** Tailnet Lock's steps, each with its command or key to copy. The person runs them; Vyre never does. */
+function lockCommands(d) {
+  return [h("ol", { class: "ob-lock-steps" }, lockSteps(d).map(x => h("li", null, h("p", { class: "small" }, x.text), x.copy ? command(x.copy) : null))),
+    h("p", { class: "notice" }, icon("lock", 14), LOCK.never)];
+}
+
+/**
+ * The optional Tailnet Lock card, shown on the address step once this machine is on the tailnet,
+ * after the HTTPS step so a person turns HTTPS on before deciding about the lock. Made once per
+ * screen, so a poll redrawing the panel keeps what the person opened or dismissed.
+ */
+function lockCard() {
+  const card = h("div", { class: "ob-lock" });
+  (async () => {
+    const r = await attempt("onboard.tailscale", { action: "lock" });
+    if (r.error) { card.remove(); return; }
+    const d = r.data || {};
+    const on = lockState(d);
+    if (on) { put(card, h("div", { class: "found" }, icon("lock"), h("span", { class: "what" }, on))); return; }
+    const steps = h("div");
+    const toggle = h("button", { type: "button", class: "btn" }, LOCK.show);
+    toggle.addEventListener("click", () => {
+      const open = !steps.childNodes.length;
+      put(steps, open ? lockCommands(d) : null);
+      put(toggle, open ? LOCK.hide : LOCK.show);
+    });
+    put(card,
+      h("div", { class: "lbl" }, "Optional"),
+      h("h3", { class: "h3" }, LOCK.title),
+      h("p", { class: "small muted" }, LOCK.what),
+      h("p", { class: "small muted" }, LOCK.cost),
+      h("div", { class: "ob-lock-act" }, toggle,
+        h("button", { type: "button", class: "btn btn-ghost", onclick: () => put(card, h("p", { class: "notice" }, LOCK.laterNote)) }, LOCK.later)),
+      steps);
+  })();
+  return card;
+}
+
+/** The HTTPS step's words: a ts.net address needs HTTPS on in the tailnet, which only the person can turn on. */
+const HTTPS = {
+  title: "Turn on HTTPS for your tailnet",
+  what: "Your address is a ts.net name, and Tailscale gives its certificate. Tailscale does that only once HTTPS is on for your tailnet, and it starts off.",
+  open: "Open the DNS page of the Tailscale admin console:",
+  click: "Under HTTPS Certificates, click Enable HTTPS.",
+  back: "Come back here and click Check again.",
+  cost: "Turning it on publishes this machine's name in public Certificate Transparency logs.",
+  never: "Vyre never changes your tailnet's settings. This one is yours to turn on.",
+  button: "Open the admin console",
+};
+const ADMIN_DNS = "https://login.tailscale.com/admin/dns";
 
 /** One row of a live checklist. state: todo | doing | done | failed */
 function progressRow(label, st, note) {
@@ -333,7 +386,8 @@ const SCREENS = {
         progressRow("This machine joins your tailnet", signed ? "done" : "todo",
           signed && t.node ? `${t.node.dns || state.host} at ${t.node.ip}` : null)),
         t.loginUrl && !signed ? h("p", { class: "notice" }, "The sign-in page did not open? ",
-          h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null);
+          h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null,
+        null);
       if (signed) s.foot({ label: "Continue", run: s.next });
       else if (opened) s.foot({ label: "Waiting for Tailscale", disabled: true, run: () => {} });
       else s.foot({ label: "Connect", run: connect });
@@ -367,6 +421,8 @@ const SCREENS = {
     const list = h("ol", { class: "progress" });
     const note = h("div");
     col.append(h("div", { class: "ob-panel" }, addr, list, note));
+    // Tailnet Lock comes after the HTTPS step, never before it.
+    if (stepState("tailscale") === "done") col.append(lockCard());
     const drawAddr = (/** @type {string|null} */ address) => put(addr, address
       ? [h("i", null, "https://"), address.replace(/^https?:\/\//, "")]
       : h("span", { class: "faint" }, "Not reserved yet."));
@@ -387,10 +443,18 @@ const SCREENS = {
     // click fixes it, and it is worth a heads-up before reserving, not just after it fails.
     const blocked = (/** @type {any} */ d) => {
       if (!d || d.state !== "blocked" || d.code !== "https_off") return false;
-      put(note, h("p", { class: "notice" }, d.why || "HTTPS certificates are off for your tailnet."),
-        h("p", { class: "small muted" }, "Turning it on publishes this machine's name in public Certificate Transparency logs."));
+      const url = d.adminUrl || ADMIN_DNS;
+      put(note, h("div", { class: "ob-https" },
+        h("h3", { class: "h3" }, HTTPS.title),
+        h("p", { class: "small muted" }, HTTPS.what),
+        h("ol", { class: "ob-lock-steps" },
+          h("li", null, h("p", { class: "small" }, HTTPS.open), h("p", { class: "small" }, h("a", { class: "link", href: url, target: "_blank", rel: "noopener" }, url))),
+          h("li", null, h("p", { class: "small" }, HTTPS.click)),
+          h("li", null, h("p", { class: "small" }, HTTPS.back))),
+        h("p", { class: "small muted" }, HTTPS.cost),
+        h("p", { class: "notice" }, icon("lock", 14), HTTPS.never)));
       s.foot({ label: "Check again", run: reserve },
-        { secondary: d.adminUrl ? h("a", { class: "btn", href: d.adminUrl, target: "_blank", rel: "noopener" }, "Turn on HTTPS") : null });
+        { secondary: h("a", { class: "btn", href: url, target: "_blank", rel: "noopener" }, HTTPS.button) });
       return true;
     };
     const done = (/** @type {any} */ r) => {

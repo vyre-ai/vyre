@@ -16,7 +16,10 @@ import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
+import { build } from "./build.js";
+import { acquire } from "./lock.js";
 import { Presence, parse as parsePresence } from "../presence/index.js";
+import { allowedTools } from "../names/guests.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, "..", "..");
@@ -38,6 +41,17 @@ export async function start(opts = {}) {
   // VYRE_ALLOW_DIALOGS=1 is a person's deliberate custom home (core/config/dialogs.js).
   if (!isRealHome(root) && !process.env.NODE_TEST_CONTEXT && process.env.VYRE_ALLOW_DIALOGS !== "1") process.env.VYRE_NO_DIALOGS = "1";
   const p = config.ensure(root);
+  // One vyred per home, whatever path reached it; before the store or any module opens.
+  const release = acquire(root);
+  try { return await startLocked(opts, root, p, release); }
+  catch (e) { release(); throw e; }
+}
+
+/**
+ * The rest of start(), with the home's lock held.
+ * @param {Parameters<typeof start>[0] & {}} opts @param {string} root @param {any} p @param {() => void} release
+ */
+async function startLocked(opts, root, p, release) {
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");
   const log = opts.log || ((msg, extra) => {
@@ -107,6 +121,7 @@ export async function start(opts = {}) {
     db.close();
     fs.rmSync(p.socket, { force: true });
     try { if (fs.readFileSync(p.pid, "utf8") === String(process.pid)) fs.rmSync(p.pid, { force: true }); } catch {}
+    release();
     log("vyred down");
   };
   return { registry, events, config: cfg, paths: p, stop };
@@ -129,12 +144,13 @@ async function body(req) {
 
 /**
  * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
- *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string } }} Policy
+ *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string|null,
+ *   tags?: string[], caps?: Record<string, any[]>, kind?: "owner"|"guest"|"agent", agent?: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
-const FORBIDDEN_LABEL = /^(module:|tailnet:|onboard$|hook$)/;
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|onboard$|hook$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -154,6 +170,23 @@ async function route(req, res, { registry, events, cfg, started, streams, root }
   // (ADR 0002). None of them may be claimed over the socket; such a claim, or none, is "anonymous".
   const caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
+  // A guest from another tailnet (ADR 0014 part 8) reaches only its own tools: the ones the owner
+  // listed or the policy granted it, and of those only GUEST_SAFE (core/names/guests.js). Every
+  // other tool, and every other path but the Deck's files, is "no such" thing, not "denied", so
+  // a guest learns nothing about what else is here.
+  if (caller.startsWith("tailnet-guest:")) {
+    const mine = new Set(allowedTools(cfg.network, policy.peer));
+    const isTool = url.pathname.startsWith("/v1/tools/");
+    if (isTool && !(req.method === "POST" && mine.has(decodeURIComponent(url.pathname.slice("/v1/tools/".length))))) {
+      return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });
+    }
+    if (req.method === "GET" && url.pathname === "/v1/tools") {
+      return send(res, 200, { data: registry.listTools(caller).filter(t => mine.has(t.name)) });
+    }
+    if (!isTool && !(req.method === "GET" && !url.pathname.startsWith("/v1/"))) {
+      return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
+    }
+  }
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
   if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {
     return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });
@@ -165,8 +198,15 @@ async function route(req, res, { registry, events, cfg, started, streams, root }
   // The tailnet peer a network listener established (node, stableId, login) rides here too.
   /** @type {{ thread?: string, agent?: string, peer?: any }} */
   const via = policy.peer ? { peer: policy.peer } : {};
-  // A listener's own identity (policy.caller) is established by the listener, not claimed.
-  const said = policy.caller ? null : AGENT_CLAIM.exec(caller);
+  // A listener's own identity (policy.caller) is established by the listener, not claimed. The
+  // one exception is an agent's own tailnet node (`tailnet:agent:<name>`): whois strengthens the
+  // agent's key and never replaces it, so that caller must carry the key of that same agent too.
+  // Off the tailnet the key alone works as before.
+  const agentNode = Boolean(policy.caller && /^tailnet:agent:/.test(policy.caller));
+  const said = policy.caller && !agentNode ? null : AGENT_CLAIM.exec(caller);
+  if (agentNode && !(said && policy.peer && policy.peer.agent === said[1])) {
+    return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
+  }
   if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
@@ -190,7 +230,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root }
     // last_event lets a surface follow the stream from now: `since=0` would replay the whole
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
-    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    const b = build();
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });

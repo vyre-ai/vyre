@@ -18,6 +18,7 @@ import path from "node:path";
 import * as route from "./route.js";
 import * as st from "./state.js";
 import * as glass from "./glass.js";
+import { rankSaid, yourAnswer } from "./said.js";
 
 /** @typedef {{ call: (tool: string, input?: any, opts?: any) => Promise<any>, get: (route: string, opts?: any) => Promise<any> }} Client */
 
@@ -41,6 +42,28 @@ export function explain(err) {
   // threads.send knows only the sessions the switchboard runs; a terminal's own session is not one.
   if (/^no thread /.test(err.message || "")) return "That session is not one vyred runs, so it cannot be typed into from here. Open it where it runs, or start a new thread.";
   return err.message || err.code;
+}
+
+/** How often the Capsule asks link.health, at most: once a minute, and only when it opens. */
+export const HEALTH_EVERY = 60_000;
+
+/**
+ * The line a person reads about the box's connection: "direct 12 ms", "relayed via fra 80 ms",
+ * with the last handshake and the dot's colour. Null when there is nothing to say (no box, no
+ * link module). The Deck says the same in deck/js/health.js; a packaged Capsule carries only
+ * local/capsule/, so the words are written again here rather than imported.
+ * @param {any} x link.health's answer @param {number} now
+ */
+export function linkLine(x, now) {
+  if (!x || !x.path) return null;
+  const ms = typeof x.latencyMs === "number" ? ` ${x.latencyMs} ms` : "";
+  const path = x.path === "direct" ? `direct${ms}` : x.path === "relay" ? `relayed${x.relay ? ` via ${x.relay}` : ""}${ms}`
+    : x.path === "peer-relay" ? `peer relay${ms}` : x.why === "the node is offline" ? "offline" : "unknown";
+  const hs = typeof x.lastHandshake === "number" ? route.age(x.lastHandshake, now) : null;
+  const relayed = x.path === "relay" || x.path === "peer-relay";
+  // The dot's colour, as the Deck draws it (deck/js/health.js): green direct, amber relayed, grey unknown.
+  const dot = x.path === "direct" ? "direct" : relayed ? "relayed" : "unknown";
+  return { path, handshake: hs ? `last handshake ${hs === "now" ? "just now" : `${hs} ago`}` : null, relayed, dot };
 }
 
 export class Bridge extends EventEmitter {
@@ -91,6 +114,9 @@ export class Bridge extends EventEmitter {
     this.pendingSeq = 0;
     /** The newest event id heard on the stream. */
     this.lastEvent = 0;
+    /** @type {any} link.health's last answer, and when it was asked */
+    this.health = null;
+    this.healthAt = 0;
   }
 
   /** Who is asking, for a waiting row: the agent whose thread it is, else the thread's name. */
@@ -160,6 +186,20 @@ export class Bridge extends EventEmitter {
     return { up: true };
   }
 
+  /**
+   * How this Mac reaches its box (link.health). main.js calls this when the Capsule opens, never
+   * while it is hidden, and it asks at most once a minute; vyred's own cache keeps the tailscale
+   * checks to one a minute whoever else asks.
+   */
+  async linkHealth() {
+    if (!this.has("link.health") || !this.catalog.box) { if (this.health) { this.health = null; this.emit("change"); } return; }
+    if (this.healthAt && this.now() - this.healthAt < HEALTH_EVERY) return;
+    this.healthAt = this.now();
+    const r = await this.client.call("link.health").catch(() => null);
+    this.health = r && r.data && r.data.path ? r.data : null;
+    this.emit("change");
+  }
+
   /** @param {string} q */
   complete(q) { return route.complete(q, this.catalog); }
 
@@ -203,7 +243,8 @@ export class Bridge extends EventEmitter {
     const scope = project_cwds && project_cwds.length ? { project_cwds } : {};
     const [facts, hits] = await Promise.all([
       this.client.call("memory.relevant", { text, limit: 3, ...scope }),
-      this.client.call("recall.search", { q: text, limit: 3, per_session: 1, ...scope }),
+      // More than are shown: said.js drops the question echoed back and the Capsule's own threads.
+      this.client.call("recall.search", { q: text, limit: 10, per_session: 1, ...scope }),
     ]);
     // Memory ranks by the thing named ("Dana"). The rest of the question says which fact about
     // it is wanted ("email"), so a fact that shares those words comes first.
@@ -211,31 +252,40 @@ export class Bridge extends EventEmitter {
     const f = (facts.data || []).filter(x => (x.score ?? x.confidence ?? 0) >= 0.5)
       .map(x => ({ x, s: (x.score ?? x.confidence ?? 0) + 0.5 * route.words(x.text).filter(w => asked.includes(w) && !route.words(x.matched).includes(w)).length }))
       .sort((a, b) => b.s - a.s).map(({ x }) => x);
-    const h = hits.data || [];
+    const h = rankSaid(hits.data || [], text, { scratch: path.join(this.home, "capsule", "ask") });
+    // No fact from memory: the user's own statement ("I own a blue Volvo XC40") is the answer,
+    // in one line, with the quote under it as its source.
+    const said = f[0] ? null : yourAnswer(h[0], text);
     // memory.relevant gives each fact a confidence (0..1) and an age ("3 weeks"); the page shows
-    // both beside a memory answer. A transcript hit is only a quote: it has no confidence.
+    // both beside a memory answer. A transcript hit is only a quote: it has no confidence, and it
+    // shows as what was said ("You said, 2 weeks ago: ..."), never as if it were a fact.
     const out = {
       ms: Math.max(1, this.now() - t0),
-      answer: f[0] ? f[0].text : null,
+      answer: f[0] ? f[0].text : said,
+      // "memory" for a fact Memory distilled, "said" for a line made from the user's own words.
+      answerKind: f[0] ? "memory" : said ? "said" : null,
       confidence: f[0] ? confidenceOf(f[0]) : null,
-      answerAge: f[0] ? s(f[0].age) || null : null,
+      answerAge: f[0] ? s(f[0].age) || null : said ? route.age(h[0].ts, this.now()) || null : null,
       more: f.slice(1).map(x => x.text),
       sources: [
-        ...f.filter(x => x.ref).map(x => ({ session: x.ref.session, seq: x.ref.seq, name: x.ref.name || x.source, quote: x.text, age: x.age || "", confidence: confidenceOf(x) })),
-        ...h.map(x => ({ session: x.session, seq: x.seq, name: x.name || x.title || x.session.slice(0, 8), quote: plain(x.snippet || x.text), age: route.age(x.ts, this.now()), confidence: null })),
+        ...f.filter(x => x.ref).map(x => ({ kind: "fact", session: x.ref.session, seq: x.ref.seq, name: x.ref.name || x.source, quote: x.text, age: x.age || "", confidence: confidenceOf(x) })),
+        ...h.map(x => ({ kind: "quote", role: x.role === "assistant" ? "assistant" : "user", session: x.session, seq: x.seq, name: x.name || x.title || x.session.slice(0, 8),
+          quote: plain(x.snippet || x.text), age: route.age(x.ts, this.now()), confidence: null })),
       ].filter((x, i, all) => all.findIndex(y => y.session === x.session) === i).slice(0, 3),
       error: facts.error && hits.error ? explain(hits.error) : null,
     };
-    // Kept for the reply to the same words, which the page shows beside what memory said. None of
-    // it is sent to a model: only the assistant, which reads memory itself, sees the user's past.
-    this.lastRecall = { text: String(text).trim(), answer: out.answer, sources: out.sources, confidence: out.confidence, answerAge: out.answerAge };
+    out.memo = memoItems(out);
+    // Kept for the reply to the same words, which the page shows beside what memory said. A quick
+    // question sends the model exactly this, the lines on screen and nothing more (quickAppend):
+    // the answer and its three sources. The rest of memory never leaves this Mac from here.
+    this.lastRecall = { text: String(text).trim(), answer: out.answer, answerKind: out.answerKind, sources: out.sources, confidence: out.confidence, answerAge: out.answerAge };
     return out;
   }
 
   /** A new reply, carrying the model it runs on and what memory said about the same words. */
   fresh(thread, text, model = null) {
     const m = this.lastRecall && this.lastRecall.text === String(text).trim() && (this.lastRecall.answer || this.lastRecall.sources.length)
-      ? { answer: this.lastRecall.answer, sources: this.lastRecall.sources, confidence: this.lastRecall.confidence, answerAge: this.lastRecall.answerAge } : null;
+      ? { answer: this.lastRecall.answer, answerKind: this.lastRecall.answerKind, sources: this.lastRecall.sources, confidence: this.lastRecall.confidence, answerAge: this.lastRecall.answerAge } : null;
     return { ...st.reply(thread), model, memory: m };
   }
 
@@ -343,6 +393,13 @@ export class Bridge extends EventEmitter {
       const before = this.reply;
       this.reply = this.fresh(String(d.thread), text, this.quick.get(String(d.thread)) || null);
       r = await this.client.call("threads.send", { thread: d.thread, text, surface: "capsule" });
+      // Busy in a terminal: the words wait for its turn to end (the Harness hands them over at
+      // Stop), and its reply comes back on this thread like any other.
+      if (!r.error && r.data && r.data.queued) {
+        this.reply = { ...this.reply, queued: { name: String(r.data.name || d.threadLabel || "The session"), delivered: false } };
+        this.emit("change");
+        return { thread: String(d.thread), queued: true, note: r.data.note || null };
+      }
       if (r.error || (r.data && r.data.sent === false)) this.reply = before;
       if (!r.error && r.data && r.data.sent === false) {
         // {sent:false, holder, note}; the note names a tool, so the Capsule says it in words.
@@ -373,7 +430,9 @@ export class Bridge extends EventEmitter {
     this.emit("change");
     // Lean: no plugin, no tools, no MCP servers, no settings. A question needs none of them, and
     // they were most of what an answer cost (switchboard measured $0.027 against $0.013 lean).
-    const r = await this.client.call("threads.start", { prompt: String(text).trim(), append: QUICK_APPEND, lean: true, model, cwd, surface: "capsule",
+    // What memory showed for these words goes with it, so "which car do I own" is answered from
+    // the user's own notes rather than a shrug.
+    const r = await this.client.call("threads.start", { prompt: String(text).trim(), append: quickAppend(this.reply && this.reply.memory), lean: true, model, cwd, surface: "capsule",
       name: "Capsule: " + String(text).trim().replace(/\s+/g, " ").slice(0, 40) });
     this.pending = false;
     if (r.error) { this.reply = null; this.emit("change"); return { error: explain(r.error) }; }
@@ -663,15 +722,18 @@ export class Bridge extends EventEmitter {
     return {
       up: this.up,
       has: { agents: this.has("agents.list"), threads: this.has("threads.send"), gate: this.has("gate.held"), recall: this.has("recall.search"),
-        quick: this.has("threads.start"), stop: this.has("threads.stop") },
+        quick: this.has("threads.start"), stop: this.has("threads.stop"), send: this.has("files.send") && Boolean(this.catalog.box) },
       assistant: ((this.catalog.agents || []).find(a => a.kind === "assistant") || {}).name || null,
       waiting: this.waiting.map(w => ({ ...w, age: route.age(w.at, this.now()) })),
       // What counts toward the Beacon dot and the tray badge: proposed lessons are quiet.
       waitingLoud: st.loud(this.waiting),
       reply: this.reply ? { thread: this.reply.thread, text: st.replyText(this.reply), tools: this.reply.tools, finished: this.reply.finished,
-        ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease, model: this.reply.model || null,
-        cost: this.reply.cost, ms: this.reply.ms, memory: this.reply.memory || null } : null,
+        ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease, model: this.reply.model || null, notice: this.reply.notice || null,
+        queued: this.reply.queued || null,
+        cost: this.reply.cost, ms: this.reply.ms,
+        memory: this.reply.memory ? { ...this.reply.memory, memo: memoItems(this.reply.memory) } : null } : null,
       dm: this.chat ? st.dmView(this.chat) : null,
+      link: this.catalog.box ? linkLine(this.health, this.now()) : null,
     };
   }
 }
@@ -705,6 +767,51 @@ function needs(d) {
 
 /** The words a quick question is sent as: the user's own, then how to answer. */
 export const QUICK_APPEND = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line.";
+
+/** "2 weeks ago", "just now", or "" for an age route.age or Memory gave. */
+export const ago = age => (!age ? "" : age === "now" ? "just now" : `${age} ago`);
+
+/**
+ * What a memory box shows, line by line: the distilled fact first (when memory.relevant has one),
+ * then each source on screen, a fact as itself and a transcript quote as who said it and when.
+ * The page draws these items and quickAppend sends these same items, so what the model is told
+ * is exactly what the user can see, and no more.
+ * @param {{ answer: string|null, answerKind?: string|null, answerAge?: string|null, confidence?: number|null, sources: any[] }|null|undefined} m
+ * @returns {{ kind: "fact"|"quote", text: string, age: string, who?: "You"|"Claude", confidence?: number|null, said?: boolean, source: any }[]}
+ */
+export function memoItems(m) {
+  if (!m) return [];
+  const out = [];
+  const srcs = (m.sources || []).slice(0, 3);
+  // A line made from the user's own words ("said") points at the quote it came from.
+  if (m.answer) out.push({ kind: /** @type {const} */ ("fact"), text: m.answer, age: s(m.answerAge), confidence: m.confidence ?? null, said: m.answerKind === "said",
+    source: m.answerKind === "said" ? srcs.find(x => x.kind === "quote") || null : srcs.find(x => x.kind !== "quote" && x.quote === m.answer) || null });
+  for (const x of srcs) {
+    if (x.kind === "quote") out.push({ kind: /** @type {const} */ ("quote"), who: x.role === "assistant" ? "Claude" : "You", text: s(x.quote), age: s(x.age), source: x });
+    else if (x.quote && x.quote !== m.answer) out.push({ kind: /** @type {const} */ ("fact"), text: s(x.quote), age: s(x.age), confidence: x.confidence ?? null, source: x });
+  }
+  return /** @type {any} */ (out);
+}
+
+/** The memory items as the model reads them, one line each. @param {Parameters<typeof memoItems>[0]} m */
+export function memoLines(m) {
+  // A "said" line is the quote under it turned to "you": the quote alone says it to a model.
+  return memoItems(m).filter(x => !(/** @type {any} */ (x).said)).map(x => x.kind === "quote"
+    ? `${x.who === "Claude" ? "Claude said" : "The user said"}${x.age ? `, ${ago(x.age)}` : ""}: "${x.text}"`
+    : `${x.text}${x.age ? ` (noted ${ago(x.age)})` : ""}`);
+}
+
+/**
+ * QUICK_APPEND, then what the user's own notes say about the question, when memory showed any.
+ * Only the lines on screen go (memoItems of the reply's memory); nothing else is read for it.
+ * @param {{ answer: string|null, answerAge?: string|null, sources: any[] }|null|undefined} m
+ */
+export function quickAppend(m) {
+  const lines = memoLines(m);
+  if (!lines.length) return QUICK_APPEND;
+  return `${QUICK_APPEND}\n\nWhat the user's own notes say:\n${lines.map(l => `- ${l}`).join("\n")}\n\n` +
+    `If these answer the question, answer from them and say when the user said it, like "a blue Volvo XC40 (you said so 2 weeks ago)". They may be old or partial; say so if it matters.`;
+}
 
 /** vyred's home from its socket, when the socket sits in it (config/socketPath: <home>/vyred.sock). */
 const homeOf = socket => (socket && path.basename(socket) === "vyred.sock" ? path.dirname(socket) : null);

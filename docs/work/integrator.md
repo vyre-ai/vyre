@@ -23,14 +23,33 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   tmp-guard names it. Plus the test box test fixes. Full suite on the test box: 1449 tests, 1406 pass,
   0 fail, 42 skipped, `npm test` exit 0, tmp-guard clean.
 
+- 1b3a457 merge polish-surfaces: world.js theirs; scratch/tmp-guard/vault tests/helper test kept
+  both sides; the dialog-fix touchid gate test moved under SCRATCH (os import was gone). Full
+  suite on the test box: 1453 tests, 1409 pass, 0 fail.
+- a8b6520 merge tailnet (tailnet-surfaces included): policy.test imports, entrypoint egress PAC
+  plus --test-type, Chat session head plus health dot, all kept both sides. Full suite on the test box:
+  1578 tests, 1535 pass, 0 fail, 42 skipped, 1 todo, exit 0, tmp-guard clean.
+
 ## Doing
 
-- Merging, in order: work/polish-surfaces (deck/test/world.js: take polish-surfaces'), work/polish-cli,
-  work/tailnet (with its merged sub-branches), work/connectors when its lead says ready.
+- FROZEN for ci's history rewrite (no git commands until ci says "done").
 
 ## Next
 
-- After each merge: targeted tests on the test box, report sha and numbers to the lead.
+After ci's done, with the rewritten heads ci reports, one at a time, targeted tests on the test box,
+sha to the lead after each:
+1. work/pwa (presence-proof fix, pairing approve card)
+2. work/capsule-now (switchboard MIGRATIONS gains threads_inbox at the end: order after any other appended migration)
+3. work/connectors (then run connectors, harness, presence-bypass tests)
+4. work/cc-plugin
+5. work/polish-cli (bin/vyre conflict with core/quiet.js: keep both; run recall, cli, release-check tests;
+   update docs/work/recall.md optionalDependencies line or tell docs)
+6. work/docs
+Then security fixes on main: the Rules hook in the registry call path for non-person callers
+(test: agent call to a rules-denied tool refused); vault.reveal default (core/vault/tools/deck.js
+returns reveal: true: gate on presence, default off). Then ctx.projects (SPEC 5.2), site/start
+page, ADR 0008 box update. Details in ../vyre-docs/docs/work/docs.md "Needs from others".
+Remove ../vyre-tailnet-surfaces and work/tailnet-surfaces.
 
 ## Needs from others
 

@@ -14,7 +14,7 @@ import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
-import { whois } from "../names/tailscale.js";
+import { whois, run as tailscale } from "../names/tailscale.js";
 import { isTailnet, normalize } from "../names/identity.js";
 import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
@@ -61,12 +61,19 @@ export default {
     }
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      // With identity "whois" no header counts: the login is the one Tailscale gives the peer address.
+      // With identity "whois" no header counts: the login is the one Tailscale gives the peer
+      // address, and meta.peer is the rest of that answer (node, stable id, tags, caps), which
+      // vault.relay.grants "require" reads. A tagged node has no login, so it is never a holder.
       const byWhois = opts.relay.identity === "whois"
-        ? async ip => { if (!isTailnet(ip)) return null; const w = await whois(normalize(ip)); return w && !w.tagged ? w.login : null; }
+        ? async ip => { if (!isTailnet(ip)) return null; return whois(normalize(ip)); }
         : null;
+      if (byWhois) vault.lookupPeer = peerByLogin;
+      if (vault.relayGrants === "require" && vault.relayIdentity !== "whois") ctx.log("vault: vault.relay.grants is require but vault.relay.identity is not whois, so no caller carries caps and every relayed request is refused");
       listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
-        onRelay: async (env, meta) => vault.onRelay(env, byWhois ? { ...meta, login: await byWhois(meta.remoteAddress) } : meta),
+        onRelay: async (env, meta) => {
+          if (!byWhois) return vault.onRelay(env, meta);
+          return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
+        },
         onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
@@ -245,6 +252,14 @@ export default {
         return `Share ${list(items)} with ${String(holder).slice(0, 64)}, ${mode === "sealed" ? "sealed (a copy leaves this Vyre)" : "relayed"}${until}`;
       }, { skip: ({ caller }) => callerKind(caller) === "mcp" }));
 
+    // Reveals no value, only logins, item names and what the policy says, so no presence. Owner
+    // callers only: an agent caller has no business mapping who can reach what.
+    tool("vault.grants.status", [...SURFACES, "mcp"], "With vault.relay.grants, whether the tailnet policy grants each pass holder vyre.run/cap/vault for what they hold, by whois now or as last seen at the relay.",
+      obj({}), async (_input, { caller }) => {
+        if (/(?:^|[\s:])agent:/.test(String(caller))) throw new Error("vault.grants.status is for the owner, not an agent");
+        return vault.grantsStatus();
+      });
+
     tool("vault.pass.list", null, "Passes this Vyre gave, and passes it holds.", obj({}), () => vault.passes());
 
     tool("vault.pass.revoke", null, "End a pass. A relayed pass stops at once; a sealed one lists what to rotate.",
@@ -291,3 +306,31 @@ export default {
     };
   },
 };
+
+/**
+ * The relay listener's meta in whois mode: the login and the peer are whois's answer for the
+ * socket's address and nothing else, whatever the request's headers say. Pure, for tests.
+ * @param {{ remoteAddress?: string, login?: string|null }} meta
+ * @param {ReturnType<typeof import("../link/transport.js").parseWhois>} w
+ */
+export function whoisMeta(meta, w) {
+  const login = w && !w.tagged ? w.login : null;
+  return { ...meta, login, ...(w ? { peer: { login, node: w.node, stableId: w.stableId, tags: w.tags, caps: w.caps } } : {}) };
+}
+
+/**
+ * whois of the online, untagged node signed in as `login`, found in `tailscale status --json`
+ * (a shared-in node is in Peer too). On demand only: a new pass with grants required, or
+ * vault.grants.status. Null when no such node is online or Tailscale is not there.
+ * @param {string} login
+ */
+async function peerByLogin(login) {
+  const r = await tailscale(["status", "--json"], { timeout: 5000 });
+  if (r.code !== 0) return null;
+  let s;
+  try { s = JSON.parse(r.out); } catch { return null; }
+  const users = s.User || {};
+  const peer = Object.values(s.Peer || {}).find(p => p && p.Online && !(p.Tags || []).length && (p.TailscaleIPs || []).length
+    && users[String(p.UserID)] && users[String(p.UserID)].LoginName === login);
+  return peer ? whois(peer.TailscaleIPs[0]) : null;
+}

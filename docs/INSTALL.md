@@ -129,6 +129,7 @@ A container can be recreated at any time; nothing in it matters but the volumes.
   names/                      the name directory key, once the hosted directory exists
   modules/, watchers/         what the user installed and what Claude wrote
   models/                     embedding weights (about 23 MB), a cache: safe to delete
+  embedder/                   the library that runs them (about 105 MB), fetched on first use: safe to delete
   logs/                       YYYY-MM-DD.log from vyred
   vyred.sock, vyred.pid
 ```

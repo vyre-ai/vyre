@@ -115,7 +115,8 @@ export default {
      * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
      * why, stats, corrections) but never corrects, merges or splits.
      */
-    const viaTailnet = caller => /^tailnet:[^\s]+$/.test(String(caller || ""));
+    // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
+    const viaTailnet = caller => /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || ""));
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * Throws unless the caller may read these folders' graph or this room (none: the main

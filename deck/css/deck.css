@@ -107,6 +107,10 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .dot.recall { background: var(--recall); }
 .dot.beacon { background: var(--beacon-dot); width: 7px; height: 7px; }
 .dot.signal { background: var(--signal); }
+/* How the box reaches this device (deck/js/health.js): green direct, amber relayed, grey unknown. */
+.dot.health-direct { background: var(--signal); }
+.dot.health-relayed { background: var(--recall); }
+.dot.health-unknown { background: var(--label); }
 .bar { height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--text); transition: width 200ms linear; }
 .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--r-2); padding: 2px; gap: 2px; }

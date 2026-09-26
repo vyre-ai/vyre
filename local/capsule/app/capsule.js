@@ -91,7 +91,9 @@ async function think() {
   S.dest = dest;
   S.destFor = body;
   S.destIndex = Math.min(S.destIndex, dest.options.length - 1);
-  S.recall = recall && (recall.answer || (dest.options[0].kind === "recall" && recall.sources.length)) ? recall : null;
+  // A fact, or what the user said in a session about the same words: either is worth showing, and
+  // what shows here is what a quick question sends along (bridge quickAppend).
+  S.recall = recall && (recall.answer || recall.sources.length) ? recall : null;
   // A name to open wins over memory; a question is for memory and the assistant.
   if (S.intent === "open") S.recall = null;
   paint();
@@ -216,6 +218,18 @@ async function pickResult(r, { take = false } = {}) {
   S.note = r2.error || r2.note || "";
   paint();
 }
+/** Send a file on this Mac to the box. It can take a while, so the note says so first, then how it went. */
+let sending = false;
+async function sendFile(r) {
+  if (sending) return;
+  sending = true;
+  S.note = `Sending ${r.label} to the box…`;
+  paint();
+  const out = await api.sendFile(r).catch(e => ({ error: String(e && e.message || e) }));
+  sending = false;
+  S.note = out.error || out.note || "";
+  paint();
+}
 let thinkTimer = 0;
 const soon = (ms = 90) => { clearTimeout(thinkTimer); thinkTimer = window.setTimeout(() => think().catch(e => console.error("capsule: " + (e && e.stack || e))), ms); };
 
@@ -246,6 +260,8 @@ async function send(d, { take = false } = {}) {
     return paint();
   }
   S.sent = { dest: d, text, thread: r.thread || null };
+  // "<name> is busy in your terminal. I'll hand it your message when this turn ends."
+  if (r.queued && r.note) S.note = r.note;
   if (inDm()) { box.value = ""; S.text = ""; box.placeholder = `Message ${S.chip.label}`; return paint(); }
   S.mode = "reply";
   box.value = ""; S.text = "";
@@ -354,6 +370,8 @@ window.addEventListener("keydown", e => {
     if (cur && cur.r && cur.r.kind === "module" && (k === "ArrowRight" || (k === "k" && e.metaKey))) { e.preventDefault(); return openActions(cur.r); }
     // Tab always asks, whatever is highlighted: the one key that sends the words on.
     if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
+    // ⌥⏎ on a file on this Mac sends it to the box (Taildrop); ⏎ still opens it.
+    if (k === "Enter" && e.altKey && cur && cur.r && cur.r.kind === "file" && S.snap.has.send) { e.preventDefault(); return sendFile(cur.r); }
     if (k === "Enter" && !e.metaKey && i >= 0) {
       e.preventDefault();
       const it = E[i];
@@ -512,18 +530,22 @@ function paint() {
     const r = snap.reply;
     const { who, where } = S.sent.dest.show;
     const stopped = r && r.error === "stopped";
-    const state = !r ? "sending" : stopped ? "stopped" : r.error ? "failed" : r.finished ? "done" : r.lease && r.lease !== "capsule" ? `${r.lease} is typing` : "answering";
+    const state = !r ? "sending" : stopped ? "stopped" : r.error ? "failed" : r.finished ? "done" : r.queued && !r.text ? (r.queued.delivered ? "handed over" : "queued")
+      : r.lease && r.lease !== "capsule" ? `${r.lease} is typing` : "answering";
     // What it cost, small: the model, the dollars the switchboard reported, the time.
     const cost = r && r.finished ? [r.model, r.cost != null ? `$${Number(r.cost).toFixed(3)}` : null, r.ms ? `${(r.ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(" · ") : "";
-    kids.push(h("div", { class: "sect replyhead" }, h("span", { class: "lbl on" }, "Answer"), h("span", { class: "who" }, [who, ...where].filter(Boolean).join(" · ")),
+    // The user's words first, as theirs; then who answers, and the answer under it.
+    kids.push(h("div", { class: "sect asked" }, h("span", { class: "lbl" }, "You"), h("span", { class: "q" }, S.sent.text)));
+    kids.push(h("div", { class: "sect replyhead" }, h("span", { class: "lbl on" }, who || "Answer"), h("span", { class: "who" }, where.filter(Boolean).join(" · ")),
       h("span", { class: "state" }, cost || state)));
-    kids.push(h("div", { class: "asked" }, S.sent.text));
-    const mem = r && r.memory && (r.memory.answer || (r.memory.sources || []).length) ? r.memory : null;
-    if (mem) kids.push(h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, "From memory"),
-      mem.answer ? h("div", { class: "answer" }, mem.answer) : null,
-      (mem.sources || []).length ? h("div", { class: "srcs" }, mem.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name, srcMeta(s)))) : null));
+    const mem = r && r.memory && (r.memory.memo || []).length ? r.memory : null;
+    if (mem) kids.push(memoBox(mem));
+    // Queued for a session busy in a terminal: it gets the words when its turn ends (harness Stop).
+    if (r && r.queued && !r.text) kids.push(h("div", { class: "sect status" }, r.queued.delivered ? `Handed to ${r.queued.name}. Its reply shows here when its turn ends.` : `Queued for ${r.queued.name}: it gets this when its current turn ends.`));
     if (r && r.tools.length) kids.push(h("div", { class: "tools" }, r.tools.map(t => h("span", { class: "tl" + (t.error ? " fail" : "") }, `${t.done ? (t.error ? "failed" : "done") : "running"} · ${t.summary}`))));
-    kids.push(h("div", { class: "reply md" }, r && r.text ? md(r.text) : null, r && !r.finished ? h("span", { class: "caret" }) : null));
+    kids.push(h("div", { class: "reply md" }, r && r.text ? md(r.text) : null, r && !r.finished && !(r.queued && !r.text) ? h("span", { class: "caret" }) : null));
+    // Vyre's own words (a usage limit), faint, under the answer and never in it.
+    if (r && r.notice) kids.push(h("div", { class: "sect status" }, r.notice));
     if (r && r.finished && r.text) kids.push(h("div", { class: "sect replyacts" },
       h("button", { type: "button", class: "btn btn-ghost", onclick: async () => { await api.copy(r.text); S.note = "Copied."; paint(); } }, "Copy"),
       S.sent.dest.kind === "quick" && !S.sent.dest.deep && S.dest ? deeperButton() : null));
@@ -548,14 +570,11 @@ function paint() {
   }
 
   // Memory on its own: only when nothing can be asked (no assistant, no Claude) and nothing found.
-  if ((S.recall && S.recall.answer || S.recall && S.dest && S.dest.options[0].kind === "recall") && !(!S.chip && entries().length)) {
+  if ((S.recall && S.recall.answer || S.recall && S.dest && S.dest.options[0].kind === "recall" && S.recall.sources.length) && !(!S.chip && entries().length)) {
     const rc = S.recall;
     hint.append(h("span", { class: "ms" }, `${rc.ms} ms`));
-    kids.push(h("div", { class: "sect recall" }, h("span", { class: "lbl" }, "From memory · no model used"),
-      rc.answer ? h("div", { class: "answer" }, rc.answer) : h("div", { class: "more" }, "Nothing in memory answers that. These turns mention it."),
-      rc.more.length ? h("div", { class: "more" }, rc.more.join(". ") + ".") : null));
-    if (rc.sources.length) kids.push(h("div", { class: "sect pad" }, rc.sources.map((s, i) => h("div", { class: "src" + (i === S.srcIndex ? " on" : ""), onclick: () => openSource(s) },
-      doc(), h("span", { class: "t" }, s.name), h("span", { class: "s" }, [s.age, `"${s.quote}"`].filter(Boolean).join(" · "))))));
+    kids.push(memoBox(rc, " · no model used", S.srcIndex));
+    if (rc.more.length) kids.push(h("div", { class: "sect recall" }, h("div", { class: "more" }, rc.more.join(". ") + ".")));
     const ask = S.dest && S.dest.options[0].kind !== "recall" ? S.dest.options[0].agent : null;
     keys(rc.sources.length ? "⏎ open source" : null, ask ? `⇥ ask ${ask} instead` : null, "esc close");
     if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
@@ -571,6 +590,7 @@ function paint() {
     const cur = E[selected(E)];
     const primary = opts[0] && opts[0].kind !== "recall" ? opts[0].show.who : null;
     keys("↑↓ move", !cur ? null : cur.ask ? "⏎ send" : cur.r.kind === "calc" ? "⏎ copy" : cur.r.kind === "clip" ? "⏎ copy, then ⌘V" : cur.r.kind === "clipclear" ? "⏎ clear" : cur.r.kind === "watch" ? "⏎ watch" : cur.r.kind === "module" ? (cur.r.module === "vault" ? "⏎ fill, ⌘K more" : "⏎ run, ⌘K more") : cur.r.kind === "drive" ? "⏎ send and watch" : cur.r.kind === "grant" ? "⏎ allow contacts" : "⏎ open",
+      cur && cur.r && cur.r.kind === "file" && S.snap.has.send ? "⌥⏎ send to box" : null,
       primary && !(cur && cur.ask === opts[0]) ? `⇥ ask ${primary}` : null, "esc close");
     done(panel, kids);
     loadIcons();
@@ -622,6 +642,12 @@ function paint() {
   if (watching.length) kids.push(h("div", { class: "sect note" }, `Watching ${watching.map(w => w.label).join(", ")}.`));
   if (nWait) hint.append(h("span", { class: "kbd live" }, "↑"));
   if (nWait) kids.push(h("div", { class: "sect note" }, `${nWait} waiting on you. Press ↑ to see ${nWait === 1 ? "it" : "them"}.`));
+  // How this Mac reaches the box: a dot, green direct, amber relayed, grey unknown, with the line as its title.
+  if (snap.link) {
+    const line = [snap.link.path, snap.link.handshake].filter(Boolean).join(", ");
+    kids.push(h("div", { class: "sect note boxlink" }, h("span", { class: "lbl" }, "Box"),
+      h("span", { class: "hdot " + (snap.link.dot || "unknown"), title: line, role: "img", "aria-label": `Connection to the box: ${line}` })));
+  }
   if (!snap.hotkey.ok && snap.hotkey.message && snap.hotkey.message !== "starting") kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Hotkey"), snap.hotkey.message));
   if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
   keys("⏎ ask " + (snap.assistant || "memory"), "@ agent, project or thread", nWait ? "↑ waiting" : null, "esc close");
@@ -635,7 +661,7 @@ function paint() {
  */
 function entryRows(E) {
   const on = selected(E);
-  const rc = S.recall && S.recall.answer ? S.recall : null;
+  const rc = S.recall && (S.recall.memo || []).length ? S.recall : null;
   const rows = E.map((e, i) => {
     const sel = i === on;
     const pick = ev => { ev.preventDefault(); S.selKey = e.key; return e.ask ? send(e.ask) : pickResult(e.r); };
@@ -653,8 +679,7 @@ function entryRows(E) {
       h("span", { class: "acc" }, sel ? (r.kind === "calc" ? "copy ⏎" : r.kind === "module" ? "⌘K ⏎" : "⏎") : r.kind === "module" ? r.provider || r.module : KIND_LABEL[r.kind] ?? r.kind));
   });
   const out = [];
-  if (rc) out.push(h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, "From memory · no model used"), h("div", { class: "answer" }, rc.answer),
-    rc.sources.length ? h("div", { class: "srcs" }, rc.sources.slice(0, 3).map(s => h("span", { class: "srcl", onclick: () => openSource(s) }, doc(), s.name, srcMeta(s)))) : null));
+  if (rc) out.push(memoBox(rc, " · no model used"));
   out.push(h("div", { class: "sect pad" }, rows));
   return out;
 }
@@ -768,10 +793,35 @@ function dmView(d) {
     h("div", { class: "x md" }, m.role === "agent" ? md(m.text || "") : m.text, m.role === "agent" && !m.done && !m.error ? h("span", { class: "caret" }) : null)))
     : h("div", { class: "x empty" }, d.loading ? "" : `Nothing with ${d.agent} yet. What you send starts it.`));
   out.push(list);
+  if (d.notice) out.push(h("div", { class: "sect status" }, d.notice));
   if (d.asks.length) out.push(h("div", { class: "sect pad" }, d.asks.map(w => h("div", { class: "wait", onclick: () => openReview(w) },
     h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null), h("span", { class: "a" }, w.age || "")))));
   return out;
 }
+
+/**
+ * What memory has on these words, drawn from the bridge's memoItems: the distilled fact first,
+ * then each source, a transcript line as a quote ("You said, 2 weeks ago: ...") and never as a
+ * fact. Only quotes: it is "From your sessions". A quick question sends exactly these lines.
+ * `on` highlights one source, for the arrow keys in the memory-only view.
+ */
+function memoBox(m, tail = "", on = -1) {
+  const items = m.memo || [];
+  // A line made from the user's own words is still from their sessions, not Memory's.
+  const label = (m.answer && m.answerKind !== "said" ? "From memory" : "From your sessions") + tail;
+  const srcs = (m.sources || []).slice(0, 3);
+  return h("div", { class: "sect recall memo" }, h("span", { class: "lbl" }, label), items.map(it => {
+    // Items and sources cross IPC as separate copies: match by the turn, not the object.
+    const i = it.source ? srcs.findIndex(x => x.session === it.source.session && x.seq === it.source.seq) : -1;
+    const open = it.source ? () => openSource(it.source) : null;
+    const where = it.source ? h("span", { class: "srcl" + (i >= 0 && i === on ? " on" : ""), onclick: open }, doc(), it.source.name, srcMeta(it.kind === "quote" ? { age: "" } : it)) : null;
+    if (it.kind === "quote") return h("div", { class: "said" }, h("span", { class: "who" }, `${it.who} said${it.age ? ", " + ago(it.age) : ""}: `), h("span", { class: "q" }, `"${it.text}"`), where);
+    return h("div", { class: it === items[0] && m.answer ? "answer" : "fact" }, it.text, where || srcMeta(it));
+  }));
+}
+
+/** "2 weeks ago", "just now": the bridge's ago(), for the page. */
+const ago = a => (!a ? "" : a === "now" ? "just now" : `${a} ago`);
 
 /** How old a memory is and how sure it is, beside its source: "3 days · 82%". */
 function srcMeta(s) {

@@ -18,7 +18,7 @@ const AGENTS = [
 ];
 
 /** A pool with everything it talks to faked, and the events it emitted. */
-function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver() } = {}) {
+function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver(), egress = undefined } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "t.db"));
   t.after(() => db.close());
@@ -30,7 +30,8 @@ function setup(t, { config = {}, agents = AGENTS, driver = new FakeDriver() } = 
     if (tool === "agents.list" && agents) return { data: agents };
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
   };
-  const pool = new Pool({ db, driver, call, emit: (type, payload) => { events.push({ type, payload }); }, config: { waitMs: 200, ...config }, now: () => clock.t });
+  const pool = new Pool({ db, driver, call, emit: (type, payload) => { events.push({ type, payload }); }, config: { waitMs: 200, ...config }, now: () => clock.t,
+    egress: () => egress && egress.cfg });
   return { pool, driver, events, clock, db, types: () => events.map(e => e.type) };
 }
 
@@ -215,7 +216,7 @@ test("pool: a Glass ticket works once and expires after 30 s", async t => {
   const { pool, clock } = setup(t);
   const a = pool.ticket("kit", "glass:laptop");
   assert.ok(a.length >= 32);
-  assert.deepEqual(pool.redeem(a), { agent: "kit", surface: "glass:laptop" });
+  assert.deepEqual(pool.redeem(a), { agent: "kit", surface: "glass:laptop", slow: false });
   assert.equal(pool.redeem(a), null, "a ticket worked twice");
   const b = pool.ticket("kit", "glass:laptop");
   clock.t += TICKET_MS;
@@ -276,3 +277,40 @@ test("pool: pause and resume are recorded and emitted once each", async t => {
   assert.deepEqual(types(), ["computer.paused", "computer.resumed"]);
 });
 
+
+test("pool: the egress PAC reaches a new computer's env only when on with sites, and a change remakes a stopped one", async t => {
+  const egress = { cfg: /** @type {any} */ (undefined) };
+  const { pool, driver } = setup(t, { egress });
+  await pool.checkout("kit", { thread: "th-1" });
+  const first = [...driver.containers.values()][0];
+  assert.equal(first.spec.env.VYRE_PROXY_PAC, undefined, "off by default");
+  // A running computer keeps what it was made with.
+  egress.cfg = { enabled: true, sites: ["bank.example.com"] };
+  pool.release("kit", "released");
+  await pool.checkout("kit", { thread: "th-1" });
+  assert.equal(driver.containers.size, 1);
+  assert.equal([...driver.containers.values()][0].id, first.id);
+  // Stopped, it is made again with the new setting; its home volume is the same one.
+  await pool.stop("kit");
+  await pool.checkout("kit", { thread: "th-1" });
+  const second = [...driver.containers.values()];
+  assert.equal(second.length, 1);
+  assert.notEqual(second[0].id, first.id);
+  assert.match(second[0].spec.env.VYRE_PROXY_PAC, /^data:application\/x-ns-proxy-autoconfig;base64,/);
+  assert.equal(second[0].spec.volume, first.spec.volume);
+  // Stopped again with the setting unchanged: started, not remade.
+  await pool.stop("kit");
+  await pool.checkout("kit", { thread: "th-1" });
+  assert.equal([...driver.containers.values()][0].id, second[0].id);
+  // Turned off: the next start drops it again.
+  egress.cfg = { enabled: false, sites: ["bank.example.com"] };
+  await pool.stop("kit");
+  await pool.checkout("kit", { thread: "th-1" });
+  assert.equal([...driver.containers.values()][0].spec.env.VYRE_PROXY_PAC, undefined);
+});
+
+test("pool: a bad egress site list stops a new computer instead of making one that goes DIRECT", async t => {
+  const { pool, driver } = setup(t, { egress: { cfg: { enabled: true, sites: ["bank example.com"] } } });
+  await assert.rejects(pool.checkout("kit", { thread: "th-1" }), /is not a hostname/);
+  assert.equal(driver.containers.size, 0);
+});
