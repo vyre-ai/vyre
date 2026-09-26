@@ -18,6 +18,11 @@
 // Nothing here uses innerHTML: text is untrusted (it is the model's own output, or another
 // person's), so it goes through lib/markdown.js, which never parses it as markup, or through
 // document.createTextNode directly.
+//
+// A session from the paired Mac (on the box, a row with source "mac") is read, never acted on: it
+// opens from recall.thread (the box asks the Mac for it), and in place of the composer, the
+// keyboard and Take it says which machine to continue it on. A session the list did not know is
+// found to be the Mac's from recall.thread's own answer.
 
 import { h, put, add, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
@@ -28,6 +33,7 @@ import { renderMarkdown } from "./lib/markdown.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
 import { mountComposer } from "./composer.js";
+import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 
 /** The Deck's own surface names: a lease or a message from these is this screen's, so it reads "you". */
 const OURS = new Set(["deck", "chat"]);
@@ -36,10 +42,11 @@ const WINDOW = 60;
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, recorded?: boolean, known?: boolean, turns?: number, onBack: () => void }} opts
+ * @param {{ thread: string, project: string|null, recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null, onBack: () => void }} opts
  * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
  * turns: how many turns the list says it has, so a long session opens at its last WINDOW turns.
  * known: the list had a row for it; when it had none, the transcript is read at the same time.
+ * source, machine: the list's label for it; "mac" opens it read-only.
  * @returns {() => void} cleanup
  */
 export function mountSession(container, opts) {
@@ -70,26 +77,31 @@ export function mountSession(container, opts) {
   const recorded = { on: false, next: 0, session: /** @type {any} */ (null), busy: false, again: false };
   // How the box reaches this device, as a dot in the header (asked on open, then once a minute while shown).
   const health = healthDot();
+  /** Where it lives when that is the Mac: then nothing here may send to it, lease it or take it. */
+  const where = { source: opts.source || null, machine: opts.machine || null };
 
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
 
-  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, composer.el);
+  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, isMac(where) ? null : composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   async function boot() {
     // Not known to be the Switchboard's or not: ask both at once, and use the transcript only when
     // the Switchboard has no record. One round trip instead of two from a phone.
-    let from = opts.recorded && (opts.turns || 0) > WINDOW ? opts.turns - WINDOW : 0;
-    const readT = () => attempt("recall.thread", { session: thread, from, limit: 400 });
-    const pre = opts.recorded || !opts.known ? readT() : null;
-    const r = opts.recorded ? { error: null } : await attempt("threads.get", { thread, since: 0, limit: 500 });
-    if (opts.recorded || r.error) {
+    const skip = opts.recorded || isMac(where);
+    const mac = isMac(where) ? { source: "mac" } : {};
+    let from = skip && (opts.turns || 0) > WINDOW ? opts.turns - WINDOW : 0;
+    const readT = () => attempt("recall.thread", { session: thread, from, limit: 400, ...mac });
+    const pre = skip || !opts.known ? readT() : null;
+    const r = skip ? { error: null } : await attempt("threads.get", { thread, since: 0, limit: 500 });
+    if (skip || r.error) {
       let t = await (pre || readT());
       // The list's count and the transcript's numbering disagree: read it from the start.
-      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400 }); from = 0; }
+      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400, ...mac }); from = 0; }
       if (t.error) { timeline.replaceChildren(empty("Could not open this session.", t.error.missing ? t.error : r.error)); drawHead(); return; }
       recorded.on = true;
       recorded.session = t.data.session;
+      if (isMac(t.data)) { where.source = "mac"; where.machine = t.data.machine || where.machine; readOnly(); }
       drawHead();
       timeline.replaceChildren();
       if (from > 0) timeline.append(earlier(from));
@@ -116,9 +128,11 @@ export function mountSession(container, opts) {
         h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Claude Code session"),
       ),
+      machineChip(where),
       rec?.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null,
       health.el,
     );
+    if (isMac(where)) { put(leaseBar, icon("lock", 12), h("span", { class: "lease-note" }, readOnlyNote(where))); return; }
     put(leaseBar,
       icon("lock", 12),
       rec?.holder && OURS.has(rec.holder) ? h("span", null, "You have the keyboard here")
@@ -164,7 +178,7 @@ export function mountSession(container, opts) {
   }
   /** Recall indexed this session again: read what is new. One read at a time; a second ask during one reads again after. */
   async function readMore() {
-    if (!recorded.on) return;
+    if (!recorded.on || isMac(where)) return;
     if (recorded.busy) { recorded.again = true; return; }
     recorded.busy = true;
     try {
@@ -179,7 +193,9 @@ export function mountSession(container, opts) {
       } while (recorded.again);
     } finally { recorded.busy = false; }
   }
-  async function take() { await attempt("threads.lease", { thread }); }
+  async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
+  /** A Mac session: no composer at all, so nothing typed here can reach threads.send or threads.lease. */
+  function readOnly() { composer.el.remove(); }
 
   function toBottom() { timeline.scrollTop = timeline.scrollHeight; following = true; jump.hidden = true; }
   /** New content landed: keep following it, or say it is there without moving the reader. */

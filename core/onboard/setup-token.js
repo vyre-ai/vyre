@@ -40,9 +40,9 @@ export function ptyCommand(bin, platform = process.platform) {
 
 /**
  * One sign-in at a time; a new start replaces the old one.
- * @param {{ bin?: () => string, platform?: string, linkWait?: number, tokenWait?: number, lifetime?: number }} [o]
+ * @param {{ bin?: () => string, platform?: string, linkWait?: number, tokenWait?: number, lifetime?: number, enterDelay?: number }} [o]
  */
-export function setupToken({ bin = () => process.env.VYRE_CLAUDE_BIN || "claude", platform = process.platform, linkWait = 30_000, tokenWait = 60_000, lifetime = 600_000 } = {}) {
+export function setupToken({ bin = () => process.env.VYRE_CLAUDE_BIN || "claude", platform = process.platform, linkWait = 30_000, tokenWait = 60_000, lifetime = 600_000, enterDelay = 300 } = {}) {
   /** @type {{ child: import("node:child_process").ChildProcess, out: string, exited: boolean, timer: NodeJS.Timeout, wake: () => void } | null} */
   let run = null;
 
@@ -88,11 +88,24 @@ export function setupToken({ bin = () => process.env.VYRE_CLAUDE_BIN || "claude"
       if (!c || /\s/.test(c) || c.length > 512) throw new Error("paste the code the sign-in page showed, on its own");
       const r = run;
       if (!r || r.exited) throw new Error("the sign-in has ended; start it again");
-      r.child.stdin.write(c + "\r");
-      const token = await until(r, out => (out.match(TOKEN) || [])[0], tokenWait);
+      const at = r.out.length;
+      // Claude Code's prompt (Ink) reads a chunk of several characters as pasted text, Enter
+      // included, so code + "\r" in one write sits in the box unsubmitted and nothing happens.
+      // The code goes first, and Enter on its own a moment later, as a person would press it.
+      r.child.stdin.write(c);
+      await new Promise(res => setTimeout(res, enterDelay));
+      if (r.exited) { stop(); throw new Error("the sign-in has ended; start it again"); }
+      r.child.stdin.write("\r");
+      // A refused code does not exit: claude says "OAuth error: ..." and waits for Enter to retry.
+      const got = await until(r, out => {
+        const t = (out.match(TOKEN) || [])[0];
+        if (t) return { token: t };
+        const e = /OAuth error:[^\r\n\x1b]*/.exec(out.slice(at));
+        return e ? { error: e[0].trim() } : null;
+      }, tokenWait);
       stop();
-      if (!token) throw new Error("Claude did not accept that code; start the sign-in again");
-      return token;
+      if (!got || !got.token) throw new Error(`Claude did not accept that code${got && got.error ? ` (${got.error})` : ""}. A code works once and only for a few minutes: open the sign-in again for a fresh one`);
+      return got.token;
     },
     active: () => Boolean(run && !run.exited),
     stop,

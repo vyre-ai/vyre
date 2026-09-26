@@ -332,6 +332,33 @@ test("daemon: the presence challenge route refuses what it cannot start", async 
   assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "presence.code", input: {}, method: "tty", tty: "/dev/ttys999" }, {})).status, 403);
 });
 
+test("daemon: every non-person call passes the floor's rules, not only Claude Code's hook (SPEC 5.3)", async t => {
+  const root = tempHome(t);
+  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.echo"] } }, `export default { async start(ctx) {
+    ctx.tool("probe.echo", { input: { type: "object", properties: { path: { type: "string" }, command: { type: "string" } } }, run: async input => ({ got: input }) });
+    return { async stop() {} };
+  } };`);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const secret = { path: path.join(root, "vault", "items", "x.json") };
+  const approve = { command: "vyre gate approve 7" };
+  // An agent, however it arrives: its MCP server, the switchboard's harness, the Capsule on its behalf.
+  for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:kit", "capsule:agent:kit", "tailnet:agent:kit", "tailnet-guest:sam@example.com"]) {
+    const r = await d.registry.call("probe.echo", secret, caller);
+    assert.equal(r.error?.code, "denied", `${caller} reached the vault folder`);
+    assert.match(r.error.message, /vault values off every screen/);
+    assert.equal((await d.registry.call("probe.echo", approve, caller)).error?.code, "denied", `${caller} ran a human-only command`);
+    assert.deepEqual((await d.registry.call("probe.echo", { path: "/tmp/notes.txt" }, caller)).data, { got: { path: "/tmp/notes.txt" } }, "anything else runs");
+  }
+  // The same through the socket, as the MCP server calls it.
+  assert.equal((await call("probe.echo", secret, { root, caller: "mcp" })).error?.code, "denied");
+  // A module is not a person either.
+  assert.equal((await d.registry.call("probe.echo", secret, "module:notes")).error?.code, "denied");
+  // A person at their own surface is not held here; presence and the Gate speak for them.
+  // On a box the owner's Deck and phone arrive as tailnet:<owner>, a person at their own surface.
+  for (const caller of ["cli", "local", "deck", "capsule", "tailnet:alex@example.com"]) assert.ok((await d.registry.call("probe.echo", secret, caller)).data, caller);
+});
+
 test("daemon: system.info names the owner as onboarding saved them, for a device's avatar", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ onboard: { person: "Alex Rivera" } }));

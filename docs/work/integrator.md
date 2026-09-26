@@ -30,26 +30,25 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   plus --test-type, Chat session head plus health dot, all kept both sides. Full suite on the test box:
   1578 tests, 1535 pass, 0 fail, 42 skipped, 1 todo, exit 0, tmp-guard clean.
 
+## Done after the rewrite (2026-09-27)
+
+- 80f2b44 pwa, 5524dd8 capsule-now, d0e35c3 connectors (at 53a994a; 2483c77 awaits approval),
+  c4bf9ea cc-plugin, 7a97230 polish-cli, 439f35a security (registry rules for every non-person
+  caller; vault.caps reveal described as it is, with a real-presence test) plus two flake fixes.
+
+## Tonight (2026-09-27), all pushed to origin
+- 244a643 pwa, 48f8a01 e2e (+ ownerOverTailnet shared by callerAllowed and registryRules),
+  d962b04 federation, 12dc0c9 glass-live, d51dd69 ci, d6bb815 node 24 isClaude fix,
+  8be1c52 polish-cli, 3d0295f connectors, 7b54493 onboard.finish api-key auth.
+
 ## Doing
 
-- FROZEN for ci's history rewrite (no git commands until ci says "done").
+- Waiting on docs for a head (tip is a wip with uncommitted edits).
 
 ## Next
 
-After ci's done, with the rewritten heads ci reports, one at a time, targeted tests on the test box,
-sha to the lead after each:
-1. work/pwa (presence-proof fix, pairing approve card)
-2. work/capsule-now (switchboard MIGRATIONS gains threads_inbox at the end: order after any other appended migration)
-3. work/connectors (then run connectors, harness, presence-bypass tests)
-4. work/cc-plugin
-5. work/polish-cli (bin/vyre conflict with core/quiet.js: keep both; run recall, cli, release-check tests;
-   update docs/work/recall.md optionalDependencies line or tell docs)
-6. work/docs
-Then security fixes on main: the Rules hook in the registry call path for non-person callers
-(test: agent call to a rules-denied tool refused); vault.reveal default (core/vault/tools/deck.js
-returns reveal: true: gate on presence, default off). Then ctx.projects (SPEC 5.2), site/start
-page, ADR 0008 box update. Details in ../vyre-docs/docs/work/docs.md "Needs from others".
-Remove ../vyre-tailnet-surfaces and work/tailnet-surfaces.
+- Merge work/docs; then SPEC 5.2 ctx.projects note (spec moves to docs/architecture/spec.md).
+- After every merge: push main (plain), tell the lead the sha.
 
 ## Needs from others
 

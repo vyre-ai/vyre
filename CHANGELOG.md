@@ -24,6 +24,128 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
   tailnet node does not (queuesFor in core/switchboard).
 
+#### An assistant made with an API key uses it as one
+
+- With an API key at the Claude step, `onboard.finish` made the assistant with
+  `auth: { vault: "anthropic-api-key" }`, which agents reads as a subscription token. It is now
+  `auth: { fallback: "anthropic-api-key" }`; a subscription keeps the token first and the key as
+  its fallback (`core/onboard/index.js`, `test/onboard.test.js`). Found by pwa.
+
+#### Live Claude Code sessions are seen on node 24
+
+- node 24 names its main thread "MainThread", so `ps -o comm=` said that for every claude running
+  on node, and adopt, "live in terminal" and the queue for a busy session saw no session at all
+  on a Mac with node 24. `isClaude` (`core/switchboard/sessions.js`) reads the command line
+  instead: a native claude, node started as claude, or `node <path>/claude`. Found by ci on
+  GitHub's node 24 runner.
+- A switchboard test compared a thread's status across two reads while it could still be
+  starting; it now waits until the thread has started.
+#### `vyre vault` and `vyre memory` ask for the person, as `vyre learn` does
+
+- `vyre vault put/grant/get --copy/...` and `vyre memory correct/merge/split/uncorrect/pin/mute`
+  called vyred without a presence proof, so against a real vyred every human-only one failed with
+  presence_required (exit 3). The tests missed it because test/fixtures/vyred-present.js finds a
+  person at every call. They now go through callAsPerson: a tool that needs the person asks for
+  the code vyred writes to their terminal (or Touch ID), and one that does not answers the first
+  call as before. Without a terminal (an agent's Bash) they are refused asking for a person at a
+  terminal, exit 3. `test/presence-cli.test.js` runs both against the real verifier.
+  `callAsPerson` takes a `timeout`.
+
+#### A first index that the Mac does not feel
+
+- On a user's Mac the first `vyre up` held about 500% CPU for 7+ minutes while Recall embedded
+  their whole Claude Code history, and the machine glitched. Now:
+  - The search model runs in a process of its own at nice 19 (`core/recall/embed-worker.js`,
+    `spawnEmbedder`), with ONNX Runtime on one thread (`intraOpNumThreads` and
+    `interOpNumThreads` 1), and exits with vyred.
+  - Background work is paced: after each transcript file and each embedded turn it sleeps as long
+    again (`recall.duty`, default 0.5), and pauses while on battery under 30% (`recall.lowBattery`)
+    or while the load average is above the number of cores, looked at once a minute
+    (`core/recall/pace.js`).
+  - Keyword search works from the first indexed session. `vyre status` and `vyre doctor` say
+    where it stands: "indexing 1,234 of 5,678 sessions, low priority", then "search by meaning:
+    1,000 of 40,000 turns, low priority; keyword search works now", or why it is paused.
+    `recall.status` gains `progress { sessions, paused, priority }`.
+- Measured on the test box, 20,016 turns: vyred and the model together average 0.46 cores
+  (fake model, 60 s) and 0.41 cores (the real model, 120 s, download included), the model's
+  process at nice 19, keyword search answering throughout. `scripts/perf-check --first-run
+  [--real-model]` is that check; `core/recall/pace.test.js` measures the model process on the
+  fixture corpus (0.43 cores, budget 0.65).
+- `/v1/health` carries `memory` (rss, heapUsed, external, in MB); stress-drive samples it, reports
+  the JS heap's slope beside RSS, and leaves out the samples taken while it reads the log back.
+
+#### A temp home never reaches a real box
+
+- A first-run check on the test box, in a temp home with the real Tailscale, found the user's
+  live box through `link.find` and sent it a real pairing request (denied on the box). Now
+  `link.find` and `link.pair` refuse with `not_real_home` unless the home is `~/.vyre`, or
+  `VYRE_ALLOW_DIALOGS=1` or `VYRE_ALLOW_REAL_BOX=1` is set; never under tests. A fake tailscale
+  (`VYRE_TAILSCALE_BIN`), a box on loopback and the link tests' seams are not real boxes and pass.
+  `vyre up` says why when it is refused. `core/config/dialogs.js` (`realBoxAllowed`),
+  `core/link/mac.js`, `test/link-guard.test.js`.
+
+#### A first `vyre up` that says what it is and what to do next
+
+- Root cause of a user's broken first run: `vyre` on their PATH was an old prototype
+  (`~/.local/bin/vyre`, a link into the prototype's bin/), not the package npm had just installed.
+  Its `up` printed "vyred running", started the prototype's daemon, which opens Chrome on
+  about:blank for its own automation, and never made `~/.vyre`. The published vyre.tgz, run in a
+  temp home on the test box, prints the full line and makes `~/.vyre`.
+- `npm i -g vyre` now ends with the mark and "Vyre installed. Run: vyre up", written to the
+  terminal (npm hides a script's output), and warns when another `vyre` comes first on PATH, with
+  the `rm` and `hash -r` to fix it. `scripts/postinstall.mjs`, `core/cli/shadow.js`.
+- `vyre doctor` flags any other `vyre` on PATH, first or later.
+- The first `vyre up` on a machine (no home yet) opens with the mark, "Vyre is installed ·
+  0.0.1 · <commit>", and two sentences on what Vyre is, instead of a status line. The "Where
+  should Vyre run?" choices each say what they mean. Choice 3 asks for the box's address, says it
+  is asking the box to pair, and prints "Approve this Mac on your phone at <address>" with the
+  code. While that approval is pending, `vyre up` ends with "Once you approve it, run vyre up
+  again to finish." instead of "Vyre is ready."; `--json` says `ready: false, pairing`.
+- `vyre up --box` on a Mac says "Opening it in your browser now." before it opens the setup page,
+  and opens nothing when dialogs are off. `core/cli/brand.js`, `core/cli/commands/up.js`,
+  `core/cli/commands/box.js`.
+
+#### `vyre doctor`
+
+- One read-only command that checks what a first night trips on and says what to do: vyred
+  (version and commit), Tailscale here (signed in), MagicDNS and HTTPS on the tailnet, Tailscale
+  on the box (online, the same account), the phone online on the tailnet, the box's address
+  (resolves, answers, its version), a passkey enrolled for that address (the rpId), this Mac
+  paired (or the code waiting for approval), Claude signed in on the box, the Capsule (installed,
+  and whether Control twice works), and the install size. Each line is ✓, ✗ with the one-line
+  fix, or ? with why it could not be checked. Every check runs at once with its own 1.5 s
+  timeout and the run is cut off at 2 s (0.2 s on the test box). `--json` gives
+  `{ ok, role, ms, checks: [{ id, label, ok, detail, fix }] }`; exit 1 when anything failed.
+  `core/cli/commands/doctor.js`.
+- For it: `presence.keys` includes each key's `rp_id`; `core/cli/tailnet.js` status takes a
+  timeout and reports `magicDNS` and `certDomains`; new tool `capsule.report {ok, message}`
+  emits `capsule.hotkey`, for the Capsule app to say whether Control twice works (TCC holds
+  Vyre.app responsible, so only the app can know).
+#### Handing the keyboard back needs no passkey
+
+- `glass.release` asked for a passkey, so a person in control had to prove presence again just
+  to give the agent its keyboard back. Taking over still asks; handing back never does, and an
+  agent still cannot hand back a person's surface. `core/glass/index.js`.
+
+#### A Mac-only owner can pair the Mac
+
+- `link.pair.approve` refused the node that asked, so the Deck on the Mac being paired could never
+  approve it, and an owner without a second device could not pair at all. The asking Mac may now
+  approve its own request when that call carries a fresh passkey assertion (not a presence
+  session) and the typed code matches; a model on the Mac can do neither. `core/link/box.js`.
+- The Deck's pairing card and the CLI say to approve "on this Mac or your phone".
+
+#### A public name only when the person chose it; slow steps say so
+
+- Step 1's live availability check (`onboard.name` check) saved every valid name it was asked
+  about, so a name typed and then skipped became `config.name`, and step 4 claimed
+  `<name>.vyre.run` on the public zone. A check now saves nothing. Step 4 claims a vyre.run name
+  only when step 1 was continued with it, or with `confirm: true`; otherwise the page asks
+  ("Use kit.vyre.run? Change it · Use my tailnet name"). Continue in step 1 with a new name
+  replaces an earlier candidate while no address serves.
+- The address step says up front that it can take about a minute, and the line in progress shows
+  its elapsed seconds. Starting Claude's and Tailscale's sign-in say they take a few seconds.
+
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
@@ -72,9 +194,56 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   agent reaches `vault.reveal` at all. `core/vault/surfaces.test.js`.
 - `test/onboard.test.js` closes each connection, so a request after a vyred restart on the same
   port never rides a socket the old vyred closed (an intermittent "other side closed").
+#### Glass and agents' computers, live (work/glass-live)
+
+- Giving an agent a computer from the Deck works. `agents.update` names its agent by `name` or
+  `agent` (every other agents tool uses `agent`); the Deck sent `agent` and got "input.name is
+  required". The Deck now sends `name`.
+- Glass's screen connects over the tailnet. The tailnet HTTPS listener had no upgrade handler,
+  so Node passed every WebSocket to the request router, which answered 404. Modules that open a
+  listener get vyred's stream router as `ctx.upgrader(policy)`, and the names listener applies
+  its owner, host and Origin rules to upgrades, with the same caller classes as requests (owner,
+  guest, agent node).
+- A computer that dies on boot fails the checkout with its exit code and the `docker logs` line
+  to read, instead of being marked running; a checkout waits (up to `computers.bootMs`, 30 s)
+  for the screen port to answer. A computer that died while idle freezes to `stopped` rather
+  than staying `running` with "could not freeze ... container is not running".
+- New `computers.restart {agent}` (a new container on the same home volume, so files and
+  Chrome sign-ins stay; fresh passwords; the checkout survives) and `computers.limits {agent,
+  cpus, memory_gb}` (whole cores 1 to 16, whole GB 1 to 64; a person's or the assistant's to set,
+  never an agent's own; applied at the next restart). `computers.get` also returns `screens`,
+  `cpus` and `memory_gb`. The Deck already called both tools, which did not exist.
+- The Deck's computer panel reads what `computers.get` returns (it was drawn from fixture fields
+  no tool had: name, host, disk, network, rules). Glass's title state follows the computer as
+  watching thaws it.
+- `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
+  required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
 
 #### Connectors (ADR 0016)
 
+- A held MCP call names its destination from `channel_id` and `chat_id` too, so a Slack post
+  held at the Gate shows the channel rather than the server's name.
+- CLI: `vyre connect add google <name> --sign-in [--client <vault item>]` signs in with Google
+  from a terminal. The client defaults to `google-oauth-client`; without it, the command says so
+  and prints the `vyre vault put` line for a Desktop app OAuth client. It grants the client to
+  google with presence, runs google.connect and prints the consent address on its own line. It
+  opens a browser only when dialogs are allowed and stdout is a terminal. It then waits for
+  `google.connected` or `google.connect-failed` on the event stream, for a pasted address (sent
+  to google.connect.finish), for Ctrl-C (google.connect.cancel, "cancelled, nothing stored") or
+  for 10 minutes. End of input cancels only at a terminal; piped or empty stdin just stops the
+  paste reader and the loopback can still finish it, and ends with the account's test. `--email`, `--item`
+  and `--dwd` are refused with `--sign-in`.
+- Deck, Settings, Connections: "Add a Google account" signs in with Google by default. Name the
+  account, pick the OAuth client env set (the form shows the `vyre vault put` line for one), and
+  press Sign in with Google: a blank tab opens at once (while the press still counts, so it is
+  not blocked, with its opener cut), the client is granted to google with presence,
+  google.connect runs, and the tab goes to Google's page while the form waits for `google.connected` (or
+  `google.connect-failed`, whose error it shows). A browser on another device pastes the address
+  it landed on into google.connect.finish. Cancel, closing the form and leaving the page each call
+  google.connect.cancel, and a failed grant or connect closes the tab. Only when the browser
+  blocked the tab is Google's address shown as a link. "Service
+  account" and "Refresh token item" stay as they were, and a service account's Test now shows an
+  admin console block with its client ID and scope line, each with Copy.
 - "Sign in with Google" (`core/google/connect.js`). `google.connect {name, client}` names a vault
   env-set holding an OAuth client's `client_id` and `client_secret` (granted to google) and
   returns `{ id, url, redirect }`: the consent page, with PKCE S256, a random state, offline
@@ -226,6 +395,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   every workflow can also be run by hand (workflow_dispatch). Replaces `test.yml`, which ran the
   whole suite on two macOS runners without installing dependencies. `.github/workflows/`, README
   badges.
+- `capsule-mac` also proves the "Vyre Local" signing path on a throwaway keychain: createIdentity,
+  then codesign and a strict verify of the native app (once `capsule-native.js` is on the branch).
+- `scripts/install-box.sh` is shellcheck-clean on the runners' shellcheck 0.9.0: two intended
+  patterns (a root-only read into this user's file, a positional argument in single quotes) carry a
+  directive with the reason.
 - Docs and comments call the test server "the test box", the prototype's folder "the
   prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
   comments only).
@@ -314,6 +488,53 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the test box. A failed install leaves no half-written tree, says why, and `--setup` tries again. New
   config keys `recall.embedder` (where it goes) and `recall.npm`.
 - `scripts/release-check.sh` now fails on any optional dependency and on an install over 10 MB.
+#### The box reads the paired Mac through the link
+
+- The link runs box to Mac as well, with no port open on the Mac. While paired, the Mac holds one
+  request to the box's new `link.serve` open (60 s, then it asks again), runs the question it gets
+  and answers with `link.reply`. When a call to the box fails the loop stops, and the next call
+  that reaches the box (the minute's heartbeat at the latest) starts it again, so nothing polls
+  faster than a minute. Both tools check the pairing key and the Mac's pinned node.
+- `link.macs.call { tool, input, timeout? }` (box, modules only) asks every paired Mac and answers
+  `[{ mac, name, ok, data?, error? }]`: `mac_offline` at once for a Mac that is not polling,
+  `timeout` after up to 15 s (5 s by default), or the Mac's own error. `link.macs` lists the paired
+  Macs with `online` and `lastServe`, for surfaces. The Mac's `link.status` says `serving`.
+- Only `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread` and
+  `threads.list` cross (`core/link/allow.js`), refused at the box before queueing and again at the
+  Mac before running. The Mac runs them as `module:link`. Nothing a Mac answers is stored on the box.
+- The link's test harness (`pair`, the simulated tailnet) moved to `test/link-harness.js`;
+  `test/link-federation.test.js` covers the reverse channel.
+- On the box, `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`,
+  `recall.thread` and `threads.list` take in the paired Macs' rows for the person (the Deck, the
+  terminal, the Capsule, the owner over the tailnet), and for a module only when it passes
+  `machines: "all"`. `machines: "local"` asks for the box's rows alone; agents, MCP and guests get
+  them always. Every row of a federated answer carries `source` ("box" or "mac") and `machine`.
+  The catalogue merges by its own order and applies the limit to the merged list, with
+  `sources: [{ source, machine, ok, error?, total? }]` (box first); search merges by score,
+  sessions and threads by recency, capped at each tool's limit. `recall.thread` asks the Macs only
+  for a session the box does not have, or when given `source: "mac"`. A Mac that is away shows as
+  `ok: false, error: "mac_offline"` and the box answers with its own rows at once. On a Mac
+  nothing changes, so the Mac never asks the box back. The shared piece is
+  `core/modules/federate.js`; `test/federation-reads.test.js` covers it end to end.
+- Onboarding's history step on the box counts the paired Mac's sessions, lists them per machine
+  (`history.machines`), and says "Your Mac (<name>) is offline, so its sessions do not show here
+  yet" when the Mac is paired but away and nothing is here.
+- `recall.sessions` takes `ids` (exact session ids). On the box, `projects.threads` resolves a pick
+  the box has no session for by asking the paired Macs once for those ids, for the person (or a
+  module passing `machines: "all"`): a Mac session picked into a box project comes back with its
+  name, folder and times and `source: "mac"`, `machine`, and is never stored. With the Mac away,
+  or for an agent, it stays `missing: true`. The project's brief stays the box's own.
+- The Deck shows a machine chip (`deck/js/machine.js`) on the paired Mac's rows in Chat's list and
+  rail, Now's working threads and recent sessions, search results, and a project's threads, and
+  reads those threads only: no composer, keyboard, Take or Watch, and "On alex-mac. Open it there
+  to continue." in their place. A Mac project is listed without a board or a pin, and picking goes
+  into the box's projects only. A paired Mac that is away shows as one quiet "alex-mac offline"
+  chip in Chat's header and Now's Working, from `link.macs`, read with each refresh and never while
+  the page is hidden. Fixtures: a Mac thread in `threads.list`, and `deck/fixtures/link.json`.
+- A Mac that unpaired while its heartbeat was out could leave a link.json with no box in it, and
+  `vyre link status` then failed until the file was removed. The heartbeat's answer is now dropped
+  when the pairing it asked about is gone.
+
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
 - Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
@@ -442,6 +663,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   activates so typing reaches the panel over a normal app. `local/capsule/lib/present.js`;
   `scripts/capsule-spaces/run.js` checks it against a throwaway full-screen window and runs only
   with `VYRE_FULLSCREEN_OK=1`.
+#### The Claude sign-in code is submitted
+
+- Onboarding step 2 typed the pasted code and Enter into `claude setup-token` in one write.
+  Claude Code's prompt reads a multi-character chunk as pasted text, Enter included, so the code
+  sat in the box unsubmitted, and the page waited a silent minute. The code now goes first and
+  Enter on its own 300 ms later; a refused code ("OAuth error: ...") is reported at once, with a
+  hint to open the sign-in again for a fresh code. The page says it is checking while it waits.
+  `core/onboard/setup-token.js`, `deck/onboard/onboard.js`; the test's fake claude now reads its
+  prompt the way Ink does.
+
+#### The box's Deck can approve, seal and delete again
+
+- On a box the Deck is only served at the tailnet address, where calls are `tailnet:<owner>`.
+  Every tool whose callers list named `deck` refused that with 403: approving or discarding a held
+  item, push settings, deleting an agent, sealing a Vault item. `callerAllowed` in core/modules
+  lets the owner's tailnet caller use what the Deck may; agent nodes and guests still may not.
+- Settings shows the address the box is served at (a ts.net name) instead of `<name>.vyre.run`.
+- `agents.list` carries each agent's instructions, so the agent page shows and edits its job.
+- scripts/e2e-headscale: a private-tailnet harness that walks onboarding, the passkey, the Deck
+  and Mac pairing without a Tailscale account.
 
 #### The Capsule is Spotlight's size
 

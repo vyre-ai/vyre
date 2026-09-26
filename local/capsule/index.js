@@ -31,6 +31,17 @@ export default {
       run: async () => ({ mac: process.platform === "darwin", electron: Boolean(electron()), hotkey: built("hotkey"), launcher: built("vyre-launcher"),
         autostart: Boolean(ctx.config.capsule && ctx.config.capsule.autostart) }),
     });
+    // The app knows what macOS allows it (TCC holds Vyre.app responsible, so no other process can
+    // ask for it); it reports here when that changes, and `vyre doctor` reads the last report.
+    ctx.tool("capsule.report", {
+      description: "The Capsule app says whether Control twice works, and if not, why. Emits capsule.hotkey.",
+      input: { type: "object", required: ["ok"], properties: { ok: { type: "boolean" }, message: { type: "string" } } },
+      callers: ["capsule", "local", "cli"],
+      run: async ({ ok, message }) => {
+        const e = ctx.events.emit("capsule.hotkey", { ok: Boolean(ok), message: message ? String(message).slice(0, 200) : null });
+        return { event: e.id };
+      },
+    });
     ctx.tool("capsule.show", {
       description: "Open the Capsule on this Mac (or hide or toggle it). It opens ready to type; it does not answer anything by itself.",
       input: { type: "object", properties: { action: { type: "string", enum: ["show", "hide", "toggle"] } } },

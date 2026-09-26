@@ -18,8 +18,14 @@ import { takeover } from "./takeover.js";
 import { attach } from "./input.js";
 import { pinchZoom, softKeyboard } from "./phone.js";
 
+/**
+ * A computer's own comings and goings. Opening Glass thaws a frozen computer only once the stream
+ * connects, after glass.opened, so the state is read again on each of these too.
+ */
+export const LIFECYCLE = ["computer.created", "computer.checked-out", "computer.thawed", "computer.frozen", "computer.stopped"];
+
 const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.shielded", "computer.unshielded",
-  "glass.opened", "glass.closed", "glass.taken", "glass.released"];
+  "glass.opened", "glass.closed", "glass.taken", "glass.released", ...LIFECYCLE];
 
 /** Is the box reaching this device through a relay? `link` is glass.open's { path, latencyMs }. */
 export const relayed = link => Boolean(link && (link.path === "relay" || link.path === "peer-relay"));
@@ -350,6 +356,7 @@ export function mountScreen(o) {
       case "computer.unshielded": addLog(`${name} can see the page again${p.origin ? ` (${p.origin})` : ""}.`); break;
       case "glass.opened": if (p.surface !== surface) addLog(`Someone started watching from ${surfaceKind(p.surface)}.`); refresh(); return;
       case "glass.closed": refresh(); return;
+      default: if (LIFECYCLE.includes(e.type)) { refresh(); return; }
     }
     applyHolding(); draw();
   });

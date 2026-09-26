@@ -107,6 +107,9 @@ export default {
     const signin = setupToken();
     /** @type {Record<string, string>} */
     let lastStates = {};
+    /** The box's last federated catalogue answer, held for 30 s: see the history step. */
+    let catalogHeld = /** @type {{ at: number, seen: string, cat: any } | null} */ (null);
+    const offLink = ["link.paired", "link.unpaired"].map(type => ctx.events.on(type, () => { catalogHeld = null; }));
 
     const call = async (tool, input = {}) => {
       const r = await ctx.call(tool, input);
@@ -162,12 +165,38 @@ export default {
       const history = { state: "todo", why: null, sessions: 0, indexed: r ? r.sessions : 0, running: Boolean(r && r.indexing) || Boolean(indexing) };
       if (!r) Object.assign(history, { state: "blocked", why: recall.__error });
       else {
-        const cat = await tryCall("projects.catalog", { limit: 100000 });
-        history.sessions = Math.max(cat.__error ? 0 : Number(cat.total) || 0, history.indexed);
+        // total does not depend on the limit, so one row is enough. On the box the catalogue
+        // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
+        // sources says which machines answered.
+        const box = ctx.config.role === "box";
+        // The page asks every couple of seconds, and each federated answer is a question to the
+        // Mac, so the box keeps it for 30 s, or until a Mac pairs, unpairs, comes or goes
+        // (link.macs is the box's own record, so reading it costs the Mac nothing). The box's own
+        // count still moves with the index through history.indexed below.
+        const linked = box ? await tryCall("link.macs") : [];
+        const seen = Array.isArray(linked) ? linked.map(m => `${m.mac}:${m.online}`).join(",") : "";
+        let cat;
+        if (box && catalogHeld && catalogHeld.seen === seen && Date.now() - catalogHeld.at <= 30_000) cat = catalogHeld.cat;
+        else {
+          cat = await tryCall("projects.catalog", { limit: 1, ...(box ? { machines: "all" } : {}) });
+          catalogHeld = box && !cat.__error ? { at: Date.now(), seen, cat } : null;
+        }
+        const sources = !cat.__error && Array.isArray(cat.sources) ? cat.sources : null;
+        const count = x => Number(x && x.total) || 0;
+        // The box's own sessions are what its index has to catch up with; a Mac indexes its own.
+        const own = Math.max(sources ? count(sources[0]) : count(cat.__error ? null : cat), history.indexed);
+        const macs = sources ? sources.filter(x => x.source === "mac") : [];
+        history.sessions = own + macs.reduce((n, m) => n + count(m), 0);
+        if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
-        else if (history.sessions === 0) Object.assign(history, { state: "done",
-          why: ctx.config.role === "box" ? "Your Mac's sessions appear here when you connect your Mac" : "no Claude Code sessions on this machine yet" });
-        else if (ob().history && history.indexed >= history.sessions) history.state = "done";
+        else if (history.sessions === 0) {
+          const off = Array.isArray(linked) ? linked.find(m => !m.online) : null;
+          Object.assign(history, { state: "done",
+            why: !box ? "no Claude Code sessions on this machine yet"
+              : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
+              : "Your Mac's sessions appear here when you connect your Mac" });
+        }
+        else if (ob().history && history.indexed >= own) history.state = "done";
       }
 
       // The Mac counts once link has paired one; the first paired is the one shown.
@@ -225,32 +254,41 @@ export default {
         if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
         const c = checkName(p);
-        save({ ...(c.valid && !ctx.config.name ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // Continue is the person confirming this name, so it replaces any earlier candidate, unless
+        // an address already serves under the old one.
+        save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
         return stepOf("you", caller);
       },
     });
 
     ctx.tool("onboard.name", {
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
-      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] } }),
-      run: async ({ name, action = "check" }, { caller }) => {
+      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
+      run: async ({ name, action = "check", confirm }, { caller }) => {
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           // No zone token and no own domain: the address is this machine's ts.net name, so there
           // is nothing on vyre.run to check and every valid name is free.
           const n = await tryCall("names.status");
           if (!n.__error && via(n) === "ts.net") {
+            // A check only answers. It saves nothing: a name typed in step 1 and then skipped must
+            // not become the address (step 4 claims only a name the person confirmed).
             const v = checkName(name), dns = n.tailscale && n.tailscale.node && n.tailscale.node.dnsName;
-            if (v.valid) save({ name: v.name });
-            await status(caller);
             return { name: v.name, valid: v.valid, available: v.valid, why: v.why, via: "ts.net", address: dns ? `https://${String(dns).replace(/\.$/, "")}` : null };
           }
-          const c = await call("names.check", { name });
-          if (c.valid && c.available) save({ name: c.name });
-          await status(caller);
-          return c;
+          return call("names.check", { name });
         }
         if (action === "reserve" && via(await call("names.status")) === "ts.net") action = "ts.net";
+        if (action === "reserve" || action === "claim") {
+          // A vyre.run name is public DNS. It is claimed only when the person typed it and pressed
+          // Continue in step 1 (onboard.you saved it), or confirmed it here with confirm: true.
+          const want = checkName(name || ctx.config.name || "");
+          if (!want.valid) throw Object.assign(new Error("pick a name first, or use this machine's tailnet name"), { code: "confirm_name" });
+          if (confirm === true) save({ name: want.name });
+          else if (!(ob().person && ctx.config.name === want.name)) {
+            throw Object.assign(new Error(`${want.name}.vyre.run is a public name: confirm it first, or use this machine's tailnet name`), { code: "confirm_name" });
+          }
+        }
         if (action !== "status") await call(action === "ts.net" ? "names.fallback" : "names.claim", action !== "ts.net" && name ? { name } : {});
         return progress(await stepOf("name", caller));
       },
@@ -336,7 +374,8 @@ export default {
           const name = slug(display);
           const person = ob().person ? ` You work for ${ob().person}.` : "";
           a = await call("agents.create", { name, kind: "assistant", projects: "*",
-            auth: { vault: VAULT_ITEM[auth === "api-key" ? "api-key" : "subscription"], ...(auth === "api-key" ? {} : { fallback: VAULT_ITEM["api-key"] }) },
+            // agents reads auth.vault as a subscription token and auth.fallback as an API key.
+            auth: auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] },
             instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
         }
         const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
@@ -407,6 +446,6 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
+    return { async stop() { if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

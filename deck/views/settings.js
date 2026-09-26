@@ -163,7 +163,8 @@ async function drawYou(el) {
   const name = r.data?.name || "";
   put(el, h("div", { class: "rows" },
     row("Name", name ? h("span", null, name) : h("span", { class: "muted" }, "Not chosen yet"), name ? null : toOnboard("you")),
-    row("Address", name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),
+    // The address it is served at: a ts.net name when there is no vyre.run name (ADR 0008).
+    row("Address", r.data?.address ? mono(String(r.data.address).replace(/^https:\/\//, "")) : name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),
       r.data?.steps?.name === "done" || !name ? null : toOnboard("name")),
     here));
 }

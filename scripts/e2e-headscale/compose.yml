@@ -1,0 +1,231 @@
+# Vyre e2e on the test box: a throwaway box, a private tailnet (headscale) and a stand-in Mac.
+# Never /srv/vyre. Everything here carries run.vyre.e2e and goes with `docker compose down -v`.
+name: vyre-e2e
+
+x-e2e: &e2e
+  labels:
+    run.vyre.e2e: "1"
+
+services:
+  headscale:
+    <<: *e2e
+    image: headscale/headscale:0.29.4
+    command: serve
+    volumes:
+      - ./headscale:/etc/headscale:ro
+      - headscale-data:/var/lib/headscale
+      - headscale-run:/var/run/headscale
+    networks: [e2e]
+
+  # The box: the same tailscale service as box/compose.yml, but its login server is headscale.
+  tailscale:
+    <<: *e2e
+    image: tailscale/tailscale:stable
+    hostname: vyre
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        grep -q '^vyre:' /etc/passwd || echo 'vyre:x:1000:1000:vyre:/nonexistent:/sbin/nologin' >> /etc/passwd
+        tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+        pid=$$!
+        i=0; until tailscale status >/dev/null 2>&1 || [ "$$(tailscale status 2>&1 | grep -c -i 'logged out\|needslogin')" != 0 ] || [ $$i -ge 30 ]; do i=$$((i+1)); sleep 1; done
+        tailscale set --operator=vyre --hostname="$${TS_HOSTNAME}" --accept-dns=false
+        wait $$pid
+    environment:
+      - TS_HOSTNAME=vyre
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    volumes:
+      - box-ts-state:/var/lib/tailscale
+      - box-ts-sock:/var/run/tailscale
+    networks:
+      e2e:
+        aliases: [vyred]
+        gw_priority: 1
+      docker-api: {}
+      computers: {}
+
+  vyre:
+    <<: *e2e
+    image: vyre-e2e:local
+    network_mode: service:tailscale
+    depends_on: [tailscale]
+    init: true
+    user: "1000:1000"
+    environment:
+      - VYRE_HOME=/home/vyre/.vyre
+      - VYRE_SUPERVISOR=docker
+      - VYRE_ONBOARD_HOST=vyred
+      - VYRE_NO_DIALOGS=1
+      - VYRE_TAILSCALE_UP_FLAGS=--accept-dns=false --hostname=vyre --login-server=http://headscale:8080
+      - VYRE_TAILSCALE_BIN=/e2e/tailscale
+    volumes:
+      - box-home:/home/vyre
+      - box-work:/work
+      - box-ts-sock:/var/run/tailscale
+      - ./shim:/e2e:ro
+      - ./ca/box:/e2e-certs:ro
+    healthcheck:
+      test: ["CMD", "vyre", "status"]
+      interval: 30s
+
+  # Agents' computers (profile computers): the box's Docker proxy, with its own image, network and
+  # label prefix, so it can neither see nor touch the live box's computers.
+  docker-api:
+    <<: *e2e
+    image: vyre-e2e:local
+    command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
+    profiles: ["computers"]
+    init: true
+    user: "1000:1000"
+    group_add: ["${DOCKER_GID:-987}"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - VYRE_COMPUTERS_NETWORK=vyre-e2e-computers
+      - VYRE_COMPUTERS_IMAGE=vyre-e2e/computer:0.1
+      - VYRE_COMPUTERS_LABEL_PREFIX=run.vyre.e2e.computers
+      - VYRE_COMPUTERS_CAP_ADD=
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [docker-api]
+
+  # The stand-in Mac: one tailnet node that the browser and the Mac's vyred share.
+  mac-ts:
+    <<: *e2e
+    image: tailscale/tailscale:stable
+    hostname: alex-mac
+    # A real Mac forwards as an exit node on its own; this Linux stand-in needs forwarding on.
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.forwarding: 1
+    environment:
+      - TS_AUTHKEY=${MAC_AUTHKEY:-}
+      - TS_EXTRA_ARGS=--login-server=http://headscale:8080
+      - TS_HOSTNAME=alex-mac
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_SOCKET=/var/run/tailscale/tailscaled.sock
+      - TS_ACCEPT_DNS=false
+      - TS_AUTH_ONCE=true
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    extra_hosts:
+      - "vyre.tail0000.ts.net:${BOX_IP:-100.64.0.1}"
+    ports:
+      - "127.0.0.1:19222:9223"
+    volumes:
+      - mac-ts-state:/var/lib/tailscale
+      - mac-ts-sock:/var/run/tailscale
+    networks: [e2e]
+
+  chrome:
+    <<: *e2e
+    image: chromedp/headless-shell:latest
+    network_mode: service:mac-ts
+    depends_on: [mac-ts]
+    environment:
+      - HOME=/profile
+      - BOX_IP=${BOX_IP:-100.64.0.1}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        socat TCP-LISTEN:7300,bind=127.0.0.1,fork,reuseaddr TCP:vyred:7300 &
+        socat TCP-LISTEN:9223,fork,reuseaddr TCP:127.0.0.1:9222 &
+        exec /headless-shell/headless-shell --no-sandbox --use-gl=angle --use-angle=swiftshader \
+          --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 \
+          --user-data-dir=/profile/chrome --window-size=1280,900 \
+          --host-resolver-rules="MAP vyre.tail0000.ts.net $${BOX_IP}" about:blank
+    volumes:
+      - ./chrome:/profile
+
+  # A second device of the owner (a phone): its own tailnet node and browser.
+  phone-ts:
+    <<: *e2e
+    image: tailscale/tailscale:stable
+    hostname: alex-phone
+    environment:
+      - TS_AUTHKEY=${PHONE_AUTHKEY:-}
+      - TS_EXTRA_ARGS=--login-server=http://headscale:8080
+      - TS_HOSTNAME=alex-phone
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_SOCKET=/var/run/tailscale/tailscaled.sock
+      - TS_ACCEPT_DNS=false
+      - TS_AUTH_ONCE=true
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    ports:
+      - "127.0.0.1:19223:9223"
+    volumes:
+      - phone-ts-state:/var/lib/tailscale
+    networks: [e2e]
+    profiles: [phone]
+
+  phone:
+    <<: *e2e
+    image: chromedp/headless-shell:latest
+    network_mode: service:phone-ts
+    depends_on: [phone-ts]
+    profiles: [phone]
+    environment:
+      - HOME=/profile
+      - BOX_IP=${BOX_IP:-100.64.0.1}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        socat TCP-LISTEN:9223,fork,reuseaddr TCP:127.0.0.1:9222 &
+        exec /headless-shell/headless-shell --no-sandbox --use-gl=angle --use-angle=swiftshader \
+          --remote-debugging-port=9222 --user-data-dir=/profile/chrome-phone --window-size=390,844 \
+          --host-resolver-rules="MAP vyre.tail0000.ts.net $${BOX_IP}" about:blank
+    volumes:
+      - ./chrome:/profile
+
+  mac:
+    <<: *e2e
+    image: vyre-e2e:local
+    network_mode: service:mac-ts
+    depends_on: [mac-ts]
+    profiles: [mac]
+    init: true
+    user: "1000:1000"
+    environment:
+      - VYRE_HOME=/home/vyre/.vyre
+      - VYRE_NO_DIALOGS=1
+      - NODE_EXTRA_CA_CERTS=/e2e-ca/ca.crt
+    volumes:
+      - mac-home:/home/vyre
+      - mac-ts-sock:/var/run/tailscale
+      - ./ca/ca.crt:/e2e-ca/ca.crt:ro
+
+volumes:
+  headscale-data: { labels: { run.vyre.e2e: "1" } }
+  headscale-run: { labels: { run.vyre.e2e: "1" } }
+  box-ts-state: { labels: { run.vyre.e2e: "1" } }
+  box-ts-sock: { labels: { run.vyre.e2e: "1" } }
+  box-home: { labels: { run.vyre.e2e: "1" } }
+  box-work: { labels: { run.vyre.e2e: "1" } }
+  mac-ts-state: { labels: { run.vyre.e2e: "1" } }
+  mac-ts-sock: { labels: { run.vyre.e2e: "1" } }
+  mac-home: { labels: { run.vyre.e2e: "1" } }
+  phone-ts-state: { labels: { run.vyre.e2e: "1" } }
+
+networks:
+  e2e:
+    name: vyre-e2e
+    labels: { run.vyre.e2e: "1" }
+  computers:
+    name: vyre-e2e-computers
+    labels: { run.vyre.e2e: "1" }
+  docker-api:
+    name: vyre-e2e-docker-api
+    internal: true
+    labels: { run.vyre.e2e: "1" }
