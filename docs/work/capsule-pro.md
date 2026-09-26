@@ -82,6 +82,9 @@ without editing Capsule files:
 - Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
 
 ## Next
+0. Plain `vyre capsule` builds the native app on first run (swiftc; missing Command Line Tools
+   prints one line: `xcode-select --install`), signs it with the stable local identity, then
+   launches it. No extra command. (From docs, via the lead, 2026-09-27.)
 1. Native shell: NSPanel, hotkey in process, menu-bar item, vyred link, the launcher's local
    results, the Vyre half (bridge, state, watches, DMs, held cards), build and sign.
 2. Parity check against every "Done" line in capsule.md, then retire Electron.
