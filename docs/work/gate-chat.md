@@ -142,10 +142,25 @@ lease surface naming pattern, and never inventing custom UI for what a real cont
   temporary `gate.senders.mail` added for the run) was edited inline, Sent, failed correctly on an
   ungranted vault item, and showed the server's own error in the card. Screenshots at 1440 and 390.
 
+## Done (integration round 2, after the lead's review)
+- Mounted onto deck's real shell and router once it landed (merge `4ec42be`): `deck/chat/index.js`
+  now exports the `async (ctx) => void` `deck/views/chat.js` expects; the hash router is gone.
+  `deck/chat/lib/routes.js` centralizes the URLs. Route gap flagged to deck: no pattern yet for a
+  project-less thread, worked around with `"_"` as the project segment.
+- `11c4e62`: the real fix for a bug the interim `deck/chat/index.html` duplicate had papered over —
+  `core/daemon`'s `serveDeck()` now falls back to the one shell for a real directory that lacks its
+  own `index.html` (a view's folder of JS modules, exactly what `deck/chat/` is), the way it
+  already did for a path that is not a file at all. Test in `test/daemon.test.js`. The duplicate
+  `index.html` and the per-view `sw.js`/manifest are gone; `deck/sw.js` already exists
+  (network-first, API calls never cached) and two workers on one origin would fight.
+- `docs/design/boards/Chat.dc.html` redrawn from the real app (deck's shell, Chat's rail tree, a
+  held Gate item inline), not the old Mattermost mockup.
+- Proposed to deck (not landed): a read-only allowlist cache in `deck/sw.js` for offline session
+  read, since Chat's `sw.js` caching `threads.get`/`projects.list` touched their stated
+  "nothing a tool returned is ever kept on the device" invariant and needs their sign-off.
+
 ## Doing
-- Nothing blocking. Next pass: pointer-cursor scroll-stick tuning, the memory-fact tool once
-  intelligence answers, folding the hash router into deck's shared one once it lands, and updating
-  `docs/design/boards/Chat.dc.html` from the real screenshots (still Mattermost-shaped today).
+- Waiting on deck for the route gap and the offline-read proposal. Otherwise nothing blocking.
 
 ## Next
 1. `deck/chat/` v1: projects -> sessions -> session view, composer with lease, gate items and asks

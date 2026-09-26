@@ -244,20 +244,22 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
  */
 function serveDeck(res, pathname) {
   const dir = path.join(REPO, "deck");
+  const shell = path.join(dir, "index.html");
   let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
   if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
-  const shell = path.join(dir, "index.html");
-  try {
-    if (fs.statSync(file).isDirectory()) {
-      // A view's own real subfolder (deck/chat/, deck/glass/, …) serves its own index.html when
-      // it has one; otherwise, same as any client-side route that names no real file, this falls
-      // back to the shell rather than 404ing — the shell's router reads location.pathname itself.
-      const own = path.join(file, "index.html");
-      file = fs.existsSync(own) ? own : shell;
-    }
-  } catch { file = shell; }
+  // A path that is not a file at all (any client route) wants the one shell. A path that IS a
+  // real directory (a view's own folder of modules, e.g. deck/chat/) wants that shell too, unless
+  // the directory happens to carry its own index.html: a bare 404 there would be surprising, since
+  // nothing about the URL said "this is a module", only that a browser asked for a page.
+  let wantsShell = false;
+  try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); wantsShell = true; } }
+  catch { file = shell; wantsShell = true; }
   let buf;
-  try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } }); }
+  try { buf = fs.readFileSync(file); }
+  catch {
+    if (wantsShell && file !== shell) { try { buf = fs.readFileSync(shell); } catch {} }
+    if (!buf) return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } });
+  }
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",
     "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" });
   res.end(buf);

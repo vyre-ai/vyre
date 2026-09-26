@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chat, project thread</title>
+  <title>Chat, a session held for the user</title>
   <script src="./support.js"></script>
 </head>
 <body>
@@ -12,224 +12,148 @@
   <style>
     body { margin: 0; background: #0E0D0C; }
     .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
-    .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
-    .kbd { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; padding: 1px 5px; border-radius: 4px; border: 1px solid #3A3733; color: #B3AEA4; }
-    .btn { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 36px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
-    .btn:focus-visible, a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
-    .btn-ghost { background: transparent; color: #F1EEE6; border: 1px solid #3A3733; }
-    .btn-ghost:hover { background: #1E1C1A; }
-    .btn-primary { background: #C6F36B; color: #0E0D0C; border: 1px solid #C6F36B; }
-    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
-    .ch { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 18px; }
-    .ch:hover { background: #1E1C1A; }
-    .hash { color: #8C877D; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13px; width: 12px; }
-    .av-agent { width: 32px; height: 32px; border-radius: 6px; background: #1E1C1A; border: 1px solid #3A3733; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 500; color: #F1EEE6; flex-shrink: 0; box-sizing: border-box; }
-    .av-person { width: 32px; height: 32px; border-radius: 16px; background: #2B2926; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; color: #F1EEE6; flex-shrink: 0; }
+    .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; margin: 0; }
+    .kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid #3A3733; border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #8C877D; }
+    .btn { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 32px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; border: 1px solid #3A3733; background: transparent; color: #F1EEE6; }
+    .btn-primary { background: #C6F36B; color: #0E0D0C; border-color: #C6F36B; }
+    .btn-sm { height: 28px; }
+    .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 20px; }
+    .rail-a[aria-current] { background: #1E1C1A; color: #F1EEE6; }
+    .pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
+    .rail-sub-a { display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 10px 0 24px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
+    .rail-sub-a[aria-current] { background: rgba(198,243,107,0.12); color: #F1EEE6; }
+    .needs-pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: rgba(255,122,89,0.12); color: #FF7A59; text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
+    .av-agent { width: 28px; height: 28px; border-radius: 6px; background: #1E1C1A; border: 1px solid #3A3733; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; color: #F1EEE6; flex-shrink: 0; box-sizing: border-box; }
+    .av-person { width: 28px; height: 28px; border-radius: 14px; background: #2B2926; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 500; color: #F1EEE6; flex-shrink: 0; }
     .who { font-size: 14px; line-height: 20px; font-weight: 600; color: #F1EEE6; }
     .when { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 20px; color: #8C877D; }
-    .body { font-size: 15px; line-height: 22px; color: #F1EEE6; margin: 0; text-wrap: pretty; }
-    .chip { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border-radius: 4px; border: 1px solid #3A3733; background: #161513; color: #F1EEE6; text-decoration: none; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; }
-    .chip:hover { background: #1E1C1A; }
-    .card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid #2B2926; border-radius: 10px; text-decoration: none; color: inherit; }
-    .card:hover { background: #161513; }
+    .body { font-size: 15px; line-height: 23px; color: #F1EEE6; margin: 0; text-wrap: pretty; }
+    .tool-chip { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid #2B2926; border-radius: 6px; color: #B3AEA4; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; align-self: flex-start; }
+    .gate-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 10px; background: #161513; border: 1px solid #2B2926; }
+    .gate-field label { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #8C877D; display: block; margin-bottom: 4px; }
+    .input { height: 38px; width: 100%; padding: 0 12px; border-radius: 6px; border: 1px solid #3A3733; background: #0E0D0C; color: #F1EEE6; font-size: 14px; box-sizing: border-box; }
+    textarea.input { height: auto; padding: 10px 12px; min-height: 64px; font-family: 'Instrument Sans', sans-serif; line-height: 20px; }
+    .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid #3A3733; border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #B3AEA4; }
+    :focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
   </style>
 </helmet>
 <div style="width: 1600px; height: 1000px; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden;">
 
-  <!-- Global header -->
-  <header style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box; background: #0E0D0C;">
-    <a href="#" aria-label="vyre home" style="display: flex; align-items: center; gap: 8px; text-decoration: none;">
+  <!-- The one Deck shell: header, rail, view. Chat is a route, not a separate app. -->
+  <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
+    <a href="#" style="width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none;">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
       <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
-    <div style="width: 1px; height: 20px; background: #3A3733;"></div>
-    <span class="lbl" style="color: #B3AEA4;">Chat</span>
-    <div style="flex-grow: 1;"></div>
-    <label style="display: flex; align-items: center; gap: 10px; width: 420px; height: 30px; padding: 0 8px 0 12px; border: 1px solid #3A3733; border-radius: 6px; box-sizing: border-box; color: #8C877D;">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
-      <input type="text" placeholder="Search harlow-legal" aria-label="Search" style="flex-grow: 1; min-width: 0; background: transparent; border: 0; color: #F1EEE6; font: inherit; font-size: 13px; outline: none;">
+    <div style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: #8C877D;">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>
+      alex.vyre.run<span style="color: #F1EEE6;">/chat</span>
+    </div>
+    <label style="display: flex; align-items: center; gap: 10px; width: 380px; height: 32px; padding: 0 8px 0 12px; border: 1px solid #2B2926; border-radius: 6px; box-sizing: border-box; color: #8C877D;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.3"/><path d="M10.3 10.3L13.5 13.5"/></svg>
+      <span style="flex-grow: 1; font-size: 13px;">Search threads, files, people</span>
       <span class="kbd">⌘K</span>
     </label>
     <div style="flex-grow: 1;"></div>
-    <a href="#" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: rgba(255,122,89,0.12); color: #FF7A59; text-decoration: none; font-size: 13px; line-height: 16px; font-weight: 500;"><span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>3 need you</a>
-    <button type="button" aria-label="Alex Rivera" class="mono" style="width: 30px; height: 30px; border-radius: 15px; background: #1E1C1A; border: 1px solid #3A3733; color: #F1EEE6; font-size: 11px; font-weight: 500; cursor: pointer; padding: 0;">AR</button>
+    <a href="#" class="needs-pill"><span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>2 need you</a>
+    <button type="button" class="mono" style="width: 30px; height: 30px; border-radius: 15px; background: #1E1C1A; border: 1px solid #3A3733; color: #F1EEE6; font-size: 11px; font-weight: 500; cursor: pointer; padding: 0;">M</button>
   </header>
 
   <div style="flex-grow: 1; display: flex; min-height: 0;">
 
-    <!-- Team strip -->
-    <nav aria-label="Workspaces" style="width: 64px; flex-shrink: 0; border-right: 1px solid #2B2926; display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 14px; box-sizing: border-box;">
-      <a href="#" aria-label="Alex Rivera workspace" style="display: flex; border-radius: 8px; outline: 2px solid #F1EEE6; outline-offset: 3px;">
-        <svg width="36" height="36" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#161513"/><path d="M8 10L15.5 22.5L19.81 15.31" stroke="#F1EEE6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23" cy="10" r="3" fill="#C6F36B"/></svg>
-      </a>
-      <button type="button" aria-label="Add workspace" style="width: 36px; height: 36px; border-radius: 8px; border: 1px dashed #3A3733; background: transparent; color: #8C877D; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+    <!-- Rail: Places (deck's own), then Chat's own project/session tree filled through ctx.rail() -->
+    <nav aria-label="Places" style="width: 216px; flex-shrink: 0; border-right: 1px solid #2B2926; display: flex; flex-direction: column; padding: 16px 12px; box-sizing: border-box; overflow: auto;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/></svg>Now<span class="mono" style="margin-left: auto; font-size: 11px; color: #FF7A59;">2</span></a>
+        <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"/></svg>Projects</a>
+        <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="11.5" r="1.9"/><circle cx="12" cy="4.5" r="1.9"/></svg>Memory</a>
+        <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/></svg>Agents</a>
+        <a class="rail-a" href="#" aria-current="page"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 3.5h11v7H7l-3 2.5v-2.5H2.5z"/></svg>Chat</a>
+        <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="11" height="11" rx="1.2"/></svg>Vault</a>
+      </div>
+      <div style="height: 1px; background: #2B2926; margin: 16px 0;"></div>
+
+      <!-- What deck/chat/nav.js renders into the rail's lower slot -->
+      <label style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border: 1px solid #2B2926; border-radius: 6px; margin-bottom: 14px; color: #8C877D;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.3"/><path d="M10.3 10.3L13.5 13.5"/></svg>
+        <span style="font-size: 13px;">Search sessions</span>
+      </label>
+      <div style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; color: #F1EEE6; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3.5L11 8 5 12.5"/></svg>
+          Harlow Legal<span class="mono" style="margin-left: auto; color: #8C877D; font-weight: 400;">3</span>
+        </div>
+        <a class="rail-sub-a" href="#" aria-current="page"><span style="width: 8px; height: 8px; border-radius: 4px; background: #C6F36B; flex-shrink: 0;"></span><span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Intake form rebuild</span><span class="mono" style="font-size: 11px; color: #FF7A59;">1</span></a>
+        <a class="rail-sub-a" href="#"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1.5px solid #8C877D; box-sizing: border-box; flex-shrink: 0;"></span><span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Q3 report</span></a>
+        <a class="rail-sub-a" href="#"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1.5px solid #8C877D; box-sizing: border-box; flex-shrink: 0;"></span><span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Ads audit</span></a>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; color: #8C877D; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3.5L11 8 5 12.5"/></svg>
+        Northwind Bakery
+      </div>
+      <div style="height: 1px; background: #2B2926; margin: 18px 0 10px;"></div>
+      <div class="lbl" style="padding: 0 10px 6px;">Agents</div>
+      <div style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; color: #F1EEE6; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3.5L11 8 5 12.5"/></svg>
+        <span style="width: 8px; height: 8px; border-radius: 4px; background: #C6F36B;"></span>pax
+      </div>
     </nav>
 
-    <!-- Channel sidebar -->
-    <nav aria-label="Channels" style="width: 248px; flex-shrink: 0; border-right: 1px solid #2B2926; background: #161513; display: flex; flex-direction: column; padding: 14px 10px; box-sizing: border-box; gap: 18px;">
-      <div style="display: flex; flex-direction: column; gap: 2px; padding: 0 4px;">
-        <div style="font-size: 15px; line-height: 20px; font-weight: 600;">Alex Rivera</div>
-        <div class="mono" style="font-size: 11px; line-height: 16px; color: #8C877D;">alex.vyre.run/chat</div>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 2px;">
-        <div class="lbl" style="padding: 0 12px 6px 12px;">Projects</div>
-        <a class="ch" href="#" aria-current="page" style="background: rgba(198,243,107,0.12); color: #F1EEE6; font-weight: 500;"><span class="hash">#</span>harlow-legal</a>
-        <a class="ch" href="#" style="color: #F1EEE6; font-weight: 600;"><span class="hash">#</span><span style="flex-grow: 1;">northfield-dental</span><span class="mono" style="min-width: 18px; height: 18px; border-radius: 9px; background: #FF7A59; color: #0E0D0C; font-size: 11px; line-height: 18px; text-align: center; font-weight: 500;">1</span></a>
-        <a class="ch" href="#"><span class="hash">#</span>launch-site</a>
-        <a class="ch" href="#"><span class="hash">#</span>q4-hiring</a>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 2px;">
-        <div class="lbl" style="padding: 0 12px 6px 12px;">Agents</div>
-        <a class="ch" href="#"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1.5px solid #8C877D; box-sizing: border-box; margin: 0 2px;"></span><span style="flex-grow: 1;">juno</span><span style="font-size: 12px; color: #8C877D;">assistant</span></a>
-        <a class="ch" href="#"><span style="width: 8px; height: 8px; border-radius: 4px; background: #B3AEA4; margin: 0 2px;"></span><span style="flex-grow: 1;">kit</span><span style="font-size: 12px; color: #8C877D;">marketing</span></a>
-        <a class="ch" href="#"><span style="width: 8px; height: 8px; border-radius: 4px; background: #B3AEA4; margin: 0 2px;"></span><span style="flex-grow: 1;">pax</span><span style="font-size: 12px; color: #8C877D;">intake</span></a>
-      </div>
-      <div style="flex-grow: 1;"></div>
-      <div style="padding: 12px 12px 0 12px; border-top: 1px solid #2B2926; font-size: 12px; line-height: 16px; color: #8C877D;">One thread per session. Replies here reach the agent at once.</div>
-    </nav>
-
-    <!-- Channel -->
+    <!-- The session view: deck/chat/session.js, mounted at ctx.root -->
     <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column;">
-      <div style="height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
+      <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
         <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0;">
-          <div style="font-size: 16px; line-height: 22px; font-weight: 600;"><span class="mono" style="color: #8C877D; font-weight: 400;"># </span>harlow-legal</div>
-          <div style="font-size: 12px; line-height: 16px; color: #8C877D; white-space: nowrap; overflow: hidden;">Project Harlow Legal · contact Dana Reyes &lt;dana@harlowlegal.com&gt;</div>
+          <div style="font-size: 16px; line-height: 22px; font-weight: 600;">Intake form rebuild</div>
+          <div style="font-size: 12px; line-height: 16px; color: #8C877D;">pax &middot; ~/work/harlow/intake</div>
         </div>
-        <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #B3AEA4;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><path d="M1.5 13.5c.5-2.5 2.3-4 4.5-4s4 1.5 4.5 4"/><path d="M11 3.8a2.3 2.3 0 0 1 0 4.4M12.5 9.8c1.2.5 2 1.7 2.2 3.7"/></svg>4</span>
+        <span style="width: 8px; height: 8px; border-radius: 4px; background: #C6F36B;" title="running"></span>
       </div>
 
-      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; overflow: hidden;">
-        <div style="display: flex; align-items: center; gap: 12px;"><div style="flex-grow: 1; height: 1px; background: #2B2926;"></div><span class="lbl">Today</span><div style="flex-grow: 1; height: 1px; background: #2B2926;"></div></div>
+      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 18px 20px 24px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;"><div style="flex-grow: 1; height: 1px; background: #2B2926;"></div><span class="lbl">Today</span><div style="flex-grow: 1; height: 1px; background: #2B2926;"></div></div>
 
-        <a class="card" href="#">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="av-agent" style="width: 24px; height: 24px; font-size: 10px; border-radius: 4px;">ju</span>
-            <span style="font-size: 15px; line-height: 20px; font-weight: 600; flex-grow: 1;">Q3 report</span>
-            <span class="when">09:12</span>
-          </div>
-          <div style="font-size: 13px; line-height: 19px; color: #B3AEA4;">juno put the Q3 numbers on slide 6 and drafted a reply to Dana.</div>
-          <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; line-height: 16px; color: #8C877D;">
-            <span>8 replies</span><span style="display: flex; align-items: center; gap: 6px; color: #FF7A59;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></span>draft held for you</span><span class="mono" style="font-size: 11px;">~/work/harlow/q3-report</span>
-          </div>
-        </a>
-
-        <a class="card" href="#">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="av-agent" style="width: 24px; height: 24px; font-size: 10px; border-radius: 4px;">ki</span>
-            <span style="font-size: 15px; line-height: 20px; font-weight: 600; flex-grow: 1;">Ads audit</span>
-            <span class="when">13:58</span>
-          </div>
-          <div style="font-size: 13px; line-height: 19px; color: #B3AEA4;">kit found 14 search terms with spend and no conversions, $9,870 over 90 days.</div>
-          <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; line-height: 16px; color: #8C877D;">
-            <span>12 replies</span><span>working · watch in Glass</span><span class="mono" style="font-size: 11px;">~/work/harlow/ads-audit</span>
-          </div>
-        </a>
-
-        <a class="card" href="#" aria-current="true" style="background: rgba(198,243,107,0.12); border-color: #3A3733;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="av-agent" style="width: 24px; height: 24px; font-size: 10px; border-radius: 4px;">pa</span>
-            <span style="font-size: 15px; line-height: 20px; font-weight: 600; flex-grow: 1;">Intake form rebuild</span>
-            <span class="when">14:35</span>
-          </div>
-          <div style="font-size: 13px; line-height: 19px; color: #B3AEA4;">pax moved the conflict check to step 1. It asks before publishing a preview.</div>
-          <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; line-height: 16px; color: #8C877D;">
-            <span style="color: #F1EEE6;">3 replies · open</span><span style="display: flex; align-items: center; gap: 6px; color: #FF7A59;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></span>1 question</span><span class="mono" style="font-size: 11px;">~/work/harlow/intake</span>
-          </div>
-        </a>
-      </div>
-
-      <div style="padding: 0 20px 20px 20px;">
-        <label style="display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 10px 0 14px; border: 1px solid #3A3733; border-radius: 10px; box-sizing: border-box;">
-          <input type="text" placeholder="Start a new thread in harlow-legal. @agent to pick who" aria-label="New thread" style="flex-grow: 1; min-width: 0; background: transparent; border: 0; color: #F1EEE6; font: inherit; font-size: 14px; outline: none;">
-          <span class="kbd">⏎</span>
-        </label>
-      </div>
-    </main>
-
-    <!-- Thread (right-hand side) -->
-    <aside aria-label="Thread: Intake form rebuild" style="width: 580px; flex-shrink: 0; border-left: 1px solid #2B2926; background: #161513; display: flex; flex-direction: column;">
-      <div style="height: 60px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
-        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
-          <div style="font-size: 16px; line-height: 22px; font-weight: 600;">Thread</div>
-          <div style="font-size: 12px; line-height: 16px; color: #8C877D;"># harlow-legal</div>
-        </div>
-        <a href="#" class="btn btn-ghost" style="height: 30px; text-decoration: none; font-size: 11px;">Open in Deck</a>
-        <button type="button" aria-label="Close thread" style="width: 30px; height: 30px; border: 0; background: transparent; color: #B3AEA4; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button>
-      </div>
-
-      <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
-
-        <!-- Root post: the session -->
-        <div style="padding: 16px 20px; border-bottom: 1px solid #2B2926; display: flex; flex-direction: column; gap: 10px;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="lbl">Session</span>
-            <span style="flex-grow: 1;"></span>
-            <span class="when">started 12:02 from Deck</span>
-          </div>
-          <div style="font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em;">Intake form rebuild</div>
-          <div style="display: flex; align-items: center; gap: 14px; font-size: 13px; line-height: 18px; color: #B3AEA4;">
-            <span style="display: flex; align-items: center; gap: 8px;"><span class="av-agent" style="width: 20px; height: 20px; font-size: 9px; border-radius: 4px;">pa</span>pax, intake</span>
-            <span class="mono" style="font-size: 12px; color: #8C877D;">~/work/harlow/intake</span>
-            <span style="flex-grow: 1;"></span>
-            <a href="#" style="font-size: 13px; color: #F1EEE6; text-decoration: underline; text-decoration-color: #3A3733; text-underline-offset: 3px;">Watch in Glass</a>
-          </div>
-        </div>
-
-        <!-- Alex's message -->
-        <div style="display: flex; gap: 12px; padding: 16px 20px 14px 20px;">
+        <div style="display: flex; gap: 12px; padding: 10px 0;">
           <span class="av-person">AR</span>
-          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
-            <div style="display: flex; align-items: baseline; gap: 8px;"><span class="who">Alex Rivera</span><span class="when">14:31</span></div>
-            <p class="body"><span class="mono" style="font-size: 13px; padding: 1px 4px; border-radius: 4px; background: #1E1C1A;">@pax</span> run the conflict check before we ask anything about the case. Keep Dana&#39;s consent line exactly as it is.</p>
+          <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+            <div style="display: flex; align-items: baseline; gap: 8px;"><span class="who">alex</span><span class="when">14:31</span></div>
+            <p class="body">Run the conflict check before we ask anything about the case. Keep Dana's consent line exactly as it is.</p>
           </div>
         </div>
 
-        <!-- pax: one post, updated in place -->
-        <div style="display: flex; gap: 12px; padding: 14px 20px 16px 20px; border-top: 1px solid #2B2926;">
+        <div style="display: flex; gap: 12px; padding: 10px 0;">
           <span class="av-agent">pa</span>
           <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0; flex-grow: 1;">
-            <div style="display: flex; align-items: baseline; gap: 8px;"><span class="who">pax</span><span class="when">14:31, updated 14:35</span><span style="flex-grow: 1;"></span><span class="mono" style="font-size: 11px; color: #8C877D;">4m 12s</span></div>
-            <p class="body">The conflict check is step 1 now. The form runs in three steps: conflict check, case details, consent. Dana&#39;s consent line is unchanged, word for word.</p>
-            <div style="display: flex; gap: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(235,199,107,0.10); font-size: 13px; line-height: 18px; color: #EBC76B;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#EBC76B" stroke-width="1.5" style="flex-shrink: 0; margin-top: 2px;" aria-hidden="true"><path d="M8 2l6 3.2-6 3.2-6-3.2z"/><path d="M2 8.4l6 3.2 6-3.2"/><path d="M2 11.2l6 3.2 6-3.2"/></svg>
-              <span>Kept the consent wording Dana approved in Call notes 12 Sep. No model used to find it.</span>
-            </div>
-            <button type="button" aria-expanded="false" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid #2B2926; border-radius: 6px; background: transparent; color: #B3AEA4; cursor: pointer; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; align-self: flex-start;">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5"/></svg>
-              <span style="color: #F1EEE6;">6 tool calls</span><span style="color: #8C877D;">·</span><span style="color: #F1EEE6;">2 files changed</span>
-            </button>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              <a class="chip" href="#"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/></svg>intake/steps.ts<span style="color: #B3AEA4;">+48 −12</span></a>
-              <a class="chip" href="#"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/></svg>intake/ConflictCheck.tsx<span style="color: #B3AEA4;">new, 86 lines</span></a>
-            </div>
-            <div style="font-size: 13px; line-height: 18px; color: #8C877D;">The preview runs on pax&#39;s computer. To send Dana a link, pax needs your say.</div>
+            <div style="display: flex; align-items: baseline; gap: 8px;"><span class="who">pax</span><span class="when">14:31</span></div>
+            <p class="body">The conflict check is step 1 now. The form runs in three steps: conflict check, case details, consent. Dana's consent line is unchanged, word for word.</p>
+            <button type="button" class="tool-chip"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5L10.5 8 6 12.5"/></svg><span style="color: #F1EEE6;">Write</span><span>intake/ConflictCheck.tsx</span></button>
           </div>
         </div>
 
-        <!-- Permission question -->
-        <div style="display: flex; gap: 12px; padding: 16px 20px 18px 20px; border-top: 1px solid #2B2926; background: rgba(255,122,89,0.12);">
-          <span class="av-agent" style="border-color: #FF7A59;">pa</span>
-          <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0; flex-grow: 1;">
-            <div style="display: flex; align-items: baseline; gap: 8px;"><span class="who">pax</span><span class="when">14:35</span><span style="flex-grow: 1;"></span><span class="lbl" style="color: #FF7A59;">Needs you</span></div>
-            <p class="body">Can I publish a preview so Dana can try the form? This puts it on the public internet, outside your tailnet.</p>
-            <div class="mono" style="padding: 10px 12px; border-radius: 6px; background: #0E0D0C; border: 1px solid #2B2926; font-size: 13px; line-height: 20px; color: #F1EEE6;"><span style="color: #8C877D;">$ </span>npm run deploy:preview<div style="color: #8C877D; font-size: 12px;">→ preview.harlowlegal.com/intake, expires in 7 days</div></div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <button type="button" class="btn btn-primary" style="height: 34px;">Allow once</button>
-              <button type="button" class="btn btn-ghost" style="height: 34px;">Always here</button>
-              <button type="button" class="btn btn-ghost" style="height: 34px;">Deny</button>
-            </div>
-            <div style="font-size: 12px; line-height: 16px; color: #B3AEA4;">Always here saves a rule for #harlow-legal: pax may run <span class="mono" style="font-size: 11px;">deploy:preview</span> without asking.</div>
+        <!-- A held Gate item: inline, editable, never a separate Edit surface -->
+        <div class="gate-card" style="margin-top: 8px;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span class="tag">SEND</span><span class="mono" style="font-size: 12px; color: #B3AEA4;">mail</span><span class="mono" style="font-size: 12px; color: #8C877D;">&middot; Dana asked for it Friday</span></div>
+          <div class="gate-field"><label>To</label><input class="input" value="dana@harlowlegal.com"></div>
+          <div class="gate-field"><label>Subject</label><input class="input" value="Intake form preview"></div>
+          <div class="gate-field"><label>Body</label><textarea class="input">Hi Dana, the new intake form is ready to try: preview.harlowlegal.com/intake</textarea></div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn btn-primary btn-sm"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 8h9M9 4.5L12.5 8 9 11.5"/></svg>Send</button>
+            <button type="button" class="btn btn-sm" style="border-color: transparent; color: #B3AEA4;">Discard</button>
           </div>
         </div>
       </div>
 
-      <div style="padding: 12px 20px 20px 20px; border-top: 1px solid #2B2926;">
-        <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 14px; border: 1px solid #3A3733; border-radius: 10px; box-sizing: border-box; background: #0E0D0C;">
-          <input type="text" placeholder="Reply to pax" aria-label="Reply" style="flex-grow: 1; min-width: 0; background: transparent; border: 0; color: #F1EEE6; font: inherit; font-size: 14px; outline: none;">
-          <span class="kbd">⏎</span>
-        </label>
+      <div style="display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 20px; font-size: 12px; color: #8C877D; border-top: 1px solid #2B2926; flex-shrink: 0;">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>
+        <span style="color: #F1EEE6;">pax</span>&nbsp;has the keyboard
       </div>
-    </aside>
+      <div style="padding: 12px 20px 20px;">
+        <div style="display: flex; align-items: flex-end; gap: 10px; padding: 8px 8px 8px 14px; border: 1px solid #3A3733; border-radius: 10px; background: #161513;">
+          <span style="flex-grow: 1; font-size: 14px; color: #8C877D;">Message this session. @ to mention, / for Claude Code's own commands</span>
+          <button type="button" class="btn" style="width: 32px; height: 32px; padding: 0; justify-content: center; border-color: transparent;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 8h9M9 4.5L12.5 8 9 11.5"/></svg></button>
+        </div>
+        <div style="font-size: 11px; color: #8C877D; padding: 6px 2px 0;"><span class="kbd">Enter</span> to send &middot; <span class="kbd">Shift+Enter</span> for a new line</div>
+      </div>
+    </main>
   </div>
 </div>
 </x-dc>
