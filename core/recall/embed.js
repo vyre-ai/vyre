@@ -21,6 +21,7 @@
 // exactly like its first ~1,800 characters. Turns are therefore cut into chunks (chunks()), and
 // each chunk gets its own vector.
 
+import fs from "node:fs";
 import path from "node:path";
 
 export const DIM = 384;
@@ -84,6 +85,11 @@ export function cosine(/** @type {ArrayLike<number>} */ a, /** @type {ArrayLike<
 }
 
 /** @typedef {{ model: string, embed(text: string): Promise<Float32Array> }} Embedder */
+
+/** Are the weights already on disk? When not, the first load downloads them, and says so. */
+export function cached(/** @type {string} */ cacheDir) {
+  try { return fs.readdirSync(path.join(cacheDir, MODEL, "onnx")).some(f => f.endsWith(".onnx")); } catch { return false; }
+}
 
 /**
  * Load the local model. Resolves to { embedder } or { why } and never throws, because "no
