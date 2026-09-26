@@ -18,6 +18,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   call at the Gate themselves with a stricter rule than the name check, so asking first would make
   the user answer twice. Vyre's own tools (`mcp__vyre__threads_send`) and every other server are
   unchanged.
+- `core/connectors/auth.js` turns a vault item into what a request carries, once for both the hub
+  and Google: a bearer header, an OAuth access token minted by refresh, or a Google
+  service-account JWT exchanged for one. Access tokens stay in memory, cached until a minute
+  before expiry. The library remembers every value it touched (raw token, refresh token, private
+  key and its lines, assertion, access token), so callers can scrub all of them from what leaves
+  the module. Token requests refuse redirects and time out after 30 s. Refusals read as sentences
+  and never quote a value; a domain-wide-delegation refusal names the user and the scopes, and
+  says where to allow them.
+- `core/connectors/testing/fake-google.js` is a Google for tests on 127.0.0.1. It verifies JWT
+  signatures against keys it generated, checks subject and scopes, plays the admin console's
+  delegation list, and requires its own tokens with the right scope on Calendar and Gmail calls.
+  A fake that accepted anything would hide the bugs that matter here, such as a read token used
+  to send.
 
 #### Presence: a person proves they are there (ADR 0004)
 
