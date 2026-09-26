@@ -1,6 +1,9 @@
 // @ts-check
 // The floor's second layer (docs/adr/0004-presence.md): the model's own ways around presence proof.
 import { test } from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { rules } from "./rules.js";
 import { flatten, globReaches } from "./shell.js";
@@ -130,4 +133,15 @@ test("shell: flatten and globReaches", () => {
   assert.equal(globReaches("/home/sam/*", HOME), false, "* does not match a dot folder");
   assert.equal(globReaches("/home/*/.vyre/x", HOME), true);
   assert.equal(globReaches("/srv/**", HOME), false);
+});
+
+test("floor: VYRE_HOME is recognised by its real path too", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-floor-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const home = path.join(dir, "home");
+  fs.mkdirSync(home);
+  const link = path.join(dir, "link");
+  fs.symlinkSync(home, link);
+  const r = rules({ tool: "Read", input: { file_path: path.join(fs.realpathSync(home), "config.json") }, home: link });
+  assert.equal(r.decision, "deny");
 });

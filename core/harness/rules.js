@@ -14,6 +14,7 @@
 //            caller or presence header (docs/adr/0004-presence.md, layer 2).
 // The Gate (M9) takes over outbound control properly; until then this is the backstop.
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { socketPath } from "../config/index.js";
@@ -43,8 +44,13 @@ export function rules({ tool, input, cwd, home, userHome }) {
   const keychain = typeof input.command === "string" && /\bsecurity\b/.test(input.command) && /vyre-vault|dump-keychain|find-generic-password[^|;&]*-w/.test(input.command);
   if (hits || keychain) return { decision: "deny", rule: 8, reason: "Vyre keeps vault values off every screen. Use the item through the tool that declared it; the value itself is never read." };
 
-  const routed = typeof input.command === "string" ? shellRoutes(input.command, { vyreHome, cwd, userHome }) : toolRoutes(tool, input, { vyreHome, cwd });
-  if (routed) return routed;
+  // VYRE_HOME by the name it was given and by its real path: /tmp is /private/tmp on a Mac.
+  let real = vyreHome;
+  try { real = fs.realpathSync(vyreHome); } catch {}
+  for (const h of new Set([vyreHome, real])) {
+    const routed = typeof input.command === "string" ? shellRoutes(input.command, { vyreHome: h, cwd, userHome }) : toolRoutes(tool, input, { vyreHome: h, cwd });
+    if (routed) return routed;
+  }
 
   // Rules 1 and 2. Only MCP tools: those are the ones that reach people (mail, chat, posts).
   if (tool.startsWith("mcp__")) {
