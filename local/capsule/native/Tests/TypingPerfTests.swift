@@ -103,7 +103,12 @@ let typingSuite = Suite("typing") { t in
         print("typing\(ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPT"] == "1" ? " (optimised)" : " (debug build)"): " + r.line)
         // Timings are checked on the optimised build (VYRE_CAPSULE_OPT=1), as the app is built; a
         // debug build under a busy Mac only reports them. Jumps and flicker are checked always.
-        let timed = ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPT"] == "1"
+        // On a shared CI machine (CI or GITHUB_ACTIONS set) milliseconds say more about the VM than
+        // the code: they are printed as a warning there, never failed.
+        let env = ProcessInfo.processInfo.environment
+        let onCI = env["CI"] != nil || env["GITHUB_ACTIONS"] != nil
+        let timed = env["VYRE_CAPSULE_OPT"] == "1" && !onCI
+        if onCI && (r.p95 >= 16 || r.busy.contains { $0 > 16 }) { print("warning: typing timings over budget on CI (not failed): " + r.line) }
         if timed { t.ok(r.p95 < 16, "p95 \(r.p95) ms") }
         t.eq(r.jumpsWhileTyping, 0, "size changes while typing")
         t.eq(r.flickers, 0, "rows that vanished and came back")

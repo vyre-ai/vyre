@@ -11,8 +11,9 @@ final class FixedRows: ResultProvider, ImmediateResults, @unchecked Sendable {
     let speed = Speed.quick
     let rows: [ResultItem]
     init(id: String, rows: [ResultItem]) { self.id = id; self.rows = rows }
-    func resultsNow(for query: Query) -> [ResultItem] { rows }
-    func results(for query: Query) async -> [ResultItem] { rows }
+    /// Only the rows the query names, as a real provider would.
+    func resultsNow(for query: Query) -> [ResultItem] { rows.filter { Match.score(query.text, $0.title) > 0 || $0.kind != "app" } }
+    func results(for query: Query) async -> [ResultItem] { resultsNow(for: query) }
 }
 
 @MainActor func snapModel(_ rows: [ResultItem]) -> CapsuleModel {
