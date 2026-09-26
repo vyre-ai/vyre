@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyre.run/start matches the code again
+
+- /start's Mac section is `npm i -g https://vyre.run/box/vyre.tgz`, `vyre up` (pick 3, I already
+  set up a box), then `vyre capsule`, which builds the Capsule from the npm install. There is no
+  Mac download any more. The Cloudflare token steps are gone (your address is the tailnet name),
+  and pairing says what the code does: approve in the Deck with your passkey, whose screen is a
+  known gap.
+- `scripts/build-site.sh` writes `/download/mac /start#mac 302` into `site/_redirects`: onboarding's
+  "Download for Mac" link was a 404. Deployed to vyre.run with the live box files unchanged.
+
 #### Known gaps are marked on the page (ADR 0019)
 
 - `docs/known-gaps.md` lists each place the code does not yet do what the spec, an ADR or a

@@ -101,7 +101,7 @@ command.
 5. **Your history.** Vyre reads your earlier Claude Code sessions with a progress bar. Search
    them by what was said, pick some, and make your first project. Or skip.
 6. **Your devices.** Scan the two codes with your phone: the first installs Tailscale, the
-   second opens Vyre. Your Mac is already connected. This screen also has the Capsule download.
+   second opens Vyre. Your Mac is already connected. Its Mac link leads to the Capsule steps: `vyre capsule` builds and opens it from the npm install.
 
 Your assistant says hello on the last screen. Press **Open Vyre**.
 

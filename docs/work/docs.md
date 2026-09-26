@@ -94,3 +94,8 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   cite `docs/SPEC.md section N` still resolve: the spec keeps its numbering at
   `docs/architecture/spec.md`. `docs/adr/` does not move.
 - `site/index.html`: the Docs links point at https://docs.vyre.run.
+- `site/start/index.html` (integrator's): Mac from npm, `vyre capsule`, no Cloudflare token,
+  pairing in the Deck. `scripts/build-site.sh`: `/download/mac` redirect. Deployed to vyre.run
+  production at the lead's request, from the live box files plus these two changes, so the
+  live vyre.tgz did not change. `core/onboard/index.js` still links `/download/mac`; the redirect
+  covers it.

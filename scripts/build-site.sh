@@ -23,7 +23,8 @@
 #   site/box/Vyre-mac.zip.sha256  the Capsule zip's checksum, and site/box/Vyre-mac.url its URL
 #   site/box/SHA256SUMS           sha256 of every file above and of Vyre-mac.zip, `sha256sum -c` format
 #   <src>/box/Vyre-mac.sha256     the zip's sha256 alone, packed into vyre.tgz
-#   site/_redirects               /box to install-box.sh, and /box/Vyre-mac.zip to R2
+#   site/_redirects               /box to install-box.sh, /box/Vyre-mac.zip to R2, and
+#                                 /download/mac (onboarding's Capsule link) to /start#mac
 #
 # Deploy afterwards with:
 #   npx wrangler pages deploy site --project-name vyre-site --branch main
@@ -76,6 +77,8 @@ elif [ -f "$keep/Vyre-mac.url" ]; then cp "$keep/Vyre-mac.url" "$keep/Vyre-mac.z
 fi
 {
   printf '/box /box/install-box.sh 200\n'
+  # Onboarding links here for the Capsule, which the Mac builds from the npm install.
+  printf '/download/mac /start#mac 302\n'
   [ -f "$out/Vyre-mac.url" ] && printf '/box/Vyre-mac.zip %s 302\n' "$(cat "$out/Vyre-mac.url")"
 } >"$here/site/_redirects"
 
