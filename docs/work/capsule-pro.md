@@ -82,10 +82,14 @@ without editing Capsule files:
 - Done 2026-09-27: plain `vyre capsule` builds the native app on first run
   (core/cli/commands/capsule-native.js, 5 tests on the test box; a real build into a scratch home took
   34 s and the second call was "up to date"). Swift tests 162/163.
+- Done 2026-09-27: capsule-now rules 1-5 and 7 in native: Said.swift (said.js + memoItems/
+  memoLines/quickAppend), Catalog.swift, Reply.notice/queued, `@` chip and sends (threads.send
+  with the queue, agents.ask, threads.start in a project). Tests: said 7, capsule model 2 (memory
+  goes with a quick question; a queued send is said and marked handed over). Swift 171/172.
 - Known test failure: provider people icons test (contact photo pixel read, colourspace -1).
 
 ## Next
-0. capsule-now rules 1-5 and 7 in native (read from ../vyre-capsule-now/docs/work/capsule-now.md):
+0. (Done 2026-09-27, see Doing.) capsule-now rules 1-5 and 7 in native (read from ../vyre-capsule-now/docs/work/capsule-now.md):
    the memory box (recall.search + memory.relevant, ranked like said.js, quotes as quotes, fact
    first), memory lines in the quick-answer append, notices as a faint line, question/answer
    layout, queued messages for a session busy in a terminal. Rule 6 is in (behaviour re-set

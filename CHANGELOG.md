@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The native Capsule reads memory and queues for a busy session
+
+- Typing three letters or more asks memory (memory.relevant and recall.search) a moment after
+  the last key. What answers sits above the results as the memory box: the fact first, then
+  quotes as quotes ("You said, 2 weeks ago: ..."), ranked like `lib/said.js`, with the question
+  echoed back and the Capsule's own threads left out. A quick question carries those lines,
+  and only those, in its system-prompt append. Rules 1, 2 and 7 in docs/work/capsule-now.md.
+  `local/capsule/native/Sources/Vyred/Said.swift`.
+- The reply reads You, then who answers and its state, then the memory box, then the answer. A
+  notice from vyred is one faint line under it, never part of the answer (rules 3 and 4).
+- `@` names an agent, project or thread (the catalog is read once per show), and it becomes a
+  chip. A thread busy in a terminal gets the message queued: the Capsule shows vyred's note and
+  "Queued for <name>", then "Handed over" when the Harness passes it on. Esc only stops
+  following it (rule 5). `Sources/Vyred/Catalog.swift`, `Sources/Host/CapsuleModel.swift`.
+
 #### The native Capsule, built on first run
 
 - `vyre capsule` on a Mac now opens the native Swift Capsule (ADR 0015). The first run builds it
