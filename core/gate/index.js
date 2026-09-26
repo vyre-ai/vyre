@@ -3,9 +3,12 @@
 //
 // This file is the tool layer. It decides who may call what and hands the work to the Gate class.
 // The rule behind the table: anyone may ask for something to go out, only a person may let it go.
-// So gate.request is open to Claude, and gate.approve and gate.reject refuse every mcp caller.
-// A module may approve only when config.json names it under gate.approvers: Chat does, because
-// it checks that the button was pressed by the owner's own Mattermost user before it calls.
+// So gate.request is open to Claude, and gate.approve, gate.revise and gate.reject refuse every
+// mcp caller and, whatever the caller, need presence (core/presence, floor rules 1 and 2): the
+// `presence.summary` on each says what the person is proving before they prove it. A module may
+// approve only when config.json names it under gate.approvers, for a caller not already on the
+// explicit allowlist (deck, capsule); Vyre Chat is deck/chat/, so it calls as "deck" and needs no
+// entry there.
 //
 // Credentials come from ctx.vault.fetch at the moment of sending (needs.vault "per-sender": the
 // items are named by each sender in config.json, and each still needs `vyre vault grant <item>
@@ -19,6 +22,13 @@ const agentOf = caller => { const m = /^mcp:agent:(.+)$/.exec(String(caller || "
 
 /** A model's call: Claude through MCP, in an agent's thread or not. */
 const byModel = caller => /^mcp(?:$|[\s:])/.test(String(caller || ""));
+
+// Presence summaries (security, docs/adr/0004-presence.md): what the person sees on the
+// terminal or in the dialog before they prove they are there, so they never approve, revise or
+// discard blind. gate.get's own shape, not a made-up one: `to`, `draft`, `final`.
+const destOf = (edited, it) => [].concat((edited && edited.to) ?? it.to).filter(Boolean).join(", ") || "(no destination)";
+const mergedContent = (edited, it) => ({ ...(it.final || it.draft), ...(edited || {}) });
+const previewOf = c => String((c && (c.subject || c.body || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -101,6 +111,7 @@ export default {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
       callers: ["cli", "local", "module"],
+      presence: { summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Change what goes to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; } },
       run: (input, { caller }) => { const c = person(caller); return gate.revise({ ...input, by: input.by || c }); },
     });
 
@@ -108,6 +119,7 @@ export default {
       description: "The user approves a held item, optionally with edits (the whole content as it should go out, or the fields that changed; an empty string clears one; `to` included). It sends exactly that, never the original, with the credential added at the boundary.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule"],
+      presence: { summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Send ${it.kind} via ${it.via} to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; } },
       run: (input, { caller }) => { const c = person(caller); return gate.approve({ ...input, by: input.by || c }); },
     });
 
@@ -115,6 +127,7 @@ export default {
       description: "The user discards a held item. Nothing is sent.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule"],
+      presence: { summary: async ({ id }) => { const it = gate.get({ id }); return `Discard the ${it.kind} to ${destOf(null, it)}: "${it.summary}"`; } },
       run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
     });
 

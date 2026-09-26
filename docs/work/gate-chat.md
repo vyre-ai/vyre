@@ -159,8 +159,32 @@ lease surface naming pattern, and never inventing custom UI for what a real cont
   read, since Chat's `sw.js` caching `threads.get`/`projects.list` touched their stated
   "nothing a tool returned is ever kept on the device" invariant and needs their sign-off.
 
+## Done (round 3, perf + deck follow-up)
+- `dbe730a`: nav.js's disclosure toggle used to dispatch `deck:navigate` (perf caught this) —
+  every sidebar arrow click reran the whole router: refetched `projects.list`/`threads.list`,
+  tore down and rebuilt every subscription, and, worst, fully remounted an open session view,
+  dropping an unsent composer draft. Fixed with a local `onChange` callback (`index.js`'s
+  `drawNav`) instead of the global event; verified a draft survives a toggle now.
+- Offline read of recent sessions, deck's way: not the SW raw-response cache (deck's review —
+  a held item's or a thread's text can carry real content, so caching `threads.get`/`gate.held`
+  bodies was a real change to their "nothing a tool returned is ever kept on the device" line, not
+  a drop-in). Matches `deck/views/now.js`'s `SNAP_KEY`/`saveSnapshot`/`loadSnapshot` pattern:
+  localStorage holds ids, names, projects, statuses, timestamps only. Verified with fetch stubbed
+  to reject against a real vyred.
+- `/chat/thread/:thread` (deck added it) replaces the `"_"` sentinel for a project-less thread.
+
+## Done (security's presence ask)
+- `cd0770a`: `presence.summary` on `gate.approve`, `gate.revise` and `gate.reject`, from gate.get's
+  own shape. Tried merging work/security to test it live; backed the merge out (and work/link,
+  merged to make security's floor list pass link's own tests) after it also activated the floor's
+  presence list against six-plus other workstreams' test suites that do not inject the `present`
+  verifier yet, none of them gate/chat's to fix. The registry here does not store `def.presence` at
+  all (core/modules/index.js's `tools.set()` keeps a fixed field list), so the addition is inert
+  until security's branch, which does store and read it, merges to main.
+
 ## Doing
-- Waiting on deck for the route gap and the offline-read proposal. Otherwise nothing blocking.
+- Nothing blocking. Watching for deck's merge of the `serveDeck()` fix (they made the same one
+  independently, commit `9432aa2` on work/deck) to reconcile on the next merge.
 
 ## Next
 1. `deck/chat/` v1: projects -> sessions -> session view, composer with lease, gate items and asks

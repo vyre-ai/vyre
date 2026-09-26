@@ -1,9 +1,12 @@
 // @ts-check
 // A held Gate item, inline: exactly what Send will send, editable in place, never behind a
 // separate Edit surface (docs/work/gate-chat.md's pivot note — this carries the Mattermost-era
-// rule forward). Editing a field debounces into gate.revise; Send calls gate.approve with the
-// current fields; Discard calls gate.reject. Once resolved (sent/rejected/failed-and-retried),
-// the card loses every control and just says what happened.
+// rule forward). Shape matched to the Capsule's (capsule teammate, 2026-09-27): a HELD FOR YOU
+// badge, a To/Subject grid, a hairline, the body — everything contenteditable plaintext-only with
+// a Signal underline on focus, SEND primary with a keycap, DISCARD a ghost button, no Edit button.
+// Editing debounces into gate.revise; Send calls gate.approve; Discard calls gate.reject. Once
+// resolved (sent/rejected/failed-and-retried), the card loses every control and just says what
+// happened.
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
@@ -11,8 +14,9 @@ import { icon } from "../js/icons.js";
 import { when } from "../js/fmt.js";
 import { renderDiff } from "./lib/diff.js";
 
-const FIELD_ORDER = ["to", "cc", "bcc", "subject", "url", "method", "body"];
-const LONG = new Set(["body"]);
+// "to" and "subject" get the grid + mono treatment (email-shaped); anything else short goes in
+// the same grid in field order; "body" (or the one remaining long field) sits under the hairline.
+const GRID_ORDER = ["to", "cc", "bcc", "subject", "url", "method"];
 
 /**
  * @param {{ id: string }} held minimal: {id} from a gate.held row or a gate.held/gate.revised event
@@ -37,23 +41,21 @@ export function gateCard(held) {
     return content[key] ?? "";
   }
 
-  function scheduleRevise() {
+  function edited(key, value) {
+    state.dirty[key] = value;
     clearTimeout(timer);
     timer = setTimeout(async () => {
       if (!Object.keys(state.dirty).length) return;
-      const edited = { ...state.dirty };
-      state.busy = true; draw();
-      const r = await attempt("gate.revise", { id: held.id, edited });
-      state.busy = false;
+      const changes = { ...state.dirty };
+      const r = await attempt("gate.revise", { id: held.id, edited: changes });
       if (!r.error) { state.item = r.data; state.dirty = {}; }
-      draw();
     }, 500);
   }
 
   async function send() {
     state.busy = true; draw();
-    const edited = Object.keys(state.dirty).length ? { ...state.dirty } : undefined;
-    const r = await attempt("gate.approve", edited ? { id: held.id, edited } : { id: held.id });
+    const changes = Object.keys(state.dirty).length ? { ...state.dirty } : undefined;
+    const r = await attempt("gate.approve", changes ? { id: held.id, edited: changes } : { id: held.id });
     state.busy = false;
     if (r.error) { state.item = { ...state.item, error: r.error.message }; draw(); return; }
     state.item = r.data.result || state.item; await load();
@@ -70,39 +72,54 @@ export function gateCard(held) {
     const it = state.item;
     if (it.state === "sent" || it.state === "rejected") {
       put(el,
-        h("div", { class: "gate-row" }, kindBadge(it.kind), h("span", { class: "code" }, it.via), h("span", { style: { flexGrow: "1" } }), h("span", { class: "when" }, when(it.at))),
+        h("div", { class: "gate-row" }, h("span", { class: "who" }, it.summary || it.via), h("span", { style: { flexGrow: "1" } }), h("span", { class: "when" }, when(it.at))),
         h("div", { class: "gate-resolved" }, icon(it.state === "sent" ? "check" : "close", 14), it.state === "sent" ? "Sent" : "Discarded"),
       );
       return;
     }
     const content = it.final || it.draft || {};
-    const keys = [...FIELD_ORDER.filter(k => k in content || k === "to"), ...Object.keys(content).filter(k => !FIELD_ORDER.includes(k))];
+    const gridKeys = GRID_ORDER.filter(k => k in content || k === "to");
+    const longKeys = Object.keys(content).filter(k => !GRID_ORDER.includes(k));
     put(el,
-      h("div", { class: "gate-row" }, kindBadge(it.kind), h("span", { class: "code" }, it.via), it.why ? h("span", { class: "code" }, "· " + it.why) : null),
-      ...keys.map(k => field(k)),
+      h("div", { class: "gate-row" },
+        h("span", { class: "gate-title" }, it.summary || `${it.kind} via ${it.via}`),
+        h("span", { class: "gate-badge" }, h("span", { class: "dot beacon" }), "Held for you"),
+      ),
+      gridKeys.length ? h("div", { class: "gate-grid" }, gridKeys.map(k => gridField(k))) : null,
+      gridKeys.length && longKeys.length ? h("div", { class: "gate-rule" }) : null,
+      ...longKeys.map(k => longField(k)),
+      it.why ? h("div", { class: "gate-note" }, it.why) : null,
       it.diff && (it.diff.removed?.length || it.diff.added?.length) ? h("div", null, h("div", { class: "code", style: { marginBottom: "4px" } }, "changed from the draft"), renderDiff(String(it.draft?.body ?? ""), String(it.final?.body ?? content.body ?? ""))) : null,
       it.error ? h("div", { class: "gate-note" }, h("span", { class: "code" }, "failed: " + it.error), " Send tries again.") : null,
       h("div", { class: "gate-actions" },
-        h("button", { class: "btn btn-primary btn-sm", disabled: state.busy, onclick: send }, icon("send", 13), "Send"),
-        h("button", { class: "btn btn-ghost btn-sm", disabled: state.busy, onclick: discard }, "Discard"),
+        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: send }, "Send", h("span", { class: "kbd" }, "⌘⏎")),
+        h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: discard }, "Discard"),
         state.busy ? h("span", { class: "code" }, "…") : null,
       ),
     );
   }
 
-  function field(key) {
+  function editableProps(key) {
+    return {
+      contenteditable: "plaintext-only", spellcheck: "false",
+      oninput: e => edited(key, /** @type {any} */ (e.target).textContent || ""),
+      onkeydown: e => { if (key !== "body" && /** @type {KeyboardEvent} */ (e).key === "Enter") e.preventDefault(); },
+    };
+  }
+
+  function gridField(key) {
     const val = fieldValue(key);
-    const input = LONG.has(key)
-      ? h("textarea", { class: "input", value: val, oninput: e => { state.dirty[key] = /** @type {any} */ (e.target).value; scheduleRevise(); } })
-      : h("input", { class: "input", type: "text", value: val, oninput: e => { state.dirty[key] = /** @type {any} */ (e.target).value; scheduleRevise(); } });
-    return h("div", { class: "gate-field" }, h("label", null, key), input);
+    return h("div", { class: "gate-grid-row" },
+      h("span", { class: "gate-key" }, key),
+      h("span", { class: "gate-val" + (key === "to" ? " mono" : ""), ...editableProps(key) }, val),
+    );
+  }
+
+  function longField(key) {
+    return h("div", { class: "gate-body", ...editableProps(key) }, fieldValue(key));
   }
 
   el.refresh = load;
   load();
   return el;
-}
-
-function kindBadge(kind) {
-  return h("span", { class: "tag" }, kind === "send" ? "SEND" : kind === "spend" ? "SPEND" : "DELETE");
 }

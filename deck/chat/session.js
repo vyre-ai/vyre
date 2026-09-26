@@ -25,6 +25,14 @@ export function mountSession(container, opts) {
   const { thread } = opts;
   /** @type {Map<string, HTMLElement>} keyed by message id, tool id, gate id or ask id */
   const rows = new Map();
+  /** @type {string[]} tool row keys, oldest first — only the last 6 stay in the timeline (Capsule shape) */
+  const toolKeys = [];
+  /** @type {Map<number, HTMLElement>} turn number (1-indexed, counted on thread.finished) -> the
+   * timeline element to insert that turn's memory facts after (intelligence's `refs[].seq`) */
+  const turnMarkers = new Map();
+  /** @type {Set<string>} memory fact ids already rendered, so a memory.curated refetch only adds new ones */
+  const shownFacts = new Set();
+  let turnSeq = 0;
   let lastMessageEl = null, lastMessageId = null;
   const timeline = h("div", { class: "thread-view" });
   const head = h("div", { class: "session-head" });
@@ -43,7 +51,7 @@ export function mountSession(container, opts) {
     drawHead();
     timeline.replaceChildren();
     for (const e of r.data.events) applyEvent(e, false);
-    for (const a of r.data.asks) upsertRow("ask:" + a.id, () => askCard(a));
+    for (const a of r.data.asks) upsertRow("ask:" + a.id, () => askCard({ ...a, agent: record.current?.agent }));
     timeline.scrollTop = timeline.scrollHeight;
     fetchMemory();
   }
@@ -113,18 +121,28 @@ export function mountSession(container, opts) {
       return;
     }
     if (e.type === "thread.tool") {
-      if (p.phase === "started") upsertRow("tool:" + p.id, () => toolChip(p));
-      else { const el = rows.get("tool:" + p.id); if (el && el.setDone) el.setDone(p.error); }
+      if (p.phase === "started") {
+        const key = "tool:" + p.id;
+        upsertRow(key, () => toolChip(p));
+        toolKeys.push(key);
+        while (toolKeys.length > 6) { const old = toolKeys.shift(); rows.get(old)?.remove(); rows.delete(old); }
+      } else {
+        const el = rows.get("tool:" + p.id); if (el && el.setDone) el.setDone(p.error);
+      }
       return;
     }
     if (e.type === "thread.finished") {
       const cur = lastMessageEl && lastMessageEl.querySelector(".msg-cursor");
       if (cur) cur.remove();
       if (!p.ok || p.error) timeline.append(h("div", { class: "turn-foot" }, h("span", { class: "err" }, "turn failed: " + (p.error || p.stop_reason || "error"))));
+      // intelligence's memory.facts refs a turn by its 1-indexed number (record.current.turns
+      // counts the same way); mark where this turn ended so a fact for it lands right after.
+      turnSeq++;
+      turnMarkers.set(turnSeq, timeline.lastElementChild);
       return;
     }
     if (e.type === "thread.stopped") { timeline.append(h("div", { class: "turn-foot" }, icon("terminal", 12), "session stopped" + (p.reason ? ": " + p.reason : ""))); return; }
-    if (e.type === "ask.raised") { upsertRow("ask:" + p.ask, () => askCard({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason })); return; }
+    if (e.type === "ask.raised") { upsertRow("ask:" + p.ask, () => askCard({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, agent: record.current?.agent })); return; }
     if (e.type === "ask.answered") { const el = rows.get("ask:" + p.ask); if (el) el.remove(); return; }
     if (e.type === "gate.held" || e.type === "gate.revised") { upsertRow("gate:" + p.id, () => gateCard({ id: p.id })); const el = rows.get("gate:" + p.id); if (el && el.refresh && live) el.refresh(); return; }
     if (e.type === "gate.released" || e.type === "gate.rejected") { const el = rows.get("gate:" + p.id); if (el && el.refresh) el.refresh(); return; }
@@ -148,23 +166,58 @@ export function mountSession(container, opts) {
   function noticeMsg(text, at) {
     return h("div", { class: "gate-note", style: { padding: "6px 0" } }, icon("clock", 12), " ", text, " ", h("span", { class: "msg-when" }, clock(at)));
   }
+  // One line per call, mono 11: "running · <summary>" / "done · <summary>" / "failed · <summary>"
+  // (failed in Beacon), indented 44px to line up under the reply text (Capsule shape).
   function toolChip(p) {
-    let expanded = false, done = false, error = false;
-    const chip = h("button", { class: "tool-chip", type: "button", "aria-expanded": "false", onclick: () => { expanded = !expanded; toggle(); } },
-      icon("chevron", 12, ), h("span", { class: "name" }, p.tool), h("span", { class: "sum ellipsis" }, p.summary || ""),
-      h("span", { class: "busy" }, "…"),
+    let expanded = false;
+    const word = h("span", { class: "tool-status" }, "running");
+    const line = h("button", { class: "tool-line", type: "button", "aria-expanded": "false", onclick: () => { expanded = !expanded; toggle(); } },
+      word, h("span", null, " · "), h("span", { class: "sum ellipsis" }, p.summary || p.tool),
     );
-    const detail = h("div", { class: "tool-detail", hidden: true }, h("div", { class: "lbl" }, "input"), h("div", { class: "code" }, p.summary || ""), p.destination ? h("div", { class: "code" }, "→ " + p.destination) : null);
-    const wrap = h("div", null, chip);
-    function toggle() { chip.setAttribute("aria-expanded", String(expanded)); if (expanded && !wrap.contains(detail)) wrap.append(detail); detail.hidden = !expanded; }
-    /** @type {any} */ (wrap).setDone = err => { done = true; error = !!err; chip.querySelector(".busy")?.remove(); if (error) chip.append(h("span", { class: "err" }, "failed")); };
+    const detail = h("div", { class: "tool-detail", hidden: true }, h("div", { class: "lbl" }, p.tool), h("div", { class: "code" }, p.summary || ""), p.destination ? h("div", { class: "code" }, "→ " + p.destination) : null);
+    const wrap = h("div", { class: "tool-row" }, line);
+    function toggle() { line.setAttribute("aria-expanded", String(expanded)); if (expanded && !wrap.contains(detail)) wrap.append(detail); detail.hidden = !expanded; }
+    /** @type {any} */ (wrap).setDone = err => { put(word, err ? "failed" : "done"); word.classList.toggle("err", !!err); };
     return wrap;
   }
 
+  // A gold fact, intelligence's real shape (memory.facts): {id, text, subject, rel, object,
+  // confidence, age, stale, source, refs: [{seq}], taught?: [{module, kind}]}. Source meta
+  // matches the Capsule's: "<age> · <confidence>%" in mono 11 Ash after the name (confidence is
+  // 0 to 1, capsule confirmed, same as memory.relevant). Lessons are a different system and are
+  // never rendered gold; only what memory.facts returns is.
+  function factCard(f) {
+    const bits = [];
+    if (f.age) bits.push(String(f.age));
+    if (f.confidence != null) bits.push(Math.round(f.confidence > 1 ? f.confidence : f.confidence * 100) + "%");
+    return h("div", { class: "memory-fact" + (f.stale ? " stale" : "") },
+      h("h3", { class: "lbl" }, "From memory"),
+      h("div", { class: "fact" }, f.text || [f.subject, f.rel, f.object].filter(Boolean).join(" ")),
+      f.source ? h("div", { class: "sources" },
+        h("span", { class: "source" }, icon("file", 12), h("span", null, typeof f.source === "string" ? f.source : (f.source.name || f.source.title || "")),
+          bits.length ? h("span", { class: "source-meta" }, bits.join(" · ")) : null)) : null,
+    );
+  }
+
+  /** Where in the timeline a fact belongs: right after the latest turn its refs mention. Accepts
+   * either shape seen so far: `refs: [{seq}]` (intelligence's message) or a single `ref: {seq}`
+   * (deck/fixtures/memory.json, the tool's existing about-scoped shape). */
+  function insertFact(f) {
+    const refs = f.refs || (f.ref ? [f.ref] : []);
+    const maxSeq = refs.reduce((m, r) => Math.max(m, r.seq || 0), 0);
+    const marker = maxSeq ? turnMarkers.get(maxSeq) : null;
+    const el = factCard(f);
+    if (marker && marker.parentNode === timeline) marker.after(el); else timeline.append(el);
+  }
+
   async function fetchMemory() {
-    const r = await attempt("memory.thread", { thread });
-    if (r.error || !r.data || !r.data.length) return;
-    for (const f of r.data) timeline.append(h("div", { class: "memory-fact" }, icon("memory", 14), h("span", null, f.text || f.fact || String(f))));
+    const r = await attempt("memory.facts", { thread, ...(record.current?.project ? { room: record.current.project } : {}), limit: 50 });
+    if (r.error || !r.data || !r.data.facts) return;
+    for (const f of r.data.facts) {
+      if (shownFacts.has(f.id)) continue;
+      shownFacts.add(f.id);
+      insertFact(f);
+    }
   }
 
   boot();
@@ -178,6 +231,9 @@ export function mountSession(container, opts) {
     on("gate.released", e => { if (e.thread === thread) applyEvent(e, true); }),
     on("gate.rejected", e => { if (e.thread === thread) applyEvent(e, true); }),
     on("lease.changed", e => { if (e.thread === thread) applyEvent(e, true); }),
+    // memory.curated {nodes, edges, ms, updated} carries no thread (intelligence): it only says
+    // the graph changed, so refetch this open thread and let fetchMemory's id-dedup filter it.
+    on("memory.curated", () => fetchMemory()),
   ];
   return () => { for (const off of offs) off(); };
 }
