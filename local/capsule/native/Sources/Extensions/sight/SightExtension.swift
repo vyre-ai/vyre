@@ -12,8 +12,8 @@
 //     puts "About <window>: " in the box. A blind place or a secure field is shown as such.
 //   - Words that point at the screen ("summarize this"), or a selection in the app in front,
 //     get screen context attached as a chip the user sees and can remove (ScreenAttach.swift).
-//     screenAttachment(for:) is what the Capsule's send path asks; the session panel does the same
-//     for its own prompt.
+//     The Capsule's send path asks attachment(for:to:) (SendAttaching) and owns the chip; the
+//     session panel does the same for its own prompt.
 //   - The talk chord (Option-Return, while the Capsule is open and key) starts vyre-mic and
 //     streams it to voice's listen stream; pressed again, it stops and leaves the words in the
 //     box. Hiding the Capsule stops the mic.
@@ -75,7 +75,7 @@ final class SightModel: ObservableObject {
 
 // capsule-extension: SightExtension
 @MainActor
-final class SightExtension: CapsuleExtension {
+final class SightExtension: CapsuleExtension, SendAttaching {
     static let id = "sight"
     /// Option-Return: Option-Space is the Capsule's own hot key, and Return with Command or Shift
     /// is taken by its row actions.
@@ -108,6 +108,12 @@ final class SightExtension: CapsuleExtension {
     /// Where spoken words go: the Capsule's box, or the panel's prompt.
     private var talkToPanel = false
 
+    /// How long the words must rest before the screen is asked about them. Tests shorten it.
+    var attachDebounce: Duration = .milliseconds(150)
+    /// The newest attachment question: an older one answers with the newest one's answer.
+    private var attachSeq = 0
+    private var attachLatest: Task<SendAttachment?, Never>?
+
     /// Screen context for the Capsule's box: read once per show, cleared on hide.
     private(set) lazy var attacher = ScreenAttacher(vyred: host.vyred) { [weak self] in self?.host.log($0) }
 
@@ -137,6 +143,29 @@ final class SightExtension: CapsuleExtension {
     func screenAttachment(for words: String) async -> (id: String, chip: String, bundle: String?, body: String)? {
         guard let c = await attacher.attachment(for: words) else { return nil }
         return (ScreenChip.id, c.chip, c.bundle, c.body)
+    }
+
+    /// SendAttaching: the host asks as the words change. Waits for them to rest, then answers from
+    /// the snapshot; a newer question supersedes an older one, which gets the newer answer. The
+    /// same chip for every kind of send.
+    func attachment(for words: String, to: SendTargetKind) async -> SendAttachment? {
+        attachSeq += 1
+        let mine = attachSeq, wait = attachDebounce
+        let task = Task { @MainActor [weak self] () -> SendAttachment? in
+            try? await Task.sleep(for: wait)
+            guard let self, !Task.isCancelled, mine == self.attachSeq else { return nil }
+            guard let a = await self.screenAttachment(for: words), mine == self.attachSeq else { return nil }
+            return SendAttachment(id: a.id, chip: a.chip, icon: a.bundle.map { IconSpec.bundle($0) }, body: a.body)
+        }
+        attachLatest = task
+        var answer = await task.value
+        // Superseded while waiting: answer with the newest question's answer, until none is newer.
+        while mine != attachSeq, let latest = attachLatest, latest != task {
+            let seen = attachSeq
+            answer = await latest.value
+            if seen == attachSeq { break }
+        }
+        return answer
     }
 
     var commands: [CapsuleCommand] {
@@ -177,6 +206,8 @@ final class SightExtension: CapsuleExtension {
     }
 
     func capsuleDidHide() {
+        attachSeq += 1
+        attachLatest?.cancel(); attachLatest = nil
         attacher.reset()
         // The panel's tabs keep following while it is open; otherwise nothing runs hidden.
         if !panelOpen { unfollowSessions() }

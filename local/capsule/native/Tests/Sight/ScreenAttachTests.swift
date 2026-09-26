@@ -216,6 +216,64 @@ let screenAttachSuite = Suite("screen attach") { t in
         t.eq(r?[3], "no module true calls 0")
     }
 
+    t.test("SendAttaching: the chip for a send, nil where it must be, and rapid words collapse to one answer") {
+        let link = AttachLink()
+        link.answer("screen.context") { input in .success(context(text: (input["text"] as? Bool) == true ? PAGE : "")) }
+        let r = t.wait { @MainActor () -> [String] in
+            let (_, e) = ext(link)
+            e.attachDebounce = .milliseconds(30)
+            e.capsuleWillShow(front: nil)
+            var out: [String] = []
+            let a = await e.attachment(for: "summarize this", to: .ask)
+            out.append(a?.id ?? "nil"); out.append(a?.chip ?? "nil")
+            out.append("icon \(a?.icon == .bundle("com.google.Chrome"))")
+            out.append("body \(a?.body.contains("two dozen rolls") == true)")
+            out.append("week \(await e.attachment(for: "what's on this week", to: .agent) == nil)")
+            let t2 = await e.attachment(for: "reply to this", to: .thread)
+            out.append("same for a thread \(t2?.body == a?.body)")
+            // Typed fast: s, su, sum... only the last one is looked at, and every caller gets its answer.
+            let before = link.calls("screen.context").count
+            async let x1 = e.attachment(for: "what", to: .ask)
+            async let x2 = e.attachment(for: "what's", to: .ask)
+            async let x3 = e.attachment(for: "what's this", to: .ask)
+            let (r1, r2, r3) = await (x1, x2, x3)
+            out.append("collapsed \(r1?.chip == r3?.chip && r2?.chip == r3?.chip && r3 != nil)")
+            out.append("no extra reads \(link.calls("screen.context").count == before)")
+            e.capsuleDidHide()
+            return out
+        }
+        t.eq(r?[0], "sight:screen")
+        t.eq(r?[1], "with your screen: Google Chrome \u{00B7} Northwind Bakery - Orders")
+        t.eq(r?[2], "icon true")
+        t.eq(r?[3], "body true")
+        t.eq(r?[4], "week true")
+        t.eq(r?[5], "same for a thread true")
+        t.eq(r?[6], "collapsed true", "older questions get the newest answer")
+        t.eq(r?[7], "no extra reads true", "the snapshot is reused within a show")
+
+        let r2 = t.wait { @MainActor () -> [String] in
+            var out: [String] = []
+            let blind = AttachLink(); blind.answer("screen.context") { _ in .success(BLIND) }
+            let (_, b) = ext(blind); b.attachDebounce = .milliseconds(5); b.capsuleWillShow(front: nil)
+            out.append("blind \(await b.attachment(for: "summarize this", to: .ask) == nil)")
+            let bad = AttachLink(); bad.answer("screen.context") { _ in .failure(code: "not_trusted", message: "not_trusted: grant Accessibility to Vyre") }
+            let (_, f) = ext(bad); f.attachDebounce = .milliseconds(5); f.capsuleWillShow(front: nil)
+            out.append("failure \(await f.attachment(for: "summarize this", to: .project) == nil)")
+            // Hidden while waiting: the question answers nil and nothing is read afterwards.
+            let late = AttachLink(); late.answer("screen.context") { input in .success(context(text: (input["text"] as? Bool) == true ? PAGE : "")) }
+            let (_, h) = ext(late); h.attachDebounce = .milliseconds(80); h.capsuleWillShow(front: nil)
+            async let pending = h.attachment(for: "summarize this", to: .ask)
+            try? await Task.sleep(for: .milliseconds(10))
+            h.capsuleDidHide()
+            let p = await pending
+            out.append("hidden \(p == nil) full reads \(late.calls("screen.context").filter { ($0["text"] as? Bool) == true }.count)")
+            return out
+        }
+        t.eq(r2?[0], "blind true")
+        t.eq(r2?[1], "failure true")
+        t.eq(r2?[2], "hidden true full reads 0")
+    }
+
     t.test("panel: the chip rides along only if it stayed") {
         let link = AttachLink()
         link.answer("screen.context") { input in .success(context(text: (input["text"] as? Bool) == true ? PAGE : "")) }
