@@ -615,6 +615,13 @@ export default {
         return { item: shape(item), firings: st.firingsOf(item.id).map(shapeFiring), ...(f ? { firing: shapeFiring(f) } : {}) };
       }, { agents: true });
 
+    tool("planner.ringing", "What is ringing now, shaped like planner.fired, so a surface that connects late can show its banners.",
+      { type: "object", properties: {} },
+      async () => st.allRinging().map(f => {
+        const it = st.item(f.item) || cal.row(f.item);
+        return { firing: f.id, item: f.item, kind: f.kind, title: it ? String(it.title || "") : "", due: f.due, ring: f.ring, missed: Boolean(f.missed), actions: ["done", "snooze"] };
+      }), { agents: true });
+
     tool("planner.update", "Change an item: title, body, list, priority, pinned, tags, project, thread, parent, state (open, done, cancelled) or its time. Agents may change todos, reminders and notes only.",
       { type: "object", required: ["item"], properties: { item: str, kind: str, state: { type: "string", enum: STATES }, ...itemFields } },
       async (i, caller) => update(i, caller), { agents: true, check: kindOnBox });

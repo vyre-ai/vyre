@@ -112,6 +112,8 @@ export function store(db) {
     },
     /** The item's firing still ringing, if any. @returns {any} */
     ringing: item => db.prepare("SELECT * FROM planner_firings WHERE item = ? AND state = 'ringing' ORDER BY fired_at DESC LIMIT 1").get(String(item)),
+    /** Every firing still ringing, oldest first. @returns {any[]} */
+    allRinging: () => db.prepare("SELECT * FROM planner_firings WHERE state = 'ringing' ORDER BY fired_at").all(),
     /** @returns {any[]} */
     firingsOf: (item, limit = 10) => db.prepare("SELECT * FROM planner_firings WHERE item = ? ORDER BY fired_at DESC LIMIT ?").all(String(item), limit),
     /** Items soft-deleted more than 30 days ago go for good, with their firings. */

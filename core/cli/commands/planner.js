@@ -291,7 +291,7 @@ async function agenda(args) {
   if (entries.length) out("");
   for (const e of entries) {
     const time = e.all_day ? "all day" : e.end ? `${clock(e.at, tz)}-${clock(e.end, tz)}` : clock(e.at, tz);
-    const kind = e.source === "calendar" ? "calendar" : e.kind;
+    const kind = e.source !== "planner" ? "calendar" : e.kind;
     const facts = [e.repeat ? "repeats" : "", e.snoozed ? "snoozed" : "", e.state && e.state !== "open" ? e.state : "", e.where || ""].filter(Boolean).join(" · ");
     out(`  ${bold(time.padEnd(11))} ${dim(kind.padEnd(9))} ${e.title}${facts ? dim("  " + facts) : ""}`);
   }

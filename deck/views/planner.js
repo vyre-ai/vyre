@@ -143,7 +143,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
       entries.map(e => h("div", { class: "pl-row", "data-kind": e.kind },
         h("span", { class: "code pl-time" }, e.all_day ? "All day" : clock(e.at)),
         h("span", { class: "pl-what ellipsis" }, e.title || kindWord(e.kind)),
-        h("span", { class: "lbl" }, e.source === "calendar" ? "Calendar" : kindWord(e.kind) + (e.snoozed ? " · snoozed" : "")))),
+        h("span", { class: "lbl" }, e.source !== "planner" ? "Calendar" : kindWord(e.kind) + (e.snoozed ? " · snoozed" : "")))),
       todos.map(t => h("div", { class: "pl-row", "data-kind": "todo" },
         h("span", { class: "code pl-time" }, t.due ? "Due" : ""),
         h("span", { class: "pl-what ellipsis" }, t.title),

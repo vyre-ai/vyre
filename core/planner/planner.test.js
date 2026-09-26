@@ -191,11 +191,14 @@ test("planner: an unacknowledged alarm rings escalate_max more times, then stops
   w.advance(MIN);
   const fb = w.fired.at(-1);
   assert.equal(fb.item, b.id);
+  const ringing = await w.ok("planner.ringing", {});
+  assert.ok(ringing.some(x => x.firing === fb.firing && x.item === b.id && x.kind === "alarm"), "a late surface sees what rings");
   const r = await w.ok("planner.done", { firing: fb.firing }, "capsule");
   assert.equal(r.firing.state, "acked");
   assert.deepEqual(w.acked.at(-1), { firing: fb.firing, item: b.id, action: "done", by: "capsule" });
   w.advance(HOUR);
   assert.equal(w.fired.filter(f => f.item === b.id).length, 1, "no ring after the ack");
+  assert.ok(!(await w.ok("planner.ringing", {})).some(x => x.firing === fb.firing), "an acked firing is not ringing");
   assert.equal((await w.ok("planner.get", { item: b.id })).item.state, "done");
 });
 

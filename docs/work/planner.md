@@ -36,6 +36,14 @@ the contract in ADR 0025.
   held at the Gate). Tests: core/planner/calendar.test.js (6, fake clock, fake google over ctx.call).
   On the test box: 36 of 36 pass with `node --test core/planner/*.test.js core/push/push.test.js`.
 
+## Done (later)
+- Capsule path test over the link (38b26c1): a paired Mac forwards planner.add to the box and hears planner.fired and planner.acked on /v1/link/events.
+- CLI (3e8bf28): vyre alarm, timer, remind, todo, notes, agenda, snooze.
+- Calendar (80e071f): planner.calendar.sync every 15 min while Google is connected, event reminders, agenda busy/next, planner.calendar.create through the Gate.
+- Minimal Deck panel (ee1b97d): /planner and /planner/<firing>, live banner, no polling.
+- planner.ringing: what is ringing now, shaped like planner.fired, for surfaces that connect late.
+- Tests on the test box: 58 of 58 across core/planner, push, the Deck panel and the CLI.
+
 ## Doing
 - Nothing in flight. The calendar slice is committed.
 
