@@ -304,6 +304,7 @@ install_wrapper() {
     ask "$WRAPPER exists and is not the box wrapper. Replace it?" \
       || die "left $WRAPPER alone. The stack is in $DIR; move that file aside and run this again."
   fi
+  [ -d "$(dirname "$WRAPPER")" ] || priv mkdir -p "$(dirname "$WRAPPER")"
   priv install -m 0755 "$WRAPPER_SRC" "$WRAPPER"
 }
 

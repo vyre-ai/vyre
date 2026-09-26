@@ -74,10 +74,9 @@ export async function start(opts = {}) {
     const m = /^\/v1\/streams\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(url.pathname);
     const u = m && registry.upgrades.get(`${m[1]}/${m[2]}`);
     if (!u) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
-    const claimed = String(req.headers["x-vyre-caller"] || "local");
     upgraded.add(socket);
     socket.on("close", () => upgraded.delete(socket));
-    try { u.handler(req, socket, head, { caller: claimed.startsWith("module:") ? "local" : claimed, url }); }
+    try { u.handler(req, socket, head, { caller: socketCaller(req), url }); }
     catch (e) { log(`stream ${m[1]}/${m[2]} failed: ${/** @type {Error} */ (e).message}`); socket.destroy(); }
   });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
@@ -127,14 +126,23 @@ async function body(req) {
 
 const FORBIDDEN_LABEL = /^(module:|tailnet:|onboard$|hook$)/;
 
+/**
+ * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
+ * so a bare curl on the socket is not a person (ADR 0006, finding 2). A label claiming an identity
+ * only a listener or the registry sets is "anonymous" too.
+ */
+export function socketCaller(req) {
+  const label = String(req.headers["x-vyre-caller"] || "");
+  return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
+}
+
 async function route(req, res, { registry, events, cfg, started, streams }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
   // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes
-  // (ADR 0002). None of them may be claimed over the socket; such a claim becomes "local".
-  const label = String(req.headers["x-vyre-caller"] || "local");
-  const caller = policy.caller || (FORBIDDEN_LABEL.test(label) ? "local" : label);
+  // (ADR 0002). None of them may be claimed over the socket; such a claim, or none, is "anonymous".
+  const caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
   if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {

@@ -123,7 +123,10 @@ export default {
         else if (ob().history && history.indexed >= history.sessions) history.state = "done";
       }
 
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD };
+      // The Mac counts once link has paired one; the first paired is the one shown.
+      const peers = await tryCall("link.peers");
+      const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
+      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.
@@ -283,6 +286,20 @@ export default {
       }
     }
 
+    /**
+     * The first passkey is made at the box's own address (a passkey made on the loopback page
+     * would belong to 127.0.0.1). While none exists, presence mints a one-time code, which rides
+     * in the fragment to the page that enrolls it; the code proves presence.enroll and nothing else.
+     */
+    async function passkeyUrl(address) {
+      const keys = await tryCall("presence.keys");
+      if (keys.__error) return null;
+      const list = Array.isArray(keys) ? keys : keys.keys || [];
+      if (list.some(k => k.kind === "passkey")) return null;
+      const c = await tryCall("presence.code");
+      return c.__error || !c.code ? null : `${String(address).replace(/\/$/, "")}/onboard/passkey#e=${encodeURIComponent(c.code)}`;
+    }
+
     ctx.tool("onboard.finish", {
       description: "Finish the onboarding.",
       input: obj(),
@@ -292,7 +309,7 @@ export default {
         ctx.events.emit("onboard.finished", {});
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
-        return { ...s, url: s.address, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
+        return { ...s, url: s.address, passkeyUrl: (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
       },
     });
 
@@ -302,7 +319,9 @@ export default {
       run: async (_, { caller }) => {
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
-        if (net().ownerSeen) return { url: null, address, port: null, expires: null, user: os.userInfo().username };
+        // Once the owner has come in over the tailnet, or onboarding is finished and the address
+        // serves, the way in is the address: no more one-time links (the open one may still finish).
+        if (net().ownerSeen || (ob().finished && address)) return { url: null, address, port: null, expires: null, user: os.userInfo().username };
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
     });

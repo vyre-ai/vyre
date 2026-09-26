@@ -86,7 +86,8 @@ export default {
         const e = r.error;
         // A refusal or a bad request on the box is the box's answer, passed on as it is. Only a
         // link problem gets reworded, with its code, so a surface can say "the box is offline".
-        throw new Error(e.code === "failed" || e.code === "bad_input" ? e.message : `the box is not reachable (${e.code})`);
+        const link = ["box_unreachable", "no_link", "unreachable", "timeout", "not_box"].includes(e.code);
+        throw Object.assign(new Error(link ? `the box is not reachable (${e.code})` : e.message), { code: link ? "box_unreachable" : e.code });
       }
       return { ...(r && r.data), source: "box" };
     }
