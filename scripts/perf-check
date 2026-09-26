@@ -1,0 +1,297 @@
+#!/usr/bin/env node
+// @ts-check
+// perf-check — holds vyred to docs/SPEC.md section 2, principle 8 ("Light by default"):
+//
+//   vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
+//   once a minute when nothing is happening; work is driven by events and file-system notice.
+//
+// Builds a throwaway VYRE_HOME (never the real ~/.vyre), seeds it with the small fixture corpus
+// plus a synthetic ~20,000-turn one so Recall has real work to do, starts a real vyred as a
+// child process, waits for its startup indexing pass to finish, then samples the process for 60
+// seconds of true idle: no requests, nothing but whatever vyred does on its own. It also loads a
+// timer-hook (scripts/lib/timer-hook.mjs) into that child via `node --import` so every
+// setInterval/setTimeout the process registers — including ones inside a module vyred loads,
+// not just vyred's own code — is on record, not just the ones this script happened to guess.
+//
+// Exits 0 if every budget holds, 1 if any is broken. Cleans up the temp home and kills vyred
+// either way.
+//
+// Deliberate scope choice: this run sets `recall.vectors: false` in the synthetic home's
+// config.json. The embedding model is an optional dependency that downloads weights over the
+// network on first use and then does real CPU work (about 11ms/turn) in the background for as
+// long as there is unembedded backlog — for 20,000 turns that is minutes, not the 60-90s this
+// check budgets for, and it depends on network access CI may not have. That background work is
+// real and worth budgeting separately (SPEC's "heavy work... yields, pauses on battery" bullet),
+// but it is not what "vyred idle" means here. Turning vectors off keeps this check about the
+// daemon's idle footprint, deterministically, offline. See the bottom of this file for the
+// follow-up this implies.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, "..");
+
+const IDLE_SECONDS = 60;
+const SAMPLE_MS = 1500;
+const STARTUP_TIMEOUT_MS = 60_000;
+const SETTLE_MS = 3000;
+
+const BUDGET = { cpuPct: 0.5, rssMB: 150, minTimerMs: 60_000 };
+
+function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
+
+async function main() {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-perf-"));
+  const transcriptsDir = path.join(home, "transcripts");
+  fs.mkdirSync(transcriptsDir, { recursive: true });
+
+  let expected;
+  let child;
+  let timersFile;
+  try {
+    expected = await seed(home, transcriptsDir);
+    timersFile = path.join(home, "timers.json");
+    child = spawnDaemon(home, timersFile);
+    log(`vyred starting (pid ${child.pid}), home ${home}`);
+
+    await waitForHealth(home, child, STARTUP_TIMEOUT_MS);
+    log("vyred is up; waiting for the startup indexing pass to finish");
+    await waitForIndexing(home, expected, STARTUP_TIMEOUT_MS);
+    // Let things settle: Memory's post-index curation debounces 250ms behind the last indexed
+    // session (core/memory/index.js), so the tail of startup work is still draining for a
+    // moment after recall.status says indexing is done. Starting the idle window here would
+    // count that drain as "idle activity" it is not.
+    await sleep(SETTLE_MS);
+    const idleStart = Date.now();
+    log("indexing done; sampling idle for " + IDLE_SECONDS + "s");
+
+    const samples = await sampleIdle(child.pid, IDLE_SECONDS, SAMPLE_MS);
+    // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
+    // (see that file), so reading it any earlier always finds nothing.
+    await stopChild(child);
+    const timers = readTimers(timersFile);
+
+    const exitCode = report(samples, timers, idleStart);
+    process.exitCode = exitCode;
+  } finally {
+    if (child && child.exitCode === null) await stopChild(child);
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Seed the temp VYRE_HOME: config.json pointed at a temp transcripts folder, the small fixture
+ * corpus every module test already trusts, and a much larger synthetic one for realistic scale.
+ * @returns {Promise<{ sessions: number, turns: number }>}
+ */
+async function seed(home, transcriptsDir) {
+  const { writeTranscripts, SESSIONS } = await import(path.join(REPO, "test", "fixtures", "corpus.js"));
+  const { writeSyntheticCorpus } = await import(path.join(HERE, "lib", "perf-corpus.mjs"));
+
+  writeTranscripts(transcriptsDir);
+  const fixtureTurns = SESSIONS.reduce((n, s) => n + s.turns.length, 0);
+
+  const synth = writeSyntheticCorpus(transcriptsDir, { sessions: 250, turnsPerSession: 80, projects: 25 });
+  log(`seeded ${SESSIONS.length} fixture sessions + ${synth.sessions} synthetic sessions ` +
+    `(${fixtureTurns + synth.turns} turns total)`);
+
+  // vectors: false — see the file header for why this check does not wait out the embedder.
+  // recall.every is left at its default (5 minutes) deliberately: that is the real interval
+  // vyred runs at, and it is itself part of what this check is confirming stays under budget.
+  const config = { transcripts: [transcriptsDir], recall: { vectors: false } };
+  fs.writeFileSync(path.join(home, "config.json"), JSON.stringify(config));
+
+  return { sessions: SESSIONS.length + synth.sessions, turns: fixtureTurns + synth.turns };
+}
+
+function spawnDaemon(home, timersFile) {
+  const entry = path.join(REPO, "core", "daemon", "main.js");
+  const hook = path.join(HERE, "lib", "timer-hook.mjs");
+  const child = spawn(process.execPath, [`--import=${pathToImportSpecifier(hook)}`, entry], {
+    cwd: REPO,
+    env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", d => { out += d; });
+  child.stderr.on("data", d => { out += d; });
+  child.on("exit", (code, signal) => {
+    if (code !== 0 && code !== null) log(`vyred exited early (code ${code}, signal ${signal}):\n${out.slice(-2000)}`);
+  });
+  child.__output = () => out;
+  return child;
+}
+
+/** `--import` wants a specifier node's ESM loader accepts; an absolute POSIX path works, a bare
+ * Windows path does not, so go through a file:// URL, which works everywhere. */
+function pathToImportSpecifier(p) {
+  return new URL("file://" + p.split(path.sep).map(encodeURIComponent).join("/")).href;
+}
+
+/** daemon/client.js, imported with the temp home baked in via its own `root` option. */
+async function daemonClient(home) {
+  const mod = await import(path.join(REPO, "core", "daemon", "client.js"));
+  return {
+    request: (method, p, payload) => mod.request(method, p, payload, { root: home }),
+    call: (tool, input) => mod.call(tool, input, { root: home }),
+  };
+}
+
+async function waitForHealth(home, child, timeoutMs) {
+  const { request } = await daemonClient(home);
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    if (child.exitCode !== null) throw new Error(`vyred exited before it came up (code ${child.exitCode})\n${child.__output?.() || ""}`);
+    const r = await request("GET", "/v1/health");
+    if (!r.error) return r.data;
+    await sleep(250);
+  }
+  throw new Error(`vyred did not answer /v1/health within ${timeoutMs}ms`);
+}
+
+/** Poll recall.status until the startup pass has indexed everything and is not running. */
+async function waitForIndexing(home, expected, timeoutMs) {
+  const { call } = await daemonClient(home);
+  const t0 = Date.now();
+  for (;;) {
+    const r = await call("recall.status", {});
+    if (r.error) throw new Error(`recall.status failed: ${r.error.message}`);
+    const st = r.data;
+    if (!st.indexing && st.sessions >= expected.sessions && st.turns >= expected.turns) return st;
+    if (Date.now() - t0 > timeoutMs) {
+      throw new Error(`indexing did not finish within ${timeoutMs}ms (sessions ${st.sessions}/${expected.sessions}, ` +
+        `turns ${st.turns}/${expected.turns}, indexing=${st.indexing})`);
+    }
+    await sleep(500);
+  }
+}
+
+/**
+ * Sample the process's CPU% and resident memory over `seconds`, roughly every `intervalMs`.
+ *
+ * `ps`'s own %cpu column is NOT used for the CPU number: on macOS (and on Linux, depending on
+ * the ps implementation) it is a decayed average dominated by recent history, not a live
+ * instantaneous reading, so right after the startup indexing burst it read 69% and only drifted
+ * down over the following tens of seconds — a true reading of "idle" would have had to wait out
+ * that decay rather than measure it. Instead, this reads `ps -o time=` (the process's total
+ * accumulated CPU time) at each sample and turns the DELTA between two samples, divided by the
+ * wall-clock time between them, into that interval's real CPU%. `ps -o time,rss` is available on
+ * both macOS (BSD ps) and Linux (procps/util-linux), which is why it is used instead of
+ * anything platform-specific like /proc.
+ */
+async function sampleIdle(pid, seconds, intervalMs) {
+  const samples = [];
+  let prev = psSample(pid);
+  let prevT = Date.now();
+  const t0 = prevT;
+  while (Date.now() - t0 < seconds * 1000) {
+    await sleep(intervalMs);
+    const now = psSample(pid);
+    const nowT = Date.now();
+    if (now && prev) {
+      const dCpuSec = Math.max(0, now.cpuSec - prev.cpuSec);
+      const dWallSec = Math.max(0.001, (nowT - prevT) / 1000);
+      samples.push({ cpuPct: (dCpuSec / dWallSec) * 100, rssKB: now.rssKB });
+    }
+    prev = now; prevT = nowT;
+  }
+  return samples;
+}
+
+function psSample(pid) {
+  const r = spawnSync("ps", ["-o", "time=,rss=", "-p", String(pid)], { encoding: "utf8" });
+  if (r.status !== 0 || !r.stdout.trim()) return null;
+  const line = r.stdout.trim().split("\n")[0];
+  const m = /^(\S+)\s+(\d+)$/.exec(line.trim());
+  if (!m) return null;
+  const cpuSec = parseCpuTime(m[1]);
+  const rssKB = Number(m[2]);
+  if (!Number.isFinite(cpuSec) || !Number.isFinite(rssKB)) return null;
+  return { cpuSec, rssKB };
+}
+
+/** "[[HH:]MM:]SS[.cc]" (both BSD and GNU ps use colon-separated time, seconds may be fractional). */
+function parseCpuTime(s) {
+  return s.split(":").map(Number).reduce((acc, part) => acc * 60 + part, 0);
+}
+
+function readTimers(file) {
+  try {
+    const j = JSON.parse(fs.readFileSync(file, "utf8"));
+    return { setInterval: j.setInterval || [], setTimeout: j.setTimeout || [] };
+  } catch {
+    return null; // vyred did not exit cleanly in time to dump it; reported as a problem below.
+  }
+}
+
+/** period_ms -> count, from a raw {period_ms, t}[] list. */
+function byPeriod(calls) {
+  const m = new Map();
+  for (const c of calls) m.set(c.period_ms, (m.get(c.period_ms) || 0) + 1);
+  return [...m.entries()].map(([period_ms, count]) => ({ period_ms, count })).sort((a, b) => a.period_ms - b.period_ms);
+}
+
+async function stopChild(child) {
+  child.kill("SIGTERM");
+  const t0 = Date.now();
+  while (child.exitCode === null && Date.now() - t0 < 5000) await sleep(100);
+  if (child.exitCode === null) child.kill("SIGKILL");
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/** Print the pass/fail table and return the process exit code. */
+function report(samples, timers, idleStart) {
+  const cpu = samples.map(s => s.cpuPct);
+  const rssMB = samples.map(s => s.rssKB / 1024);
+  const meanCpu = mean(cpu), maxCpu = Math.max(...cpu);
+  const meanRss = mean(rssMB), maxRss = Math.max(...rssMB);
+
+  // setInterval: ANY call anywhere in the process's life is a standing recurring timer for as
+  // long as vyred runs (see timer-hook.mjs), so every one under budget counts, whenever it was
+  // registered.
+  const badIntervals = byPeriod(timers?.setInterval || []).filter(t => t.period_ms > 0 && t.period_ms < BUDGET.minTimerMs);
+  // setTimeout: one-shot by construction, so only what recurred DURING the idle window this run
+  // actually sampled counts as polling; a startup debounce that fired many times while a burst
+  // of indexing events came in, then went silent, is not that (see timer-hook.mjs).
+  const idleTimeouts = (timers?.setTimeout || []).filter(t => t.t >= idleStart);
+  const badTimeouts = byPeriod(idleTimeouts).filter(t => t.period_ms > 0 && t.period_ms < BUDGET.minTimerMs && t.count >= 3);
+  const fastestMs = Math.min(
+    ...badIntervals.map(t => t.period_ms),
+    ...badTimeouts.map(t => t.period_ms),
+    Infinity,
+  );
+
+  const rows = [
+    { name: "CPU (mean)", value: `${meanCpu.toFixed(2)}%`, budget: `< ${BUDGET.cpuPct}%`, pass: meanCpu < BUDGET.cpuPct },
+    { name: "CPU (max)", value: `${maxCpu.toFixed(2)}%`, budget: `< ${BUDGET.cpuPct}%`, pass: maxCpu < BUDGET.cpuPct },
+    { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: meanRss < BUDGET.rssMB },
+    { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: `< ${BUDGET.rssMB} MB`, pass: maxRss < BUDGET.rssMB },
+    { name: "fastest recurring timer", value: fastestMs === Infinity ? "none under 60s" : `${fastestMs} ms`,
+      budget: `>= ${BUDGET.minTimerMs} ms`, pass: fastestMs >= BUDGET.minTimerMs },
+  ];
+
+  const w = Math.max(...rows.map(r => r.name.length));
+  process.stdout.write("\nvyred idle budget check (docs/SPEC.md section 2, principle 8)\n");
+  process.stdout.write(`  samples: ${samples.length} over ~${IDLE_SECONDS}s\n\n`);
+  for (const r of rows) {
+    process.stdout.write(`  ${r.pass ? "PASS" : "FAIL"}  ${r.name.padEnd(w)}  ${String(r.value).padEnd(14)} budget ${r.budget}\n`);
+  }
+  if (badIntervals.length || badTimeouts.length) {
+    process.stdout.write("\n  recurring timers under 60s:\n");
+    for (const t of badIntervals) process.stdout.write(`    setInterval every ${t.period_ms}ms (registered ${t.count}x)\n`);
+    for (const t of badTimeouts) process.stdout.write(`    setTimeout ~every ${t.period_ms}ms (seen ${t.count}x, looks recurring)\n`);
+  }
+  if (!timers) process.stdout.write("\n  note: could not read the timer dump; vyred may not have exited cleanly.\n");
+  process.stdout.write("\n");
+
+  return rows.every(r => r.pass) ? 0 : 1;
+}
+
+function mean(xs) { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
+
+main().catch(e => { log(`FAILED: ${e.stack || e.message}`); process.exitCode = 1; });
