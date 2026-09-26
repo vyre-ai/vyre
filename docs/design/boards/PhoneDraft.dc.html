@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Vyre phone, Held draft</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .lbl { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible, button:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .back { display: flex; align-items: center; gap: 2px; height: 44px; padding-right: 12px; margin-left: -6px; font-size: 16px; line-height: 22px; color: #F1EEE6; }
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 52px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; border: 1px solid #3A3733; background: transparent; color: #F1EEE6; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; }
+    .btn:hover { background: #1E1C1A; }
+    .btn-signal { background: #C6F36B; border-color: #C6F36B; color: #0E0D0C; }
+    .btn-signal:hover { background: #D4F88A; border-color: #D4F88A; }
+    .meta { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid #2B2926; }
+    .rc { background: rgba(235,199,107,0.10); box-shadow: inset 0 -1px 0 #EBC76B; }
+    .rn { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 10px; line-height: 0; font-weight: 500; color: #EBC76B; vertical-align: super; padding-left: 2px; }
+    .src { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 12px 0; border-bottom: 1px solid #3A3733; }
+  </style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; padding-top: 54px; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
+
+  <header style="height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <a class="back" href="PhoneNow.dc.html" aria-label="Back to Now">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.5 6L8.5 12L14.5 18" stroke="#F1EEE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Now</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></div>
+      <div class="lbl" style="color: #FF7A59;">Held at the Gate</div>
+    </div>
+  </header>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; gap: 20px; padding: 12px 16px 0;">
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <h1 style="margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em;">Reply to Dana Reyes</h1>
+      <p style="margin: 0; font-size: 13px; line-height: 18px; color: #B3AEA4;">juno wrote this 6 min ago. Client email waits here until you send it.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; border-top: 1px solid #2B2926;">
+      <div class="meta">
+        <div class="lbl">To</div>
+        <div style="font-size: 14px; line-height: 20px; overflow-wrap: anywhere;">Dana Reyes <span class="mono" style="font-size: 12px; color: #B3AEA4;">dana@harlowlegal.com</span></div>
+      </div>
+      <div class="meta">
+        <div class="lbl">Subject</div>
+        <div style="font-size: 14px; line-height: 20px;">Re: Intake form rebuild</div>
+      </div>
+    </div>
+
+    <article aria-label="Draft" style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: #161513; border-radius: 10px; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06); font-size: 15px; line-height: 22px; text-wrap: pretty;">
+      <p style="margin: 0;">Hi Dana,</p>
+      <p style="margin: 0;">The new intake form is on staging. It now asks for <span class="rc">incident date and injury type</span><span class="rn">2</span> first, so your team can sort cases before the first call.</p>
+      <p style="margin: 0;">You mentioned a Spanish version. Before we change the scope, <span class="rc">could we do a 15-minute call</span><span class="rn">1</span>? Thursday or Friday afternoon works for me.</p>
+      <p style="margin: 0;"><span class="rc">Alex</span><span class="rn">3</span></p>
+    </article>
+
+    <section aria-label="What juno remembered" style="display: flex; flex-direction: column; gap: 4px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div class="lbl" style="color: #EBC76B;">From memory · 3</div>
+        <div class="lbl">No model used</div>
+      </div>
+      <div style="display: flex; flex-direction: column; padding: 0 16px; background: rgba(235,199,107,0.10); border-radius: 10px;">
+        <div class="src">
+          <div class="mono" style="font-size: 12px; line-height: 20px; font-weight: 500; color: #EBC76B;">1</div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div style="font-size: 14px; line-height: 20px;">Dana wants a call before any change to scope.</div>
+            <div class="mono" style="font-size: 12px; line-height: 16px; color: #EBC76B;">Intake form rebuild · Dana, 12 Aug</div>
+          </div>
+        </div>
+        <div class="src">
+          <div class="mono" style="font-size: 12px; line-height: 20px; font-weight: 500; color: #EBC76B;">2</div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div style="font-size: 14px; line-height: 20px;">Form v2 leads with incident date and injury type.</div>
+            <div class="mono" style="font-size: 12px; line-height: 16px; color: #EBC76B;">Intake form rebuild · your notes, 22 Sep</div>
+          </div>
+        </div>
+        <div class="src" style="border-bottom: none;">
+          <div class="mono" style="font-size: 12px; line-height: 20px; font-weight: 500; color: #EBC76B;">3</div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div style="font-size: 14px; line-height: 20px;">You sign client email as Alex, with no title.</div>
+            <div class="mono" style="font-size: 12px; line-height: 16px; color: #EBC76B;">Sent mail · 40 messages</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; padding: 12px 16px 34px; background: #0E0D0C; border-top: 1px solid #2B2926;">
+    <button class="btn btn-signal" type="button" style="flex-grow: 1.6; flex-basis: 0;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 12H18.5M13 6.5L18.5 12L13 17.5" stroke="#0E0D0C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Send</span>
+    </button>
+    <button class="btn" type="button" style="flex-grow: 1; flex-basis: 0;">Edit</button>
+    <button class="btn" type="button" style="flex-grow: 1; flex-basis: 0;">Discard</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

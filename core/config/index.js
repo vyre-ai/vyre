@@ -5,6 +5,7 @@
 // same code serves anyone who installs it: which folders hold projects, which domains are the
 // user's own, whether this machine is the box or the Mac, all come from ~/.vyre/config.json.
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -29,9 +30,37 @@ export function paths(root = home()) {
     modules: path.join(root, "modules"),
     watchers: path.join(root, "watchers"),
     logs: path.join(root, "logs"),
-    socket: path.join(root, "vyred.sock"),
+    socket: socketPath(root),
     pid: path.join(root, "vyred.pid"),
   };
+}
+
+/**
+ * Where vyred's socket lives. Normally ~/.vyre/vyred.sock. A unix socket path is limited to
+ * about 104 bytes (macOS) or 108 (Linux), so a long VYRE_HOME puts it instead in a private
+ * per-user folder under /tmp, named by a hash of the home. /tmp is shared, so the folder must
+ * be ours and closed to everyone else; otherwise another user could plant a socket there and
+ * pose as vyred. `privateSocketDir` checks that before anything uses it.
+ */
+export function socketPath(root) {
+  const near = path.join(root, "vyred.sock");
+  if (Buffer.byteLength(near) <= 100) return near;
+  const hash = crypto.createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 16);
+  return path.join(sharedSocketDir(), `${hash}.sock`);
+}
+
+const sharedSocketDir = () => path.join("/tmp", `vyre-${typeof process.getuid === "function" ? process.getuid() : "user"}`);
+
+/** Make (or check) the private /tmp folder for sockets. Throws if it is not safely ours. */
+export function privateSocketDir() {
+  const dir = sharedSocketDir();
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const st = fs.lstatSync(dir);
+  const mine = typeof process.getuid !== "function" || st.uid === process.getuid();
+  if (!st.isDirectory() || !mine || (st.mode & 0o077) !== 0) {
+    throw new Error(`${dir} is not a private folder owned by this user; refusing to put vyred's socket there`);
+  }
+  return dir;
 }
 
 /** @typedef {{ name?: string, role: "box"|"local", projectsDir: string, roots: string[],
@@ -81,5 +110,6 @@ export function load(root = home()) {
 export function ensure(root = home()) {
   const p = paths(root);
   for (const dir of [p.root, p.vault, p.modules, p.watchers, p.logs]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (path.dirname(p.socket) !== p.root) privateSocketDir();
   return p;
 }

@@ -1,0 +1,10 @@
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "does": { "tools": ["harness.brief", "harness.enrich", "harness.rules", "harness.learn", "harness.stop", "harness.touched"] },
+  "watches": { "emits": ["thread.started", "file.touched", "turn.completed", "tool.held"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

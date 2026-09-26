@@ -44,3 +44,13 @@ test("config: ensure creates private folders", t => {
   for (const dir of [p.vault, p.modules, p.watchers, p.logs]) assert.ok(fs.statSync(dir).isDirectory());
   assert.equal(fs.statSync(p.vault).mode & 0o777, 0o700, "the vault folder is readable by other users");
 });
+
+test("config: a home too long for a unix socket puts the socket in a private per-user folder", t => {
+  const root = path.join(tempHome(t), "x".repeat(120));
+  const p = config.ensure(root);
+  assert.ok(Buffer.byteLength(p.socket) <= 100, p.socket);
+  assert.equal(p.socket, config.paths(root).socket, "the client and the daemon must agree on the path");
+  assert.notEqual(config.paths(root + "y").socket, p.socket, "two homes never share a socket");
+  const st = fs.statSync(path.dirname(p.socket));
+  assert.equal(st.mode & 0o777, 0o700);
+});

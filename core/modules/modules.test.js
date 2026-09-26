@@ -118,3 +118,32 @@ test("modules: one module calls another's tool through ctx.call, and the rules s
   assert.deepEqual(await reg.call("brief.make", {}, "cli"), { data: { saved: "from brief" } });
   assert.deepEqual(seen, ["cli>brief.make", "module:brief>notes.add"]);
 });
+
+test("modules: ctx.vault.fetch releases only declared items, through an internal tool no surface can reach", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("mailer.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["mailer", { version: "0.1.0", does: { tools: ["mailer.check"] }, needs: { vault: ["inbox"] } }, user],
+  ]);
+  assert.deepEqual(await reg.call("mailer.check", { item: "inbox" }, "cli"), { data: { got: "value-of-inbox-for-module:mailer" } });
+  assert.match((await reg.call("mailer.check", { item: "bank" }, "cli")).error.message, /does not declare/);
+  assert.equal((await reg.call("vault.release", { name: "inbox" }, "mcp")).error.code, "no_such_tool", "Claude reached the vault directly");
+  assert.ok(!reg.listTools().some(x => x.name === "vault.release"), "an internal tool was listed");
+});
+
+test("modules: ctx.memory.teach checks the declared kinds and is a no-op without Memory", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async ({ kind }) => ({ taught: await ctx.memory.teach(kind, { text: "x" }) }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", { ...good, teaches: { memory: ["note.item"] } }, src]]);
+  assert.deepEqual(await reg.call("notes.add", { kind: "note.item" }), { data: { taught: false } });
+  assert.match((await reg.call("notes.add", { kind: "secret.item" })).error.message, /does not declare under teaches.memory/);
+});

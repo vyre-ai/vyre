@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Vyre phone, Approve</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .lbl { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+    a { color: inherit; text-decoration: none; }
+    a:focus-visible, button:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .back { display: flex; align-items: center; gap: 2px; height: 44px; padding-right: 12px; margin-left: -6px; font-size: 16px; line-height: 22px; color: #F1EEE6; }
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 56px; box-sizing: border-box; padding: 0 16px; border-radius: 6px; border: 1px solid #3A3733; background: transparent; color: #F1EEE6; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; }
+    .btn:hover { background: #1E1C1A; }
+    .btn-signal { background: #C6F36B; border-color: #C6F36B; color: #0E0D0C; }
+    .btn-signal:hover { background: #D4F88A; border-color: #D4F88A; }
+    .fact { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid #2B2926; }
+  </style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; box-sizing: border-box; padding-top: 54px; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
+
+  <header style="height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <a class="back" href="PhoneNow.dc.html" aria-label="Back to Now">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.5 6L8.5 12L14.5 18" stroke="#F1EEE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Now</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></div>
+      <div class="lbl" style="color: #FF7A59;">Held 4 min</div>
+    </div>
+  </header>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; gap: 24px; padding: 12px 16px 0;">
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="mono" style="font-size: 13px; line-height: 18px; font-weight: 500; color: #F1EEE6;">kit</div>
+        <div style="font-size: 13px; line-height: 18px; color: #8C877D;">asks, in Harlow Legal / Q3 report</div>
+      </div>
+      <h1 style="margin: 0; display: flex; flex-direction: column; gap: 10px; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em;">
+        <span>May I run</span>
+        <span class="mono" style="align-self: flex-start; padding: 8px 12px; border: 1px solid #3A3733; border-radius: 6px; background: #161513; font-size: 19px; line-height: 26px; font-weight: 500; letter-spacing: -0.01em;"><span style="color: #8C877D;">$ </span>git push origin q3-report</span>
+      </h1>
+    </div>
+
+    <section aria-label="Why" style="display: flex; flex-direction: column; gap: 8px;">
+      <div class="lbl">Why kit wants to</div>
+      <p style="margin: 0; font-size: 15px; line-height: 22px; color: #B3AEA4; text-wrap: pretty;">The branch is done: ad spend charts, the intake funnel table and the fixed date range. Dana asked to see the report before Monday. Pushing gives her the preview link.</p>
+    </section>
+
+    <section aria-label="What it changes" style="display: flex; flex-direction: column; gap: 4px;">
+      <div class="lbl">What it changes</div>
+      <div style="display: flex; flex-direction: column; border-top: 1px solid #2B2926;">
+        <div class="fact">
+          <div class="lbl">Remote</div>
+          <div class="mono" style="font-size: 13px; line-height: 20px; color: #F1EEE6; overflow-wrap: anywhere;">origin · harlow-legal/reports</div>
+        </div>
+        <div class="fact">
+          <div class="lbl">Branch</div>
+          <div style="font-size: 15px; line-height: 20px;"><span class="mono" style="font-size: 13px;">q3-report</span>, 3 commits ahead of main</div>
+        </div>
+        <div class="fact">
+          <div class="lbl">Files</div>
+          <div class="mono" style="font-size: 13px; line-height: 20px; color: #F1EEE6;">6 changed  <span style="color: #B3AEA4;">+412 −38</span></div>
+        </div>
+        <div class="fact">
+          <div class="lbl">Held by</div>
+          <div style="font-size: 15px; line-height: 20px;">Your rule: pushes to any remote ask first</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 34px;">
+    <button class="btn btn-signal" type="button">Allow once</button>
+    <button class="btn" type="button">Always in this project</button>
+    <button class="btn" type="button">Deny</button>
+    <div style="padding-top: 4px; font-size: 13px; line-height: 18px; color: #8C877D; text-align: center;">Always adds a rule to Harlow Legal. You can remove it in Rules.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

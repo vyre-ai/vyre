@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Deck, Vault</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+    body { margin: 0; background: #0E0D0C; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px; box-sizing: border-box; border-radius: 6px; border: 1px solid #3A3733; background: transparent; color: #F1EEE6; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; text-decoration: none; cursor: pointer; white-space: nowrap; }
+    .btn:hover { background: #1E1C1A; }
+    .btn-primary { background: #C6F36B; border-color: #C6F36B; color: #0E0D0C; }
+    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
+    .btn-ghost { border-color: transparent; color: #B3AEA4; padding: 0 10px; }
+    .ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; box-sizing: border-box; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #B3AEA4; cursor: pointer; padding: 0; }
+    .ibtn:hover { background: #1E1C1A; color: #F1EEE6; }
+    .link { color: #F1EEE6; text-decoration: underline; text-decoration-color: #3A3733; text-underline-offset: 3px; }
+    .link:hover { text-decoration-color: #F1EEE6; }
+    .kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid #3A3733; border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #8C877D; }
+    .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 20px; }
+    .rail-a:hover { background: #1E1C1A; color: #F1EEE6; }
+    .pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
+    .pin-a:hover { background: #1E1C1A; color: #F1EEE6; }
+    .sw { position: relative; width: 34px; height: 20px; border-radius: 10px; border: none; padding: 0; cursor: pointer; flex-shrink: 0; }
+    .sw-on { background: #F1EEE6; }
+    .sw-off { background: #3A3733; }
+    .sw-knob { position: absolute; top: 3px; width: 14px; height: 14px; border-radius: 7px; }
+    .sw-on .sw-knob { left: 17px; background: #0E0D0C; }
+    .sw-off .sw-knob { left: 3px; background: #8C877D; }
+    :focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+  </style>
+</helmet>
+<div style="width: 1600px; height: 1000px; overflow: hidden; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column;">
+
+  <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid #2B2926; background: #0E0D0C;">
+    <a href="DeckNow.dc.html" aria-label="vyre home" style="width: 216px; box-sizing: border-box; height: 48px; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; flex-shrink: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <div class="mono" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-size: 12px; line-height: 16px; color: #8C877D; flex-shrink: 0;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><span>alex.vyre.run<span style="color: #F1EEE6;">/vault</span></span></div>
+    <label style="display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; padding: 0 8px 0 12px; box-sizing: border-box; background: #161513; border: 1px solid #2B2926; border-radius: 6px; color: #8C877D;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.3"/><path d="M10.3 10.3L13.5 13.5"/></svg><input type="search" placeholder="Search threads, files, people" aria-label="Search threads, files, people" style="flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px;"><span class="kbd">⌘K</span></label>
+    <div style="flex-grow: 1;"></div>
+    <a href="DeckNow.dc.html" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: rgba(255,122,89,0.12); color: #FF7A59; text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500;"><span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>2 need you</a>
+    <button type="button" aria-label="Alex Rivera, account" style="width: 28px; height: 28px; border-radius: 14px; border: 1px solid #3A3733; background: #1E1C1A; color: #F1EEE6; padding: 0; cursor: pointer; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em;">AR</button>
+  </header>
+  <div style="flex-grow: 1; min-height: 0; display: flex;">
+
+    <nav aria-label="Places" style="width: 216px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 16px 12px 16px 12px; border-right: 1px solid #2B2926; background: #0E0D0C;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <a class="rail-a" href="DeckNow.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg><span>Now</span><span class="mono" style="margin-left: auto; font-size: 11px; line-height: 14px; color: #FF7A59;">2</span></a><a class="rail-a" href="DeckProject.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"/></svg><span>Projects</span></a><a class="rail-a" href="DeckMemory.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4" cy="11.5" r="1.9"/><circle cx="12" cy="4.5" r="1.9"/><circle cx="12.5" cy="12" r="1.3"/><path d="M5.5 10.3l5-4.6M5.9 11.7h5.3"/></svg><span>Memory</span></a><a class="rail-a" href="DeckAgent.dc.html"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3"/></svg><span>Agents</span></a><a class="rail-a" href="DeckVault.dc.html" aria-current="page" style="background: #1E1C1A; color: #F1EEE6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.2"/><circle cx="8" cy="8" r="2.3"/><path d="M8 5.7V4.6M5 13.5v1M11 13.5v1"/></svg><span>Vault</span></a><a class="rail-a" href="#settings"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5H5M8 5h5.5M2.5 11H9M12 11h1.5"/><circle cx="6.5" cy="5" r="1.5"/><circle cx="10.5" cy="11" r="1.5"/></svg><span>Settings</span></a>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #2B2926;">
+        <div class="lbl" style="padding: 0 10px 8px 10px;">Pinned</div>
+        <a class="pin-a" href="DeckProject.dc.html"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Harlow Legal</a><a class="pin-a" href="#northfield"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Northfield Dental</a><a class="pin-a" href="#launch"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Launch site</a><a class="pin-a" href="#q4"><span style="width: 6px; height: 6px; border: 1px solid #8C877D; border-radius: 1px;"></span>Q4 hiring</a>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 10px 0 10px; border-top: 1px solid #2B2926;">
+        <div class="mono" style="font-size: 12px; line-height: 16px; color: #B3AEA4;">alex-box</div>
+        <div style="font-size: 12px; line-height: 16px; color: #8C877D;">On your tailnet with alex-mac</div>
+      </div>
+    </nav>
+    <main style="flex-grow: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden;">
+
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 28px 40px 0 40px;">
+        <div style="display: flex; align-items: flex-end; gap: 24px; padding-bottom: 22px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <h1 style="margin: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em;">Vault</h1>
+            <p style="margin: 0; max-width: 620px; font-size: 14px; line-height: 21px; color: #B3AEA4;">Keys and logins, listed by name. Values stay sealed on alex-box. Agents use them without reading them, and no screen shows them, this one included.</p>
+          </div>
+          <div style="flex-grow: 1;"></div>
+          <button type="button" class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>Add item</button>
+        </div>
+
+        <section aria-label="Items" style="display: flex; flex-direction: column;">
+          <div class="lbl" style="display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 220px 96px; column-gap: 12px; padding: 0 12px 10px 12px; border-bottom: 1px solid #2B2926;"><span></span><span>Name</span><span>Kind</span><span>Held by</span><span style="text-align: right;">Last used</span></div>
+          
+            <a href="#item" style="display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 220px 96px; align-items: center; column-gap: 12px; height: 50px; padding: 0 12px; border-bottom: 1px solid #2B2926; text-decoration: none; color: #F1EEE6; ">
+              <span style="display: flex; color: #8C877D;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="8" r="3"/><path d="M8.5 8h6M12.5 8v2.5M14.5 8v2"/></svg></span>
+              <span style="display: flex; align-items: center; gap: 12px; min-width: 0;"><span style="font-size: 14px; line-height: 20px; font-weight: 400;">Anthropic API key</span></span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D;">API key</span>
+              <span style="display: flex; align-items: center; gap: 4px;"><span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">j</span><span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">k</span><span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">p</span><span style="padding-left: 6px; font-size: 13px; color: #B3AEA4;">juno, kit, pax</span></span>
+              <span class="mono" style="font-size: 12px; color: #8C877D; text-align: right;">14:19</span>
+            </a>
+          
+            <a href="#item" aria-current="true" style="display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 220px 96px; align-items: center; column-gap: 12px; height: 50px; padding: 0 12px; border-bottom: 1px solid #2B2926; text-decoration: none; color: #F1EEE6; background: rgba(198,243,107,0.12);">
+              <span style="display: flex; color: #8C877D;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 9.5l3-3"/><path d="M7.5 4.5l1-1a2.8 2.8 0 014 4l-1 1M8.5 11.5l-1 1a2.8 2.8 0 01-4-4l1-1"/></svg></span>
+              <span style="display: flex; align-items: center; gap: 12px; min-width: 0;"><span style="font-size: 14px; line-height: 20px; font-weight: 500;">Harlow Google Drive</span><span class="mono" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #B3AEA4;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/><path d="M2 5v6M14 5v6"/></svg>1 pass</span></span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D;">Google login</span>
+              <span style="display: flex; align-items: center; gap: 4px;"><span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">j</span><span style="padding-left: 6px; font-size: 13px; color: #B3AEA4;">juno</span></span>
+              <span class="mono" style="font-size: 12px; color: #8C877D; text-align: right;">11:40</span>
+            </a>
+          
+            <a href="#item" style="display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 220px 96px; align-items: center; column-gap: 12px; height: 50px; padding: 0 12px; border-bottom: 1px solid #2B2926; text-decoration: none; color: #F1EEE6; ">
+              <span style="display: flex; color: #8C877D;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="8" r="3"/><path d="M8.5 8h6M12.5 8v2.5M14.5 8v2"/></svg></span>
+              <span style="display: flex; align-items: center; gap: 12px; min-width: 0;"><span style="font-size: 14px; line-height: 20px; font-weight: 400;">GitHub: harlow-site</span></span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D;">Deploy key</span>
+              <span style="display: flex; align-items: center; gap: 4px;"><span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">k</span><span style="padding-left: 6px; font-size: 13px; color: #B3AEA4;">kit</span></span>
+              <span class="mono" style="font-size: 12px; color: #8C877D; text-align: right;">14:09</span>
+            </a>
+          
+            <a href="#item" style="display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 220px 96px; align-items: center; column-gap: 12px; height: 50px; padding: 0 12px; border-bottom: 1px solid #2B2926; text-decoration: none; color: #F1EEE6; ">
+              <span style="display: flex; color: #8C877D;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 9.5l3-3"/><path d="M7.5 4.5l1-1a2.8 2.8 0 014 4l-1 1M8.5 11.5l-1 1a2.8 2.8 0 01-4-4l1-1"/></svg></span>
+              <span style="display: flex; align-items: center; gap: 12px; min-width: 0;"><span style="font-size: 14px; line-height: 20px; font-weight: 400;">Northfield forms inbox</span></span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D;">Gmail login</span>
+              <span style="display: flex; align-items: center; gap: 4px;"><span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">p</span><span style="padding-left: 6px; font-size: 13px; color: #B3AEA4;">pax</span></span>
+              <span class="mono" style="font-size: 12px; color: #8C877D; text-align: right;">13:52</span>
+            </a>
+          
+            <a href="#item" style="display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 220px 96px; align-items: center; column-gap: 12px; height: 50px; padding: 0 12px; border-bottom: 1px solid #2B2926; text-decoration: none; color: #F1EEE6; ">
+              <span style="display: flex; color: #8C877D;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="8" r="3"/><path d="M8.5 8h6M12.5 8v2.5M14.5 8v2"/></svg></span>
+              <span style="display: flex; align-items: center; gap: 12px; min-width: 0;"><span style="font-size: 14px; line-height: 20px; font-weight: 400;">Railway: Launch site</span></span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D;">API token</span>
+              <span style="display: flex; align-items: center; gap: 4px;"><span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">k</span><span style="padding-left: 6px; font-size: 13px; color: #B3AEA4;">kit</span></span>
+              <span class="mono" style="font-size: 12px; color: #8C877D; text-align: right;">Yesterday</span>
+            </a>
+          
+            <a href="#item" style="display: grid; grid-template-columns: 28px minmax(0, 1fr) 150px 220px 96px; align-items: center; column-gap: 12px; height: 50px; padding: 0 12px; border-bottom: 1px solid #2B2926; text-decoration: none; color: #F1EEE6; ">
+              <span style="display: flex; color: #8C877D;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="8" r="3"/><path d="M8.5 8h6M12.5 8v2.5M14.5 8v2"/></svg></span>
+              <span style="display: flex; align-items: center; gap: 12px; min-width: 0;"><span style="font-size: 14px; line-height: 20px; font-weight: 400;">Stripe, restricted</span></span>
+              <span style="font-size: 13px; line-height: 18px; color: #8C877D;">API key</span>
+              <span style="font-size: 13px; color: #8C877D;">Nobody</span>
+              <span class="mono" style="font-size: 12px; color: #8C877D; text-align: right;">Never</span>
+            </a>
+        </section>
+
+        <section aria-labelledby="passes" style="display: flex; flex-direction: column; margin-top: 36px;">
+          <div style="display: flex; align-items: flex-end; gap: 24px; padding-bottom: 14px; border-bottom: 1px solid #2B2926;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <h2 id="passes" style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em;">Passes</h2>
+              <p style="margin: 0; max-width: 560px; font-size: 13px; line-height: 19px; color: #B3AEA4;">A pass lets another person&#39;s Vyre use one item. Passes are relayed: their Vyre asks yours, yours makes the call, and the value never leaves alex-box.</p>
+              <div aria-label="How a relayed pass works" role="img" class="mono" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; line-height: 14px; color: #B3AEA4;">
+              <span style="padding: 5px 8px; border: 1px solid #3A3733; border-radius: 4px;">dana.vyre.run</span>
+              <span style="color: #8C877D;">asks</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h9M9 4.5L12.5 8 9 11.5"/></svg>
+              <span style="display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid #F1EEE6; border-radius: 4px; color: #F1EEE6;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#F1EEE6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>alex.vyre.run</span>
+              <span style="color: #8C877D;">calls</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h9M9 4.5L12.5 8 9 11.5"/></svg>
+              <span style="padding: 5px 8px; border: 1px solid #3A3733; border-radius: 4px;">Google Drive</span>
+              </div>
+            </div>
+            <div style="flex-grow: 1;"></div>
+            <button type="button" class="btn"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/><path d="M2 5v6M14 5v6"/></svg>New pass</button>
+          </div>
+          
+            <div style="display: grid; grid-template-columns: 48px 240px minmax(0, 1fr) 84px 110px 96px; align-items: center; column-gap: 12px; height: 54px; padding: 0 12px; border-bottom: 1px solid #2B2926;">
+              <span class="lbl">To</span>
+              <span style="display: flex; flex-direction: column; gap: 1px;"><span class="mono" style="font-size: 13px; line-height: 18px; color: #F1EEE6;">dana.vyre.run</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Dana Reyes</span></span>
+              <span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">Harlow Google Drive</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Read the Reports folder</span></span>
+              <span><span class="mono" style="font-size: 11px; line-height: 14px; padding: 3px 6px; border: 1px solid #3A3733; border-radius: 4px; color: #B3AEA4;">Relayed</span></span>
+              <span style="font-size: 13px; color: #8C877D;">Until 31 Oct</span>
+              <button type="button" class="btn btn-ghost" style="justify-self: end; height: 28px;">Revoke</button>
+            </div>
+          
+            <div style="display: grid; grid-template-columns: 48px 240px minmax(0, 1fr) 84px 110px 96px; align-items: center; column-gap: 12px; height: 54px; padding: 0 12px; border-bottom: 1px solid #2B2926;">
+              <span class="lbl">To</span>
+              <span style="display: flex; flex-direction: column; gap: 1px;"><span class="mono" style="font-size: 13px; line-height: 18px; color: #F1EEE6;">theo.vyre.run</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Theo Grant</span></span>
+              <span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">GitHub: harlow-site</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Open pull requests, no push</span></span>
+              <span><span class="mono" style="font-size: 11px; line-height: 14px; padding: 3px 6px; border: 1px solid #3A3733; border-radius: 4px; color: #B3AEA4;">Waiting</span></span>
+              <span style="font-size: 13px; color: #8C877D;">7 days</span>
+              <button type="button" class="btn btn-ghost" style="justify-self: end; height: 28px;">Cancel</button>
+            </div>
+          
+            <div style="display: grid; grid-template-columns: 48px 240px minmax(0, 1fr) 84px 110px 96px; align-items: center; column-gap: 12px; height: 54px; padding: 0 12px; ">
+              <span class="lbl">From</span>
+              <span style="display: flex; flex-direction: column; gap: 1px;"><span class="mono" style="font-size: 13px; line-height: 18px; color: #F1EEE6;">theo.vyre.run</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Theo Grant</span></span>
+              <span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">Harlow ads account</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">kit may read campaign reports</span></span>
+              <span><span class="mono" style="font-size: 11px; line-height: 14px; padding: 3px 6px; border: 1px solid #3A3733; border-radius: 4px; color: #B3AEA4;">Relayed</span></span>
+              <span style="font-size: 13px; color: #8C877D;">No end date</span>
+              <button type="button" class="btn btn-ghost" style="justify-self: end; height: 28px;">Remove</button>
+            </div>
+        </section>
+      </div>
+
+      <aside aria-label="Harlow Google Drive" style="width: 400px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 28px 28px 20px 28px; border-left: 1px solid #2B2926; background: #161513;">
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span class="lbl">Google login</span><button type="button" class="ibtn" aria-label="Close panel"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button></div>
+        <h2 style="margin: 8px 0 0 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em;">Harlow Google Drive</h2>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px; padding: 16px; border: 1px dashed #3A3733; border-radius: 6px;">
+          <div style="display: flex; align-items: center; gap: 10px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#F1EEE6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg><span class="mono" style="font-size: 12px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: #F1EEE6;">Sealed</span><span style="margin-left: auto; font-size: 12px; color: #8C877D;">Set 3 Sep by Alex</span></div>
+          <p style="margin: 0; font-size: 13px; line-height: 19px; color: #B3AEA4;">Nobody can read this value back, you included. It is used inside the holder&#39;s computer and never written to a thread or a log.</p>
+          <div style="display: flex; gap: 8px;"><button type="button" class="btn" style="height: 28px;">Replace value</button><button type="button" class="btn btn-ghost" style="height: 28px;">Revoke</button></div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 26px; padding-bottom: 10px; border-bottom: 1px solid #2B2926;"><h3 class="lbl" style="margin: 0;">Held by</h3><button type="button" class="btn btn-ghost" style="height: 22px; padding: 0;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>Add</button></div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #2B2926;">
+          <span class="mono" aria-hidden="true" style="width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">j</span><span style="font-size: 14px;">juno</span><span style="font-size: 12px; color: #8C877D;">Harlow Legal only</span>
+          <button type="button" class="ibtn" aria-label="Remove juno" style="margin-left: auto; width: 26px; height: 26px;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #2B2926;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#B3AEA4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/><path d="M2 5v6M14 5v6"/></svg><span class="mono" style="font-size: 13px;">dana.vyre.run</span><span style="font-size: 12px; color: #8C877D;">by pass, relayed</span>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 26px; padding-bottom: 2px; border-bottom: 1px solid #2B2926;"><h3 class="lbl" style="margin: 0; padding-bottom: 8px;">Used today</h3></div>
+        
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #2B2926;">
+              <span class="mono" aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">j</span>
+              <span style="flex-grow: 1; font-size: 13px; line-height: 18px; color: #F1EEE6;">juno read 3 files <span style="color: #8C877D;">for Q3 report</span></span>
+              <span class="mono" style="font-size: 11px; color: #8C877D;">11:40</span>
+            </div>
+        
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #2B2926;">
+              <span class="mono" aria-hidden="true" style="width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; box-sizing: border-box; color: #F1EEE6; font-size: 11px; font-weight: 500;">j</span>
+              <span style="flex-grow: 1; font-size: 13px; line-height: 18px; color: #F1EEE6;">juno listed Harlow / Reports <span style="color: #8C877D;">for Q3 report</span></span>
+              <span class="mono" style="font-size: 11px; color: #8C877D;">11:38</span>
+            </div>
+        
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #2B2926;">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#B3AEA4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/><path d="M2 5v6M14 5v6"/></svg>
+              <span style="flex-grow: 1; font-size: 13px; line-height: 18px; color: #F1EEE6;">dana.vyre.run read Q3 draft.pdf <span style="color: #8C877D;">relayed by alex-box</span></span>
+              <span class="mono" style="font-size: 11px; color: #8C877D;">09:02</span>
+            </div>
+
+        <div style="flex-grow: 1;"></div>
+        <p style="margin: 0; font-size: 12px; line-height: 17px; color: #8C877D;">Only your tailnet can open this page.</p>
+      </aside>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1600,"height":1000}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

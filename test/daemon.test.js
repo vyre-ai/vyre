@@ -65,3 +65,63 @@ test("client: with no vyred running, calls degrade to an error instead of throwi
   const r = await call("system.echo", { text: "x" }, { root });
   assert.equal(r.error.code, "unreachable");
 });
+
+import http from "node:http";
+
+/** Read an SSE stream until `n` events arrive. */
+function sse(socketPath, pathname, n) {
+  return new Promise((resolve, reject) => {
+    const got = [];
+    const req = http.request({ socketPath, path: pathname, method: "GET" }, res => {
+      let buf = "";
+      res.setEncoding("utf8");
+      res.on("data", c => {
+        buf += c;
+        for (let i; (i = buf.indexOf("\n\n")) >= 0;) {
+          const block = buf.slice(0, i); buf = buf.slice(i + 2);
+          const data = block.split("\n").find(l => l.startsWith("data: "));
+          if (data) got.push(JSON.parse(data.slice(6)));
+          if (got.length >= n) { req.destroy(); resolve(got); }
+        }
+      });
+    });
+    req.on("error", e => { if (got.length < n) reject(e); });
+    req.end();
+  });
+}
+
+test("daemon: the event stream replays the backlog, then goes live, filtered by type", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  d.events.emit("test", "thread.started", { n: 1 });
+  d.events.emit("test", "file.touched", { n: 2 });
+  const pending = sse(d.paths.socket, "/v1/events/stream?type=thread.*", 2);
+  await new Promise(r => setTimeout(r, 50));
+  d.events.emit("test", "thread.stopped", { n: 3 });
+  const got = await pending;
+  assert.deepEqual(got.map(e => e.payload.n), [1, 3]);
+});
+
+test("daemon: stop is not held open by a connected event stream", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  const req = http.request({ socketPath: d.paths.socket, path: "/v1/events/stream", method: "GET" }, res => res.resume());
+  req.on("error", () => {});
+  req.end();
+  await new Promise(r => setTimeout(r, 50));
+  const t0 = Date.now();
+  await d.stop();
+  assert.ok(Date.now() - t0 < 1000, "stop waited on the stream");
+});
+
+test("daemon: non-API paths serve the Deck and never anything outside deck/", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
+  for (const p of ["/../package.json", "/%2e%2e/package.json", "/..%2fpackage.json"]) {
+    const r = await get(p);
+    assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
+  }
+});
