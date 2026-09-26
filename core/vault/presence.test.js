@@ -101,3 +101,18 @@ test("account tools: create returns the Secret Key once, unlock and lock, and no
   const seen = JSON.stringify([db.prepare("SELECT * FROM vault_audit").all(), events, await run("vault.list", {})]);
   for (const s of [pw, value, made.secretKey]) assert.ok(!seen.includes(s));
 });
+
+test("presence: reveal, copy and totp take the floor's session proof, except for a reprompt item", async t => {
+  const { tools, run } = await recorded(t);
+  await run("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: "fixture-pw" } });
+  await run("vault.put", { name: "team-card", kind: "card", fields: { number: "4242424242424242" } });
+  for (const n of ["vault.reveal", "vault.copy", "vault.totp"]) {
+    const s = tools.get(n).presence.session;
+    assert.equal(typeof s, "function", `${n} declares session`);
+    assert.equal(s({ name: "site-login" }), true, `${n}: a login rides a session`);
+    assert.equal(s({ id: "site-login" }), true, `${n}: the Capsule's id works too`);
+    assert.equal(s({ name: "team-card" }), false, `${n}: a card is reprompt`);
+    assert.equal(s({}), false);
+  }
+  for (const n of ["vault.inject", "vault.fill.native", "vault.resolve"]) assert.ok(!tools.get(n).presence.session, `${n} never rides a session`);
+});

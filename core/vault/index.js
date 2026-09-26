@@ -31,6 +31,7 @@ import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as deckTools from "./tools/deck.js";
 import { gate } from "./prove.js";
+import { reprompt } from "./session.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -202,7 +203,9 @@ export default {
         return { code: r.code, period: r.period ?? 30, remaining: r.remaining };
       },
       presence("Show a one-time code", ({ name, id }) => `Show the one-time code for ${quoted(name ?? id)}`,
-        { skip: ({ input }) => Boolean(input && /** @type {any} */ (vault).sessions?.ok(input.session, input.name ?? input.id)) }));
+        { skip: ({ input }) => Boolean(input && /** @type {any} */ (vault).sessions?.ok(input.session, input.name ?? input.id)),
+          // The presence floor's session method covers a code unless the item is reprompt.
+          session: input => { const n = input && (input.name ?? input.id); return typeof n === "string" && !reprompt(vault, n); } }));
 
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),

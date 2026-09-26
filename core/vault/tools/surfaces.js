@@ -13,7 +13,7 @@
 // rows carry names, fields, surfaces and counts.
 
 import path from "node:path";
-import { Sessions, SURFACES, lockConfig } from "../session.js";
+import { Sessions, SURFACES, lockConfig, reprompt } from "../session.js";
 import { Clipboard } from "../clipboard.js";
 import { LockWatch } from "../watch.js";
 import { Helper } from "../mac/helper.js";
@@ -120,6 +120,9 @@ export function register({ ctx, vault }) {
 
   const surfaceFor = (session, caller) => sessions.surfaceOf(session) || callerKind(caller);
   const skip = ({ input }) => Boolean(input && sessions.ok(input.session, input.name));
+  // For the presence floor's session method (ADR 0004 addendum): a session proof covers an item
+  // unless it is reprompt, which always asks afresh.
+  const sessionable = input => { const n = input && (input.name ?? input.id); return typeof n === "string" && !reprompt(vault, n); };
   const kindOf = name => { try { return vault.row(name)?.kind || "item"; } catch { return "item"; } };
   const fieldFor = (name, field) => field || DEFAULT_FIELD[kindOf(name)] || "value";
   const minutes = ttl_s => Math.max(1, Math.round((ttl_s ? Math.min(lock.max, Number(ttl_s) * 1000) : lock.max) / 60_000));
@@ -165,7 +168,7 @@ export function register({ ctx, vault }) {
     description: "Show one field of an item to the person, on their own device. Hide it again after concealAfter seconds.",
     input: obj({ name: str, field: str, session: str, version: { type: "integer" } }, ["name"]),
     callers: PEOPLE,
-    presence: { summary: async ({ name, field, version }) => `Show the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""}`, skip },
+    presence: { summary: async ({ name, field, version }) => `Show the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""}`, skip, session: sessionable },
     run: async ({ name, field, session, version }, { caller }) => {
       const surface = surfaceFor(session, caller);
       // Floor rule 8 (SPEC 11): a value may be shown to a person who has just proved presence on
@@ -189,7 +192,7 @@ export function register({ ctx, vault }) {
     description: "Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Never returns the value.",
     input: obj({ name: str, id: str, field: str, session: str, version: { type: "integer" } }),
     callers: PEOPLE,
-    presence: { summary: async i => { const { name, field, version } = asItem(i); return `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""} to the clipboard`; }, skip: ({ input }) => skip({ input: asItem(input || {}) }) },
+    presence: { summary: async i => { const { name, field, version } = asItem(i); return `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}"${version ? ` from version ${Number(version)}` : ""} to the clipboard`; }, skip: ({ input }) => skip({ input: asItem(input || {}) }), session: sessionable },
     run: async (input, { caller }) => {
       const { name, field, session, version } = named(input);
       const surface = surfaceFor(session, caller);
