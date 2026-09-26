@@ -1,0 +1,512 @@
+#!/usr/bin/env node
+// @ts-check
+// docs-shots: the screenshots on docs.vyre.run, taken from the sample world (alex, Harlow Legal,
+// Northwind Bakery, juno, kit) and never from anyone's real data.
+//
+//   scripts/docs-shots [--only NAME,NAME] [--list] [--cli]
+//
+//   --only NAMES   take only these shots (names from scripts/lib/docs/shots.js)
+//   --list         print the shot list and exit
+//   --cli          print the sample world's `vyre` output for the CLI pages, and take no shots
+//
+// Runs on testbox (Linux, headless Chrome at $CHROME, default /usr/local/bin/vyre-chrome), not on
+// a Mac someone is using. Everything it starts lives in a temp folder under the test SCRATCH
+// folder and is stopped and removed on the way out, Ctrl-C included:
+//   - the Deck world: deck/test/world.js (a real vyred in a temp home with the fictional corpus,
+//     two projects, juno and kit, vault items and two holds at the Gate), with fake tailscale
+//     and VYRE_NO_DIALOGS=1. Chrome opens it as http://alex-box.tail4e2a.ts.net (a host-resolver
+//     rule points that name at the world's local port).
+//   - the onboarding: a second vyred in a fresh box home, fake tailscale (signs in when Connect
+//     is pressed, issues a self-signed certificate) and fake claude, walked through its six steps
+//     in one browser tab, the way a person would.
+//   - the Capsule: its own page (local/capsule/app/capsule.html) in Chrome, with the Electron
+//     preload replaced by a stub whose reads (snapshot, @ completion, recall, results, a hold)
+//     go to the real Bridge class against the Deck world's vyred. Everything that would act
+//     (send, answer, copy, pick) answers "not here" instead.
+// Every vyred and vyre it runs is loaded with scripts/lib/docs/shots-host.js, so the machine is
+// alex-box and the account is alex. Paths under the temp home are shown as /home/alex.
+//
+// Writes docs/<dir>/shots/<name>.png (and <name>.dark.png where the surface has a dark and a
+// light look) at device scale 2, palette-compressed with sharp when it is installed, and records
+// in docs/shots.json a sha256 of every source file each shot shows; docs-check fails a shot once
+// those files change (scripts/lib/docs/shots.js).
+
+import { spawn, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import http from "node:http";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { SHOTS, CLI, filesOf, entryFor, readManifest, manifestText, MANIFEST } from "./lib/docs/shots.js";
+import { launch } from "./lib/docs/chrome.js";
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const HOST = "alex-box.tail4e2a.ts.net";
+const PRELOAD = pathToFileURL(path.join(REPO, "scripts", "lib", "docs", "shots-host.js")).href;
+const CHROME = process.env.CHROME || "/usr/local/bin/vyre-chrome";
+const MAX_BYTES = 250 * 1024;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const log = (/** @type {string} */ m) => process.stderr.write(m + "\n");
+
+// ---- arguments ----------------------------------------------------------------------------
+
+const args = process.argv.slice(2);
+let only = null, list = false, cli = false;
+for (let i = 0; i < args.length; i++) {
+  const a = args[i];
+  if (a === "--only") only = new Set(String(args[++i] || "").split(",").filter(Boolean));
+  else if (a === "--list") list = true;
+  else if (a === "--cli") cli = true;
+  else if (a === "-h" || a === "--help") { console.log("usage: scripts/docs-shots [--only NAME,NAME] [--list] [--cli]"); process.exit(0); }
+  else { console.error(`docs-shots: unknown option ${a}`); process.exit(1); }
+}
+if (list) {
+  for (const s of SHOTS) console.log(`${s.name.padEnd(22)} ${s.world.padEnd(8)} ${filesOf(s).join(" ")}`);
+  process.exit(0);
+}
+if (only) for (const n of only) if (!SHOTS.some(s => s.name === n)) { console.error(`docs-shots: no shot named ${n}`); process.exit(1); }
+if (!cli && !fs.existsSync(CHROME)) { console.error(`docs-shots: no Chrome at ${CHROME}; set CHROME`); process.exit(1); }
+
+// ---- the temp folder, and stopping everything we start --------------------------------------
+
+const { SCRATCH } = await import("../test/scratch.mjs");
+const WORK = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "shots-")));
+/** @type {Array<() => any>} */ const stops = [];
+let stopping = null;
+const stopAll = () => (stopping ||= (async () => {
+  for (const f of stops.reverse()) { try { await f(); } catch {} }
+  try { fs.rmSync(WORK, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch {}
+})());
+process.on("SIGINT", () => { stopAll().then(() => process.exit(130)); });
+process.on("SIGTERM", () => { stopAll().then(() => process.exit(143)); });
+process.on("exit", () => { try { fs.rmSync(WORK, { recursive: true, force: true }); } catch {} });
+
+const freePort = () => new Promise((r, j) => { const s = net.createServer(); s.once("error", j); s.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => r(p)); }); });
+
+/** A child we started, stopped with SIGTERM (then SIGKILL) when we are done. */
+function child(cmd, argv, opts) {
+  const c = spawn(cmd, argv, opts);
+  stops.push(() => new Promise(r => {
+    if (c.exitCode !== null || c.signalCode) return r(undefined);
+    c.once("exit", r);
+    c.kill("SIGTERM");
+    setTimeout(() => { try { c.kill("SIGKILL"); } catch {} r(undefined); }, 8000);
+  }));
+  return c;
+}
+
+// ---- fake tailscale and claude --------------------------------------------------------------
+
+/**
+ * A fake `tailscale` whose state is a file: off (signed out), up (on the tailnet), serving (up,
+ * and its tailnet address is 127.0.0.1 so the box's HTTPS listener can bind here). `up` signs
+ * in at once; `cert` makes a self-signed certificate and moves to serving.
+ */
+function fakes(dir, start) {
+  fs.mkdirSync(dir, { recursive: true });
+  const state = path.join(dir, "ts-state");
+  fs.writeFileSync(state, start);
+  const node = ip => JSON.stringify({ BackendState: "Running", TUN: true, CertDomains: [HOST],
+    Self: { ID: "nAlexBox1CNTRL", HostName: "alex-box", DNSName: HOST + ".", TailscaleIPs: ip === "127.0.0.1" ? [ip] : [ip, "fd7a:115c:a1e0::1"], UserID: 1 },
+    User: { 1: { LoginName: "alex@example.com" } } });
+  const ts = path.join(dir, "tailscale");
+  fs.writeFileSync(ts, `#!/bin/sh
+S=$(cat '${state}' 2>/dev/null)
+case "$1" in
+  status)
+    case "$S" in
+      up) cat <<'EOF'
+${node("100.101.102.103")}
+EOF
+      ;;
+      serving) cat <<'EOF'
+${node("127.0.0.1")}
+EOF
+      ;;
+      *) echo '{"BackendState":"NeedsLogin","TUN":true}' ;;
+    esac ;;
+  up) echo "To authenticate, visit:"; echo; echo "	https://login.tailscale.com/a/5e1f0a9c"; echo up > '${state}' ;;
+  cert)
+    while [ $# -gt 0 ]; do case "$1" in --cert-file) C=$2; shift ;; --key-file) K=$2; shift ;; *) D=$1 ;; esac; shift; done
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$K" -out "$C" -days 90 -subj "/CN=$D" -addext "subjectAltName=DNS:$D" >/dev/null 2>&1 || exit 1
+    echo serving > '${state}' ;;
+  debug) echo '{"OperatorUser":"alex"}' ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 });
+  const claude = path.join(dir, "claude");
+  fs.writeFileSync(claude, "#!/bin/sh\necho '2.1.0 (Claude Code)'\n", { mode: 0o755 });
+  return { ts, claude, state };
+}
+
+/** The environment every vyred and vyre here runs with. */
+const worldEnv = (home, bins, extra = {}) => {
+  const env = { ...process.env, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
+    NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=${PRELOAD}`.trim(), VYRE_TMPDIR: SCRATCH, ...extra };
+  if (home) env.VYRE_HOME = home;
+  delete env.CLOUDFLARE_VYRE_TOKEN;
+  return env;
+};
+
+// ---- the Deck world --------------------------------------------------------------------------
+
+let deckWorld = null;
+async function deck() {
+  if (deckWorld) return deckWorld;
+  const port = await freePort();
+  const bins = fakes(path.join(WORK, "deck-bin"), "up");
+  // world.js makes its own home under SCRATCH and removes it when it stops.
+  const w = child(process.execPath, [path.join(REPO, "deck", "test", "world.js"), String(port)],
+    { env: worldEnv(null, bins), stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  w.stderr.on("data", c => { const s = String(c); if (!/ExperimentalWarning|trace-warnings/.test(s)) process.stderr.write("world: " + s); });
+  const home = await new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("the Deck world did not start in 90 s")), 90_000);
+    w.stdout.on("data", c => {
+      out += c;
+      const m = out.match(/deck world: \S+\s+\(home (.+)\)/);
+      if (m) { clearTimeout(t); resolve(m[1]); }
+    });
+    w.once("exit", code => { clearTimeout(t); reject(new Error(`the Deck world exited (${code}): ${out.slice(-400)}`)); });
+  });
+  // The two holds are made just after the URL is printed.
+  await sleep(2500);
+  const { socketPath } = await import("../core/config/index.js");
+  deckWorld = { home: String(home), bins, socket: socketPath(String(home)) };
+  return deckWorld;
+}
+
+// Chrome reaches every world at http://alex-box.tail4e2a.ts.net, which a host-resolver rule points
+// at this proxy; the proxy passes each request to the vyred socket of the world being shot.
+let target = "";
+async function proxy() {
+  const srv = http.createServer((req, res) => {
+    const up = http.request({ socketPath: target, path: req.url, method: req.method, headers: req.headers }, r => { res.writeHead(r.statusCode || 502, r.headers); r.pipe(res); });
+    up.on("error", e => { if (!res.headersSent) res.writeHead(502); res.end(String(e.message)); });
+    req.pipe(up);
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  stops.push(() => new Promise(r => { srv.closeAllConnections(); srv.close(() => r(undefined)); }));
+  return /** @type {any} */ (srv.address()).port;
+}
+
+// ---- the Glass world: a box with folders open to Glass -----------------------------------------
+
+async function glassWorld() {
+  const home = fs.mkdtempSync(path.join(WORK, "gl-"));
+  const bins = fakes(path.join(home, "bin"), "up");
+  const work = path.join(home, "alex", "Work");
+  const files = {
+    "harlow-site/README.md": "# Harlow Legal site\n\nThe intake form sits above the fold on harlowlegal.com.\n",
+    "harlow-site/src/intake.tsx": "export function Intake() { return null; }\n",
+    "harlow-intake/routes.json": "{ \"leads\": \"crm\", \"summary\": \"07:00\" }\n",
+    "northwind/invoices-week-35.csv": "date,amount\n2026-08-28,412.50\n2026-08-29,188.00\n",
+    "northwind/weekly-total.md": "Week 35: 600.50\n",
+    "Q3 report.md": "# Q3, the short version\n\nConsult bookings rose every month this quarter.\n",
+  };
+  for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(work, f)), { recursive: true }); fs.writeFileSync(path.join(work, f), t); }
+  fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({
+    name: "alex", role: "box", transcripts: [], roots: [work], glass: { roots: [work] },
+    recall: { vectors: false, download: false }, vault: { keystore: "file", breach: "off" },
+    onboard: { person: "alex", finished: "2026-09-01T09:00:00.000Z" },
+  }, null, 2));
+  const env = worldEnv(home, bins, { VYRE_HARNESS_DIR: path.join(home, "no-harness") });
+  const d = child(process.execPath, [path.join(REPO, "core", "daemon", "main.js")], { env, stdio: ["ignore", "ignore", "pipe"] });
+  d.stderr.on("data", c => { const s = String(c); if (!/ExperimentalWarning|trace-warnings/.test(s)) process.stderr.write("glass vyred: " + s); });
+  const { call } = await import("../core/daemon/client.js");
+  const up = () => call("system.info", {}, { root: home, timeout: 1000 }).then(r => !!r.data, () => false);
+  for (let i = 0; i < 150 && !(await up()); i++) await sleep(100);
+  if (!(await up())) throw new Error("the Glass vyred did not come up");
+  const { socketPath } = await import("../core/config/index.js");
+  return { home, socket: socketPath(home) };
+}
+
+// ---- the onboarding world ----------------------------------------------------------------------
+
+async function onboardWorld() {
+  const home = fs.mkdtempSync(path.join(WORK, "ob-"));
+  const bins = fakes(path.join(home, "bin"), "off");
+  const { SESSIONS, HOME, writeTranscripts } = await import("../test/fixtures/corpus.js");
+  const work = path.join(home, "alex", "Work");
+  const moved = SESSIONS.map(s => ({ ...s, cwd: s.cwd.replace(path.join(HOME, "Work"), work).replace(HOME, path.join(home, "alex")) }));
+  for (const s of moved) fs.mkdirSync(s.cwd, { recursive: true });
+  writeTranscripts(path.join(home, "transcripts"), moved);
+  fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({
+    role: "box", projectsDir: path.join(home, "projects"), roots: [work], transcripts: [path.join(home, "transcripts")],
+    recall: { vectors: false, download: false }, vault: { keystore: "file", breach: "off" }, network: { onboardPort: 0 },
+  }, null, 2));
+  const tls = await freePort();
+  const env = worldEnv(home, bins, { VYRE_SHOTS_TLS_PORT: String(tls), VYRE_HARNESS_DIR: path.join(home, "no-harness") });
+  const d = child(process.execPath, [path.join(REPO, "core", "daemon", "main.js")], { env, stdio: ["ignore", "ignore", "pipe"] });
+  d.stderr.on("data", c => { const s = String(c); if (!/ExperimentalWarning|trace-warnings/.test(s)) process.stderr.write("onboard vyred: " + s); });
+  const { call } = await import("../core/daemon/client.js");
+  const up = () => call("system.info", {}, { root: home, timeout: 1000 }).then(r => !!r.data, () => false);
+  for (let i = 0; i < 150 && !(await up()); i++) await sleep(100);
+  if (!(await up())) throw new Error("the onboarding vyred did not come up");
+  const link = await call("onboard.link", {}, { root: home, caller: "cli" });
+  if (!link.data || !link.data.url) throw new Error("no onboarding link: " + JSON.stringify(link.error));
+  return { home, bins, url: link.data.url, call: (tool, input) => call(tool, input, { root: home, caller: "cli" }) };
+}
+
+// ---- the Capsule's page, with a stub for its preload ------------------------------------------
+
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png" };
+let capsuleSrv = null;
+async function capsule() {
+  if (capsuleSrv) return capsuleSrv;
+  const w = await deck();
+  const { client } = await import("../local/capsule/lib/vyred.js");
+  const { Bridge } = await import("../local/capsule/lib/bridge.js");
+  const { Launcher } = await import("../local/capsule/lib/launcher.js");
+  const { socketPath } = await import("../core/config/index.js");
+  const vy = client(socketPath(w.home));
+  const bridge = new Bridge(vy, { home: w.home });
+  const r = await bridge.refresh();
+  if (!r.up) throw new Error("the Capsule's bridge cannot reach the Deck world: " + r.why);
+  // This Mac's own results (apps, files, contacts) are empty here: the shots show Vyre's.
+  const launcher = new Launcher({ apps: /** @type {any} */ ({ list: async () => [], search: () => [] }), files: async () => [], helper: null, providers: null, vyred: null });
+  const cat = () => (bridge.up ? bridge.catalog : null);
+  const no = async () => ({ error: "not in a screenshot" });
+  /** @type {Record<string, (...a: any[]) => any>} */
+  const api = {
+    snapshot: () => ({ ...bridge.snapshot(), hotkey: { ok: true, message: "ready" }, watching: [], reports: [] }),
+    mention: (t, c) => bridge.mention(String(t || ""), Number(c) || 0),
+    destinations: (t, x) => bridge.destinations(t || null, String(x || "")),
+    recall: t => bridge.recall(String(t || "")),
+    source: ref => bridge.source(ref),
+    held: id => bridge.held(String(id || "")),
+    quick: t => launcher.quick(String(t || ""), cat()),
+    full: t => launcher.full(String(t || ""), cat()),
+    icons: () => ({}),
+    actions: () => null,
+    send: no, answer: no, act: no, pick: no, copy: no, watch: no, unwatch: no, cancel: no, reportRead: no, dmOpen: no, dmClose: no,
+  };
+  const APP = path.join(REPO, "local", "capsule", "app");
+  const srv = http.createServer(async (req, res) => {
+    const u = new URL(req.url || "/", "http://x");
+    if (req.method === "POST" && u.pathname.startsWith("/__bridge/")) {
+      let body = "";
+      for await (const c of req) body += c;
+      const fn = api[u.pathname.slice(10)];
+      let out;
+      try { out = fn ? await fn(...JSON.parse(body || "[]")) : null; } catch (e) { out = { error: /** @type {Error} */ (e).message }; }
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify(out ?? null));
+    }
+    const f = path.join(APP, path.normalize(decodeURIComponent(u.pathname)).replace(/^([/\\])+/, ""));
+    if (!f.startsWith(APP + path.sep) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { "content-type": MIME[path.extname(f)] || "application/octet-stream" });
+    fs.createReadStream(f).pipe(res);
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  stops.push(() => new Promise(r => { srv.closeAllConnections(); srv.close(() => r(undefined)); }));
+  capsuleSrv = { base: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}` };
+  return capsuleSrv;
+}
+
+// The stub the Capsule page gets instead of preload.cjs: the same names, over fetch.
+const CAPSULE_STUB = `(() => {
+  const call = name => (...a) => fetch("/__bridge/" + name, { method: "POST", body: JSON.stringify(a) }).then(r => r.json());
+  const noop = () => {};
+  const on = {};
+  const api = { size: noop, dismiss: noop, pin: noop, timing: noop, paintPing: noop };
+  for (const n of ["onState", "onOpen", "onMore", "onReport"]) api[n] = fn => { on[n] = fn; };
+  const snap = call("snapshot");
+  api.snapshot = () => snap().then(s => { setTimeout(() => { window.__capReady = true; }, 300); return s; });
+  window.vyre = new Proxy(api, { get: (t, k) => (k in t ? t[k] : call(String(k))) });
+})();`;
+
+// ---- taking one shot ----------------------------------------------------------------------------
+
+let sharp = null;
+try { sharp = (await import("sharp")).default; } catch { log("docs-shots: sharp is not installed, so the PNGs are not palette-compressed"); }
+
+/** Palette PNG, trying fewer colours until it is under MAX_BYTES. */
+async function encode(buf) {
+  if (!sharp) return buf;
+  let best = buf;
+  for (const colours of [256, 192, 128]) {
+    const out = await sharp(buf).png({ palette: true, colours, quality: 90, effort: 10, compressionLevel: 9 }).toBuffer();
+    if (out.length < best.length) best = out;
+    if (best.length <= MAX_BYTES) break;
+  }
+  return best;
+}
+
+/** Paths under the temp homes, as the paths a real person has. */
+const scrub = homes => `(() => {
+  const pairs = ${JSON.stringify(homes.flatMap(h => [[h + "/alex", "/home/alex"], [h, "/home/alex/.vyre"]]))};
+  const fix = s => { for (const [a, b] of pairs) s = s.split(a).join(b); return s; };
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n; (n = w.nextNode());) { const v = fix(n.nodeValue || ""); if (v !== n.nodeValue) n.nodeValue = v; }
+  for (const el of document.querySelectorAll("[title], input, textarea")) {
+    if (el.title) el.title = fix(el.title);
+    if ("value" in el && el.value) el.value = fix(el.value);
+  }
+})();`;
+
+/**
+ * Take one shot in one theme, in `page`, which the caller has navigated (or not).
+ * @returns {Promise<Buffer>}
+ */
+async function capture(page, shot, { navigate, homes }) {
+  const h0 = shot.height === "fit" ? 800 : shot.height;
+  await page.viewport(shot.width, h0, !!shot.phone);
+  if (navigate) await page.goto(navigate, 2500);
+  if (shot.script) { const v = await page.run(shot.script); if (v !== undefined) log("  script: " + JSON.stringify(v)); }
+  await sleep(400);
+  await page.run(scrub(homes));
+  if (shot.height === "fit") {
+    const extra = await page.run(`const v = document.querySelector(".view"); return v ? v.scrollHeight - v.clientHeight : document.documentElement.scrollHeight - innerHeight;`);
+    const h = Math.min(shot.maxHeight || 1400, h0 + Math.max(0, Number(extra) || 0));
+    if (h !== h0) { await page.viewport(shot.width, h, !!shot.phone); await sleep(600); await page.run(scrub(homes)); }
+  }
+  let clip = null;
+  if (shot.clip && typeof shot.clip === "object") clip = shot.clip;
+  else if (shot.clip) {
+    const r = await page.run(`const e = document.querySelector(${JSON.stringify(shot.clip)}); if (!e) throw new Error("no ${shot.clip}"); const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height };`);
+    const p = shot.pad ?? 0;
+    clip = { x: Math.max(0, r.x - p), y: Math.max(0, r.y - p), width: r.width + 2 * p, height: r.height + 2 * p };
+  }
+  return page.png(clip);
+}
+
+const manifest = readManifest(REPO);
+const taken = [];
+
+async function save(shot, theme, buf) {
+  const files = filesOf(shot);
+  const file = files[(shot.themes || ["light", "dark"]).indexOf(theme)];
+  const out = await encode(buf);
+  fs.mkdirSync(path.dirname(path.join(REPO, file)), { recursive: true });
+  fs.writeFileSync(path.join(REPO, file), out);
+  manifest[file] = entryFor(REPO, shot.shows);
+  taken.push({ file, bytes: out.length });
+  log(`  ${file}  ${(out.length / 1024).toFixed(0)} KB`);
+}
+
+const report = (shot, page) => {
+  const errs = page.errors.splice(0).filter(e => !/favicon|fonts\.g/.test(e));
+  for (const e of errs) log(`  ${shot.name}: page error: ${e}`);
+};
+
+// ---- the CLI's output ---------------------------------------------------------------------------
+
+async function cliOutput() {
+  const w = await deck();
+  for (const c of CLI) {
+    const r = spawnSync(process.execPath, [path.join(REPO, "bin", "vyre"), ...c.args], { env: worldEnv(w.home, w.bins), encoding: "utf8", timeout: 30_000 });
+    const fix = s => s.split(w.home + "/alex").join("/home/alex").split(w.home).join("/home/alex/.vyre").replace(/^\(node:\d+\) ExperimentalWarning.*\n(\(Use .*\n)?/gm, "");
+    console.log(`\n## ${c.page}, "${c.heading}"\n\n\`\`\`sh\nvyre ${c.args.map(a => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}\n\`\`\`\n\n\`\`\`output\n${fix(r.stdout + r.stderr).trimEnd()}\n\`\`\``);
+  }
+}
+
+// ---- main ---------------------------------------------------------------------------------------
+
+try {
+  if (cli) { await cliOutput(); await stopAll(); process.exit(0); }
+
+  const want = SHOTS.filter(s => (!only || only.has(s.name)));
+  const ready = want.filter(s => {
+    const missing = (s.needs || []).filter(f => !fs.existsSync(path.join(REPO, f)));
+    if (missing.length) log(`docs-shots: skipping ${s.name}: ${missing.join(", ")} is not in this checkout`);
+    return !missing.length;
+  });
+  const needDeck = ready.some(s => s.world === "deck" || s.world === "capsule");
+  const w = needDeck ? await deck() : null;
+  const port = await proxy();
+  const browser = await launch({ bin: CHROME, dir: WORK, args: [`--host-resolver-rules=MAP ${HOST} 127.0.0.1:${port}`,
+    `--unsafely-treat-insecure-origin-as-secure=http://${HOST}`] });
+  stops.push(() => browser.close());
+  const homes = w ? [w.home] : [];
+  const base = `http://${HOST}`;
+  const gl = ready.some(s => s.world === "glass") ? await glassWorld() : null;
+  if (gl) homes.push(gl.home);
+
+  // The Deck and its phone layout: a fresh tab per shot and theme.
+  for (const shot of ready.filter(s => s.world === "deck" || s.world === "glass")) {
+    target = shot.world === "glass" ? /** @type {any} */ (gl).socket : /** @type {any} */ (w).socket;
+    for (const theme of shot.themes) {
+      log(`${shot.name} (${theme})`);
+      const page = await browser.page();
+      try {
+        await page.send("Page.addScriptToEvaluateOnNewDocument", { source: theme === "light"
+          ? `try { localStorage.setItem("vyre.theme", "paper"); } catch {}` : `try { localStorage.removeItem("vyre.theme"); } catch {}` });
+        await save(shot, theme, await capture(page, shot, { navigate: base + shot.url, homes }));
+        report(shot, page);
+      } catch (e) { log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1; }
+      finally { await page.close(); }
+    }
+  }
+
+  // The Capsule.
+  const caps = ready.filter(s => s.world === "capsule");
+  if (caps.length) {
+    const c = await capsule();
+    for (const shot of caps) {
+      log(`${shot.name}`);
+      const page = await browser.page();
+      try {
+        await page.send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
+        await page.send("Page.addScriptToEvaluateOnNewDocument", { source: CAPSULE_STUB });
+        await save(shot, "dark", await capture(page, shot, { navigate: c.base + shot.url, homes }));
+        report(shot, page);
+      } catch (e) { log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1; }
+      finally { await page.close(); }
+    }
+  }
+
+  // The onboarding: one tab, the steps in order, as a person walks them.
+  const obs = ready.filter(s => s.world === "onboard");
+  if (obs.length) {
+    const ob = await onboardWorld();
+    homes.push(ob.home);
+    const page = await browser.page();
+    // Sign-in pages (Tailscale's, Claude's) would open in new tabs: not here.
+    await page.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.open = () => null;" });
+    await page.viewport(1280, 800);
+    await page.goto(ob.url, 3000);
+    const order = ["you", "claude", "tailscale", "name", "history", "devices"];
+    for (const step of order) {
+      const shot = obs.find(s => s.url === "#" + step);
+      await page.run(`if (location.hash !== "#${step}") location.hash = "${step}"; await wait(1200);`);
+      if (shot) {
+        log(`${shot.name}`);
+        try { await save(shot, "dark", await capture(page, shot, { navigate: null, homes })); report(shot, page); }
+        catch (e) {
+          log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1;
+          log("  the page said: " + String(await page.run("return document.body.innerText").catch(() => "")).slice(0, 800).replace(/\n+/g, " | "));
+        }
+      }
+      // Finish the step, so the next screen is the one a person reaches.
+      if (step === "you") {
+        if (!shot) await page.run(`type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`);
+        await page.run(`click("#primary"); await until('location.hash === "#claude"');`);
+      } else if (step === "claude") {
+        // An API key that is shaped right and belongs to no one: the step stores it and is done.
+        const r = await ob.call("onboard.claude", { mode: "api-key", key: "sk-ant-api03-" + crypto.randomBytes(40).toString("base64url") });
+        if (r.error) { log(`  onboarding: the Claude step did not take a key (${r.error.message}); skipping it`); await ob.call("onboard.skip", { step: "claude" }); }
+      } else if (step === "tailscale" && !shot) {
+        await page.run(`click("#primary"); await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`);
+      } else if (step === "name" && !shot) {
+        await page.run(`click("#primary"); await until('/switch to/i.test(document.querySelector("#primary").innerText)', 30000);`);
+      }
+      // A fresh render of the next step reads the new status.
+      await page.run(`location.reload(); await wait(10);`).catch(() => {});
+      await sleep(2500);
+    }
+    await page.close();
+  }
+
+  fs.writeFileSync(path.join(REPO, MANIFEST), manifestText(manifest));
+  const total = taken.reduce((a, t) => a + t.bytes, 0);
+  log(`docs-shots: ${taken.length} files, ${(total / 1024).toFixed(0)} KB in all; ${MANIFEST} updated`);
+  const big = taken.filter(t => t.bytes > MAX_BYTES);
+  for (const b of big) log(`docs-shots: ${b.file} is ${(b.bytes / 1024).toFixed(0)} KB, over ${MAX_BYTES / 1024} KB`);
+} catch (e) {
+  log(`docs-shots: ${/** @type {Error} */ (e).stack || e}`);
+  process.exitCode = 1;
+} finally {
+  await stopAll();
+}

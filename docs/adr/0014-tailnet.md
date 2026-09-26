@@ -1,4 +1,12 @@
-# ADR 0014 · Using the tailnet fully
+---
+title: ADR 0014: Using the tailnet fully
+summary: Which Tailscale features Vyre uses beyond reaching the box, each optional and off by default.
+audience: builders
+owner: tailnet
+status: stable
+---
+
+# ADR 0014: Using the tailnet fully
 
 Status: accepted, 27 Sep 2026 (parts 7 to 10 accepted the same day, when the user asked for all ten) · Workstream: tailnet ·
 Builds on ADR 0002 (network and identity), ADR 0009 (container hardening), ADR 0012 (cdp-proxy).

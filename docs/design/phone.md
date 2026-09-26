@@ -1,3 +1,11 @@
+---
+title: Vyre phone
+summary: The design for Vyre on a phone, the PWA first and then the native apps, built on the Deck's tokens.
+audience: builders
+owner: mobile
+status: draft
+---
+
 # Vyre phone
 
 The design for Vyre on a phone: the PWA first, then the native iOS and Android apps. Both build

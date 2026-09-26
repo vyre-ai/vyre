@@ -154,6 +154,75 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   after Face ID (ADR 0018), the PWA's a passkey; both are the same box-checked presence proof.
   Docs only; no code changes.
 
+#### docs.vyre.run, round 2: screenshots, a terms index, interactive pages (ADR 0019)
+
+- Page syntax that works with JavaScript off and gets better with it: copy buttons on every
+  command (prompts left out), `output` blocks labelled "You should see", `::: tabs` for a choice
+  of path (one choice follows the reader across pages), `[!SNAG]` "If this happens" boxes,
+  `[!WHY]` expandable background, figures with a dark twin, `::: demo capsule` (a Capsule you can
+  type into, sample data only) and `::: demo onboarding` (the six screens as slides), and search
+  that jumps to headings (`/` focuses it). `scripts/lib/docs/assets/demos.{js,css}` load only on
+  pages with a demo.
+- Screenshots: `npm run docs:shots` (on the test box) starts the sample world and captures the
+  Deck, onboarding, the Capsule, Glass and the phone views in light and dark. `docs/shots.json`
+  holds a hash of the files each shot shows; docs-check fails a shot once they change.
+- The terms index: `npm run docs:ref` writes `docs/reference/index.md` and `docs/index.json`
+  (published at /index.json): every command, tool, event, config key, variable, screen and
+  concept, with where it is defined, the page that explains it and every mention. docs-check
+  fails a mention of a command, tool, key or variable the code no longer has.
+- `core/config/theme.js` holds the palette; the design tokens page draws its colour tables from
+  it as live swatches.
+- Every page reviewed against main; install is one numbered path with expected output and snag
+  boxes; the old install reference moved to box care and the box-and-Mac concepts page.
+- `scripts/lib/hygiene.js`: the `sk-` secret pattern no longer matches inside words (an anchor
+  like `#ask-...`).
+
+#### vyre.run/start matches the code again
+
+- /start's Mac section is `npm i -g https://vyre.run/box/vyre.tgz`, `vyre up` (pick 3, I already
+  set up a box), then `vyre capsule`, which builds the Capsule from the npm install. There is no
+  Mac download any more. The Cloudflare token steps are gone (your address is the tailnet name),
+  and pairing says what the code does: approve in the Deck with your passkey, whose screen is a
+  known gap.
+- `scripts/build-site.sh` writes `/download/mac /start#mac 302` into `site/_redirects`: onboarding's
+  "Download for Mac" link was a 404. Deployed to vyre.run with the live box files unchanged.
+
+#### Known gaps are marked on the page (ADR 0019)
+
+- `docs/known-gaps.md` lists each place the code does not yet do what the spec, an ADR or a
+  screen says, with what is true now and the owning team. Pages carry a `> [!GAP]` callout,
+  rendered as "Known gap", that links to it. `CONTRIBUTING-DOCS.md` says how to add and close one.
+- The security page names security@vyre.run as the contact.
+
+#### Every page of docs.vyre.run is written (ADR 0019)
+
+- The 57 pages in `docs/nav.json` exist, each with front matter and an owner: get-started,
+  using, concepts, build, architecture, security, contributing, and ADR 0019 for the site itself.
+  Pages other teams own are seeded from the code on main for them to refine.
+- `docs/SPEC.md`, `INSTALL.md`, `GETTING-STARTED.md`, `JOURNEY.md`, `MODULES.md` and `PERF.md`
+  moved to `architecture/spec.md`, `get-started/install.md` and `without-docker.md`,
+  `get-started/onboarding.md` (GETTING-STARTED and JOURNEY merged), `build/writing-a-module.md`
+  and `architecture/performance.md`. Each old path is a redirect stub, so `docs/SPEC.md section N`
+  in code comments still resolves. The ADRs and `design/TOKENS.md` have front matter.
+- The npm package ships all of `docs/` except `work/`, `proposals/` and `design/boards/`, instead
+  of five named files that are now stubs.
+- An include line inside fenced code is an example: the build and docs-check leave it alone.
+  docs-check's list of built files names `/search-index.json`, which is what the build writes.
+
+#### docs-check and the generated reference pages (ADR 0019)
+
+- `scripts/docs-check` (`npm run docs:check`, and `test/docs-check.test.js` under `npm test`)
+  holds `docs/` to its contract: front matter on every published page, every page in
+  `docs/nav.json` or a redirect stub, relative links, `#anchors` and docs.vyre.run paths that
+  resolve, no links into unpublished folders, no em dash or section sign (in included files
+  too), no real names, secrets, non-example email or IP addresses, and reference pages that match
+  the code. It prints `path:line: problem` and exits 1 on any.
+- `scripts/gen-docs-reference` (`npm run docs:ref`) writes `docs/reference/{cli,tools,events,config,modules}.md`
+  from the CLI's command list, every `module.json`, every `ctx.tool` definition, the `emit` calls
+  and `core/config`. Tools are read by starting each module in a child process with a throwaway
+  home and a context that only records: no child processes, no listeners, no fetch, no keychain.
+- The hygiene rules (forbidden names, the secret pattern) moved to `scripts/lib/hygiene.js`,
+  shared by `test/hygiene.test.js` (unchanged behaviour) and docs-check.
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
