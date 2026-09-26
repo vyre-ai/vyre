@@ -4,7 +4,12 @@
 # scripts/install-box.sh. The stack lives in VYRE_DIR (default /srv/vyre).
 #
 #   vyre up        start the stack if needed, then print the onboarding link or the address
-#   vyre update    pull (or rebuild) the images and recreate what changed
+#   vyre up --print-link
+#                  the same, but stdout is only VYRE_LINK=<url> and, on a headless box,
+#                  VYRE_SSH=<ssh -L line>, for a program to read (or VYRE_LINK_ONLY=1)
+#   vyre update    pull (or rebuild) the images and recreate what changed. When the image is
+#                  built from $DIR/src (the installer's vyre.tgz), it first fetches a new
+#                  vyre.tgz from VYRE_BOX_URL and checks it against SHA256SUMS: no git needed.
 #   vyre logs      follow vyred's output
 #   vyre ...       anything else goes to the vyre CLI in the container
 set -eu
@@ -15,6 +20,49 @@ DIR=${VYRE_DIR:-/srv/vyre}
 # COMPOSE_FILE in $DIR/.env is relative, and compose resolves it against the working folder.
 cd "$DIR"
 compose() { docker compose "$@"; }
+die() { echo "vyre: $*" >&2; exit 1; }
+
+BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
+case "$BASE" in */) ;; *) BASE="$BASE/" ;; esac
+
+fetch() {
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$BASE$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then wget -qO "$2" "$BASE$1"
+  else die "need curl or wget to download $BASE$1"
+  fi
+}
+
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  else die "need sha256sum or shasum to verify downloads"
+  fi
+}
+
+# Replace $DIR/src with a verified vyre.tgz. A missing file on the site can come back as 200 and
+# a web page, so SHA256SUMS must look like one before anything in it is trusted.
+refresh_src() {
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  fetch SHA256SUMS "$tmp/SHA256SUMS" || die "could not download $BASE""SHA256SUMS"
+  if [ ! -s "$tmp/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$tmp/SHA256SUMS"; then
+    die "$BASE""SHA256SUMS is not a checksum list; is VYRE_BOX_URL right?"
+  fi
+  want=$(awk '$2 == "vyre.tgz" || $2 == "*vyre.tgz" { print $1; exit }' "$tmp/SHA256SUMS")
+  [ -n "$want" ] || die "SHA256SUMS has no line for vyre.tgz"
+  fetch vyre.tgz "$tmp/vyre.tgz" || die "could not download $BASE""vyre.tgz"
+  got=$(sha256 "$tmp/vyre.tgz")
+  [ "$got" = "$want" ] || die "checksum mismatch for $BASE""vyre.tgz (want $want, got $got)"
+  rm -rf "$DIR/src.new"
+  mkdir -p "$DIR/src.new"
+  tar -xzf "$tmp/vyre.tgz" -C "$DIR/src.new" --strip-components=1
+  [ -f "$DIR/src.new/box/Dockerfile" ] || { rm -rf "$DIR/src.new"; die "vyre.tgz has no box/Dockerfile"; }
+  rm -rf "$DIR/src.old"
+  if [ -d "$DIR/src" ]; then mv "$DIR/src" "$DIR/src.old"; fi
+  mv "$DIR/src.new" "$DIR/src"
+  rm -rf "$DIR/src.old" "$tmp"
+  trap - EXIT
+}
 
 # Wait for vyred to answer on its socket, up to a minute.
 ready() {
@@ -35,15 +83,44 @@ cli() {
     -e SSH_CONNECTION="${SSH_CONNECTION:-}" -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre "$@"
 }
 
+# print_link: run the CLI's `vyre up`, and reduce what it prints to VYRE_LINK and VYRE_SSH.
+# The link is the onboarding URL, or the box's address once onboarding is done.
+print_link() {
+  esc=$(printf '\033')
+  out=$(docker compose exec -T -e SSH_CONNECTION="${SSH_CONNECTION:-}" \
+    -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre up 2>&1 | sed "s/${esc}\[[0-9;]*m//g")
+  link=$(printf '%s\n' "$out" | sed -n 's|^ *\(https\{0,1\}://[^ ]*/onboard?t=[^ ]*\).*|\1|p' | head -n 1)
+  [ -n "$link" ] || link=$(printf '%s\n' "$out" | sed -n 's|^ *your address: *\(https://[^ ]*\).*|\1|p' | head -n 1)
+  if [ -z "$link" ]; then printf '%s\n' "$out" >&2; die "vyre up printed no link"; fi
+  ssh=$(printf '%s\n' "$out" | sed -n 's|^ *\(ssh -N -L .*[^ ]\) *$|\1|p' | head -n 1)
+  printf 'VYRE_LINK=%s\n' "$link"
+  if [ -n "$ssh" ]; then printf 'VYRE_SSH=%s\n' "$ssh"; fi
+}
+
 case "${1:-}" in
   up)
-    compose up -d --wait tailscale >/dev/null 2>&1 || compose up -d tailscale
-    compose up -d
-    ready
-    cli "$@"
+    shift
+    link=${VYRE_LINK_ONLY:-0}
+    for a in "$@"; do [ "$a" != --print-link ] || link=1; done
+    if [ "$link" = 1 ]; then
+      # stdout is for the two lines only.
+      { compose up -d --wait tailscale >/dev/null 2>&1 || compose up -d tailscale; compose up -d; ready; } >&2
+      print_link
+    else
+      compose up -d --wait tailscale >/dev/null 2>&1 || compose up -d tailscale
+      compose up -d
+      ready
+      cli up "$@"
+    fi
     ;;
   update)
-    if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then compose build --pull; else compose pull; fi
+    if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then
+      src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
+      if [ "${src%/}" = "${DIR%/}/src" ]; then refresh_src; fi
+      compose build --pull
+    else
+      compose pull
+    fi
     compose up -d
     ready
     cli up

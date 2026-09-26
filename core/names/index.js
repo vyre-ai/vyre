@@ -28,6 +28,7 @@ export default {
       try { const v = await ctx.vault.fetch("cloudflare-vyre-token"); if (v) return v; } catch {}
       throw new Error("no Cloudflare token for the vyre.run zone: set CLOUDFLARE_VYRE_TOKEN in ~/.vyre/env");
     };
+    const hasToken = () => token().then(() => true, () => false);
     const which = () => (ctx.config.network || {}).acme === "staging" ? "staging" : "production";
 
     const svc = names({
@@ -46,11 +47,11 @@ export default {
 
     const person = caller => !["onboard"].includes(String(caller));
     ctx.tool("names.status", {
-      description: "This box's address, how it is served, its owner, its certificate, and what Tailscale says.",
+      description: "This box's address, how it is served, its owner, its certificate, whether a vyre.run zone token is here, and what Tailscale says.",
       input: obj(),
       run: async () => {
-        const t = await svc.tailscale().catch(() => null);
-        return { ...svc.status(), tailscale: t && { ...t, install: t.installed ? null : ts.installCommand(), operator: await ts.operator(os.userInfo().username) } };
+        const [t, zone] = await Promise.all([svc.tailscale().catch(() => null), hasToken()]);
+        return { ...svc.status(), zone, tailscale: t && { ...t, install: t.installed ? null : ts.installCommand(), operator: await ts.operator(os.userInfo().username) } };
       },
     });
     ctx.tool("names.check", {

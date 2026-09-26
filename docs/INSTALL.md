@@ -28,14 +28,21 @@ What it does, in order:
 3. Checks `/dev/net/tun`, which the Tailscale container needs. On a VPS or an LXC container
    without it, enable TUN in the provider's panel.
 4. Creates `/srv/vyre`, owned by you (the account that ran `sudo`, if you did), and writes the
-   box files into it: `compose.yml`, `compose.chat.yml`, `vyre.env.example` and
-   `chat/compose.yml`. With `--from DIR` they are copied from the checkout instead, along with
-   `compose.build.yml`.
-5. Writes `/srv/vyre/.env` (mode 0600) with `COMPOSE_PROJECT_NAME=vyre` and `COMPOSE_FILE`, only
-   if it is not there. It never overwrites it: that file is yours.
-6. Installs the host wrapper to `/usr/local/bin/vyre`. If something else already has that name
+   box files into it: `compose.yml`, `compose.build.yml` and `vyre.env.example`. It downloads
+   `SHA256SUMS` first and checks every other file against its line there; a missing line or a
+   different hash stops the install. With `--from DIR` the files are copied from the checkout
+   instead.
+5. Picks how to get the image. It pulls `ghcr.io/vyre-ai/vyre` when the registry has it (or
+   `VYRE_IMAGE`). When it cannot, or with `VYRE_BUILD=tgz`, it downloads `vyre.tgz`, checks it the
+   same way, unpacks it into `/srv/vyre/src` and builds from there. `--from DIR` builds from DIR.
+6. Writes `/srv/vyre/.env` (mode 0600) with `COMPOSE_PROJECT_NAME=vyre` and `COMPOSE_FILE` (plus
+   `compose.build.yml` and `VYRE_SOURCE` for a build), only if it is not there. It never
+   overwrites it: that file is yours.
+7. Installs the host wrapper to `/usr/local/bin/vyre`. If something else already has that name
    it asks first.
-7. Runs `vyre up`.
+8. Runs `vyre up`. With `--print-link` (or `VYRE_LINK_ONLY=1`) it runs `vyre up --print-link`
+   instead, which prints only `VYRE_LINK=<url>`, and `VYRE_SSH=<ssh -L line>` when there is one,
+   for a program to read; everything else goes to stderr.
 
 sudo is used only for Docker's own install, for `/srv/vyre` when `/srv` is root's, and for
 `/usr/local/bin/vyre`. If your account is not in the `docker` group the installer runs the stack
@@ -92,12 +99,11 @@ The reasoning is in [ADR 0002](adr/0002-network-and-identity.md).
 ```
 /srv/vyre/                    yours, not root's
   compose.yml                 the stack: tailscale, vyre, docker-api (profile computers)
-  compose.build.yml           only with --from: build the image from VYRE_SOURCE
-  compose.chat.yml            run.vyre labels for Chat
-  chat/compose.yml            Mattermost and Postgres, off until listed in COMPOSE_FILE
+  compose.build.yml           used when COMPOSE_FILE lists it: build the image from VYRE_SOURCE
+  src/                        the unpacked vyre.tgz, when the image is built from it
   vyre.env.example            copy to vyre.env for CLOUDFLARE_VYRE_TOKEN and similar
   vyre.env                    optional, yours, read by the vyre container
-  .env                        COMPOSE_PROJECT_NAME, COMPOSE_FILE, TS_AUTHKEY, Chat's settings
+  .env                        COMPOSE_PROJECT_NAME, COMPOSE_FILE, VYRE_SOURCE, TS_AUTHKEY
 /usr/local/bin/vyre           the host wrapper
 ```
 
@@ -148,7 +154,9 @@ vyre update
 
 That pulls new images (or, with `compose.build.yml` in `COMPOSE_FILE`, rebuilds from
 `VYRE_SOURCE` with fresh base images), recreates what changed, waits for vyred and prints what
-`vyre up` prints. The volumes carry over. Data migrations run at start, per module (spec 7.1).
+`vyre up` prints. When `VYRE_SOURCE` is `/srv/vyre/src`, it first downloads a new `vyre.tgz` from
+`VYRE_BOX_URL`, checks it against `SHA256SUMS` and swaps it in, so a from-source box updates
+without git. The volumes carry over. Data migrations run at start, per module (spec 7.1).
 To update the box files themselves, run the installer again: it rewrites them and leaves `.env`
 and `vyre.env` alone.
 
@@ -200,23 +208,6 @@ and `/srv/vyre` stay, so a reinstall picks up where it left off. `--purge` also 
 volume labeled `run.vyre=1` in project `vyre`, after listing them and asking: that is the vault,
 Claude's sign-in and `/work`. The installer never uninstalls Docker, and leaves the images
 (`docker image rm` them if you like).
-
-## Adding Chat
-
-Chat is Mattermost and Postgres (`modules/chat/compose.yml`, copied to `/srv/vyre/chat/`), joined
-to the `vyre` network where vyred answers as `vyred`. Add it by listing the files in `.env`:
-
-```
-COMPOSE_FILE=compose.yml:chat/compose.yml:compose.chat.yml
-VYRE_CHAT_URL=https://chat.alex.vyre.run
-VYRE_CHAT_DB_PASSWORD=<a long random string>
-```
-
-With a from-source build, keep `compose.build.yml` in the list after `compose.yml`.
-`compose.chat.yml` only adds the `run.vyre=1` labels, so `--purge` finds Chat's volumes too.
-Then `vyre up`, and the one-time setup in [modules/chat/SETUP.md](../modules/chat/SETUP.md) (the
-owner, the team, the bot and `/vyre`, run from `/srv/vyre`). Mattermost is published on the
-host's `127.0.0.1:8065`.
 
 ## The agents' computers
 
