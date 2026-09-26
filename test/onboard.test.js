@@ -151,6 +151,40 @@ test("onboard: a new link voids the old unredeemed one; the owner arriving on th
   assert.equal(await fetch(`http://127.0.0.1:${b.port}/onboard`).then(() => "open", () => "closed"), "closed");
 });
 
+/** A free port that is not 7300, for a test that restarts vyred and needs the link's port again. */
+async function freePort() {
+  const s = http.createServer();
+  await new Promise(r => s.listen(0, "127.0.0.1", () => r(undefined)));
+  const port = /** @type {any} */ (s.address()).port;
+  await new Promise(r => s.close(() => r(undefined)));
+  return port;
+}
+
+test("onboard: vyre update's report mints nothing, and the unused link and an open page survive vyred restarting", async t => {
+  const port = await freePort();
+  const { root, d } = await box(t, { network: { onboardPort: port } });
+  const a = (await call("onboard.link", {}, { root })).data;
+  const opened = (await call("onboard.link", {}, { root })).data;
+  const { session } = await redeem(opened.url);
+  const unused = (await call("onboard.link", {}, { root })).data;
+  const report = (await call("onboard.link", { mint: false }, { root })).data;
+  assert.deepEqual([report.url, report.pending, report.expires], [null, true, unused.expires], "a report, not a link");
+  assert.equal(fs.statSync(path.join(root, "onboard-link.json")).mode & 0o777, 0o600);
+  assert.ok(!fs.readFileSync(path.join(root, "onboard-link.json"), "utf8").includes(new URL(unused.url).searchParams.get("t")), "only the hash is kept");
+  // vyre update: the container is recreated, so vyred stops and starts.
+  await d.stop();
+  const d2 = await start({ root, log: () => {} });
+  t.after(() => d2.stop());
+  assert.equal((await tool(`http://127.0.0.1:${port}`, session, "onboard.status")).status, 200, "the open page keeps working");
+  assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, true);
+  assert.equal((await redeem(unused.url)).status, 302, "the link the user was sent still works");
+  assert.equal((await redeem(a.url)).status, 403, "a voided one stays void");
+  assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, false);
+  d2.events.emit("names", "owner.seen", {});
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(fs.existsSync(path.join(root, "onboard-link.json")), false, "the owner arriving forgets it for good");
+});
+
 test("onboard: on a host the listener binds loopback; in the box's container, the name the compose gives it", () => {
   assert.equal(bindAddress({}), "127.0.0.1");
   assert.equal(bindAddress({ VYRE_ONBOARD_HOST: "vyred" }), "vyred");

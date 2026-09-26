@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre update` no longer voids the set-up link the user was sent
+
+- `vyre update` on a box ended with `vyre up`, which minted a new onboarding link and voided the
+  unused one; recreating the container also restarted vyred, which forgot the link and every open
+  onboarding page. Now update runs `vyre up --keep-link`, which calls `onboard.link {mint:false}`
+  and only reports: "set up is not finished; the link you have still works (42 min left)". A
+  plain `vyre up` still mints a fresh link, and says it voids the old one.
+- The unused link's hash, its port and the open onboarding sessions' hashes are kept in
+  `<VYRE_HOME>/onboard-link.json` (0600, hashes only) when vyred stops, and the next vyred reopens
+  the listener for them. The owner arriving on the tailnet deletes the file for good.
+  `core/onboard/loopback.js` (`keep`, `resume()`, `pending()`, `close({forget})`),
+  `core/onboard/index.js`, `core/cli/commands/up.js`, `box/vyre`.
+
 #### `npm i -g vyre` is 6 MB, not 750
 
 - The search model's library (`@huggingface/transformers` with ONNX Runtime) is no longer an npm

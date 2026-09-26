@@ -180,10 +180,19 @@ async function run(args, deps) {
     return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json }, { ...deps, tool: callTool, json, say, done, fail });
   }
 
-  const link = await callTool("onboard.link");
+  // --keep-link (vyre update): report, mint nothing, so the link the user already has still works.
+  const keep = Boolean(flags["keep-link"]);
+  const link = await callTool("onboard.link", keep ? { mint: false } : {});
   if (link.error) return fail("onboarding_unavailable", "onboarding is not available: " + link.error.message);
   const d = link.data;
   const ssh = d.url ? sshLine(d.port, d.user) : null;
+  if (keep && "pending" in d) {
+    const left = d.pending && d.expires ? Math.max(1, Math.round((d.expires - Date.now()) / 60_000)) : 0;
+    if (json) return done({ url: null, pending: Boolean(d.pending), expires: d.expires ?? null, address: d.address || null });
+    say(d.pending ? `  set up is not finished; the link you have still works ${dim(`(${left} min left)`)}` : "  set up is not finished");
+    say(dim(`  vyre up prints a new link${d.pending ? " and voids that one" : ""}`));
+    return 0;
+  }
   if (!d.url) {
     // After onboarding: the same ending the Mac prints, so "is it done?" has one answer. The box
     // cannot ask its own address (its listener refuses itself, ADR 0002), so it asks names.
@@ -375,7 +384,7 @@ async function upSystem(flags) {
 
 export default [
   {
-    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>] [--json] [--no-capsule]", summary: "start vyred and print the onboarding link, or this box's address",
+    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>] [--json] [--no-capsule] [--keep-link]", summary: "start vyred and print the onboarding link, or this box's address",
     run: args => up(args),
   },
   {

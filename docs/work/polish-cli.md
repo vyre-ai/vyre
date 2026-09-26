@@ -22,6 +22,13 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   to fetch now (16 s on the test box, real network, temp home). Tests: core/recall/embed-install.test.js
   (fake npm, no network). The 2 MB target: the rest is Vyre's own code, deck and docs.
 
+## Done (2)
+
+- vyre update keeps the pending onboarding link (lead's add): `vyre up --keep-link`,
+  `onboard.link {mint:false}`, link hash and sessions survive a vyred restart. Tests:
+  test/onboard.test.js (restart survival), core/cli/commands/up.test.js. Commit stamping
+  {version, commit}: offered to the integrator (who also has it); waiting for its answer.
+
 ## Doing
 
 - `vyre threads` prints nothing; `vyre threads --help` crashes; two vyreds on a symlinked home
@@ -35,6 +42,10 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- onboard (owner: onboarding team): `onboard.link` takes `{mint:false}` and then returns
+  `{url:null, pending, expires, port}`; loopback keeps hashes in <VYRE_HOME>/onboard-link.json.
+- box/vyre: `update` ends with `cli up --keep-link`.
 
 - recall (owner: recall team): `package.json` has no optionalDependencies; `core/recall/embed.js`
   installs the library on first use (`install`, `installed`, `load({ runtime, npm })`, `PACKAGE`,
