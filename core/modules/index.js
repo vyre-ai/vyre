@@ -123,6 +123,8 @@ export class Registry {
     this.tools = new Map();
     /** @type {Map<string, { manifest: any, dir: string, state: string, error?: string, handle?: any }>} */
     this.modules = new Map();
+    /** @type {Map<string, { module: string, handler: Function }>} WebSocket paths, keyed "<module>/<name>". */
+    this.upgrades = new Map();
     /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
     this.routes = new Map();
   }
@@ -165,6 +167,7 @@ export class Registry {
     } catch (e) {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
+      for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
     }
   }
@@ -225,6 +228,16 @@ export class Registry {
       // Another module's tool, through the same path as every caller: input checked, rules run.
       // This is the only way one module uses another; never import its files.
       call: (tool, input) => this.call(tool, input, `module:${m.name}`),
+      // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
+      // cannot carry: Glass streams a screen this way. The name must be declared under
+      // shows.streams. The handler gets the raw upgrade (req, socket, head) and the caller, and
+      // owns the socket from then on, including closing it when the module stops.
+      upgrade: (name, handler) => {
+        const declared = (m.shows && m.shows.streams) || [];
+        if (!declared.includes(name)) throw new Error(`${m.name} registered stream ${name}, which its manifest does not declare under shows.streams`);
+        if (typeof handler !== "function") throw new Error(`stream ${name} needs a handler`);
+        this.upgrades.set(`${m.name}/${name}`, { module: m.name, handler });
+      },
       // vyred's router, for a module that opens a listener of its own (names, onboard). The module
       // establishes the caller; the policy limits what that listener can reach. See ADR 0002.
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },

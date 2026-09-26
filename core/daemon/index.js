@@ -65,6 +65,21 @@ export async function start(opts = {}) {
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
+  // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
+  // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
+  // server.close() would wait on a Glass viewer forever.
+  const upgraded = new Set();
+  server.on("upgrade", (req, socket, head) => {
+    const url = new URL(req.url || "/", "http://vyred");
+    const m = /^\/v1\/streams\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(url.pathname);
+    const u = m && registry.upgrades.get(`${m[1]}/${m[2]}`);
+    if (!u) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
+    const claimed = String(req.headers["x-vyre-caller"] || "local");
+    upgraded.add(socket);
+    socket.on("close", () => upgraded.delete(socket));
+    try { u.handler(req, socket, head, { caller: claimed.startsWith("module:") ? "local" : claimed, url }); }
+    catch (e) { log(`stream ${m[1]}/${m[2]} failed: ${/** @type {Error} */ (e).message}`); socket.destroy(); }
+  });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
   fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
@@ -74,7 +89,9 @@ export async function start(opts = {}) {
   const stop = async () => {
     if (stopped) return; stopped = true;
     for (const end of streams) end();
-    // A module's own stream (the link's box events) is not in `streams`; close what is left.
+    for (const s of upgraded) s.destroy();
+    // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close
+    // what is left.
     server.closeAllConnections();
     await new Promise(r => server.close(() => r(undefined)));
     await registry.stop();
