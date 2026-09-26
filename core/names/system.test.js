@@ -218,6 +218,23 @@ function sums(folder) {
 }
 
 /** A temp box: stubs on PATH, the release site, the stack folder and the wrapper's path. */
+/**
+ * /usr/bin:/bin, or, when a test takes a command away (a null stub), a folder of links to both
+ * without it: a machine that has the real one (the test box has Docker) must not find it there.
+ */
+function systemPath(base, without) {
+  if (!without.length) return "/usr/bin:/bin";
+  const dir = path.join(base, "system-bin");
+  fs.mkdirSync(dir);
+  for (const from of ["/usr/bin", "/bin"]) {
+    for (const name of fs.readdirSync(from)) {
+      if (without.includes(name) || fs.existsSync(path.join(dir, name))) continue;
+      try { fs.symlinkSync(path.join(from, name), path.join(dir, name)); } catch {}
+    }
+  }
+  return dir;
+}
+
 function setup(t, extra) {
   const base = tempHome(t);
   const bin = path.join(base, "bin"), log = path.join(base, "calls.log"), www = path.join(base, "site");
@@ -229,7 +246,7 @@ function setup(t, extra) {
   fs.writeFileSync(log, "");
   // /dev/null stands in for /dev/net/tun: a character device on every system.
   // No Docker socket unless a test makes one, so no DOCKER_GID line unless a test asks for it.
-  const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null",
+  const env = { PATH: `${bin}:${systemPath(base, Object.keys(extra || {}).filter(k => extra[k] === null))}`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null",
     VYRE_DOCKER_SOCK: path.join(base, "no-docker.sock") };
   const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
   return { base, dir, wrapper, site: www, env, calls };

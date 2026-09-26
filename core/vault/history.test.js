@@ -11,7 +11,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS, PERSONAL } from "./vault.js";
 import { KEEP, historyPath } from "./history.js";
-import { recorded } from "./testing.js";
+import { recorded, TEST_KDF } from "./testing.js";
 
 const fake = l => `fixture-${l}-${crypto.randomBytes(10).toString("hex")}`;
 
@@ -20,7 +20,7 @@ function setup(t) {
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   t.after(() => { db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
-  const vault = new Vault({ db, dir: path.join(tmp, "vault"), config: { vault: { keystore: "file" } }, emit: () => {}, testKdf: { kdf: "argon2id", m: 256, t: 1, p: 1 } });
+  const vault = new Vault({ db, dir: path.join(tmp, "vault"), config: { vault: { keystore: "file" } }, emit: () => {}, testKdf: TEST_KDF });
   return { vault, db, tmp };
 }
 
