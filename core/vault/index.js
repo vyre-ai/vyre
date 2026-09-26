@@ -193,7 +193,7 @@ export default {
         `Put ${(Array.isArray(items) ? items : []).map(i => i && i.env ? `${quoted(i.name)} as ${i.env}` : quoted(i && i.name)).join(", ")} into a program's environment`));
 
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
-    tool("vault.totp", [...SURFACES, "module"], "The current one-time code for a login with a TOTP seed.",
+    tool("vault.totp", [...SURFACES, "module", "tailnet"], "The current one-time code for a login with a TOTP seed.",
       // `id` is the Capsule's name for the item (its actions get `{ id, front }`).
       obj({ name: str, id: str, session: str }),
       async ({ name, id }, { caller }) => {

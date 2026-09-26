@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -289,4 +289,24 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   await reg.start(discover([path.join(home, "mods")]), { role: "local" });
   const r = await reg.call("notes.add", {}, "cli", { proof: { method: "capsule", sig: "secret" }, thread: "t1" });
   assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
+});
+
+test("modules: a \"tailnet\" entry in callers lets any tailnet device in, and nothing else that looks like one", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { callers: ["deck", "tailnet"], run: async (i, meta) => ({ caller: meta.caller }) });
+    ctx.tool("notes.wipe", { callers: ["deck"], run: async () => 1 });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.wipe"] } }, src]]);
+  for (const caller of ["tailnet:alex@example.com", "tailnet:kit@example.com"]) {
+    assert.deepEqual(await reg.call("notes.add", {}, caller), { data: { caller } }, caller);
+    assert.ok(reg.listTools(caller).some(x => x.name === "notes.add"), caller);
+    assert.ok(!reg.listTools(caller).some(x => x.name === "notes.wipe"), caller);
+  }
+  assert.equal((await reg.call("notes.wipe", {}, "tailnet:alex@example.com")).error.code, "denied", "a list without tailnet still refuses a device");
+  for (const caller of ["tailnet", "tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex", "cli", "mcp"]) {
+    assert.equal((await reg.call("notes.add", {}, caller)).error.code, "denied", caller);
+    assert.ok(!reg.listTools(caller).some(x => x.name === "notes.add"), caller);
+  }
+  assert.equal(callerKind("tailnet:alex@example.com"), "tailnet:alex@example.com", "callerKind still returns the whole string");
 });

@@ -717,7 +717,7 @@ export default {
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
-      ["cli", "local", "module", "deck", "capsule"],
+      ["cli", "local", "module", "deck", "capsule", "tailnet"],
       // And a person must be there right now (presence proof, ADR 0004): the summary is what they
       // read in the Touch ID dialog or at the terminal before the answer goes through.
       { presence: { summary: i => answerSummary(sb, i) } });

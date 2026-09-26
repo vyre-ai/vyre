@@ -111,6 +111,19 @@ export const callerKind = caller => {
   return c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
 };
 
+/**
+ * May this caller use a tool with this `callers` list? An entry is a caller kind, compared whole,
+ * except "tailnet", which lets in any of the owner's devices ("tailnet:<login>", ADR 0015). The
+ * bare word is never a caller itself: a socket client could send it as a label.
+ * @param {string[]} callers
+ * @param {string} caller
+ */
+export const callerAllowed = (callers, caller) => {
+  const kind = callerKind(caller);
+  if (kind === "tailnet") return false;
+  return callers.includes(kind) || (callers.includes("tailnet") && /^tailnet:\S+$/.test(kind));
+};
+
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
@@ -291,7 +304,7 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-    if (def.callers && !def.callers.includes(callerKind(caller))) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+    if (def.callers && !callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
     if (this.deps.rules) {
@@ -328,7 +341,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || !d.callers || d.callers.includes(callerKind(caller))))
+    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || !d.callers || callerAllowed(d.callers, caller)))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}) }));
   }
 

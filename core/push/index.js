@@ -24,7 +24,7 @@ export const MIGRATIONS = [
 const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.apple.com", "notify.windows.com"];
 const KEY_ITEM = "push-vapid";
 const KINDS = ["ask", "draft", "watch", "lesson"];
-const PEOPLE = ["cli", "local", "deck", "capsule"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
 
 /**
  * What each event becomes. Titles are fixed words; the only variable part is an id in the path.
