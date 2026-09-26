@@ -22,8 +22,8 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 1. Apply deck-design's reduced set when they send it (first job after their restart; their notes
    at deck-design 24c3f31). Working answers: From memory goes neutral (--hover fill, --text-2, a
    memory icon, no gold); --match stays as lime's wash; sizes collapse to 12/13/15/20/28 (phone
-   22/26 to 20 or 28, 17/16 to 15). Open: 15 is below iOS body (17); ask for a fixed phone offset
-   (+2 on 15 and 20) if 15 reads small. Then re-run the contrast pass (scratchpad phone-render/
+   22/26 to 20 or 28, 17/16 to 15). Agreed with deck-design (f0c9738): the phone adds +2 on 15
+   and 20 (17 for messages and row titles, 22 for page labels); 12, 13 and 28 stay shared. Then re-run the contrast pass (scratchpad phone-render/
    build.py, rebuilt if the scratchpad is gone), republish the canvas, tell the integrator.
 2. The attention colour pick is still pending with the user: violet (current), honey or teal.
    It is a one-line swap per theme of the three --beacon-* values.
