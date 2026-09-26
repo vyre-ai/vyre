@@ -11,8 +11,11 @@
 // listener can map a whois of that node to the agent (computers.node.agent). The node is
 // ephemeral, so a container that dies takes its node with it; a clean stop also logs it out.
 //
-// Before the key is sent, the computer is asked GET /tailnet, with no key. An image without a
-// tailnet side answers 404 (or says it cannot run one), and then the key is never sent at all.
+// The key goes only to the port the driver names for the computer's tailnet side
+// (Inspection.ports.tailnet), never to computerd's own: computerd runs as the agent's uid, so the
+// agent could stop it and answer on its port. No driver names that port until the image runs the
+// tailnet side as another user (image/computerd/tailnet.js). Before the key is sent, that side is
+// asked GET /tailnet, with no key; a 404, or ready: false, and the key is never sent at all.
 
 /** The vault item holding the auth key. The user makes the key and stores it (the report's steps). */
 export const ITEM = "tailscale-agent-authkey";

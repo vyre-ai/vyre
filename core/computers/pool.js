@@ -92,7 +92,7 @@ export class Pool {
     /** @type {Map<string, number>} */
     this.idle = new Map();
     /** Where each running computer answers, from the driver's last inspect. */
-    /** @type {Map<string, { host: string, ports: { vnc: number, helper: number } }>} */
+    /** @type {Map<string, { host: string, ports: { vnc: number, helper: number, tailnet?: number } }>} */
     this.hosts = new Map();
     /** @type {Map<string, { agent: string, surface: string, expires: number }>} */
     this.tickets = new Map();
@@ -380,9 +380,12 @@ export class Pool {
     try { cfg = this.tailnet.setting(); }
     catch (e) { this.log(`${agent}'s computer did not join the tailnet: ${/** @type {Error} */ (e).message}`); return; }
     if (!cfg.enabled) return;
+    // The key goes only to a port the driver names for the tailnet side, never to computerd's own
+    // port: computerd runs as the agent's uid, so the agent could stop it and answer there itself.
+    if (!this.tailnetSide(agent)) { this.log(`${agent}'s computer did not join the tailnet: its image has no tailnet side apart from the agent's user (no tailnet port); the key was not sent`); return; }
     const ctl = new AbortController();
     const key = this.tailnet.key;
-    const done = joinTailnet({ helper: () => this.endpoint(agent).helper, key, agent, tag: cfg.tag, signal: ctl.signal, ...(this.wait ? { wait: this.wait } : {}) })
+    const done = joinTailnet({ helper: () => /** @type {{ url: string, token: string }} */ (this.tailnetSide(agent)), key, agent, tag: cfg.tag, signal: ctl.signal, ...(this.wait ? { wait: this.wait } : {}) })
       .then(r => {
         if (ctl.signal.aborted) return;
         if (!r.joined) { this.log(`${agent}'s computer did not join the tailnet: ${r.why}`); return; }
@@ -396,6 +399,13 @@ export class Pool {
       .catch(e => this.log(`${agent}'s computer did not join the tailnet: ${/** @type {Error} */ (e).message}`))
       .finally(() => { if (this.joins.get(agent) && this.joins.get(agent).ctl === ctl) this.joins.delete(agent); });
     this.joins.set(agent, { ctl, done });
+  }
+
+  /** Where the computer's tailnet side answers, or null when the driver names no port for it. */
+  tailnetSide(agent) {
+    const h = this.hosts.get(agent), r = this.row(agent);
+    if (!h || !r || !h.ports.tailnet) return null;
+    return { url: `http://${h.host}:${h.ports.tailnet}`, token: String(r.helper_token) };
   }
 
   /** The node is gone with the computer: forget it, and say so once. */
@@ -456,8 +466,9 @@ export class Pool {
       // A frozen process cannot handle SIGTERM, so a stop would only ever end in the kill.
       if (st.state === "paused") await d.unpause(r.container);
       // A clean stop logs the node out. The node is ephemeral, so if this fails it still goes.
-      if (st.state !== "exited" && (this.row(agent).stable_id || joining) && this.hosts.has(agent)) {
-        try { await leaveTailnet(this.endpoint(agent).helper); }
+      const side = this.tailnetSide(agent);
+      if (st.state !== "exited" && (this.row(agent).stable_id || joining) && side) {
+        try { await leaveTailnet(side); }
         catch (e) { this.log(`${agent}'s node was not logged out (it is ephemeral and goes with the container): ${/** @type {Error} */ (e).message}`); }
       }
       if (st.state !== "exited") await d.stop(r.container);

@@ -66,13 +66,14 @@ async function engine(t, root) {
  * asks for also goes through the real DockerDriver to the fake Engine, so the test can hold the
  * body the proxy would check.
  */
-async function setup(t, { enabled = true, missing = false, ready = true } = {}) {
+async function setup(t, { enabled = true, missing = false, ready = true, port = true } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "t.db"));
   t.after(() => db.close());
   migrate(db, "computers", MIGRATIONS);
   const cd = await computerd(t, { missing, ready });
-  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: cd.port } } });
+  // The tailnet side on its own port, as the driver would name it; computerd's port is a closed one.
+  const driver = new FakeDriver({ local: { host: "127.0.0.1", ports: { helper: 9, ...(port ? { tailnet: cd.port } : {}) } } });
   const e = await engine(t, root);
   const docker = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   const create = driver.create.bind(driver);
@@ -165,6 +166,18 @@ test("tailnet: an image with no tailnet side, or one that cannot run it, never g
     assert.ok(s.logs.some(l => /did not join the tailnet: .*the key was not sent/.test(l)), s.logs.join("\n"));
     assert.equal(s.pool.agentOfNode("nKit7CNTRL"), null);
   }
+});
+
+test("tailnet: with no tailnet port from the driver, nothing is called and the key stays in the vault", async t => {
+  // Today's image: computerd is the only thing listening, and it runs as the agent's uid, so an
+  // agent could stop it and answer GET /tailnet itself. The key never goes there.
+  const s = await setup(t, { port: false });
+  await s.pool.checkout("kit");
+  await s.joined("kit");
+  await s.pool.stop("kit");
+  assert.deepEqual(s.cd.seen, []);
+  assert.equal(s.fetched.n, 0);
+  assert.ok(s.logs.some(l => /no tailnet side apart from the agent's user .*the key was not sent/.test(l)), s.logs.join("\n"));
 });
 
 test("tailnet: config computers.tailnet is checked, and anything but enabled: true is off", () => {
