@@ -503,6 +503,38 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- Rooms (ADR 0007, decision 1). A room is a project (its folders plus the threads picked into
+  it) or `unfiled`. The curator derives every room from its own sessions and lessons with the
+  same rules, and writes rows with `room = '<slug>'`; `'*'` rows are the main graph. Deleting
+  every other room's sessions leaves a room's rows identical (tested). A session in several
+  rooms counts in room R only for things R has from a session of its own or a lesson, so a
+  shared planning thread cannot carry one client into another's room. A room keeps its own
+  node counts, dates, roles and short forms (`memory_room_nodes`, `memory_shortforms.room`).
+- Short forms keep every claimant; a read picks the most precise one in view, so "Summit" means
+  Summit Dental in one project and Summit Roofing in another. A short form followed by another
+  capitalised word is part of a different name and is not matched.
+- Hub rule: an org is a hub of the main graph when it is in at least `max(3, rooms/2)` rooms, or
+  anywhere past the session share when no project is named for it. One taught as `client_of` is
+  never a hub, so the user's main client is no longer the thing Memory hides.
+- When two rooms' `works_at` winners differ and were seen within 90 days of each other, the
+  `'*'` row is marked `conflict`; further apart, the newer holds in `'*'` and the older is closed
+  there and stays open in its room. Facts and floor-plan edges carry `conflict`.
+- `memory.facts`, `relevant`, `why` and `graph` take `room` (a slug or `"unfiled"`, alias
+  `project`). Folders one project owns read its room; other folders keep the strict folder view.
+  The unfiled room is for the user and agents granted every project. The Harness's Enrich hook
+  reads `room: "unfiled"` outside every project instead of the session's folder.
+- Memory stores the rooms (`memory_rooms`) from `projects.list` on its first pass and after
+  `project.created`, `project.changed`, `thread.picked` and `thread.unpicked`. Picked threads are
+  read when `projects.list` gives their ids (`threads` as a list); today it gives counts.
+- Decay at read time (decision 3). `memory_edges.seen` is the newest supporting turn over all
+  evidence, not the capped six; derive still never reads the clock. `fresh = max(floor, 0.5 ^
+  (days / half-life))`: identity 365 days (floor 0.4), `works_at` 180 (0.25), `mentioned_in` 30
+  (0.1); what the user said or confirmed does not decay. `memory.relevant` multiplies its score
+  by `fresh` and leaves out facts under 0.35 unless pinned; `memory.facts` lists them with
+  `stale: true`, `fresh` and `seen_age` ("10 months"). Silence never closes an edge.
+- Migration 4 adds `room`, `seen`, `conflict`, `origin` and `rule` to `memory_edges` (the unique
+  key gains `room`) and a `rederive` flag, so every existing home derives once more.
+
 - `memory.graph {project_cwds?, around?, depth?, limit?, since?, agent?}`: the graph as a floor
   plan for the Deck. One room per project (from `projects.list`), a Shared room for the people
   and organisations several projects have, and a No project room; entity, thread and fact nodes;

@@ -23,6 +23,9 @@ export default {
     const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log });
     const graph = new Graph(ctx.store.db, curator);
     let running = null, again = false, stopping = false, timer = null;
+    // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
+    // the first pass and whenever a project or a pick changes.
+    let roomsStale = true;
 
     /** One pass at a time. A request during a pass runs one more pass after it, not two. */
     const run = (opts = {}) => {
@@ -31,6 +34,7 @@ export default {
         let result;
         do {
           again = false;
+          if (roomsStale) { roomsStale = false; await syncRooms().catch(e => ctx.log("could not read projects: " + e.message)); }
           result = await curator.curate({ ...opts, stopped: () => stopping });
           opts = {};
           if (result.changed) ctx.events.emit("memory.curated", { nodes: result.nodes, edges: result.edges, ms: result.ms, updated: curator.updated() });
@@ -53,16 +57,23 @@ export default {
       if (p.rewritten && p.session) curator.reset(String(p.session));
       soon();
     });
+    // A project made, changed or a thread picked changes the rooms.
+    const offs = ["project.created", "project.changed", "thread.picked", "thread.unpicked"].map(type => ctx.events.on(type, () => { roomsStale = true; soon(); }));
     soon();
 
     // Projects, as the projects module knows them, for rooms and for an agent's grants. Memory
-    // does not own projects; without the module there are simply no rooms.
+    // does not own projects; without the module there are simply no rooms. Picked threads are
+    // read when the list carries their ids (threads or picked as a list); counts are ignored.
     const projectList = async () => {
       const r = await ctx.call("projects.list", {});
+      if (r.error && r.error.code !== "no_such_tool") throw new Error(r.error.message);
       const list = r.error ? [] : (Array.isArray(r.data) ? r.data : r.data?.projects || []);
+      const ids = p => (Array.isArray(p.threads) ? p.threads : Array.isArray(p.picked) ? p.picked : []).map(x => String(x && typeof x === "object" ? x.id : x));
       return list.filter(p => p && p.slug).map(p => ({ slug: String(p.slug), name: String(p.name || p.slug),
-        folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))] }));
+        folders: [...new Set([p.home, ...(p.workspaces || []), ...(p.folders || [])].filter(Boolean).map(String))], threads: ids(p) }));
     };
+    /** Store the rooms. A change marks the curator dirty, so the pass that follows derives. */
+    const syncRooms = async () => { curator.setRooms(await projectList()); };
     /**
      * What a caller may see. The user, from any surface or their own sessions, sees everything;
      * so does the assistant and an agent granted every project. Any other agent sees only its
@@ -89,11 +100,18 @@ export default {
       return { all: false, agent: who, folders: (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name)).flatMap(p => p.folders) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));
-    /** Throws unless the caller may read these folders' graph (none: the main graph). */
-    const guard = async ({ agent, project_cwds = [] }, caller) => {
+    /**
+     * Throws unless the caller may read these folders' graph or this room (none: the main
+     * graph). The unfiled room holds whatever no project owns, so it is read like the main
+     * graph: by the user and by agents granted every project.
+     */
+    const guard = async ({ agent, project_cwds = [], room }, caller) => {
       const r = await reach(agent, caller);
       if (r.all) return r;
-      const want = clean(project_cwds);
+      if (room === "unfiled") throw new Error(`the unfiled room is for the user and agents granted every project, not ${r.agent}`);
+      const known = room && room !== "*" ? curator.rooms().find(p => p.slug === room) : null;
+      if (room && room !== "*" && !known) throw new Error(`no project ${room}`);
+      const want = known ? known.folders : clean(project_cwds);
       if (!want.length) throw new Error(`the main graph is for the assistant and agents granted every project; ask for one of ${r.agent}'s projects with project_cwds`);
       const outside = want.filter(c => !within(c, r.folders));
       if (outside.length) throw new Error(`${r.agent} is not granted ${outside.join(", ")}`);
@@ -102,36 +120,44 @@ export default {
     /** The user's own surfaces. Only these, and a verified all-projects agent, draw the main graph. */
     const OWNER = new Set(["deck", "cli", "local"]);
     const agentField = { agent: { type: "string" } };
+    // A room by name: a project's slug, or "unfiled" for sessions in no project. project is the
+    // same thing under the name the CLI's --project uses.
+    const roomField = { room: { type: "string" }, project: { type: "string" } };
+    /** The room an input names, if any. */
+    const roomOf = input => input.room || input.project || undefined;
 
     ctx.tool("memory.graph", {
       description: "The graph as a floor plan for the Deck: one room per project, a shared room, nodes and edges, capped. project_cwds gives one project's graph; without it, the main graph (the assistant only). around/depth draw one node's neighbourhood. since returns { unchanged: true } when nothing moved.",
-      input: { type: "object", properties: { project_cwds: cwds, around: { type: "string" }, depth: { type: "integer" }, limit: { type: "integer" }, since: { type: "integer" }, ...agentField } },
+      input: { type: "object", properties: { project_cwds: cwds, ...roomField, around: { type: "string" }, depth: { type: "integer" }, limit: { type: "integer" }, since: { type: "integer" }, ...agentField } },
       run: async (input, { caller } = {}) => {
+        input = { ...input, room: roomOf(input) };
         const r = await guard(input, caller);
         // The main graph is a drawing of every client at once. Beyond the rule above, only the
         // user's own surfaces (or a verified agent with every project) are given it: a session
         // that has not said who it is gets its project's graph, not everyone's.
-        const main = !clean(input.project_cwds).length;
+        const main = !clean(input.project_cwds).length && (!input.room || input.room === "*" || input.room === "unfiled");
         if (main && !r.agent && !OWNER.has(String(caller)) && !String(caller).startsWith("module:")) {
           throw new Error("the main graph is drawn for the Deck and the assistant; pass project_cwds for a project's graph");
         }
-        return floorPlan(graph, { ...input, projects: await projectList() });
+        const projects = await projectList();
+        if (curator.setRooms(projects)) soon();
+        return floorPlan(graph, { ...input, projects });
       },
     });
     ctx.tool("memory.facts", {
       description: "What memory holds: facts about one thing (about), about what a project's sessions name (project_cwds), or the most-seen outside parties. Each fact has its source turn, age and confidence.",
-      input: { type: "object", properties: { about: { type: "string" }, project_cwds: cwds, limit: { type: "integer" }, ...agentField } },
-      run: async ({ about, project_cwds = [], limit = 20, agent }, { caller } = {}) => (await guard({ agent, project_cwds }, caller), graph.facts({ about, project_cwds, limit: Math.min(200, Math.max(1, limit)) })),
+      input: { type: "object", properties: { about: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
+      run: async ({ about, project_cwds = [], limit = 20, agent, ...rest }, { caller } = {}) => { const room = roomOf(rest); return (await guard({ agent, project_cwds, room }, caller), graph.facts({ about, project_cwds, room, limit: Math.min(200, Math.max(1, limit)) })); },
     });
     ctx.tool("memory.relevant", {
       description: "The few facts worth adding to a prompt about this text, or [] when nothing in it is known. For the Enrich hook: precise, and fast.",
-      input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, limit: { type: "integer" }, ...agentField } },
-      run: async ({ text, project_cwds = [], limit = 5, agent }, { caller } = {}) => (await guard({ agent, project_cwds }, caller), graph.relevant({ text, project_cwds, limit: Math.min(20, Math.max(1, limit)) })),
+      input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
+      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => { const room = roomOf(rest); return (await guard({ agent, project_cwds, room }, caller), graph.relevant({ text, project_cwds, room, limit: Math.min(20, Math.max(1, limit)) })); },
     });
     ctx.tool("memory.why", {
       description: "The turns that support a fact (its id, src|rel|dst) or where a thing came up (a name). Turns that no longer exist are counted as gone.",
-      input: { type: "object", required: ["fact"], properties: { fact: { type: "string" }, limit: { type: "integer" }, project_cwds: cwds, ...agentField } },
-      run: async ({ fact, limit = 10, project_cwds = [], agent }, { caller } = {}) => (await guard({ agent, project_cwds }, caller), graph.why({ fact, project_cwds, limit: Math.min(50, Math.max(1, limit)) })),
+      input: { type: "object", required: ["fact"], properties: { fact: { type: "string" }, limit: { type: "integer" }, project_cwds: cwds, ...roomField, ...agentField } },
+      run: async ({ fact, limit = 10, project_cwds = [], agent, ...rest }, { caller } = {}) => { const room = roomOf(rest); return (await guard({ agent, project_cwds, room }, caller), graph.why({ fact, project_cwds, room, limit: Math.min(50, Math.max(1, limit)) })); },
     });
     const steer = mode => ({
       description: mode === "pin"
@@ -183,6 +209,7 @@ export default {
         stopping = true;
         clearTimeout(timer);
         off();
+        for (const o of offs) o();
         if (running) await running.catch(() => {});
       },
     };

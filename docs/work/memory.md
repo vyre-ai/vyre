@@ -54,6 +54,15 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   index is available, reports counts and timings only.
 
 ## Done
+- Rooms (ADR 0007 decision 1): per-room derive with the anchor rule, `'*'` main rows, per-room
+  nodes and short forms, claimants resolved at read time, the new hub rule, `works_at` conflict
+  marking, the unfiled room and the Enrich fallback to it. Tested: a room's rows are unchanged
+  when every other room's sessions are deleted; room confidence ignores other rooms; a hub thread
+  picked into two projects carries no client across; unfiled never sees project-private facts; a
+  main client is not a hub.
+- Decay at read time (decision 3): `seen` over all evidence, freshness per relation, Enrich
+  scores times `fresh` with the 0.35 cut unless pinned, `stale`/`fresh`/`seen_age` on facts.
+  Derive stays clock-free (tested with two curator clocks 400 days apart).
 - `memory.graph` (floor plan, rooms, `updated` cursor), strict project graphs, agent access checks.
 - Taught facts scoped to a project with `fact.project_cwds`.
 - Short forms pooled per identity (spellings sharing a domain), so "the Harlow team" style references match on the real index.
@@ -72,6 +81,9 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   design. Revisit if the Enrich hook misses obvious first-name references.
 
 ## Needs from others
+- projects: picked thread ids in `projects.list` (ADR 0007, "Other teams"). Memory reads
+  `threads` (or `picked`) when it is a list of ids; today both are counts, so rooms are folders
+  only in a live vyred. Tests and the eval pass ids.
 - main / harness / switchboard: put the agent in the caller for agent sessions, e.g. the MCP
   server and hooks sending `x-vyre-caller` with `agent:<VYRE_AGENT>` in it, and the daemon
   keeping a caller from claiming an agent it is not. Today an agent that does not name itself
@@ -87,7 +99,20 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   measures short forms with rowid-only `MATCH` queries.
 
 ## Changed contracts
-None to other modules' contracts. New, for dependents:
+- `memory.facts`, `memory.relevant`, `memory.why`, `memory.graph` take `room` (a project slug or
+  `"unfiled"`; `project` is an alias). Folders one project owns read that project's room. The
+  unfiled room is refused to agents not granted every project.
+- The Harness's Enrich hook sends `room: "unfiled"` when the session is in no project (it sent
+  `project_cwds: [cwd]`).
+- Facts and floor-plan edges carry `conflict` (true when two rooms disagree, main graph only).
+- Facts carry `fresh` (0..1), `stale` (fresh under 0.35) and `seen_age`; `seen` is now the newest
+  supporting turn over all evidence. `memory.relevant` results carry `fresh` and never include a
+  stale fact unless its subject or object is pinned.
+- `memory.stats` counts the main graph only and adds `rooms`.
+- `memory_edges` has a `room` column; any direct reader must filter `room = '*'` for the main
+  graph. `memory_shortforms` has `room` in its key.
+
+Earlier, new for dependents:
 
 - `memory.facts {about?, project_cwds?, limit?}` returns `{ about, facts }`. `about` is the
   resolved node (`{id, label, kind, role, sessions, mentions, first, last, age, pinned, muted}`)

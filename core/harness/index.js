@@ -101,8 +101,10 @@ export default {
         // An agent outside its projects gets no memory at all, not memory from elsewhere.
         if (!inScope(projects, project ? project.slug : null)) return { text: lessons };
         const folders = project && (Array.isArray(project.folders) ? project.folders : project.home ? [project.home] : null);
-        const project_cwds = folders || (cwd ? [cwd] : undefined);
-        const facts = await ask("memory.relevant", { text: prompt, project_cwds, limit: 5 });
+        // Outside every project a session reads the unfiled room, never a folder prefix, so a
+        // session in the home folder does not see every client (docs/adr/0007-intelligence.md).
+        const where = folders ? { project_cwds: folders } : { room: "unfiled" };
+        const facts = await ask("memory.relevant", { text: prompt, ...where, limit: 5 });
         const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
         return { text: [memory, lessons].filter(Boolean).join("\n\n") };
       },
