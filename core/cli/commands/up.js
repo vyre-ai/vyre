@@ -16,6 +16,7 @@ import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, signal, beacon } from "../style.js";
 import * as config from "../../config/index.js";
+import { dialogsAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
 import { backup, restore } from "../../names/backup.js";
 import * as tailnet from "../tailnet.js";
@@ -102,8 +103,9 @@ export const terminal = {
   },
 };
 
-/** Open a link in the browser. VYRE_OPEN_BIN points tests at a fake `open`. */
+/** Open a link in the browser. VYRE_OPEN_BIN points tests at a fake `open`; without one, tests open nothing. */
 export function openUrl(url) {
+  if (!process.env.VYRE_OPEN_BIN && !dialogsAllowed()) return;
   try { spawn(process.env.VYRE_OPEN_BIN || "open", [url], { detached: true, stdio: "ignore" }).unref(); } catch {}
 }
 

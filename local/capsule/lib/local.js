@@ -15,6 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile, spawn } from "node:child_process";
+import { guarded } from "./dialogs.js";
 
 /**
  * @typedef {{ kind: "app"|"file"|"folder"|"setting", id: string, label: string, sub: string, last: number, target: string, score?: number,
@@ -529,7 +530,7 @@ export function open(result, { run = execFile } = {}) {
   const args = [target];
   return new Promise(resolve => {
     try {
-      run("/usr/bin/open", args, (err, _out, stderr) => {
+      guarded(run)("/usr/bin/open", args, (err, _out, stderr) => {
         if (err) resolve({ error: String(stderr || err.message || err).trim() || "open failed" });
         else resolve({ ok: true });
       });

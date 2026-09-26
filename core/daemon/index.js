@@ -192,7 +192,7 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]) });
-    const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
+    const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey

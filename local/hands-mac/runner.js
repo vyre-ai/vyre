@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
+import { dialogsAllowed } from "../../core/config/dialogs.js";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -68,6 +69,8 @@ export function makeRunner({ bin = DEFAULT_BIN, timeoutMs = 20000, responsible =
   return request => new Promise((ok, no) => {
     if (process.platform !== "darwin") return no(new HandsError("unsupported", "the hands module works only on macOS"));
     if (!fs.existsSync(bin)) return no(new HandsError("not_built", `the accessibility helper is not built; run ${BUILD}`));
+    // The real helper drives the screen and can raise the Accessibility prompt: never under tests.
+    if (bin === DEFAULT_BIN && !dialogsAllowed()) return no(new HandsError("no_dialog", "the accessibility helper does not run under tests"));
     const child = spawn(bin, [], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "", done = false;
     const timer = setTimeout(() => {

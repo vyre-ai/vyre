@@ -167,7 +167,7 @@ test("presence: the passkey when there is one, else the terminal and the Capsule
   assert.equal(presenceText("learn.accept", 7, true), "Confirm with your passkey");
   assert.equal(presenceText("learn.accept", 7, false), "Accept this in a terminal: vyre learn accept 7, or from the Capsule");
   assert.match(presenceText("learn.relax", 3, false), /vyre learn relax 3/);
-  assert.match(presenceText("learn.skill_install", 1, false), /vyre learn skills install 1/);
+  assert.match(presenceText("learn.skill-install", 1, false), /vyre learn skills install 1/);
 });
 
 test("fixtures: learn.json has core/learn's lesson shape", () => {

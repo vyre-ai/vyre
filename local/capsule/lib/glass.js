@@ -11,6 +11,7 @@
 // agent that has a computer: an agent without one has no screen to watch.
 
 import { execFile } from "node:child_process";
+import { guarded } from "./dialogs.js";
 import { match } from "./local.js";
 
 /** @typedef {import("./route.js").Catalog & { box?: string|null }} Catalog */
@@ -117,6 +118,6 @@ export function open(box, target, run = execFile) {
   const u = url(box, target);
   if (!u) return Promise.resolve({ error: "no box is paired with this Mac (vyre link pair <address>)" });
   return new Promise(resolve => {
-    run("/usr/bin/open", [u], err => resolve(err ? { error: String(err.message || err) } : { ok: true, close: true }));
+    guarded(run)("/usr/bin/open", [u], err => resolve(err ? { error: String(err.message || err) } : { ok: true, close: true }));
   });
 }
