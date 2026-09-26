@@ -173,6 +173,15 @@ lease surface naming pattern, and never inventing custom UI for what a real cont
   to reject against a real vyred.
 - `/chat/thread/:thread` (deck added it) replaces the `"_"` sentinel for a project-less thread.
 
+## Done (security's presence ask)
+- `cd0770a`: `presence.summary` on `gate.approve`, `gate.revise` and `gate.reject`, from gate.get's
+  own shape. Tried merging work/security to test it live; backed the merge out (and work/link,
+  merged to make security's floor list pass link's own tests) after it also activated the floor's
+  presence list against six-plus other workstreams' test suites that do not inject the `present`
+  verifier yet, none of them gate/chat's to fix. The registry here does not store `def.presence` at
+  all (core/modules/index.js's `tools.set()` keeps a fixed field list), so the addition is inert
+  until security's branch, which does store and read it, merges to main.
+
 ## Doing
 - Nothing blocking. Watching for deck's merge of the `serveDeck()` fix (they made the same one
   independently, commit `9432aa2` on work/deck) to reconcile on the next merge.
