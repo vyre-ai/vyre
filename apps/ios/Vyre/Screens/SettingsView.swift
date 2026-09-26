@@ -24,9 +24,9 @@ struct SettingsView: View {
                     ForEach(Theme.allCases) { t in
                         Button { app.theme = t } label: {
                             HStack {
-                                Text(t.label).vyre(.body).foregroundStyle(Color.bone)
+                                Text(t.label).vyre(.body).foregroundStyle(Color.text)
                                 Spacer()
-                                if app.theme == t { Image(systemName: "checkmark").foregroundStyle(Color.signal) }
+                                if app.theme == t { Image(systemName: "checkmark").foregroundStyle(Color.focus) }
                             }
                             .frame(minHeight: Space.target)
                             .contentShape(Rectangle())
@@ -41,11 +41,11 @@ struct SettingsView: View {
                     pair("Status", app.online ? "reachable" : "offline")
                     pair("Version", health["version"].string)
                     pair("Stream", streamState)
-                    Text("To use another box, sign out and sign in with its address.").vyre(.small).foregroundStyle(Color.ash).padding(.top, Space.s)
+                    Text("To use another box, sign out and sign in with its address.").vyre(.small).foregroundStyle(Color.label).padding(.top, Space.s)
                 }
                 section("Notifications") {
                     pair("This phone", app.push.enabled ? "on" : "off")
-                    if let s = app.push.status { Text(s).vyre(.small).foregroundStyle(Color.stone).padding(.vertical, Space.s) }
+                    if let s = app.push.status { Text(s).vyre(.small).foregroundStyle(Color.text2).padding(.vertical, Space.s) }
                     HStack(spacing: Space.s) {
                         if app.push.enabled {
                             Button("Send a test") { Task { await test() } }.buttonStyle(.secondary)
@@ -56,7 +56,7 @@ struct SettingsView: View {
                     }
                     .padding(.top, Space.s)
                     Text("A notification says only that something waits. The details come from the box when you open it.")
-                        .vyre(.small).foregroundStyle(Color.ash).padding(.top, Space.s)
+                        .vyre(.small).foregroundStyle(Color.label).padding(.top, Space.s)
                 }
                 section("Presence") {
                     pair("This key", app.key.map { String($0.id.prefix(10)) })
@@ -65,9 +65,9 @@ struct SettingsView: View {
                         ListRow(title: k["name"].string ?? k["id"].text, detail: k["kind"].string,
                                 note: k["id"].string == app.key?.id ? "this phone" : age(k["last_used"].double), mono: true, chevron: false)
                     }
-                    Text("Lost a phone? Remove its key from the Deck's Settings.").vyre(.small).foregroundStyle(Color.ash).padding(.top, Space.s)
+                    Text("Lost a phone? Remove its key from the Deck's Settings.").vyre(.small).foregroundStyle(Color.label).padding(.top, Space.s)
                 }
-                if let line { Text(line).vyre(.small).foregroundStyle(Color.stone) }
+                if let line { Text(line).vyre(.small).foregroundStyle(Color.text2) }
                 Button(signingOut ? "Signing out" : "Sign out of this box") { confirming = true }
                     .buttonStyle(.vyre(.secondary, fill: true))
                     .disabled(signingOut)
@@ -109,7 +109,7 @@ struct SettingsView: View {
         if let v, !v.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: Space.m) {
                 Engraved(k).frame(width: 96, alignment: .leading)
-                Text(v).vyre(.code).foregroundStyle(Color.bone).lineLimit(1)
+                Text(v).vyre(.code).foregroundStyle(Color.text).lineLimit(1)
                 Spacer()
             }
             .frame(minHeight: Space.target)

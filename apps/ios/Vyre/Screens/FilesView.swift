@@ -19,11 +19,11 @@ struct FilePreview: View {
         PullScroll {
             VStack(alignment: .leading, spacing: Space.l) {
                 VStack(alignment: .leading, spacing: Space.s) {
-                    Text(file["name"].text).vyre(.h2).foregroundStyle(Color.bone)
-                    Text(file["path"].text).vyre(.codeSmall).foregroundStyle(Color.ash).textSelection(.enabled)
+                    Text(file["name"].text).vyre(.h2).foregroundStyle(Color.text)
+                    Text(file["path"].text).vyre(.codeSmall).foregroundStyle(Color.label).textSelection(.enabled)
                     Text([file["kind"].string, byteSize(file["size"].double), file["mtime"].string.map { String($0.prefix(10)) }]
                         .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                        .vyre(.codeSmall).foregroundStyle(Color.stone)
+                        .vyre(.codeSmall).foregroundStyle(Color.text2)
                 }
                 LoadState(loading: loading, problem: problem, empty: nil)
                 content
@@ -47,10 +47,10 @@ struct FilePreview: View {
             if preview["thumbnail"].bool == true { Engraved("Thumbnail, 512 px") }
         } else if let text = preview["text"].string {
             ScrollView(.horizontal) {
-                Text(text).vyre(.codeSmall).foregroundStyle(Color.bone).textSelection(.enabled)
+                Text(text).vyre(.codeSmall).foregroundStyle(Color.text).textSelection(.enabled)
                     .padding(Space.m)
             }
-            .background(Color.codeGround, in: RoundedRectangle(cornerRadius: Radius.button))
+            .background(Color.codeBg, in: RoundedRectangle(cornerRadius: Radius.button))
             if preview["truncated"].bool == true { Engraved("Only the start is shown") }
         } else if !loading && problem == nil {
             EmptyLine(text: preview["note"].string ?? "No preview for this kind of file. Save a copy to open it.")
@@ -69,7 +69,7 @@ struct FilePreview: View {
                 .buttonStyle(.secondary)
                 .disabled(progress != nil)
             }
-            Text("The copy stays in a temporary folder until you leave this screen.").vyre(.small).foregroundStyle(Color.ash)
+            Text("The copy stays in a temporary folder until you leave this screen.").vyre(.small).foregroundStyle(Color.label)
         }
     }
 

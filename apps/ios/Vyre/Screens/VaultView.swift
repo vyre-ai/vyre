@@ -24,7 +24,7 @@ struct VaultView: View {
                         NavigationLink(value: Dest.vaultItem(it["name"].text)) {
                             ListRow(title: it["name"].text,
                                     detail: it["hosts"].strings.isEmpty ? it["description"].string : it["hosts"].strings.joined(separator: ", "),
-                                    note: it["kind"].string, dot: it["stale"].bool == true ? .ash : nil, mono: true)
+                                    note: it["kind"].string, dot: it["stale"].bool == true ? .label : nil, mono: true)
                         }
                         .buttonStyle(.plain)
                     }
@@ -80,11 +80,11 @@ struct VaultItemView: View {
             VStack(alignment: .leading, spacing: Space.xl) {
                 VStack(alignment: .leading, spacing: Space.s) {
                     Engraved(item["kind"].string ?? "Item")
-                    Text(name).vyre(.h2).foregroundStyle(Color.bone)
-                    if let d = item["description"].string, !d.isEmpty { Text(d).vyre(.small).foregroundStyle(Color.stone) }
+                    Text(name).vyre(.h2).foregroundStyle(Color.text)
+                    if let d = item["description"].string, !d.isEmpty { Text(d).vyre(.small).foregroundStyle(Color.text2) }
                 }
                 if let problem { FailedLine(text: problem) }
-                if let line { Text(line).vyre(.small).foregroundStyle(Color.stone) }
+                if let line { Text(line).vyre(.small).foregroundStyle(Color.text2) }
                 VStack(alignment: .leading, spacing: 0) {
                     SectionHead(title: "Fields").padding(.bottom, Space.s)
                     Hairline()
@@ -124,7 +124,7 @@ struct VaultItemView: View {
             }
             Text(shown[f] ?? "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}")
                 .vyre(.code)
-                .foregroundStyle(shown[f] == nil ? Color.ash : Color.bone)
+                .foregroundStyle(shown[f] == nil ? Color.label : Color.text)
                 .textSelection(.disabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(shown[f] == nil ? "\(f), hidden" : "\(f), shown")
@@ -142,7 +142,7 @@ struct VaultItemView: View {
             }
             if let c = totp["code"].string {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(c).vyre(.hero).foregroundStyle(Color.bone)
+                    Text(c).vyre(.hero).foregroundStyle(Color.text)
                     Spacer()
                     if let r = totp["remaining"].int { Engraved("\(r) s") }
                 }

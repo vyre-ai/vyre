@@ -13,9 +13,10 @@ final class RouteTests: XCTestCase {
         XCTAssertNil(Route(path: "/elsewhere"))
     }
 
-    func testTabsAreThePWAsOrder() {
-        XCTAssertEqual(Tab.allCases, [.now, .projects, .chat, .find, .agents])
-        XCTAssertEqual(Theme.allCases.first, .dark)
+    func testPagesAreThePhoneSpecsOrder() {
+        XCTAssertEqual(Page.allCases, [.now, .chats, .agents])
+        XCTAssertEqual(Page.allCases.map(\.label), ["Now", "Chats", "Agents"])
+        XCTAssertEqual(Theme.allCases, [.dark, .paper, .system])
     }
 
     func testInitialsAndModelLabels() {

@@ -30,7 +30,7 @@ struct Mark: View {
     var needsYou = false
     var body: some View {
         ZStack {
-            MarkWire().stroke(Color.bone, style: StrokeStyle(lineWidth: 2.4 * size / 24, lineCap: .round, lineJoin: .round))
+            MarkWire().stroke(Color.markWire, style: StrokeStyle(lineWidth: 2.4 * size / 24, lineCap: .round, lineJoin: .round))
             MarkDot().fill(needsYou ? Color.beaconDot : Color.markDot)
         }
         .frame(width: size, height: size)
@@ -43,7 +43,7 @@ struct Wordmark: View {
     var height: CGFloat = 22
     var body: some View {
         WordmarkShape()
-            .stroke(Color.bone, style: StrokeStyle(lineWidth: 2.6 * height / 26, lineCap: .round, lineJoin: .round))
+            .stroke(Color.markWire, style: StrokeStyle(lineWidth: 2.6 * height / 26, lineCap: .round, lineJoin: .round))
             .frame(width: height * 62 / 26, height: height)
             .accessibilityLabel("vyre")
     }

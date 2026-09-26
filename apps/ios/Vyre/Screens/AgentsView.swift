@@ -9,40 +9,32 @@ struct AgentsHome: View {
     @State private var loading = true
     @State private var problem: String?
     @State private var cached = false
-    @State private var path: [Dest] = []
     @State private var token: UUID?
 
     var body: some View {
-        NavigationStack(path: $path) {
-            PullScroll {
-                VStack(alignment: .leading, spacing: Space.l) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        BrandBar()
-                        PageHead(title: "Agents", sub: cached ? "Offline. The list this phone kept." : nil)
-                    }
-                    VStack(alignment: .leading, spacing: 0) {
-                        Hairline()
-                        LoadState(loading: loading && agents.isEmpty, problem: agents.isEmpty ? problem : nil,
-                                  empty: agents.isEmpty ? "No agents yet. The assistant appears once the box has one." : nil)
-                        ForEach(agents, id: \.self) { a in
-                            let name = a["name"].text
-                            NavigationLink(value: Dest.agent(name)) {
-                                ListRow(title: name,
-                                        detail: [a["kind"].string == "assistant" ? "Assistant" : nil, a["doing"].string, modelLabel(a["model"].string)].compactMap { $0 }.joined(separator: " · "),
-                                        note: spend(name),
-                                        dot: statusDot(a["status"].string == "new" ? nil : a["status"].string))
-                            }
-                            .buttonStyle(.plain)
+        PullScroll {
+            VStack(alignment: .leading, spacing: Space.l) {
+                if cached { EmptyLine(text: "Offline. The list this phone kept.") }
+                VStack(alignment: .leading, spacing: 0) {
+                    Hairline()
+                    LoadState(loading: loading && agents.isEmpty, problem: agents.isEmpty ? problem : nil,
+                              empty: agents.isEmpty ? "No agents yet. The assistant appears once the box has one." : nil)
+                    ForEach(agents, id: \.self) { a in
+                        let name = a["name"].text
+                        NavigationLink(value: Dest.agent(name)) {
+                            ListRow(title: name,
+                                    detail: [a["kind"].string == "assistant" ? "Assistant" : nil, a["doing"].string, modelLabel(a["model"].string)].compactMap { $0 }.joined(separator: " · "),
+                                    note: spend(name),
+                                    dot: statusDot(a["status"].string == "new" ? nil : a["status"].string))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, Space.gutter)
-                .padding(.bottom, Space.xxl)
             }
-            .vyreGround()
-            .toolbar(.hidden, for: .navigationBar)
-            .vyreDestinations()
+            .padding(.horizontal, Space.gutter)
+            .padding(.bottom, Space.xxl)
         }
+        .vyreGround()
         .task { await load() }
         .onAppear {
             guard token == nil else { return }
@@ -131,7 +123,7 @@ struct AgentDetailView: View {
         if let v, !v.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: Space.m) {
                 Engraved(k).frame(width: 96, alignment: .leading)
-                Text(v).vyre(.code).foregroundStyle(Color.bone)
+                Text(v).vyre(.code).foregroundStyle(Color.text)
                 Spacer()
             }
             .padding(.vertical, Space.s)
@@ -150,7 +142,7 @@ struct AgentDetailView: View {
             }
             if let line {
                 HStack {
-                    Text(line).vyre(.small).foregroundStyle(Color.stone)
+                    Text(line).vyre(.small).foregroundStyle(Color.text2)
                     Spacer()
                     if let t = sentThread { Button("Open") { app.open(.thread(t)) }.buttonStyle(.quiet) }
                 }
@@ -186,10 +178,10 @@ struct AgentDetailView: View {
                     HStack {
                         Engraved(h["surface"].string ?? "asked")
                         Spacer()
-                        Text(age(h["at"].double)).vyre(.codeSmall).foregroundStyle(Color.ash)
+                        Text(age(h["at"].double)).vyre(.codeSmall).foregroundStyle(Color.label)
                     }
-                    Text(h["text"].text).vyre(.small).foregroundStyle(Color.bone).lineLimit(3)
-                    if let a = h["answer"].string, !a.isEmpty { Text(a).vyre(.small).foregroundStyle(Color.stone).lineLimit(4) }
+                    Text(h["text"].text).vyre(.small).foregroundStyle(Color.text).lineLimit(3)
+                    if let a = h["answer"].string, !a.isEmpty { Text(a).vyre(.small).foregroundStyle(Color.text2).lineLimit(4) }
                 }
                 .padding(.vertical, Space.m)
                 .overlay(alignment: .bottom) { Hairline() }

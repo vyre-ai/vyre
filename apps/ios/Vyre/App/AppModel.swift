@@ -2,10 +2,20 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// The five tabs, the phone PWA's order (docs/work/pwa.md): Now, Projects, Chat, Find, Agents.
-enum Tab: String, Hashable, CaseIterable { case now, projects, chat, find, agents }
+/// The three pages, side by side under the header (docs/design/phone.md section 3). Find is not a
+/// page: it is the Capsule, opened as a sheet.
+enum Page: String, Hashable, CaseIterable {
+    case now, chats, agents
+    var label: String { switch self { case .now: "Now"; case .chats: "Chats"; case .agents: "Agents" } }
+}
 
-/// Graphite (dark) by default, then Paper, then whatever the phone uses (TOKENS.md: dark is the default).
+/// The sheets over the pages: Find (the Capsule, opened) and Settings (the avatar).
+enum Sheet: String, Identifiable {
+    case find, settings
+    var id: String { rawValue }
+}
+
+/// Follows the phone by default (phone.md section 2); Settings offers Dark, Paper and System.
 enum Theme: String, CaseIterable, Identifiable {
     case dark, paper, system
     var id: String { rawValue }
@@ -59,7 +69,18 @@ final class AppModel {
     let needs: NeedsStore
     let push = PushClient()
 
-    var tab: Tab = .now
+    /// The page in front. The app reopens on it, except on Now whenever something needs you.
+    var page: Page = .now {
+        didSet { UserDefaults.standard.set(page.rawValue, forKey: "page") }
+    }
+    /// The pushed screens over the pages (a chat, a held item, an agent).
+    var path: [Dest] = []
+    var sheet: Sheet?
+    /// What the Settings and Find sheets have pushed inside themselves.
+    var settingsPath: [Dest] = []
+    var findPath: [Dest] = []
+    /// A link that could not be followed: its item is gone.
+    var gone: String?
     var route: Route?
     var theme: Theme {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
@@ -78,7 +99,8 @@ final class AppModel {
     var assistantLabel: String { assistantName ?? "Vyre" }
 
     init() {
-        theme = Theme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .dark
+        theme = Theme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .system
+        page = Page(rawValue: UserDefaults.standard.string(forKey: "page") ?? "") ?? .now
         needs = NeedsStore()
         #if DEBUG
         if let t = Launch.value("-VyreTheme"), let th = Theme(rawValue: t) { theme = th }
@@ -152,6 +174,7 @@ final class AppModel {
             if hub.lastEventId != nil { since = nil }
             hub.start(client: client, since: since)
             await needs.refresh()
+            if needs.count > 0 && route == nil && path.isEmpty { page = .now }
             await loadNames()
         }
     }
@@ -184,13 +207,37 @@ final class AppModel {
         }
     }
 
+    /// Follow a link: a push's path, `vyre://`, a DEBUG launch argument or a tap inside the app.
     func open(_ route: Route) {
-        switch route {
-        case .needs, .settings: tab = .now
-        case .thread: tab = .chat
-        case .vault, .memory: tab = .find
-        }
         self.route = route
+        follow()
+    }
+
+    /// Where the pending route leads. A held item or an ask waits for the needs to load.
+    func follow() {
+        guard let r = route else { return }
+        switch r {
+        case .needs(let id):
+            sheet = nil
+            page = .now
+            if needs.held.contains(where: { $0.id == id }) { path = [.held(id)] }
+            else if needs.asks.contains(where: { $0.id == id }) { path = [.ask(id)] }
+            else if needs.loaded { path = []; gone = "That item is no longer waiting. It was answered somewhere else." }
+            else { return }
+        case .thread(let id):
+            sheet = nil
+            path = [.thread(id)]
+        case .settings:
+            settingsPath = []
+            sheet = .settings
+        case .vault:
+            settingsPath = [.vault]
+            sheet = .settings
+        case .memory:
+            findPath = [.memory(nil)]
+            sheet = .find
+        }
+        route = nil
     }
 
     func handle(url: URL) {
@@ -203,7 +250,7 @@ final class AppModel {
 #if DEBUG
 /// DEBUG-only launch arguments for the test world and screenshots:
 /// `-VyreTestBox http://127.0.0.1:4800` skips the QR and enrolls with a code the test world mints;
-/// `-VyreTab now|projects|chat|find|agents`, `-VyreTheme dark|paper|system`,
+/// `-VyrePage now|chats|agents`, `-VyreSheet find|settings`, `-VyreTheme dark|paper|system`,
 /// `-VyreOpen /threads/<id>|/needs/<id>|/settings|/vault|/memory`.
 enum Launch {
     static func value(_ flag: String) -> String? {

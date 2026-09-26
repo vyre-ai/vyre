@@ -34,17 +34,17 @@ struct InPlaceField: View {
         if editing {
             TextField("", text: $field.value, axis: .vertical)
                 .vyre(r)
-                .foregroundStyle(Color.bone)
+                .foregroundStyle(Color.text)
                 .textInputAutocapitalization(field.key == "to" || field.key == "url" || field.isJSON ? .never : .sentences)
                 .autocorrectionDisabled(field.key == "to" || field.key == "url" || field.isJSON)
                 .focused($focused)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(alignment: .bottom) { Rectangle().fill(Color.signal).frame(height: 2).offset(y: 4) }
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.focus).frame(height: 2).offset(y: 4) }
                 .accessibilityLabel("\(field.label), editing")
         } else {
             Text(field.value.isEmpty ? "Empty" : field.value)
                 .vyre(r)
-                .foregroundStyle(field.value.isEmpty ? Color.ash : Color.bone)
+                .foregroundStyle(field.value.isEmpty ? Color.label : Color.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -52,7 +52,7 @@ struct InPlaceField: View {
                     focused = true
                 }
                 .overlay(alignment: .topTrailing) {
-                    if field.changed { Engraved("edited", color: .signal).offset(y: -2) }
+                    if field.changed { Engraved("edited", color: .focus).offset(y: -2) }
                 }
                 .accessibilityLabel("\(field.label): \(field.value)")
                 .accessibilityHint("Double-tap to edit")
@@ -76,7 +76,7 @@ struct HeldBody: View {
             ForEach($draft.fields) { $f in InPlaceField(field: $f, compact: compact) }
             if let err = draft.error ?? problem {
                 Text(draft.error != nil ? "Held again: \(err)" : err)
-                    .vyre(.small).foregroundStyle(Color.beacon)
+                    .vyre(.small).foregroundStyle(Color.beaconInk)
                     .padding(.vertical, Space.m)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -135,8 +135,8 @@ struct HeldDetailView: View {
         PullScroll {
             VStack(alignment: .leading, spacing: Space.l) {
                 VStack(alignment: .leading, spacing: Space.s) {
-                    Text(draft.title).vyre(.h2).foregroundStyle(Color.bone)
-                    Text(subtitle).vyre(.small).foregroundStyle(Color.stone)
+                    Text(draft.title).vyre(.h2).foregroundStyle(Color.text)
+                    Text(subtitle).vyre(.small).foregroundStyle(Color.text2)
                 }
                 HeldBody(draft: draft) { dismiss() }
             }
@@ -148,7 +148,7 @@ struct HeldDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { EmptyView() }
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: Space.s) { Dot(color: .beacon); Engraved("Held at the Gate", color: .beacon) }
+                HStack(spacing: Space.s) { Dot(color: .beaconInk); Engraved("Held at the Gate", color: .beaconInk) }
             }
         }
         .vyreNavBar()
@@ -172,20 +172,20 @@ struct AskCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack {
-                HStack(spacing: Space.s) { Dot(color: .beacon); Engraved("Permission", color: .beacon) }
+                HStack(spacing: Space.s) { Dot(color: .beaconInk); Engraved("Permission", color: .beaconInk) }
                 Spacer()
                 Text([ask.agent, age(ask.at)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                    .vyre(.codeSmall).foregroundStyle(Color.stone)
+                    .vyre(.codeSmall).foregroundStyle(Color.text2)
             }
-            Text(ask.isCommand ? "May I run" : "May I use \(ask.tool)").vyre(.title).foregroundStyle(Color.bone)
-            Text(ask.summary).vyre(.code).foregroundStyle(Color.bone)
+            Text(ask.isCommand ? "May I run" : "May I use \(ask.tool)").vyre(.title).foregroundStyle(Color.text)
+            Text(ask.summary).vyre(.code).foregroundStyle(Color.text)
                 .padding(Space.m).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.codeGround, in: RoundedRectangle(cornerRadius: Radius.button))
+                .background(Color.codeBg, in: RoundedRectangle(cornerRadius: Radius.button))
             if let d = ask.destination, !d.isEmpty, d != ask.summary {
-                Text(d).vyre(.codeSmall).foregroundStyle(Color.stone)
+                Text(d).vyre(.codeSmall).foregroundStyle(Color.text2)
             }
-            if let r = ask.reason, !r.isEmpty { Text(r).vyre(.small).foregroundStyle(Color.stone) }
-            if let problem { Text(problem).vyre(.small).foregroundStyle(Color.beacon) }
+            if let r = ask.reason, !r.isEmpty { Text(r).vyre(.small).foregroundStyle(Color.text2) }
+            if let problem { Text(problem).vyre(.small).foregroundStyle(Color.beaconInk) }
             HStack(spacing: Space.s) {
                 Button("Allow") { Task { await answer(true) } }.buttonStyle(.vyre(.primary, fill: true)).disabled(busy)
                 Button("Deny") { Task { await answer(false) } }.buttonStyle(.secondary).disabled(busy)

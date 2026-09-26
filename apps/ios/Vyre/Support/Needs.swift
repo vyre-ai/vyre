@@ -217,6 +217,7 @@ final class NeedsStore {
             }
             loaded = true
         } while again
+        app.follow()
     }
 
     func update(_ d: HeldDraft) {

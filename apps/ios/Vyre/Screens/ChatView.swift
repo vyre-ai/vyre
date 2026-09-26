@@ -1,80 +1,61 @@
 import SwiftUI
 
-/// Chat (a tab): sessions and threads. Live ones first (running, starting, waiting), then the
-/// others from the last day; each opens the thread, mirrored with streaming, sending and the
-/// keyboard lease. The Deck's deck/chat/ and the Android ChatScreen.
+/// Chats (a page; phone.md section 6): project filter chips (All, then each project; this replaces
+/// the old Projects tab), then one card of sessions, newest first. A running session shows a dot
+/// before its agent; one with an open ask shows the Beacon dot and its count. Each opens the
+/// session, mirrored with streaming, sending and the keyboard lease.
 struct ChatHome: View {
     @Environment(AppModel.self) private var app
-    @State private var path: [Dest] = []
     @State private var all: [JSON] = []
     @State private var loading = true
     @State private var problem: String?
     @State private var projects: [JSON] = []
-    @State private var starting = false
+    @State private var project: String?
     @State private var token: UUID?
 
     var body: some View {
-        NavigationStack(path: $path) {
-            PullScroll {
-                VStack(alignment: .leading, spacing: Space.xl) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        BrandBar {
-                            Button { starting = true } label: { Label("New", systemImage: "plus") }
-                                .buttonStyle(.quiet)
-                                .disabled(projects.isEmpty)
+        PullScroll {
+            VStack(alignment: .leading, spacing: Space.m) {
+                chips
+                if shown.isEmpty {
+                    LoadState(loading: loading && all.isEmpty, problem: all.isEmpty ? problem : nil,
+                              empty: project == nil ? "No sessions yet. Ask from the Capsule to start one." : "No sessions in this project in the last day.")
+                } else {
+                    Card {
+                        ForEach(Array(shown.enumerated()), id: \.element) { i, t in
+                            if i > 0 { Hairline() }
+                            NavigationLink(value: Dest.thread(t["id"].text)) { SessionRow(t: t) }
+                                .buttonStyle(.plain)
                         }
-                        PageHead(title: "Chat")
                     }
-                    section("Live", live, empty: "No session is running. Start one from a project.")
-                    section("Sessions", rest, empty: "No session in the last day.")
                 }
-                .padding(.horizontal, Space.gutter)
-                .padding(.bottom, Space.xxl)
             }
-            .vyreGround()
-            .toolbar(.hidden, for: .navigationBar)
-            .vyreDestinations()
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.s)
+            .padding(.bottom, Space.l)
         }
-        .sheet(isPresented: $starting) {
-            NewThreadSheet(projects: projects) { id in
-                starting = false
-                if let id { path.append(.thread(id)) }
-            }
-        }
+        .vyreGround()
         .task { await load() }
         .onAppear {
             guard token == nil else { return }
             let watched: Set<String> = ["thread.started", "thread.finished", "thread.stopped", "ask.raised", "ask.answered"]
             token = app.hub.on { e in if watched.contains(e.type) { Task { await load() } } }
         }
-        .onChange(of: app.route, initial: true) { _, r in
-            if case .thread(let id) = r {
-                path = [.thread(id)]
-                app.route = nil
-            }
-        }
     }
 
-    private var sorted: [JSON] { all.sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) } }
-    private var live: [JSON] { sorted.filter { ["working", "starting", "waiting"].contains($0["status"].string ?? "") } }
-    private var rest: [JSON] { sorted.filter { !["working", "starting", "waiting"].contains($0["status"].string ?? "") } }
+    private var shown: [JSON] {
+        all.filter { project == nil || $0["project"].string == project }
+            .sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) }
+    }
 
-    private func section(_ title: String, _ rows: [JSON], empty: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHead(title: title, note: "\(rows.count)").padding(.bottom, Space.s)
-            Hairline()
-            if rows.isEmpty {
-                LoadState(loading: loading && all.isEmpty, problem: all.isEmpty ? problem : nil, empty: empty)
-            }
-            ForEach(rows, id: \.self) { t in
-                let waiting = t["status"].string == "waiting"
-                NavigationLink(value: Dest.thread(t["id"].text)) {
-                    ListRow(title: threadLabel(t),
-                            detail: [t["agent"].string, t["project"].string, waiting ? "waiting on you" : nil].compactMap { $0 }.joined(separator: " · "),
-                            note: waiting ? nil : [t["status"].string, age(t["last"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
-                            dot: statusDot(t["status"].string, asks: t["asks"].int ?? 0))
+    private var chips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.s) {
+                FilterChip(label: "All", on: project == nil) { project = nil }
+                ForEach(projects, id: \.self) { p in
+                    let slug = p["slug"].text
+                    FilterChip(label: p["name"].string ?? slug, on: project == slug) { project = slug }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -88,8 +69,54 @@ struct ChatHome: View {
             all = app.needs.threads
             problem = describe(error)
         }
-        if projects.isEmpty, let p = try? await app.call("projects.list") { projects = p["projects"].list }
-        else if projects.isEmpty, let c = app.cache.get("projects.list") { projects = c["projects"].list }
+        if let p = try? await app.call("projects.list") {
+            app.cache.put("projects.list", p)
+            projects = p["projects"].list
+        } else if projects.isEmpty, let c = app.cache.get("projects.list") { projects = c["projects"].list }
+    }
+}
+
+/// A row in Chats: tile, name, time or the open-ask count, the status line, agent and project.
+struct SessionRow: View {
+    let t: JSON
+
+    var body: some View {
+        let asks = t["asks"].int ?? 0
+        let running = ["working", "starting"].contains(t["status"].string ?? "")
+        HStack(alignment: .top, spacing: Space.m) {
+            Tile(name: t["agent"].string ?? threadLabel(t))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(threadLabel(t)).vyre(.rowTitle).foregroundStyle(Color.text).lineLimit(1)
+                    Spacer(minLength: Space.s)
+                    if asks > 0 {
+                        HStack(spacing: 4) { Dot(color: .beaconDot, size: 7); Text("\(asks)").vyre(.small).foregroundStyle(Color.beaconInk) }
+                    } else {
+                        Text(age(t["last"].double)).vyre(.small).foregroundStyle(Color.label)
+                    }
+                }
+                Text(statusLine).vyre(.secondary).foregroundStyle(Color.text2).lineLimit(1)
+                HStack(spacing: 6) {
+                    if running { Dot(color: .text, size: 7) }
+                    Text([t["agent"].string, t["project"].string].compactMap { $0 }.joined(separator: " · "))
+                        .vyre(.small).foregroundStyle(Color.label).lineLimit(1)
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    private var statusLine: String {
+        switch t["status"].string {
+        case "waiting": "Waiting on you"
+        case "working": "Working"
+        case "starting": "Starting"
+        case "stopped": t["stopped_reason"].string.map { "Stopped: \($0)" } ?? "Stopped"
+        default: "Idle"
+        }
     }
 }
 
@@ -131,7 +158,7 @@ struct ThreadView: View {
                         if loaded && transcript.entries.isEmpty { EmptyLine(text: recorded ? "This session has no turns to show." : "Nothing said yet.") }
                         ForEach(transcript.entries) { entry in row(entry) }
                         if transcript.working {
-                            HStack(spacing: Space.s) { Dot(color: .signal); Engraved("Working", color: .signal) }
+                            HStack(spacing: Space.s) { Dot(color: .focus); Engraved("Working", color: .focus) }
                         }
                         Color.clear.frame(height: 1).id("end")
                     }
@@ -149,7 +176,7 @@ struct ThreadView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
-                    Text(title).vyre(.title).foregroundStyle(Color.bone).lineLimit(1)
+                    Text(title).vyre(.title).foregroundStyle(Color.text).lineLimit(1)
                     if let s = record["status"].string { Engraved(s) }
                 }
             }
@@ -182,9 +209,9 @@ struct ThreadView: View {
     private var head: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             let bits = [record["agent"].string, record["project"].string, modelLabel(record["model"].string)].compactMap { $0 }
-            if !bits.isEmpty { Text(bits.joined(separator: " · ")).vyre(.codeSmall).foregroundStyle(Color.ash) }
+            if !bits.isEmpty { Text(bits.joined(separator: " · ")).vyre(.codeSmall).foregroundStyle(Color.label) }
             if offlineCopy { Engraved("Offline copy") }
-            if recorded { Text("Recorded. Nothing is running it; a message resumes it if the box can.").vyre(.small).foregroundStyle(Color.stone) }
+            if recorded { Text("Recorded. Nothing is running it; a message resumes it if the box can.").vyre(.small).foregroundStyle(Color.text2) }
         }
         .padding(.top, Space.s)
     }
@@ -208,7 +235,7 @@ struct ThreadView: View {
         case .said(_, let t, let surface):
             VStack(alignment: .leading, spacing: Space.xs) {
                 Engraved(who(surface))
-                Text(t).vyre(.body).foregroundStyle(Color.bone).textSelection(.enabled)
+                Text(t).vyre(.body).foregroundStyle(Color.text).textSelection(.enabled)
             }
             .padding(Space.m)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -216,26 +243,26 @@ struct ThreadView: View {
         case .reply(_, let t, let done):
             VStack(alignment: .leading, spacing: Space.xs) {
                 Engraved(replier)
-                Text(markdown(t) + (done ? "" : " ")).vyre(.body).foregroundStyle(Color.bone)
+                Text(markdown(t) + (done ? "" : " ")).vyre(.body).foregroundStyle(Color.text)
                     .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         case .notice(_, let t):
-            HStack(alignment: .firstTextBaseline, spacing: Space.s) { Engraved("vyre"); Text(t).vyre(.small).foregroundStyle(Color.stone) }
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) { Engraved("vyre"); Text(t).vyre(.small).foregroundStyle(Color.text2) }
         case .tools(_, let lines):
             VStack(alignment: .leading, spacing: Space.xs) {
                 ForEach(lines.suffix(8)) { l in
                     HStack(alignment: .firstTextBaseline, spacing: Space.s) {
-                        Dot(color: l.phase == "started" ? .signal : .ash)
-                        Text(l.error ? "failed" : l.phase == "started" ? "running" : "done").vyre(.label).foregroundStyle(Color.ash).frame(width: 60, alignment: .leading)
-                        Text(l.summary.isEmpty ? l.tool : l.summary).vyre(.codeSmall).foregroundStyle(Color.stone).lineLimit(2)
+                        Dot(color: l.phase == "started" ? .focus : .label)
+                        Text(l.error ? "failed" : l.phase == "started" ? "running" : "done").vyre(.label).foregroundStyle(Color.label).frame(width: 60, alignment: .leading)
+                        Text(l.summary.isEmpty ? l.tool : l.summary).vyre(.codeSmall).foregroundStyle(Color.text2).lineLimit(2)
                     }
                 }
                 if lines.count > 8 { Engraved("and \(lines.count - 8) more") }
             }
             .padding(Space.m)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.codeGround, in: RoundedRectangle(cornerRadius: Radius.button))
+            .background(Color.codeBg, in: RoundedRectangle(cornerRadius: Radius.button))
         case .finished(_, let t):
             HStack(spacing: Space.s) { Hairline(); Engraved(t.isEmpty ? "turn done" : "turn done · \(t)").fixedSize(); Hairline() }
         case .stopped(_, let r):
@@ -243,8 +270,8 @@ struct ThreadView: View {
         case .gate(let gid):
             if let d = app.needs.held.first(where: { $0.id == gid }) {
                 VStack(alignment: .leading, spacing: Space.s) {
-                    HStack(spacing: Space.s) { Dot(color: .beacon); Engraved("Held before it went out", color: .beacon) }
-                    Text(d.title).vyre(.title).foregroundStyle(Color.bone)
+                    HStack(spacing: Space.s) { Dot(color: .beaconInk); Engraved("Held before it went out", color: .beaconInk) }
+                    Text(d.title).vyre(.title).foregroundStyle(Color.text)
                     HeldBody(draft: d, compact: true)
                 }
                 .padding(Space.gutter)
@@ -282,26 +309,26 @@ struct ThreadView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             if let h = holder, h != ThreadView.surface, !focused {
-                Text("\(holderName(h)) has the keyboard. Typing here takes it.").vyre(.small).foregroundStyle(Color.stone)
+                Text("\(holderName(h)) has the keyboard. Typing here takes it.").vyre(.small).foregroundStyle(Color.text2)
             }
             if let note {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(note).vyre(.small).foregroundStyle(Color.stone)
+                    Text(note).vyre(.small).foregroundStyle(Color.text2)
                     Spacer()
                     if retryText != nil { Button("Take it and send") { Task { await takeAndSend() } }.buttonStyle(.quiet) }
                 }
             }
             HStack(alignment: .bottom, spacing: Space.s) {
-                TextField("", text: $text, prompt: Text(recorded ? "Resume with a message" : "Message").foregroundStyle(Color.ash), axis: .vertical)
+                TextField("", text: $text, prompt: Text(recorded ? "Resume with a message" : "Message").foregroundStyle(Color.label), axis: .vertical)
                     .vyre(.body)
-                    .foregroundStyle(Color.bone)
+                    .foregroundStyle(Color.text)
                     .lineLimit(1...6)
                     .focused($focused)
                     .padding(.horizontal, Space.m)
                     .padding(.vertical, 10)
-                    .background(Color.ground, in: RoundedRectangle(cornerRadius: Radius.button))
+                    .background(Color.bg, in: RoundedRectangle(cornerRadius: Radius.button))
                     .overlay {
-                        RoundedRectangle(cornerRadius: Radius.button).strokeBorder(focused ? Color.signal : Color.ruleStrong, lineWidth: focused ? 2 : 1)
+                        RoundedRectangle(cornerRadius: Radius.button).strokeBorder(focused ? Color.focus : Color.ruleStrong, lineWidth: focused ? 2 : 1)
                     }
                 Button { Task { await send() } } label: { Image(systemName: "arrow.up") }
                     .buttonStyle(.vyre(.primary))

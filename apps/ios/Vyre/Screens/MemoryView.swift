@@ -30,7 +30,7 @@ struct MemoryView: View {
                             ForEach(projects, id: \.self) { p in Text(p["name"].string ?? p["slug"].text).tag(Optional(p["slug"].text)) }
                         }
                         .pickerStyle(.menu)
-                        .tint(Color.bone)
+                        .tint(Color.text)
                         Spacer()
                     }
                 }
@@ -45,7 +45,7 @@ struct MemoryView: View {
                     }
                 }
                 Text("To correct, merge or split a fact, use the Deck. A phone can read, pin and mute.")
-                    .vyre(.small).foregroundStyle(Color.ash)
+                    .vyre(.small).foregroundStyle(Color.label)
             }
             .padding(.horizontal, Space.gutter)
             .padding(.bottom, Space.xxl)
@@ -101,16 +101,16 @@ struct FactRow: View {
     let fact: JSON
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: Space.m) {
-            Dot(color: fact["stale"].bool == true ? .ash : .recall)
+            Dot(color: fact["stale"].bool == true ? .label : .recall)
             VStack(alignment: .leading, spacing: 2) {
-                Text(fact["text"].text).vyre(.body).foregroundStyle(fact["stale"].bool == true ? Color.stone : Color.bone)
+                Text(fact["text"].text).vyre(.body).foregroundStyle(fact["stale"].bool == true ? Color.text2 : Color.text)
                 Text([fact["age"].string, fact["confidence"].double.map { "\(Int($0 * 100))% sure" },
                       fact["conflict"].bool == true ? "conflicts" : nil, fact["origin"].string == "user" ? "you said" : nil]
                     .compactMap { $0 }.joined(separator: " · "))
-                    .vyre(.codeSmall).foregroundStyle(Color.ash)
+                    .vyre(.codeSmall).foregroundStyle(Color.label)
             }
             Spacer(minLength: 0)
-            Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.ash)
+            Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.label)
         }
         .padding(.vertical, Space.m)
         .contentShape(Rectangle())
@@ -133,9 +133,9 @@ struct FactView: View {
                 let f = why["fact"]
                 VStack(alignment: .leading, spacing: Space.s) {
                     Engraved("Fact", color: .recall)
-                    Text(f["text"].string ?? f["label"].string ?? id).vyre(.h2).foregroundStyle(Color.bone)
+                    Text(f["text"].string ?? f["label"].string ?? id).vyre(.h2).foregroundStyle(Color.text)
                     Text([f["age"].string, f["confidence"].double.map { "\(Int($0 * 100))% sure" }, f["source"].string].compactMap { $0 }.joined(separator: " · "))
-                        .vyre(.codeSmall).foregroundStyle(Color.ash)
+                        .vyre(.codeSmall).foregroundStyle(Color.label)
                 }
                 LoadState(loading: loading, problem: problem, empty: nil)
                 if let subject = f["subject"]["id"].string {
@@ -144,7 +144,7 @@ struct FactView: View {
                             Button("Pin \(f["subject"]["label"].string ?? "it")") { Task { await mark("memory.pin", subject) } }.buttonStyle(.secondary)
                             Button("Mute") { Task { await mark("memory.mute", subject) } }.buttonStyle(.quiet)
                         }
-                        if let line { Text(line).vyre(.small).foregroundStyle(Color.stone) }
+                        if let line { Text(line).vyre(.small).foregroundStyle(Color.text2) }
                     }
                 }
                 turns
@@ -171,11 +171,11 @@ struct FactView: View {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         HStack {
                             Engraved(t["role"].string ?? "turn")
-                            Text(t["name"].string ?? "").vyre(.codeSmall).foregroundStyle(Color.stone).lineLimit(1)
+                            Text(t["name"].string ?? "").vyre(.codeSmall).foregroundStyle(Color.text2).lineLimit(1)
                             Spacer()
-                            Text(t["age"].string ?? "").vyre(.codeSmall).foregroundStyle(Color.ash)
+                            Text(t["age"].string ?? "").vyre(.codeSmall).foregroundStyle(Color.label)
                         }
-                        Text(t["text"].text).vyre(.small).foregroundStyle(Color.bone).lineLimit(6)
+                        Text(t["text"].text).vyre(.small).foregroundStyle(Color.text).lineLimit(6)
                     }
                     .padding(.vertical, Space.m)
                     .contentShape(Rectangle())

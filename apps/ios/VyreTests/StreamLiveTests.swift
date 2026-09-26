@@ -10,10 +10,10 @@ final class TinySSEServer: @unchecked Sendable {
     private let lock = NSLock()
     private var conns: [NWConnection] = []
 
-    init(headers: [String]) throws {
+    init(headers: [String], body: String = ": open\n\n") throws {
         listener = try NWListener(using: .tcp, on: .any)
         let head = (["HTTP/1.1 200 OK", "content-type: text/event-stream", "cache-control: no-store", "connection: keep-alive"] + headers)
-            .joined(separator: "\r\n") + "\r\n\r\n: open\n\n"
+            .joined(separator: "\r\n") + "\r\n\r\n" + body
         listener.newConnectionHandler = { [weak self] c in
             self?.keep(c)
             c.start(queue: .global())
@@ -43,8 +43,8 @@ final class TinySSEServer: @unchecked Sendable {
 @MainActor
 final class StreamLiveTests: XCTestCase {
     /// How long until the hub says live, against a server that sent headers and a few bytes.
-    private func timeToLive(headers: [String]) async throws -> Bool {
-        let server = try TinySSEServer(headers: headers)
+    private func timeToLive(headers: [String], body: String = ": open\n\n") async throws -> Bool {
+        let server = try TinySSEServer(headers: headers, body: body)
         let port = try await server.start()
         defer { server.stop() }
         let client = VyreClient(address: BoxAddress("http://127.0.0.1:\(port)")!, signer: nil)
@@ -67,5 +67,14 @@ final class StreamLiveTests: XCTestCase {
     func testLiveOnceHeadersArriveWithoutNosniff() async throws {
         let live = try await timeToLive(headers: [])
         XCTAssertTrue(live, "without nosniff the hub is live within 4 s of the headers")
+    }
+
+    /// vyred flushes its headers and then writes nothing until an event or the 15 s heartbeat.
+    /// This records whether URLSession hands the response over before the first body byte.
+    func testHeadersOnlyThenQuiet() async throws {
+        let live = try await timeToLive(headers: ["transfer-encoding: chunked"], body: "")
+        print("STREAMPROBE headers-only live=\(live)")
+        XCTExpectFailure("URLSession may hold a response with no body byte yet", strict: false)
+        XCTAssertTrue(live)
     }
 }

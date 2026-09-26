@@ -4,23 +4,20 @@ import SwiftUI
 /// happened lately. The Deck's views/now.js and the boards' PhoneNow.
 struct NowView: View {
     @Environment(AppModel.self) private var app
-    @State private var path: [Dest] = []
     @State private var activity: [VyreEvent] = []
     @State private var activityProblem: String?
     @State private var highlight: String?
-    @State private var gone: String?
     @State private var token: UUID?
 
     static let activityTypes: Set<String> = ["thread.started", "thread.finished", "thread.stopped", "gate.held", "gate.released",
                                              "gate.rejected", "gate.failed", "ask.raised", "ask.answered", "thread.watched", "memory.curated"]
 
     var body: some View {
-        NavigationStack(path: $path) {
             ScrollViewReader { proxy in
                 PullScroll {
                     VStack(alignment: .leading, spacing: Space.xl) {
                         header
-                        if let gone { FailedLine(text: gone) }
+                        if let gone = app.gone { FailedLine(text: gone) }
                         needsSection
                         workingSection
                         activitySection
@@ -33,24 +30,14 @@ struct NowView: View {
                 }
             }
             .vyreGround()
-            .vyreDestinations()
-            .toolbar(.hidden, for: .navigationBar)
-        }
         .task { await loadActivity() }
         .onAppear { listen() }
-        .onChange(of: app.route, initial: true) { _, _ in follow() }
-        .onChange(of: app.needs.loaded) { _, _ in follow() }
     }
 
     // MARK: head
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            BrandBar {
-                Button { path.append(.settings) } label: { Avatar(name: app.ownerName, host: app.address?.host ?? "v") }.buttonStyle(.plain)
-            }
-            PageHead(eyebrow: todayLabel(), title: title, sub: sub)
-        }
+        PageHead(eyebrow: todayLabel(), title: title, sub: sub)
     }
 
     private var running: [JSON] { app.needs.threads.filter { $0["status"].string != "stopped" } }
@@ -75,7 +62,7 @@ struct NowView: View {
         let asks = app.needs.asks
         if !held.isEmpty || !asks.isEmpty {
             VStack(alignment: .leading, spacing: Space.m) {
-                HStack(spacing: Space.s) { Dot(color: .beacon); SectionHead(title: "Needs you", note: "\(held.count + asks.count)", color: .beacon) }
+                HStack(spacing: Space.s) { Dot(color: .beaconInk); SectionHead(title: "Needs you", note: "\(held.count + asks.count)", color: .beaconInk) }
                 ForEach(held) { d in
                     NavigationLink(value: Dest.held(d.id)) { HeldRow(draft: d) }.buttonStyle(.plain)
                 }
@@ -83,7 +70,7 @@ struct NowView: View {
                     AskCard(ask: a)
                         .id("ask-\(a.id)")
                         .overlay {
-                            if highlight == a.id { RoundedRectangle(cornerRadius: Radius.panel).strokeBorder(Color.beacon, lineWidth: 2) }
+                            if highlight == a.id { RoundedRectangle(cornerRadius: Radius.panel).strokeBorder(Color.beaconInk, lineWidth: 2) }
                         }
                 }
             }
@@ -124,8 +111,8 @@ struct NowView: View {
             ForEach(activity) { e in
                 Button { if let t = e.thread, e.type.hasPrefix("thread.") || e.type.hasPrefix("ask.") { app.open(.thread(t)) } } label: {
                     HStack(alignment: .firstTextBaseline, spacing: Space.m) {
-                        Text(time(e.at)).vyre(.codeSmall).foregroundStyle(Color.ash).frame(width: 44, alignment: .leading)
-                        Text(line(e)).vyre(.small).foregroundStyle(Color.bone).frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
+                        Text(time(e.at)).vyre(.codeSmall).foregroundStyle(Color.label).frame(width: 44, alignment: .leading)
+                        Text(line(e)).vyre(.small).foregroundStyle(Color.text).frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
                     }
                     .padding(.vertical, Space.s)
                     .frame(minHeight: Space.target)
@@ -198,26 +185,6 @@ struct NowView: View {
         }
     }
 
-    /// A tap on a push, or `-VyreOpen /needs/<id>`: open the held item, or scroll to the ask.
-    private func follow() {
-        if app.route == .settings {
-            path = [.settings]
-            app.route = nil
-            return
-        }
-        guard case .needs(let id) = app.route else { return }
-        if app.needs.held.contains(where: { $0.id == id }) {
-            path = [.held(id)]
-            app.route = nil
-        } else if app.needs.asks.contains(where: { $0.id == id }) {
-            path = []
-            highlight = id
-            app.route = nil
-        } else if app.needs.loaded {
-            gone = "That item is no longer waiting. It was answered somewhere else."
-            app.route = nil
-        }
-    }
 }
 
 /// A held draft in the Now list: kind, title, who and when, the first line of the body.
@@ -227,20 +194,20 @@ struct HeldRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack {
-                Engraved(draft.kind == "send" ? "Held draft" : "Held \(draft.kind)", color: .beacon)
+                Engraved(draft.kind == "send" ? "Held draft" : "Held \(draft.kind)", color: .beaconInk)
                 Spacer()
                 Text([draft.agent, age(draft.at)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                    .vyre(.codeSmall).foregroundStyle(Color.stone)
+                    .vyre(.codeSmall).foregroundStyle(Color.text2)
             }
-            Text(draft.title).vyre(.title).foregroundStyle(Color.bone).lineLimit(2)
+            Text(draft.title).vyre(.title).foregroundStyle(Color.text).lineLimit(2)
             if let body = draft.fields.first(where: { $0.key == "body" })?.value, !body.isEmpty {
-                Text(body).vyre(.small).foregroundStyle(Color.stone).lineLimit(2)
+                Text(body).vyre(.small).foregroundStyle(Color.text2).lineLimit(2)
             }
-            if let e = draft.error { Text("Held again: \(e)").vyre(.small).foregroundStyle(Color.beacon).lineLimit(2) }
+            if let e = draft.error { Text("Held again: \(e)").vyre(.small).foregroundStyle(Color.beaconInk).lineLimit(2) }
             HStack(spacing: Space.xs) {
                 Text(draft.hasChanges ? "Edited. Open to send" : "Open to read, edit and \(draft.primaryLabel.lowercased())")
-                    .vyre(.small).foregroundStyle(Color.ash)
-                Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(Color.ash)
+                    .vyre(.small).foregroundStyle(Color.label)
+                Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(Color.label)
             }
         }
         .padding(Space.gutter)
@@ -258,5 +225,26 @@ struct GoneView: View {
             .padding(.horizontal, Space.gutter)
             .vyreGround()
             .vyreNavBar()
+    }
+}
+
+/// A permission ask on its own screen, with the way into its session. The detail sheet (phone.md
+/// section 5) replaces this in step 3.
+struct AskDetailView: View {
+    @Environment(AppModel.self) private var app
+    let ask: AskItem
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.l) {
+                AskCard(ask: ask)
+                Button { app.open(.thread(ask.thread)) } label: { Label("Open session", systemImage: "chevron.right") }
+                    .buttonStyle(.secondary)
+            }
+            .padding(.horizontal, Space.gutter)
+        }
+        .vyreGround()
+        .navigationBarTitleDisplayMode(.inline)
+        .vyreNavBar()
     }
 }

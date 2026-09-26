@@ -1,25 +1,76 @@
 import SwiftUI
 import UIKit
 
-/// The type scale from TOKENS.md, drawn with the two bundled variable fonts. A weight is set on
-/// the font's `wght` axis directly, so it never depends on how the system maps weight traits, and
-/// every size scales with Dynamic Type through UIFontMetrics against the view's own size category.
+/// The type roles from docs/design/phone.md section 2, drawn with the two bundled variable fonts.
+/// Sans for everything a person reads; mono only for commands, code and logs. Buttons and labels
+/// are sentence-case sans on the phone (the one place it departs from TOKENS.md). A weight is set
+/// on the font's `wght` axis directly, and every size scales with Dynamic Type through
+/// UIFontMetrics against the view's own size category. Sizes are the default "Large" size.
 enum TypeRole: CaseIterable, Sendable {
-    case display, h1, h2, h3, title, body, small, label, button, code, codeSmall, hero
+    case display, h1, h2, h3
+    /// Page 22/28 600: the page labels in the header.
+    case page
+    /// Sheet title 26/32 600.
+    case sheetTitle
+    /// Section 20/25 600: section headers on Now.
+    case section
+    /// Group 17/22 600: group headers in Find and Agents, the chat nav title, agent names.
+    case title
+    /// Row title 16/21 600: rows in cards.
+    case rowTitle
+    /// Lead 17/24: chat messages, a question's text.
+    case lead
+    /// Input 17/22: search and composer text (never under 16).
+    case input
+    /// Body 16/23.
+    case body
+    /// Secondary 15/20: row second lines, fact rows.
+    case secondary
+    /// Meta 13/18: "kit · Harlow Legal", times, hints.
+    case small
+    /// Micro 12/16: the chat nav subtitle, tags.
+    case micro
+    /// A small label over a group: 13/18 600 sans, sentence case.
+    case label
+    /// Button 15/20 600 sans, sentence case (17 on the 54 tall primary).
+    case button
+    case buttonLarge
+    /// Command 14/20 mono, in blocks.
+    case code
+    /// Command 13/18 mono, in rows and tool rows.
+    case commandRow
+    /// Log 12/19 mono: the live console, diffs.
+    case codeSmall
+    case hero
 
-    var mono: Bool { [.label, .button, .code, .codeSmall, .hero].contains(self) }
+    static let meta = TypeRole.small
+    static let group = TypeRole.title
+    static let command = TypeRole.code
+    static let log = TypeRole.codeSmall
+
+    var mono: Bool { [.code, .commandRow, .codeSmall, .hero].contains(self) }
     var size: CGFloat {
         switch self {
-        case .display: 44 // 72 on desktop; a phone's display is H1 size.
-        case .h1: 44 // TOKENS.md H1 44/48, as the PWA and the Android app set it
+        case .display: 44
+        case .h1: 44
         case .h2: 28
         case .h3: 20
-        case .title: 16
-        case .body: 15
+        case .page: 22
+        case .sheetTitle: 26
+        case .section: 20
+        case .title: 17
+        case .rowTitle: 16
+        case .lead: 17
+        case .input: 17
+        case .body: 16
+        case .secondary: 15
         case .small: 13
-        case .label: 11
-        case .button: 12
-        case .code: 13
+        case .micro: 12
+        case .label: 13
+        case .button: 15
+        case .buttonLarge: 17
+        case .code: 14
+        case .commandRow: 13
         case .codeSmall: 12
         case .hero: 22
         }
@@ -30,21 +81,30 @@ enum TypeRole: CaseIterable, Sendable {
         case .h1: 48
         case .h2: 34
         case .h3: 26
+        case .page: 28
+        case .sheetTitle: 32
+        case .section: 25
         case .title: 22
-        case .body: 22
+        case .rowTitle: 21
+        case .lead: 24
+        case .input: 22
+        case .body: 23
+        case .secondary: 20
         case .small: 18
-        case .label: 14
-        case .button: 16
+        case .micro: 16
+        case .label: 18
+        case .button: 20
+        case .buttonLarge: 22
         case .code: 20
-        case .codeSmall: 16
+        case .commandRow: 18
+        case .codeSmall: 19
         case .hero: 28
         }
     }
     var weight: CGFloat {
         switch self {
-        case .display, .h1, .h2, .h3: 600
-        case .title: 500
-        case .label, .button, .hero: 500
+        case .display, .h1, .h2, .h3, .page, .sheetTitle, .section, .title, .rowTitle, .label, .button, .buttonLarge: 600
+        case .hero: 500
         default: 400
         }
     }
@@ -54,23 +114,23 @@ enum TypeRole: CaseIterable, Sendable {
         case .display: -0.035
         case .h1: -0.03
         case .h2: -0.02
+        case .page, .sheetTitle: -0.015
         case .h3: -0.01
-        case .label: 0.16
-        case .button: 0.12
         case .hero: -0.02
         default: 0
         }
     }
-    var uppercase: Bool { self == .label || self == .button }
+    var uppercase: Bool { false }
     var textStyle: UIFont.TextStyle {
         switch self {
         case .display, .h1: .largeTitle
-        case .h2: .title1
-        case .h3: .title3
-        case .title: .headline
-        case .body: .body
-        case .small, .code: .subheadline
-        case .label, .button, .codeSmall: .caption1
+        case .h2, .sheetTitle: .title1
+        case .h3, .page, .section: .title3
+        case .title, .rowTitle, .buttonLarge: .headline
+        case .lead, .input, .body: .body
+        case .secondary, .button: .callout
+        case .small, .label, .code, .commandRow: .subheadline
+        case .micro, .codeSmall: .caption1
         case .hero: .title2
         }
     }
@@ -153,10 +213,10 @@ extension View {
     func vyre(_ role: TypeRole, weight: CGFloat? = nil) -> some View { modifier(VyreType(role: role, weight: weight)) }
 }
 
-/// The engraved label: mono 11, uppercase, +0.16em, ash unless told otherwise.
+/// A small label over a group: 13/600 sans, sentence case, `--label` unless told otherwise.
 struct Engraved: View {
     let text: String
-    var color: Color = .ash
-    init(_ text: String, color: Color = .ash) { self.text = text; self.color = color }
+    var color: Color = .label
+    init(_ text: String, color: Color = .label) { self.text = text; self.color = color }
     var body: some View { Text(text).vyre(.label).foregroundStyle(color).accessibilityAddTraits(.isHeader) }
 }

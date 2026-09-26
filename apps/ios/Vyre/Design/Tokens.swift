@@ -34,39 +34,54 @@ enum Tone {
     }
 }
 
+/// The colour roles, named as the Deck names them (deck/css/deck.css; docs/design/phone.md
+/// section 2), so a phone view and a Deck view read the same variables. Values verbatim.
 extension Color {
-    /// Page ground.
-    static let ground = Tone.pair(Tone.graphite, Tone.paper)
-    /// Panels, sheets, the composer. One step up from ground.
+    /// `--bg`: page ground.
+    static let bg = Tone.pair(Tone.graphite, Tone.paper)
+    /// `--panel`: cards, sheets, the Capsule.
     static let panel = Tone.pair(Tone.carbon, Tone.paperRaised)
-    /// Pressed rows, popovers. Rarely.
-    static let raised = Tone.pair(Tone.raisedDark, Tone.paperRaised)
+    /// `--hover`: agent tiles, pressed rows, the Deny reveal.
+    static let hover = Tone.pair(Tone.raisedDark, UIColor(hex: 0x141311, alpha: 0.045))
+    /// `--rule`: hairlines between rows.
     static let rule = Tone.pair(Tone.ruleDark, Tone.paperRule)
+    /// `--rule-strong`: card and input borders, outline buttons.
     static let ruleStrong = Tone.pair(Tone.ruleStrongDark, Tone.paperRuleStrong)
-    /// Engraved labels, captions, placeholders. The smallest text colour allowed.
-    static let ash = Tone.pair(Tone.ashDark, Tone.ink3)
-    /// Secondary text.
-    static let stone = Tone.pair(Tone.stoneDark, Tone.ink2)
-    /// Primary text.
-    static let bone = Tone.pair(Tone.boneDark, Tone.ink)
-    /// Focus and the one primary action per screen. Text and rings.
-    static let signal = Tone.pair(Tone.signalDark, Tone.signalDeep)
-    /// The fill of the one primary button: Signal on dark, Ink on paper.
-    static let signalFill = Tone.pair(Tone.signalDark, Tone.ink)
-    /// Text on the primary fill.
-    static let signalInk = Tone.pair(Tone.graphite, Tone.paper)
+    /// `--text`: primary text.
+    static let text = Tone.pair(Tone.boneDark, Tone.ink)
+    /// `--text-2`: secondary text.
+    static let text2 = Tone.pair(Tone.stoneDark, Tone.ink2)
+    /// `--label`: labels, meta, placeholders. The smallest text colour allowed.
+    static let label = Tone.pair(Tone.ashDark, Tone.ink3)
+    /// `--primary-bg`: the fill of the one primary button per view.
+    static let primaryBg = Tone.pair(Tone.signalDark, Tone.ink)
+    /// `--primary-ink`: text on the primary fill.
+    static let primaryInk = Tone.pair(Tone.graphite, Tone.paper)
+    /// `--focus`: the focus ring, and Signal where the design system uses it as text.
+    static let focus = Tone.pair(Tone.signalDark, Tone.signalDeep)
+    /// `--signal-wash`: the Ask row in Find, added diff lines.
     static let signalWash = Tone.pair(UIColor(hex: 0xC6F36B, alpha: 0.12), UIColor(hex: 0x46700C, alpha: 0.10))
-    /// Came from memory; no model was used.
-    static let recall = Tone.pair(Tone.recallDark, Tone.recallDeep)
-    static let recallWash = Tone.pair(UIColor(hex: 0xEBC76B, alpha: 0.10), UIColor(hex: 0xEBC76B, alpha: 0.10))
-    /// Needs you. Held items, asks, the badge. Nothing else.
-    static let beacon = Tone.pair(Tone.beaconDark, Tone.beaconDeep)
+    /// `--match` (phone): search match highlight, the Open session flash.
+    static let match = Tone.pair(UIColor(hex: 0xC6F36B, alpha: 0.20), UIColor(hex: 0x46700C, alpha: 0.16))
+    /// `--beacon-ink`: needs you. Held items, asks, the badge. Nothing else.
+    static let beaconInk = Tone.pair(Tone.beaconDark, Tone.beaconDeep)
+    /// `--beacon-dot`.
     static let beaconDot = Tone.pair(Tone.beaconDark, Tone.beaconDotPaper)
-    static let beaconWash = Tone.pair(UIColor(hex: 0xFF7A59, alpha: 0.12), UIColor(hex: 0xFF7A59, alpha: 0.12))
-    /// The mark's dot: Signal on dark, Ink on paper.
+    /// `--beacon-wash`: behind a held item.
+    static let beaconWash = Tone.pair(UIColor(hex: 0xFF7A59, alpha: 0.12), UIColor(hex: 0xE5532F, alpha: 0.09))
+    /// `--recall`: came from memory; no model was used.
+    static let recall = Tone.pair(Tone.recallDark, Tone.recallDeep)
+    /// `--recall-wash`: behind a recalled block.
+    static let recallWash = Tone.pair(UIColor(hex: 0xEBC76B, alpha: 0.10), UIColor(hex: 0x7E5B0C, alpha: 0.08))
+    /// `--del-wash`: deleted diff lines, with `--label` text.
+    static let delWash = Tone.pair(UIColor(hex: 0x8C877D, alpha: 0.14), UIColor(hex: 0x6B665D, alpha: 0.10))
+    /// `--code-bg`: command blocks, the live console.
+    static let codeBg = Tone.pair(UIColor(hex: 0x0E0D0C, alpha: 0.55), UIColor(hex: 0x141311, alpha: 0.04))
+    /// `--mark-wire` / `--mark-dot`.
+    static let markWire = Tone.pair(Tone.boneDark, Tone.ink)
     static let markDot = Tone.pair(Tone.signalDark, Tone.ink)
-    /// Code blocks sit on carbon in both themes' spirit: carbon on dark, raised paper on paper.
-    static let codeGround = Tone.pair(Tone.carbon, Tone.paperRaised)
+    /// `--scrim` (phone): behind a sheet.
+    static let scrim = Tone.pair(UIColor(hex: 0x000000, alpha: 0.62), UIColor(hex: 0x141311, alpha: 0.34))
 }
 
 extension UIColor {
@@ -91,7 +106,12 @@ enum Space {
 
 enum Radius {
     static let chip: CGFloat = 4
+    /// Filter chips, agent tiles at 32 px, code blocks in sheets.
+    static let tile: CGFloat = 8
     static let button: CGFloat = 6
+    static let card: CGFloat = 10
     static let panel: CGFloat = 10
     static let window: CGFloat = 14
+    static let sheet: CGFloat = 14
+    static let bubble: CGFloat = 18
 }

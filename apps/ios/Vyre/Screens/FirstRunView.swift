@@ -19,15 +19,15 @@ struct FirstRunView: View {
                 HStack(spacing: Space.s) { Mark(size: 20); Wordmark(height: 22) }
                     .padding(.top, Space.l)
                 VStack(alignment: .leading, spacing: Space.s) {
-                    Text("Find your box.").vyre(.h1).foregroundStyle(Color.bone)
+                    Text("Find your box.").vyre(.h1).foregroundStyle(Color.text)
                     Text("Scan the QR code on your Deck's setup page, or type the box's address. Only your tailnet can open it.")
-                        .vyre(.body).foregroundStyle(Color.stone)
+                        .vyre(.body).foregroundStyle(Color.text2)
                 }
                 VStack(alignment: .leading, spacing: Space.s) {
                     Engraved("Address")
-                    TextField("", text: $typed, prompt: Text("vyre.your-tailnet.ts.net").foregroundStyle(Color.ash))
+                    TextField("", text: $typed, prompt: Text("vyre.your-tailnet.ts.net").foregroundStyle(Color.label))
                         .vyre(.code)
-                        .foregroundStyle(Color.bone)
+                        .foregroundStyle(Color.text)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -39,7 +39,7 @@ struct FirstRunView: View {
                         .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.button))
                         .overlay {
                             RoundedRectangle(cornerRadius: Radius.button)
-                                .strokeBorder(focused ? Color.signal : Color.ruleStrong, lineWidth: focused ? 2 : 1)
+                                .strokeBorder(focused ? Color.focus : Color.ruleStrong, lineWidth: focused ? 2 : 1)
                         }
                         .accessibilityLabel("Box address")
                 }
@@ -52,7 +52,7 @@ struct FirstRunView: View {
                         .disabled(busy)
                 }
                 if let line {
-                    Text(line).vyre(.small).foregroundStyle(Color.stone).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(line).vyre(.small).foregroundStyle(Color.text2).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if offline {
                     Button("Open Tailscale") { openURL(URL(string: "tailscale://")!) }.buttonStyle(.secondary)
@@ -61,7 +61,7 @@ struct FirstRunView: View {
                 VStack(alignment: .leading, spacing: Space.s) {
                     Engraved("How signing in works")
                     Text("This phone makes a key that never leaves it. Your Deck's passkey approves it once; after that, Face ID on this phone approves drafts, answers sessions and opens the vault.")
-                        .vyre(.small).foregroundStyle(Color.stone)
+                        .vyre(.small).foregroundStyle(Color.text2)
                 }
             }
             .padding(.horizontal, Space.gutter)

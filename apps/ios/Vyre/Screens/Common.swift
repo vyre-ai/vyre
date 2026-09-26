@@ -26,8 +26,8 @@ struct PageHead: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             if let eyebrow { Engraved(eyebrow) }
-            Text(title).vyre(.h1).foregroundStyle(Color.bone).fixedSize(horizontal: false, vertical: true)
-            if let sub, !sub.isEmpty { Text(sub).vyre(.body).foregroundStyle(Color.stone).fixedSize(horizontal: false, vertical: true) }
+            Text(title).vyre(.h1).foregroundStyle(Color.text).fixedSize(horizontal: false, vertical: true)
+            if let sub, !sub.isEmpty { Text(sub).vyre(.body).foregroundStyle(Color.text2).fixedSize(horizontal: false, vertical: true) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, Space.m)
@@ -47,12 +47,12 @@ struct ListRow: View {
         HStack(alignment: .center, spacing: Space.m) {
             if let dot { Dot(color: dot) }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).vyre(mono ? .code : .title).foregroundStyle(Color.bone).lineLimit(2)
-                if let detail, !detail.isEmpty { Text(detail).vyre(.small).foregroundStyle(Color.stone).lineLimit(2) }
+                Text(title).vyre(mono ? .code : .title).foregroundStyle(Color.text).lineLimit(2)
+                if let detail, !detail.isEmpty { Text(detail).vyre(.small).foregroundStyle(Color.text2).lineLimit(2) }
             }
             Spacer(minLength: Space.s)
-            if let note, !note.isEmpty { Text(note).vyre(.codeSmall).foregroundStyle(Color.ash).lineLimit(1) }
-            if chevron { Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.ash) }
+            if let note, !note.isEmpty { Text(note).vyre(.codeSmall).foregroundStyle(Color.label).lineLimit(1) }
+            if chevron { Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.label) }
         }
         .padding(.vertical, Space.m)
         .frame(minHeight: Space.target)
@@ -71,17 +71,17 @@ struct SearchField: View {
 
     var body: some View {
         HStack(spacing: Space.s) {
-            Image(systemName: icon).font(.system(size: 15, weight: .medium)).foregroundStyle(Color.ash)
-            TextField("", text: $text, prompt: Text(prompt).foregroundStyle(Color.ash))
+            Image(systemName: icon).font(.system(size: 15, weight: .medium)).foregroundStyle(Color.label)
+            TextField("", text: $text, prompt: Text(prompt).foregroundStyle(Color.label))
                 .vyre(.body)
-                .foregroundStyle(Color.bone)
+                .foregroundStyle(Color.text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.go)
                 .focused($focused)
                 .onSubmit(submit)
             if !text.isEmpty {
-                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.ash) }
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.label) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Clear")
             }
@@ -91,17 +91,17 @@ struct SearchField: View {
         .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.button))
         .overlay {
             RoundedRectangle(cornerRadius: Radius.button)
-                .strokeBorder(focused ? Color.signal : Color.ruleStrong, lineWidth: focused ? 2 : 1)
+                .strokeBorder(focused ? Color.focus : Color.ruleStrong, lineWidth: focused ? 2 : 1)
         }
     }
 }
 
 /// A thread's status as a dot colour: Beacon waiting on the person, Signal working, ash otherwise.
 func statusDot(_ status: String?, asks: Int = 0) -> Color {
-    if asks > 0 || status == "waiting" { return .beacon }
+    if asks > 0 || status == "waiting" { return .beaconInk }
     switch status {
-    case "working", "starting": return .signal
-    default: return .ash
+    case "working", "starting": return .focus
+    default: return .label
     }
 }
 
@@ -124,7 +124,7 @@ struct LoadState: View {
 
     var body: some View {
         if let problem { FailedLine(text: problem).padding(.vertical, Space.m) }
-        else if loading { HStack(spacing: Space.s) { ProgressView().tint(Color.ash); Engraved("Loading") }.padding(.vertical, Space.m) }
+        else if loading { HStack(spacing: Space.s) { ProgressView().tint(Color.label); Engraved("Loading") }.padding(.vertical, Space.m) }
         else if let empty { EmptyLine(text: empty) }
     }
 }
@@ -148,4 +148,71 @@ func modelLabel(_ m: String?) -> String? {
     guard var m, !m.isEmpty else { return nil }
     for p in ["claude-", "claude_", "claude"] where m.lowercased().hasPrefix(p) { m = String(m.dropFirst(p.count)); break }
     return m.isEmpty ? nil : m
+}
+
+/// An agent's tile: its initial on `--hover`, `--rule-strong` border (32 px at radius 8; 22 and 40
+/// elsewhere).
+struct Tile: View {
+    let name: String
+    var size: CGFloat = 32
+    var body: some View {
+        Text(String(name.first ?? "v").uppercased())
+            .font(VyreFonts.base(.rowTitle).asFont(size: size * 15 / 32))
+            .foregroundStyle(Color.text)
+            .frame(width: size, height: size)
+            .background(Color.hover, in: RoundedRectangle(cornerRadius: size >= 40 ? 11 : Radius.tile))
+            .overlay { RoundedRectangle(cornerRadius: size >= 40 ? 11 : Radius.tile).strokeBorder(Color.ruleStrong, lineWidth: 1) }
+            .accessibilityHidden(true)
+    }
+}
+
+/// A card: `--panel`, `--rule` border, radius 10. Rows inside draw their own hairlines.
+struct Card<Content: View>: View {
+    var fill: Color = .panel
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(fill, in: RoundedRectangle(cornerRadius: Radius.card))
+            .overlay { RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Color.rule, lineWidth: 1) }
+            .clipShape(RoundedRectangle(cornerRadius: Radius.card))
+    }
+}
+
+/// A filter chip (Chats' projects): 30 tall, radius 8, 13/600; selected is `--text` on `--bg` text.
+struct FilterChip: View {
+    let label: String
+    let on: Bool
+    let tap: () -> Void
+    var body: some View {
+        Button(action: tap) {
+            Text(label).vyre(.small, weight: 600)
+                .foregroundStyle(on ? Color.bg : Color.text2)
+                .padding(.horizontal, Space.m)
+                .frame(height: 30)
+                .background(on ? Color.text : Color.clear, in: RoundedRectangle(cornerRadius: Radius.tile))
+                .overlay { if !on { RoundedRectangle(cornerRadius: Radius.tile).strokeBorder(Color.ruleStrong, lineWidth: 1) } }
+                .frame(minHeight: Space.target)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// A section header on Now: sentence case in Section type, the count on the right.
+struct SectionHeader: View {
+    let title: String
+    var count: Int?
+    var dot: Color?
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+            if let dot { Dot(color: dot, size: 8).alignmentGuide(.firstTextBaseline) { d in d[.bottom] + 2 } }
+            Text(title).vyre(.section).foregroundStyle(Color.text).accessibilityAddTraits(.isHeader)
+            Spacer()
+            if let count { Text("\(count)").vyre(.secondary).foregroundStyle(Color.label) }
+        }
+        .padding(.top, Space.l)
+        .padding(.bottom, Space.s)
+    }
 }

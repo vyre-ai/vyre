@@ -4,6 +4,8 @@ import SwiftUI
 /// file, a fact or an agent; Now's avatar opens Settings, and Settings the Vault).
 enum Dest: Hashable {
     case held(String)
+    /// A permission ask, until the detail sheet (step 3) replaces it.
+    case ask(String)
     case project(slug: String, name: String)
     case thread(String)
     case agent(String)
@@ -32,6 +34,9 @@ struct DestView: View {
         case .held(let id):
             if let d = app.needs.held.first(where: { $0.id == id }) { HeldDetailView(draft: d) }
             else { GoneView(text: "This is no longer held. It was sent, discarded, or answered somewhere else.") }
+        case .ask(let id):
+            if let a = app.needs.asks.first(where: { $0.id == id }) { AskDetailView(ask: a) }
+            else { GoneView(text: "This was answered somewhere else.") }
         case .project(let slug, let name): ProjectView(slug: slug, name: name)
         case .thread(let id): ThreadView(id: id)
         case .agent(let name): AgentDetailView(name: name)
@@ -69,20 +74,21 @@ struct PullScroll<Content: View>: View {
         }
         .coordinateSpace(.named(space))
         .overlay(alignment: .top) {
-            if enabled && pull > 8 {
+            if enabled && app.sheet == nil && pull > 8 {
                 VStack(spacing: 0) {
-                    Engraved(armed ? "Release to find" : "Pull to find", color: armed ? .bone : .ash)
+                    Engraved(armed ? "Release to find" : "Pull to find", color: armed ? .text : .label)
                         .frame(maxWidth: .infinity, minHeight: min(pull, 44))
                     Hairline()
                 }
-                .background(Color.ground)
+                .background(Color.bg)
                 .accessibilityHidden(true)
             }
         }
     }
 
     private func track(_ y: CGFloat) {
-        guard enabled else { return }
+        // Inside a sheet (Settings, Find) a pull belongs to the sheet.
+        guard enabled, app.sheet == nil else { return }
         pull = max(0, y)
         if y >= PullScroll.threshold && !armed {
             armed = true
@@ -91,7 +97,7 @@ struct PullScroll<Content: View>: View {
             // Let go past the line: the scroll view bounced back to rest.
             armed = false
             pull = 0
-            app.tab = .find
+            app.sheet = .find
         }
     }
 }
@@ -123,9 +129,9 @@ struct Avatar: View {
     let host: String
     var body: some View {
         Text(initials(name: name, host: host))
-            .vyre(.label)
-            .foregroundStyle(Color.bone)
-            .frame(width: 32, height: 32)
+            .vyre(.secondary, weight: 600)
+            .foregroundStyle(Color.text)
+            .frame(width: 34, height: 34)
             .background(Color.panel, in: Circle())
             .overlay { Circle().strokeBorder(Color.ruleStrong, lineWidth: 1) }
             .frame(width: Space.target, height: Space.target)

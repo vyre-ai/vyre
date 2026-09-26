@@ -8,7 +8,6 @@ import SwiftUI
 /// Places (Vault, Memory), examples, and recent sessions.
 struct FindView: View {
     @Environment(AppModel.self) private var app
-    @State private var path: [Dest] = []
     @State private var q = ""
     @State private var agents: [JSON] = []
     @State private var projects: [JSON] = []
@@ -34,12 +33,13 @@ struct FindView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        @Bindable var app = app
+        NavigationStack(path: $app.findPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.l) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        BrandBar()
+                    HStack {
                         PageHead(title: "Find")
+                        Button("Done") { app.sheet = nil }.buttonStyle(.quiet)
                     }
                     box
                     if let note { outcomeLine(note) }
@@ -58,13 +58,6 @@ struct FindView: View {
         .task { await loadCatalog() }
         .task(id: searchText) { await search() }
         .onChange(of: q) { _, _ in note = nil; sentThread = nil }
-        .onChange(of: app.route, initial: true) { _, r in
-            switch r {
-            case .vault: path = [.vault]; app.route = nil
-            case .memory: path = [.memory(nil)]; app.route = nil
-            default: break
-            }
-        }
     }
 
     // MARK: the box
@@ -73,17 +66,17 @@ struct FindView: View {
         VStack(alignment: .leading, spacing: Space.s) {
             HStack(spacing: Space.s) {
                 HStack(spacing: Space.s) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(Color.ash)
-                    TextField("", text: $q, prompt: Text("Find or ask, @agent, tell or watch").foregroundStyle(Color.ash))
+                    Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(Color.label)
+                    TextField("", text: $q, prompt: Text("Find or ask, @agent, tell or watch").foregroundStyle(Color.label))
                         .vyre(.body)
-                        .foregroundStyle(Color.bone)
+                        .foregroundStyle(Color.text)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .submitLabel(.go)
                         .focused($focused)
                         .onSubmit { Task { await run(actions.first) } }
                     if !q.isEmpty {
-                        Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.ash) }
+                        Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.label) }
                             .buttonStyle(.plain).accessibilityLabel("Clear")
                     }
                 }
@@ -91,7 +84,7 @@ struct FindView: View {
                 .frame(minHeight: Space.target)
                 .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.button))
                 .overlay {
-                    RoundedRectangle(cornerRadius: Radius.button).strokeBorder(focused ? Color.signal : Color.ruleStrong, lineWidth: focused ? 2 : 1)
+                    RoundedRectangle(cornerRadius: Radius.button).strokeBorder(focused ? Color.focus : Color.ruleStrong, lineWidth: focused ? 2 : 1)
                 }
                 // Voice needs on-device recognition (ADR 0018 section 8); this build has none yet.
                 Button { voiceNote.toggle() } label: {
@@ -102,19 +95,19 @@ struct FindView: View {
                 .accessibilityLabel("Voice, not available in this build")
             }
             Text(hint ?? "Voice is not in this build yet. Type instead.")
-                .vyre(.small).foregroundStyle(hint != nil ? Color.stone : Color.ash)
+                .vyre(.small).foregroundStyle(hint != nil ? Color.text2 : Color.label)
             if voiceNote {
                 Text("Voice will listen on this phone only and put the words here to read before sending.")
-                    .vyre(.small).foregroundStyle(Color.ash)
+                    .vyre(.small).foregroundStyle(Color.label)
             }
         }
     }
 
     private func outcomeLine(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(text).vyre(.small).foregroundStyle(Color.bone)
+            Text(text).vyre(.small).foregroundStyle(Color.text)
             Spacer()
-            if let t = sentThread { Button("Open") { path.append(.thread(t)) }.buttonStyle(.quiet) }
+            if let t = sentThread { Button("Open") { app.open(.thread(t)) }.buttonStyle(.quiet) }
         }
         .padding(Space.m)
         .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.panel))
@@ -233,7 +226,7 @@ struct FindView: View {
             Hairline()
             ForEach(Array(actions.enumerated()), id: \.offset) { i, a in
                 Button { Task { await run(a) } } label: {
-                    ListRow(title: a.label, detail: a.detail, note: i == 0 ? "return" : nil, dot: i == 0 ? .signal : nil, chevron: false)
+                    ListRow(title: a.label, detail: a.detail, note: i == 0 ? "return" : nil, dot: i == 0 ? .focus : nil, chevron: false)
                 }
                 .buttonStyle(.plain)
                 .disabled(busy)
@@ -317,7 +310,7 @@ struct FindView: View {
         }
     }
 
-    private func group<C: View>(_ title: String, _ count: Int, note: String? = nil, color: Color = .ash, @ViewBuilder _ content: () -> C) -> some View {
+    private func group<C: View>(_ title: String, _ count: Int, note: String? = nil, color: Color = .label, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHead(title: "\(title) · \(count)", note: note, color: color).padding(.bottom, Space.s)
             Hairline()
@@ -328,7 +321,7 @@ struct FindView: View {
     @ViewBuilder
     private func status(_ o: Outcome?, failed: String, empty: String?) -> some View {
         switch o {
-        case nil: HStack(spacing: Space.s) { ProgressView().tint(Color.ash); Engraved("Looking") }.padding(.vertical, Space.m)
+        case nil: HStack(spacing: Space.s) { ProgressView().tint(Color.label); Engraved("Looking") }.padding(.vertical, Space.m)
         case .failed(let why)?: EmptyLine(text: "\(failed) \(why)")
         case .rows(let r)?: if r.isEmpty, let empty { EmptyLine(text: empty) }
         }
@@ -381,7 +374,7 @@ struct FindView: View {
         guard let a, !busy else { return }
         switch a {
         case .fill(let s): q = s; focused = true; return
-        case .openAgent(let name): q = ""; path.append(.agent(name)); return
+        case .openAgent(let name): q = ""; app.findPath.append(.agent(name)); return
         default: break
         }
         busy = true
@@ -392,11 +385,11 @@ struct FindView: View {
                 let out = try await app.call("agents.ask", ["agent": .string(agent), "text": .string(text), "surface": "ios", "wait": false])
                 if out["ok"].bool == false { note = out["note"].string ?? "\(agent) did not take it."; return }
                 q = ""
-                if let t = out["thread"].string { path.append(.thread(t)) } else { note = "Sent to \(agent)." }
+                if let t = out["thread"].string { app.open(.thread(t)) } else { note = "Sent to \(agent)." }
             case .start(let project, let name, let text):
                 let rec = try await app.call("threads.start", ["project": .string(project), "prompt": .string(text), "surface": "ios"])
                 q = ""
-                if let t = rec["id"].string { path.append(.thread(t)) } else { note = "Started a session in \(name)." }
+                if let t = rec["id"].string { app.open(.thread(t)) } else { note = "Started a session in \(name)." }
             case .drive(let thread, let name, let text):
                 let out = try await app.call("threads.send", ["thread": .string(thread), "text": .string(text), "surface": "ios"])
                 guard out["sent"].bool == true else { note = out["note"].string ?? "\(out["holder"].string ?? "Someone") has the keyboard."; return }
@@ -457,7 +450,7 @@ struct FlowChips: View {
         FlowLayout(spacing: Space.s) {
             ForEach(items, id: \.self) { t in
                 Button { tap(t) } label: {
-                    Text(t.trimmingCharacters(in: .whitespaces)).vyre(.code).foregroundStyle(Color.stone)
+                    Text(t.trimmingCharacters(in: .whitespaces)).vyre(.code).foregroundStyle(Color.text2)
                         .padding(.horizontal, Space.m)
                         .frame(minHeight: 36)
                         .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.chip))

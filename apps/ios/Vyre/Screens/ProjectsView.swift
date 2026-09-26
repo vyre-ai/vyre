@@ -1,66 +1,5 @@
 import SwiftUI
 
-/// Projects (a tab): the project list, and each project's page with its sessions. The Deck's
-/// views/projects.js and the Android ProjectsScreen. The list is kept for offline reading.
-struct ProjectsHome: View {
-    @Environment(AppModel.self) private var app
-    @State private var path: [Dest] = []
-    @State private var projects: [JSON] = []
-    @State private var loading = true
-    @State private var problem: String?
-    @State private var cached = false
-
-    var body: some View {
-        NavigationStack(path: $path) {
-            PullScroll {
-                VStack(alignment: .leading, spacing: Space.xl) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        BrandBar()
-                        PageHead(title: "Projects", sub: cached ? "Offline. The projects this phone kept." : nil)
-                    }
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionHead(title: "Projects", note: "\(projects.count)").padding(.bottom, Space.s)
-                        Hairline()
-                        LoadState(loading: loading && projects.isEmpty, problem: projects.isEmpty ? problem : nil,
-                                  empty: projects.isEmpty ? "No projects yet. Make one on the Mac with vyre new." : nil)
-                        ForEach(projects, id: \.self) { p in
-                            NavigationLink(value: Dest.project(slug: p["slug"].text, name: p["name"].string ?? p["slug"].text)) {
-                                ListRow(title: p["name"].string ?? p["slug"].text,
-                                        detail: [p["org"].string, p["threads"].int.map { plural($0, "session") }].compactMap { $0 }.joined(separator: " · "),
-                                        note: age(p["last"].double))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .padding(.horizontal, Space.gutter)
-                .padding(.bottom, Space.xxl)
-            }
-            .vyreGround()
-            .toolbar(.hidden, for: .navigationBar)
-            .vyreDestinations()
-        }
-        .task { await load() }
-    }
-
-    private func load() async {
-        defer { loading = false }
-        do {
-            let out = try await app.call("projects.list")
-            app.cache.put("projects.list", out)
-            projects = out["projects"].list.sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) }
-            problem = nil
-            cached = false
-        } catch {
-            if let c = app.cache.get("projects.list") {
-                projects = c["projects"].list
-                cached = true
-            }
-            problem = describe(error)
-        }
-    }
-}
-
 /// One project's sessions: picked and in its folders (`projects.threads`), and a new session there.
 struct ProjectView: View {
     @Environment(AppModel.self) private var app
@@ -140,14 +79,14 @@ struct NewThreadSheet: View {
                             ForEach(projects, id: \.self) { p in Text(p["name"].string ?? p["slug"].text).tag(p["slug"].text) }
                         }
                         .pickerStyle(.menu)
-                        .tint(Color.bone)
+                        .tint(Color.text)
                     }
                 }
                 VStack(alignment: .leading, spacing: Space.s) {
                     Engraved("First message")
-                    TextField("", text: $prompt, prompt: Text("Draft the Northwind Bakery invoice reminder").foregroundStyle(Color.ash), axis: .vertical)
+                    TextField("", text: $prompt, prompt: Text("Draft the Northwind Bakery invoice reminder").foregroundStyle(Color.label), axis: .vertical)
                         .vyre(.body)
-                        .foregroundStyle(Color.bone)
+                        .foregroundStyle(Color.text)
                         .lineLimit(3...8)
                         .padding(Space.m)
                         .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.button))
