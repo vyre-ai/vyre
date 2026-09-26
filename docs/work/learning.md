@@ -56,21 +56,29 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   change code" accepted with `vyre learn accept`; a turn that wrote `src/add.js` only was sent
   back and then edited the changelog. `learn_retire` held (ask, denied headless) although
   `--allowedTools` allowed it.
+- Offline checks (`core/learn/offline.js`): accepted-lessons snapshot `<home>/lessons.json`
+  (0600), hook.js runs tool and Stop checks from it when vyred is unreachable, and the module
+  counts the offline log at start. Verified for real in `/tmp/vyre-lab` with vyred unable to
+  start: em dash reply 1 dash then 0; `src/add.js` turn sent back, then the changelog edited;
+  2 offline catches counted on restart.
+- Draft edits as signals: subscribes to gate-chat's `gate.released {edited: true}` and reads
+  `gate.get {id}` for draft and final; a character taken out everywhere is proposed at remind.
+  No change on gate's side.
 
 ## Doing
 - Nothing; waiting for review.
 
 ## Next
-1. Hooks with vyred down: Stop and the lesson tool checks skip, as every hook does. A snapshot
-   of active lessons that `hook.js` checks in-process, as it does the floor, would close that.
-2. Turning free text into a check with a model, off the hot path, through the switchboard.
-3. Signals not read yet: reverted changes (`harness_files` plus git), `draft.edited` from the
-   Gate, and denials the user makes in Claude Code's own prompt (hooks do not see those).
-4. Deck panel: lessons with counts; accept, narrow, level, retire.
-5. Seq is Learning's own turn count per session, not the transcript seq; line them up once
+1. Turning free text into a check with a model, off the hot path, through the switchboard.
+2. Signals not read yet: reverted changes (`harness_files` plus git), and denials the user makes
+   in Claude Code's own prompt (hooks do not see those).
+3. Seq is Learning's own turn count per session, not the transcript seq; line them up once
    Recall exposes it.
+4. Offline, project-scoped lessons do not apply; the snapshot could carry each project's folders.
 
 ## Needs from others
+- gate-chat: keep `gate.released {id, edited, thread, agent}` and `gate.get {id} -> {draft, final, diff}`
+  stable (agreed); message Learning before a field changes.
 - deck: a lessons panel over `learn.lessons`, `learn.accept`, `learn.edit`, `learn.retire`.
 - switchboard: a headless `claude -p` to distill free-text corrections; `VYRE_AGENT` in the env
   of agents' sessions, so lessons can be scoped to an agent.
@@ -88,3 +96,6 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   `harness.stop` also takes `text` and `stop_hook_active`, and may return `{decision: "block",
   reason}`. `harness.brief` text now ends with the active lessons, in a project or not.
 - `tool.held` payload gains `lesson` (null for a floor hold); `rule` is null for a lesson hold.
+- Files in the home: `lessons.json` (accepted lessons, `{version, at, lessons: [{id, rule, level,
+  scope, check}]}`, 0600) and `learn-offline/` (per-session turn state and `log.jsonl`). Only
+  Learning and the hooks read them.

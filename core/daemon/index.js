@@ -93,9 +93,10 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
   const url = new URL(req.url || "/", "http://vyred");
   // The caller is the client's own claim, except that no client may claim to be a module: only
   // the loader can say that, and a module caller is what internal tools such as vault.release
-  // trust. Anything on the socket posing as "module:x" is treated as a plain local client, and
-  // so is a claim to be "hook", which only the webhook route below may make.
+  // trust. Anything on the socket posing as "module:x" is treated as a plain local client.
   const claimed = String(req.headers["x-vyre-caller"] || "local");
+  // A header is a claim, not an identity. "module:<name>" is what the registry uses between
+  // modules, and "hook" is what the webhook route sets itself; neither may be claimed over HTTP.
   const caller = claimed.startsWith("module:") || claimed === "hook" ? "local" : claimed;
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
