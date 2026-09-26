@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Extensions can be named with @
+
+- `CapsuleExtension.mentions(matching:)` and `send(_:to:query:)`: an extension lists targets
+  ("Notes", "Slack #general") for the words after `@`; they follow Vyre's own agents, projects
+  and sessions, become the chip when picked, and Enter sends through the extension, which says
+  what happened. For capsule-apps. `Sources/Kit/Extension.swift`, `Sources/Host/ExtensionHost.swift`.
+
 #### The native Capsule's design pass
 
 - Rows are inset and rounded; the selected one is a raised plate with the signal pill at its left

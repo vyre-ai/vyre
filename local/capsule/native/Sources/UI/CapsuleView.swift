@@ -72,7 +72,7 @@ struct CapsuleView: View {
             MarkView(size: 22)
             if let c = model.target {
                 HStack(spacing: 5) {
-                    Image(systemName: c.kind == .agent ? "person.crop.circle" : c.kind == .project ? "folder" : "text.bubble")
+                    Image(systemName: c.kind == .agent ? "person.crop.circle" : c.kind == .project ? "folder" : c.kind == .app ? "app" : "text.bubble")
                         .font(.system(size: 11, weight: .medium))
                     Text(c.label).font(.system(size: 13, weight: .medium)).lineLimit(1)
                 }

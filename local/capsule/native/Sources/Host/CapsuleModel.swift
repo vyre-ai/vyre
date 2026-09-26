@@ -40,6 +40,10 @@ public final class CapsuleModel: ObservableObject {
     var extensionProviders: [ResultProvider] = []
     var extensionCommands: [CapsuleCommand] = []
     var panelFor: ((ResultItem?) -> AnyView?)?
+    /// Extension `@` targets for the words, and the send to one (ExtensionHost).
+    var extensionMentions: ((String) -> [(VyreCandidate, MentionTarget)])?
+    var sendToExtension: ((String, VyreCandidate, Query) async -> ActionOutcome)?
+    private var appTargets: [String: MentionTarget] = [:]
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 
@@ -226,14 +230,23 @@ public final class CapsuleModel: ObservableObject {
     /// Candidates for the `@` words, and the words left over as the message. The whole text is
     /// tried first; then fewer words, so "@juno rebuild the menu" finds juno with a message.
     func mentionCandidates(_ q: String) -> ([VyreCandidate], String) {
-        let all = Route.complete(q, catalog)
+        let all = withApps(Route.complete(q, catalog), q)
         if !all.isEmpty || !q.contains(" ") { return (liveFirst(all), "") }
         let words = q.split(separator: " ", omittingEmptySubsequences: true)
         for n in stride(from: words.count - 1, through: 1, by: -1) {
-            let found = Route.complete(words[0..<n].joined(separator: " "), catalog)
+            let sub = words[0..<n].joined(separator: " ")
+            let found = withApps(Route.complete(sub, catalog), sub)
             if !found.isEmpty { return (liveFirst(found), words[n...].joined(separator: " ")) }
         }
         return ([], "")
+    }
+
+    /// Vyre's own candidates, then what extensions name for the same words (apps come after
+    /// agents, projects and sessions, and never push them out of the list).
+    func withApps(_ found: [VyreCandidate], _ q: String) -> [VyreCandidate] {
+        guard let ext = extensionMentions?(q), !ext.isEmpty else { return found }
+        for (c, t) in ext { appTargets[c.id] = t }
+        return found + ext.map(\.0).prefix(max(0, 9 - found.count))
     }
 
     /// A session active in the last 15 minutes that vyred does not run is live in a terminal.
@@ -278,7 +291,8 @@ public final class CapsuleModel: ObservableObject {
     func candidateItem(_ c: VyreCandidate) -> ResultItem {
         let symbol = c.kind == .agent ? "person.crop.circle" : c.kind == .project ? "folder" : "text.bubble"
         let sub = isLive(c) ? (c.sub.isEmpty ? "live in terminal" : "live in terminal · " + c.sub) : c.sub
-        return ResultItem(id: "at:\(c.kind.rawValue):\(c.id)", kind: "mention", title: c.label, subtitle: sub, icon: .symbol(symbol, isLive(c) ? .signal : .bone),
+        let icon: IconSpec = c.kind == .app ? (appTargets[c.id]?.icon ?? .symbol("app")) : .symbol(symbol, isLive(c) ? .signal : .bone)
+        return ResultItem(id: "at:\(c.kind.rawValue):\(c.id)", kind: "mention", title: c.label, subtitle: sub, icon: icon,
                           section: .vyre, score: 1, actions: [ResultAction(id: "pick", title: "Pick", symbol: "at") { [weak self] _, _ in
                               await self?.pick(c) ?? .failed("The Capsule closed.")
                           }])
@@ -305,10 +319,11 @@ public final class CapsuleModel: ObservableObject {
         let words = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let c = target {
             let to = c.kind == .project ? "a new thread in \(c.label)" : c.label
+            let via = c.kind == .app ? (appTargets[c.id]?.sendsTo ?? c.label) : c.label
             return ResultItem(id: "send", kind: "ask", title: "Send to \(to)", subtitle: words, icon: .mark, section: .vyre, score: 0,
                               actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
                                   await self?.send(words, to: c) ?? .failed("The Capsule closed.")
-                              }], sendsTo: c.label)
+                              }], sendsTo: via)
         }
         return ResultItem(id: "ask", kind: "ask", title: "Ask", subtitle: words, icon: .mark, section: .vyre, score: 0,
                           actions: [ResultAction(id: "ask", title: "Ask", symbol: "sparkle") { [weak self] _, _ in
@@ -458,6 +473,11 @@ public final class CapsuleModel: ObservableObject {
         askedMemory = nil
         pending = true
         switch c.kind {
+        case .app:
+            // An extension's target: it does the sending and says what happened. No reply view.
+            asked = nil; pending = false
+            guard let send = sendToExtension else { return .failed("\(c.label) is not there any more.") }
+            return await send(words, c, Query(words, front: front))
         case .thread:
             reply = VyState.reply(c.id)
             follow { c.id }
