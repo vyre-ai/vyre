@@ -59,3 +59,56 @@ Agents: `agents.list`, `agents.create`, `agents.update`, `agents.ask`, `agents.t
 Started from the CLI (`vyre threads start`), a thread streams to two `curl` SSE clients at once,
 a permission question is answered from one of them, and the lease moves between them. Exercised
 with real Claude Code, not only a fake.
+
+## Done
+- `core/switchboard` (module `threads`): runner, translate, lease, asks, tools, events; fake `claude` for tests.
+- `core/agents`: records, credentials with fallback and budget, scope, `agents.*`.
+- CLI `vyre threads start|send|watch|…` and `vyre agents …`.
+- Verified for real on Claude Code 2.1.283 with `--model haiku`, `VYRE_HOME=/tmp/vy-sw-r`, recall and memory
+  off: started from `vyre threads start`; two `curl -N` SSE clients got identical streams; a Write `ask.raised`
+  was refused from an `mcp` caller and answered `allow` from curl-a, and the file was written; the lease moved
+  cli -> curl-b -> curl-a, and the non-holder's `threads.send` came back `{sent:false, holder}`; `vyre agents
+  ask scout` replied "pong."; `mcp:agent:scout` was refused `threads.list`; everything stopped with no child left.
+
+## Doing
+- Nothing. Waiting on review.
+
+## Next
+1. A terminal `claude --resume <id>` on a thread that is headless right now: warn from the Harness SessionStart
+   (the prototype's claim.cjs). Two processes on one transcript is the real two-writer risk.
+2. Prune `thread.text` deltas from the event log after a turn ends. Only the `done` text needs to stay.
+3. Scope for `recall.thread` and `memory.*` over MCP, which is not done yet (see Needs).
+4. When the vault merges, switch `vault.release` calls to its real contract, and have onboarding create the assistant.
+
+## Needs from others
+- vault: `vault.release {name}` -> `{value}`, internal, and callable by the `agents` module for items named in an
+  agent's `auth` (the manifest declares `needs.vault: ["per-agent"]`; the loader only special-cases `per-watcher`,
+  so agents calls `ctx.call("vault.release")` directly).
+- recall/memory: honour an agent's scope on the tools the MCP server does not rewrite yet (`recall.thread`,
+  `memory.facts`). The caller is `mcp:agent:<name>`, and `VYRE_PROJECTS`/`VYRE_SCOPE_CWDS` are in the thread's env.
+- onboarding (deck): call `agents.create {name, kind:"assistant"}`. There can be only one assistant.
+
+## Changed contracts
+- New tools and events as listed in Tools/Events above, plus `threads.asks`, `thread.sent`, `thread.stopped`, and the
+  internal `threads.launch` and `agents.resume`. Shapes are in CHANGELOG and were sent to capsule and deck.
+- `thread.started` now also comes from `threads` (payload `{thread,name,cwd,project,agent,headless:true,resumed}`),
+  alongside harness's `{session,cwd,source}` for every session. Consumers must stay idempotent.
+- `harness.brief` / `harness.enrich` take an optional `projects` ("*" or a comma list).
+- MCP server caller: `mcp:agent:<name>` inside an agent's thread, otherwise `mcp`.
+
+## Shared files touched (minimal)
+- `harness/mcp/server.js`: the caller identity, the tool filter for non-assistant agents, recall scope, and a 600s timeout for agents.ask.
+- `harness/hooks/hook.js`: passes `VYRE_PROJECTS` to brief and enrich.
+- `core/harness/index.js` (+ test): scope check in brief and enrich.
+- `core/cli/commands/home.test.js`, `test/projects-cli.test.js`: they asserted that agents did not exist yet.
+
+## Assumptions
+- `--permission-prompt-tool stdio` is not in `claude --help`. It is what the SDK passes, and without it
+  `--permission-prompts host` denies every question. Principle 1 lists public flags only, so the spec may need a note.
+- Headless threads load the user's own `~/.claude` settings and hooks (their SessionStart hooks ran). Hook output is dropped
+  from events. `--setting-sources` could isolate agents later.
+- One process per thread, and stdin stays open between turns. The process model lives in `runner.js` alone.
+- The lease is about UX here (all words go through one stdin). `agents.ask` gives it back after the reply.
+- The budget counts `total_cost_usd` of turns run on the API key, per agent, and is passed to `--max-budget-usd`.
+- A subscription limit is detected from `rate_limit_event.status == "rejected"` or an error result naming the limit.
+  This has not been seen for real yet, so the fallback is only tested against the fake.
