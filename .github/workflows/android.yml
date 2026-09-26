@@ -29,13 +29,12 @@ jobs:
         if: steps.check.outputs.present == 'true'
       - name: Build and unit tests
         if: steps.check.outputs.present == 'true'
-        working-directory: apps/android
-        run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
+        run: ./apps/android/gradlew -p apps/android --no-daemon assembleDebug testDebugUnitTest
       - uses: actions/upload-artifact@v4
         if: steps.check.outputs.present == 'true' && always()
         with:
           name: android-${{ github.sha }}
           path: |
-            apps/android/app/build/outputs/apk/debug/*.apk
+            apps/android/app/build/outputs/apk/debug/app-debug.apk
             apps/android/app/build/reports/tests/
           retention-days: 14

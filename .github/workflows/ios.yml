@@ -41,27 +41,32 @@ jobs:
             ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
           key: spm-${{ runner.os }}-${{ hashFiles('apps/ios/project.yml', 'apps/ios/**/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
-      - name: Generate the project
-        run: brew install xcodegen && xcodegen generate
+      - name: Newest Xcode (the project is Swift 6, iOS 17+)
+        run: |
+          x=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] && sudo xcode-select -s "$x"
+          xcodebuild -version
+      - name: XcodeGen
+        run: brew install xcodegen
       - name: Pick a simulator
         id: sim
         run: |
-          udid=$(xcrun simctl list devices available -j | python3 -c '
+          name=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
           devs = json.load(sys.stdin)["devices"]
           for runtime in sorted((r for r in devs if "iOS" in r), reverse=True):
               for d in devs[runtime]:
                   if d["name"].startswith("iPhone"):
-                      print(d["udid"]); sys.exit()
+                      print(d["name"]); sys.exit()
           ')
-          echo "udid=$udid" >> "$GITHUB_OUTPUT"
-          xcrun simctl list devices available | grep "$udid"
-      - name: Build and test
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "simulator: $name"
+      - name: Build and test (apps/ios/scripts/build.sh test)
+        env:
+          SIM: ${{ steps.sim.outputs.name }}
         run: |
           set +e
-          xcodebuild test -project Vyre.xcodeproj -scheme Vyre \
-            -destination "id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO > build.log 2>&1
+          scripts/build.sh test > build.log 2>&1
           status=$?
           grep -E '^(Test Suite|Test Case .* failed|\*\* )|error:' build.log | tail -200
           exit $status
@@ -69,8 +74,8 @@ jobs:
         if: always()
         run: |
           mkdir -p dist
-          app=$(find build/Build/Products -path '*-iphonesimulator/Vyre.app' -maxdepth 3 | head -1)
-          [ -n "$app" ] && ditto -c -k --keepParent "$app" dist/Vyre-ios-simulator.app.zip
+          app=build/dd/Build/Products/Debug-iphonesimulator/Vyre.app
+          [ -d "$app" ] && ditto -c -k --keepParent "$app" dist/Vyre-ios-simulator.app.zip
           cp build.log dist/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
