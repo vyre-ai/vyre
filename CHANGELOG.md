@@ -82,6 +82,60 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   same `input` style as the assistant's.
 - `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
   still starting (6s on a loaded Mac). It waits up to 15s now.
+#### Chat lists your Claude Code sessions and follows them live
+
+- Chat lists every Claude Code session on this machine (`projects.catalog`, from the transcripts)
+  merged with the Switchboard's headless threads (`threads.list`), one row per session. Before,
+  it listed only headless threads, so a project with three sessions read "No sessions".
+- A session the Switchboard never ran opens from its transcript (`recall.thread`) and follows it
+  live: Recall emits `session.indexed` for it after each turn, and the view reads only the new
+  turns. After a send adopts it, the view follows `thread.*` events instead, so no turn shows twice.
+- Recall indexes one session about 1.5 s after the harness reports `turn.completed` or
+  `thread.started` for it (`Indexer.session`), so no timer and no full pass is needed.
+- On a phone, /chat lists the projects and recent sessions, a project page has a Back link and its
+  name, and the session header's back arrow points left. The composer keeps one error note and
+  gives back the words a refused send held.
+
+#### Deck: Chat on the phone tab bar, Glass with no box, Memory loads at once
+
+- The phone tab bar has five tabs: Now, Projects, Chat, Ask and Agents. Ask has its own icon, and
+  the labels lose some tracking below 360 px so all five fit at 320 px.
+- Long thread and project titles on Now truncate with an ellipsis on the phone instead of running
+  off the right edge.
+- Memory starts its first read at once. It used to wait up to 800 ms for the fonts first and could
+  sit on "Reading memory". A draw made before the fonts land is redone once when they do, and an
+  error shows a Try again button.
+- Glass on a machine with no box (the glass module is off or vyred does not answer) says where the
+  agent's computer runs and how to pair one (`vyre box add you@your-server`), and offers no Take
+  over, no Sign in privately and no activity rail.
+- `agents.list` returns each agent's instructions, so an agent's page shows its job instead of "No
+  instructions yet".
+- The box's Chromium starts with `--test-type`, which keeps its `--no-sandbox` warning bar out of
+  the Glass stream. Takes effect when the computer image is rebuilt.
+- `deck/test/world.js` makes its home under `SCRATCH`, uses a key-file vault (never the login
+  keychain), and seeds juno, kit and six fictional vault items. The items go in through a
+  short-lived vyred with the test presence verifier, which stops before the real vyred starts.
+  `test/fixtures/vyred-present.js` compares real paths, so a realpath'd temp home on macOS passes.
+
+#### Tests keep their temp folders under SCRATCH
+
+- Test runs kept leaving folders bare in `$TMPDIR` (`vyre-local-*`, `vyre-frec-*`, `vyre-clip-*`
+  and others). Every test that made a temp folder with `os.tmpdir()` now makes it under `SCRATCH`
+  (`test/scratch.mjs`, one folder per checkout) and removes it when the test ends.
+- The leaks at the source: `local/capsule/lib/local.test.js` never removed its folders (five a
+  run); the frecency tests there and in `launcher.test.js` removed the folder, then the 500 ms save
+  timer fired and made it again. Both now save before removing.
+- Product code that makes its own temp folders, backup staging (`core/names/backup.js`, used by
+  `vyre backup`) and image thumbnails (`core/files/index.js`), puts them under `VYRE_TMPDIR` when
+  it is set. `test/scratch.mjs` sets it to `SCRATCH`, so tests and every vyre or vyred they spawn
+  stay inside it. Both already removed their folder in a `finally`.
+- `vyre box` keeps its ssh control folder in `/tmp` (a socket path must be short), and now also
+  removes it when the process exits without calling close().
+- `local/capsule/build.sh` makes its plist under `$TMPDIR` and removes it on a signal as well
+  as on a normal exit.
+- The `npm test` leak guard (`test/tmp-guard.mjs`) also fails on new `vyre-*`, `vy-*`, `vssh-*`
+  and `computerd-*` entries left bare in `$TMPDIR`, counting only ones that did not exist before
+  the run and were changed after it began, so a sibling worktree's older leftovers do not count.
 
 #### No Touch ID prompt, or anything else on screen, under tests
 

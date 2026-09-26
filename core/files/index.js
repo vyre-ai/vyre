@@ -203,7 +203,7 @@ export default {
       // PNG and GIF keep transparency; everything else becomes JPEG, which every browser shows
       // (a HEIC photo straight from a phone would not).
       const png = ext === ".png" || ext === ".gif";
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-thumb-"));
+      const tmp = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-thumb-"));
       const out = path.join(tmp, png ? "thumb.png" : "thumb.jpg");
       try {
         if (platform === "darwin") await run("sips", ["-s", "format", png ? "png" : "jpeg", "-Z", "512", real, "--out", out], { timeout: 15_000 });

@@ -5,14 +5,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { proof, gate, PROVE_TOOLS, COOLDOWN_MS } from "./prove.js";
 import { Helper } from "./mac/helper.js";
 import { writeFakes } from "./mac/fakes.js";
 import { recorded } from "./testing.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
-const tmpdir = t => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-prove-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
+const tmpdir = t => { const d = fs.mkdtempSync(path.join(SCRATCH, "vyre-prove-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 const env = (over = {}) => ({ enclave: null, platform: "darwin", config: {}, peer: null, test: null, state: { chain: Promise.resolve(), cooldownUntil: 0 }, now: Date.now, ...over });
 const presence = e => /** @type {any} */ (e).code === "presence_required";
 
