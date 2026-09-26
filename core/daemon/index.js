@@ -94,7 +94,10 @@ async function route(req, res, { registry, events, cfg, started, streams }) {
   const caller = String(req.headers["x-vyre-caller"] || "local");
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
-    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started,
+    // last_event lets a surface follow the stream from now: `since=0` would replay the whole
+    // log, and a guessed cursor past the end drops every live event.
+    const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
+    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started, last_event: Number(last && last.id) || 0,
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
