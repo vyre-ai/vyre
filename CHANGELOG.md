@@ -37,6 +37,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   item name only, and the agent page: its job, what wakes it (watchers with on/off switches), its
   model and effort, a way to talk to it (`agents.ask`), and its computer with the pool screen and
   limits. Each part says which module is not running when it is missing.
+- **Vault**: items by name, who holds each, what used it today, passes to and from other
+  people's Vyre, and offboarding. No value is ever shown: values only go in, through password
+  inputs that are read once and cleared before the call is sent, and the view keeps only the named
+  fields it draws from every response.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
