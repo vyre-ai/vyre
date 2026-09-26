@@ -43,6 +43,8 @@ import Foundation
 extension CapsuleModel {
     /// The destination rows for these words, first is where Enter sends.
     func askItems(_ q: Query) -> [ResultItem] {
+        // An extension's own target (@Notes) sends through the extension: capsule-pro's row.
+        if let t = target, t.kind == .app { return [askItem(q)] }
         let words = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
         var options: [VyreDestination] = []
         if let r = reply, !r.thread.isEmpty, r.queued == nil, asked != nil, target == nil {
