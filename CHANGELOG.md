@@ -101,6 +101,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   timeout and reports `magicDNS` and `certDomains`; new tool `capsule.report {ok, message}`
   emits `capsule.hotkey`, for the Capsule app to say whether Control twice works (TCC holds
   Vyre.app responsible, so only the app can know).
+#### Handing the keyboard back needs no passkey
+
+- `glass.release` asked for a passkey, so a person in control had to prove presence again just
+  to give the agent its keyboard back. Taking over still asks; handing back never does, and an
+  agent still cannot hand back a person's surface. `core/glass/index.js`.
+
+#### A Mac-only owner can pair the Mac
+
+- `link.pair.approve` refused the node that asked, so the Deck on the Mac being paired could never
+  approve it, and an owner without a second device could not pair at all. The asking Mac may now
+  approve its own request when that call carries a fresh passkey assertion (not a presence
+  session) and the typed code matches; a model on the Mac can do neither. `core/link/box.js`.
+- The Deck's pairing card and the CLI say to approve "on this Mac or your phone".
+
+#### A public name only when the person chose it; slow steps say so
+
+- Step 1's live availability check (`onboard.name` check) saved every valid name it was asked
+  about, so a name typed and then skipped became `config.name`, and step 4 claimed
+  `<name>.vyre.run` on the public zone. A check now saves nothing. Step 4 claims a vyre.run name
+  only when step 1 was continued with it, or with `confirm: true`; otherwise the page asks
+  ("Use kit.vyre.run? Change it · Use my tailnet name"). Continue in step 1 with a new name
+  replaces an earlier candidate while no address serves.
+- The address step says up front that it can take about a minute, and the line in progress shows
+  its elapsed seconds. Starting Claude's and Tailscale's sign-in say they take a few seconds.
+
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
