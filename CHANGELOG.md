@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Link heartbeat
+
+- The Mac's link heartbeat ran every 30 seconds on every Mac, paired or not, which broke the
+  60-second floor for recurring timers (principle 8, `scripts/perf-check`). It now starts only
+  once the Mac is paired, runs once a minute, and stops on unpair or when the box forgets the
+  Mac. Recovery does not depend on it, because a failed call only pauses retries.
+
 #### Link follow-ups
 
 - The tailnet peer that box's listener establishes now reaches the tool. `handler(policy)`

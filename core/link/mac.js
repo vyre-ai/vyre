@@ -80,12 +80,18 @@ export function macSide(ctx, seam = {}) {
   async function hello() {
     if (!saved || saved.revoked) return;
     const r = await boxCall("link.hello", { key: saved.key });
-    if (r.data && r.data.paired === false) { save({ ...saved, revoked: true }); state.error = "the box no longer knows this Mac; pair again"; }
+    if (r.data && r.data.paired === false) { save({ ...saved, revoked: true }); beating(false); state.error = "the box no longer knows this Mac; pair again"; }
     else if (r.data && r.data.box && r.data.box.name !== saved.box.name) save({ ...saved, box: { ...saved.box, name: r.data.box.name } });
   }
-  const beat = setInterval(() => { if (!stopped) hello(); }, seam.heartbeat || 30_000);
-  beat.unref();
-  if (saved) setImmediate(() => { if (!stopped) hello(); });
+  // The heartbeat runs only while paired, once a minute (the 60-second floor for recurring timers).
+  // A Mac that never paired keeps no timer at all. Between beats, a call to the box finds out on
+  // its own when the box comes back, since a failed call only pauses retries, never stops them.
+  let beat = null;
+  const beating = on => {
+    if (on && !beat && !stopped) { beat = setInterval(() => { if (!stopped) hello(); }, seam.heartbeat || 60_000); beat.unref(); }
+    if (!on && beat) { clearInterval(beat); beat = null; }
+  };
+  if (saved && !saved.revoked) { beating(true); setImmediate(() => { if (!stopped) hello(); }); }
 
   function poll() {
     const p = pairing;
@@ -100,6 +106,7 @@ export function macSide(ctx, seam = {}) {
         conn = connect(p.address, p.stableId);
         state.announced = null;
         emit("link.paired", { box: p.address, peer: r.data.peer });
+        beating(true);
         hello();
       } else if (s === "denied" || s === "expired" || s === "gone") {
         pairing = null; state.error = `pairing ${s === "gone" ? "was cancelled" : s}; start again`;
@@ -174,7 +181,7 @@ export function macSide(ctx, seam = {}) {
       if (!saved) return { unpaired: false };
       const told = saved.revoked ? { data: true } : await boxCall("link.unpair", { key: saved.key });
       const was = saved.box.address;
-      save(null); conn = null; state.reachable = false; state.announced = null;
+      save(null); beating(false); conn = null; state.reachable = false; state.announced = null;
       ctx.events.emit("link.unpaired", { box: was });
       return { unpaired: true, boxForgot: !told.error };
     },
@@ -248,7 +255,7 @@ export function macSide(ctx, seam = {}) {
 
   return {
     async stop() {
-      stopped = true; clearInterval(beat);
+      stopped = true; beating(false);
       if (pairing && pairing.timer) clearTimeout(pairing.timer);
       for (const end of streams) end();
     },
