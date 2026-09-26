@@ -39,8 +39,8 @@ let agentRouteSuite = Suite("agent route") { t in
             await MainActor.run { m.didHide() }
             return r
         }
-        t.eq(got?.0, ["Ask Claude | Claude (haiku)", "Ask Claude, deeper | Claude, deeper (sonnet)"])
-        t.eq(got?.1, "Ask Claude", "Enter sends to the first row")
+        t.eq(got?.0, ["Quick answer | Vyre", "Deeper answer | Vyre, deeper"])
+        t.eq(got?.1, "Quick answer", "Enter sends to the first row")
     }
 
     t.test("with an assistant: the user's own work goes to it first, and says why; a command goes to it alone") {
@@ -63,7 +63,7 @@ let agentRouteSuite = Suite("agent route") { t in
             await MainActor.run { m.didHide() }
             return (own, why, cmd, v.callsOf("agents.ask").first)
         }
-        t.eq(got?.0, ["Ask juno | juno", "Ask Claude | Claude (haiku)", "Ask Claude, deeper | Claude, deeper (sonnet)"])
+        t.eq(got?.0, ["Ask juno | juno", "Quick answer | juno", "Deeper answer | juno, deeper"])
         t.eq(got?.1, "Dana is in Harlow Legal, so juno answers with your memory.")
         t.eq(got?.2, ["Ask juno | juno"])
         t.eq(VJ.s(got?.3?["agent"]), "juno")

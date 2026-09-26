@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Memory as one line, and answers that read calmly
+
+- Memory shows one answer line or nothing: the answer, a three-bar cue for how sure memory is,
+  and "from N conversations"; the sources fold away behind a click or ⌘→. Loosely matching
+  quotes with no answer are not shown. Ready for memory.answer (`MemoryAnswer.conversations`);
+  said.js ranking stays the fallback.
+- Replies are labelled with the assistant's name from onboarding (agents.list), "Vyre" when
+  none is named, or the agent's or session's name; never a model's brand. The quick rows read
+  "Quick answer" and "Deeper answer", sending to the assistant's name.
+- Once an answer is in, it takes the whole area and scrolls; memory's sources fold into "from 2
+  of your sessions" under it; the footer says "Follow up ⏎ · Copy ⌘C · Deeper ⌘D" (⌘D is new).
+- Queries under three letters match only by prefix, word start or initials, as in Spotlight.
+- The typing timings are a warning, not a failure, on CI.
+
 #### Attachments on a send, for "with your screen"
 
 - Kit: `SendAttaching`, `SendAttachment` and `SendTargetKind`. An extension may offer something

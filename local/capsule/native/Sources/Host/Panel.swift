@@ -207,6 +207,10 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.target = nil; return true
         case 48 where model.current?.kind == "mention": // tab picks the @ row
             model.run(); return true
+        case 124 where cmd && (model.showsMemory || model.askedMemory != nil): // ⌘→ shows or folds memory's sources
+            model.memoryExpanded.toggle(); return true
+        case 2 where cmd && !shift && model.canGoDeeper: // ⌘D: the same question to the deeper model
+            model.deeper(); return true
         case 125: model.move(1); return true   // down
         case 126: model.move(-1); return true  // up
         case 36, 76: // return

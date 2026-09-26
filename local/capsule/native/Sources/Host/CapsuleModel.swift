@@ -28,7 +28,7 @@ public final class CapsuleModel: ObservableObject {
         didSet {
             // An answer that lands while the Capsule is hidden is a banner, top right.
             if let r = reply, r.finished, oldValue?.finished == false, oldValue?.thread == r.thread, !r.cancelled, !isShown() {
-                let who = r.queued?.name ?? "Claude"
+                let who = self.replyWho
                 let text = VyState.replyText(r).split(separator: "\n").first.map(String.init) ?? ""
                 Notifier.shared.post(title: r.ok == false ? "\(who) stopped" : "\(who) answered",
                                      body: text.isEmpty ? (asked ?? "") : String(text.prefix(180)))
@@ -60,6 +60,8 @@ public final class CapsuleModel: ObservableObject {
     private var removedAttachments = Set<String>()
     var attachers: [SendAttaching] = []
     private var attachTask: Task<Void, Never>?
+    /// The memory line's sources, shown (a click or ⌘→) or folded.
+    @Published var memoryExpanded = false
     /// A human-only call waiting for the person to prove they are here (Presence.swift).
     @Published var presenceAsk: PresenceAsk?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
@@ -497,12 +499,32 @@ public final class CapsuleModel: ObservableObject {
         return true
     }
 
+    // MARK: who answers
+
+    /// The assistant's name from onboarding (agents.list, kind assistant), else "Vyre". Never a
+    /// model's brand: the model is small metadata beside it.
+    public var assistantName: String { catalog.assistant?.name ?? "Vyre" }
+
+    /// Who the reply on screen is from: the session or agent it went to, else the assistant.
+    public var replyWho: String {
+        if let q = reply?.queued { return q.name }
+        if let c = target, c.kind != .app { return c.label }
+        return assistantName
+    }
+
+    /// An answer is on screen and the only rows are where the next words would go: the answer
+    /// takes the whole area, and Enter follows up.
+    public var answerAlone: Bool {
+        asked != nil && reply != nil && groups.allSatisfy { $0.items.allSatisfy { $0.kind == "ask" } }
+    }
+
     // MARK: memory
 
     /// Whether the memory box sits above the results: it has something, and the words read as a
     /// question or nothing on this Mac matches them well.
     public var showsMemory: Bool {
-        guard asked == nil, let m = memory, !m.isEmpty, m.text == text.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        // One confident answer or nothing: a wall of loosely matching quotes is not shown.
+        guard asked == nil, let m = memory, m.answer != nil, m.text == text.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
         return Route.asksQuestion(m.text) || !(flat.contains { $0.score >= 0.6 && $0.kind != "ask" })
     }
 
@@ -524,6 +546,7 @@ public final class CapsuleModel: ObservableObject {
             if Task.isCancelled || t != self.token { return }
             var m = Memo.fold(text: words, facts: (f.data as? [[String: Any]]) ?? [], hits: (h.data as? [[String: Any]]) ?? [], scratch: scratch)
             m.ms = max(1, vyNowMs() - t0)
+            if m != self.memory { self.memoryExpanded = false }
             self.memory = m
         }
     }

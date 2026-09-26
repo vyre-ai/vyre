@@ -65,21 +65,22 @@ extension CapsuleModel {
         let to = ([show.who] + show.where.filter { !$0.isEmpty }).joined(separator: " › ")
         let title: String
         switch d.kind {
-        case .quick: title = d.deep ? "Ask Claude, deeper" : "Ask Claude"
+        // A quick answer comes from a fast model with no tools; the assistant's own row is "Ask juno".
+        case .quick: title = d.deep ? "Deeper answer" : "Quick answer"
         case .assistant, .agent: title = "Ask \(show.who)"
         case .newThread: title = "Start a thread in \(show.who)"
         case .thread: title = d.meta == "follow up" ? "Follow up" : "Send to \(to)"
         case .recall: title = "Memory only"
         }
         let unavailable = Bridge.needs(d).flatMap { vyred.has($0) || !vyred.isUp ? nil : Bridge.explain(code: "no_such_tool", message: "no tool \($0.split(separator: ".")[0]).") }
-        let sub = unavailable ?? why ?? (d.kind == .recall ? "Nothing in memory answers that yet, and there is no assistant on this vyred to ask." : d.meta)
+        let sub = unavailable ?? why ?? (d.kind == .recall ? (showsMemory ? "Memory answered above. There is no assistant on this vyred to ask further." : "Nothing in memory answers that yet, and there is no assistant on this vyred to ask.") : d.meta)
         let id = "dest:\(d.kind.rawValue):\(d.agent ?? ""):\(d.project ?? ""):\(d.thread ?? ""):\(d.model ?? "")"
         let symbol = d.kind == .quick ? "sparkle" : d.kind == .thread ? "arrowshape.turn.up.right" : "paperplane"
         return ResultItem(id: id, kind: "ask", title: title, subtitle: sub, icon: .mark, section: .vyre, score: 0,
                           actions: [ResultAction(id: "go", title: d.kind == .quick ? "Ask" : "Send", symbol: symbol) { [weak self] _, _ in
                               if let u = unavailable { return .failed(u) }
                               return await self?.go(d, words) ?? .failed("The Capsule closed.")
-                          }], sendsTo: d.kind == .quick ? (d.deep ? "Claude, deeper (\(d.model ?? "sonnet"))" : "Claude (\(d.model ?? "haiku"))") : to)
+                          }], sendsTo: d.kind == .quick ? (d.deep ? "\(assistantName), deeper" : assistantName) : to)
     }
 
     /// Send the words to exactly this destination.
