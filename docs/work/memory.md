@@ -54,6 +54,7 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   index is available, reports counts and timings only.
 
 ## Done
+- `memory.graph` (floor plan, rooms, `updated` cursor), strict project graphs, agent access checks.
 - Taught facts scoped to a project with `fact.project_cwds`.
 - Short forms pooled per identity (spellings sharing a domain), so "the Harlow team" style references match on the real index.
 - `memory.teach` and lesson provenance; paged cold derive (worst event-loop block 70 to 120ms).
@@ -71,6 +72,14 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   design. Revisit if the Enrich hook misses obvious first-name references.
 
 ## Needs from others
+- main / harness / switchboard: put the agent in the caller for agent sessions, e.g. the MCP
+  server and hooks sending `x-vyre-caller` with `agent:<VYRE_AGENT>` in it, and the daemon
+  keeping a caller from claiming an agent it is not. Today an agent that does not name itself
+  is treated as the user; Memory reads `agent:<name>` from the caller as soon as it is there.
+  Mind that `callerKind` treats the whole string as the kind, so pick a format the vault's
+  `mcp` checks still recognise.
+- switchboard: `agents.list` returning `[{ name, kind, projects: "*" | [slug or name] }]`, as
+  in SPEC section 10. Memory refuses any named agent until it exists.
 - recall: emit `session.indexed {session, from, to, rewritten}` after each index write. Memory
   also copes without it (it compares `recall_sessions.turns` with what it has read on every pass,
   and treats a shrunk session as rewritten), but the event is what makes it prompt.
@@ -96,7 +105,18 @@ None to other modules' contracts. New, for dependents:
   name, role, ts, age, text}], gone }`.
 - `memory.pin` / `memory.mute {node, scope?, off?}`: scope `*` (default) or a project folder.
 - `memory.curate {full?}` returns `{ recall, sessions, turns, nodes, edges, changed, ms }`.
-- Event `memory.curated {nodes, edges, ms}`, only when the graph changed.
+- Event `memory.curated {nodes, edges, ms, updated}`, only when the graph changed.
+- `memory.graph {project_cwds?, around?, depth?(1..3), limit?(10..500, default 150), since?, agent?}`
+  returns `{ updated, scope: "main"|"project", rooms, nodes, edges, counts, truncated }`, or
+  `{ updated, unchanged: true }` when `since === updated`.
+  - room: `{ id: "project:<slug>"|"project"|"shared"|"unfiled", kind: "project"|"shared"|"unfiled",
+    label, slug, folders, nodes, facts }` (counts over the whole view, not the capped drawing).
+  - node: `{ id, kind: person|org|name|email|domain|repo|fact|thread, label, weight, pinned,
+    muted, role, room, rooms, last }`. `rooms` lists every project it is in (main graph only).
+  - edge: `{ id: "src|rel|dst", src, rel, dst, confidence, since, until, learned, taught }`;
+    `id` is what `memory.why` takes; `mentioned_in` joins an entity to a thread node.
+- With `project_cwds`, every read (facts, relevant, why, graph) is that project's graph only.
+  `memory.why` takes `project_cwds` too. Every read and steer takes an optional `agent`.
 - `memory.teach {kind, fact, from}` (internal, modules only, through `ctx.memory.teach`). A
   fact: `{ subject, rel?, object?, text?, at?, key?, project_cwds?, forget? }`, where `subject` and `object`
   are a name or `{ name, email?, domain?, repo?, kind? }` (`kind` is `person` or `org`).

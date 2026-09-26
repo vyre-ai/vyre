@@ -66,6 +66,11 @@ export class Events {
     return () => this.listeners.get(pattern)?.delete(fn);
   }
 
+  /** The newest event's id, or 0 on an empty log. */
+  latestId() {
+    return Number(this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get().id);
+  }
+
   /** Events after a cursor, oldest first. How a surface catches up after being away. */
   since(id = 0, { type = null, project = null, limit = 200 } = {}) {
     const rows = this.db.prepare(`SELECT * FROM events WHERE id > ?
