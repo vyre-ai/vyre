@@ -38,11 +38,27 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Done
 
+- 77a54ce ADR 0019 claimed, `docs/nav.json` skeleton, page ownership.
+- 375f30c `scripts/docs-check` (+ `test/docs-check.test.js`) and `scripts/gen-docs-reference`;
+  `docs/reference/*` generated.
+- e8924af `scripts/build-docs` and `scripts/lib/docs/` (renderer, loader, assets), `test/docs-build.test.js`.
+- 37d39af main merged in (4aceca5 included). Removed the committed `node_modules` symlink.
+
 ## Doing
 
-- The tree, the check, the build, the deploy.
+- Writing every page in the nav (docs-check had 128 problems: 45 missing pages, 59 em dashes,
+  19 pages without front matter). Split into five batches, one subagent each:
+  A. moves + stubs (spec, install, onboarding, without-docker, performance, writing-a-module),
+     front matter on ADRs and TOKENS, changelog page, package.json `files`;
+  B. using/ pages other teams own (seeded, owner set to that team);
+  C. using/ pages docs owns; D. concepts/ and build/; E. index, architecture, security,
+  contributing, first-day, troubleshooting, ADR 0019.
 
 ## Next
+
+- docs-check clean, then `npm test` targeted (docs-check, docs-build, hygiene) on the test box.
+- Build the site on the test box, screenshot pages, ask the lead for sign-off, then the user.
+- Cloudflare Pages project vyre-docs (needs the lead: account/token), DNS docs.vyre.run.
 
 ## Needs from others
 
