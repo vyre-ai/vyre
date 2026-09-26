@@ -14,6 +14,7 @@
 
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { dialogsAllowed } from "../../config/dialogs.js";
 import { finished } from "node:stream/promises";
 import os from "node:os";
 import { call } from "../../daemon/client.js";
@@ -792,7 +793,7 @@ async function kit() {
   say(`  ${r.data.url}`);
   say(dim("  print it, write your password on it by hand, keep it somewhere safe"));
   // Opened for a person at a terminal only; a script or a test gets the address and nothing else.
-  if (process.platform === "darwin" && process.stdout.isTTY && !process.env.VYRE_NO_OPEN) spawn("open", [r.data.url], { stdio: "ignore", detached: true }).unref();
+  if (process.platform === "darwin" && process.stdout.isTTY && !process.env.VYRE_NO_OPEN && dialogsAllowed()) spawn("open", [r.data.url], { stdio: "ignore", detached: true }).unref();
   return 0;
 }
 

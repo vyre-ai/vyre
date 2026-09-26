@@ -303,7 +303,7 @@ export class Registry {
     const presence = this.deps.presence;
     if (presence && callerKind(caller) !== "module" && presence.required(tool, def)) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null });
-      if (!v.ok) return { error: { code: "presence_required", message: v.message, methods: v.methods } };
+      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
     }

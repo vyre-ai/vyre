@@ -10,6 +10,7 @@
 //     passphrase the vault is locked, and load says so by returning null rather than throwing.
 
 import { spawn } from "node:child_process";
+import { dialogsAllowed } from "../config/dialogs.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -96,7 +97,10 @@ async function securityRetry(argv, stdin) {
  */
 function legacyStore(account, keychain, decode) {
   const tail = keychain ? [keychain] : [];
+  // The login keychain can ask for the user's password; a test keychain file (keychain set) cannot.
+  const noDialog = () => { if (!keychain && !dialogsAllowed()) throw Object.assign(new Error("the login keychain is off under tests"), { code: "no_dialog" }); };
   const read = async () => {
+    noDialog();
     const r = await securityRetry(["find-generic-password", "-s", SERVICE, "-a", account, "-w", ...tail]);
     if (r.code === NOT_FOUND) return null;
     if (r.code !== 0) throw new Error(`could not read the vault key from the keychain: ${r.err.trim() || "exit " + r.code}`);
@@ -106,6 +110,7 @@ function legacyStore(account, keychain, decode) {
     read,
     /** @param {string} text */
     put: async text => {
+      noDialog();
       const { argv, stdin } = keychainWriteCommand({ account, hex: text, keychain });
       const r = await securityRetry(argv, stdin);
       // `security -i` exits 0 even when a command fails; the failure shows on stderr, which may
@@ -114,6 +119,7 @@ function legacyStore(account, keychain, decode) {
       if (r.code !== 0 || err) throw new Error(`could not write the vault key to the keychain: ${err || "exit " + r.code}`);
     },
     remove: async () => {
+      noDialog();
       const r = await securityRetry(["delete-generic-password", "-s", SERVICE, "-a", account, ...tail]);
       if (r.code !== 0 && r.code !== NOT_FOUND) throw new Error(`could not remove the vault key from the keychain: ${r.err.trim()}`);
     },

@@ -36,6 +36,33 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the computers network only. The listed sites have no direct fallback, so when the Mac is away
   they fail instead of showing the box's address. Only the owner can change the list.
 
+#### No Touch ID prompt, or anything else on screen, under tests
+
+- A test run raised a real Touch ID dialog ("Relax Vyre lesson 1") on the user's screen: presence's
+  Touch ID helper had no test gate. The rule the vault's helpers used now lives in
+  `core/config/dialogs.js` (`dialogsAllowed`: never under `node --test` unless `VYRE_TEST_DIALOGS=1`,
+  never with `VYRE_NO_DIALOGS=1`). A vyred or CLI a test spawns inherits `NODE_TEST_CONTEXT`.
+- Presence never offers or tries the real Touch ID then, and refuses a `touchid` proof with code
+  `no_dialog` (403 on the socket; the CLI does not retry it). `authenticate()` in
+  `core/presence/touchid` refuses before the helper runs, and `swiftHelper()` runs only `--check`.
+  A stand-in injected by a test still runs.
+- The same gate on every other thing that reaches the screen: the browser (`vyre up`, `vyre box add`
+  and the recovery kit, unless `VYRE_OPEN_BIN` names a fake), `vyre capsule`, the Capsule's
+  autostart in vyred, the Capsule's own `/usr/bin/open` (a copy of the rule in
+  `local/capsule/lib/dialogs.js`, since the packaged app carries no `core`), the hands-mac
+  Accessibility helper, and `security` on the login keychain (a test keychain file still works).
+- Nor does presence write its terminal code under tests: it would land in a login terminal the
+  user holds. `tty` is not offered then, and a challenge for it answers `no_dialog`.
+
+#### Learning meets presence
+
+- The `confirm.js` stopgap is gone. `vyre learn` asks for the human-only learn tools through
+  `callAsPerson`, as `vyre call` does, and vyred checks the proof (ADR 0004). The CLI tests assert
+  refusals against the real verifier and approvals with `upPresent`.
+- The floor's list named `learn.skill_install`, a tool that does not exist; it is
+  `learn.skill-install`, and the Deck's Install button called the same wrong name. A test fails
+  when the list names a tool no shipped module declares (`vault.export` is held in reserve).
+
 #### Presence: a person proves they are there (ADR 0004)
 
 - A model could approve its own held email. The caller is only a header on a socket the user
@@ -68,7 +95,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `test/fixtures/vyred-present.js` for CLI tests. That fixture refuses any home outside the temp folder.
 - After review with the other workstreams:
   - The floor's list now covers the vault's value-out tools, `learn.relax` and
-    `learn.skill_install`, `computers.takeover` and `computers.giveback`, and `link.pair.approve`.
+    `learn.skill-install`, `computers.takeover` and `computers.giveback`, and `link.pair.approve`.
   - Tools get `presence: { method, keyId }` in run()'s context, never the proof.
   - On the box, a terminal code only enrolls the first passkey, since a model on the Mac can
     usually SSH into a login terminal there.
@@ -98,8 +125,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   forwards its own re-serialisation, never the caller's bytes. Attached (upgraded) exec is
   refused. The proxy runs from the vyre image as uid 1000 in the socket's group, with a read-only
   root and no capabilities. `install-box.sh` writes that group to `/srv/vyre/.env` as
-  `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It needs `policy.js` from
-  work/computers: until that merges, `main.js` stops at start with a clear error.
+  `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It checks creates with
+  Computers' own `policy.js`.
 
 #### `vyre link` points to the Deck
 
@@ -205,6 +232,156 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   through PATH or the Mac app's CLI), and `probe()` for a box's `/v1/health`. Finding the box
   among the peers is `link.find`.
 - ADR 0008 and `docs/JOURNEY.md`: the install journey from one command to the assistant's hello.
+
+#### Learning: accept by reply from a person only; presence codes; jobs; skill plugins
+
+- Accept or decline by reply only when a person typed the prompt into an interactive Claude
+  Code (Security's condition). The enrich hook, for a plain yes or no only, runs `ps -o
+  tty=,args=` on its parent once (500 ms timeout): a `claude` with a terminal and none of `-p`,
+  `--print`, `--output-format`, `--input-format`, and not a Switchboard thread (`VYRE_THREAD`
+  is the session) or an agent's (`VYRE_AGENT`). `harness.enrich` and `learn.signal` take
+  `interactive` (absent means no; an agent's thread never is). The proposal must have been told
+  in the turn just before (a number no longer reaches earlier turns), and that turn must have
+  passed a Stop (a yes mid-turn no longer accepts). Otherwise nothing changes and Claude tells
+  the user to accept with `vyre learn accept <id>`, the Deck or the Capsule. ps costs 1.3 ms p50,
+  2.3 ms p95; the hook about 4 ms more on a yes or no, nothing on other prompts.
+- `learn.edit` refusals that only a person can get past (a loosening: `learn.relax`; a proposed
+  lesson: `learn.accept`) throw code `presence_required` with `detail {tool, id}`, for surfaces'
+  presence flows once main's registry passes codes through. The CLI's terminal confirm stays.
+- Distillation jobs: the `thread.stopped {reason: "done"}` that follows a one-shot job's
+  `thread.text {done: true}` at once waits for the answer's handler (it could mark the job
+  failed, then done). Notices and deltas are never the answer.
+- Learned skill plugins as the Switchboard loads them: a private project's is
+  `vyre-learned-<slug>` (was `vyre-learned-project-<slug>`), an agent's
+  `vyre-learned-agent-<name>`, lower-case kebab; `pluginDirs` keeps any folder with a
+  `plugin.json`, as `learnedDirs` does.
+- The preference taught to Memory names the user as `{ kind: "me" }` (Memory's `me:you`), not a
+  person called "the user". Memory's teach() must map it; until then it is logged as not taught.
+
+#### Learning: review fixes (ADR 0007, decision 11)
+
+- The human-only learn tools (accept, retire, relax, skill-install, skill-retire, skill-dismiss)
+  refuse the `local` caller. Until ADR 0004's registry enforces presence, `vyre learn` and
+  `vyre call` ask the person at a terminal to type the id back, and refuse with no terminal or no
+  `/dev/tty` (Claude's Bash has neither). New `core/cli/confirm.js`.
+- A forged enrich no longer restarts the turn: the same prompt_id is a duplicate, and a prompt
+  before the last turn passed a Stop keeps its edits and send-back count and declines nothing.
+  Offline the same. A migration adds `learn_turns.stopped`.
+- weakens() asks for `vyre learn scope`, `vyre learn skills install|retire|dismiss`, `claude
+  plugin disable|uninstall|remove`, writes under `~/.claude/plugins/`, running `hook.js` by hand,
+  and scripts that call a human-only tool through vyred. The store, `learned/`, hooks, plugins
+  and human-only tools are guarded with no lesson active. Store names count only in the home,
+  hooks only under the loaded plugin root (`plugin_root` on `harness.rules`), and git `-m`
+  messages are ignored.
+- distill() skips questions, firm words about someone else, and instructions for now ("yet",
+  "for now", "here", "this time", "for this PR"); "stop the server" is not a soft correction.
+- A declined-command proposal needs 3 nos in at least 2 sessions; headless threads infer none.
+- `learn.edit` refuses a proposed lesson. PreToolUse fetches 1 `harness_files` row; index
+  `learn_writes (path, done)`.
+
+#### Learning: more signals, behaviour proposals, jobs, scope, metrics and skills (ADR 0007, decisions 6 to 10 and 12)
+
+- Check kinds `tool` (a tool or shell command ruled out, optionally `instead`), `path` (files
+  kept out of, held at PreToolUse on writes and on shell commands that write) and `after` (a
+  command that must run after changing matching files, checked at Stop in order). `paths` on any
+  check narrows it to files: a text check with paths applies to what is written there, not to
+  the reply. All work offline, where the order comes from the per-session counter.
+- `distill()` learns: an unquoted banned phrase ("never say circle back", "don't use the word
+  synergy"), "don't use sed -i", "never push to main", "use pnpm not npm" (and "don't use npm,
+  use pnpm"), "don't touch migrations/", "in docs never use X", "always run lint after editing
+  ts", "run X before Y", and the scope words "in this repo" and "everywhere". "run the tests
+  before we merge", "use the blue button not the red one" and other ordinary prompts do not
+  distill (negative tests).
+- Signals carry `key`, `project`, `agent` and `meta` (a migration on `learn_signals`): `repeated`
+  (the same key from 2+ sessions in 30 days), `rejected` (`gate.rejected`, kinds and ids only),
+  `reverted` and `rewritten` (sha256 of a file up to 256 KB before and after Claude writes it;
+  at the next prompt or Stop at most 20 recent writes are statted, then hashed only when mtime or
+  size moved; Claude's own git checkout or a command naming the file is not the user), `failed`
+  and `fixed` (a new internal `learn.observe`), `test-fix` and `untested` runs, `declined`
+  (PreToolUse saw it, Vyre did not hold it, no Post or PostFailure by Stop), `denied` and
+  `allowed` (`ask.answered`), and `corrected` (`memory.corrected`, counted per `prior_rule`, no
+  lesson for Claude). No signal keeps content: keys are hashes, meta holds shapes and kinds.
+- Behaviour becomes a proposal, never above ask: one file reverted in 2 sessions proposes a
+  `path` check at ask; one command shape declined or denied 3 times in 14 days with no allow
+  proposes a `tool` check at ask; tests failing, code changed and no test after it proposes an
+  `after` check at remind. Each is told once in the thread it came from, and a plain yes accepts
+  it there.
+- Jobs (`learn_jobs`): plain-words corrections (and a soft one said in two sessions) queue for
+  a model. `pump()` runs on events only: one at a time, 10 minutes apart, at most
+  `learn.distill.daily` (default 6) a day, never while a Switchboard thread is working, through
+  `threads.launch {model: "haiku", plugin: false, tools: "none", settings: false, once: true,
+  budget_usd: 0.05}`. The answer must be one JSON object; it is validated like a person's input
+  and only ever proposed (`source {kind: "model", job}`), replacing the plain-words proposal
+  while that still waits. Without the Switchboard jobs wait, capped at 200, and `vyre learn
+  signals` shows them to write by hand. New event `distill.finished {job, kind, ok, lesson,
+  skill}`.
+- Scope is inferred: a scope word, then the agent, then a project for path, after, before,
+  touched and tool checks, else everywhere; a key already said in another project widens to
+  everywhere and says so. Narrowing (a project, an agent, `paths`) is `learn.relax`; widening
+  back is `learn.edit`.
+- "use pnpm not npm", accepted, teaches Memory a `preference` (`subject: "the user"`, `rel:
+  prefers`, `key: lesson:<id>`) through `ctx.memory.teach`; retiring the lesson forgets it.
+- Metrics: `learn_days` (turns per day, project and agent) and `learn_lesson_days` (applied,
+  caught, broken, repeats). `learn.stats {id?}` returns `{before, after, escapes, attempts,
+  turns, verdict}`. A lesson quiet for 60 days and 200 turns in scope goes dormant (out of the
+  brief and reminders, still checked, `lesson.dormant`) and wakes on a catch; an ask lesson
+  allowed 5 times out of 5 emits `lesson.allowed` for the user to decide on a demotion.
+- Skills wired: steps recorded at Stop, the turn marked clean at the next prompt, a procedure
+  clean in 3 sessions proposed (a drafting job when the Switchboard answers, else the template).
+  New tools `learn.skills {status?}` (with drift), `learn.skill-install`, `learn.skill-retire`
+  (owner callers, presence) and `learn.skill-dismiss`. A retired skill's procedure is never
+  proposed again. The account plugin moved to `<home>/learned/account`, where the Switchboard's
+  `learnedDirs` already loads it. Skill events carry ids, counts and kinds only.
+- `learn.signals {kind?, since?, limit?}` (owner callers): signals without text, counts, repeats
+  by key, Memory corrections per rule, and jobs.
+- Retention: `learn_commands`, `learn_calls`, `learn_writes` and `learn_turns` keep 7 days,
+  pruned at start and at most hourly from Stop; daily from Stop, dormancy, old procedures (90
+  days), finished jobs (30 days) and metrics older than a year. No timers.
+- Harness: `harness.rules` passes `tool_use_id`; `harness.learn` also takes Bash and failures
+  (`ok: false`, `error_head`, `interrupted`) and calls `learn.observe`. `hooks.json` widens
+  PostToolUse to Bash and adds a PostToolUseFailure piece (`hook.js fail`), whose fields
+  (`tool_name, tool_input, tool_use_id, error, is_interrupt, duration_ms`) were read from Claude
+  Code 2.1.283 itself; the hook reads them tolerantly.
+- CLI: `vyre learn` gains an effect column; new `show`, `scope`, `relax`, `stats`, `signals`,
+  `skills [show|install|retire|dismiss]`.
+- Hook cost with 50 active lessons, in process: `harness.rules` p50 2.2 ms, p95 3.3 ms;
+  `harness.stop` p50 2.3 ms, p95 4.0 ms; `harness.enrich` p50 0.3 ms.
+
+#### Learning: enforcement that cannot be dodged (ADR 0007, decisions 8, 9, 11 and 12)
+
+- Project lessons now apply. `inScope` read `projects.of().project`, which does not exist, so a
+  lesson scoped to a project never held anywhere. `scope.project` holds the slug; a name, home or
+  folder (older lessons, or what a person typed) still matches and is stored as the slug.
+- Accept by reply. A proposal told to a thread is answered by the user's next prompt, read in
+  `learn.signal`: a plain yes ("yes", "keep it", "yes keep lesson 7", "sure", "do it") accepts it
+  inside Learning, a plain no ("no", "don't", "drop it", "no thanks") declines it (retired,
+  `source.declined`). Anything else leaves it waiting. Claude is no longer told to call
+  `learn_accept`; it is told it cannot.
+- `learn.accept`, `learn.retire` and the new `learn.relax` declare `presence` with a summary
+  naming the lesson, and take only `cli`, `local`, `deck` and `capsule` callers, so MCP, agents
+  and hooks are refused before the presence registry lands.
+- `learn.edit` only tightens. Lowering the level, narrowing or moving the scope, changing or
+  removing the check, narrowing `when`, lowering `max_level`, pinning or rewriting the rule is
+  refused with an error naming `learn.relax`. New columns `max_level` and `pinned`; escalation
+  stops at `max_level` and never moves a pinned lesson. `vyre learn level` lowers through
+  `learn.relax`.
+- Guards (`weakens()`), asked wherever any lesson is active, online and offline: writes or shell
+  commands reaching `lessons.json`, `learn-offline/`, `vyre.db`, the socket, `vyred.pid` or
+  `learned/` in the Vyre home (by path, `~`, `$HOME`, `$VYRE_HOME` or a glob), the Harness's
+  `hooks/`, Claude Code settings files, `vyre call learn.*|harness.*`, `vyre learn
+  retire|relax|edit|level|accept`, raw socket clients, and stopping vyred (`vyre down`, `pkill`,
+  `kill` by pid file, `launchctl`, `systemctl`). Read-only commands and other folders pass.
+- Offline is complete. `lessons.json` is version 2 and carries each project lesson's slug and
+  folders; the hook matches `cwd` by prefix (longest folder wins) and still reads version 1.
+  When the file is missing or unreadable the hook reads active lessons from `vyre.db`, read-only
+  with a 200 ms busy timeout (about 5 ms more per hook process, measured). vyred keeps the
+  snapshot's sha256 in `learn_state`; a file changed or removed while it was down is a `tampered`
+  signal (no content) and a `lesson.tampered {}` event, then rewritten.
+- After the cap. A turn can no longer reset its block count by showing another `prompt_id`: only
+  a real prompt or a Stop with `stop_hook_active` false starts it over, online and offline. The
+  next prompt in that thread opens with the broken lesson, ahead of memory; the next brief in
+  scope says "Lesson N was broken M times this week"; `lesson.broken` carries `{lesson, session,
+  level, stage}`.
 
 #### Link and the real Tailscale
 
