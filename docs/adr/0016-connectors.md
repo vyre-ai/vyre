@@ -1,4 +1,12 @@
-# ADR 0016 · Connectors: the MCP hub and native accounts
+---
+title: ADR 0016: Connectors, the MCP hub and native accounts
+summary: How Vyre adds MCP servers and Google accounts without a secret leaving the Vault, and what the Gate holds.
+audience: builders
+owner: connectors
+status: stable
+---
+
+# ADR 0016: Connectors, the MCP hub and native accounts
 
 Status: proposed, 27 Sep 2026 · Workstream: connectors · Code: `core/connectors/`, `core/mcp/`,
 `core/google/`, `core/cli/commands/connect.js`, `deck/views/connections.js`

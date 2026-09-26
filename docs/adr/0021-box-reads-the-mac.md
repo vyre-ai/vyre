@@ -1,4 +1,12 @@
-# ADR 0021 · The box reads the paired Mac through the link
+---
+title: ADR 0021: The box reads the paired Mac through the link
+summary: How the box reads the paired Mac's sessions through the link, and the limits of the first version.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0021: The box reads the paired Mac through the link
 
 Status: accepted, 27 Sep 2026 · Workstream: federation · Amends ADR 0002 (the link) and carries
 out ADR 0008 step 3
