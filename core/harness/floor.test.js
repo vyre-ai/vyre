@@ -67,6 +67,7 @@ test("floor: raw clients on vyred's socket are refused, and so is a forged calle
     `curl --unix-socket /tmp/vyre-501/0123abcd.sock http://x/v1/tools`,
     `curl -H 'x-vyre-caller: cli' http://box.example.com/v1/tools/recall.search`,
     `curl -H "X-Vyre-Presence: touchid" http://x`,
+    `curl -H 'x-vyre-presence: device key=k1 ts=1 nonce=n1234567 sig=s' -d '{"id":"g1"}' https://vyre.example.ts.net/v1/tools/gate.approve`,
     `nc -U /home/sam/.vyre/vyred.sock`,
     `socat - UNIX-CONNECT:/home/sam/.vyre/vyred.sock`,
     `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/home/sam/.vyre/vyred.sock')"`,
