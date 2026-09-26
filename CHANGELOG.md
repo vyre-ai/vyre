@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A first index that the Mac does not feel
+
+- On a user's Mac the first `vyre up` held about 500% CPU for 7+ minutes while Recall embedded
+  their whole Claude Code history, and the machine glitched. Now:
+  - The search model runs in a process of its own at nice 19 (`core/recall/embed-worker.js`,
+    `spawnEmbedder`), with ONNX Runtime on one thread (`intraOpNumThreads` and
+    `interOpNumThreads` 1), and exits with vyred.
+  - Background work is paced: after each transcript file and each embedded turn it sleeps as long
+    again (`recall.duty`, default 0.5), and pauses while on battery under 30% (`recall.lowBattery`)
+    or while the load average is above the number of cores, looked at once a minute
+    (`core/recall/pace.js`).
+  - Keyword search works from the first indexed session. `vyre status` and `vyre doctor` say
+    where it stands: "indexing 1,234 of 5,678 sessions, low priority", then "search by meaning:
+    1,000 of 40,000 turns, low priority; keyword search works now", or why it is paused.
+    `recall.status` gains `progress { sessions, paused, priority }`.
+- Measured on the test box, 20,016 turns: vyred and the model together average 0.46 cores
+  (fake model, 60 s) and 0.41 cores (the real model, 120 s, download included), the model's
+  process at nice 19, keyword search answering throughout. `scripts/perf-check --first-run
+  [--real-model]` is that check; `core/recall/pace.test.js` measures the model process on the
+  fixture corpus (0.43 cores, budget 0.65).
+- `/v1/health` carries `memory` (rss, heapUsed, external, in MB); stress-drive samples it, reports
+  the JS heap's slope beside RSS, and leaves out the samples taken while it reads the log back.
+
 #### A temp home never reaches a real box
 
 - A first-run check on the test box, in a temp home with the real Tailscale, found the user's

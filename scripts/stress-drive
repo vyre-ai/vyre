@@ -253,7 +253,14 @@ async function main() {
   const samples = [];
   const sample = () => {
     const r = psRows().find(x => x.pid === VPID);
-    if (r) samples.push({ t: Date.now() - T0, rss_mb: r.rss / 1024, cpu_s: cpuSeconds(r.time) });
+    if (r) {
+      const at = { t: Date.now() - T0, rss_mb: r.rss / 1024, cpu_s: cpuSeconds(r.time) };
+      samples.push(at);
+      // vyred's own view: JS heap against native (SQLite's page cache, buffers), so growth has a name.
+      http.get({ socketPath: SOCKET, path: "/v1/health", headers: { "x-vyre-caller": "cli" } }, res => {
+        let b = ""; res.on("data", d => (b += d)); res.on("end", () => { try { const m = JSON.parse(b).data.memory; if (m) Object.assign(at, { heap_mb: m.heapUsed, external_mb: m.external }); } catch {} });
+      }).on("error", () => {});
+    }
     noteChildren(VPID);
   };
   sample();
@@ -491,7 +498,11 @@ async function main() {
   for (const [pid] of left) { try { process.kill(pid, "SIGKILL"); } catch {} }
 
   // Size: flat after warmup.
-  const warm = samples.filter(s => s.t >= WARMUP_MS);
+  // Only the drive itself: after END the check reads the whole event log back, which is not the
+  // steady state (it put 8 MB on the last sample of a 30 minute run and failed the slope alone).
+  const warm = samples.filter(s => s.t >= WARMUP_MS && s.t <= END - T0);
+  const heaps = warm.filter(s => typeof s.heap_mb === "number");
+  const heapFit = heaps.length > 2 ? linear(heaps.map(s => [s.t / 60_000, s.heap_mb])) : null;
   const fit = linear(warm.map(s => [s.t / 60_000, s.rss_mb]));
   const slope10 = fit ? fit.slope * 10 : null;
   const maxRss = Math.max(...samples.map(s => s.rss_mb));
@@ -504,7 +515,7 @@ async function main() {
     stats: { ...stats, cli_avg_ms: stats.cli_calls ? Math.round(stats.cli_ms / stats.cli_calls) : 0 },
     events: { logged: log_.length, streamed: main.ids.length, pruned_or_unlogged: unlogged.length, reconnecting: flaky.map(c => ({ name: c.name, connects: c.connects, events: c.ids.length })) },
     vyred: { rss_start_mb: round(samples[0]?.rss_mb), rss_end_mb: round(samples[samples.length - 1]?.rss_mb), rss_max_mb: round(maxRss),
-      rss_slope_mb_per_10min_after_warmup: round(slope10), cpu_avg_pct: round(cpu), samples },
+      rss_slope_mb_per_10min_after_warmup: round(slope10), heap_slope_mb_per_10min_after_warmup: heapFit ? round(heapFit.slope * 10) : null, cpu_avg_pct: round(cpu), samples },
     orphans: left.length + stray.filter(r => !started.has(r.pid)).length,
     failures,
   };
@@ -515,7 +526,7 @@ async function main() {
   console.log(`    lease moves ${stats.lease_moves}, refused while held ${stats.refused_live}, refused for a dead holder ${stats.refused_dead}`);
   console.log(`    watch restarts ${stats.watch_restarts}, re-runs after a stop ${stats.watch_rearms}, watch checks ${stats.watch_checks}, sse reconnects ${stats.sse_reconnects}`);
   console.log(`    events logged ${log_.length}, streamed ${main.ids.length}, pruned partial text ${unlogged.length}`);
-  console.log(`    vyred rss ${report.vyred.rss_start_mb} -> ${report.vyred.rss_end_mb} MB (max ${report.vyred.rss_max_mb}), slope ${report.vyred.rss_slope_mb_per_10min_after_warmup} MB/10min, cpu ${report.vyred.cpu_avg_pct}%`);
+  console.log(`    vyred rss ${report.vyred.rss_start_mb} -> ${report.vyred.rss_end_mb} MB (max ${report.vyred.rss_max_mb}), slope ${report.vyred.rss_slope_mb_per_10min_after_warmup} MB/10min (JS heap ${report.vyred.heap_slope_mb_per_10min_after_warmup ?? "?"}), cpu ${report.vyred.cpu_avg_pct}%`);
   console.log(`    cli calls ${stats.cli_calls}, avg ${report.stats.cli_avg_ms} ms · orphans ${report.orphans}`);
   for (const f of failures.slice(0, 30)) console.log(`    FAIL ${f}`);
   if (failures.length > 30) console.log(`    ... ${failures.length - 30} more in the report`);

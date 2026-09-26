@@ -32,6 +32,7 @@ function tools({ link = {}, box = {} } = {}) {
   };
   return async (name, input) => {
     if (name === "link.status") return { data: { role: "local", linked: true, reachable: true, box: { address: BOX, name: "vyre" }, pending: null, ...link } };
+    if (name === "recall.status") return { data: { sessions: 5678, turns: 40000, indexing: true, progress: { sessions: { done: 1234, total: 5678 }, paused: null, priority: "low" }, vectors: { on: true, ready: false, embedded: 0, pending: 40000, why: "not loaded yet" } } };
     if (name === "link.call") return remote[input.tool] ? remote[input.tool]() : { error: { code: "no_such_tool", message: input.tool } };
     return { error: { code: "no_such_tool", message: name } };
   };
@@ -54,6 +55,7 @@ test("doctor: a Mac where everything works is all ticks, with what it found", as
   assert.equal(c.phone.detail, "alex-phone");
   assert.equal(c.passkey.detail, "vyre.tail0000.ts.net");
   assert.equal(c.install.detail, "5.9 MB");
+  assert.equal(c.recall.detail, "indexing 1,234 of 5,678 sessions, low priority");
   assert.ok(r.ms < BUDGET_MS);
 });
 

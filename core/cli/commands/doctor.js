@@ -23,6 +23,7 @@ import * as config from "../../config/index.js";
 import { status as tailscaleStatus, probe } from "../tailnet.js";
 import { INSTALLED } from "./capsule.js";
 import { shadows } from "../shadow.js";
+import { progressLine } from "../../recall/progress.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, EXIT } from "../kit.js";
 
@@ -229,11 +230,18 @@ export async function diagnose(deps = {}) {
     return pass("path", labelPath);
   });
 
-  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, onPath, size];
+  // Recall's index: keyword search works at once; meaning trickles in at low priority.
+  const recall = up ? within(tool("recall.status"), STEP_MS, () => ({ error: { message: "no answer" } })).then(r => {
+    if (r.error || !r.data) return unknown("recall", "Search", `recall.status did not answer${r.error ? ": " + r.error.message : ""}`);
+    const line = progressLine(r.data);
+    return pass("recall", "Search", line || `${Number(r.data.sessions || 0).toLocaleString("en-US")} sessions indexed${r.data.vectors && r.data.vectors.ready ? ", by meaning too" : ""}`);
+  }) : Promise.resolve(null);
+
+  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, recall, onPath, size];
   const left = Math.max(100, BUDGET_MS - (Date.now() - t0));
   const results = await Promise.all(all.map(p => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))));
-  const labels = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "The vyre on PATH", "Install size"];
-  const ids = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "path", "install"];
+  const labels = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Search", "The vyre on PATH", "Install size"];
+  const ids = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "recall", "path", "install"];
   const checks = results.map((c, i) => c && c.id === "?" ? { ...c, id: ids[i], label: labels[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c).filter(Boolean);
   return { role, checks: /** @type {Check[]} */ (checks), ms: Date.now() - t0 };
 }
