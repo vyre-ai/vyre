@@ -125,3 +125,23 @@ test("daemon: non-API paths serve the Deck and never anything outside deck/", as
     assert.ok(!r.body.includes('"name": "vyre"'), `${p} escaped deck/`);
   }
 });
+
+test("client: the first call after vyred restarts reaches the new vyred", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  assert.ok((await call("system.echo", { text: "a" }, { root })).data);
+  await d.stop();
+  const again = await start({ root, log: () => {} });
+  t.after(() => again.stop());
+  assert.deepEqual(await call("system.echo", { text: "b" }, { root }), { data: { text: "b" } });
+});
+
+test("daemon: no client on the socket can claim to be a module", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  let seen = null;
+  d.registry.tools.set("system.whoami", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, run: async (_, { caller }) => { seen = caller; return {}; } });
+  await call("system.whoami", {}, { root, caller: "module:vault" });
+  assert.equal(seen, "local");
+});
