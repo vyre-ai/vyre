@@ -52,7 +52,10 @@ export function realExec(execFile = childExecFile) {
   return (file, args, { input, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) => new Promise((ok, no) => {
     const child = execFile(file, args, { timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: 8 << 20, encoding: "utf8" },
       (/** @type {any} */ err, /** @type {any} */ stdout, /** @type {any} */ stderr) => {
-        if (err && (err.killed || err.signal === "SIGKILL")) return no(new AppsError("failed", `${path.basename(file)} did not answer within ${Math.round(timeoutMs / 1000)}s`));
+        if (err && (err.killed || err.signal === "SIGKILL")) {
+          const e = new AppsError("failed", `${path.basename(file)} did not answer within ${Math.round(timeoutMs / 1000)}s`);
+          return no(Object.assign(e, { timedOut: true }));
+        }
         if (err && typeof err.code === "string") {
           return no(new AppsError(err.code === "ENOENT" ? "setup" : "failed", err.code === "ENOENT" ? `${path.basename(file)} is not on this machine` : err.message));
         }
@@ -67,8 +70,14 @@ function osaWords(/** @type {string} */ stderr) {
   return String(stderr).replace(/^\d+:\d+: /, "").replace(/^execution error: /, "").trim() || "AppleScript failed";
 }
 
-/** Map an osascript failure to a code: a missing object, a missing Automation grant, or anything else. */
+/**
+ * Map an osascript failure to a code. A script refuses on purpose with
+ * `error "vyre:<code>: <words>"`, and that code wins. Otherwise: a missing Automation grant is
+ * setup, a missing object is not_found, anything else is failed.
+ */
 function osaError(/** @type {string} */ stderr) {
+  const own = /vyre:([a-z][a-z_]{1,40}): ([^\n]*?)(?: \(-?\d+\))?\s*$/m.exec(String(stderr));
+  if (own) return new AppsError(own[1], own[2].trim());
   const words = osaWords(stderr);
   if (/\(-1743\)/.test(stderr)) {
     const app = (/Apple events to ([^.]+)\./.exec(stderr) || [])[1] || "the app";
@@ -98,11 +107,20 @@ export function makeEnv({ config = {}, call = async () => ({ error: { code: "no_
 
   /**
    * Run a constant AppleScript with argv. Returns stdout without its final line break.
-   * @param {string} script @param {string[]} [argv]
+   *
+   * A timeout is code setup, not failed: the first AppleScript call to an app waits on macOS's
+   * Automation consent prompt, and a prompt nobody has answered looks exactly like a hang.
+   * @param {string} script @param {string[]} [argv] @param {{ timeoutMs?: number }} [o]
    */
-  const osa = async (script, argv = []) => {
+  const osa = async (script, argv = [], { timeoutMs } = {}) => {
     guard("AppleScript");
-    const r = await exec("osascript", ["-e", script, SENTINEL, ...argv.map(String)]);
+    let r;
+    try { r = await exec("osascript", ["-e", script, SENTINEL, ...argv.map(String)], timeoutMs ? { timeoutMs } : {}); }
+    catch (e) {
+      if (!/** @type {any} */ (e).timedOut) throw e;
+      const app = (/tell application "([^"]+)"/.exec(script) || [])[1] || "the app";
+      throw new AppsError("setup", `${app} did not answer. If macOS is asking whether Vyre may control ${app}, allow it, or allow it in System Settings > Privacy & Security > Automation`);
+    }
     if (r.code !== 0) throw osaError(r.stderr);
     return r.stdout.replace(/\n$/, "");
   };
@@ -127,6 +145,8 @@ export function makeEnv({ config = {}, call = async () => ({ error: { code: "no_
       try {
         const inPath = path.join(dir, "input.txt"), outPath = path.join(dir, "output.txt");
         fs.writeFileSync(inPath, String(input), { mode: 0o600 });
+        // 30 s rather than the default 15: a shortcut's first run after login loads the
+        // Shortcuts runtime, and an App Intent may wait on its app to be ready.
         const r = await exec("shortcuts", ["run", name, "--input-path", inPath, "--output-path", outPath], { timeoutMs: 30000 });
         if (r.code !== 0) throw new AppsError("failed", `the shortcut "${name}" failed: ${r.stderr.trim() || `exit ${r.code}`}`);
         try { return fs.readFileSync(outPath, "utf8"); } catch { return ""; }

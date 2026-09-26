@@ -19,6 +19,7 @@ import { adapters } from "./adapters/index.js";
 import { installed, DEFAULT_DIRS } from "./installed.js";
 
 export const TARGETS_TTL_MS = 60 * 1000;
+export const LIST_MAX = 100;
 
 const str = { type: "string" };
 const actInput = {
@@ -49,18 +50,23 @@ export default {
       return { a, act };
     };
 
-    /** Check the action's own schema, then run it. */
+    /**
+     * Check the action's own schema, then run it. An action that worked may have changed what
+     * the app's targets are (a new note, a new list), so that app's cached targets go.
+     */
     const run = async (/** @type {any} */ a, /** @type {any} */ act, /** @type {any} */ args) => {
       const problems = checkInput(act.input, args, "args");
       if (problems.length) throw new AppsError("bad_input", problems.join("; "));
-      return act.run(args, env);
+      const out = await act.run(args, env);
+      for (const k of targetCache.keys()) if (k.startsWith(`${a.id}\u0000`)) targetCache.delete(k);
+      return out;
     };
 
     ctx.tool("apps.list", {
       description: "Apps installed on this Mac: name, bundle id, path, and tier (how Vyre reaches it: connector, intents, script, or ax for its UI). Filter with q; names that start with q come first.",
-      input: { type: "object", properties: { q: str, limit: { type: "integer", description: "Most rows, default 20." } } },
+      input: { type: "object", properties: { q: str, limit: { type: "integer", description: `Most rows, default 20, at most ${LIST_MAX}.` } } },
       async run({ q = "", limit = 20 }) {
-        const rows = await apps.find({ q, limit });
+        const rows = await apps.find({ q, limit: Math.min(LIST_MAX, Math.max(1, limit)) });
         return {
           apps: rows.map(r => {
             const a = registry.find(r.name) || registry.find(r.bundleId);
@@ -82,7 +88,10 @@ export default {
         if (hit && env.now() - hit.at <= TARGETS_TTL_MS) targets = hit.targets;
         else {
           targets = await a.targets(q, env);
-          targetCache.set(key, { at: env.now(), targets });
+          // Expired entries go on write, so a stream of different queries cannot grow the map.
+          const now = env.now();
+          for (const [k, v] of targetCache) if (now - v.at > TARGETS_TTL_MS) targetCache.delete(k);
+          targetCache.set(key, { at: now, targets });
         }
         return { targets: targets.slice(0, Math.max(1, limit)) };
       },
@@ -123,6 +132,8 @@ export default {
     });
 
     return {
+      /** How many target lists are cached; the tests read it through the Registry's handle. */
+      cachedTargets: () => targetCache.size,
       async stop() {
         apps.clear();
         targetCache.clear();

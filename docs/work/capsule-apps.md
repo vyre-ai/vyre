@@ -65,6 +65,11 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   only, shortcuts over temp files, the no_dialog and not_mac gate), installed.js (apps.list scan,
   5 min cache), adapters clock, notes, reminders, weather, and the four tools. 39 tests, all
   with fakes, pass on the testbox (`node --test local/apps/*.test.js`).
+- Review fixes: notes append refuses locked notes and notes with attachments (not_supported),
+  notes targets skip the trash and join once, weather has 10 s timeouts and null guards,
+  reminders set time in one step, refuse the past and judge days in env.timeZone, list ids as
+  targets, osascript timeouts are setup with the Automation hint, apps.list is capped at 100,
+  targets are pruned on write and cleared after an act. 48 tests pass on the testbox.
 
 ## Doing
 - Nothing in flight.
@@ -73,7 +78,13 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 - Slice 1, T3: `apps.route` (rules first) and `vyre apps` (core/cli/commands/apps.js), including
   `vyre apps setup clock`, which the Clock setup error already names.
 - The two Clock shortcuts ("Vyre Timer": Start Timer with the input as seconds; "Vyre Alarm":
-  Create Alarm from JSON {time, label}) have to be built and shipped as files to import.
+  Create Alarm from JSON {time, label}) have to be built and shipped as files to import. Both
+  must start with "Get Text from Input": `shortcuts run --input-path` hands the input over as a
+  file, not as text.
+- On the Mac, with the lead's say-so: `VYRE_MAC_REAL=1 node --test local/apps/mac.test.js`
+  compiles the Notes and Reminders scripts with osacompile (skipped everywhere else).
+- Notes' trash is skipped by its name ("Recently Deleted", or config apps.notes.trash): the
+  dictionary gives that folder nothing else to tell it by, so another language needs the config.
 - First real run on the Mac, with the lead's say-so: the AppleScripts in notes.js and
   reminders.js have only been checked against fakes.
 

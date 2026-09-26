@@ -161,3 +161,30 @@ test("module: a setup error keeps its code through the Registry", async t => {
   assert.equal(r.error.code, "setup");
   assert.match(r.error.message, /vyre apps setup clock/);
 });
+
+test("module: apps.list returns at most 100 rows, whatever limit asks", async t => {
+  const { reg, home } = await start(t);
+  for (let i = 0; i < 105; i++) fakeApp(path.join(home, "Applications"), `App ${String(i).padStart(3, "0")}`, null);
+  assert.equal((await reg.call("apps.list", { limit: 1000 }, "cli")).data.apps.length, 100);
+  assert.equal((await reg.call("apps.list", { limit: 0 }, "cli")).data.apps.length, 1);
+});
+
+test("module: expired targets go when a new entry is written, and an act on an app clears its targets", async t => {
+  let now = 0, asked = 0;
+  const chat = chatApp();
+  const inner = chat.adapter.targets;
+  chat.adapter.targets = async q => { asked++; return inner(q); };
+  const { reg } = await start(t, { apps: { adapters: [chat.adapter], now: () => now } });
+  const handle = reg.modules.get("apps")?.handle;
+  for (const q of ["a", "b", "c"]) await reg.call("apps.targets", { app: "Chatter", q }, "cli");
+  assert.equal(handle.cachedTargets(), 3);
+  now += 60_001;
+  await reg.call("apps.targets", { app: "Chatter", q: "d" }, "cli");
+  assert.equal(handle.cachedTargets(), 1, "expired entries were kept");
+  await reg.call("apps.targets", { app: "Chatter", q: "d" }, "cli");
+  assert.equal(asked, 4);
+  await reg.call("apps.act", { app: "Chatter", action: "open" }, "cli");
+  assert.equal(handle.cachedTargets(), 0);
+  await reg.call("apps.targets", { app: "Chatter", q: "d" }, "cli");
+  assert.equal(asked, 5, "targets were served from before the act");
+});

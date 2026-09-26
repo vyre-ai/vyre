@@ -112,3 +112,20 @@ test("env: realExec reports a missing binary as setup and a timeout as failed", 
   const exit = realExec((/** @type {any[]} */ ...a) => { const cb = a[a.length - 1]; queueMicrotask(() => cb(Object.assign(new Error("exit"), { code: 3 }), "", "bad")); return { stdin: { end() {} } }; });
   assert.deepEqual(await exit("plutil", []), { code: 3, stdout: "", stderr: "bad" });
 });
+
+test("env: a script's own vyre:<code> refusal keeps its code and words", async () => {
+  const stderr = "execution error: vyre:not_supported: that note is locked, so Vyre cannot add to it (-2700)";
+  const env = makeEnv({ config: { exec: fakeExec(() => ({ code: 1, stderr })).exec, platform: "darwin" } });
+  await assert.rejects(env.osa("on run argv\nend run", []), (/** @type {any} */ e) =>
+    e.code === "not_supported" && e.message === "that note is locked, so Vyre cannot add to it");
+});
+
+test("env: an osascript timeout is code setup with the Automation hint; a longer timeout is passed on", async () => {
+  const f = fakeExec(() => { throw Object.assign(new AppsError("failed", "osascript did not answer within 15s"), { timedOut: true }); });
+  const env = makeEnv({ config: { exec: f.exec, platform: "darwin" } });
+  await assert.rejects(env.osa('on run argv\ntell application "Notes"\nend tell\nend run', []), (/** @type {any} */ e) =>
+    e.code === "setup" && /Notes/.test(e.message) && /Privacy & Security > Automation/.test(e.message));
+  const g = fakeExec();
+  await makeEnv({ config: { exec: g.exec, platform: "darwin" } }).osa("on run argv\nend run", [], { timeoutMs: 30000 });
+  assert.deepEqual(g.calls[0].opts, { timeoutMs: 30000 });
+});

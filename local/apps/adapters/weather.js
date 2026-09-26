@@ -29,11 +29,22 @@ export function words(/** @type {number} */ code) {
   return "unknown";
 }
 
-/** The city in an IANA time zone name: "America/Argentina/Buenos_Aires" -> "Buenos Aires". */
+/** The IANA areas whose zones are named after a city. Etc/, US/ and the rest are not. */
+const AREAS = new Set(["Africa", "America", "Antarctica", "Asia", "Atlantic", "Australia", "Europe", "Indian", "Pacific"]);
+
+/**
+ * The city in an IANA time zone name: "America/Argentina/Buenos_Aires" -> "Buenos Aires". "" for
+ * a zone that names no city ("UTC", "Etc/GMT+8", "US/Pacific") or does not parse.
+ */
 export function cityOf(/** @type {string} */ tz) {
   const parts = String(tz || "").split("/");
-  return parts.length > 1 ? parts[parts.length - 1].replace(/_/g, " ") : "";
+  if (parts.length < 2 || !AREAS.has(parts[0])) return "";
+  const city = parts[parts.length - 1];
+  return /^[A-Za-z][A-Za-z_'-]*$/.test(city) ? city.replace(/_/g, " ") : "";
 }
+
+/** How long each request to the weather service may take. */
+export const FETCH_TIMEOUT_MS = 10000;
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -47,8 +58,14 @@ function dateWords(/** @type {string} */ ymd) {
 /** GET JSON, with any failure as code failed in words. */
 async function getJson(/** @type {any} */ env, /** @type {string} */ url) {
   let res;
-  try { res = await env.fetch(url); }
-  catch (e) { throw new AppsError("failed", `could not reach the weather service: ${/** @type {Error} */ (e).message}`); }
+  try { res = await env.fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }); }
+  catch (e) {
+    const err = /** @type {Error} */ (e);
+    if (err && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new AppsError("failed", `the weather service did not answer within ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    throw new AppsError("failed", `could not reach the weather service: ${err.message}`);
+  }
   if (!res || !res.ok) throw new AppsError("failed", `the weather service answered ${res ? res.status : "nothing"}`);
   try { return await res.json(); }
   catch { throw new AppsError("failed", "the weather service sent something that is not JSON"); }
@@ -71,7 +88,7 @@ export default {
       async run({ place, day = "today" }, env) {
         const opts = (env.config && env.config.weather) || {};
         const where = String(place || opts.place || cityOf(env.timeZone)).trim();
-        if (!where) throw new AppsError("bad_input", "which place? Name one, or set apps.weather.place");
+        if (!where) throw new AppsError("setup", "set a place: vyre apps weather in <city>, or config apps.weather.place");
         if (day !== "today" && day !== "tomorrow" && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
           throw new AppsError("bad_input", `day must be today, tomorrow or YYYY-MM-DD, not "${day}"`);
         }
@@ -86,10 +103,14 @@ export default {
         if (!daily || !Array.isArray(daily.time)) throw new AppsError("failed", "the weather service sent no forecast");
         const i = day === "today" ? 0 : day === "tomorrow" ? 1 : daily.time.indexOf(day);
         if (i < 0 || i >= daily.time.length) throw new AppsError("bad_input", `the forecast covers ${daily.time[0]} to ${daily.time[daily.time.length - 1]}`);
-        const round = (/** @type {any} */ n) => (typeof n === "number" ? Math.round(n) : null);
-        const high = round(daily.temperature_2m_max[i]), low = round(daily.temperature_2m_min[i]);
-        const rainChance = round(daily.precipitation_probability_max && daily.precipitation_probability_max[i]);
-        const w = words(daily.weather_code[i]);
+        const round = (/** @type {any} */ n) => (typeof n === "number" && Number.isFinite(n) ? Math.round(n) : null);
+        const at = (/** @type {string} */ k) => (Array.isArray(daily[k]) ? round(daily[k][i]) : null);
+        const high = at("temperature_2m_max"), low = at("temperature_2m_min"), code = at("weather_code");
+        // Open-Meteo sends null for a value it has no model for; a forecast without its
+        // numbers is no forecast. Rain chance alone may be missing and is then left out.
+        if (high === null || low === null || code === null) throw new AppsError("failed", `the weather service has no forecast for ${hit.name} on ${daily.time[i]}`);
+        const rainChance = at("precipitation_probability_max");
+        const w = words(code);
         const unit = f ? "F" : "C";
         const label = day === "today" ? "Today" : day === "tomorrow" ? "Tomorrow" : dateWords(daily.time[i]);
         const current = i === 0 && fc.current ? round(fc.current.temperature_2m) : null;

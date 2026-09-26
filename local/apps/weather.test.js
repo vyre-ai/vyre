@@ -31,6 +31,10 @@ test("weather: WMO codes read as short words, and a zone names its city", () => 
   assert.equal(cityOf("Asia/Kuala_Lumpur"), "Kuala Lumpur");
   assert.equal(cityOf("America/Argentina/Buenos_Aires"), "Buenos Aires");
   assert.equal(cityOf("UTC"), "");
+  assert.equal(cityOf("Etc/GMT+8"), "");
+  assert.equal(cityOf("US/Pacific"), "");
+  assert.equal(cityOf("Asia/"), "");
+  assert.equal(cityOf(""), "");
 });
 
 test("weather: tomorrow takes daily[1], from the time zone's city by default", async () => {
@@ -64,8 +68,35 @@ test("weather: a network failure or a bad status is code failed in words; an unk
   await assert.rejects(weather.actions.get.run({}, busy.env), (/** @type {any} */ e) => e.code === "failed" && /503/.test(e.message));
   const nowhere = envWith({ "geocoding-api": { results: [] } });
   await assert.rejects(weather.actions.get.run({ place: "Atlantis" }, nowhere.env), (/** @type {any} */ e) => e.code === "not_found");
-  const utc = envWith({}, { timeZone: "UTC" });
-  await assert.rejects(weather.actions.get.run({}, utc.env), (/** @type {any} */ e) => e.code === "bad_input");
+  const utc = envWith({}, { timeZone: "Etc/UTC" });
+  await assert.rejects(weather.actions.get.run({}, utc.env), (/** @type {any} */ e) =>
+    e.code === "setup" && e.message === "set a place: vyre apps weather in <city>, or config apps.weather.place");
+  assert.equal(utc.urls.length, 0);
+});
+
+test("weather: each request carries a timeout signal, and a timeout is failed in words", async () => {
+  /** @type {any[]} */
+  const seen = [];
+  const env = makeEnv({ config: { exec: fakeExec().exec, platform: "darwin", timeZone: "Asia/Kuala_Lumpur",
+    fetch: async (/** @type {string} */ url, /** @type {any} */ opts) => {
+      seen.push(opts);
+      if (url.includes("forecast")) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      return { ok: true, status: 200, json: async () => GEO };
+    } } });
+  await assert.rejects(weather.actions.get.run({}, env), (/** @type {any} */ e) => e.code === "failed" && /did not answer within 10s/.test(e.message));
+  assert.equal(seen.length, 2);
+  for (const o of seen) assert.ok(o && o.signal instanceof AbortSignal, "a request went without a timeout");
+});
+
+test("weather: null values in the forecast are failed, a missing rain chance is left out", async () => {
+  const holes = structuredClone(FORECAST);
+  holes.daily.temperature_2m_max[1] = /** @type {any} */ (null);
+  const w = envWith({ "geocoding-api": GEO, "forecast": holes });
+  await assert.rejects(weather.actions.get.run({ day: "tomorrow" }, w.env), (/** @type {any} */ e) => e.code === "failed" && /no forecast/.test(e.message));
+  const dry = structuredClone(FORECAST);
+  dry.daily.precipitation_probability_max[0] = /** @type {any} */ (null);
+  const d = envWith({ "geocoding-api": GEO, "forecast": dry });
+  assert.equal((await weather.actions.get.run({}, d.env)).said, "Today in Kuala Lumpur: partly cloudy, 32 / 25 C");
 });
 
 test("weather: open runs open -a Weather through exec", async () => {

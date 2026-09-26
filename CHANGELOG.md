@@ -23,6 +23,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   real osascript, shortcuts and `open` refuse with `no_dialog` before spawning anything; off a Mac
   they refuse with `not_mac`. Starting the module runs nothing, and its caches expire on read.
   Tests use a fake exec, a fake fetch and fake bundles only.
+- Adding to a note refuses a locked note or one with attachments (`not_supported`), since a body
+  rewrite would lose them. Note targets skip Recently Deleted (by name, configurable as
+  apps.notes.trash). A reminder's due time in the past is refused, and "today" is judged in the
+  Mac's time zone. An AppleScript that does not answer is `setup`, pointing at the Automation
+  consent. Weather requests time out after 10 s. `local/apps/mac.test.js` compiles the real
+  scripts with osacompile, only when VYRE_MAC_REAL=1 on a Mac.
 
 #### Connectors (ADR 0016)
 

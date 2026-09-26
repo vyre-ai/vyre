@@ -17,7 +17,7 @@ set theBody to item 1 of argv
 set folderName to item 2 of argv
 tell application "Notes"
 if folderName is "" then
-set n to make new note with properties {body:theBody}
+set n to make new note at default folder of default account with properties {body:theBody}
 else
 set n to make new note at folder folderName with properties {body:theBody}
 end if
@@ -25,33 +25,57 @@ return (id of n) & (character id 31) & (name of n)
 end tell
 end run`;
 
+// Setting the body rewrites the whole note, and anything that is not HTML text (an image, a
+// scan, a drawing) would be lost, and a locked note cannot be read at all. So both refuse, with
+// a code the Capsule can say in words.
 export const APPEND = `on run argv
 set argv to rest of argv
 set theId to item 1 of argv
 set extra to item 2 of argv
 tell application "Notes"
 set n to note id theId
+if password protected of n then error "vyre:not_supported: that note is locked, so Vyre cannot add to it"
+if (count of attachments of n) > 0 then error "vyre:not_supported: that note has attachments, which adding text would lose"
 set body of n to (body of n) & extra
 return name of n
 end tell
 end run`;
 
-// Names, ids and how many seconds ago each changed, fetched in bulk (three Apple events, not
-// three per note). Seconds ago rather than a date string, so no locale is involved.
+// Every note outside the trash: names, ids and how many seconds ago each changed, fetched in
+// bulk per folder (three Apple events a folder, not three a note). Seconds ago rather than a
+// date string, so no locale is involved. Records are gathered in a list and joined once with
+// text item delimiters; concatenating in the loop is quadratic.
+//
+// The trash is found by name (argv item 1, "Recently Deleted" unless config apps.notes.trash
+// says otherwise). Notes' dictionary gives the Recently Deleted folder no property that sets it
+// apart, so on a Mac in another language the trash is only skipped once that is configured.
 export const LIST = `on run argv
 set argv to rest of argv
-set out to ""
+set trashName to item 1 of argv
+set recs to {}
 set nowDate to current date
+set US to character id 31
 tell application "Notes"
-set theIds to id of every note
-set theNames to name of every note
-set theDates to modification date of every note
-end tell
+repeat with f in (every folder)
+if (name of f) is not trashName then
+set theIds to id of every note of f
+set theNames to name of every note of f
+set theDates to modification date of every note of f
 repeat with i from 1 to count of theIds
-set out to out & (item i of theIds) & (character id 31) & (item i of theNames) & (character id 31) & ((nowDate - (item i of theDates)) as integer) & (character id 30)
+set end of recs to (item i of theIds) & US & (item i of theNames) & US & (((nowDate - (item i of theDates)) as integer) as text)
 end repeat
+end if
+end repeat
+end tell
+set AppleScript's text item delimiters to character id 30
+set out to recs as text
+set AppleScript's text item delimiters to ""
 return out
 end run`;
+
+/** Listing every folder's notes can take a while on a big library. */
+export const LIST_TIMEOUT_MS = 30000;
+export const TRASH = "Recently Deleted";
 
 /** Escape text for a note's HTML body. */
 export function escapeHtml(/** @type {string} */ s) {
@@ -102,13 +126,15 @@ export default {
       },
     },
   },
-  /** The 50 most recently changed notes whose name contains q, newest first. */
+  /** The 50 most recently changed notes outside the trash whose name contains q, newest first. */
   async targets(q, env) {
-    const out = await env.osa(LIST, []);
+    const trash = (env.config && env.config.notes && env.config.notes.trash) || TRASH;
+    const out = await env.osa(LIST, [trash], { timeoutMs: LIST_TIMEOUT_MS });
+    const seen = new Set();
     const needle = String(q || "").toLowerCase();
     return out.split(RS).filter(Boolean).map(r => r.split(US))
       .map(([id, title, ago]) => ({ id, title, ago: Number(ago) || 0 }))
-      .filter(n => n.id && (!needle || n.title.toLowerCase().includes(needle)))
+      .filter(n => n.id && !seen.has(n.id) && seen.add(n.id) && (!needle || n.title.toLowerCase().includes(needle)))
       .sort((a, b) => a.ago - b.ago)
       .slice(0, 50)
       .map(({ id, title }) => ({ id, title, kind: "note" }));

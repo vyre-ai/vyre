@@ -9,7 +9,7 @@ import { makeEnv, SENTINEL } from "./env.js";
 import { fakeExec } from "./fake.js";
 import { adapters } from "./adapters/index.js";
 import clock, { duration, TIMER, ALARM } from "./adapters/clock.js";
-import notes, { CREATE as NOTE_CREATE, APPEND as NOTE_APPEND } from "./adapters/notes.js";
+import notes, { CREATE as NOTE_CREATE, APPEND as NOTE_APPEND, LIST as NOTE_LIST, TRASH } from "./adapters/notes.js";
 import reminders, { CREATE as REM_CREATE, dayWords } from "./adapters/reminders.js";
 import { tempHome } from "../../test/helpers.js";
 
@@ -107,27 +107,64 @@ test("notes: append passes the note id and the new HTML", async () => {
   assert.equal(r.said, "Note saved: Northwind Bakery");
 });
 
-test("notes: targets are the most recent 50, filtered by q, case-insensitive", async () => {
+test("notes: create without a folder goes to the default account's default folder", () => {
+  assert.match(NOTE_CREATE, /make new note at default folder of default account with properties \{body:theBody\}/);
+});
+
+test("notes: append refuses a locked note or one with attachments, as not_supported", async () => {
+  assert.match(NOTE_APPEND, /password protected of n/);
+  assert.match(NOTE_APPEND, /count of attachments of n/);
+  const env = makeEnv({ config: { platform: "darwin", exec: fakeExec(() => ({ code: 1,
+    stderr: "execution error: vyre:not_supported: that note has attachments, which adding text would lose (-2700)" })).exec } });
+  await assert.rejects(notes.actions.append.run({ note: "id7", text: "more" }, env), (/** @type {any} */ e) =>
+    e.code === "not_supported" && /attachments/.test(e.message));
+});
+
+test("notes: targets are the most recent 50 outside the trash, filtered by q, case-insensitive", async () => {
   const rows = Array.from({ length: 60 }, (_, i) => `id${i}\u001f${i % 2 ? "Kit notes" : "Juno plan"} ${i}\u001f${1000 - i}\u001e`).join("");
-  const f = fakeExec(() => ({ stdout: rows + "\n" }));
+  const f = fakeExec(() => ({ stdout: rows + "id59\u001fKit notes 59\u001f941\n" }));
   const env = makeEnv({ config: { exec: f.exec, platform: "darwin" } });
   const all = await notes.targets("", env);
   assert.equal(all.length, 50);
   assert.deepEqual(all[0], { id: "id59", title: "Kit notes 59", kind: "note" });
+  assert.equal(all.filter(n => n.id === "id59").length, 1, "a note in two folders listed twice");
   const juno = await notes.targets("JUNO", env);
   assert.ok(juno.every(n => n.title.startsWith("Juno")));
   assert.equal(juno[0].id, "id58");
-  assert.deepEqual(f.calls[0].args.slice(2), [SENTINEL]);
+  assert.deepEqual(f.calls[0].args.slice(2), [SENTINEL, TRASH]);
+  assert.deepEqual(f.calls[0].opts, { timeoutMs: 30000 });
+  assert.match(NOTE_LIST, /if \(name of f\) is not trashName then/);
+  assert.match(NOTE_LIST, /text item delimiters/);
+  const g = fakeExec(() => ({ stdout: "" }));
+  await notes.targets("", makeEnv({ config: { exec: g.exec, platform: "darwin", notes: { trash: "Zuletzt gelöscht" } } }));
+  assert.deepEqual(g.calls[0].args.slice(2), [SENTINEL, "Zuletzt gelöscht"]);
 });
 
-test("reminders: create passes text raw in argv and the due time as numbers", async () => {
+// 2026-09-27 09:00 in Kuala Lumpur (UTC+8, no daylight saving), a Sunday.
+const KL = "Asia/Kuala_Lumpur";
+const NINE_AM = Date.UTC(2026, 8, 27, 1, 0);
+
+test("reminders: create passes text raw in argv and the due time as numbers, time as seconds into the day", async () => {
   const f = fakeExec(() => ({ stdout: "x-apple-reminder://R1\n" }));
-  const now = new Date(2026, 8, 27, 9, 0).getTime();
-  const env = makeEnv({ config: { exec: f.exec, platform: "darwin", now: () => now } });
+  const env = makeEnv({ config: { exec: f.exec, platform: "darwin", now: () => NINE_AM, timeZone: KL } });
   const r = await reminders.actions.create.run({ text: NASTY, due: "2026-09-27T18:05", list: "Harlow" }, env);
-  assert.deepEqual(f.calls[0].args, ["-e", REM_CREATE, SENTINEL, NASTY, "Harlow", "1", "2026", "9", "27", "18", "5"]);
+  assert.deepEqual(f.calls[0].args, ["-e", REM_CREATE, SENTINEL, NASTY, "Harlow", "1", "2026", "9", "27", String(18 * 3600 + 5 * 60)]);
   assert.ok(!REM_CREATE.includes("pwned"));
+  assert.match(REM_CREATE, /set time of d to \(item 7 of argv\) as integer/);
+  assert.match(REM_CREATE, /set theList to list id listRef/);
   assert.equal(r.said, `Reminder: ${NASTY}, today at 18:05`);
+});
+
+test("reminders: a due time that has passed, in the configured zone, is refused", async () => {
+  const f = fakeExec(() => ({ stdout: "R\n" }));
+  const env = makeEnv({ config: { exec: f.exec, platform: "darwin", now: () => NINE_AM, timeZone: KL } });
+  await assert.rejects(reminders.actions.create.run({ text: "x", due: "2026-09-27T08:59" }, env), (/** @type {any} */ e) =>
+    e.code === "bad_input" && e.message === "that time has passed");
+  await assert.rejects(reminders.actions.create.run({ text: "x", due: "2026-09-27T09:00" }, env), (/** @type {any} */ e) => e.code === "bad_input");
+  assert.equal(f.calls.length, 0);
+  // The same moment is still 26 Sep in New York, so 27 Sep 00:30 there is tomorrow, not the past.
+  const ny = makeEnv({ config: { exec: f.exec, platform: "darwin", now: () => NINE_AM, timeZone: "America/New_York" } });
+  assert.equal((await reminders.actions.create.run({ text: "x", due: "2026-09-27T00:30" }, ny)).said, "Reminder: x, tomorrow at 0:30");
 });
 
 test("reminders: without a due time only text, list and an empty flag go", async () => {
@@ -140,18 +177,18 @@ test("reminders: without a due time only text, list and an empty flag go", async
   await assert.rejects(reminders.actions.create.run({ text: "x", due: "tomorrow 6pm" }, env), (/** @type {any} */ e) => e.code === "bad_input");
 });
 
-test("reminders: the day reads relative to now", () => {
-  const now = new Date(2026, 8, 27, 23, 30).getTime(); // a Sunday
-  assert.equal(dayWords(new Date(2026, 8, 27, 6, 0), now), "today");
-  assert.equal(dayWords(new Date(2026, 8, 28, 0, 5), now), "tomorrow");
-  assert.equal(dayWords(new Date(2026, 9, 2, 9, 0), now), "Friday");
-  assert.equal(dayWords(new Date(2026, 9, 10, 9, 0), now), "10 Oct");
-  assert.equal(dayWords(new Date(2027, 0, 3, 9, 0), now), "3 Jan 2027");
+test("reminders: the day reads relative to now in the given zone", () => {
+  assert.equal(dayWords({ y: 2026, mo: 9, d: 27 }, NINE_AM, KL), "today");
+  assert.equal(dayWords({ y: 2026, mo: 9, d: 28 }, NINE_AM, KL), "tomorrow");
+  assert.equal(dayWords({ y: 2026, mo: 10, d: 2 }, NINE_AM, KL), "Friday");
+  assert.equal(dayWords({ y: 2026, mo: 10, d: 10 }, NINE_AM, KL), "10 Oct");
+  assert.equal(dayWords({ y: 2027, mo: 1, d: 3 }, NINE_AM, KL), "3 Jan 2027");
+  assert.equal(dayWords({ y: 2026, mo: 9, d: 27 }, NINE_AM, "America/New_York"), "tomorrow");
 });
 
-test("reminders: targets are the list names containing q", async () => {
-  const f = fakeExec(() => ({ stdout: "Reminders\u001eHarlow Legal\u001eGroceries\u001e\n" }));
+test("reminders: targets are lists by id, filtered by name", async () => {
+  const f = fakeExec(() => ({ stdout: "L1\u001fReminders\u001eL2\u001fHarlow Legal\u001eL3\u001fGroceries\n" }));
   const env = makeEnv({ config: { exec: f.exec, platform: "darwin" } });
-  assert.deepEqual(await reminders.targets("harl", env), [{ id: "Harlow Legal", title: "Harlow Legal", kind: "list" }]);
+  assert.deepEqual(await reminders.targets("harl", env), [{ id: "L2", title: "Harlow Legal", kind: "list" }]);
   assert.equal((await reminders.targets("", env)).length, 3);
 });
