@@ -244,17 +244,24 @@ unauthenticated port, which was a real hole).
   the volume: a per-computer key from the vault, unsealed to a tmpfs at checkout/thaw, sealed back
   at release/stop and again when a shield ends). Accepted, not started. Needs a name for the
   sealed tarball so glass can add it to `core/glass/guard.js` and `computerd/fs.js`'s deny lists.
+  Key handling per security (26 Sep): the key is a vault item granted only to `computers`, fetched
+  at checkout with `ctx.vault.fetch` and never through the relay; it reaches computerd in one
+  bearer-authenticated request body, stays in memory only, and is never logged; seal with
+  AES-GCM, a fresh IV, the agent name as AAD; computerd refuses to unseal onto anything but the
+  tmpfs.
 - The xterm font warning seen in the real container's logs (`cannot load font
   "-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1"`) and the `_XSERVTransmkdir`
   warning about `/tmp/.X11-unix` under the non-root user — neither stopped the container from
   working, but both are worth a look before this ships for real use.
 
 ## Needs from others
-- security: the docker-api bypass (ADR 0009's own new "Known gap" note) — a Claude session's own
-  Bash reaches the restricted proxy directly, so none of ADR 0009's hardening holds against it.
-  Bigger than this workstream; needs box and security's design call (a body-checking proxy vyred
-  owns, or moving Claude's sessions off the `docker-api` network).
-- switchboard: `core/agents` has no delete tool (asked 26 Sep).
+- box: build the replacement proxy that imports `driver/policy.js` (agreed with security 26 Sep,
+  `core/computers/driver/policy.js` + `policy.test.js` are ready for it to import and test
+  against). Until it exists, ADR 0009's hardening only holds for requests that go through
+  `DockerDriver.create()`, not one that reaches the current proxy directly.
+- switchboard: `agents.delete` has landed on `work/switchboard` (`b41ddd8`); once it reaches
+  `main`, clean up the box's test agent `probe` with `vyre agents stop probe && vyre agents
+  delete probe`.
 - gate: the container's egress. Until the Gate exists the network is internal plus whatever the box
   allows; consequential clicks (send, pay, delete) are refused by the hands, not held.
 
