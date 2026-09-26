@@ -604,6 +604,138 @@ async function card() {
 
 // ------------------------------------------------------------ people
 
+// ------------------------------------------------------------ shared vaults and devices
+
+/** `vyre vault vaults create|list|rotate|sync` */
+async function vaults(args) {
+  const [sub = "list", ...rest] = args;
+  if (sub === "list") {
+    const r = await tool("vault.vaults.list");
+    if (r.error) return fail(r);
+    if (!r.data.vaults.length) { say(dim("  no shared vaults · vyre vault vaults create <name>")); return 0; }
+    for (const v of r.data.vaults) {
+      say(`\n  ${bold(v.name)} ${dim(`· ${v.role} · key version ${v.kv}`)}${v.conflicts ? " " + beacon(`${plural(v.conflicts, "conflict")}`) : ""}`);
+      for (const m of v.members) say(`    ${m.name.padEnd(20)} ${dim(m.role.padEnd(10))} ${dim(m.fingerprint)}`);
+      for (const i of v.items) say(`    ${dim("item")} ${i.name}${i.rotate ? " " + beacon("rotate") : ""}`);
+    }
+    say("");
+    return 0;
+  }
+  if (sub === "create") {
+    if (rest.length !== 1) return oops("vyre vault vaults create <name>");
+    const r = await tool("vault.vaults.create", { name: rest[0] });
+    if (r.error) return fail(r);
+    say(`  ${signal("created")} ${bold(r.data.vault.name)} ${dim("· you are its owner, and this Vyre is its home")}`);
+    return 0;
+  }
+  if (sub === "rotate") {
+    if (rest.length !== 1) return oops("vyre vault vaults rotate <vault>");
+    const r = await tool("vault.vaults.rotate", { vault: rest[0] });
+    if (r.error) return fail(r);
+    say(`  ${signal("rotated")} ${bold(r.data.vault)} ${dim(`· key version ${r.data.kv}`)}`);
+    return 0;
+  }
+  if (sub === "sync") {
+    if (rest.length > 1) return oops("vyre vault vaults sync [vault]");
+    const r = await tool("vault.vaults.sync", rest[0] ? { vault: rest[0] } : {});
+    if (r.error) return fail(r);
+    for (const x of r.data.synced) say(`  ${x.removed ? beacon("removed") : signal("synced")} ${bold(x.vault)}${x.taken ? dim(` · ${x.taken} new`) : ""}${x.ignored ? " " + beacon(`${x.ignored} ignored`) : ""}`);
+    return 0;
+  }
+  return oops(`vyre vault vaults ${sub}: create, list, rotate or sync`);
+}
+
+/** `vyre vault members invite|accept|role|remove` */
+async function members(args) {
+  const [sub, ...rest] = args;
+  let f;
+  try { f = flags(rest, { string: ["role"] }); } catch (e) { return oops(e.message); }
+  if (sub === "invite") {
+    const [v, person] = f._;
+    if (!v || !person || f._.length > 2) return oops("vyre vault members invite <vault> <person> [--role admin|member|read-only]");
+    const r = await tool("vault.members.invite", { vault: v, person, ...(f.role ? { role: f.role } : {}) });
+    if (r.error) return fail(r);
+    say(`  ${signal("invited")} ${bold(r.data.member)} ${dim(`to ${r.data.vault} as ${r.data.role}; send them this, it carries no secret:`)}\n`);
+    say(r.data.invite);
+    say(dim(`\n  they run: vyre vault members accept <invite>\n`));
+    return 0;
+  }
+  if (sub === "accept") {
+    if (f._.length !== 1) return oops("vyre vault members accept <invite>");
+    const r = await tool("vault.members.accept", { invite: f._[0] });
+    if (r.error) return fail(r);
+    say(`  ${signal("joined")} ${bold(r.data.vault.name)} ${dim(`· ${r.data.vault.role} · ${plural(r.data.vault.items.length, "item")}`)}`);
+    return 0;
+  }
+  if (sub === "role") {
+    const [v, person, role] = f._;
+    if (!v || !person || !role) return oops("vyre vault members role <vault> <person> <admin|member|read-only>");
+    const r = await tool("vault.members.role", { vault: v, person, role });
+    if (r.error) return fail(r);
+    say(`  ${signal("changed")} ${bold(r.data.member)} ${dim(`is ${r.data.role} in ${r.data.vault}`)}`);
+    return 0;
+  }
+  if (sub === "remove") {
+    const [v, person] = f._;
+    if (!v || !person || f._.length > 2) return oops("vyre vault members remove <vault> <person>");
+    const r = await tool("vault.members.remove", { vault: v, person });
+    if (r.error) return fail(r);
+    say(`  ${signal("removed")} ${bold(r.data.removed)} ${dim(`from ${r.data.vault} · new key version ${r.data.kv}`)}`);
+    if (r.data.rotate.length) say(beacon(`  rotate: ${r.data.rotate.join(", ")}`) + dim(" · they could read these"));
+    return 0;
+  }
+  return oops(`vyre vault members ${sub}: invite, accept, role or remove`);
+}
+
+/** `vyre vault move <item> <vault>` */
+async function move(args) {
+  if (args.length !== 2) return oops("vyre vault move <item> <vault>");
+  const r = await tool("vault.move", { name: args[0], to: args[1] });
+  if (r.error) return fail(r);
+  if (r.data.conflict) { say(`  ${beacon("conflict")} ${bold(r.data.name)} ${dim("· the vault already has a different version; nothing was moved")}`); return 1; }
+  say(`  ${signal("moved")} ${bold(r.data.moved)} ${dim("→ " + r.data.to)}`);
+  return 0;
+}
+
+/** `vyre vault device join [--role full|storage] [--approval a] | approve <code> | list | sync` */
+async function device(args) {
+  const [sub = "list", ...rest] = args;
+  let f;
+  try { f = flags(rest, { string: ["role", "approval"] }); } catch (e) { return oops(e.message); }
+  if (sub === "join") {
+    const r = await tool("vault.device.join", { ...(f.role ? { role: f.role } : {}), ...(f.approval ? { approval: f.approval } : {}) });
+    if (r.error) return fail(r);
+    if (r.data.joined) { say(`  ${signal("joined")} ${dim(`${r.data.home}'s vault as ${r.data.role}${r.data.pulled ? ` · ${plural(r.data.pulled, "item")}` : ""}`)}`); return 0; }
+    say(`\n  ${bold("this device")} ${dim("· fingerprint")} ${r.data.fingerprint}\n`);
+    say(r.data.code);
+    say(dim(`\n  on a device that has your vault: vyre vault device approve <code>\n  compare the fingerprint it shows with this one, then here: vyre vault device join --approval <answer>\n`));
+    return 0;
+  }
+  if (sub === "approve") {
+    if (f._.length !== 1) return oops("vyre vault device approve <code>");
+    const r = await tool("vault.device.approve", { code: f._[0] });
+    if (r.error) return fail(r);
+    say(`  ${signal("approved")} ${bold(r.data.device)} ${dim(`as ${r.data.role} · fingerprint ${r.data.fingerprint}; give it this answer:`)}\n`);
+    say(r.data.approval);
+    say("");
+    return 0;
+  }
+  if (sub === "list") {
+    const r = await tool("vault.device.list");
+    if (r.error) return fail(r);
+    if (!r.data.group) { say(dim("  this vault is on one device · vyre vault device join on another")); return 0; }
+    for (const d of r.data.devices) say(`  ${bold(d.name.padEnd(20))} ${dim(d.role.padEnd(8))} ${dim(d.fingerprint)}`);
+    return 0;
+  }
+  if (sub === "sync") {
+    const r = await tool("vault.device.sync");
+    if (r.error) return fail(r);
+    say(`  ${signal("synced")} ${dim(`${r.data.pulled ?? 0} pulled · ${r.data.pushed ?? 0} pushed`)}`);
+    return 0;
+  }
+  return oops(`vyre vault device ${sub}: join, approve, list or sync`);
+}
+
 async function people(args) {
   const [sub, ...rest] = args;
   if (sub === undefined || sub === "list") {
@@ -906,6 +1038,10 @@ const HELP = [
   ["people [add <card> [--name n] | verify <name> <fingerprint>]", "who you share with; a changed key blocks new passes until verified"],
   ["fingerprint [person]", "yours, and the safety words you and they should both see"],
   ["kit", "print a recovery kit: a one-time page on this machine"],
+  ["vaults [list | create <name> | rotate <vault> | sync [vault]]", "vaults shared with a team; items appear as <vault>/<item>"],
+  ["members invite <vault> <person> [--role r] | accept <invite> | role <vault> <person> <role> | remove <vault> <person>", "who is in a shared vault"],
+  ["move <item> <vault>", "move an item into a shared vault"],
+  ["device join [--role full|storage] [--approval a] | approve <code> | list | sync", "your other devices: a Mac, or a box that stores and runs agents"],
   ["pass create <holder> <item...> [--sealed] [--card c] [--host h ...] [--method M ...] [--path /p ...] [--expires 30d] [--note n]", "share without handing over"],
   ["pass list | pass revoke <id> | pass accept <ticket>", ""],
   ["relay <item> <url> [--header 'Name: {{vault}}'] [--data d]", "use an item relayed to you; the value is added on its owner's box"],
@@ -938,7 +1074,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, pass, offboard, unlock, lock, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, help,
 };
 
 export default {

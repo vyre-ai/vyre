@@ -220,8 +220,15 @@ export class Shared {
     return r ? { rev: r.rev, rec: JSON.parse(r.body) } : null;
   }
 
+  /** Current records without tombstones: the items that exist. */
+  live(id) {
+    const out = new Map();
+    for (const [k, x] of this.current(id)) if (!x.rec.deleted) out.set(k, x);
+    return out;
+  }
+
   byName(id, name) {
-    for (const [, x] of this.current(id)) if (x.rec.name === name) return x;
+    for (const [, x] of this.live(id)) if (x.rec.name === name) return x;
     return null;
   }
 
@@ -243,7 +250,8 @@ export class Shared {
     if (!ITEM_NAME.test(String(rec.name)) || typeof rec.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(rec.id)) throw err("that record's name or id is not allowed", "bad_request");
     const latest = this.latestFor(id, rec.id);
     if ((latest ? latest.rev : 0) !== rec.parent) throw Object.assign(err("that item changed since you last synced", "conflict"), { latest: latest ? latest.rev : 0 });
-    const clash = this.byName(id, rec.name);
+    if (rec.deleted ? rec.sealed !== null : !rec.sealed || typeof rec.sealed !== "object") throw err("that record's sealed body is malformed", "bad_request");
+    const clash = rec.deleted ? null : this.byName(id, rec.name);
     if (clash && clash.rec.id !== rec.id) throw Object.assign(err(`another item is already called ${rec.name} here`, "conflict"), { latest: clash.rev });
     const top = /** @type {any} */ (this.db.prepare("SELECT MAX(rev) AS r FROM vault_shared_records WHERE vault = ?").get(id));
     const rev = Number(top && top.r || 0) + 1;
@@ -273,6 +281,14 @@ export class Shared {
     let me;
     try { await this.vault.key(); me = await this.me(); } catch { return deny(503, "locked", "this vault is locked"); }
     const v = env && typeof env.vault === "string" ? /** @type {any} */ (this.db.prepare("SELECT * FROM vault_shared WHERE id = ?").get(env.vault)) : null;
+    // A poke from a vault's home: something changed there, so pull soon.
+    if (v && env.op === "poke" && !this.isHome(v, me) && v.role !== "removed") {
+      if (env.from !== v.owner_sign) return deny(403, "denied", "only the vault's home pokes");
+      const why = relay.checkSync(env, { audience: this.vault.relayUrl || "", seen: this.vault.share.nonces });
+      if (why) return deny(403, "denied", why);
+      this.soon(v.id);
+      return { status: 200, body: { data: { ok: true } } };
+    }
     if (!v || !this.isHome(v, me)) { this.vault.share.auditUnknown(env && env.vault, null, "no such shared vault"); return deny(404, "not_found", "no such shared vault here"); }
     let m;
     try { m = this.manifest(v.id); } catch { return deny(500, "internal", "this vault's manifest does not verify"); }
@@ -295,6 +311,7 @@ export class Shared {
       if (env.op === "push") {
         const out = await this.acceptRecord(v.id, body.record, me);
         this.materialize(v.id);
+        this.poke(v, me, member.sign);
         this.vault.audit("sync", null, `member:${member.name}`, true, `push ${body.record && body.record.name} rev ${out.rev}`);
         return { status: 200, body: { data: out } };
       }
@@ -302,6 +319,7 @@ export class Shared {
         if (!ADMIN.has(member.role)) return deny(403, "denied", "only an admin may change who is in this vault");
         await this.applyAdmin(v.id, body, me);
         this.materialize(v.id);
+        this.poke(v, me, member.sign);
         this.vault.audit("sync", null, `member:${member.name}`, true, `manifest ${body.manifest && body.manifest.seq}`);
         return { status: 200, body: { data: { seq: body.manifest.seq } } };
       }
@@ -391,7 +409,7 @@ export class Shared {
     const v = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_shared WHERE id = ?").get(id));
     if (!v) return;
     const cls = classOf(id);
-    const cur = this.current(id);
+    const cur = this.live(id);
     const keep = new Set();
     const t = now();
     for (const [itemId, { rec }] of cur) {
@@ -416,9 +434,31 @@ export class Shared {
     }
   }
 
+  /**
+   * Tell members something changed, so they pull. A member is reached at the relay address on
+   * the card pinned for their key; members without one pull on start or every ten minutes.
+   */
+  poke(v, me, except = null) {
+    let m;
+    try { m = this.manifest(v.id); } catch { return; }
+    for (const x of m.members) {
+      if (x.sign === me.sign || x.sign === except) continue;
+      const p = /** @type {any} */ (this.db.prepare("SELECT relay FROM vault_people WHERE sign = ? AND relay IS NOT NULL AND relay != ''").get(x.sign));
+      if (!p || !relay.secureTarget(p.relay)) continue;
+      const env = relay.syncEnvelope({ vault: v.id, op: "poke", body: {}, from: me.sign, privDer: me.id.sign.private, aud: p.relay });
+      Promise.resolve(this.post(p.relay, env)).catch(() => {});
+    }
+  }
+
+  /** Pull one vault (or all) in a moment. */
+  soon(id = null) {
+    const t = setTimeout(() => { this.sync(id ? { vault: id } : {}, "vault").catch(e => this.vault.log(`vault shared sync: ${/** @type {Error} */ (e).message}`)); }, 200);
+    t.unref();
+  }
+
   /** An admin change: applied here at the home, or sent to it. */
   async submitAdmin(v, bundle, me) {
-    if (this.isHome(v, me)) { await this.applyAdmin(v.id, bundle, me); this.materialize(v.id); return; }
+    if (this.isHome(v, me)) { await this.applyAdmin(v.id, bundle, me); this.materialize(v.id); this.poke(v, me); return; }
     const r = await this.call(v, "admin", bundle);
     if (r.error) throw err(`${v.name}'s home refused the change: ${r.error.message}`, r.error.code);
     await this.sync({ vault: v.id });
@@ -557,7 +597,7 @@ export class Shared {
     const oldVk = await this.vk(v.id, m.kv), newVk = newVaultKey();
     const wraps = members.map(x => this.wrapFor(v.id, kv, newVk, x));
     const records = [];
-    for (const [itemId, { rev, rec }] of this.current(v.id)) {
+    for (const [itemId, { rev, rec }] of this.live(v.id)) {
       const at = { vault: classOf(v.id), id: itemId, ver: rec.ver, name: `${v.name}/${rec.name}` };
       const sealed = rewrapItemKey(oldVk, newVk, { ...at, kv: m.kv }, { ...at, kv }, rec.sealed);
       records.push(signRecord({ ...without(rec, "sig"), parent: rev, kv, mseq: next.seq, sealed, author: me.sign, at: now(), ...(flag ? { rotate: flag } : {}) }, me.id.sign.private));
@@ -649,7 +689,7 @@ export class Shared {
   }
 
   async acceptLocal(v, rec, me) {
-    try { const out = await this.acceptRecord(v.id, rec, me); this.materialize(v.id); return { data: out }; }
+    try { const out = await this.acceptRecord(v.id, rec, me); this.materialize(v.id); this.poke(v, me); return { data: out }; }
     catch (e) { const x = /** @type {any} */ (e); return { error: { code: x.code || "bad_request", message: x.message, latest: x.latest } }; }
   }
 
@@ -662,6 +702,41 @@ export class Shared {
 
   async openRecord(v, rec) {
     return openItemV2(await this.vk(v.id, rec.kv), { vault: classOf(v.id), kv: rec.kv, id: rec.id, ver: rec.ver, name: `${v.name}/${rec.name}` }, rec.sealed);
+  }
+
+  /**
+   * Delete an item from a shared vault: a tombstone record, signed like any write and naming the
+   * revision it deletes. If someone changed the item since, nothing is deleted and the person is
+   * told, rather than their edit disappearing.
+   * @param {{ vault: string, name: string }} input
+   */
+  async deleteItem({ vault: ref, name }, caller) {
+    const v = this.mustRow(ref);
+    const me = await this.me();
+    const base = this.byName(v.id, name);
+    if (!base) throw new Error(`no item named ${v.name}/${name}`);
+    let r;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const m = this.manifest(v.id);
+      const self = m.members.find(x => x.sign === me.sign);
+      if (!self || !WRITE.has(self.role)) throw err(`you may read ${v.name} but not delete from it`, "denied");
+      const rec = signRecord({ v: 1, vault: v.id, id: base.rec.id, name, ver: base.rec.ver + 1, parent: base.rev, kv: m.kv, mseq: m.seq, meta: null, description: "",
+        fields: [], sealed: null, deleted: true, author: me.sign, at: now() }, me.id.sign.private);
+      r = this.isHome(v, me) ? await this.acceptLocal(v, rec, me) : await this.call(v, "push", { record: rec });
+      if (!r.error || r.error.code !== "conflict" || this.isHome(v, me)) break;
+      // Stale: if only the manifest moved on (the item did not), take it and try once more.
+      await this.sync({ vault: v.id }, caller);
+      const now2 = this.byName(v.id, name);
+      if (!now2 || now2.rev !== base.rev) break;
+    }
+    if (r.error) {
+      if (!this.isHome(v, me)) await this.sync({ vault: v.id }, caller).catch(() => {});
+      throw err(r.error.code === "conflict" ? `${v.name}/${name} changed since you last synced; look at it again before deleting` : `${v.name}'s home refused it: ${r.error.message}`, r.error.code);
+    }
+    if (!this.isHome(v, me)) await this.sync({ vault: v.id }, caller);
+    this.vault.audit("delete", `${v.name}/${name}`, caller, true, `shared rev ${r.data.rev}`);
+    this.vault.emit("vault.item-deleted", { name: `${v.name}/${name}` });
+    return { deleted: `${v.name}/${name}`, rev: r.data.rev };
   }
 
   /** Move a local item into a shared vault. The local copy goes once the shared one is written. */

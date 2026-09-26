@@ -7,6 +7,7 @@
 
 import { presence, quoted } from "./presence.js";
 import { decodeInvite } from "../shared.js";
+import { decodeJoin } from "../devices.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -49,6 +50,25 @@ export function register({ vault, tool }) {
   tool("vault.vaults.rotate", PEOPLE, "Give a shared vault a new key. Members keep access; item keys are re-wrapped.",
     obj({ vault: str }, ["vault"]), (input, { caller }) => shared.rotate(input, caller),
     presence("Change a shared vault's key", ({ vault: v }) => `Change the key of ${quoted(v)}`));
+
+  // This person's other devices (devices.js). `vault.devices` is the autofill extensions.
+  tool("vault.device.join", PEOPLE, "On a new device: make a join code (role full or storage), or finish joining with the approval another device gave.",
+    obj({ role: { type: "string", enum: ["full", "storage"] }, approval: str }), (input, { caller }) => vault.devices.join(input, caller));
+
+  tool("vault.device.approve", PEOPLE, "Let a new device into your vault. It receives the account keyset sealed to its own key; a storage device gets no personal key.",
+    obj({ code: str }, ["code"]), (input, { caller }) => vault.devices.approve(input, caller),
+    presence("Let a new device into your vault", ({ code }) => {
+      const j = decodeJoin(code);
+      return j.role === "storage"
+        ? `Let ${j.name} (fingerprint ${j.fingerprint}) hold your vault as storage and run your agents' keys`
+        : `Let ${j.name} (fingerprint ${j.fingerprint}) open your whole vault, personal items included, with your password`;
+    }));
+
+  tool("vault.device.list", null, "Your devices in this vault's group: names, roles, fingerprints.",
+    obj({}), () => vault.devices.list());
+
+  tool("vault.device.sync", [...PEOPLE, "mcp"], "Push and pull items between your devices now.",
+    obj({}), (input, { caller }) => vault.devices.sync(input, caller));
 
   tool("vault.move", PEOPLE, "Move an item into a shared vault. Everyone in it can then use it.",
     obj({ name: str, to: str }, ["name", "to"]), (input, { caller }) => shared.move(input, caller),

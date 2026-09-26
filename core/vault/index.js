@@ -58,7 +58,7 @@ export default {
         : null;
       listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
         onRelay: async (env, meta) => vault.onRelay(env, byWhois ? { ...meta, login: await byWhois(meta.remoteAddress) } : meta),
-        onSync: env => vault.shared.onSync(env) });
+        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
@@ -139,7 +139,13 @@ export default {
       obj({ filter: str, kind: str, host: str }), input => cli.list(vault.list(input), input));
 
     tool("vault.delete", SURFACES, "Delete an item and its grants.",
-      obj({ name: str }, ["name"]), (input, { caller }) => vault.remove(input, caller),
+      obj({ name: str }, ["name"]), (input, { caller }) => {
+        // `<vault>/<item>` in a shared vault goes as a signed tombstone (shared.js).
+        const r = vault.row(input.name);
+        const slash = String(input.name).indexOf("/");
+        if (r && String(r.vault).startsWith("shared:") && slash > 0) return vault.shared.deleteItem({ vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
+        return vault.remove(input, caller);
+      },
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
@@ -253,6 +259,8 @@ export default {
 
     const kits = shareTools.register({ ctx, vault, tool });
     vaultsTools.register({ vault, tool });
+    // Pull from homes on start, after each local write, on a poke, and every ten minutes at most.
+    if (!vault.guarded) vault.devices.start();
 
     const surfaces = registerSurfaces({ ctx, vault });
 
@@ -262,6 +270,7 @@ export default {
       ssh: cli.ssh,
       async stop() {
         await kits.stop();
+        vault.devices.stop();
         await cli.stop();
         vault.lock();
         await surfaces.stop();

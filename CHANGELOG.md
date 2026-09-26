@@ -602,6 +602,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   at start, v1 files removed only after every v2 copy verifies; once done, a v1 file is refused.
   Keys are KeyObjects and `lock()` drops them all. Backups keep format v1 and old ones restore.
 
+- Your other devices: a new Mac or a box joins with a code and a fingerprint you compare, and an
+  approval on a device you already have. A box joins as storage: it runs agent items and keeps
+  personal ones as ciphertext it cannot open. Items sync between devices, and a change reaches
+  the others through a poke rather than polling. Shared items can be deleted. New CLI verbs:
+  `vyre vault vaults`, `members`, `move` and `device`.
 - Shared vaults (ADR 0006, decision 5): a team vault whose key is wrapped for each member, a
   signed, hash-chained membership manifest, roles, and sync through the owner's relay listener
   with merges and kept conflicts. Removing a member changes the key and flags every item they

@@ -31,6 +31,7 @@ import { totp } from "./totp.js";
 import { generate } from "./generate.js";
 import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
+import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -74,6 +75,7 @@ export const MIGRATIONS = [
    ALTER TABLE vault_devices ADD COLUMN mac TEXT;`,
   ...SHARE_MIGRATIONS,
   ...SHARED_MIGRATIONS,
+  ...DEVICE_MIGRATIONS,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -144,7 +146,10 @@ export class Vault {
    *   account and allowed on unlock. Nothing outside a test passes it; the defaults never drop.
    */
   constructor({ db, dir, config, emit, log = () => {}, testKdf = null }) {
-    this.db = db; this.dir = dir; this.emit = emit; this.log = log;
+    this.db = db; this.dir = dir; this.log = log;
+    /** Set by sync (devices.js): told of every event, so a local write can be pushed. */
+    /** @type {((type: string, payload: any) => void) | null} */ this.onEmit = null;
+    this.emit = (type, payload) => { emit(type, payload); try { this.onEmit?.(type, payload); } catch {} };
     const opts = (config && config.vault) || {};
     this.name = (config && config.name) || "vyre";
     this.kind = opts.keystore || defaultKind();
@@ -163,6 +168,8 @@ export class Vault {
     this.share = new Share(this);
     /** Shared vaults: manifests, sync, and the keys of `shared:<id>` classes (shared.js). */
     this.shared = new Shared(this);
+    /** This person's other devices: join, approve, and syncing items between them (devices.js). */
+    this.devices = new Devices(this);
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
@@ -442,6 +449,53 @@ export class Vault {
     if (was) { this.audit("account-lock", null, who); this.emit("vault.locked", { vault: PERSONAL }); }
     return { locked: true };
   }
+
+  /**
+   * A joining device takes the agent key of the device that approved it (devices.js). Only on a
+   * fresh home: no items and no account. The device identity is re-sealed under the new key and
+   * every MACed row is signed again, since the MAC key comes from the agent key.
+   * @param {Buffer} raw the agent VK, zeroed here
+   */
+  async replaceAgentKey(raw) {
+    await this.key();
+    const n = Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM vault_items").get()).n);
+    if (n || this.hasAccount()) { raw.fill(0); throw new Error("only a fresh vault can join another device: this one already holds items or an account"); }
+    if (this.kind === "passphrase") { raw.fill(0); throw new Error("a passphrase vault cannot join another device yet; use the keychain or file keystore"); }
+    const id = await this.identity();
+    const dkRaw = await this.keys.load();
+    if (!dkRaw) { raw.fill(0); throw locked("the vault is locked"); }
+    const dk = keyObject(dkRaw);
+    dkRaw.fill(0);
+    const vk = keyObject(raw);
+    raw.fill(0);
+    writeJsonFile(this.dir, AGENT_VK, wrapVaultKey(dk, vk, vkAad(AGENTS, KV)));
+    this.vk = vk;
+    this.mkey = macKey(vk);
+    await this.writeIdentity(id);
+    for (const table of Object.keys(MACED)) for (const r of /** @type {any[]} */ (this.db.prepare(`SELECT id FROM ${table}`).all())) this.sign(table, r.id);
+    writeJsonFile(this.dir, STATE, { v: 2, mac: this.stateMac() });
+  }
+
+  /**
+   * A joining full device takes the account: the Secret Key into this device's store, and the
+   * account record (the personal VK wrapped under the password and Secret Key). The password
+   * never travels; the person types it here to unlock.
+   * @param {{ secretKey: string, account: any }} a
+   */
+  async adoptAccount({ secretKey, account }) {
+    if (this.hasAccount()) throw new Error("this vault already has an account");
+    const { acct, bytes } = parseSecretKey(secretKey);
+    bytes.fill(0);
+    if (!account || account.acct !== acct) throw new Error("the account record does not match its Secret Key");
+    await this.secretKeys.put(secretKey);
+    writeJsonFile(this.dir, ACCOUNT, account);
+  }
+
+  /** The account record, for a device being approved. Holds the personal VK wrapped, never open. */
+  accountRecord() { return readJsonFile(this.dir, ACCOUNT); }
+
+  /** The agent VK's raw bytes, for a device being approved. The caller seals and zeroes it. */
+  async agentKeyBytes() { return (await this.key()).export(); }
 
   /** The Secret Key on this device, formatted, for the recovery kit. Internal: no tool returns it yet. */
   async secretKey() {

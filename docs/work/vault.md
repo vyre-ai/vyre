@@ -58,6 +58,11 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   revision, owner receipts that peers check against the author's rights, removal with a new VK
   and item keys re-wrapped, rotation flags, and offboarding across shared vaults. Tests:
   `core/vault/shared.test.js`, `test/vault-shared.test.js` (three real vyreds).
+- Multi-device (`devices.js`): join code plus fingerprint, approval with presence that seals the
+  account keyset to the new device (full: agent key, account record, Secret Key; storage: agent
+  key only), item sync between a person's devices over `/v1/sync` with pokes. Shared item
+  deletes as signed tombstones. CLI verbs `vaults`, `members`, `move`, `device`. Pull on start,
+  on local writes and on pokes, with a ten-minute fallback timer.
 
 ## Doing
 
@@ -232,5 +237,17 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
     crypto.js gains `rewrapItemKey`.
   - Events: `vault.member-added`, `vault.member-removed`, `vault.key-rotated`,
     `vault.sync-conflicted`. None carries a value.
-  - Not yet: multi-device join (`vault.device.join`, `vault.device.approve`), deleting shared
-    items, CLI verbs for the vault tools (use `vyre call`), and a periodic pull.
+  - `vault.delete` on a `<vault>/<item>` name writes a signed tombstone; a stale delete is refused.
+  - Homes poke members over `/v1/sync` (`op: "poke"`, from the home's key) at the relay address
+    on the card pinned for each member; a member pulls on a poke, on start, after its own writes,
+    and every ten minutes.
+- Devices:
+  - New tools: `vault.device.join {role?, approval?}`, `vault.device.approve {code}` (presence),
+    `vault.device.list`, `vault.device.sync`. Event `vault.device-joined`.
+  - `Vault.replaceAgentKey(raw)` (fresh homes only; re-seals the identity and re-signs MACed
+    rows), `Vault.adoptAccount({secretKey, account})`, `Vault.accountRecord()`,
+    `Vault.agentKeyBytes()`. `Vault.onEmit` sees every event (sync hooks on item events).
+  - `/v1/sync` envelopes whose vault is `device:<group>` go to devices.js. The approving device
+    is the home. The newer item version wins; a local edit that loses is kept in
+    `vault_group_conflicts` and `vault.sync-conflicted` fires with `vault: "devices"`.
+  - Shared vaults are not part of device sync: each device joins those itself.

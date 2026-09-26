@@ -70,18 +70,20 @@ test("shared vault: invite, both write, a conflict, remove a member, rotation fl
     assert.match((await vyre(alex, ["vault", "people", "verify", name, c.fp])).out, /verified/);
   }
 
-  assert.equal((await call(alex, "vault.vaults.create", { name: "team" })).vault.role, "owner");
+  assert.match((await vyre(alex, ["vault", "vaults", "create", "team"])).out, /created team/);
   const token = fake("token");
   const put = await vyre(alex, ["vault", "put", "team/api-token", "--kind", "api-key"], token);
   assert.match(put.out, /shared team\/api-token · rev 1 in team/, put.all);
 
   // Invites: the invite carries no value, and only its person can use it.
-  const invD = await call(alex, "vault.members.invite", { vault: "team", person: "dana" });
-  const invS = await call(alex, "vault.members.invite", { vault: "team", person: "sam" });
+  const json = async (h, args) => { const r = await vyre(h, [...args, "--json"]); return { code: r.code, ...JSON.parse(r.out) }; };
+  const invD = (await json(alex, ["vault", "members", "invite", "team", "dana"])).data;
+  const invS = (await json(alex, ["vault", "members", "invite", "team", "sam"])).data;
   assert.ok(invD.invite.startsWith("vyre-invite:v1:") && !invD.invite.includes(token));
-  const wrong = await vyre(sam, ["call", "vault.members.accept", JSON.stringify({ invite: invD.invite })]);
-  assert.match(wrong.all, /made for another Vyre/);
-  assert.equal((await call(dana, "vault.members.accept", { invite: invD.invite })).vault.name, "team");
+  const wrong = await json(sam, ["vault", "members", "accept", invD.invite]);
+  assert.equal(wrong.code, 1);
+  assert.match(wrong.error.message, /made for another Vyre/);
+  assert.match((await vyre(dana, ["vault", "members", "accept", invD.invite])).out, /joined team/);
   assert.equal((await call(sam, "vault.members.accept", { invite: invS.invite })).vault.name, "team");
   assert.equal((await hashOf(dana, "team/api-token")).hash, sha(token), "dana uses what alex wrote");
 
@@ -102,7 +104,10 @@ test("shared vault: invite, both write, a conflict, remove a member, rotation fl
   assert.equal(danaView.conflicts, 1);
 
   // Remove dana: a new key, every item she could read flagged, and her copy gone.
-  const removed = await call(alex, "vault.members.remove", { vault: "team", person: "dana" });
+  const removedCli = await vyre(alex, ["vault", "members", "remove", "team", "dana"]);
+  assert.match(removedCli.out, /removed dana from team · new key version 2/);
+  assert.match(removedCli.out, /rotate: /);
+  const removed = { kv: 2, rotate: /rotate: ([^·\n]+)/.exec(removedCli.out)?.[1].trim().split(", ") ?? [] };
   assert.equal(removed.kv, 2);
   assert.deepEqual(removed.rotate.sort(), ["team/api-token", "team/db-password"]);
   assert.match((await vyre(alex, ["vault", "list"])).out, /team\/api-token[^\n]*rotate/);
@@ -110,10 +115,13 @@ test("shared vault: invite, both write, a conflict, remove a member, rotation fl
   await vyre(alex, ["vault", "put", "team/new-key"], after);
   await call(sam, "vault.vaults.sync", {});
   assert.equal((await hashOf(sam, "team/new-key")).hash, sha(after), "sam, still in, gets the new key");
-  const danaSync = await call(dana, "vault.vaults.sync", {});
-  assert.equal(danaSync.synced[0].removed, true);
+  assert.match((await vyre(dana, ["vault", "vaults", "sync"])).out, /removed team/);
   assert.notEqual((await hashOf(dana, "team/api-token")).code, 0, "dana's copy is gone");
   assert.notEqual((await hashOf(dana, "team/new-key")).code, 0);
+  // Deleting a shared item is a signed tombstone that reaches the others.
+  assert.equal((await vyre(alex, ["vault", "delete", "team/new-key"])).code, 0);
+  await call(sam, "vault.vaults.sync", {});
+  assert.ok(!(await call(sam, "vault.list", {})).items.some(i => i.name === "team/new-key"));
   const members = (await call(alex, "vault.vaults.list", {})).vaults[0].members.map(m => m.name).sort();
   assert.deepEqual(members, ["alex-box", "sam"]);
 
