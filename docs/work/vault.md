@@ -30,6 +30,19 @@ on any screen, log or event (floor rule 8). The case this exists for: a teammate
 - **`vyre vault run <name...> -- <cmd>`** injects values into that one child process's
   environment. Nothing is printed. The `use-the-vault` skill already tells Claude to use this.
 
+## Replacing 1Password (spec section 7.5)
+
+The goal is that the user can cancel 1Password. Beyond secrets for agents:
+- Item kinds `login` (url, username, password, TOTP secret → `vault.totp {name}` returns the
+  current code), `card`, `note`, `api-key`, `env-set`.
+- `vault.generate {length?, words?}` passwords.
+- Import from 1Password (.1pux / CSV), Bitwarden (JSON), Chrome and Safari (CSV).
+- Unlock: people see values only after unlocking on their own device (Touch ID on the Mac through
+  the Capsule's helper, a passphrase on the Deck); agents never see values at all.
+- Autofill: a browser extension (Chrome first) that asks vyred over the tailnet for a login
+  matching the page, after unlock. It can come after the core, but design the API for it now.
+- The Capsule fills a login into the front app (with the capsule stream).
+
 ## Tools
 
 `vault.put {name, kind?, description?}` (the value arrives over the socket from the CLI's hidden

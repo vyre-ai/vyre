@@ -14,6 +14,7 @@ on its own branch. The streams never edit each other's folders.
 | switchboard | `docs/work/switchboard.md` | `../vyre-switchboard` |
 | deck | `docs/work/deck.md` | `../vyre-deck` |
 | capsule | `docs/work/capsule.md` | `../vyre-capsule` |
+| learning | `docs/work/learning.md` | `../vyre-learning` |
 
 Wave 2 (`computers`, `gate-chat`) starts when the switchboard and the vault have merged.
 

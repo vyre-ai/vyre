@@ -8,7 +8,10 @@ Owns `local/capsule/`, `local/hands-mac/`.
 
 The Capsule is the biggest surface: press Control twice on the Mac and a command bar appears
 over whatever you are doing. `@` any agent, project, thread or file; ask; send work to the box;
-see held approvals; watch a thread stream; all without leaving the current app. It works offline
+see held approvals; watch a thread stream; all without leaving the current app. By default
+you talk to the **assistant**, which can drive or monitor any session; `@juno` talks to an agent
+directly (`agents.ask`), `@<thread>` types into a session directly (`threads.send`, holding the
+lease while you type). It works offline
 for the user's own Mac (floor rule 9).
 
 Build from `docs/design/boards/Capsule.dc.html`, `LandingCapsuleDemo.dc.html`, `Cli.dc.html`,

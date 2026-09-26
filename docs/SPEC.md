@@ -309,6 +309,11 @@ through `ctx.memory.teach`; sessions only read.
 Measured: the graph is precise for identity and routing and did not improve passage retrieval,
 so Recall owns retrieval and Memory owns facts, people and links.
 
+**Project graphs.** Each project has its own context graph: the facts from its own sessions and
+from what its watchers teach. Together they make the main graph, which only the assistant and
+agents granted those projects can see. A project's brief and a session in that project draw only
+on its own graph; nothing from one client's project reaches another's.
+
 Tools: `memory.facts`, `memory.pin`, `memory.mute`, `memory.why`.
 Port from: `the prototype's bin/curator.cjs`, `graph.cjs`.
 
@@ -319,6 +324,12 @@ No screen, log or event ever shows a value. Passes share an item with another pe
 **relayed** by default (the value never leaves your box; their calls go through your Gate over
 Tailscale; revoke ends it at once) or **sealed** (an encrypted copy; revoking means rotating).
 Offboarding is one action: revoke everything a person holds and list what must be rotated.
+
+The Vault is meant to replace 1Password entirely, for a person and for their agents: logins
+(with TOTP codes), cards, secure notes, API keys and env sets, passkeys later; a password
+generator; import from 1Password, Bitwarden, Chrome and Safari; autofill in the browser through
+an extension, and on the phone; the Capsule can fill a login into the front app. Agents use
+items without seeing them; people see them only after unlocking on their own device.
 
 Tools: `vault.put`, `vault.list` (names only), `vault.grant`, `vault.revoke`, `vault.pass.create`,
 `vault.pass.revoke`, `vault.offboard`. Modules call `ctx.vault.fetch(name)`, never the store.
@@ -376,6 +387,30 @@ Certificates are issued by DNS challenge, which works for a private address. The
 with `tailscale serve`, and the user is identified by Tailscale's identity headers, so there is
 no separate login. The name directory at vyre.run holds only the DNS record.
 
+### 7.11 Learning · workstream
+
+Vyre learns from how you correct it, and enforces what it learned. A lesson that only sits in
+memory is advice; Vyre's lessons are checked by hooks, so a model cannot forget them.
+
+1. **Signals.** Corrections in your prompts ("no", "don't", "always", "I told you"), the edits you
+   make to a draft before you approve it (the Gate), tool calls you deny, changes you revert,
+   and `/vyre remember`. Each signal keeps the turn it came from.
+2. **Lessons.** A signal becomes a lesson: `{ scope: all | project | agent, when, rule,
+   check?, level: remind | ask | block, source }`. Distilling free text into a rule may use a
+   model, off the hot path, on your own quota. You see every new lesson and can edit, narrow or
+   retire it.
+3. **Enforcement.** A lesson with a check becomes code. Before a tool runs, the Rules hook
+   denies or asks with the lesson quoted. Before a turn ends, the Stop hook runs the output
+   checks (banned characters, required steps such as "update the changelog", "test before
+   commit") and, when one fails, refuses to end the turn and tells Claude which lesson it broke,
+   so Claude fixes it first. A lesson without a check is added to the brief and the prompt
+   whenever its `when` matches, every time.
+4. **Escalation.** Every lesson counts how often it applied and how often it was broken. A
+   lesson broken again moves up a level: remind, then ask, then block.
+
+Tools: `learn.lessons`, `learn.add`, `learn.edit`, `learn.retire`, `learn.check {stage, ...}`
+(what the hooks call). Events: `lesson.learned`, `lesson.broken`, `lesson.escalated`.
+
 ---
 
 ## 8. The Harness
@@ -389,7 +424,7 @@ user's global Claude Code setup is never modified. Users may also install it for
 | `UserPromptSubmit` | **Enrich** | Adds relevant memory, marked as memory with source, age and confidence; nothing when nothing is relevant. |
 | `PreToolUse` | **Rules** | Checks the call against the security floor and the user's rules; allows, denies, or asks. |
 | `PostToolUse` | **Learn**, **Stream** | Records files touched; compares a draft with what the user finally sent. |
-| `Stop` | **Stream** | Marks the turn complete for every surface. |
+| `Stop` | **Stream**, **Check** | Marks the turn complete for every surface. Runs the lessons' output checks first; a failed check keeps the turn going with the broken lesson named (section 7.11). |
 
 Every hook is a few lines that call vyred over the socket and print what it returns. If vyred
 is not running, hooks exit silently and Claude Code behaves exactly as without Vyre.
@@ -407,22 +442,53 @@ The Harness also ships:
 | Surface | What it is | Built from |
 |---|---|---|
 | CLI | `vyre`: home, projects, threads, context, up, status | `core/cli` |
-| Capsule | Control-Control command bar on the Mac | `local/capsule` |
+| Capsule | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
 | Deck | The web app at `<you>.vyre.run`: Now, Projects, Memory, Agents, Vault, Settings | `deck/` |
 | Glass | An agent's screen, live, with take-over | `deck/` + `core/computers` |
-| Chat | Mattermost on your box, a thread per session | `modules/chat` |
+| Chat | A better interface over real sessions: Mattermost on your box, a thread per session, driving the same Claude Code sessions as the terminal | `modules/chat` |
 | Phone | Now, approvals, drafts, Glass, Ask | later; a Deck view first |
 
 Every surface talks to vyred's API. None reads the store directly.
 
 ---
 
-## 10. Agents
+## 10. Agents and the assistant
 
-An **agent** is an identity with its own computer, memory scope and credentials. The user's own
-agent is their **assistant**. An agent authenticates Claude Code with the user's setup token or
-an API key held in the Vault; when a subscription's limit is reached it can fall back to an API
-key with a budget, and says so in the thread.
+Every Vyre session is a real Claude Code session: in a terminal, or headless under the
+Switchboard. Vyre never imitates Claude Code; every surface (the terminal, Chat, the Deck, the
+Capsule, the phone) drives the same real sessions.
+
+- **The assistant.** Every install has one, made at onboarding. It is yours: its name, voice,
+  instructions and skills are configurable. It can see every project and every session, and it
+  can start, drive, monitor and stop any session in any project, or outside one, through the
+  `threads.*` and `agents.*` tools. It is who you talk to in the Capsule by default.
+- **Agents.** Others you create, e.g. a research agent or a bookkeeping agent. Each is headless,
+  runs on your Claude subscription (a setup token in the Vault) or an API key with a budget,
+  and can draw context from several projects, never from projects outside its list. When a
+  subscription's limit is reached it falls back to the API key if one is allowed, and says so
+  in its thread. Each can have its own computer (section 7.9).
+- **Talking to them.** From the Capsule, the Deck, Chat or the terminal you can talk to the
+  assistant, to any agent directly, or to any session directly. Talking to a session types
+  into it (one keyboard at a time, floor rule 4).
+
+An agent is a record in `core/agents` (owned by the switchboard workstream):
+
+```json
+{ "name": "juno", "kind": "assistant", "auth": { "vault": "claude-setup-token", "fallback": "anthropic-api-key", "budget_usd": 20 },
+  "projects": "*", "instructions": "...", "skills": ["write-a-watcher"], "computer": false }
+```
+
+Tools: `agents.list`, `agents.create`, `agents.update`, `agents.ask {agent, text}` (to its
+current thread, starting one if needed), `agents.threads {agent}`, `agents.stop`.
+
+### The `vyre` home
+
+`vyre` with no arguments, from any folder, opens the home: every project (with thread count and
+last activity), **New session without a project**, and every agent (with what it is doing).
+Pick a project to see its sessions, newest first: resume one or start a new one in it. Pick an
+agent to talk to it. Inside a project's folder, that project is preselected, not opened. It is
+an arrow-key list with type-to-filter in a terminal and a plain list when piped. Over SSH it
+works exactly the same.
 
 ---
 
@@ -471,7 +537,8 @@ through `ctx` or the API, never by importing its files.
 | vault | `core/vault/` | store, events | M3 |
 | watchers | `core/watchers/`, `harness/skills/write-a-watcher/` | vault (through `ctx.vault`) | M4 |
 | box | `core/names/`, `vyre up` | daemon | M5 |
-| switchboard | `core/switchboard/` | projects, events | M6 |
+| switchboard | `core/switchboard/`, `core/agents/` | projects, events | M6 |
+| learning | `core/learn/` | harness, memory | M6 |
 | deck | `deck/` | the API only | M6 |
 | capsule | `local/capsule/`, `local/hands-mac/` | the API only | M7 |
 | computers | `core/computers/`, `modules/hands-desktop/`, `modules/hands-chrome/` | switchboard | M8 |

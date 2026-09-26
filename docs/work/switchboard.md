@@ -4,7 +4,7 @@ Branch: work/switchboard · Worktree: ../vyre-switchboard · Milestone: M6 · Wa
 
 ## Scope
 
-Owns `core/switchboard/`, `core/cli/commands/threads.js`.
+Owns `core/switchboard/`, `core/agents/`, `core/cli/commands/threads.js`, `core/cli/commands/agents.js`.
 
 Runs Claude Code sessions headless and makes one thread the same thing wherever it is viewed
 (floor rule 3), with one keyboard at a time (rule 4).
@@ -25,11 +25,25 @@ Runs Claude Code sessions headless and makes one thread the same thing wherever 
   Asks are also kept in a table, since a surface that reconnects must still see an open question
   (see `the prototype's bin/asks.cjs` for why asks are not events alone).
 
+## Agents and the assistant (spec section 10)
+
+`core/agents`: the agent records and `agents.*` tools. Onboarding creates the assistant
+(`kind: "assistant"`, `projects: "*"`). Every agent runs its threads through the switchboard,
+authenticated from its Vault item (`CLAUDE_CODE_OAUTH_TOKEN` from the setup token, or
+`ANTHROPIC_API_KEY`, set only in that child's environment), with the fallback and budget rule.
+An agent's threads may only use context from its `projects`: pass them to the Harness so the brief,
+Enrich and `recall.search` stay inside that list. The assistant gets the `threads.*` and `agents.*`
+tools through MCP, so it can start, drive, monitor and stop any session. `agents.ask` is how the
+Capsule, Deck and Chat talk to an agent directly; `threads.send` is how they talk to a session.
+Until the vault stream merges, read the token from a stub `vault.release`.
+
 ## Tools
 
 `threads.start {project?, cwd, prompt?, name?}`, `threads.send {thread, text}`, `threads.list`,
 `threads.get {thread}` (recent events), `threads.lease`, `threads.release`, `threads.answer
 {ask, decision}`, `threads.stop`.
+
+Agents: `agents.list`, `agents.create`, `agents.update`, `agents.ask`, `agents.threads`, `agents.stop`.
 
 ## Events
 
