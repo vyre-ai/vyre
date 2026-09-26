@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
@@ -143,7 +143,7 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
         return { async stop() {} };
       } };`);
   }
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const work = fs.mkdtempSync(path.join(root, "work-"));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
@@ -318,7 +318,7 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   const { root, work, tool, d } = await boot(t);
   const id = (await tool("threads.start", { cwd: work })).data.id;
   await d.stop();
-  const again = await start({ root, log: () => {} });
+  const again = await start({ root, presence: present, log: () => {} });
   t.after(() => again.stop());
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");

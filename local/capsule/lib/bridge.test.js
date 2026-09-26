@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { tempHome } from "../../../test/helpers.js";
+import { tempHome, present } from "../../../test/helpers.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { open } from "../../../core/store/index.js";
 import { start } from "../../../core/daemon/index.js";
@@ -28,7 +28,7 @@ async function vyred(t, { bare = false } = {}) {
   const db = open(paths(root).db);
   seedRecall(db, undefined, { transcripts: tx });
   db.close();
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const c = client(d.paths.socket);
   const home = path.join(root, "work", "harlow");
@@ -277,7 +277,7 @@ test("bridge: the real Gate holds a draft, the Capsule opens it, and Send sends 
     modules: { enable: [], disable: ["recall", "memory", "projects", "learn"] },
     gate: { senders: { mail: { type: "gmail", vault: "test-mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (gmail.address()).port}` } } },
   }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
   assert.ok((await cli("vault.put", { name: "test-mail-token", kind: "api-key", fields: { value: "fixture-token" } })).data);
@@ -328,7 +328,7 @@ async function live(t) {
   const empty = fs.mkdtempSync(path.join(root, "transcripts-"));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [empty], roots: [], projectsDir: path.join(root, "projects"),
     modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli", timeout: 20_000 });
   const work = fs.mkdtempSync(path.join(root, "work-"));
