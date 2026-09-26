@@ -146,6 +146,50 @@ test("memory: every fact has a working why that points at a turn saying it", asy
   assert.ok(w.turns.some(x => x.session === SESSIONS[0].id && x.seq === 0));
 });
 
+test("memory: the way people talk, \"the Harlow team\", finds Harlow Legal", async t => {
+  const { curator, graph } = world(t);
+  await curator.curate();
+  const r = graph.relevant({ text: "email the Harlow team about the implementation plan" });
+  assert.ok(r.length > 0, "a learned short form did not match");
+  assert.ok(r.every(f => f.text.includes("Harlow Legal")), r.map(f => f.text).join("\n"));
+  assert.equal(r[0].matched, "Harlow");
+});
+
+test("memory: one firm written several ways is measured as one, so its short form still works", async t => {
+  // Each spelling alone covers too few of the sessions saying "Harlow" to clear the bar; they
+  // share a domain, so together they are one firm and cover all of them.
+  const { db, curator, graph } = world(t, { sessions: [
+    S(["we sent the Harlow draft to Harlow Legal for review"]),
+    S(["the Harlow invoice went to Harlow Legal Group this week"]),
+    S(["the Harlow retainer is with Harlow Legal Partners now"]),
+    S(["the Harlow brief came back from Harlow Legal Group"]),
+    S(["the Harlow logo was signed off by Harlow Legal Partners"]),
+    S(["the Harlow team wrote from dana@harlowlegal.com again"]),
+  ] });
+  await curator.curate();
+  const measured = db.prepare("SELECT node, precision FROM memory_shortforms WHERE form = 'harlow' ORDER BY precision DESC").all();
+  assert.equal(measured.length, 3, JSON.stringify(measured));
+  assert.equal(measured[0].precision, 1, "the firm as a whole is what every one of these sessions is about");
+  assert.ok(measured.slice(1).every(m => m.precision < 0.6), "a lesser spelling must not also win the form");
+  const r = graph.relevant({ text: "email the Harlow team about the implementation plan" });
+  assert.ok(r.length > 0 && r.every(f => f.text.includes("Harlow Legal")), r.map(f => f.text).join("\n"));
+});
+
+test("memory: a common word that starts an organisation's name does not call it up", async t => {
+  const common = ["let's park this until Friday", "park the refactor for now", "we can park the pricing question",
+    "park it in the backlog", "I'd park the migration", "park that and move on"];
+  const { curator, graph } = world(t, { sessions: [
+    S(["the new patient forms for Park Dental are live"]), S(["we moved the booking page for Park Dental"]),
+    ...common.map(x => S([x])),
+  ] });
+  await curator.curate();
+  assert.ok(graph.facts({ about: "Park Dental" }).about, "the organisation itself should be known");
+  for (const x of ["let's park this for later", "park the Harlow thing"]) {
+    assert.ok(!graph.relevant({ text: x }).some(f => f.text.includes("Park Dental")), `"${x}" called up Park Dental`);
+  }
+  assert.ok(graph.relevant({ text: "is Park Dental's booking page up?" }).some(f => f.text.includes("Park Dental")), "the full name must still match");
+});
+
 // ------------------------------------------------------------------ who works where
 
 test("memory: a hub session naming one organisation many times does not decide who works where", async t => {

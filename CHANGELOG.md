@@ -79,6 +79,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- Short forms are measured per identity, not per spelling. One firm written several ways
+  ("Harlow Legal", "Harlow Legal Group") shares a domain, so its spellings are pooled and the
+  result is credited to the most-seen one. On the real index one firm's spellings measured 0.57,
+  0.29 and 0.21 apart, so "the Harlow team" found nothing although the word meant that firm
+  every time; pooled, it clears the bar. The bar itself (0.6, two sessions) is unchanged, and a
+  common word that starts a name ("park" for Park Dental) still measures far below it.
+
 - `memory.teach {kind, fact, from}`, the internal tool behind `ctx.memory.teach`: only modules
   can call it, and the lesson is recorded under the calling module the loader names, never the
   `from` it claims. A fact is graph-shaped (`subject`, `rel`, `object`, `text`, `at`, `key`,
