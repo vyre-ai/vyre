@@ -153,6 +153,44 @@ example.com in kit's address bar; the page loaded). Hand back also asks for the 
 (glass.release is on the presence list): is that intended? Torn down afterwards, including the
 computer container and its home volume.
 
+## Doing (saved 27 Sep, before logout)
+
+Waiting for the integrator to merge work/e2e at baf6f30 into main, then for box-deploy to deploy
+it. Main does NOT yet contain 8faaef7 (it merged this branch only up to 0d648df, in 205387e).
+Exact next step: take the sha the integrator sends, build a throwaway box from it on the test box
+with scripts/e2e-headscale (README there; egress.compose.yml now runs main's gate), and report pass
+or fail per item to the lead: onboarding; same-Mac pairing through the Deck card (pwa's pair.js);
+Claude sign-in fresh-code path (refusal at once plus "Open it again"; a real sign-in cannot be
+proved without an account); Glass take (passkey) and hand-back (none); the phone PWA send queue (a
+session counts as busy in a terminal when its transcript was written within ACTIVE_MS, so touch a
+fake transcript on the box); tailnet's egress list at 7b8242f (gate, status fields per case,
+recovery within 2 s, restart with a reusable key, Chromium data: PAC). Tear down afterwards.
+
+## Next
+
+- REVERSAL (lead, 27 Sep, user's standing rule "Vyre must not nag"): agents.create and
+  agents.update go back to person-caller-only with NO presence proof. Agents (every model caller,
+  the assistant included, unless the lead says otherwise) are refused silently; a person is
+  allowed without Touch ID. So: take agents.create off HUMAN_ONLY, drop agents.update's
+  presence.when (keep callers: cli, local, deck, capsule; add the same callers list to
+  agents.create), update test/presence-bypass.test.js (agent refused, person allowed without a
+  proof), CHANGELOG. Keep the Deck's {presence:true} handling as it is (harmless) or drop it on
+  create; the lead said keep. presence.when in core/presence can stay as a mechanism.
+- The standing rule itself: Touch ID only for pairing a new device, revealing or granting vault
+  secrets, and sending, posting or paying as the user outside; one proof covers a ~30 minute
+  presence session per device. Not built here; owners elsewhere.
+
+## Waiting on shas
+
+- baf6f30 (work/e2e tip) into main: integrator. Contains 8faaef7, a3652ab, a10fcec, b405bfc,
+  0d648df, a3e8b40, baf6f30.
+- The deploy of that main to the live box: box-deploy.
+
+## Test box state
+
+Clean: no containers, volumes, networks or images labelled run.vyre.e2e, no /srv/vyre-e2e, no CDP
+drivers. Only ~/vyre-ci/e2e (the rsync'd worktree for test runs) remains.
+
 ## Needs from others
 
 - Done 27 Sep: the asking Mac approves its own pairing with a fresh passkey and its code
