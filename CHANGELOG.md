@@ -4,6 +4,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Link and files
+
+- `core/link` (module `link`, both roles) makes the Mac and the box one system. The Mac's vyred
+  pairs with the box once. The Mac asks for pairing and shows a six-digit code. The owner types
+  that code on the box (`vyre link approve 123-456`), or approves from another of their devices.
+  A process on the box never sees the code, and the Mac cannot approve its own request, so
+  pairing needs the owner at both ends. Codes are kept only in memory, as HMACs under a key made
+  at start. Five wrong codes cancel every request.
+- The Mac pins the box's Tailscale node when it pairs, and checks every connection's peer with
+  its own `tailscale whois` before it writes a byte. A changed DNS record cannot send the Mac to
+  another node. The box identifies the Mac by whois too (ADR 0002), so no header is trusted in
+  either direction.
+- `ctx.remote(tool, input)` lets a Mac module call a box tool. It resolves like `ctx.call`, or to
+  `box_unreachable` or `no_link`. Once the box is known to be down, calls fail fast and retry
+  with a growing pause, so the Mac keeps working on its own (floor rule 9). Events `link.lost`
+  and `link.connected` say when that changes.
+- `GET /v1/link/events` on the Mac's socket proxies the box's event stream, each event tagged
+  `source: "box"`, so the Capsule sees box threads as they stream. It says `link.down` while the
+  box is away instead of hanging.
+- `core/files` (module `files`, both roles): `files.search`, `files.stat`, `files.preview` and
+  `files.fetch`. The Mac searches with Spotlight. The box searches file names and, with
+  ripgrep, contents, under `files.roots` only (default `/work`). A Mac search merges both
+  machines, tags each result with its source, and does not wait more than four seconds for the
+  box. Every path goes through realpath and must stay inside a root. Vyre's home, the vault,
+  credential folders, secret-looking files and dotfiles (apart from a short harmless list) are
+  never served or listed. `files.fetch` pulls a box file to the Mac in 1 MiB chunks, and fails
+  if the file changes on the way.
+- Core: `registry.call` takes a fourth `meta` argument, which reaches `run` beside the caller.
+  A network listener uses it to pass the tailnet peer, and it never enters tool input. Modules
+  can serve a raw route on the socket at `/v1/<module>/<name>` (`ctx.route`), which is what a
+  stream needs. vyred's stop now closes those connections too.
+- `vyre link`: status, `pair <address>`, `approve <code>`, `deny <id>`, `unpair`.
+
 #### Switchboard
 
 - `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
