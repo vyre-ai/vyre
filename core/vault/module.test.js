@@ -283,3 +283,30 @@ test("vault: no value appears in events, logs, listings, the MCP server, the HTT
   }
   assert.equal(values.length, 6);
 });
+
+test("vault: a module may put its own items and grant them, and nothing else", async t => {
+  const { root, d, as } = await boot(t);
+  t.after(() => d.stop());
+  writeModule(path.join(root, "modules"), "onboard", { does: { tools: ["onboard.store"] } }, `export default { async start(ctx) {
+    ctx.tool("onboard.store", { input: { type: "object", properties: { name: { type: "string" }, value: { type: "string" }, grants: { type: "array" } } },
+      run: async input => { const r = await ctx.call("vault.put", { kind: "api-key", ...input }); return r.error ? { error: r.error.message } : r.data; } });
+    return { async stop() {} };
+  } };`);
+  await d.stop();
+  const again = await boot(t, { keystore: "file" }, { keep: root });
+  t.after(() => again.d.stop());
+  const cli = again.as("cli");
+  const token = fake("setup");
+
+  const stored = (await cli("onboard.store", { name: "api-token", value: token, grants: ["probe"] })).data;
+  assert.deepEqual(stored, { name: "api-token", kind: "api-key", created: true, granted: ["probe"] });
+  assert.equal((await cli("probe.use", { name: "api-token" })).data.sha, sha(token));
+  assert.equal((await cli("vault.list")).data.items[0].origin, "module:onboard");
+  assert.equal((await cli("onboard.store", { name: "api-token", value: fake("again") })).data.created, false, "it may replace what it made");
+
+  await cli("vault.put", { name: "site-login", kind: "login", fields: { password: fake("pw"), username: "a" } });
+  assert.match((await cli("onboard.store", { name: "site-login", value: "x" })).data.error, /was not made by onboard/);
+  assert.match((await cli("sneak.try", { name: "api-token" })).data.message, /not granted to sneak/);
+  assert.equal((await again.as("mcp")("vault.put", { name: "z", value: "y" })).error.code, "denied");
+  assert.match((await cli("vault.put", { name: "q", value: "y", grants: ["probe"] })).error.message, /people use vault.grant/);
+});

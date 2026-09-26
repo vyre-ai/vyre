@@ -59,6 +59,10 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - `vault.release {name, field?, watcher?}` (internal) returns `{ value }`. It requires an active
   grant for exactly the calling module (and watcher); the manifest declaration alone is not
   enough.
+- `vault.put {name, kind?, description?, value? | fields, url?, hosts?, grants?}` returns
+  `{name, kind, created, granted?}`. Callers are cli, local and modules; never mcp. A module may
+  only create items or replace its own (origin `module:<name>`), and `grants` (module names) is
+  for modules only, applied to the item it just put.
 - Tool definitions may carry `callers: ["cli", "local", "mcp", "module"]`. Other callers get
   `denied`, and `GET /v1/tools` lists only what the requesting caller may use.
 - vyred treats an HTTP `x-vyre-caller: module:*` header as `local`.
