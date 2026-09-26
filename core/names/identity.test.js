@@ -72,3 +72,11 @@ test("tailscale: status and whois parse the fields vyre uses", () => {
     { login: "alex@example.com", tagged: false, node: "phone.example.ts.net", stableId: "n2" });
   assert.equal(parseWhois({ Node: { Name: "ci.", Tags: ["tag:ci"] }, UserProfile: { LoginName: "tagged-devices" } })?.login, null);
 });
+
+test("tailscale up names the operator again on Linux, and takes only flag-shaped extras", async () => {
+  const { upArgs } = await import("./tailscale.js");
+  assert.deepEqual(upArgs({}, "darwin", "alex"), ["up"]);
+  assert.deepEqual(upArgs({ VYRE_TAILSCALE_UP_FLAGS: "--accept-dns=false  --hostname=vyre" }, "linux", "vyre"),
+    ["up", "--operator=vyre", "--accept-dns=false", "--hostname=vyre"]);
+  assert.deepEqual(upArgs({ VYRE_TAILSCALE_UP_FLAGS: "--ok ; rm -rf /" }, "linux", "vyre"), ["up", "--operator=vyre", "--ok"]);
+});

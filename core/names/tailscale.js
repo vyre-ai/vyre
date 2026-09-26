@@ -6,6 +6,7 @@
 // VYRE_TAILSCALE_BIN points tests at a fake binary; nothing in the tests ever runs the real one.
 
 import { execFile, spawn } from "node:child_process";
+import os from "node:os";
 
 const bin = () => process.env.VYRE_TAILSCALE_BIN || "tailscale";
 
@@ -96,11 +97,12 @@ export function parseWhois(w) {
  * @returns {Promise<{ loginUrl: string|null, exited: boolean, code: number|null, output: string }>}
  */
 export function up({ wait = 10_000 } = {}) {
+  const args = upArgs();
   return new Promise(resolve => {
     let output = "", done = false;
     const finish = (r) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
     let child;
-    try { child = spawn(bin(), ["up"], { stdio: ["ignore", "pipe", "pipe"], detached: true }); }
+    try { child = spawn(bin(), args, { stdio: ["ignore", "pipe", "pipe"], detached: true }); }
     catch (e) { return resolve({ loginUrl: null, exited: true, code: 127, output: /** @type {Error} */ (e).message }); }
     const look = c => {
       output += c;
@@ -114,6 +116,16 @@ export function up({ wait = 10_000 } = {}) {
     child.unref();
     const timer = setTimeout(() => finish({ loginUrl: null, exited: false, code: null, output }), wait);
   });
+}
+
+/**
+ * `tailscale up` on a machine that is not signed in replaces every preference with the flags it
+ * is given, so a bare `up` would drop the operator it runs as. On Linux it names this user again,
+ * and VYRE_TAILSCALE_UP_FLAGS adds the rest (the box's compose sets --accept-dns=false).
+ */
+export function upArgs(env = process.env, platform = process.platform, user = os.userInfo().username) {
+  const extra = String(env.VYRE_TAILSCALE_UP_FLAGS || "").split(/\s+/).filter(f => /^--[a-z-]+(=\S*)?$/.test(f));
+  return ["up", ...(platform === "linux" ? [`--operator=${user}`] : []), ...extra];
 }
 
 /** `tailscale cert` for the node's ts.net name, into the given files. */
