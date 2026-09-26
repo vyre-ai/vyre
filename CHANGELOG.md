@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The vault writes nothing after it stops
+
+- 200 ms after start the vault pulls its shared vaults, and with none it still asked for this
+  device's identity, which made a key, the agent vault key and an identity item. When that timer
+  fired after a test had removed its home, it put `vault/` back: the intermittent leaked
+  `vyre-test-*` home holding only `vault/` (three in one full run on the test box, from `link`,
+  `computers` and `switchboard` tests, any in-process vyred). With no shared vaults the pull now
+  does nothing (`core/vault/shared.js`). Both start-up syncs go through `vault.later()`, and
+  `vault.stop()` cancels the waiting ones, awaits the running ones and refuses to open or make a
+  key from then on (`core/vault/vault.js`, `index.js`, `devices.js`). `core/vault/stop.test.js`.
+- `tempHome` records which test made each home in `<SCRATCH>.homes`, beside SCRATCH so it
+  survives the home's removal, and `test/tmp-guard.mjs` names that test next to a leaked folder.
+
 #### Journey 1 no longer races box add for the tunnel
 
 - `vyre box add` takes the onboarding tunnel down as soon as the address step is done, so the
