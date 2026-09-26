@@ -57,8 +57,9 @@ One step a screen. Any step can be skipped and finished later in Settings.
    switch on the page that opens, come back and press **Check again**. The page then moves to
    your new address.
 5. **Your history.** Pick earlier Claude Code sessions to make your first project, or skip.
-6. **Your devices.** Scan the two codes with your phone: the first installs Tailscale, the second
-   opens Vyre. Your Mac is already connected.
+6. **Your devices.** Pair your Mac: run `npm i -g https://vyre.run/box/vyre.tgz` and `vyre up` on
+   it, type the code it shows into this step, and approve with your passkey. On your phone, scan
+   the two codes (the first installs Tailscale, the second opens Vyre), then Add to Home Screen.
 
 ## 4. Done
 

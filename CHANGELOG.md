@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Pairing a Mac is approved in the Deck, and onboarding's last steps read right on a box
+
+- Now shows each Mac asking to pair: its name and node, a field for the code on the Mac's screen,
+  Approve with a passkey (link.pair.approve) and Deny. It follows link.pair-requested and
+  link.paired, and when the box refuses it says why (the asking Mac cannot approve itself).
+- Onboarding step 6 is two equal cards that stack on narrow screens: Pair this Mac (the npm
+  command, `vyre up`, then the approve card in place, then "Mac paired") and the phone (Tailscale,
+  the address, Add to Home Screen). An iPhone or Android phone offline in Tailscale is named in
+  plain words, here and in Settings > Devices. The button says Open Vyre, as JOURNEY.md does.
+- `onboard.status` adds `detail.devices.peers` (the owner's own tailnet devices: name, OS, online,
+  last seen), from `tailscale status --json`.
+- Step 5 on a box with no sessions says the Mac's sessions come once it is paired, and hides the
+  ranking line at 0 sessions.
+- With no assistant yet, Now and Agents offer Create your assistant (agents.create, as onboarding's
+  finish does).
+- Phone Chat queues a message for a session busy in the terminal (capsule-now's contract) and says
+  so until it is handed over. The watcher switch calls watchers.resume and watchers.pause, and
+  Settings no longer names `vyre up --step`, which does not exist.
+- `deck/test/world.js` runs with a fake tailscale (`deck/test/fake-tailscale.js`), so a world never
+  reads the real Tailscale of the machine it runs on.
+
 #### The Deck installs on a phone as an app
 
 - Add to Home Screen gives a full-screen app: a manifest with maskable icons, an Apple touch

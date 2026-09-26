@@ -12,6 +12,7 @@ import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { setupCard } from "../js/phone-setup.js";
+import { assistantCard } from "../js/assistant-setup.js";
 import { pairRequests } from "../js/pair.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 
@@ -42,12 +43,17 @@ export default async function now(ctx) {
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.
+  // No assistant yet (onboarding's first step was skipped): the card to make one stands in its
+  // place, and the line is drawn from what agents.create hands back.
+  const drawAssistant = (/** @type {any} */ a) => {
+    assistant.classList.toggle("has-card", !a);
+    put(assistant, a ? h("span", null, h("b", null, a.name), " · ", a.doing || "idle")
+      : assistantCard({ onCreated: made => { if (ctx.alive()) drawAssistant(made); } }));
+  };
   (async () => {
     const r = await attempt("agents.list");
     if (!ctx.alive() || r.error) return;
-    const a = (Array.isArray(r.data) ? r.data : []).find(x => x.kind === "assistant");
-    if (!a) return;
-    put(assistant, h("span", null, h("b", null, a.name), " · ", a.doing || "idle"));
+    drawAssistant((Array.isArray(r.data) ? r.data : []).find(x => x.kind === "assistant") || null);
   })();
 
   let running = 0;

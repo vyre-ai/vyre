@@ -92,3 +92,7 @@
   .set-table th:nth-child(2), .set-table td:nth-child(2) { width: 64px; }
   .set-table th:nth-child(3), .set-table td:nth-child(3) { width: 84px; }
 }
+
+/* Your devices: a phone or tablet Tailscale reports offline. */
+.set-off { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 8px 12px; background: var(--beacon-wash); border-radius: var(--r-2); max-width: 520px; }
+.set-off svg { flex-shrink: 0; margin-top: 1px; color: var(--beacon-ink); }

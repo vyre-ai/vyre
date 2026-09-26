@@ -168,6 +168,12 @@ export function mountSession(container, opts) {
 
   function applyEvent(e, live) {
     const p = e.payload || {};
+    // A message queued for a session busy in the terminal (capsule-now): the terminal session stays
+    // the user's own, and its transcript (read on session.indexed) already shows the message and
+    // the reply. So while it is read from the transcript, the queue's events are not drawn twice.
+    const queueFlow = e.type === "thread.queued" || p.queued != null || p.via === "stop" || p.via === "prompt" || p.via === "terminal"
+      || (typeof p.message === "string" && p.message.startsWith("inbox-"));
+    if (recorded.on && queueFlow) return;
     // The first live event for a recorded session: a send adopted it, so the Switchboard has it now.
     if (live && recorded.on && /^(thread|lease)\./.test(e.type)) {
       recorded.on = false;

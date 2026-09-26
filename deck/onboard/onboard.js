@@ -7,6 +7,7 @@ import { h, put, empty } from "../js/dom.js";
 import { call, attempt, on, setHeader } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { base, when, plural } from "../js/fmt.js";
+import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 
 const STEPS = [
@@ -43,6 +44,8 @@ const later = (fn, ms) => { const t = setTimeout(fn, ms); cleanup.push(() => cle
 const every = (fn, ms) => { const t = setInterval(fn, ms); cleanup.push(() => clearInterval(t)); };
 
 const root = /** @type {HTMLElement} */ (document.getElementById("ob"));
+/** Set by step 5's "Pair your Mac": step 6 opens scrolled to the Mac card. */
+let toMac = false;
 
 async function boot() {
   // loopback (before an owner exists) serves only /onboard and the onboard.* tools; system.info
@@ -130,6 +133,25 @@ function command(text) {
     try { await navigator.clipboard.writeText(text); put(b, icon("check")); later(() => put(b, icon("copy")), 1500); } catch {}
   } }, icon("copy"));
   return h("div", { class: "cmd" }, h("code", null, text), b);
+}
+
+/** One numbered step inside a device card. */
+function devStep(n, title, ...body) {
+  return h("li", null, typeof n === "string" ? h("span", { class: "n" }, n) : n, h("div", { class: "x" }, h("span", { class: "t" }, title), body));
+}
+
+const LOOPBACK = /^(127\.|localhost$|\[?::1\]?$)/;
+
+/**
+ * A phone or tablet, by the OS Tailscale reports: "iPhone", "iPad" or "Android phone"; null for
+ * anything else. Tailscale says iOS for an iPad too, so the node's name tells them apart.
+ * @param {string} os @param {string} [name]
+ */
+function handheld(os, name = "") {
+  const o = String(os || "").toLowerCase();
+  if (o === "ios") return /ipad/i.test(name) ? "iPad" : "iPhone";
+  if (o === "android") return "Android phone";
+  return null;
 }
 
 /** One row of a live checklist. state: todo | doing | done | failed */
@@ -433,16 +455,24 @@ const SCREENS = {
       const v = st.vectors || {};
       const reading = !!st.indexing;
       const pct = v.on && st.turns ? Math.round(100 * (v.embedded || 0) / st.turns) : 100;
+      const none = !reading && !st.sessions;
+      // A box starts with no sessions of its own: the Mac's arrive once it is paired, in step 6.
+      const box = state.status?.role === "box";
       put(meter,
         h("div", { class: "row" },
           h("span", { class: "big" }, `${(st.sessions || 0).toLocaleString()} sessions`),
           h("span", { class: "code" }, `${(st.turns || 0).toLocaleString()} turns`)),
-        h("div", { class: "bar live" + (reading ? " moving" : ""), role: "progressbar", "aria-label": "Reading your history",
+        none ? null : h("div", { class: "bar live" + (reading ? " moving" : ""), role: "progressbar", "aria-label": "Reading your history",
           "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": reading ? false : String(pct) },
           h("span", { style: { width: (reading ? 30 : pct) + "%" } })),
-        h("div", { class: "row" },
-          h("span", { class: "small muted" }, reading ? "Reading sessions" : st.sessions ? "Every session is searchable by what was said." : "No Claude Code sessions found on this machine yet."),
-          h("span", { class: "code" }, v.on ? `${pct}% ranked by meaning` : reading ? "" : "full-text search")));
+        none
+          ? h("p", { class: "small muted" }, box
+            ? ["This box has no sessions of its own. Your Mac's sessions show up here once you pair it, right after setup. ",
+              h("a", { class: "link", href: "#devices", onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); toMac = true; goto(5); } }, "Pair your Mac")]
+            : "No Claude Code sessions found on this machine yet.")
+          : h("div", { class: "row" },
+            h("span", { class: "small muted" }, reading ? "Reading sessions" : "Every session is searchable by what was said."),
+            h("span", { class: "code" }, v.on && st.sessions ? `${pct}% ranked by meaning` : reading ? "" : "full-text search")));
       return st;
     };
     drawMeter();
@@ -506,36 +536,107 @@ const SCREENS = {
   },
 
   devices(col, s) {
-    // ADR 0008 section 6: two QR codes side by side (Tailscale's app, and this address), the
-    // login they should share named under them, and a Mac card that already says "Connected"
-    // through door A rather than always offering a download.
+    // A card a device (ADR 0008 section 6, reworked). The Mac installs Vyre with two commands and
+    // is approved right here, with pairRequests; the phone gets Tailscale, then this address, then
+    // the home screen. What Tailscale says about the owner's phones and tablets comes from
+    // onboard.status (detail.devices.peers), refreshed on onboard.stepped, when the page is shown
+    // again, and at most once a minute while this step is open and visible.
     const d = state.status?.detail?.devices || {};
     const owner = state.status?.detail?.tailscale?.owner || null;
-    const phoneUrl = d.phoneUrl || (state.name && stepState("name") === "done" ? `https://${state.name}` : location.origin) + "/now";
+    // Never a QR to 127.0.0.1: before the address serves, the phone has nowhere to go yet.
+    const addr = d.phoneUrl || state.status?.address || (LOOPBACK.test(location.hostname) ? null : location.origin);
+    const phoneUrl = addr ? addr.replace(/\/$/, "") + "/now" : null;
     const tsUrl = "https://tailscale.com/download";
+    col.classList.add("wide");
     col.append(
       h("h1", { class: "h1" }, "Your devices."),
-      h("p", { class: "lead" }, "Open Vyre on your phone, and put the Capsule on your Mac. Both reach this machine over your tailnet."));
-    col.append(h("div", { class: "ob-panel" },
-      h("div", { class: "devices" },
-        h("div", null,
-          h("div", { class: "lbl" }, "Tailscale"),
+      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this box over your tailnet, and nothing else can."));
+
+    // Mac: install, `vyre up`, then approve the request it makes, in this card.
+    const macState = h("div", { class: "dev-state", "aria-live": "polite" });
+    const pairs = pairRequests({ onPaired: r => paired(r.name) });
+    cleanup.push(pairs.stop);
+    let macName = d.mac?.connected ? (d.mac.name || "your Mac") : null;
+    const drawMac = () => put(macState, macName
+      ? [h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Mac paired: ", h("b", null, macName))),
+        h("p", { class: "small muted" }, "Press Control twice to open the Capsule.")]
+      : h("div", { class: "dev-wait" }, h("span", { class: "busy", "aria-hidden": "true" }), "Waiting for your Mac"));
+    const paired = (/** @type {string} */ name) => {
+      if (macName) return;
+      macName = name || "your Mac";
+      if (state.status?.detail?.devices) state.status.detail.devices.mac = { connected: true, name: macName };
+      pairs.stop();
+      pairs.el.remove();
+      drawMac();
+    };
+    const macCard = h("section", { class: "dev-card", id: "dev-mac", tabindex: "-1", "aria-labelledby": "dev-mac-h" },
+      h("div", { class: "lbl" }, "Mac"),
+      h("h2", { class: "h3", id: "dev-mac-h" }, "Pair this Mac"),
+      h("ol", { class: "dev-steps" },
+        devStep("1", "Install Vyre", command("npm i -g https://vyre.run/box/vyre.tgz")),
+        devStep("2", "Pair it with this box", command("vyre up"),
+          h("p", { class: "small muted" }, "It finds this box on your tailnet and shows a code. Type that code here to approve the Mac."))),
+      macName ? null : pairs.el,
+      macState);
+    if (macName) pairs.stop();
+    drawMac();
+
+    // Phone: Tailscale, this address, the home screen.
+    const net = h("div", { class: "dev-net", "aria-live": "polite" });
+    const tsN = h("span", { class: "n" }, "1");
+    const phoneCard = h("section", { class: "dev-card", "aria-labelledby": "dev-phone-h" },
+      h("div", { class: "lbl" }, "Phone"),
+      h("h2", { class: "h3", id: "dev-phone-h" }, "Open Vyre on your phone"),
+      net,
+      h("ol", { class: "dev-steps" },
+        devStep(tsN, "Install Tailscale",
           h("div", { class: "qr", role: "img", "aria-label": "QR code for the Tailscale app" }, qr(tsUrl)),
           h("div", { class: "code" }, tsUrl.replace(/^https?:\/\//, "")),
           h("p", { class: "small muted" }, owner ? `Sign in as ${owner}.` : "Sign in with the same account as this setup.")),
-        h("div", null,
-          h("div", { class: "lbl" }, "Phone"),
-          h("div", { class: "qr", role: "img", "aria-label": "QR code for " + phoneUrl }, qr(phoneUrl)),
-          h("div", { class: "code" }, phoneUrl.replace(/^https?:\/\//, "")),
-          h("p", { class: "small muted" }, owner ? `Sign in as ${owner}. ` : "", "Add it to the home screen to use it like an app.")),
-        h("div", null,
-          h("div", { class: "lbl" }, "Mac"),
-          h("p", { class: "h3" }, "The Capsule"),
-          d.mac?.connected
-            ? h("p", { class: "small" }, icon("check", 14), ` Connected: ${d.mac.name || "this Mac"}.`)
-            : [h("p", { class: "small muted" }, "Press Control twice anywhere on your Mac to talk to your assistant, an agent or any session. Works offline for your own Mac."),
-              h("div", null, h("a", { class: "btn", href: d.macDownload || "https://github.com/vyre-ai/vyre/releases/latest", target: "_blank", rel: "noopener" }, icon("laptop", 14), "Download for Mac"))]))));
-    s.foot({ label: "Open the Deck", run: s.next }, { skip: false });
+        devStep("2", phoneUrl ? ["Open ", h("span", { class: "dev-addr" }, phoneUrl.replace(/^https?:\/\//, ""))] : "Open your address",
+          phoneUrl
+            ? h("div", { class: "qr", role: "img", "aria-label": "QR code for " + phoneUrl }, qr(phoneUrl))
+            : h("div", { class: "qr-later" }, "After Tailscale and your address")),
+        devStep("3", "Add to Home Screen", h("p", { class: "small muted" }, "Share, then Add to Home Screen. It opens like an app."))));
+
+    const drawNet = () => {
+      const peers = (state.status?.detail?.devices?.peers || []).filter((/** @type {any} */ p) => handheld(p.os));
+      put(net, peers.map((/** @type {any} */ p) => p.online
+        ? h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Already on your tailnet: ", h("b", null, p.name)))
+        : h("div", { class: "dev-off" }, icon("phone", 14), h("span", null,
+          `Your ${handheld(p.os, p.name)} is offline in Tailscale. Open the Tailscale app and turn it on, then scan.`,
+          h("span", { class: "code" }, p.name)))));
+      put(tsN, peers.some((/** @type {any} */ p) => p.online) ? icon("check", 12) : "1");
+    };
+    drawNet();
+
+    col.append(h("div", { class: "ob-panel" }, h("div", { class: "dev-grid" }, macCard, phoneCard)));
+
+    let asking = false;
+    const refresh = async () => {
+      if (asking || document.visibilityState !== "visible") return;
+      asking = true;
+      const r = await attempt("onboard.status");
+      asking = false;
+      if (!r.data) return;
+      state.status = r.data;
+      const m = r.data.detail?.devices?.mac;
+      if (m?.connected) paired(m.name);
+      drawNet();
+    };
+    cleanup.push(on("onboard.stepped", refresh));
+    cleanup.push(on("link.paired", e => paired(e.payload?.name)));
+    const shown = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", shown);
+    cleanup.push(() => document.removeEventListener("visibilitychange", shown));
+    every(refresh, 60_000);
+    refresh();
+
+    if (toMac) {
+      toMac = false;
+      later(() => { macCard.scrollIntoView({ block: "start" }); macCard.focus({ preventScroll: true }); }, 0);
+    }
+    s.foot({ label: "Open Vyre", run: s.next }, { skip: false });
   },
 };
 
