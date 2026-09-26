@@ -147,10 +147,14 @@ test("daemon: on the socket, x-vyre-caller is a label and cannot claim another i
   let seen = [];
   const d = await start({ root, log: () => {}, rules: async c => { seen.push(c.caller); return { allow: true }; } });
   t.after(() => d.stop());
-  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "cli", "capsule", "mcp:agent:kit"]) {
+  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "cli", "capsule"]) {
     await call("system.echo", { text: "x" }, { root, caller: forged });
   }
-  assert.deepEqual(seen, ["local", "local", "local", "local", "cli", "capsule", "mcp:agent:kit"]);
+  assert.deepEqual(seen, ["local", "local", "local", "local", "cli", "capsule"]);
+  // Naming an agent without that agent's thread key is refused outright, before any rule runs.
+  const agent = await call("system.echo", { text: "x" }, { root, caller: "mcp:agent:kit" });
+  assert.equal(agent.error && agent.error.code, "denied");
+  assert.equal(seen.length, 6);
 });
 
 test("client: the first call after vyred restarts reaches the new vyred", async t => {

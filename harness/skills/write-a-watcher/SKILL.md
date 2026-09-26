@@ -19,6 +19,8 @@ Code; load them with ToolSearch when they are deferred). Call them directly, nev
 1. `watchers_list` → its `dir` is where watchers live on this machine.
 2. `projects_of` with `{ "cwd": "<the current folder>" }` → the project's `slug`.
 3. Write `<dir>/<name>/watcher.json` and `<dir>/<name>/watch.js` (section 3).
+   If it needs a credential, give the user the grant command for this watcher and wait
+   (section 2).
 4. `watchers_test` with `{ "name": "<name>" }` → fix and repeat until it returns `ok: true`.
 5. Show the user the items and the schedule; on their yes, `watchers_create` with `{ "name" }`.
 
@@ -39,13 +41,33 @@ fits; "watch X and file it into this project" leaves nothing open.
    cannot exceed its field: every two hours is `0 */2 * * *`, never `*/120 * * * *`. For a source
    that pushes (a form, a webhook), use `"webhook"`.
 
-## 2. Credentials come from the Vault, by name
+## 2. Credentials come from the Vault, by name, granted to this one watcher
 
 Never put a key, token or password in the watcher, in `watcher.json`, in a command line or in
-your reply. List the Vault item names the watcher needs under `needs`. Check they exist with the
-`vault_list` tool (names only). If one is missing, tell the user the exact name to add with
-`vyre vault put <name>` and stop there. You never see or handle the value yourself. A public
-source needs nothing: leave `needs` out.
+your reply. A public source needs nothing: leave `needs` out. Otherwise:
+
+1. `vault_list` (names only) to find the item. If it is missing, tell the user the exact name to
+   add with `vyre vault put <name>` and stop there. Never ask them to paste a value.
+2. List the item's name under `needs` in `watcher.json`.
+3. Before the dry run, give the user the exact command that lets this one watcher use it, and
+   wait for them to run it:
+
+   ```
+   vyre vault grant <item> watchers --watcher <watcher name>
+   ```
+
+   A grant can only come from a person. A grant is for one watcher, never for every watcher; a
+   second watcher that needs the same item needs its own. If you call `vault_grant` yourself,
+   the grant stays `pending` and the watcher still cannot use the item until a person approves
+   it in a terminal: `vyre vault pending` lists what waits, `vyre vault approve <id>` allows
+   one. You cannot approve it; `vault_approve` is not open to Claude. The command above is
+   one step for them instead of two.
+4. Until they have run it, the dry run fails with "<item> is not granted to watchers/<name>".
+   That is expected, not a bug in the watcher: remind them of the command, then dry-run again.
+
+In `watch.js`, `await vault.fetch("<item>")` returns the value (`value`, a login's `password`, a
+card's `number`, a note's `text`). Pass `{ field: "username" }` for another field; an env set
+always needs a field. You never see or handle the value yourself.
 
 ## 3. Write two files in the watchers folder
 
@@ -94,7 +116,9 @@ Rules for `watch.js`:
   environment variables, read access to its own folder only, and no writes or child processes.
 - `since` is `null` on the first run. After each successful run it becomes whatever `watch`
   returned, or, if it returned nothing, the time that run started (ms since the epoch). Return
-  the source's own cursor (a last id, a page token) when it has one.
+  the source's own cursor (a last id, a page token) when it has one. A ranked list (a front
+  page, a top-100) has no such cursor: an old id can climb onto it later, so skipping ids
+  below the highest one seen loses items. Emit what is on the list and let dedupe work.
 - Every item needs a stable `id` from the source, so a repeat is never filed twice. Emitting
   everything currently visible each run is fine; the runtime files only ids it has not seen.
 - `emit` takes small plain objects (under 4 KB): `id`, `title`, `url`, `at` (a date string or

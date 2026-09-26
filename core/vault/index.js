@@ -19,6 +19,7 @@ import { isTailnet, normalize } from "../names/identity.js";
 import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
+import { callerKind } from "../modules/index.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -133,7 +134,7 @@ export default {
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),
       (input, { caller }) => {
-        if (caller === "mcp" && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
+        if (callerKind(caller) === "mcp" && !input.name) throw new Error("give a name: a generated password is stored, never shown to Claude");
         return vault.generate(input, caller);
       });
 

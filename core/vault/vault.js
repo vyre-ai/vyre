@@ -18,6 +18,7 @@ import { sealItem, openItem, newIdentity, sealFor, openFrom } from "./crypto.js"
 import { keystore, defaultKind } from "./keys.js";
 import { ensureDir, writeSealed, readSealed, removeSealed } from "./store.js";
 import * as relay from "./relay.js";
+import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, merge as mergeImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
@@ -70,7 +71,7 @@ const newId = () => crypto.randomBytes(9).toString("base64url");
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /** A caller's kind, as the registry sees it. */
-const kindOf = c => (String(c).startsWith("module:") ? "module" : String(c));
+const kindOf = callerKind;
 const moduleOf = c => (String(c).startsWith("module:") ? String(c).slice(7) : null);
 
 /** "30d", "12h", "90m", an ISO date or ms since epoch, to ms since epoch. */

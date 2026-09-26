@@ -11,21 +11,28 @@
 
 /**
  * @typedef {{ source: "gate"|"ask", id: string, title: string, sub: string, at: number, thread?: string|null,
- *   project?: string|null, draft?: { to?: string, subject?: string, body?: string }|null, rule?: string|null,
+ *   project?: string|null, to?: string, via?: string|null, kind?: string, why?: string|null, rule?: string|null,
  *   tool?: string|null }} Waiting
  */
 
 const s = v => (v == null ? "" : String(v));
 
-/** A Gate hold as a row. Its fields are read defensively: the Gate is still being built. */
+/**
+ * A Gate hold as a row, from gate.held or a gate.held event: `{id, kind, via, to: string[],
+ * summary, why, agent, thread, project, at, error?}`. The words are not in it; the card asks
+ * gate.get for them when it opens.
+ */
 export function fromHeld(h) {
-  const who = s(h.agent || h.by || "an agent");
-  const draft = h.draft || (h.body || h.subject || h.to ? { to: h.to, subject: h.subject, body: h.body || h.text } : null);
+  const who = s(h.agent || "an agent");
+  const to = (Array.isArray(h.to) ? h.to : [h.to]).filter(Boolean).map(s);
+  const first = (to[0] || "someone").replace(/\s*<.*>$/, "") + (to.length > 1 ? ` and ${to.length - 1} more` : "");
+  const what = h.kind === "spend" ? "a payment to" : h.kind === "delete" ? "a deletion at" : "a message to";
   return /** @type {Waiting} */ ({
-    source: "gate", id: s(h.id), at: Number(h.at || h.held_at || Date.now()),
-    title: s(h.title || h.summary || (draft ? `${who} drafted a message to ${s(draft.to).replace(/\s*<.*>$/, "") || "someone"}` : `${who} is waiting for you`)),
-    sub: [h.projectName || h.project, h.rule ? `held by rule: ${h.rule}` : h.reason].filter(Boolean).join(" · "),
-    thread: h.thread || null, project: h.project || null, draft, rule: h.rule || h.reason || null, tool: h.tool || null,
+    source: "gate", id: s(h.id), at: Number(h.at || Date.now()),
+    title: `${who} drafted ${what} ${first}`,
+    sub: [h.summary, h.projectName || h.project, h.error ? "last send failed" : null].filter(Boolean).join(" · "),
+    thread: h.thread || null, project: h.project || null, to: to.join(", "), via: h.via || null, kind: h.kind || "send",
+    why: h.why || null, rule: null, tool: null,
   });
 }
 
@@ -37,7 +44,7 @@ export function fromAsk(e, name = slug => slug) {
     source: "ask", id: s(p.ask || p.id), at: Number(e.at || Date.now()), thread: e.thread || p.thread || null, project: e.project || null,
     title: `${who} asks to ${s(p.summary || p.tool || "use a tool")}`,
     sub: [e.project ? name(e.project) : null, p.destination ? `to ${p.destination}` : null, p.reason].filter(Boolean).join(" · "),
-    draft: null, rule: p.reason || null, tool: p.tool || null,
+    rule: p.reason || null, tool: p.tool || null,
   });
 }
 
@@ -56,9 +63,13 @@ export function waiting(list) {
 export function applyWaiting(list, e, name = slug => slug) {
   const p = e.payload || {};
   if (e.type === "ask.raised") return waiting([...list, fromAsk(e, name)]);
-  if (e.type === "ask.answered" || e.type === "ask.cancelled") return drop(list, "ask", p.ask || p.id);
+  // ask.answered {ask, decision, by}: decision "cancelled" when Claude Code withdrew the question
+  // or its thread stopped. There is no separate event for that.
+  if (e.type === "ask.answered") return drop(list, "ask", p.ask || p.id);
   if (e.type === "gate.held") return waiting([...list, fromHeld({ ...p, at: e.at, thread: e.thread, project: e.project })]);
-  if (["gate.approved", "gate.rejected", "gate.released", "gate.sent"].includes(e.type)) return drop(list, "gate", p.id || p.held);
+  if (e.type === "gate.released" || e.type === "gate.rejected") return drop(list, "gate", p.id);
+  // A send that failed is held again, with its error, for the user to send again or discard.
+  if (e.type === "gate.failed") return list.map(w => (w.source === "gate" && w.id === s(p.id) ? { ...w, sub: [w.sub.replace(/ · last send failed$/, ""), "last send failed"].filter(Boolean).join(" · ") } : w));
   return list;
 }
 
@@ -68,9 +79,11 @@ const drop = (list, source, id) => {
 };
 
 /**
- * A thread's reply as it streams. thread.text with done:false carries a piece to append; with
- * done:true it carries the whole message, which replaces what was pieced together (the pieces
- * are throttled upstream and may have skipped nothing or something; the whole message is true).
+ * A thread's reply as it streams. thread.text is `{message, delta}`, a piece to append (throttled
+ * to 20 a second by the switchboard), or `{message, text, done: true}`, the whole block, which
+ * replaces the pieces: the whole block is what Claude Code said, the pieces are only how it
+ * arrived. `message` is Claude Code's message id, shared by a block's pieces and its whole text.
+ * A notice from vyred itself (the switch to the API key) is `{message: "vyre", text, done, notice}`.
  * @typedef {{ thread: string, order: string[], text: Record<string, string>, tools: { id: string, summary: string, done: boolean, error: boolean }[],
  *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null }} Reply
  */
@@ -80,23 +93,22 @@ export function reply(thread) {
 
 /** @param {Reply} r @param {any} e @returns {Reply} */
 export function applyReply(r, e) {
-  if (!r || e.thread !== r.thread) {
-    if (r && e.type === "lease.changed" && (e.payload || {}).thread === r.thread) return { ...r, lease: s(e.payload.holder || e.payload.surface) || null };
-    return r;
-  }
+  if (!r || e.thread !== r.thread) return r;
   const p = e.payload || {};
   if (e.type === "thread.text") {
     const id = s(p.message || "m");
     const order = r.order.includes(id) ? r.order : [...r.order, id];
-    const text = { ...r.text, [id]: p.done ? s(p.text) : (r.text[id] || "") + s(p.text) };
+    const text = { ...r.text, [id]: p.done ? s(p.text) : (r.text[id] || "") + s(p.delta) };
     return { ...r, order, text, finished: false };
   }
   if (e.type === "thread.tool") {
     if (p.phase === "done") return { ...r, tools: r.tools.map(t => (t.id === p.id ? { ...t, done: true, error: Boolean(p.error) } : t)) };
     return { ...r, tools: [...r.tools, { id: s(p.id), summary: s(p.summary || p.tool), done: false, error: false }].slice(-6) };
   }
+  if (e.type === "thread.stopped") return { ...r, finished: true, ok: false, error: `the thread stopped${p.reason ? ": " + s(p.reason) : ""}` };
   if (e.type === "thread.finished") return { ...r, finished: true, ok: p.ok !== false, error: p.ok === false ? s(p.error || "the turn failed") : null };
-  if (e.type === "lease.changed") return { ...r, lease: s(p.holder || p.surface) || null };
+  // lease.changed {holder, previous, took?}: holder null when the keyboard was given back.
+  if (e.type === "lease.changed") return { ...r, lease: p.holder == null ? null : s(p.holder) };
   return r;
 }
 

@@ -70,12 +70,12 @@ export default {
      * cannot be checked, a named agent is refused rather than trusted.
      *
      * Who the agent is comes from the caller ("... agent:<name>", set by whatever runs the
-     * agent) or from input.agent; if both are given they must agree. An agent that says nothing
-     * about itself is indistinguishable from the user: that gap closes when the Harness puts
-     * the agent in the caller, which is not Memory's to do.
+     * agent) or from input.agent; if both are given they must agree. vyred lets a caller name an
+     * agent only with the key of that agent's live thread, and inside an agent's thread the MCP
+     * server and the hooks always name it ("mcp:agent:<name>", "harness:agent:<name>").
      */
     const reach = async (agent, caller) => {
-      const said = /(?:^|\s)agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
+      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
       if (said && agent && said !== agent) throw new Error(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) return { all: true, agent: null, folders: [] };

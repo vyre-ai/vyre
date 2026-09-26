@@ -39,10 +39,15 @@ const S = {
   /** @type {any} */ dest: null, destIndex: 0,
   /** @type {any} */ recall: null,
   waitIndex: 0,
-  /** @type {any} */ review: null, editing: false, draft: "",
+  /** @type {any} */ review: null, /** @type {any} */ draft: null, summary: "", loading: false,
   /** @type {any} */ source: null, srcIndex: 0,
   /** @type {any} */ sent: null,
   note: "",
+  /** @type {any} */ takeable: null,
+  // What a bare query finds on this Mac, ranked with Vyre's own. `sel` runs over the results and
+  // then the ask row, which is always last: results.length means "send it".
+  /** @type {any[]} */ results: [], intent: "ask", sel: 0,
+  typedAt: 0,
   busy: false,
 };
 let seq = 0;
@@ -64,14 +69,76 @@ async function think() {
   const body = text.trim();
   if (!body && !S.chip) { S.dest = null; S.recall = null; return paint(); }
   const [dest, recall] = await Promise.all([
-    api.destinations(S.chip, body),
+    S.snap.up ? api.destinations(S.chip, body) : null,
     // Memory answers only for the default destination; an @ is an instruction, not a question.
-    !S.chip && body.length >= 3 ? api.recall(body) : null,
+    !S.chip && body.length >= 3 && S.snap.up ? api.recall(body) : null,
   ]);
   if (mine !== seq) return;
+  if (!S.chip) {
+    // Files take hundreds of milliseconds; they join the list when they land, if the box has not moved on.
+    api.full(body).then(f => { if (f && mine === seq && box.value.trim() === body) { showResults(f, "files"); paint(); } });
+  }
+  if (!dest) { S.dest = null; S.recall = null; return paint(); }
   S.dest = dest;
   S.destIndex = Math.min(S.destIndex, dest.options.length - 1);
   S.recall = recall && (recall.answer || (dest.options[0].kind === "recall" && recall.sources.length)) ? recall : null;
+  // A name to open wins over memory; a question is for memory and the assistant.
+  if (S.intent === "open") S.recall = null;
+  paint();
+}
+
+/**
+ * Local results on every keystroke, with no debounce: they are answered in the main process from
+ * memory and the helper in a few milliseconds, and a launcher that waits for typing to pause
+ * feels slow. vyred (destinations, memory) and mdfind wait for the pause in think().
+ */
+let lookSeq = 0;
+async function look() {
+  const mine = ++lookSeq;
+  const body = box.value.trim();
+  if (S.chip || !body || S.comp || /(^|\s)@\S*$/.test(box.value)) { if (!body || S.chip) S.results = []; return; }
+  const found = await api.quick(body);
+  if (mine !== lookSeq || box.value.trim() !== body) return;
+  showResults(found);
+  if (S.intent === "open") S.recall = null;
+  paint();
+  timed("results");
+}
+
+/** Take a ranked list, keeping the highlighted row where it was if it is still there. */
+function showResults(found, why) {
+  const was = S.results[S.sel];
+  S.results = found ? found.results : [];
+  S.intent = found ? found.intent : "ask";
+  const keep = was && why === "files" ? S.results.findIndex(r => r.id === was.id) : -1;
+  S.sel = keep >= 0 ? keep : S.intent === "open" ? firstPickable() : S.results.length;
+  if (why === "files") requestAnimationFrame(() => timed("files"));
+}
+
+/**
+ * The first result Enter may take by default. Never the contacts offer: picking it raises a macOS
+ * dialog, so it happens only when the user moves to it on purpose.
+ */
+function firstPickable() {
+  const i = S.results.findIndex(r => r.kind !== "grant");
+  return i;
+}
+
+/** How long from the keystroke to this frame, for the numbers the proposal asks for. */
+function timed(kind) {
+  const at = S.typedAt;
+  if (!at) return;
+  requestAnimationFrame(() => api.timing({ kind, ms: performance.now() - at, n: S.results.length }));
+}
+
+/** Open a local result, or make a Vyre one the chip, the way @ would. */
+async function pickResult(r) {
+  if (r.kind === "agent" || r.kind === "project" || r.kind === "thread") {
+    box.value = ""; S.results = []; S.sel = 0;
+    return choose(r);
+  }
+  const r2 = await api.pick(r, box.value.trim());
+  S.note = r2.error || r2.note || "";
   paint();
 }
 let thinkTimer = 0;
@@ -89,13 +156,18 @@ function choose(item) {
 
 // ------------------------------------------------------------------ doing
 
-async function send(d) {
+async function send(d, { take = false } = {}) {
   const text = box.value.trim();
   if (!text || S.busy) return;
-  S.busy = true; S.note = "";
-  const r = await api.send(d, text);
+  S.busy = true; S.note = ""; S.takeable = null;
+  const r = await api.send(d, text, { take });
   S.busy = false;
-  if (r.error) { S.note = r.error; return paint(); }
+  if (r.error) {
+    // Someone else has the keyboard in that thread. Taking it is the user's call, never ours.
+    S.note = r.error + (r.holder ? " ⌘⏎ takes the keyboard." : "");
+    S.takeable = r.holder ? d : null;
+    return paint();
+  }
   S.sent = { dest: d, text };
   S.mode = "reply";
   box.value = ""; S.text = "";
@@ -111,12 +183,14 @@ async function openSource(ref) {
 }
 
 async function decide(item, decision) {
-  if (S.busy) return;
+  if (S.busy || S.loading) return;
   S.busy = true; S.note = "";
-  const r = await api.answer(item, decision, S.editing ? S.draft : undefined);
+  // Send sends exactly what is on screen. What changed is passed as `edited`, so the Gate sends
+  // the user's words and Learning sees the correction (spec 7.11).
+  const r = await api.answer(item, decision, decision === "send" ? changes() : undefined);
   S.busy = false;
   if (r.error) { S.note = r.error; return paint(); }
-  S.review = null; S.editing = false; api.pin(false);
+  S.review = null; S.draft = null; api.pin(false);
   S.mode = S.snap.waiting.length ? "waiting" : "ask";
   S.waitIndex = 0;
   paint();
@@ -125,7 +199,7 @@ async function decide(item, decision) {
 
 function reset() {
   seq++;
-  Object.assign(S, { mode: "ask", chip: null, text: "", comp: null, dest: null, destIndex: 0, recall: null, review: null, editing: false, source: null, sent: null, note: "", waitIndex: 0 });
+  Object.assign(S, { mode: "ask", chip: null, text: "", comp: null, dest: null, destIndex: 0, recall: null, review: null, draft: null, summary: "", loading: false, source: null, sent: null, note: "", waitIndex: 0, results: [], intent: "ask", sel: 0, typedAt: 0 });
   box.value = "";
   box.placeholder = "Ask, or @agent";
   api.pin(false);
@@ -133,31 +207,32 @@ function reset() {
 
 // ------------------------------------------------------------------ keys
 
-box.addEventListener("input", () => { S.note = ""; if (S.mode !== "reply") S.mode = "ask"; soon(); });
+box.addEventListener("input", () => { S.typedAt = performance.now(); S.note = ""; S.takeable = null; if (S.mode !== "reply") S.mode = "ask"; look(); soon(); });
 
 window.addEventListener("keydown", e => {
   const k = e.key;
   if (k === "Escape") {
     e.preventDefault();
     if (S.comp) { S.comp = null; return paint(); }
-    if (S.mode === "review" && S.editing) { S.editing = false; return paint(); }
+    // Esc in a field leaves the field; Esc again leaves the hold.
+    if (S.mode === "review" && inField()) { /** @type {HTMLElement} */ (document.activeElement).blur(); return; }
     if (S.mode === "review") { S.mode = "waiting"; S.review = null; api.pin(false); return paint(); }
     if (S.mode === "source") { S.mode = "ask"; S.source = null; paint(); return box.focus(); }
     // One press, always the same result: the Capsule goes and the keyboard goes back.
     return api.dismiss();
   }
   if (S.mode === "review") {
-    if (S.editing) { if (k === "Enter" && e.metaKey) { e.preventDefault(); decide(S.review, "send"); } return; }
-    if (k === "Enter" && (e.metaKey || S.review.source === "ask")) { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "allow" : "send"); }
-    if (k === "e" || k === "E") { if (S.review.draft) { e.preventDefault(); S.editing = true; S.draft = S.review.draft.body || ""; paint(); const t = document.querySelector("textarea"); t && /** @type {HTMLTextAreaElement} */ (t).focus(); } return; }
-    if (k === "Backspace" || k === "d" || k === "D") { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "deny" : "discard"); }
+    // No single-letter keys here: every line of a draft takes typing, and a letter that
+    // discarded the draft would fire mid-word.
+    if (k === "Enter" && e.metaKey) { e.preventDefault(); return decide(S.review, S.review.source === "ask" ? "allow" : "send"); }
+    if (k === "Enter" && S.review.source === "ask" && !inField()) { e.preventDefault(); return decide(S.review, "allow"); }
     return;
   }
   if (S.mode === "waiting") {
     const n = S.snap.waiting.length;
     if (k === "ArrowDown") { e.preventDefault(); S.waitIndex = (S.waitIndex + 1) % n; return paint(); }
     if (k === "ArrowUp") { e.preventDefault(); if (S.waitIndex === 0) { S.mode = "ask"; return paint(); } S.waitIndex--; return paint(); }
-    if (k === "Enter") { e.preventDefault(); S.review = S.snap.waiting[S.waitIndex]; S.mode = "review"; api.pin(true); return paint(); }
+    if (k === "Enter") { e.preventDefault(); return openReview(S.snap.waiting[S.waitIndex]); }
     if (k === "a" || k === "A") { e.preventDefault(); return decide(S.snap.waiting[S.waitIndex], "allow"); }
     return;
   }
@@ -176,6 +251,18 @@ window.addEventListener("keydown", e => {
   if (k === "ArrowUp" && !box.value && !S.chip && S.snap.waiting.length && S.mode === "ask") { e.preventDefault(); S.mode = "waiting"; S.waitIndex = 0; return paint(); }
   if (S.mode === "reply" && k === "Enter") { e.preventDefault(); return S.sent && send(S.sent.dest); }
   const opts = S.dest ? S.dest.options : [];
+  if (!S.chip && S.results.length && !S.recall && S.mode === "ask" && box.value.trim()) {
+    const n = S.results.length + (opts.length && opts[0].kind !== "recall" && S.snap.up ? 1 : 0);
+    if (k === "ArrowDown") { e.preventDefault(); S.sel = (S.sel + 1) % n; return paint(); }
+    if (k === "ArrowUp") { e.preventDefault(); S.sel = S.sel <= 0 ? n - 1 : S.sel - 1; return paint(); }
+    // Tab always asks, whatever is highlighted: the one key that sends the words on.
+    if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
+    if (k === "Enter" && !e.metaKey) {
+      e.preventDefault();
+      if (S.sel >= 0 && S.sel < S.results.length) return pickResult(S.results[S.sel]);
+      return opts.length ? send(opts[0]) : undefined;
+    }
+  }
   if (k === "ArrowDown" && opts.length > 1 && !S.recall) { e.preventDefault(); S.destIndex = (S.destIndex + 1) % opts.length; return paint(); }
   if (k === "ArrowUp" && opts.length > 1 && !S.recall) { e.preventDefault(); S.destIndex = (S.destIndex - 1 + opts.length) % opts.length; return paint(); }
   if (S.recall) {
@@ -185,6 +272,7 @@ window.addEventListener("keydown", e => {
     if (k === "Enter" && srcs.length) { e.preventDefault(); return openSource(srcs[S.srcIndex]); }
     if (k === "Tab" && opts[0] && opts[0].kind !== "recall") { e.preventDefault(); return send(opts[0]); }
   }
+  if (k === "Enter" && e.metaKey && S.takeable) { e.preventDefault(); return send(S.takeable, { take: true }); }
   if (k === "Enter" && opts.length) { e.preventDefault(); return send(opts[S.destIndex]); }
   // Tab means something only where the footer says so; elsewhere it must not move focus out of
   // the box and select its text.
@@ -215,8 +303,19 @@ function paint() {
   $("chip").hidden = !S.chip;
   if (S.chip) $("chip").textContent = "@" + S.chip.label;
   hint.replaceChildren();
+  // With nothing to send to, the ask row is not drawn, so the highlight stays on a result.
+  const canAsk = snap.up && S.dest && S.dest.options[0].kind !== "recall";
+  if (!canAsk && S.results.length && S.sel >= S.results.length) S.sel = firstPickable();
 
   if (!snap.up) {
+    // This Mac's own results still work (floor rule 9); only Vyre's are gone.
+    if (S.results.length && box.value.trim()) {
+      kids.push(resultRows(null));
+      kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Offline"), "vyred is not running, so nothing can be sent. Results here are from this Mac."));
+      if (S.note) kids.push(h("div", { class: "sect note" }, S.note));
+      keys("↑↓ move", "⏎ open", "esc close");
+      return done(panel, kids);
+    }
     kids.push(h("div", { class: "sect note warn" }, h("span", { class: "lbl" }, "Offline"), "vyred is not running on this Mac. Start it with vyre up. Nothing here is live until it is."));
     keys("esc close");
     return done(panel, kids);
@@ -224,7 +323,7 @@ function paint() {
 
   if (S.mode === "waiting" && nWait) {
     kids.push(h("div", { class: "sect waithead" }, h("span", { class: "lbl" }, `Waiting on you · ${nWait}`), h("span", { class: "s" }, "oldest first")));
-    kids.push(h("div", { class: "pad" }, snap.waiting.map((w, i) => h("div", { class: "wait" + (i === S.waitIndex ? " on" : ""), onclick: () => { S.waitIndex = i; S.review = w; S.mode = "review"; api.pin(true); paint(); } },
+    kids.push(h("div", { class: "pad" }, snap.waiting.map((w, i) => h("div", { class: "wait" + (i === S.waitIndex ? " on" : ""), onclick: () => { S.waitIndex = i; openReview(w); } },
       h("span", { class: "b" }), h("span", { class: "c" }, h("span", { class: "t" }, w.title), w.sub ? h("span", { class: "s" }, w.sub) : null),
       h("span", { class: "a" }, w.age), i === S.waitIndex ? h("span", { class: "kbd" }, "⏎") : null))));
     keys("↑↓ move", "⏎ review", "A allow", "esc close");
@@ -233,18 +332,31 @@ function paint() {
 
   if (S.mode === "review" && S.review) {
     const w = S.review;
+    // Repainting would rebuild the fields under the caret. Once the card for this hold is drawn,
+    // only its note changes; the words are the user's until they send or leave.
+    const key = `${w.source}:${w.id}:${S.loading ? "loading" : "ready"}`;
+    if (panel.dataset.review === key) { const n = panel.querySelector(".heldnote"); if (n) n.textContent = S.note; return; }
     hint.append(h("span", { class: "badge" }, h("i"), "HELD FOR YOU"));
     box.hidden = true;
-    const title = h("span", { class: "heldtitle" }, w.title);
     $("chip").hidden = true;
     const field = /** @type {HTMLElement} */ (box.parentElement);
     field.querySelector(".heldtitle")?.remove();
-    field.append(title);
-    const d = w.draft;
+    field.append(h("span", { class: "heldtitle" }, w.title));
+    const d = S.draft;
     const body = [];
     if (d) {
-      body.push(h("div", { class: "grid" }, d.to ? [h("span", { class: "k" }, "To"), h("span", { class: "v mono" }, d.to)] : null, d.subject ? [h("span", { class: "k" }, "Subject"), h("span", { class: "v" }, d.subject)] : null));
-      body.push(S.editing ? h("textarea", { oninput: e => { S.draft = e.target.value; } }, S.draft) : h("div", { class: "body" }, d.body || ""));
+      body.push(h("div", { class: "grid" },
+        h("span", { class: "k" }, "To"), editable("to", "v mono"),
+        h("span", { class: "k" }, "Subject"), editable("subject", "v")));
+      body.push(editable("body", "body"));
+      body.push(h("div", { class: "howto" }, "Click any line to change it. ⌘⏎ sends what you see. Esc leaves a field."));
+    } else if (S.loading) {
+      body.push(h("div", { class: "howto" }, "Opening the draft…"));
+    } else if (w.source === "gate") {
+      // Not mail (an http call, a payment): shown as the Gate summarised it, approved as it is.
+      body.push(h("div", { class: "grid" }, w.to ? [h("span", { class: "k" }, "To"), h("span", { class: "v mono" }, w.to)] : null,
+        w.via ? [h("span", { class: "k" }, "Via"), h("span", { class: "v mono" }, w.via)] : null));
+      if (S.summary) body.push(h("div", { class: "body" }, S.summary));
     } else {
       body.push(h("div", { class: "grid" }, w.tool ? [h("span", { class: "k" }, "Tool"), h("span", { class: "v mono" }, w.tool)] : null, w.sub ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.sub)] : null));
     }
@@ -252,13 +364,15 @@ function paint() {
     const ask = w.source === "ask";
     kids.push(h("div", { class: "sect actions" },
       h("button", { type: "button", class: "btn btn-primary", onclick: () => decide(w, ask ? "allow" : "send") }, ask ? "Allow" : "Send", h("span", { class: "k" }, ask ? "⏎" : "⌘⏎")),
-      d && !S.editing ? h("button", { type: "button", class: "btn btn-ghost", onclick: () => { S.editing = true; S.draft = d.body || ""; paint(); } }, "Edit") : null,
       h("button", { type: "button", class: "btn btn-ghost quiet", onclick: () => decide(w, ask ? "deny" : "discard") }, ask ? "Deny" : "Discard"),
-      w.rule ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : null));
-    if (S.note) kids.push(h("div", { class: "sect note warn" }, S.note));
+      w.rule ? h("span", { class: "rule" }, `Rule: ${w.rule}`) : w.why ? h("span", { class: "rule" }, w.why) : null));
+    kids.push(h("div", { class: "heldnote note warn" }, S.note));
     $("keys").hidden = true;
-    return done(panel, kids);
+    done(panel, kids);
+    panel.dataset.review = key;
+    return null;
   }
+  delete panel.dataset.review;
   box.hidden = false;
   box.parentElement?.querySelector(".heldtitle")?.remove();
   $("keys").hidden = false;
@@ -313,6 +427,17 @@ function paint() {
     return done(panel, kids);
   }
 
+  if (!S.chip && S.results.length && box.value.trim() && !S.comp) {
+    const opts = S.dest ? S.dest.options : [];
+    kids.push(resultRows(opts[0]));
+    if (S.note) kids.push(h("div", { class: "sect note" }, S.note));
+    const onAsk = S.sel >= S.results.length;
+    const who = !opts[0] || opts[0].kind === "recall" ? null : opts[0].show.who;
+    const cur = S.results[S.sel];
+    keys("↑↓ move", onAsk ? (who ? `⏎ ask ${who}` : null) : cur ? (cur.kind === "calc" ? "⏎ copy" : cur.kind === "grant" ? "⏎ allow contacts" : "⏎ open") : null, !onAsk && who ? `⇥ ask ${who}` : null, "esc close");
+    return done(panel, kids);
+  }
+
   if (S.dest && (box.value.trim() || S.chip)) {
     const opts = S.dest.options;
     hint.append(h("span", { class: "kbd" }, "⏎"));
@@ -336,6 +461,65 @@ function paint() {
   return done(panel, kids);
 }
 
+/**
+ * The ranked results, then the ask row. The ask row names who the words would go to before
+ * anything is sent (floor rule 2); with no assistant (or vyred down) there is none.
+ */
+function resultRows(ask) {
+  const rows = S.results.map((r, i) => h("div", { class: "row res" + (r.kind === "calc" ? " calc" : "") + (i === S.sel ? " on" : ""),
+    onmousedown: e => { e.preventDefault(); S.sel = i; pickResult(r); } },
+    h("span", { class: "lbl kind" }, KIND_LABEL[r.kind] || r.kind), h("span", { class: "t" }, r.label), r.sub ? h("span", { class: "s" }, r.sub) : null));
+  if (ask && ask.kind !== "recall" && S.snap.up) {
+    const on = S.sel >= S.results.length;
+    const row = destRow(ask, on, on ? "Sends to" : "Or ask");
+    row.addEventListener("mousedown", e => { e.preventDefault(); send(ask); });
+    rows.push(row);
+  }
+  return h("div", { class: "sect pad" }, rows);
+}
+const KIND_LABEL = { calc: "=", app: "app", setting: "setting", file: "file", folder: "folder", contact: "contact", define: "define", grant: "people", agent: "agent", project: "project", thread: "thread" };
+
+/** One line of a held draft, editable in place. It reads as text until focused. */
+function editable(name, cls) {
+  const el = h("span", { class: cls + " edit", contenteditable: "plaintext-only", spellcheck: "true", role: "textbox", "aria-label": name,
+    oninput: e => { S.draft[name] = /** @type {HTMLElement} */ (e.target).innerText; } }, S.draft[name] || "");
+  // To and Subject are one line: Enter would put a newline in an address.
+  if (name !== "body") el.addEventListener("keydown", e => { if (e.key === "Enter" && !e.metaKey) e.preventDefault(); });
+  return el;
+}
+
+const inField = () => Boolean(document.activeElement && /** @type {HTMLElement} */ (document.activeElement).isContentEditable);
+
+/** Open a hold. A Gate hold's words come from gate.get; a question has none to edit. */
+async function openReview(w) {
+  Object.assign(S, { review: w, mode: "review", note: "", draft: null, loading: w.source === "gate" });
+  api.pin(true);
+  paint();
+  if (w.source !== "gate") return;
+  const r = await api.held(w.id);
+  if (S.review !== w) return;
+  S.loading = false;
+  if (r.error) S.note = r.error;
+  else {
+    S.draft = r.draft ? { ...r.draft } : null;
+    S.summary = r.summary;
+    // It was approved before and the sender failed; it is back, as the user last left it.
+    if (r.error) S.note = `The last send failed: ${r.error}`;
+  }
+  paint();
+}
+
+/**
+ * Every field on screen, changed or not: another surface may have revised the hold since the card
+ * opened, and Send must send what this card shows. The Gate diffs the result against the agent's
+ * draft, so Learning only sees a correction when there was one.
+ */
+function changes() {
+  if (!S.draft) return undefined;
+  // The Gate takes recipients as a list.
+  return { to: String(S.draft.to || "").split(/[,;\n]/).map(x => x.trim()).filter(Boolean), subject: S.draft.subject || "", body: S.draft.body || "" };
+}
+
 function done(panel, kids) {
   panel.replaceChildren(...kids);
   return null;
@@ -352,7 +536,9 @@ api.onState(s => {
   S.waitIndex = Math.min(S.waitIndex, Math.max(0, s.waiting.length - 1));
   paint();
 });
-api.onOpen(() => {
+api.onOpen(d => {
+  // Two frames after the page hears it, the Capsule is on screen: that is "keypress to visible".
+  if (d && d.at) requestAnimationFrame(() => requestAnimationFrame(() => api.timing({ kind: "open:" + d.via, ms: Date.now() - d.at })));
   // Opened by the user: a fresh Capsule with the caret in the box. A reply still streaming is
   // kept, since coming back to read it is the point of opening it again.
   if (!(S.mode === "reply" && S.snap.reply && !S.snap.reply.finished)) reset();

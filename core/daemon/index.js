@@ -84,6 +84,9 @@ export async function start(opts = {}) {
   return { registry, events, config: cfg, paths: p, stop };
 }
 
+/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit", "mcp agent:kit". */
+const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
@@ -117,6 +120,16 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
   if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {
     return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });
+  }
+  // Naming an agent ("mcp:agent:<name>", "harness:agent:<name>") is a claim Memory, the Gate and
+  // the Switchboard act on, and naming the assistant reaches every project. So it must come with
+  // the key the Switchboard put in that agent's thread (x-vyre-agent-key); without it, nothing.
+  // A listener's own identity (policy.caller) is established by the listener, not claimed.
+  const said = policy.caller ? null : AGENT_CLAIM.exec(caller);
+  if (said) {
+    const key = String(req.headers["x-vyre-agent-key"] || "");
+    const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
+    if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
   }
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();

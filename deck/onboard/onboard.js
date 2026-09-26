@@ -45,12 +45,14 @@ const every = (fn, ms) => { const t = setInterval(fn, ms); cleanup.push(() => cl
 const root = /** @type {HTMLElement} */ (document.getElementById("ob"));
 
 async function boot() {
-  const [st, info] = await Promise.all([attempt("onboard.status"), attempt("system.info")]);
+  // loopback (before an owner exists) serves only /onboard and the onboard.* tools; system.info
+  // is not one of them, so the host comes from onboard.status.
+  const st = await attempt("onboard.status");
   state.status = st.data || null;
   state.statusError = st.error || null;
   state.name = state.status?.name || "";
   state.assistant = state.status?.assistant || "";
-  state.host = state.status?.host || info.data?.host || location.host;
+  state.host = state.status?.host || location.host;
   if (!location.hash) {
     const first = STEPS.find(s => stepState(s.id) === "todo");
     history.replaceState(null, "", "#" + (first ? first.id : STEPS[0].id));
@@ -91,7 +93,7 @@ function render() {
       col.querySelector(".ob-foot")?.replaceWith(f) || col.append(f);
     },
     /** Move on, marking this step done. */
-    next: async () => { await mark_(step.id, "done"); if (i === STEPS.length - 1) return finish(); goto(i + 1); },
+    next: async () => { await mark_(step.id, "done"); if (i === STEPS.length - 1) return finish(col); goto(i + 1); },
   };
 
   put(root,
@@ -165,8 +167,9 @@ const SCREENS = {
       if (n !== seq) return;
       if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the box module runs.")); }
       else if (r.error) put(status, String(r.error.message));
-      else if (r.data.available) { ok = true; put(status, icon("check", 14), `${v}.vyre.run is free.`); }
-      else put(status, `${v}.vyre.run cannot be yours${r.data.why ? ": " + r.data.why : "."} Try another.`);
+      // address is the full https://…vyre.run URL; the host alone reads better next to "is free".
+      else if (r.data.available) { ok = true; put(status, icon("check", 14), `${(r.data.address || v + ".vyre.run").replace(/^https?:\/\//, "")} is free.`); }
+      else put(status, `${v}.vyre.run is taken${r.data.why ? ": " + r.data.why : "."} Try another.`);
       sync();
     };
     let t = 0;
@@ -206,7 +209,7 @@ const SCREENS = {
         return;
       }
       const found = h("div", { class: "found" }, icon("terminal"),
-        h("span", { class: "what" }, "Claude Code is installed.", h("span", { class: "code" }, [info.version, info.path].filter(Boolean).join(" · "))));
+        h("span", { class: "what" }, "Claude Code is installed.", info.version ? h("span", { class: "code" }, info.version) : null));
       if (info.signedIn) {
         put(panel, found, h("div", { class: "found" }, icon("check"), h("span", { class: "what" },
           info.via === "api-key" ? "Signed in with an API key. It is in the Vault." : "Signed in with your Claude subscription. The token is in the Vault.")));
@@ -239,33 +242,32 @@ const SCREENS = {
         if (r.error) { put(msg, String(r.error.message)); return; }
         render();
       };
+      // Claude's own sign-in page hands back a code, which this machine's `claude setup-token`
+      // pty is waiting to read; there is nothing to poll for, so it is typed here and sent back.
       const signIn = async () => {
         const r = await attempt("onboard.claude", { mode: "setup-token" });
         if (r.error) { put(msg, String(r.error.message)); return; }
         if (r.data.url) window.open(r.data.url, "_blank", "noopener");
-        if (r.data.needsCode) {
-          // Claude's page ends by showing a code; it goes back to the sign-in waiting on the box.
-          const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", autocomplete: "off", id: "claude-code", placeholder: "Paste the code Claude shows", "aria-label": "Code from Claude" }));
-          const note = h("div", { class: "check-line", "aria-live": "polite" });
-          put(msg, h("div", { class: "field" }, h("label", { for: "claude-code" }, "Sign in in the other tab, then paste the code it shows"), codeIn,
-            h("a", { class: "link", href: r.data.url, target: "_blank", rel: "noopener" }, "Open it again")), note);
-          s.foot({ label: "Finish sign-in", run: async () => {
-            const code = codeIn.value.trim();
-            if (!code) { put(note, "Paste the code first."); return; }
-            put(note, h("span", { class: "busy-inline faint" }, "Checking with Claude"));
-            const c = await attempt("onboard.claude", { mode: "setup-token", code });
-            if (c.error) { put(note, String(c.error.message)); return; }
-            render();
-          } });
-          later(() => codeIn.focus(), 0);
-          return;
-        }
-        put(msg, h("span", { class: "busy-inline faint" }, "Waiting for you to finish signing in, in the other tab. "),
-          r.data.url ? h("a", { class: "link", href: r.data.url, target: "_blank", rel: "noopener" }, "Open it again") : null);
-        every(async () => {
-          const p = await attempt("onboard.claude", { mode: "detect" });
-          if (p.data?.signedIn) render();
-        }, 2000);
+        if (!r.data.needsCode) { put(msg, h("span", { class: "busy-inline faint" }, "Waiting for you to finish signing in, in the other tab.")); return; }
+        const codeErr = h("div", { class: "check-line", "aria-live": "polite" });
+        const codeIn = h("input", { class: "input", id: "setup-code", autocomplete: "off", spellcheck: "false", autocapitalize: "none",
+          placeholder: "Paste the code Claude gave you", "aria-label": "Claude sign-in code" });
+        // msg is normally a one-line .check-line; this step needs a small stack, so it gets one
+        // block child instead of several flex siblings.
+        put(msg, h("div", { style: { display: "flex", flexDirection: "column", gap: "10px", width: "100%" } },
+          h("p", { class: "small muted", style: { margin: "0" } }, "Finish signing in at Claude's page, then paste the code it gives you below.",
+            r.data.url ? [" ", h("a", { class: "link", href: r.data.url, target: "_blank", rel: "noopener" }, "Open it again")] : null),
+          h("div", { class: "field" }, h("label", { for: "setup-code" }, "Code"), codeIn),
+          codeErr));
+        const submit = async () => {
+          const code = /** @type {HTMLInputElement} */ (codeIn).value.trim();
+          if (!code) { put(codeErr, "Paste the code first."); return; }
+          const p = await attempt("onboard.claude", { mode: "setup-token", code });
+          if (p.error) { put(codeErr, String(p.error.message)); return; }
+          if (p.data?.signedIn) render(); else put(codeErr, "That code did not work. Try again.");
+        };
+        s.foot({ label: "Continue", run: submit }, { secondary: h("button", { type: "button", class: "btn btn-ghost", onclick: draw }, "Try another way") });
+        later(() => /** @type {HTMLInputElement} */ (codeIn).focus(), 0);
       };
       put(panel, found, choice, msg);
       draw();
@@ -285,6 +287,13 @@ const SCREENS = {
           h("div", { class: "found" }, icon("terminal"), h("span", { class: "what" }, "Tailscale is not installed on this machine.")),
           h("div", { class: "field" }, h("label", null, "Install it with this one command, then check again"), command(t.install || "curl -fsSL https://tailscale.com/install.sh | sh")),
           h("p", { class: "notice" }, icon("lock", 14), "Vyre does not install software for you. Run it yourself, where you can see what it does."));
+        s.foot({ label: "Check again", run: () => render() });
+        return;
+      }
+      if (t.state === "blocked") {
+        put(panel,
+          h("div", { class: "found" }, icon("lock"), h("span", { class: "what" }, t.why || "Your tailnet will not let this machine join.")),
+          t.operator?.fix ? h("p", { class: "notice" }, t.operator.fix) : null);
         s.foot({ label: "Check again", run: () => render() });
         return;
       }
@@ -380,7 +389,6 @@ const SCREENS = {
       h("p", { class: "small muted", style: { marginTop: "-12px" } }, "A project is a client or a piece of work: pick the sessions that belong to it. A session can be in several."),
       made, picker));
     s.foot({ label: "Continue", run: s.next });
-    // Reading starts when this screen opens; the box keeps going after the person moves on.
     attempt("onboard.history", { action: "start" });
 
     const drawMeter = async () => {
@@ -403,8 +411,13 @@ const SCREENS = {
       return st;
     };
     drawMeter();
+    // The loopback stream (before an owner exists) carries only onboard.* events, not the
+    // switchboard/Recall ones like session.indexed; core reports reading progress as
+    // onboard.stepped, and every() below covers the rest with a poll.
     let t = 0;
-    cleanup.push(on("session.indexed", () => { clearTimeout(t); t = window.setTimeout(drawMeter, 400); }));
+    const soon = () => { clearTimeout(t); t = window.setTimeout(drawMeter, 400); };
+    cleanup.push(on("onboard.stepped", soon));
+    cleanup.push(on("onboard.finished", soon));
     every(drawMeter, 5000);
 
     /** Project names by slug, so the picker says "in Harlow Legal", not "in harlow-legal". */
@@ -478,9 +491,14 @@ const SCREENS = {
   },
 };
 
-async function finish() {
+/** @param {HTMLElement} [col] where to say so if there is nowhere to go */
+async function finish(col) {
   const r = await attempt("onboard.finish");
-  location.href = r.data?.url ? r.data.url.replace(/\/$/, "") + "/now" : "/now";
+  if (r.data?.url) { location.href = r.data.url.replace(/\/$/, "") + "/now"; return; }
+  // No address yet: loopback (before an owner exists) serves only /onboard, never /now, so there
+  // is nothing to fall back to. Say so instead of sending the user to a dead link.
+  col?.append(h("p", { class: "notice" }, r.error ? String(r.error.message) :
+    "Your address is not set up yet, so this page cannot open the Deck. Finish the address step, then come back here."));
 }
 
 /** A QR code as SVG squares, drawn from the vendored encoder's module grid. */

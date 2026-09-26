@@ -14,8 +14,10 @@
  * @typedef {{ agents: Agent[]|null, projects: Project[], threads: Thread[] }} Catalog
  * @typedef {{ kind: "agent"|"project"|"thread", id: string, label: string, sub: string, last: number }} Candidate
  * @typedef {{ kind: "assistant"|"agent"|"recall"|"thread"|"new-thread", agent?: string, project?: string|null,
- *   projectName?: string|null, thread?: string, threadLabel?: string, cwd?: string|null, fresh?: boolean, meta: string }} Destination
+ *   projectName?: string|null, thread?: string, threadLabel?: string, cwd?: string|null, meta: string }} Destination
  */
+
+import { match } from "./local.js";
 
 const KIND_ORDER = { agent: 0, project: 1, thread: 2 };
 
@@ -137,7 +139,12 @@ export function destinations(target, text, cat, { agentThreads = [], now = Date.
     const hit = bestThread(text, agentThreads);
     const current = /** @type {Destination} */ ({ kind: "agent", agent: target.id, meta: "its current thread" });
     if (!hit) return { options: [current], why: null };
-    return { options: [threadDest(hit.thread, target.id), { ...current, fresh: true, meta: "" }], why: why(hit, `where ${target.id} works on it`) };
+    // agents.ask always goes to the agent's current thread; there is no asking for a new one. So
+    // the other choice is that current thread, unless the words already matched it.
+    const currentId = ((cat.agents || []).find(a => a.name === target.id) || {}).thread;
+    const options = [threadDest(hit.thread, target.id)];
+    if (hit.thread.id !== currentId) options.push({ ...current, meta: "" });
+    return { options, why: why(hit, `where ${target.id} works on it`) };
   }
   if (target.kind === "project") {
     const p = projectOf(target.id);
@@ -157,7 +164,74 @@ export function destinations(target, text, cat, { agentThreads = [], now = Date.
 export function describe(d) {
   if (d.kind === "recall") return { who: "memory", where: [] };
   if (d.kind === "assistant") return { who: d.agent || "assistant", where: [] };
-  if (d.kind === "agent") return { who: d.agent || "agent", where: [d.fresh ? "new thread" : "current thread"] };
+  if (d.kind === "agent") return { who: d.agent || "agent", where: ["current thread"] };
   if (d.kind === "new-thread") return { who: d.projectName || d.project || "project", where: ["new thread"] };
   return { who: d.agent || d.projectName || "thread", where: d.agent && d.projectName ? [d.projectName, d.threadLabel || ""] : [d.threadLabel || ""] };
+}
+
+// ------------------------------------------------------------------ one list for a bare query
+
+/**
+ * @typedef {{ kind: string, id: string, label: string, sub: string, last?: number, target?: string, score?: number,
+ *   copy?: string }} Result
+ */
+
+// Ties only, after name length. A higher score always wins, so an app opened ten times a day can
+// outrank a project visited once (proposal section 4).
+const RESULT_ORDER = { calc: 0, app: 1, setting: 2, agent: 3, project: 4, thread: 5, contact: 6, folder: 7, file: 8, define: 9 };
+
+/**
+ * Local results and Vyre's own, ranked as one list. Local results arrive scored by local.js (match
+ * plus frecency); Vyre candidates and files are scored here the same way. A calculator answer is
+ * always first: it only exists when the box is clearly arithmetic or a conversion.
+ * @param {string} query @param {{ local?: Result[], files?: Result[], extra?: Result[], cat?: Catalog|null,
+ *   boost?: (id: string, query: string) => number, limit?: number }} src
+ * @returns {Result[]}
+ */
+export function rank(query, { local = [], files = [], extra = [], cat = null, boost = () => 0, limit = 8 }) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  /** @type {Result[]} */
+  const all = [...local];
+  const score = (r, label = r.label) => { const m = match(q, label); return m > 0 ? m + boost(r.id, q) : 0; };
+  // A file only on scattered letters is noise in a launcher; it needs at least a substring.
+  for (const r of files) { const s = score(r); if (s >= 0.5) all.push({ ...r, score: s }); }
+  if (cat) for (const c of candidates(cat)) {
+    // A thread named only by its id is not something anyone types.
+    const s = score(c);
+    if (s >= 0.5) all.push({ ...c, target: "", score: s });
+  }
+  for (const r of extra) all.push(r);
+  const seen = new Set();
+  return all.filter(r => (seen.has(r.id) ? false : (seen.add(r.id), true)))
+    // On a tie the shorter name wins ("Bluetooth" the pane over "Bluetooth File Exchange"), then the kind.
+    .sort((a, b) => (b.score || 0) - (a.score || 0) || a.label.length - b.label.length
+      || (RESULT_ORDER[a.kind] ?? 99) - (RESULT_ORDER[b.kind] ?? 99) || (b.last || 0) - (a.last || 0))
+    .slice(0, limit);
+}
+
+const QUESTION = /^(what|whats|what's|who|whos|why|how|when|where|which|is|are|was|were|do|does|did|can|could|should|would|will|tell|explain|summarize|summarise|draft|write|find out|remind|ask|help|make|send|check|show me)\b/i;
+
+/** Reads as a sentence for someone, not a name to open. */
+export function questionLike(text) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  if (/\?\s*$/.test(t)) return true;
+  if (QUESTION.test(t)) return true;
+  return t.split(/\s+/).length >= 5;
+}
+
+/**
+ * What Enter does with a bare query: open the top result, or send the words on. Only a strong
+ * local match (a prefix or better, or a calculation) on something that does not read as a
+ * question opens; everything else goes to the destination the "Sends to" row shows, so a
+ * sentence never quietly becomes a file search and a name never quietly leaves the Mac.
+ * @param {string} text @param {Result[]} results @returns {"open"|"ask"}
+ */
+export function intent(text, results) {
+  const top = results[0];
+  if (!top) return "ask";
+  if (top.kind === "calc") return "open";
+  if (questionLike(text)) return "ask";
+  return (top.score || 0) >= 0.8 ? "open" : "ask";
 }

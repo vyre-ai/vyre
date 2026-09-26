@@ -101,8 +101,15 @@ export function checkInput(schema, value, where = "input") {
   return out;
 }
 
-/** "module:notes" is a module; every other caller is its own kind: "cli", "local", "mcp". */
-export const callerKind = caller => (String(caller).startsWith("module:") ? "module" : String(caller));
+/**
+ * "module:notes" is a module; every other caller is its own kind: "cli", "local", "mcp". A caller
+ * that names an agent ("mcp:agent:kit", "harness:agent:kit") is the kind before the name, so an
+ * agent's MCP server is still "mcp" to every allowlist and rule. vyred has already checked the name.
+ */
+export const callerKind = caller => {
+  const c = String(caller);
+  return c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
+};
 
 export class Registry {
   /**
@@ -179,6 +186,13 @@ export class Registry {
         },
         on: (pattern, fn) => events.on(pattern, fn),
         since: (id, opts) => events.since(id, opts),
+        // Delete this module's own redundant events (see Events.prune): only types it declares
+        // under watches.emits, and only rows it emitted itself.
+        prune: (type, opts = {}) => {
+          const allowed = (m.watches && m.watches.emits) || [];
+          if (!allowed.includes(type)) throw new Error(`${m.name} pruned ${type}, which its manifest does not declare under watches.emits`);
+          return events.prune({ ...opts, type, source: m.name });
+        },
       },
       // Vault items, one at a time, only those the manifest declares under needs.vault. The value
       // comes from the vault module's internal vault.release tool, which only modules can call,

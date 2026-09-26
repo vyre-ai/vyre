@@ -25,12 +25,14 @@ const breathe = () => new Promise(r => setImmediate(r));
 export class Indexer {
   /**
    * @param {DB} db
-   * @param {{ emit?: (type: string, payload: object, where?: object) => void, log?: (m: string) => void }} [hooks]
+   * @param {{ emit?: (type: string, payload: object, where?: object) => void, log?: (m: string) => void,
+   *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void }} [hooks]
    */
   constructor(db, hooks = {}) {
     this.db = db;
     this.emit = hooks.emit || (() => {});
     this.log = hooks.log || (() => {});
+    this.onVector = hooks.onVector || (() => {});
     this.q = {
       get: db.prepare("SELECT file, bytes, mtime, turns, name FROM recall_sessions WHERE id = ?"),
       moved: db.prepare("UPDATE recall_sessions SET file = ? WHERE id = ?"),
@@ -147,7 +149,7 @@ export class Indexer {
     const t0 = Date.now();
     let rids = this.pending();
     if (limit) rids = rids.slice(0, limit);
-    const text = this.db.prepare("SELECT session, seq, text FROM recall_turns WHERE rowid = ?");
+    const text = this.db.prepare("SELECT session, seq, role, text FROM recall_turns WHERE rowid = ?");
     const add = this.db.prepare("INSERT OR REPLACE INTO recall_vectors (session, seq, chunk, off, v) VALUES (?,?,?,?,?)");
     let turns = 0, made = 0, gone = 0;
     for (const rid of rids) {
@@ -170,6 +172,7 @@ export class Indexer {
         this.db.exec("COMMIT");
       } catch (e) { this.db.exec("ROLLBACK"); throw e; }
       turns++; made += cs.length;
+      this.onVector({ rid, session: String(row.session), seq: Number(row.seq), role: String(row.role), chunks: cs.map((c, i) => ({ off: c.off, v: vs[i] })) });
       if (onProgress && turns % 100 === 0) onProgress(turns, rids.length);
     }
     return { turns, chunks: made, gone, ms: Date.now() - t0 };

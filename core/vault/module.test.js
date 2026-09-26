@@ -308,8 +308,8 @@ test("vault: a module may put its own items and grant them, and nothing else", a
 
 test("vault: a per-agent module fetches dynamic names, still only with a grant per item", async t => {
   const { root, d } = await boot(t);
-  writeModule(path.join(root, "modules"), "agents", { does: { tools: ["agents.probe"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) {
-    ctx.tool("agents.probe", { input: { type: "object", properties: { name: { type: "string" } } },
+  writeModule(path.join(root, "modules"), "roster", { does: { tools: ["roster.fetch"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) {
+    ctx.tool("roster.fetch", { input: { type: "object", properties: { name: { type: "string" } } },
       run: async ({ name }) => { try { const v = await ctx.vault.fetch(name); return { length: v.length }; } catch (e) { return { error: e.message }; } } });
     return { async stop() {} };
   } };`);
@@ -319,9 +319,9 @@ test("vault: a per-agent module fetches dynamic names, still only with a grant p
   const cli = again.as("cli");
   const token = fake("setup");
   await cli("vault.put", { name: "juno-setup-token", value: token });
-  assert.match((await cli("agents.probe", { name: "juno-setup-token" })).data.error, /not granted to agents/);
-  await cli("vault.grant", { name: "juno-setup-token", module: "agents" });
-  assert.deepEqual((await cli("agents.probe", { name: "juno-setup-token" })).data, { length: token.length });
+  assert.match((await cli("roster.fetch", { name: "juno-setup-token" })).data.error, /not granted to roster/);
+  await cli("vault.grant", { name: "juno-setup-token", module: "roster" });
+  assert.deepEqual((await cli("roster.fetch", { name: "juno-setup-token" })).data, { length: token.length });
 });
 
 test("vault: behind tailscale serve, a relayed pass answers only its holder's Tailscale login", async t => {
