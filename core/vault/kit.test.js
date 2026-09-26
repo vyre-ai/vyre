@@ -135,3 +135,31 @@ test("in a real vyred: who sees the people tools, and the kit is a person's tool
   assert.equal(pend.pending.status, "pending");
   assert.deepEqual((await mcp("vault.people")).data.people, []);
 });
+
+test("in a real vyred: account.create, then kit; the page holds the Secret Key, events, logs and audit do not", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  const lines = [];
+  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  t.after(() => d.stop());
+  const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
+  const made = await cli("vault.account.create", { password: "a long fixture password" });
+  assert.ok(made.data, JSON.stringify(made.error));
+  const sk = made.data.secretKey;
+  assert.match(sk, /^V2-/);
+  const k = (await cli("vault.kit")).data;
+  assert.deepEqual(Object.keys(k).sort(), ["expires", "url"]);
+  const page = /** @type {any} */ (await get(k.url));
+  assert.equal(page.status, 200);
+  assert.ok(page.body.includes(sk), "the kit page carries the Secret Key");
+  assert.ok(page.body.includes(made.data.acct));
+  assert.equal((/** @type {any} */ (await get(k.url).catch(() => ({ status: 0 })))).status === 200, false, "a second load gets nothing");
+  await new Promise(r => setTimeout(r, 20));
+  const events = d.events.since(0, { limit: 5000 });
+  assert.ok(events.some(e => e.type === "vault.kit-printed"));
+  const audit = (await cli("vault.audit", { limit: 1000 })).data;
+  const bare = sk.replace(/-/g, "");
+  for (const [what, text] of [["events", JSON.stringify(events)], ["logs", lines.join("\n")], ["audit", JSON.stringify(audit)]]) {
+    assert.ok(!text.includes(sk) && !text.includes(bare) && !text.includes(sk.split("-")[2]), `the Secret Key is in the ${what}`);
+  }
+});
