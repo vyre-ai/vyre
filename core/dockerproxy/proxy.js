@@ -86,6 +86,21 @@ export function duplicateKey(text) {
   return null;
 }
 
+/**
+ * A container's inspection, or a list row, without what carries secrets: a computer's Env holds
+ * COMPUTERD_TOKEN and VNC_PASSWORD (pool.js), and Cmd, Entrypoint, Args, Path and a list row's
+ * Command can carry them too. docker.js reads only Id, Name, State, Config.Labels and
+ * NetworkSettings back, so nothing it needs goes. An exec's inspection is never sent back at all
+ * (GET /exec/{id}/json is refused); ProcessConfig would go the same way if it ever were.
+ * @param {any} c
+ */
+export function scrub(c) {
+  if (!c || typeof c !== "object") return c;
+  for (const k of ["Args", "Path", "Command", "ProcessConfig"]) delete c[k];
+  if (c.Config && typeof c.Config === "object") for (const k of ["Env", "Cmd", "Entrypoint"]) delete c.Config[k];
+  return c;
+}
+
 /** @param {any} v */
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const isBool = v => typeof v === "boolean";
@@ -280,7 +295,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
       qs.set("filters", forceFilters(q.get("filters")));
       const r = await engine("GET", `${ver}/containers/json?${qs}`, MAX_LIST);
       if (r.status !== 200) return send(res, r.status, r.body);
-      return send(res, 200, (Array.isArray(r.body) ? r.body : []).filter(c => c && computer(c.Labels).ok));
+      return send(res, 200, (Array.isArray(r.body) ? r.body : []).filter(c => c && computer(c.Labels).ok).map(scrub));
     }
 
     if (name === "create") {
@@ -328,7 +343,18 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
     if (!c) return send(res, 404, { message: `No such container: ${m[1]}` });
     const id = c.Id;
     const qs = q.toString() ? `?${q}` : "";
-    if (name === "inspect") return forward(res, "GET", `${ver}/containers/${id}/json${qs}`);
+    if (name === "inspect") {
+      // Buffered (capped by engine()) and scrubbed, never streamed: the Engine's answer has Env.
+      const r = await engine("GET", `${ver}/containers/${id}/json${qs}`);
+      if (r.status !== 200) return send(res, r.status, r.body);
+      if (!computer(r.body && r.body.Config && r.body.Config.Labels).ok) refuse(`container ${m[1]} changed under the check`);
+      return send(res, 200, scrub(r.body));
+    }
+    // Residual (security, 26 Sep): any caller that reaches this proxy can stop, pause or remove
+    // ANY agent's computer, not only its own; labels tell a computer from vyred's containers, not
+    // one agent's from another's. Denial of service only: the home volume survives a remove
+    // (named, v=false leaves it), and nothing here reads or runs inside the computer. Closed when
+    // vyred is the only caller on this network.
     if (name === "op") return forward(res, "POST", `${ver}/containers/${id}/${m[2]}${qs}`);
     if (name === "remove") return forward(res, "DELETE", `${ver}/containers/${id}${qs}`);
     if (name === "exec") {

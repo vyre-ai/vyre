@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { createProxy, duplicateKey, loadPolicy } from "./proxy.js";
+import { createProxy, duplicateKey, loadPolicy, scrub } from "./proxy.js";
 
 const PREFIX = "run.vyre.computers";
 const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPrefix: PREFIX, capAdd: [] };
@@ -43,7 +43,9 @@ async function engine(t) {
   /** @type {Array<{ method: string, url: string, raw: string }>} */
   const seen = [];
   const boxes = new Map([
-    ["kitfull0001", { Id: "kitfull0001", Name: "/run.vyre.computers-computer-kit", Config: { Labels: mine("kit") } }],
+    ["kitfull0001", { Id: "kitfull0001", Name: "/run.vyre.computers-computer-kit", Path: "/entry.sh", Args: ["--vnc", "pw"],
+      State: { Status: "running" }, NetworkSettings: { Networks: { "vyre-computers": { IPAddress: "172.20.0.5" } } },
+      Config: { Labels: mine("kit"), Env: ["COMPUTERD_TOKEN=s3cret", "VNC_PASSWORD=hunter22"], Cmd: ["run"], Entrypoint: ["/entry.sh"] } }],
     ["db1", { Id: "db1", Name: "/postgres", Config: { Labels: { "com.example.app": "db" } } }],
     ["vyred", { Id: "vyred", Name: "/vyre-vyre-1", Config: { Labels: { "run.vyre": "1" } } }],
   ]);
@@ -63,7 +65,7 @@ async function engine(t) {
     let m;
     if (req.method === "GET" && p === "/containers/json") {
       // A careless Engine that ignores filters: the proxy must filter the rows itself too.
-      return send(200, [...boxes.values()].map(b => ({ Id: b.Id, Labels: b.Config.Labels })));
+      return send(200, [...boxes.values()].map(b => ({ Id: b.Id, Labels: b.Config.Labels, Command: "/entry.sh --vnc pw" })));
     }
     if (req.method === "POST" && p === "/containers/create") return send(201, { Id: "new1", Warnings: [] });
     if ((m = /^\/containers\/([^/]+)\/json$/.exec(p))) {
@@ -224,6 +226,12 @@ test("dockerproxy: per-container ops on a computer pass, by the id the Engine ga
   const i = await p.call("GET", "/containers/kitfull0001/json");
   assert.equal(i.status, 200);
   assert.equal(i.json.Id, "kitfull0001");
+  // What docker.js reads survives; the secrets do not.
+  assert.deepEqual(i.json.Config, { Labels: mine("kit") });
+  assert.equal(i.json.State.Status, "running");
+  assert.equal(i.json.NetworkSettings.Networks["vyre-computers"].IPAddress, "172.20.0.5");
+  for (const k of ["Path", "Args"]) assert.ok(!(k in i.json), k);
+  assert.ok(!/s3cret|hunter22|--vnc/.test(i.text), i.text);
   assert.deepEqual(p.sent().map(s => `${s.method} ${s.url}`), [
     "POST /v1.43/containers/kitfull0001/start", "POST /v1.43/containers/kitfull0001/stop?t=10",
     "POST /v1.43/containers/kitfull0001/pause", "POST /v1.43/containers/kitfull0001/unpause",
@@ -267,6 +275,7 @@ test("dockerproxy: list gets the computer filter forced, and its rows filtered a
   const r = await p.call("GET", `/v1.43/containers/json?all=true&filters=${encodeURIComponent(JSON.stringify({ status: ["running"], label: ["x=1"] }))}`);
   assert.equal(r.status, 200);
   assert.deepEqual(r.json.map(c => c.Id), ["kitfull0001"]);
+  assert.ok(!("Command" in r.json[0]), "list rows carry no command line");
   const u = new URL(p.seen[0].url, "http://d");
   assert.equal(u.searchParams.get("all"), "true");
   assert.deepEqual(JSON.parse(String(u.searchParams.get("filters"))),
@@ -295,4 +304,11 @@ test("dockerproxy: loadPolicy refuses a module without the policy's exports", as
   await assert.rejects(loadPolicy(new URL(`file://${file}`)), /does not export computerLabels/);
   assert.throws(() => createProxy({ policy: stub, config: { ...CONFIG, labelPrefix: "" } }), /label prefix/);
   assert.ok(!fs.existsSync(new URL("./module.json", import.meta.url)), "not a vyred module");
+});
+
+test("dockerproxy: scrub drops an exec's ProcessConfig and a container's Env, Cmd, Entrypoint, Args, Path", () => {
+  assert.deepEqual(scrub({ ID: "e", ContainerID: "c", ProcessConfig: { arguments: ["pw"] } }), { ID: "e", ContainerID: "c" });
+  assert.deepEqual(scrub({ Id: "c", Path: "p", Args: ["a"], Config: { Env: ["A=1"], Cmd: ["x"], Entrypoint: ["y"], Labels: {} } }),
+    { Id: "c", Config: { Labels: {} } });
+  assert.equal(scrub(null), null);
 });
