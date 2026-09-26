@@ -153,6 +153,6 @@ test("floor: the vault's value-out commands, the clipboard, and a way out throug
     `docker run --privileged -it alpine sh`, `docker run -v /:/host alpine chroot /host`, `docker run -v /var/run/docker.sock:/var/run/docker.sock docker`,
     `docker run --pid=host alpine nsenter -t 1 -m sh`, `curl -X POST http://docker-api:2375/containers/create -d @evil.json`,
     `DOCKER_HOST=tcp://docker-api:2375 docker run --privileged alpine`, `curl http://127.0.0.1:2375/containers/json`, `docker run --net=host alpine`, `podman run --cap-add SYS_ADMIN alpine`]) assert.equal(bash(c), "deny", c);
-  for (const c of [`pbpaste`, `osascript -e 'the clipboard'`, `curl --unix-socket /var/run/docker.sock http://x/containers/create -d @c.json`]) assert.equal(bash(c), "ask", c);
+  for (const c of [`vyre box add me@server.example.com`, `pbpaste`, `osascript -e 'the clipboard'`, `curl --unix-socket /var/run/docker.sock http://x/containers/create -d @c.json`]) assert.equal(bash(c), "ask", c);
   for (const c of [`vyre vault list`, `vyre vault get api-key`, `docker run --rm -v ./src:/src node:22 npm test`, `docker ps`, `docker build .`]) assert.equal(bash(c), null, c);
 });

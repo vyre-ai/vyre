@@ -124,6 +124,8 @@ function shellRoutes(command, { vyreHome, cwd, userHome }) {
   if (/\/v1\/presence\b/.test(flat)) return deny1(APPROVALS);
 
   // A human-only tool named anywhere in a command that reaches vyred.
+  // `vyre box add` installs Vyre on a server over the user's SSH and pairs it with this Mac.
+  if (w.some((x, i) => isVyre(x) && w[i + 1] === "box" && w[i + 2] === "add")) return ask1("This installs Vyre on a server with your SSH login and pairs it with this Mac.");
   // `vyre vault get|read --reveal` prints a value.
   if (w.some(isVyre) && w.includes("vault") && w.some(x => /^(get|read)$/.test(x)) && w.includes("--reveal")) return deny1("Vault values stay off every screen. " + APPROVALS);
   const named = [...HUMAN_ONLY].some(t => flat.includes(t));
