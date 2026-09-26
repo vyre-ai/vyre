@@ -84,6 +84,18 @@ answered. Screen-recorded or screenshotted against the boards.
   for typing to stop), n=12: median 273 ms, p90 322 ms. `mdfind -onlyin ~` alone is 155 to
   480 ms, so files are the slow part.
 
+- Spotlight on steroids, as the user put it (all verified in the app against a temp vyred with
+  the real switchboard and the fake Claude, window shown without focus): real icons (apps, files,
+  panes, contacts) and one glyph set for Vyre kinds; questions answered in place by haiku, the
+  assistant or sonnet, as markdown with copy, cost and memory in gold; clipboard history that
+  skips secrets; `@agent` DMs with history; "watch <thread>" with a notification and a report;
+  "tell <thread> to <words>", sent as the user and watched.
+- Not yet: box files (waiting on `link`'s `files.*` shapes); the assistant driving threads for
+  the user (needs the assistant to hold threads.* tools, and switchboard's `threads.watch`, both
+  asked); a lean quick-answer thread (one haiku answer cost $0.027, all start-up context; asked
+  switchboard for a lean start flag); Open Glass on agent rows (waiting on glass for the address
+  tool).
+
 ## Doing
 - Nothing in progress.
 

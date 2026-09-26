@@ -1,7 +1,8 @@
 # The agent computer: a desktop, Chrome and a terminal, reached only over the internal Docker
 # network (docs/work/computers.md, ADR 0003). Nothing here is published on the host; vyred is the
-# only thing that ever dials in, to 5900 (Xvnc, VNC auth), 9223 (Chrome's debugging port, relayed
-# from Chrome's own loopback-only 9222) and 7000 (computerd, bearer token).
+# only thing that ever dials in, to 5900 (Xvnc, VNC auth) and 7000 (computerd, bearer token).
+# Chrome's own debugging port stays on 127.0.0.1 inside the container and is never a published
+# port of its own: computerd proxies it out authenticated (docs/adr/0012-cdp-proxy.md).
 #
 # UNVALIDATED: built by inspection, never `docker build`'d (no Linux Docker host in this session).
 # See docs/work/computers.md's "Needs from others" and the report to the lead for what to check
@@ -30,7 +31,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # chromium: Debian's package, to avoid Google Chrome's own package/licensing surface. Its binary
 #   is `chromium`.
 # imagemagick: `import` for /screenshot (reads straight off the X display, no extra X extension).
-# socat: relays Chrome's loopback-only 9222 to the published 9223, per ADR 0003's port table.
 # nodejs: computerd's HTTP server. Bookworm's apt nodejs is too old for this repo's
 #   `engines.node: ">=22.5"`, so it is installed from the NodeSource setup script below instead of
 #   the Debian package.
@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-gi gir1.2-atspi-2.0 \
       chromium \
       imagemagick \
-      socat tini \
+      tini \
       fonts-liberation fonts-noto-color-emoji \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
@@ -68,7 +68,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /opt/computerd/atspi.py
 USER agent
 WORKDIR /home/agent
 
-# Xvnc (VNC auth against VNC_PASSWORD), Chrome's debugging port relayed by socat, computerd.
-EXPOSE 5900 9223 7000
+# Xvnc (VNC auth against VNC_PASSWORD) and computerd (bearer token, including its /cdp proxy).
+EXPOSE 5900 7000
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]

@@ -128,7 +128,7 @@ export class DockerDriver {
       Env: Object.entries(spec.env || {}).map(([k, v]) => `${k}=${v}`),
       Labels: labels,
       // Exposed so the ports are documented on the container; never bound on the host.
-      ExposedPorts: { [`${PORTS.vnc}/tcp`]: {}, [`${PORTS.cdp}/tcp`]: {}, [`${PORTS.helper}/tcp`]: {} },
+      ExposedPorts: { [`${PORTS.vnc}/tcp`]: {}, [`${PORTS.helper}/tcp`]: {} },
       HostConfig: {
         ...(network ? { NetworkMode: network } : {}),
         // Never host PID: an agent's computer must never see the box's own processes.

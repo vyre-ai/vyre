@@ -105,8 +105,15 @@ timer) or lives inside `deck/onboard/`, a finite, attended, foreground wizard (n
   meter) — all inside a wizard the user is actively looking at and that ends (cleanup array
   fires) once the step completes. Worth `deck` backing these off if any of them turn out to run
   longer than expected in practice, but not a budget breach as written.
-- `deck/chat/` (from `gate-chat`/Chat) had not landed on this branch as of this audit —
-  nothing to check yet. `deck` and `gate-chat`: flag me when it lands and I'll pass over it.
+- `deck/chat/` (from `gate-chat`/Chat), audited on `work/gate-chat` once it landed: no
+  timer/polling violations (composer's 4s lease-retake and gate-item's 500ms revise debounce
+  are one-shot, session.js shares one `EventSource`, `sw.js` is purely event-driven). One
+  real inefficiency, not budget-gated but flagged to `gate-chat`: `nav.js`'s disclosure
+  toggle dispatches `deck:navigate`, which routes through the Deck's full router — a full
+  `projects.list`/`threads.list` refetch, every listener re-subscribed, and if a thread is
+  open, a full teardown+remount of the session view (discarding an unsent composer draft and
+  re-establishing its SSE subscription) just to expand a sidebar folder. Suggested fix: a
+  local redraw callback instead of the global router, contained to `deck/chat/`.
 
 ## Computers audit
 

@@ -14,6 +14,12 @@
 // The child is started on the first call, not in the constructor. If it dies it is started again
 // on a later call, after a backoff that grows with each crash, so a helper that crashes on
 // launch does not respawn once per keystroke.
+//
+// Clipboard: watchClips(true) has the helper poll the pasteboard; each new item arrives as an
+// unsolicited {"event":"clip"} line and goes to `onClip`, never anywhere else. While watching is
+// on, a helper that dies is restarted after the same backoff and told to watch again, since
+// nothing else would call it while the Capsule is hidden. writeClip() puts the user's pick on the
+// pasteboard; the user pastes it with their own Command-V.
 
 import { spawn as nodeSpawn } from "node:child_process";
 import fs from "node:fs";
@@ -28,13 +34,17 @@ const BACKOFF = [0, 250, 1000, 4000, 15000];
 export const ICONS_TIMEOUT_MS = 1500;
 /** A child that has answered for this long is healthy again, and the backoff starts over. */
 const HEALTHY_MS = 10_000;
+export const CLIP_TIMEOUT_MS = 1000;
+
+/** @typedef {{ count: number, at: number, app?: string, text?: string, truncated?: boolean, files?: string[], image?: boolean }} ClipItem */
 
 export class LocalHelper {
   /**
    * @param {string} bin path to bin/local
-   * @param {{ spawn?: typeof nodeSpawn, exists?: (p: string) => boolean, timeoutMs?: number, now?: () => number }} [opts]
+   * @param {{ spawn?: typeof nodeSpawn, exists?: (p: string) => boolean, timeoutMs?: number, now?: () => number,
+   *   onClip?: ((item: ClipItem) => void) | null }} [opts]
    */
-  constructor(bin, { spawn = nodeSpawn, exists = fs.existsSync, timeoutMs = 300, now = () => Date.now() } = {}) {
+  constructor(bin, { spawn = nodeSpawn, exists = fs.existsSync, timeoutMs = 300, now = () => Date.now(), onClip = null } = {}) {
     this.bin = bin;
     this.spawn = spawn;
     this.exists = exists;
@@ -49,6 +59,12 @@ export class LocalHelper {
     this.startedAt = 0;
     this.retryAt = 0;
     this.closed = false;
+    /** Called with each clipboard item the helper records. Set it before watchClips(true). */
+    this.onClip = onClip;
+    /** @type {{ board?: string, ms?: number } | null} the watch to restore after a restart */
+    this.clipWatch = null;
+    /** @type {NodeJS.Timeout | null} */
+    this.rewatchTimer = null;
   }
 
   /** The Contacts permission, never prompting. */
@@ -72,8 +88,34 @@ export class LocalHelper {
     return this.#ask({ op: "icons", items, size, dir }, timeoutMs);
   }
 
+  /**
+   * Start or stop the clipboard watcher: { watching, count } or { error }.
+   * `board` names a private "vyre-" pasteboard (tests); omitted, it is the general one.
+   * @param {boolean} on @param {{ board?: string, ms?: number }} [opts]
+   */
+  watchClips(on, { board, ms } = {}) {
+    if (!on && this.rewatchTimer) { clearTimeout(this.rewatchTimer); this.rewatchTimer = null; }
+    // Set after the ask: a first spawn inside it would otherwise send the watch twice.
+    this.clipWatch = null;
+    const answer = this.#ask({ op: "clip.watch", on: !!on, ...(board ? { board } : {}), ...(ms ? { ms } : {}) }, CLIP_TIMEOUT_MS);
+    this.clipWatch = on ? { board, ms } : null;
+    if (on && !this.child) this.#rewatch();   // asked inside a backoff: watch once it passes
+    return answer;
+  }
+
+  /**
+   * Put the user's pick on the pasteboard: { ok, count } or { error }. The helper marks the write
+   * as its own, so the watcher does not record it again; `count` is the pasteboard's new count.
+   * @param {{ text?: string, files?: string[], board?: string }} what
+   */
+  writeClip({ text, files, board }) {
+    return this.#ask({ op: "clip.write", ...(text ? { text: String(text) } : {}), ...(files?.length ? { files } : {}),
+      ...(board ? { board } : {}) }, CLIP_TIMEOUT_MS);
+  }
+
   close() {
     this.closed = true;
+    if (this.rewatchTimer) { clearTimeout(this.rewatchTimer); this.rewatchTimer = null; }
     this.#fail("closed");
     const c = this.child;
     this.child = null;
@@ -96,6 +138,11 @@ export class LocalHelper {
     }
     this.child = c;
     this.startedAt = this.now();
+    if (this.clipWatch) {
+      // A restarted helper forgets it was watching. The answer carries no pending id and is dropped.
+      const { board, ms } = this.clipWatch;
+      try { c.stdin?.write(JSON.stringify({ id: this.nextId++, op: "clip.watch", on: true, ...(board ? { board } : {}), ...(ms ? { ms } : {}) }) + "\n"); } catch {}
+    }
     let buf = "";
     c.stdout?.setEncoding("utf8");
     c.stdout?.on("data", chunk => {
@@ -111,7 +158,7 @@ export class LocalHelper {
       if (this.child !== c) return;
       this.child = null;
       this.#fail("helper stopped");
-      if (!this.closed) this.#crashed();
+      if (!this.closed) { this.#crashed(); this.#rewatch(); }
     };
     c.on("exit", gone);
     c.on("error", gone);
@@ -125,10 +172,29 @@ export class LocalHelper {
     this.retryAt = this.now() + BACKOFF[Math.min(this.crashes, BACKOFF.length - 1)];
   }
 
+  /** Restart a helper that died while watching the clipboard, once its backoff has passed. */
+  #rewatch() {
+    if (!this.clipWatch || this.rewatchTimer) return;
+    const wait = Math.max(0, this.retryAt - this.now()) + 10;
+    this.rewatchTimer = setTimeout(() => {
+      this.rewatchTimer = null;
+      if (!this.clipWatch || this.child) return;
+      const got = this.#ensure();
+      // Still inside the backoff, or the spawn itself failed: try again later. Not built, or
+      // closed: stop, rather than spin.
+      if ("error" in got && (got.error === "restarting" || got.error.startsWith("could not start"))) this.#rewatch();
+    }, wait);
+    this.rewatchTimer.unref?.();
+  }
+
   /** @param {string} line */
   #answer(line) {
     let msg;
     try { msg = JSON.parse(line); } catch { return; }
+    if (msg && msg.event === "clip") {
+      if (msg.item && typeof msg.item === "object") { try { this.onClip?.(msg.item); } catch {} }
+      return;
+    }
     const p = this.pending.get(msg?.id);
     if (!p) return;                       // late, after its timeout: dropped
     this.pending.delete(msg.id);
