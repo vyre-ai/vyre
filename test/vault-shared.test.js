@@ -114,6 +114,10 @@ test("shared vault: invite, both write, a conflict, remove a member, rotation fl
   assert.equal(danaSync.synced[0].removed, true);
   assert.notEqual((await hashOf(dana, "team/api-token")).code, 0, "dana's copy is gone");
   assert.notEqual((await hashOf(dana, "team/new-key")).code, 0);
+  // Deleting a shared item is a signed tombstone that reaches the others.
+  assert.equal((await vyre(alex, ["vault", "delete", "team/new-key"])).code, 0);
+  await call(sam, "vault.vaults.sync", {});
+  assert.ok(!(await call(sam, "vault.list", {})).items.some(i => i.name === "team/new-key"));
   const members = (await call(alex, "vault.vaults.list", {})).vaults[0].members.map(m => m.name).sort();
   assert.deepEqual(members, ["alex-box", "sam"]);
 

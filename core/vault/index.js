@@ -139,7 +139,13 @@ export default {
       obj({ filter: str, kind: str, host: str }), input => cli.list(vault.list(input), input));
 
     tool("vault.delete", SURFACES, "Delete an item and its grants.",
-      obj({ name: str }, ["name"]), (input, { caller }) => vault.remove(input, caller),
+      obj({ name: str }, ["name"]), (input, { caller }) => {
+        // `<vault>/<item>` in a shared vault goes as a signed tombstone (shared.js).
+        const r = vault.row(input.name);
+        const slash = String(input.name).indexOf("/");
+        if (r && String(r.vault).startsWith("shared:") && slash > 0) return vault.shared.deleteItem({ vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
+        return vault.remove(input, caller);
+      },
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",

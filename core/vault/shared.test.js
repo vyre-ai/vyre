@@ -172,3 +172,36 @@ test("offboard removes a person from every shared vault it administers and merge
   assert.deepEqual(off.rotate, ["team/api-token"]);
   assert.equal(a.v.shared.manifest(a.v.shared.row("team").id).members.length, 1);
 });
+
+test("deleting a shared item: a signed tombstone; a stale delete is refused; the name can be used again", async t => {
+  const a = mk(t, "alex"), d = mk(t, "dana"), s = mk(t, "sam");
+  await know(a, d, "dana"); await know(a, s, "sam");
+  const made = await a.v.shared.create({ name: "team" }, "cli");
+  await a.v.shared.put({ vault: "team", name: "old-key", fields: { value: fake("old") } }, "cli");
+  await a.v.shared.put({ vault: "team", name: "busy", fields: { value: fake("b") } }, "cli");
+  await d.v.shared.accept({ invite: (await a.v.shared.invite({ vault: "team", person: "dana" }, "cli")).invite }, "cli");
+  await s.v.shared.accept({ invite: (await a.v.shared.invite({ vault: "team", person: "sam", role: "read-only" }, "cli")).invite }, "cli");
+
+  await assert.rejects(s.v.shared.deleteItem({ vault: "team", name: "old-key" }, "cli"), /not delete/);
+  const gone = await d.v.shared.deleteItem({ vault: "team", name: "old-key" }, "cli");
+  assert.equal(gone.deleted, "team/old-key");
+  assert.ok(!a.v.list().items.some(i => i.name === "team/old-key"), "the home dropped it");
+  await s.v.shared.sync({}, "cli");
+  assert.ok(!s.v.list().items.some(i => i.name === "team/old-key"), "a peer dropped it");
+  const tomb = [...a.v.shared.current(made.vault.id).values()].find(x => x.rec.deleted);
+  assert.equal(tomb.rec.sealed, null);
+  assert.equal(tomb.rec.author, (await d.v.identity()).sign.public, "the tombstone is signed by who deleted");
+
+  // Dana deletes "busy" from a stale view: alex changed it first. Nothing is deleted.
+  await a.v.shared.put({ vault: "team", name: "busy", fields: { value: fake("b2") } }, "cli");
+  await assert.rejects(d.v.shared.deleteItem({ vault: "team", name: "busy" }, "cli"), /changed since you last synced/);
+  assert.ok(a.v.list().items.some(i => i.name === "team/busy"));
+
+  const again = fake("again");
+  await a.v.shared.put({ vault: "team", name: "old-key", fields: { value: again } }, "cli");
+  await d.v.shared.sync({}, "cli");
+  assert.equal(await value(d, "team/old-key"), again);
+  // Rotation re-wraps living items only.
+  const r = await a.v.shared.remove({ vault: "team", person: "sam" }, "cli");
+  assert.deepEqual(r.rotate.sort(), ["team/busy", "team/old-key"]);
+});
