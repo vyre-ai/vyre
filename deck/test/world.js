@@ -37,6 +37,8 @@ export function buildHome(root, extra = {}) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
     name: "alex", projectsDir: path.join(root, "projects"), roots: [work], transcripts: [transcripts],
     recall: { vectors: false, download: false },
+    // The file keystore: a throwaway world never writes to the login keychain.
+    vault: { keystore: "file" },
     // Two fictional senders, so the Gate has something real to hold: the vault items are never
     // fetched here (nothing is approved), only named, so no credential is needed to look at Now
     // or a held item.
@@ -46,7 +48,8 @@ export function buildHome(root, extra = {}) {
     } },
     ...extra,
   }, null, 2));
-  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness") };
+  // VYRE_NO_DIALOGS: nothing this world runs may raise a prompt on the Mac it runs on.
+  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness") };
   return { root, work, moved, transcripts, env, threads: moved.map(s => s.id) };
 }
 

@@ -98,8 +98,8 @@ ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 step "vyre up, status, down"
 mkdir -p "$home/.vyre"
 # No transcripts to index, and no Capsule or hands, which reach into the desktop.
-printf '%s\n' '{"transcripts":[],"modules":{"disable":["capsule","hands"]}}' >"$home/.vyre/config.json"
-run() { (cd "$home" && HOME=$home VYRE_HOME=$home/.vyre PATH="$work/prefix/bin:$PATH" "$vyre" "$@"); }
+printf '%s\n' '{"transcripts":[],"vault":{"keystore":"file"},"modules":{"disable":["capsule","hands"]}}' >"$home/.vyre/config.json"
+run() { (cd "$home" && HOME=$home VYRE_HOME=$home/.vyre VYRE_NO_DIALOGS=1 PATH="$work/prefix/bin:$PATH" "$vyre" "$@"); }
 run up >"$work/up.log" 2>&1 || { cat "$work/up.log"; fail "vyre up"; }
 ok "up: $(head -n 1 "$work/up.log" | sed 's/^ *//')"
 run status >"$work/status.log" 2>&1 || { cat "$work/status.log"; fail "vyre status"; }

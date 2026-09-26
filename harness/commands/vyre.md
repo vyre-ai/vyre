@@ -14,7 +14,9 @@ The user ran `/vyre $ARGUMENTS`.
 - `remember <text>`: call `learn_add` with `{"text": "<text>"}`. Say in one line the lesson it
   made and whether it is checked (a check means hooks enforce it) or a reminder.
 - `lessons`: call `learn_lessons` and show each lesson on one line: its id, rule, level and its
-  applied, caught and broken counts. Retiring or changing one is the user's call: point them at
-  `vyre learn retire <id>` rather than calling `learn_retire` yourself.
+  applied, caught and broken counts. Accepting, retiring or loosening one is the user's call, and
+  you cannot do it: a proposed lesson is kept when the user answers a plain yes, and dropped on a
+  plain no. For the rest, point them at `vyre learn accept|retire|level <id>` in their own terminal.
+  Never call `learn_accept`, `learn_retire` or `learn_relax`.
 
 If a tool is missing, Vyre's daemon or that module is not running: say `vyre up` starts it.

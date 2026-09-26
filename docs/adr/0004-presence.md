@@ -206,7 +206,7 @@ Two residual risks in the terminal method, both of which still need a person:
 `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`,
 `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`,
 `vault.render`, `vault.session.open`, `vault.export`, `vault.kit`), `learn.relax`,
-`learn.skill_install`, `computers.takeover`, `computers.giveback` and `link.pair.approve`.
+`learn.skill-install`, `computers.takeover`, `computers.giveback` and `link.pair.approve`.
 
 Tools with a pending flow for Claude stay off the list, because their approval step is on it:
 `vault.grant` and `vault.pass.create` wait for `vault.approve`. `vault.import` stays off too. An
