@@ -25,6 +25,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `deck/views/`, each with its own stylesheet.
 - The Deck installs as an app on a phone: a manifest, the app icon, and a service worker that
   caches only the Deck's own files, network first, and never an API response.
+- **Projects**: every project with pins, a new-project form, and the project board: threads
+  (recorded sessions from Recall merged with live switchboard threads), the brief, and the thread
+  itself, with tool lines, recalled memory in gold, held calls in Beacon with their answers, and a
+  composer that takes the keyboard lease first and goes read-only when another screen holds it.
+  The files pane lists what a thread touched; file contents have no API yet, and it says so.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.

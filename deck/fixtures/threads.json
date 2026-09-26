@@ -31,5 +31,46 @@
       "agent": "juno", "state": "finished", "started": "$ago:6h", "last": "$ago:5h" },
     { "id": "t-kit-deploy", "name": "Deploy the launch site", "project": "launch-site", "projectName": "Launch site",
       "agent": "kit", "state": "finished", "started": "$ago:7h", "last": "$ago:6h" }
-  ]
+  ],
+  "threads.get": { "$by": "thread", "cases": {
+    "t-kit-intake": {
+      "thread": { "id": "t-kit-intake", "name": "Intake form rebuild", "project": "harlow-legal", "agent": "kit", "state": "waiting",
+        "cwd": "/home/alex/Work/harlow-site", "started": "$ago:70m", "last": "$ago:9m", "lease": { "surface": "deck" } },
+      "events": [
+        { "id": "e1", "type": "thread.text", "at": "$ago:70m", "role": "user",
+          "text": "Rebuild the intake form so it asks for matter type first, then runs the conflicts check. Keep their styles." },
+        { "id": "e2", "type": "thread.tool", "at": "$ago:70m", "tool": "memory.recall", "input": { "q": "harlow intake form" },
+          "result": "Harlow's intake form lives in their website repo.", "from": "Call notes 12 Sep" },
+        { "id": "e3", "type": "thread.text", "at": "$ago:69m", "role": "assistant",
+          "text": "Found it in harlow-site. The whole form is one component, so I am splitting the first step out." },
+        { "id": "e4", "type": "thread.tool", "at": "$ago:68m", "tool": "Read", "input": { "file_path": "src/components/IntakeForm.tsx" }, "result": "Read 212 lines" },
+        { "id": "e5", "type": "thread.tool", "at": "$ago:40m", "tool": "Edit", "input": { "file_path": "src/components/IntakeForm.tsx" }, "result": "34 additions, 12 removals" },
+        { "id": "e6", "type": "thread.tool", "at": "$ago:38m", "tool": "Write", "input": { "file_path": "src/components/MatterStep.tsx" }, "result": "New file, 48 lines" },
+        { "id": "e7", "type": "thread.tool", "at": "$ago:10m", "tool": "Bash", "input": { "command": "npm test -- IntakeForm" }, "result": "6 passed, 0 failed · 4.1s" },
+        { "id": "e8", "type": "thread.text", "at": "$ago:9m", "role": "assistant", "text": "Tests pass. Pushing so Dana's preview updates." },
+        { "id": "e9", "type": "ask.raised", "at": "$ago:9m",
+          "ask": { "id": "ask-push-main", "tool": "Bash", "command": "git push origin main", "rule": "Ask before pushing to a client's main branch",
+            "options": [ { "label": "Allow once", "decision": "allow" },
+                         { "label": "Push to a branch instead", "decision": "allow", "input": { "command": "git push origin HEAD:intake-form" } },
+                         { "label": "Deny", "decision": "deny" } ] } }
+      ] },
+    "t-kit-hero": {
+      "thread": { "id": "t-kit-hero", "name": "Hero copy pass", "project": "launch-site", "agent": "kit", "state": "running",
+        "cwd": "/home/alex/Work/launch-site", "started": "$ago:22m", "last": "$ago:1m", "lease": { "surface": "capsule" } },
+      "events": [
+        { "id": "h1", "type": "thread.text", "at": "$ago:22m", "role": "user",
+          "text": "Give me two more headline options for the launch site hero. Shorter than the current one, and no exclamation marks." },
+        { "id": "h2", "type": "thread.tool", "at": "$ago:21m", "tool": "Read", "input": { "file_path": "app/page.tsx" }, "result": "Read 96 lines" },
+        { "id": "h3", "type": "thread.text", "at": "$ago:18m", "role": "assistant",
+          "text": "The current headline is eleven words. First option: \"Studio work, shipped on time.\" I am writing the second one into the page now so you can see both." },
+        { "id": "h4", "type": "thread.tool", "at": "$ago:1m", "tool": "Edit", "input": { "file_path": "app/page.tsx" }, "result": "3 additions, 1 removal" }
+      ] },
+    "*": {
+      "thread": { "id": "t-new", "name": null, "project": null, "agent": null, "state": "running",
+        "cwd": "/home/alex/Work", "started": "$ago:0m", "last": "$ago:0m", "lease": { "surface": "deck" } },
+      "events": [] }
+  } },
+  "threads.send": { "ok": true },
+  "threads.lease": { "holder": "deck" },
+  "threads.start": { "id": "t-new", "name": "New thread", "state": "running" }
 }
