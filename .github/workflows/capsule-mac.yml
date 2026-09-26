@@ -32,7 +32,8 @@ jobs:
         if: hashFiles('local/capsule/native/build.sh') != ''
         run: sh local/capsule/native/build.sh test
       - name: Native Capsule app
-        if: hashFiles('local/capsule/native/build.sh') != ''
+        # Built even when a native test fails, so the app still comes out and the job still fails.
+        if: (success() || failure()) && hashFiles('local/capsule/native/build.sh') != ''
         run: sh local/capsule/native/build.sh app
       - name: Node tests that need a Mac
         run: |
@@ -41,7 +42,7 @@ jobs:
       - name: Vyre Local signing on a throwaway keychain
         # Proves the signing path `vyre capsule` offers (capsule-native.js createIdentity). Only the
         # throwaway keychain is written; the runner's login keychain is untouched.
-        if: hashFiles('core/cli/commands/capsule-native.js') != '' && hashFiles('local/capsule/native/build.sh') != ''
+        if: (success() || failure()) && hashFiles('core/cli/commands/capsule-native.js') != '' && hashFiles('local/capsule/native/build.sh') != ''
         env:
           KC: ${{ runner.temp }}/vyre-test.keychain-db
         run: |
@@ -64,6 +65,7 @@ jobs:
           codesign --verify --strict "$APP"
           codesign -dv "$APP" 2>&1 | grep -E "Authority=Vyre Local|Identifier=sh.vyre.capsule"
       - name: Package
+        if: success() || failure()
         run: |
           mkdir -p dist
           ditto -c -k --keepParent local/capsule/bin dist/capsule-helpers.zip
@@ -71,6 +73,7 @@ jobs:
             ditto -c -k --keepParent local/capsule/native/.build/Vyre.app dist/Vyre-capsule.app.zip
           fi
       - uses: actions/upload-artifact@v4
+        if: success() || failure()
         with:
           name: capsule-mac-${{ github.sha }}
           path: dist/*.zip
