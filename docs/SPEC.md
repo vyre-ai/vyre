@@ -87,7 +87,18 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    SQLite through the built-in `node:sqlite`. Tests with the built-in `node:test`.
 6. **The terminal is first class.** Anything the Deck can do, `vyre` can do.
 7. **The security floor cannot be configured away** (section 11).
-8. **Nothing personal in the repo.** No names, folders, domains, clients or keys. Personal
+8. **Light by default.** Vyre runs all day on the user's own machines, so idle must cost almost
+   nothing. Budgets, checked by `scripts/perf-check` and in CI:
+   - vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
+     once a minute when nothing is happening; work is driven by events and file-system notice.
+   - Capsule hidden: under 0.2% CPU, no GPU use, under 250 MB resident for all its processes;
+     shown and idle, under 2% CPU. It wakes in under 100 ms.
+   - Deck in a background tab: no timers faster than a minute; the event stream only.
+   - Heavy work (indexing, embedding, curation) runs at low priority, yields, pauses on battery
+     and when the user is active, and never blocks a hook or the Capsule.
+   - Memory that grows with the corpus (search indexes, caches) is bounded and measured.
+   A change that breaks a budget is a bug, like a failing test.
+9. **Nothing personal in the repo.** No names, folders, domains, clients or keys. Personal
    settings live in `~/.vyre/config.json`. A test fails if the source names a real person.
 
 ---
