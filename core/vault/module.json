@@ -1,23 +1,73 @@
 {
   "name": "vault",
   "version": "0.1.0",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
   "does": {
     "tools": [
-      "vault.put", "vault.list", "vault.delete", "vault.grant", "vault.revoke", "vault.pending", "vault.approve",
-      "vault.release", "vault.inject", "vault.totp", "vault.generate", "vault.import", "vault.audit", "vault.match",
-      "vault.unlock", "vault.lock", "vault.identity",
-      "vault.pass.create", "vault.pass.list", "vault.pass.revoke", "vault.pass.accept", "vault.relay", "vault.offboard"
+      "vault.put",
+      "vault.list",
+      "vault.delete",
+      "vault.grant",
+      "vault.revoke",
+      "vault.pending",
+      "vault.approve",
+      "vault.release",
+      "vault.inject",
+      "vault.totp",
+      "vault.generate",
+      "vault.import",
+      "vault.audit",
+      "vault.match",
+      "vault.unlock",
+      "vault.lock",
+      "vault.identity",
+      "vault.pass.create",
+      "vault.pass.list",
+      "vault.pass.revoke",
+      "vault.pass.accept",
+      "vault.relay",
+      "vault.offboard",
+      "vault.backup",
+      "vault.restore",
+      "vault.device.code",
+      "vault.devices",
+      "vault.device.revoke",
+      "vault.device.unlock",
+      "vault.unlock-passphrase"
     ]
   },
   "watches": {
     "emits": [
-      "vault.item-added", "vault.item-changed", "vault.item-deleted", "vault.granted", "vault.revoked", "vault.released",
-      "grant.requested", "pass.requested", "pass.created", "pass.revoked", "pass.accepted", "person.offboarded"
+      "vault.item-added",
+      "vault.item-changed",
+      "vault.item-deleted",
+      "vault.granted",
+      "vault.revoked",
+      "vault.released",
+      "grant.requested",
+      "pass.requested",
+      "pass.created",
+      "pass.revoked",
+      "pass.accepted",
+      "person.offboarded",
+      "vault.device-paired",
+      "vault.device-revoked",
+      "vault.filled",
+      "vault.restored"
     ]
   },
-  "shows": { "deck": ["panel:vault"], "cli": ["vault"] },
+  "shows": {
+    "deck": [
+      "panel:vault"
+    ],
+    "cli": [
+      "vault"
+    ]
+  },
   "needs": {},
   "teaches": {}
 }
