@@ -138,3 +138,22 @@ test("offlineTool: tests from before the last change do not count, even in the n
   call("p2", "npm test");
   assert.equal(call("p2", "git commit -m intake").decision, null);
 });
+
+test("offlineTool: order is the order things happened, not the clock (all in one millisecond, or an older state file)", t => {
+  const root = tempHome(t);
+  t.mock.method(Date, "now", () => 1_790_000_000_000);
+  writeSnapshot(root, [lesson(1, "always run the tests before you commit")]);
+  const call = (prompt_id, command) => offlineTool({ root, session: "s1", prompt_id, tool: "Bash", input: { command } });
+  call("p1", "npm test");
+  offlineTouched({ root, session: "s1", prompt_id: "p1", cwd: CWD, tool: "Edit", input: { file_path: "src/intake.js" } });
+  assert.equal(call("p1", "git commit -m intake").decision, "deny", "same millisecond, but the edit came after the tests");
+  call("p1", "npm test");
+  assert.equal(call("p1", "git commit -m intake").decision, null, "same millisecond, but the tests came after the edit");
+  // A state file from before the counter: a timestamp in `changed`, commands without `n`.
+  fs.writeFileSync(path.join(root, "learn-offline", "s2.json"), JSON.stringify({ prompt: "p1", blocks: 0, touched: [],
+    ran: [{ command: "npm test", at: 1_790_000_000_000 }], changed: 1_790_000_000_000 }));
+  const old = (command) => offlineTool({ root, session: "s2", prompt_id: "p1", tool: "Bash", input: { command } });
+  assert.equal(old("git commit -m x").decision, "deny", "an old entry does not count");
+  old("npm test");
+  assert.equal(old("git commit -m x").decision, null, "a new run counts, not outranked by the old timestamp");
+});

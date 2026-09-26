@@ -16,12 +16,15 @@
 //   vectors    false to never load the model
 //   download   false to never fetch the model weights (then they must already be in `models`)
 //   models     where the weights live (default <VYRE_HOME>/models)
+//   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
+//              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
 import os from "node:os";
 import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
+import { evaluate } from "./eval.js";
 import { load as loadModel, cached } from "./embed.js";
 import { Dense } from "./dense.js";
 
@@ -55,12 +58,15 @@ export default {
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
     const folders = readable(ctx.config.transcripts || []);
-    // Every vector in memory for retrieval by meaning; dropped whenever a pass writes, rebuilt on
-    // the next hybrid search.
-    const dense = new Dense(db);
+    // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
+    // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
+    const dense = new Dense(db, { maxChunks: opts.maxChunks });
     const indexer = new Indexer(db, {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       log: ctx.log,
+      // Each new vector goes straight into the dense index, so a pass never forces a rebuild.
+      // A rewrite moves the generation, and the index rebuilds itself on the next search.
+      onVector: item => dense.add(item),
     });
 
     let stopped = false;
@@ -79,7 +85,6 @@ export default {
         running = true;
         try {
           const s = await indexer.run(folders, { stopped: isStopped });
-          if (s.turns || s.reindexed) dense.invalidate();
           return s;
         }
         finally { running = false; vectorLoop(); }
@@ -131,7 +136,6 @@ export default {
             const e = await embedder();
             if (!e || stopped) break;
             const r = await indexer.vectorize(e, { stopped: isStopped });
-            if (r.turns) dense.invalidate();
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
           // Build the dense index now, in the background, so the first search does not pay for it.
@@ -186,6 +190,18 @@ export default {
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
           vectors: { on: vec.on, why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
+      },
+    });
+
+    ctx.tool("recall.eval", {
+      description: "Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.",
+      input: { type: "object", required: ["queries"], properties: {
+        queries: { type: "array", items: { type: "object", required: ["q", "answers"], properties: { q: { type: "string" }, answers: { type: "array" } } } },
+        nonsense: stringArray, k: { type: "integer" } } },
+      run: async input => {
+        const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
+        const e = any ? await embedder() : null;
+        return evaluate(db, input, { embedder: e, dense, k: input.k || 10 });
       },
     });
 

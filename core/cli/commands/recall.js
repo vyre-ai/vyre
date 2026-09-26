@@ -1,6 +1,7 @@
 // @ts-check
 // `vyre recall <query>` and `vyre index`: search every session, and index new ones now.
 
+import fs from "node:fs";
 import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, bold, beacon, recall as gold } from "../style.js";
@@ -34,10 +35,30 @@ async function up() {
   return r.ok;
 }
 
+/** `vyre recall eval <file>`: run a labelled set through recall.eval and print the scores. */
+async function evalCommand(args) {
+  const { flags, words } = parse(args);
+  if (!words[0]) { out("  vyre recall eval <labelled.json> [--k 10] [--json]"); return 1; }
+  let set;
+  try { set = JSON.parse(fs.readFileSync(words[0], "utf8")); } catch (e) { out(beacon("  could not read the labelled set: ") + /** @type {Error} */ (e).message); return 1; }
+  if (!(await up())) return 1;
+  const r = await call("recall.eval", { queries: set.queries || [], nonsense: set.nonsense || [], k: Number(flags.k || 10) }, { timeout: 30 * 60_000 });
+  if (r.error) { out(beacon(`  ${r.error.code}: `) + r.error.message); return 1; }
+  const d = r.data;
+  if (flags.json) { out(JSON.stringify(d, null, 2)); return 0; }
+  const row = (name, s) => out(`  ${name.padEnd(8)} ${s ? `MRR@${d.k} ${s.mrr.toFixed(3)}   recall@${d.k} ${s.recall.toFixed(3)}` : dim("no vectors")}`);
+  out(`  ${d.queries} questions`);
+  row("keyword", d.keyword); row("dense", d.dense); row("hybrid", d.hybrid);
+  if (d.floor) out(dim(`  floor ${d.floor.value} over ${d.floor.chunks} chunks · ${d.floor.answersBelow} of ${d.floor.answers} answers below it · weakest tenth of answers ${d.floor.answerP10} · best nonsense ${d.floor.nonsenseTop}`));
+  if (d.nonsense.n) out(dim(`  nonsense: ${d.nonsense.withDense} of ${d.nonsense.n} got dense candidates, ${d.nonsense.withHits} returned anything`));
+  return 0;
+}
+
 export default [
   {
-    name: "recall", order: 20, usage: "vyre recall <query>", summary: "search every session for what was said",
+    name: "recall", order: 20, usage: "vyre recall <query>", summary: "search every session for what was said (vyre recall eval <file> to measure it)",
     async run(args) {
+      if (args[0] === "eval") return evalCommand(args.slice(1));
       const { flags, words } = parse(args);
       const q = words.join(" ").trim();
       if (!(await up())) return 1;

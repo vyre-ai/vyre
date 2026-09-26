@@ -1,0 +1,47 @@
+{
+  "vault.list": [
+    { "name": "Anthropic API key", "kind": "secret", "label": "API key", "description": "The team's Claude API key, the fallback when the setup token runs out.",
+      "holders": [{ "agent": "juno" }, { "agent": "kit" }, { "agent": "pax" }], "passes": 0, "last_used": "$ago:21m", "set_at": "$ago:23d", "set_by": "Alex" },
+    { "name": "Harlow Google Drive", "kind": "login", "label": "Google login", "description": "Harlow Legal's shared Drive, for the monthly reports.",
+      "holders": [{ "agent": "juno", "scope": "Harlow Legal only" }, { "pass": "dana.vyre.run", "scope": "by pass, relayed" }], "passes": 1,
+      "last_used": "$ago:3h", "set_at": "$ago:23d", "set_by": "Alex" },
+    { "name": "GitHub: harlow-site", "kind": "secret", "label": "Deploy key", "description": "Deploys the Harlow Legal site.",
+      "holders": [{ "agent": "kit" }], "passes": 0, "last_used": "$ago:31m", "set_at": "$ago:40d", "set_by": "Alex" },
+    { "name": "Northwind forms inbox", "kind": "login", "label": "Gmail login", "description": "Where Northwind Bakery's order forms land.",
+      "holders": [{ "agent": "pax" }], "passes": 0, "last_used": "$ago:48m", "set_at": "$ago:12d", "set_by": "Alex" },
+    { "name": "Railway: Launch site", "kind": "secret", "label": "API token", "description": "Deploys the Launch site.",
+      "holders": [{ "agent": "kit" }], "passes": 0, "last_used": "$ago:1d", "set_at": "$ago:9d", "set_by": "Alex" },
+    { "name": "Stripe, restricted", "kind": "secret", "label": "API key", "description": "Read-only Stripe key for the bookkeeping export.",
+      "holders": [], "passes": 0, "set_at": "$ago:2d", "set_by": "Alex" }
+  ],
+  "vault.pass.list": [
+    { "id": "p_dana_drive", "direction": "to", "holder": "dana.vyre.run", "person": "Dana Reyes", "items": ["Harlow Google Drive"],
+      "scope": "Read the Reports folder", "service": "Google Drive", "mode": "relayed", "state": "active", "expires": "2026-10-31" },
+    { "id": "p_theo_github", "direction": "to", "holder": "theo.vyre.run", "person": "Theo Grant", "items": ["GitHub: harlow-site"],
+      "scope": "Open pull requests, no push", "service": "GitHub", "mode": "relayed", "state": "waiting", "expires": "7 days" },
+    { "id": "p_theo_ads", "direction": "from", "holder": "theo.vyre.run", "person": "Theo Grant", "items": ["Harlow ads account"],
+      "scope": "kit may read campaign reports", "service": "Google Ads", "mode": "relayed", "state": "active" }
+  ],
+  "vault.usage": { "$by": "name", "cases": {
+    "Harlow Google Drive": [
+      { "at": "$ago:3h", "agent": "juno", "action": "read 3 files", "project": "Q3 report" },
+      { "at": "$ago:182m", "agent": "juno", "action": "listed Harlow / Reports", "project": "Q3 report" },
+      { "at": "$ago:5h", "pass": "dana.vyre.run", "action": "read Q3 draft.pdf", "relayed_by": "alex-box" }
+    ],
+    "Anthropic API key": [
+      { "at": "$ago:21m", "agent": "kit", "action": "ran a thread", "project": "Launch site" },
+      { "at": "$ago:2h", "agent": "juno", "action": "ran a thread", "project": "Harlow Legal" }
+    ],
+    "*": []
+  } },
+  "vault.put": { "created": true },
+  "vault.grant": { "grant": { "status": "active" } },
+  "vault.revoke": { "revoked": 1 },
+  "vault.pass.create": { "pass": { "id": "p_new", "status": "active" } },
+  "vault.pass.revoke": { "revoked": true, "rotate": [] },
+  "vault.offboard": { "$by": "holder", "cases": {
+    "theo.vyre.run": { "revoked": ["p_theo_github", "p_theo_old"], "rotate": ["GitHub: harlow-site"] },
+    "dana.vyre.run": { "revoked": ["p_dana_drive"], "rotate": [] },
+    "*": { "revoked": [], "rotate": [] }
+  } }
+}

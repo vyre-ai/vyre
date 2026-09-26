@@ -1,6 +1,6 @@
 // @ts-check
-// The watchers module inside a real vyred, with the real vault on a file keystore,
-// real projects and Memory, a watcher that reads a local feed, and the webhook route.
+// The watchers module inside a real vyred: the real vault with a grant per watcher, real projects
+// and Memory, a watcher that reads a local feed, and the webhook route.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,20 +10,22 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import * as config from "../config/index.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome } from "../../test/helpers.js";
 
-async function boot(t, { vault = true } = {}) {
+const KEY = "feed-key-value-9f8e7d6c5b4a";
+/** Every home here keeps its vault key in a file: tests never touch the macOS keychain. */
+const CONFIG = root => ({ roots: [], transcripts: [path.join(root, "no-transcripts")], vault: { keystore: "file" } });
+
+async function boot(t) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const home = fs.realpathSync(fs.mkdtempSync(path.join(path.dirname(root), "vyre-proj-")));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  // The real vault, on a file keystore so no test touches a keychain; or none at all.
-  fs.writeFileSync(p.config, JSON.stringify({ roots: [], transcripts: [path.join(root, "no-transcripts")],
-    ...(vault ? { vault: { keystore: "file" } } : { modules: { disable: ["vault"] } }) }));
+  fs.writeFileSync(p.config, JSON.stringify(CONFIG(root)));
 
   // A feed that wants the key, the way a real API would.
   const server = http.createServer((req, res) => {
-    if (req.headers.authorization !== "Bearer feed-key-value-9f8e7d6c5b4a") { res.statusCode = 401; return res.end("{}"); }
+    if (req.headers.authorization !== "Bearer " + KEY) { res.statusCode = 401; return res.end("{}"); }
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify([{ id: 101, title: "SQLite 4.0 released", url: "https://news.example/101" }, { id: 102, title: "A bakery's Postgres migration" }]));
   });
@@ -35,10 +37,8 @@ async function boot(t, { vault = true } = {}) {
   t.after(() => d.stop());
   const made = await call("projects.create", { name: "Harlow Legal", home }, { root });
   assert.ok(!made.error, JSON.stringify(made.error));
-  if (vault) {
-    const put = await call("vault.put", { name: "feed-key", value: "feed-key-value-9f8e7d6c5b4a" }, { root, caller: "cli" });
-    assert.ok(!put.error, JSON.stringify(put.error));
-  }
+  const put = await call("vault.put", { name: "feed-key", kind: "api-key", fields: { value: KEY } }, { root });
+  assert.ok(!put.error, JSON.stringify(put.error));
   return { root, p, home, port, d };
 }
 
@@ -57,12 +57,20 @@ test("watchers module: dry run, create, filing into the project, and the items i
       if (!res.ok) throw new Error("feed answered " + res.status);
       for (const s of await res.json()) if (/sqlite/i.test(s.title)) emit({ id: s.id, title: s.title, url: s.url });
     }`);
-  const grant = await call("vault.grant", { name: "feed-key", module: "watchers", watcher: "harlow-sqlite" }, { root, caller: "cli" });
-  assert.ok(!grant.error, JSON.stringify(grant.error));
 
   const listed = (await call("watchers.list", {}, { root })).data;
   assert.equal(listed.dir, p.watchers);
-  assert.equal(listed.watchers[0].state, "draft");
+  assert.equal(listed.watchers.find(w => w.name === "harlow-sqlite").state, "draft");
+
+  // The vault releases only against a grant for this very watcher.
+  const ungranted = (await call("watchers.test", { name: "harlow-sqlite" }, { root })).data;
+  assert.equal(ungranted.ok, false);
+  assert.match(ungranted.error, /not granted to watchers\/harlow-sqlite/);
+  const g = await call("vault.grant", { name: "feed-key", module: "watchers", watcher: "harlow-sqlite" }, { root });
+  assert.ok(!g.error, JSON.stringify(g.error));
+  // A grant to one watcher is not a grant to another that lists the same item.
+  writeWatcher(p, "harlow-other", { schedule: "@hourly", needs: ["feed-key"] }, `export default async function watch({ vault }) { await vault.fetch("feed-key"); }`);
+  assert.match((await call("watchers.test", { name: "harlow-other" }, { root })).data.error, /not granted to watchers\/harlow-other/);
 
   const dry = (await call("watchers.test", { name: "harlow-sqlite" }, { root })).data;
   assert.equal(dry.ok, true, JSON.stringify(dry));
@@ -87,7 +95,9 @@ test("watchers module: dry run, create, filing into the project, and the items i
   assert.equal(ev.at(-1).payload.items, 1);
   assert.equal(ev.at(-1).project, "harlow-legal");
   const all = JSON.stringify((await request("GET", "/v1/events?limit=1000", undefined, { root })).data) + JSON.stringify((await call("watchers.logs", { name: "harlow-sqlite" }, { root })).data);
-  assert.ok(!all.includes("feed-key-value"), "a vault value reached an event or a log");
+  assert.ok(!all.includes(KEY), "a vault value reached an event or a log");
+  const released = (await request("GET", "/v1/events?type=vault.released", undefined, { root })).data;
+  assert.ok(released.some(e => e.payload.watcher === "harlow-sqlite"), "the vault did not record which watcher it released to");
 });
 
 test("watchers module: the webhook route checks the token, and the hook tool is never listed or callable as a tool", async t => {
@@ -99,6 +109,7 @@ test("watchers module: the webhook route checks the token, and the hook tool is 
   const tools = (await request("GET", "/v1/tools", undefined, { root })).data.map(x => x.name);
   assert.ok(tools.includes("watchers.create") && !tools.includes("watchers.hook"));
   assert.equal((await call("watchers.hook", { name: "harlow-forms", token: on.hook.token }, { root })).error.code, "no_such_tool");
+  assert.equal((await call("watchers.hook", { name: "harlow-forms", token: on.hook.token }, { root, caller: "hook" })).error.code, "no_such_tool", "a socket client posed as the webhook route");
 
   const bad = await request("POST", "/v1/watchers/harlow-forms/hook?token=wrong", { id: 1 }, { root });
   assert.match(bad.error.message, /wrong token/);
@@ -112,7 +123,7 @@ test("watchers module: the webhook route checks the token, and the hook tool is 
 test("watchers module: without a vault, a watcher that needs one fails its run and says why", async t => {
   const root = tempHome(t);
   const p = config.ensure(root);
-  fs.writeFileSync(p.config, JSON.stringify({ transcripts: [path.join(root, "none")], modules: { disable: ["vault"] } }));
+  fs.writeFileSync(p.config, JSON.stringify({ ...CONFIG(root), modules: { disable: ["vault"] } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   writeWatcher(p, "harlow-inbox", { schedule: "@hourly", needs: ["billing-inbox"] }, `export default async function watch({ vault }) { await vault.fetch("billing-inbox"); }`);

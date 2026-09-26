@@ -1,0 +1,138 @@
+// @ts-check
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { Apps, Frecency } from "./local.js";
+import { Launcher, defineWord } from "./launcher.js";
+import { rank, intent, questionLike } from "./route.js";
+
+function appsIn(t, names) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-apps-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  for (const n of names) fs.mkdirSync(path.join(dir, n + ".app"));
+  return new Apps({ dirs: [dir] });
+}
+
+const cat = { agents: [{ name: "juno", kind: "assistant" }], projects: [{ slug: "harlow", name: "Harlow Legal", threads: 3, last: 1 }], threads: [] };
+
+function fakeHelper(status, contacts = []) {
+  const calls = [];
+  return { calls, status: async () => (calls.push("status"), { status }), define: async w => (calls.push("define:" + w), { word: w, definition: w === "serendipity" ? "serendipity | ˌserənˈdipədē | noun the occurrence of events by chance in a happy way." : null }),
+    contacts: async q => (calls.push("contacts:" + q), status === "notDetermined" ? { error: "asking", status } : { contacts: contacts.filter(c => c.name.toLowerCase().includes(q.toLowerCase())) }), close() {} };
+}
+
+test("route: one ranked list, where a strong local name outranks a weak Vyre match and a sum comes first", () => {
+  const local = [{ kind: "app", id: "app:/A/Safari.app", label: "Safari", sub: "", last: 0, target: "/A/Safari.app", score: 0.9 }];
+  const r = rank("sa", { local, cat });
+  assert.equal(r[0].label, "Safari");
+  const h = rank("harlow", { local: [], cat });
+  assert.equal(h[0].kind, "project");
+  const c = rank("2+2", { local, extra: [{ kind: "calc", id: "calc:2+2", label: "4", sub: "2 + 2", score: 2 }], cat });
+  assert.equal(c[0].kind, "calc");
+  assert.deepEqual(rank("", { local, cat }), []);
+});
+
+test("route: a question goes to the assistant even when an app matches; a name opens", () => {
+  const top = [{ kind: "app", id: "a", label: "Notes", sub: "", score: 0.9 }];
+  assert.equal(intent("notes", top), "open");
+  assert.equal(intent("what notes did Dana send?", top), "ask");
+  assert.equal(intent("no", [{ kind: "file", id: "f", label: "piano.txt", sub: "", score: 0.3 }]), "ask", "a weak match does not open");
+  assert.equal(intent("anything", []), "ask");
+  assert.ok(questionLike("how do I rotate the keys"));
+  assert.ok(!questionLike("safari"));
+});
+
+test("launcher: apps, settings and the calculator answer offline, ranked", async t => {
+  const l = new Launcher({ apps: appsIn(t, ["Safari", "Slack", "Notes"]), files: async () => [] });
+  await l.warm();
+  const a = await l.quick("saf", null);
+  assert.equal(a.results[0].label, "Safari");
+  assert.equal(a.intent, "open");
+  const w = await l.quick("wifi", null);
+  assert.equal(w.results[0].kind, "setting");
+  const c = await l.quick("12 * 3.5", null);
+  assert.equal(c.results[0].kind, "calc");
+  assert.equal(c.results[0].label, "42");
+  assert.equal(c.intent, "open");
+});
+
+test("launcher: frecency lifts what the user picks, from a file under the Capsule's own home", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-frec-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const opened = [];
+  const l = new Launcher({ apps: appsIn(t, ["Notes", "Notability"]), frecency: new Frecency(path.join(dir, "frecency.json")),
+    open: async r => (opened.push(r.target), { ok: true }), files: async () => [] });
+  await l.warm();
+  const before = await l.quick("not", null);
+  assert.equal(before.results[0].label, "Notes", "shorter label first on a tie");
+  const nb = before.results.find(r => r.label === "Notability");
+  for (let i = 0; i < 3; i++) assert.deepEqual(await l.pick(/** @type {any} */ (nb), "not"), { ok: true, close: true });
+  const after = await l.quick("not", null);
+  assert.equal(after.results[0].label, "Notability");
+  assert.equal(opened.length, 3);
+});
+
+test("launcher: files arrive in full(), and a newer query cancels the older mdfind", async t => {
+  let aborted = 0;
+  const files = (q, { signal }) => new Promise(res => {
+    signal.addEventListener("abort", () => { aborted++; res([]); });
+    setTimeout(() => res([{ kind: "file", id: "file:/h/" + q + ".md", label: q + ".md", sub: "~", last: 1, target: "/h/" + q + ".md" }]), 20);
+  });
+  const l = new Launcher({ apps: appsIn(t, []), files });
+  const first = l.full("budget", null);
+  const second = await l.full("budgets", null);
+  assert.equal(await first, null, "the older answer is dropped");
+  assert.equal(aborted, 1);
+  assert.equal(second?.results[0].label, "budgets.md");
+});
+
+test("launcher: contacts never ask from typing; picking the offer is what asks", async t => {
+  const h = fakeHelper("notDetermined");
+  const l = new Launcher({ apps: appsIn(t, []), helper: h, files: async () => [] });
+  await l.warm();
+  const r = await l.quick("dana", null);
+  assert.deepEqual(r.results.map(x => x.kind), ["grant"]);
+  assert.ok(!h.calls.some(c => c.startsWith("contacts:")), "typing did not ask macOS");
+  const p = await l.pick(r.results[0], "dana");
+  assert.match(String(p.note), /macOS is asking/);
+  assert.ok(h.calls.includes("contacts:"));
+
+  const ok = fakeHelper("authorized", [{ id: "A1:ABPerson", name: "Dana Reyes", org: "Harlow", emails: [], phones: [] }]);
+  const l2 = new Launcher({ apps: appsIn(t, []), helper: ok, files: async () => [] });
+  await l2.warm();
+  const found = await l2.quick("dana", null);
+  assert.equal(found.results[0].label, "Dana Reyes");
+  assert.equal(found.results[0].target, "addressbook://A1:ABPerson");
+  assert.deepEqual((await l2.quick("12 + 4", null)).results.filter(x => x.kind === "contact"), [], "sums are not names");
+
+  const no = fakeHelper("denied");
+  const l3 = new Launcher({ apps: appsIn(t, []), helper: no, files: async () => [] });
+  await l3.warm();
+  assert.deepEqual((await l3.quick("dana", null)).results, []);
+});
+
+test("launcher: define looks a word up only when asked to", async t => {
+  assert.equal(defineWord("define serendipity"), "serendipity");
+  assert.equal(defineWord("serendipity meaning"), "serendipity");
+  assert.equal(defineWord("what does serendipity mean?"), "serendipity");
+  assert.equal(defineWord("serendipity"), null);
+  const h = fakeHelper("denied");
+  const l = new Launcher({ apps: appsIn(t, []), helper: h, files: async () => [] });
+  const r = await l.quick("define serendipity", null);
+  assert.equal(r.results[0].kind, "define");
+  assert.match(r.results[0].sub, /by chance/);
+});
+
+test("launcher: pick opens only what it made, and copies a sum", async t => {
+  const ran = [], copied = [];
+  const l = new Launcher({ apps: appsIn(t, []), files: async () => [], run: /** @type {any} */ ((f, a, cb) => { ran.push([f, ...a]); cb(null); }), copy: s => copied.push(s) });
+  assert.deepEqual(await l.pick({ kind: "calc", id: "calc:x", label: "1,000", copy: "1000", sub: "" }, "x"), { ok: true, note: "Copied 1000", close: true });
+  assert.deepEqual(copied, ["1000"]);
+  assert.deepEqual(await l.pick({ kind: "define", id: "define:x", label: "x", sub: "", target: "dict://serendipity" }, "x"), { ok: true, close: true });
+  assert.deepEqual(ran, [["/usr/bin/open", "dict://serendipity"]]);
+  assert.ok((await l.pick({ kind: "contact", id: "c", label: "x", sub: "", target: "addressbook://x --args" }, "x")).error);
+  assert.ok((await l.pick({ kind: "define", id: "d", label: "x", sub: "", target: "https://example.com" }, "x")).error);
+  assert.equal(ran.length, 1);
+});

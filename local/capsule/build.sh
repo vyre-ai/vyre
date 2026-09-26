@@ -3,6 +3,7 @@
 #
 #   hotkey          the double-Control listener the Capsule runs as a child
 #   vyre-launcher   one macOS identity for vyred, so Accessibility is granted to Vyre alone
+#   local           Contacts and Dictionary lookups for the launcher, as a long-lived child
 #
 # Built on the machine that runs them, never shipped prebuilt: macOS ties a permission grant to
 # the code signature of whatever asks, and ad-hoc signing gives each binary an identity of its
@@ -20,10 +21,27 @@ if ! command -v swiftc >/dev/null 2>&1; then
   exit 1
 fi
 mkdir -p "$here/bin"
-for name in hotkey launcher; do
+# local asks for Contacts, and macOS refuses that ask without a usage string from an Info.plist.
+# When local is its own responsible process, the plist it reads is the one linked into it.
+plist="$(mktemp -t vyre-local-plist)"
+trap 'rm -f "$plist"' EXIT
+cat > "$plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>run.vyre.local</string>
+  <key>CFBundleName</key><string>Vyre</string>
+  <key>NSContactsUsageDescription</key><string>Vyre's launcher shows matching contacts as you type. Nothing leaves this Mac.</string>
+</dict></plist>
+PLIST
+for name in hotkey launcher local; do
   out="$here/bin/$name"
   [ "$name" = launcher ] && out="$here/bin/vyre-launcher"
-  swiftc -O -o "$out" "$here/swift/$name.swift"
+  if [ "$name" = local ]; then
+    swiftc -O -o "$out" "$here/swift/$name.swift" -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$plist"
+  else
+    swiftc -O -o "$out" "$here/swift/$name.swift"
+  fi
   codesign -s - --force --identifier "run.vyre.$name" "$out" >/dev/null 2>&1
   echo "built $out"
 done
