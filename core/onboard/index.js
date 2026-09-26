@@ -365,7 +365,8 @@ export default {
           const name = slug(display);
           const person = ob().person ? ` You work for ${ob().person}.` : "";
           a = await call("agents.create", { name, kind: "assistant", projects: "*",
-            auth: { vault: VAULT_ITEM[auth === "api-key" ? "api-key" : "subscription"], ...(auth === "api-key" ? {} : { fallback: VAULT_ITEM["api-key"] }) },
+            // agents reads auth.vault as a subscription token and auth.fallback as an API key.
+            auth: auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] },
             instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
         }
         const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });

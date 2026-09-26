@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### An assistant made with an API key uses it as one
+
+- With an API key at the Claude step, `onboard.finish` made the assistant with
+  `auth: { vault: "anthropic-api-key" }`, which agents reads as a subscription token. It is now
+  `auth: { fallback: "anthropic-api-key" }`; a subscription keeps the token first and the key as
+  its fallback (`core/onboard/index.js`, `test/onboard.test.js`). Found by pwa.
+
 #### Live Claude Code sessions are seen on node 24
 
 - node 24 names its main thread "MainThread", so `ps -o comm=` said that for every claude running
