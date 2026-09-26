@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -17,7 +18,8 @@ import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
 import { open } from "../store/index.js";
-import { MIGRATIONS } from "./index.js";
+import { MIGRATIONS, answerSummary } from "./index.js";
+import { Sessions } from "./sessions.js";
 import { migrate } from "../store/index.js";
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
@@ -56,6 +58,10 @@ test("argsFor: the flags a headless session needs, new and resumed", () => {
   const r = argsFor({ id: "u1", resume: true, name: "Site copy", budgetUsd: 4.5 });
   assert.ok(r.includes("--resume") && !r.includes("--session-id") && !r.includes("-n"), "a resumed thread keeps its name");
   assert.deepEqual(r.slice(-2), ["--max-budget-usd", "4.50"]);
+  const lean = argsFor({ id: "u1", tools: "none", settings: false });
+  assert.ok(!lean.includes("--plugin-dir"));
+  assert.deepEqual(lean.slice(lean.indexOf("--tools"), lean.indexOf("--tools") + 3), ["--tools", "", "--strict-mcp-config"]);
+  assert.deepEqual(lean.slice(lean.indexOf("--setting-sources"), lean.indexOf("--setting-sources") + 2), ["--setting-sources", ""]);
 });
 
 test("lease: one holder, take-over says who had it, quiet holders expire", t => {
@@ -121,8 +127,14 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   process.env.VYRE_CLAUDE_BIN = FAKE;
   process.env.FAKE_CLAUDE_LOG = log;
   t.after(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  // The file keystore, so no test goes near the login keychain.
-  if (vault) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  // Transcripts in the temp home, so adopting never looks at the user's own sessions; the file
+  // keystore, so no test goes near the login keychain.
+  const transcripts = path.join(root, "transcripts");
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [transcripts],
+    ...(vault ? { vault: { keystore: "file" },
+      // A Gate sender, so an agent's gate.request shows which thread vyred verified. Nothing is sent.
+      gate: { senders: { mail: { type: "gmail", vault: "no-such-item", from: "alex@example.com" } } } } : {}) }));
   if (probe) {
     // Internal tools answer only modules: a module that asks threads.claimed for the test.
     writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.claimed"] } }, `
@@ -142,7 +154,21 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
     if (ungranted.includes(name)) continue;
     assert.equal((await tool("vault.grant", { name, module: "agents" })).data.grant.status, "active");
   }
-  return { root, d, work, launches, tool };
+  return { root, d, work, launches, tool, transcripts };
+}
+
+/** A terminal session's transcript, as Claude Code leaves one: in a project folder, cwd on its lines. */
+function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.randomUUID() } = {}) {
+  const dir = path.join(transcripts, "-" + cwd.replace(/[^A-Za-z0-9]/g, "-"));
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${id}.jsonl`);
+  fs.writeFileSync(file, [
+    { type: "user", cwd, sessionId: id, message: { role: "user", content: "start the intake form" } },
+    { type: "custom-title", customTitle: "Intake form", sessionId: id },
+  ].map(l => JSON.stringify(l)).join("\n") + "\n");
+  const when = (Date.now() - ageMs) / 1000;
+  fs.utimesSync(file, when, when);
+  return { id, file };
 }
 
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
@@ -201,6 +227,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   assert.deepEqual(ans.data, { ask: raised.payload.ask, answered: true, decision: "allow" });
   await until(() => of(a.got, id, "ask.answered")[0], "ask.answered");
   assert.equal(of(a.got, id, "ask.answered")[0].payload.by, "capsule");
+  assert.equal(of(a.got, id, "ask.answered")[0].payload.tool, "Write", "what was allowed, as a learning signal");
+  assert.equal(of(a.got, id, "ask.answered")[0].payload.summary, raised.payload.summary);
   await until(() => fs.existsSync(target), "the file the answer allowed");
   assert.deepEqual((await tool("threads.asks", { thread: id })).data, []);
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny" })).data.answered, false, "an answered ask stays answered");
@@ -338,6 +366,14 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   assert.equal(launches().at(-1).auth, "ambient", "no auth configured means the machine's own login");
   assert.equal(launches().at(-1).projects, "*");
   assert.ok(Array.isArray((await inside("juno", "threads.list {}")).data));
+  // A tool learns the thread vyred verified: juno's draft is filed under juno's own thread, and
+  // naming scout's thread instead is refused.
+  const junoThread = (await tool("agents.list", {})).data.find(a => a.name === "juno").thread;
+  const draft = { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "s", body: "b" } };
+  assert.equal((await inside("juno", `gate.request ${JSON.stringify(draft)}`)).data.state, "held");
+  const filed = (await tool("gate.held", {})).data.at(-1);
+  assert.deepEqual([filed.thread, filed.agent], [junoThread, "juno"]);
+  assert.match((await inside("juno", `gate.request ${JSON.stringify({ ...draft, thread: who.thread })}`)).error.message, /cannot file under/);
   assert.equal((await inside("juno", 'threads.answer {"ask":"a1","decision":"allow"}')).error.code, "denied", "not even the assistant answers a permission");
   // Naming an agent without its thread's key is refused outright, before any tool runs: nothing
   // outside juno's thread can pass for the assistant, and scout's key does not make it juno.
@@ -390,4 +426,229 @@ test("agents: an API-key agent stops at its budget", async t => {
   await until(async () => (await tool("agents.list", {})).data[0].status === "stopped", "ledger stopping");
   const again = await tool("agents.ask", { agent: "ledger", text: "whoami" });
   assert.match(again.error.message, /spent its \$0.2 budget/);
+});
+
+test("switchboard: the presence summary of an answer says what is allowed, where, and in which thread", () => {
+  const asks = { a1: { thread: "0f3c9a2e-1111", tool: "Write", summary: "write notes.md", destination: "/work/notes.md" } };
+  const sb = /** @type {any} */ ({ asks: { get: id => asks[id] || null }, record: () => ({ name: "Intake" }) });
+  assert.equal(answerSummary(sb, { ask: "a1", decision: "allow" }), "Allow Write to /work/notes.md: write notes.md (thread Intake)");
+  assert.equal(answerSummary({ ...sb, record: () => null }, { ask: "a1", decision: "deny" }), "Deny Write to /work/notes.md: write notes.md (thread 0f3c9a2e)");
+  assert.equal(answerSummary(sb, { ask: "zz", decision: "deny" }), "deny permission question zz");
+});
+
+test("sessions: a session binds to a running claude once, its key is checked, and a gone process vouches for nothing", t => {
+  const db = open(path.join(tempHome(t), "s.db"));
+  migrate(db, "threads", MIGRATIONS);
+  const up = new Set([100, 200, 300]);
+  const sessions = new Sessions(db, { children: () => [300], isClaude: pid => pid === 100 || pid === 200, alive: pid => up.has(pid) });
+  const id = "5f0c2a61-7d7e-4c43-9a57-0b6f3d0e9a11";
+  assert.throws(() => sessions.bind(id, 999), /not a running claude/);
+  assert.throws(() => sessions.bind("s1", 100), /not a session id/);
+  const a = sessions.bind(id, 100);
+  assert.equal(sessions.vouch(id, a.key), id);
+  assert.equal(sessions.vouch(id, "a-guess"), null);
+  assert.throws(() => sessions.bind(id, 200), /bound to another running process/, "another claude cannot take a live session");
+  const again = sessions.bind(id, 100);
+  assert.equal(sessions.vouch(id, a.key), null, "binding again replaces the key");
+  assert.equal(sessions.vouch(id, again.key), id);
+  assert.ok(sessions.bind("0b1d9c7e-0000-4000-8000-000000000000", 300).key, "a headless child of this Switchboard binds too");
+  up.delete(100);
+  assert.equal(sessions.vouch(id, again.key), null, "the process is gone");
+  assert.ok(sessions.bind(id, 200).key, "a resumed session binds from its new process");
+});
+
+test("adopt: a terminal session nobody has open is resumed headless with the lease; one that is open is refused", async t => {
+  const { tool, work, launches, transcripts, root } = await boot(t);
+  const quiet = terminalSession(transcripts, work);
+  const sent = (await tool("threads.send", { thread: quiet.id, text: "add a phone field", surface: "capsule" })).data;
+  assert.equal(sent.sent, true, JSON.stringify(sent));
+  const rec = (await tool("threads.get", { thread: quiet.id })).data.thread;
+  assert.deepEqual([rec.cwd, rec.name, rec.holder], [work, "Intake form", "capsule"]);
+  const launch = await until(() => launches().at(-1), "the launch");
+  assert.ok(launch.argv.includes("--resume") && launch.argv.includes(quiet.id), "resumed, not started anew");
+  await until(async () => (await tool("threads.get", { thread: quiet.id })).data.events.some(e => e.type === "thread.text" && e.payload.text === "echo: add a phone field"), "the reply");
+  assert.equal((await tool("threads.send", { thread: quiet.id, text: "and a note", surface: "deck" })).data.holder, "capsule", "the lease holds");
+
+  // Written a moment ago: someone is working in it.
+  const busy = terminalSession(transcripts, work, { ageMs: 1000 });
+  const r1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" })).data;
+  assert.equal(r1.sent, false);
+  assert.equal(r1.open_elsewhere, true);
+  assert.match(r1.note, /written \ds ago.*Only one keyboard/);
+
+  // Open but idle in a terminal: a running claude names it (`claude --resume <id>`).
+  const idle = terminalSession(transcripts, work);
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin);
+  fs.symlinkSync(process.execPath, path.join(bin, "claude"));
+  const { spawn } = await import("node:child_process");
+  const term = spawn(path.join(bin, "claude"), ["-e", "setTimeout(() => {}, 60000)", "--", "--resume", idle.id], { stdio: "ignore" });
+  t.after(() => term.kill());
+  await new Promise(r => setTimeout(r, 200));
+  const r2 = (await tool("threads.send", { thread: idle.id, text: "hi", surface: "capsule" })).data;
+  assert.equal(r2.sent, false);
+  assert.match(r2.note, new RegExp(`claude process ${term.pid} has it open`));
+  assert.equal(launches().filter(l => l.argv.includes(idle.id) || l.argv.includes(busy.id)).length, 0, "nothing was started for either");
+
+  // Bound by its SessionStart hook to a claude still running: open, even with no --resume.
+  const bound = terminalSession(transcripts, work);
+  const plain = spawn(path.join(bin, "claude"), ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+  t.after(() => plain.kill());
+  await new Promise(r => setTimeout(r, 200));
+  assert.ok((await tool("threads.bind", { session: bound.id, pid: plain.pid }, "harness")).data.key);
+  assert.match((await tool("threads.send", { thread: bound.id, text: "hi", surface: "capsule" })).data.note, new RegExp(`open in claude process ${plain.pid}`));
+
+  assert.match((await tool("threads.send", { thread: crypto.randomUUID(), text: "hi" })).error.message, /no thread/);
+});
+
+test("agents.history: each question with its answer and thread, newest last, pageable, and only for the assistant or a person", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  await tool("agents.create", { name: "scout", projects: [], computer: true });
+  // agents.list says whether each may have a computer; core/computers decides on it.
+  assert.deepEqual((await tool("agents.list", {})).data.map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
+  for (const [agent, text] of [["juno", "one"], ["scout", "two"], ["juno", "three"]]) {
+    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" })).data.text, `echo: ${text}`);
+  }
+  const juno = (await tool("agents.history", { agent: "juno" })).data;
+  assert.deepEqual(juno.map(x => [x.agent, x.text, x.answer, x.surface]), [["juno", "one", "echo: one", "deck"], ["juno", "three", "echo: three", "deck"]]);
+  assert.ok(juno.every(x => x.thread && x.at && x.id), "each has its thread, time and id");
+  const all = (await tool("agents.history", { limit: 2 })).data;
+  assert.deepEqual(all.map(x => x.text), ["two", "three"], "the latest two, across agents");
+  assert.deepEqual((await tool("agents.history", { before: all[0].id })).data.map(x => x.text), ["one"], "the page before");
+  const inside = async (agent, call) => JSON.parse((await tool("agents.ask", { agent, text: `vyre ${call}` })).data.text);
+  assert.match((await inside("scout", "agents.history {}")).error.message, /only the assistant/);
+  assert.match((await tool("agents.history", { agent: "nobody" })).error.message, /no agent nobody/);
+});
+
+test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a job stops after its answer", async t => {
+  const { d, tool, work, launches } = await boot(t);
+  const lean = (await tool("threads.start", { cwd: work, prompt: "what is 2+2", lean: true, surface: "capsule" })).data;
+  await until(async () => (await tool("threads.get", { thread: lean.id })).data.events.some(e => e.type === "thread.finished"), "the answer");
+  const argv = (await until(() => launches().at(-1), "the launch")).argv;
+  assert.ok(!argv.includes("--plugin-dir") && argv.includes("--strict-mcp-config") && argv[argv.indexOf("--tools") + 1] === "" && argv[argv.indexOf("--setting-sources") + 1] === "");
+  await tool("threads.stop", { thread: lean.id });
+  assert.equal((await tool("threads.send", { thread: lean.id, text: "and 3+3", surface: "capsule" })).data.sent, true);
+  const again = (await until(() => launches().length === 2 && launches()[1], "the resume")).argv;
+  assert.ok(again.includes("--resume") && !again.includes("--plugin-dir") && again.includes("--strict-mcp-config"), "a lean thread stays lean");
+
+  // A job: Learning's shape. Internal, so only a module may launch one.
+  assert.equal((await tool("threads.launch", { cwd: work, prompt: "x" })).error.code, "no_such_tool");
+  const job = (await d.registry.call("threads.launch", { cwd: work, prompt: "distil this", plugin: false, tools: "none", once: true, model: "haiku" }, "module:learn")).data;
+  const stopped = await until(async () => (await tool("threads.get", { thread: job.id })).data.events.find(e => e.type === "thread.stopped"), "the job to stop");
+  assert.equal(stopped.payload.reason, "done");
+  const events = (await tool("threads.get", { thread: job.id })).data.events;
+  assert.equal(events.find(e => e.type === "thread.text" && e.payload.done).payload.text, "echo: distil this");
+  const jobArgv = launches().at(-1).argv;
+  assert.ok(!jobArgv.includes("--plugin-dir") && jobArgv.includes("--strict-mcp-config") && jobArgv[jobArgv.indexOf("--model") + 1] === "haiku");
+});
+
+test("threads.watch: said once when the thread finishes or asks, always when it stops, and not for other agents", async t => {
+  const { root, tool, work } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  const { id } = (await tool("threads.start", { cwd: work, prompt: "hello", surface: "deck" })).data;
+  await until(async () => (await tool("threads.get", { thread: id })).data.events.some(e => e.type === "thread.finished"), "the first turn");
+
+  const w = (await tool("threads.watch", { thread: id, until: "finished", notify: "capsule", note: "tell me when the intake is done" }, "capsule")).data;
+  assert.match(w.watch, /^w[0-9a-f]{12}$/);
+  await tool("threads.send", { thread: id, text: "build the intake", surface: "deck" });
+  const fired = await until(() => of(s.got, id, "thread.watched")[0], "thread.watched");
+  assert.deepEqual([fired.payload.watch, fired.payload.reason, fired.payload.notify, fired.payload.note, fired.payload.summary],
+    [w.watch, "finished", "capsule", "tell me when the intake is done", "echo: build the intake"]);
+  await tool("threads.send", { thread: id, text: "again", surface: "deck" });
+  await until(() => of(s.got, id, "thread.finished").length >= 3, "the next turn");
+  assert.equal(of(s.got, id, "thread.watched").length, 1, "once, then it clears itself");
+
+  // Asks: fires on the question, with its summary.
+  const asks = (await tool("threads.watch", { thread: id, until: "asks" })).data;
+  await tool("threads.send", { thread: id, text: `write ${path.join(work, "n.txt")}`, surface: "deck" });
+  const asked = await until(() => of(s.got, id, "thread.watched").find(e => e.payload.watch === asks.watch), "the ask watch");
+  assert.equal(asked.payload.reason, "asked");
+  assert.match(asked.payload.summary, /n\.txt/);
+
+  // Unwatch, and a stopped thread ends every watch.
+  const gone = (await tool("threads.watch", { thread: id })).data;
+  assert.deepEqual((await tool("threads.unwatch", { watch: gone.watch })).data, { removed: true });
+  const last = (await tool("threads.watch", { thread: id, until: "finished" })).data;
+  await tool("threads.stop", { thread: id });
+  const end = await until(() => of(s.got, id, "thread.watched").find(e => e.payload.watch === last.watch), "the stop");
+  assert.equal(end.payload.reason, "stopped");
+  assert.ok(!of(s.got, id, "thread.watched").some(e => e.payload.watch === gone.watch));
+  assert.equal((await tool("threads.watch", { thread: id })).data.fired, true, "a stopped thread fires at once");
+});
+
+test("usage and budget: turns, tokens and cost per agent; a warning at 80% and a stop at 100% on the API key", async t => {
+  const { root, tool } = await boot(t, { vault: { "api-key": "fake-api-value" } });
+  const s = sse(root);
+  t.after(() => s.close());
+  await tool("agents.create", { name: "scout", projects: [], auth: { fallback: "api-key", budget_usd: 1 } });
+  const ask = async text => (await tool("agents.ask", { agent: "scout", text })).data;
+  const first = await ask("spend 0.5");
+  const thread = first.thread;
+  const notices = () => of(s.got, thread, "thread.text").filter(e => e.payload.notice).map(e => e.payload.text);
+  assert.deepEqual(notices(), [], "half the budget: nothing to say");
+  await ask("spend 0.35");
+  await until(() => notices().length === 1, "the 80% warning");
+  assert.equal(notices()[0], "scout has spent $0.85 of its $1.00 API-key budget (85%).");
+  await ask("spend 0.2");
+  const stopped = await until(() => of(s.got, thread, "thread.stopped")[0], "the stop");
+  assert.equal(stopped.payload.reason, "budget");
+  assert.match(notices()[1], /^scout has spent \$1\.05 of its \$1\.00 API-key budget, so this thread has stopped\. To go on, raise it: vyre agents update scout --budget <dollars>$/);
+  assert.match((await tool("agents.ask", { agent: "scout", text: "more" })).error.message, /spent its \$1 budget/);
+
+  const [u] = (await tool("agents.usage", { agent: "scout" })).data;
+  assert.equal(u.turns, 3);
+  assert.equal(u.threads, 1);
+  assert.equal(Number(u.api_cost_usd.toFixed(2)), 1.05);
+  assert.equal(Number(u.spent_usd.toFixed(2)), 1.05);
+  assert.equal(u.left_usd, 0);
+  assert.deepEqual(u.tokens, { input: 30, output: "spent 0.5".length + "spent 0.35".length + "spent 0.2".length, cache_read: 300, cache_write: 150 });
+  assert.equal(u.auth, "api-key");
+  assert.equal(u.by_auth["api-key"].turns, 3);
+  assert.equal((await tool("agents.usage", { agent: "scout", since: Date.now() + 60_000 })).data[0].turns, 0, "nothing since the future");
+});
+
+test("usage on the subscription: turns and time, no dollars, and the rate-limit report said in the thread", async t => {
+  const { root, tool } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  await tool("agents.create", { name: "juno", kind: "assistant" });
+  const r = (await tool("agents.ask", { agent: "juno", text: "nearlimit" })).data;
+  const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
+  assert.deepEqual(limit.payload, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
+  const said = await until(() => of(s.got, r.thread, "thread.text").find(e => e.payload.notice), "the notice");
+  assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets at \d\d:\d\d UTC\.$/);
+  const all = (await tool("agents.usage", {})).data;
+  const juno = all.find(x => x.agent === "juno");
+  assert.equal(juno.turns, 1);
+  assert.equal(juno.api_cost_usd, 0);
+  assert.equal(juno.auth, "ambient");
+  assert.equal(juno.limit.status, "allowed_warning");
+  assert.ok(juno.duration_ms >= 5);
+});
+
+test("learned skills: the account's and the project's folders load as plugins; lean threads and jobs get only what they name", async t => {
+  const { d, root, tool, work, launches } = await boot(t);
+  assert.ok(!(await tool("projects.create", { name: "Harlow", home: work })).error);
+  const plugin = dir => { fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true }); fs.writeFileSync(path.join(dir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: path.basename(dir) })); return dir; };
+  const account = plugin(path.join(root, "learned", "account"));
+  const harlow = plugin(path.join(root, "learned", "projects", "harlow"));
+  fs.mkdirSync(path.join(root, "learned", "projects", "other"), { recursive: true });   // incomplete: never loaded
+  const dirsOf = argv => argv.flatMap((a, i) => (a === "--plugin-dir" ? [argv[i + 1]] : []));
+
+  await tool("threads.start", { project: "harlow", prompt: "hi", surface: "deck" });
+  const full = dirsOf((await until(() => launches()[0], "a launch")).argv);
+  assert.equal(full.length, 3);
+  assert.deepEqual(full.slice(1), [account, harlow], "the Harness first, then the account's, then the project's");
+
+  await tool("threads.start", { cwd: fs.mkdtempSync(path.join(root, "elsewhere-")), prompt: "hi", surface: "deck" });
+  assert.deepEqual(dirsOf((await until(() => launches()[1], "a second launch")).argv).slice(1), [account], "outside the project: the account's only");
+
+  await tool("threads.start", { project: "harlow", prompt: "2+2", lean: true, surface: "capsule" });
+  assert.deepEqual(dirsOf((await until(() => launches()[2], "the lean launch")).argv), []);
+
+  const own = plugin(path.join(root, "job-skills"));
+  await d.registry.call("threads.launch", { cwd: work, prompt: "distil", plugin: false, tools: "none", once: true, plugins: [own] }, "module:learn");
+  assert.deepEqual(dirsOf((await until(() => launches()[3], "the job")).argv), [own]);
 });

@@ -148,7 +148,11 @@ const SCREENS = {
   you(col, s) {
     col.append(
       h("h1", { class: "h1" }, "What should we call you?"),
-      h("p", { class: "lead" }, "Your name becomes your address. Only your own devices will be able to open it."));
+      // ADR 0008 section 4: step 1 no longer reserves a name or promises "<you>.vyre.run" — v0.1
+      // defaults to a ts.net address, decided in the address step, and onboard.you no longer
+      // checks availability itself (that is still asked for, live, as the person types, so a
+      // name they cannot have is caught early; it just isn't shown as a domain here).
+      h("p", { class: "lead" }, "Just your name and your assistant's. Only your own devices will be able to reach it."));
     const status = h("div", { class: "check-line", "aria-live": "polite" });
     const nameIn = h("input", { id: "name", value: state.name, autocomplete: "off", spellcheck: "false", autocapitalize: "none",
       "aria-describedby": "name-status", placeholder: "alex" });
@@ -161,22 +165,20 @@ const SCREENS = {
       ok = false;
       if (!v) { put(status); return sync(); }
       if (!NAME_RE.test(v)) { put(status, "Lowercase letters, numbers and hyphens, 3 to 32 long, starting with a letter."); return sync(); }
-      put(status, h("span", { class: "faint" }, `Checking ${v}.vyre.run`));
+      put(status, h("span", { class: "faint" }, "Checking."));
       const n = ++seq;
       const r = await attempt("onboard.name", { name: v, action: "check" });
       if (n !== seq) return;
       if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the box module runs.")); }
       else if (r.error) put(status, String(r.error.message));
-      // address is the full https://…vyre.run URL; the host alone reads better next to "is free".
-      else if (r.data.available) { ok = true; put(status, icon("check", 14), `${(r.data.address || v + ".vyre.run").replace(/^https?:\/\//, "")} is free.`); }
-      else put(status, `${v}.vyre.run is taken${r.data.why ? ": " + r.data.why : "."} Try another.`);
+      else if (r.data.available) { ok = true; put(status, icon("check", 14), "Available."); }
+      else put(status, `That name is not free${r.data.why ? ": " + r.data.why : "."} Try another.`);
       sync();
     };
     let t = 0;
     nameIn.addEventListener("input", () => { clearTimeout(t); t = window.setTimeout(check, 300); });
     col.append(h("div", { class: "ob-panel" },
-      h("div", { class: "field" }, h("label", { for: "name" }, "Your name"),
-        h("div", { class: "affix" }, nameIn, h("span", null, ".vyre.run")), status),
+      h("div", { class: "field" }, h("label", { for: "name" }, "Your name"), nameIn, status),
       h("div", { class: "field" }, h("label", { for: "assistant" }, "Your assistant's name"), asst,
         h("span", { class: "hint" }, "The assistant can see every project and drive any session. You can rename it, and change its voice and instructions, later."))));
     const sync = () => s.foot({ label: "Continue", disabled: !ok, run: async () => {
@@ -277,7 +279,8 @@ const SCREENS = {
   tailscale(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Put this machine on your tailnet."),
-      h("p", { class: "lead" }, "Tailscale makes your Vyre reachable from your phone and laptop, and from nothing else. You sign in with Tailscale's own page; Vyre never sees your password."));
+      h("p", { class: "lead" }, "Tailscale makes your Vyre reachable from your phone and laptop, and from nothing else. You sign in with Tailscale's own page; Vyre never sees your password."),
+      h("p", { class: "small muted", style: { marginTop: "8px" } }, "No Tailscale account? Sign in with Google, GitHub, Apple or Microsoft; that makes one, free for personal use. Use the same account as your Mac."));
     const panel = h("div", { class: "ob-panel" }, h("div", { class: "found" }, h("span", { class: "faint" }, "Looking for Tailscale")));
     col.append(panel);
     s.foot(null);
@@ -331,15 +334,19 @@ const SCREENS = {
   },
 
   name(col, s) {
-    const name = state.name || "you";
     col.append(
       h("h1", { class: "h1" }, "Your address."),
-      h("p", { class: "lead" }, "Vyre reserves the name, points it at this machine's tailnet address, and gets a certificate for it. Only your tailnet can open this address."));
-    const addr = h("div", { class: "address-big" }, h("i", null, "https://"), name, h("i", null, ".vyre.run"));
+      // ADR 0008 section 4: v0.1 defaults to a ts.net address (tailscale cert), not <you>.vyre.run;
+      // "your own domain" is a collapsed, secondary choice, below.
+      h("p", { class: "lead" }, "Vyre gets a certificate for an address on your own tailnet. Only your tailnet can open it."));
+    const addr = h("div", { class: "address-big" }, h("span", { class: "faint" }, "Not reserved yet."));
     const list = h("ol", { class: "progress" });
     const note = h("div");
     col.append(h("div", { class: "ob-panel" }, addr, list, note));
-    const LABELS = { reserve: `Reserve ${name}.vyre.run`, dns: "Point it at this machine on your tailnet", cert: "Get the certificate" };
+    const drawAddr = (/** @type {string|null} */ address) => put(addr, address
+      ? [h("i", null, "https://"), address.replace(/^https?:\/\//, "")]
+      : h("span", { class: "faint" }, "Not reserved yet."));
+    const LABELS = { reserve: "Reserve your address", dns: "Point it at this machine on your tailnet", cert: "Get the certificate" };
     const draw = (/** @type {any[]} */ steps) => put(list, ["reserve", "dns", "cert"].map(id => {
       const st = steps.find(x => x.id === id) || { state: "todo" };
       return progressRow(LABELS[id], st.state, st.note);
@@ -352,8 +359,19 @@ const SCREENS = {
     }
     if (stepState("tailscale") !== "done") put(note, h("p", { class: "notice" }, icon("lock", 14),
       "This needs this machine on your tailnet. If you skipped Tailscale, the address waits until it is connected."));
+    // HTTPS certificates are off for the tailnet by default (ADR 0008 section 4): one admin
+    // click fixes it, and it is worth a heads-up before reserving, not just after it fails.
+    const blocked = (/** @type {any} */ d) => {
+      if (!d || d.state !== "blocked" || d.code !== "https_off") return false;
+      put(note, h("p", { class: "notice" }, d.why || "HTTPS certificates are off for your tailnet."),
+        h("p", { class: "small muted" }, "Turning it on publishes this machine's name in public Certificate Transparency logs."));
+      s.foot({ label: "Check again", run: reserve },
+        { secondary: d.adminUrl ? h("a", { class: "btn", href: d.adminUrl, target: "_blank", rel: "noopener" }, "Turn on HTTPS") : null });
+      return true;
+    };
     const done = (/** @type {any} */ r) => {
       draw(r.steps || []);
+      drawAddr(r.address || null);
       if (r.url) {
         put(note, h("p", { class: "notice" }, "From here the loopback link stops working. The rest of the setup continues at your address."));
         s.foot({ label: `Switch to ${r.url.replace(/^https?:\/\//, "")}`, run: async () => {
@@ -362,10 +380,13 @@ const SCREENS = {
         } });
         return true;
       }
+      if (blocked({ state: r.phase, why: r.why, code: r.code, adminUrl: r.adminUrl })) return true;
       if ((r.steps || []).some(x => x.state === "failed")) s.foot({ label: "Try again", run: reserve });
       return false;
     };
     const reserve = async () => {
+      const st = await attempt("onboard.status");
+      if (blocked(st.data?.detail?.name)) return;
       s.foot({ label: "Reserving", disabled: true, run: () => {} });
       const r = await attempt("onboard.name", { name: state.name, action: "reserve" });
       if (r.error) { put(note, empty("Could not reserve the address.", r.error)); s.foot({ label: "Try again", run: reserve }); return; }
@@ -375,7 +396,9 @@ const SCREENS = {
         if (p.data && done(p.data)) for (const f of cleanup.splice(0)) f();
       }, 1500);
     };
-    s.foot({ label: `Reserve ${name}.vyre.run`, run: reserve });
+    s.foot({ label: "Get your address", run: reserve });
+    col.append(h("details", { class: "ob-collapse" }, h("summary", null, "Your own domain"),
+      h("p", { class: "small muted" }, "Point a domain you already own at this box instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the box's own configuration, then come back and reserve again.")));
   },
 
   history(col, s) {
@@ -471,22 +494,35 @@ const SCREENS = {
   },
 
   devices(col, s) {
+    // ADR 0008 section 6: two QR codes side by side (Tailscale's app, and this address), the
+    // login they should share named under them, and a Mac card that already says "Connected"
+    // through door A rather than always offering a download.
+    const d = state.status?.detail?.devices || {};
+    const owner = state.status?.detail?.tailscale?.owner || null;
+    const phoneUrl = d.phoneUrl || (state.name && stepState("name") === "done" ? `https://${state.name}` : location.origin) + "/now";
+    const tsUrl = "https://tailscale.com/download";
     col.append(
       h("h1", { class: "h1" }, "Your devices."),
       h("p", { class: "lead" }, "Open Vyre on your phone, and put the Capsule on your Mac. Both reach this machine over your tailnet."));
-    const addr = state.name && stepState("name") === "done" ? `https://${state.name}.vyre.run/now` : location.origin + "/now";
     col.append(h("div", { class: "ob-panel" },
       h("div", { class: "devices" },
         h("div", null,
+          h("div", { class: "lbl" }, "Tailscale"),
+          h("div", { class: "qr", role: "img", "aria-label": "QR code for the Tailscale app" }, qr(tsUrl)),
+          h("div", { class: "code" }, tsUrl.replace(/^https?:\/\//, "")),
+          h("p", { class: "small muted" }, owner ? `Sign in as ${owner}.` : "Sign in with the same account as this setup.")),
+        h("div", null,
           h("div", { class: "lbl" }, "Phone"),
-          h("div", { class: "qr", role: "img", "aria-label": "QR code for " + addr }, qr(addr)),
-          h("div", { class: "code" }, addr.replace(/^https?:\/\//, "")),
-          h("p", { class: "small muted" }, "Scan with the camera. The phone needs Tailscale, signed in to the same account. Add it to the home screen to use it like an app.")),
+          h("div", { class: "qr", role: "img", "aria-label": "QR code for " + phoneUrl }, qr(phoneUrl)),
+          h("div", { class: "code" }, phoneUrl.replace(/^https?:\/\//, "")),
+          h("p", { class: "small muted" }, owner ? `Sign in as ${owner}. ` : "", "Add it to the home screen to use it like an app.")),
         h("div", null,
           h("div", { class: "lbl" }, "Mac"),
           h("p", { class: "h3" }, "The Capsule"),
-          h("p", { class: "small muted" }, "Press Control twice anywhere on your Mac to talk to your assistant, an agent or any session. Works offline for your own Mac."),
-          h("div", null, h("a", { class: "btn", href: "https://github.com/vyre-ai/vyre/releases/latest", target: "_blank", rel: "noopener" }, icon("laptop", 14), "Download for Mac"))))));
+          d.mac?.connected
+            ? h("p", { class: "small" }, icon("check", 14), ` Connected: ${d.mac.name || "this Mac"}.`)
+            : [h("p", { class: "small muted" }, "Press Control twice anywhere on your Mac to talk to your assistant, an agent or any session. Works offline for your own Mac."),
+              h("div", null, h("a", { class: "btn", href: d.macDownload || "https://github.com/vyre-ai/vyre/releases/latest", target: "_blank", rel: "noopener" }, icon("laptop", 14), "Download for Mac"))]))));
     s.foot({ label: "Open the Deck", run: s.next }, { skip: false });
   },
 };
@@ -494,11 +530,47 @@ const SCREENS = {
 /** @param {HTMLElement} [col] where to say so if there is nowhere to go */
 async function finish(col) {
   const r = await attempt("onboard.finish");
-  if (r.data?.url) { location.href = r.data.url.replace(/\/$/, "") + "/now"; return; }
-  // No address yet: loopback (before an owner exists) serves only /onboard, never /now, so there
-  // is nothing to fall back to. Say so instead of sending the user to a dead link.
-  col?.append(h("p", { class: "notice" }, r.error ? String(r.error.message) :
-    "Your address is not set up yet, so this page cannot open the Deck. Finish the address step, then come back here."));
+  if (!r.data?.url) {
+    // No address yet: loopback (before an owner exists) serves only /onboard, never /now, so
+    // there is nothing to fall back to. Say so instead of sending the user to a dead link.
+    col?.append(h("p", { class: "notice" }, r.error ? String(r.error.message) :
+      "Your address is not set up yet, so this page cannot open the Deck. Finish the address step, then come back here."));
+    return;
+  }
+  showEnding(r.data);
+}
+
+/**
+ * The one ending screen, the same everywhere (ADR 0008 section 6): the assistant's greeting
+ * streaming at the top, three ticks (Mac, phone, history), one button, "Open Vyre".
+ * @param {{ url: string, thread?: string|null }} d
+ */
+function showEnding(d) {
+  for (const f of cleanup) f();
+  cleanup = [];
+  const greet = h("p", { class: "lead", "aria-live": "polite" }, h("span", { class: "busy-inline faint" }, "Saying hello…"));
+  const ticks = h("ol", { class: "progress" });
+  const rows = [
+    { id: "mac", label: "Your Mac", done: !!state.status?.detail?.devices?.mac?.connected },
+    { id: "phone", label: "Your phone", done: stepState("devices") !== "todo" },
+    { id: "history", label: "Your history", done: stepState("history") !== "todo" },
+  ];
+  put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo")));
+  put(root, h("div", { class: "ob-end" },
+    h("span", { class: "brand", "aria-label": "vyre" }, mark(24), wordmark(26)),
+    h("h1", { class: "h1" }, "Vyre is ready."),
+    greet,
+    h("div", { class: "ob-panel" }, ticks),
+    h("a", { class: "btn btn-primary ob-end-open", href: d.url.replace(/\/$/, "") + "/now" }, "Open Vyre")));
+  if (!d.thread) { put(greet, `${state.assistant || "Your assistant"} is ready when you are.`); return; }
+  let text = "";
+  const draw = () => put(greet, text || h("span", { class: "busy-inline faint" }, "Saying hello…"));
+  cleanup.push(on("thread.text", e => {
+    if (e.thread !== d.thread) return;
+    const p = e.payload || {};
+    if (typeof p.text === "string") text = p.text; else if (typeof p.delta === "string") text += p.delta;
+    draw();
+  }));
 }
 
 /** A QR code as SVG squares, drawn from the vendored encoder's module grid. */

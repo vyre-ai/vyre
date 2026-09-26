@@ -4,6 +4,137 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Release
+
+- `package.json` "files": the tarball carries what runs (bin, core, harness, local, deck,
+  modules, box) plus SPEC, MODULES, INSTALL, GETTING-STARTED and the ADRs. It leaves out tests,
+  fixtures, `testing` helpers, design boards, working notes and Capsule build output: 186 files,
+  about 570 KB packed. The embedder stays an optional dependency. npm -g still installs it
+  (about 480 MB), because npm ignores `--omit=optional` for a global package's own optional deps.
+- `scripts/build-site.sh --src <checkout> [--mac-zip <zip>]` puts what the box installer downloads
+  under `site/box/`: the compose files, the host wrapper, the Dockerfile, `install-box.sh`,
+  `vyre.tgz` (npm pack, until the package is on npm), `Vyre-mac.zip`, `VERSION` and `SHA256SUMS`.
+  It also copies the installer to `site/install.sh`. All generated and gitignored. The Capsule
+  zip (about 120 MB) is over Pages' 25 MiB file limit. It goes to the R2 bucket `vyre-downloads`
+  (`dl.vyre.run`) under a key named by its hash, and the generated `site/_redirects` sends
+  `/box/Vyre-mac.zip` there. Before zipping, the whole Vyre.app is ad-hoc signed
+  (`codesign --force --deep -s -`). Packager signs only the Electron binary, which fails
+  `codesign --verify`, and a downloaded app in that state is refused as damaged.
+- `scripts/release-check.sh [--skip-tests] [--claude] [--live]`: the suite, then the pack and what
+  the tarball may and may not hold. Then a global install into a temp prefix, and `vyre up`,
+  `status`, `modules`, `call` and `down` in a temp HOME. Then the Harness MCP server from the
+  installed folder, and with `--claude` a real `claude -p --plugin-dir` call. Then `site/box`
+  against its checksums, and with `--live` the bytes vyre.run actually serves.
+- `vyre up` on a Mac (role `local`) now finishes the Mac's setup once the box answers. If the
+  Mac is not paired, it starts pairing and prints the `vyre link approve <code>` line to run on
+  the box, or shows the code of a pairing already waiting. Then it opens the Capsule
+  (`vyre capsule`), or points at the Vyre-mac.zip download when no Capsule is installed.
+  `--no-capsule` skips the Capsule.
+  With no box configured it asks `link.find` and takes the one box on the tailnet, if there is exactly one.
+- `scripts/build-mac-zip.sh OUT.zip`: `vyre capsule build --app`, whole-bundle ad-hoc signing,
+  zip, and a signature check after unzipping; the build output is deleted afterwards.
+  `release-check` runs perf-check after the suite (`--skip-perf` to leave it out).
+- `docs/GETTING-STARTED.md` and the site's `/start` page: the server one-liner, onboarding over
+  `ssh -L`, the Mac install from the tarball, the unsigned Capsule's first open, and what is not
+  finished. `site/404.html`: missing files now answer 404, where Pages served the landing page
+  with 200.
+
+#### Glass
+
+- ADR 0005: Glass is a module and a set of Deck views on top of computers. RFB over a WebSocket
+  stays the stream (ADR 0003). A hidden tab disconnects, so a background Deck runs no timer.
+- `core/glass` (module `glass`, role box). Tools: `glass.targets`, `open`, `close`, `take`,
+  `release`, and `glass.files.list`, `stat`, `preview`, `download`, `upload`, `move`, `mkdir`,
+  `trash`. Events: `glass.opened`, `closed`, `taken`, `released`, `file.uploaded`, `moved`,
+  `trashed`, `created`, carrying paths and sizes, never content.
+- `glass.take` and `glass.release` declare presence. `take {private: true}` is the private
+  sign-in: it raises the computers shield, and undoes the take-over when the shield is missing.
+  Hand-back leaves a note in the agent's thread (who, how long, the person's note), never what
+  was typed.
+- Files: one guard for every path. Paths are relative, no `..`, no NUL, symlinks must stay
+  inside the root, and secret places (`.vyre`, `.ssh`, `.env*`, keys, Chrome's cookie and
+  login stores) are refused and hidden at any depth. Bytes move only on ticketed
+  `/v1/glass/raw` and `/v1/glass/put` (one use, 60 s, size-bound), served `nosniff` with a
+  sandboxing CSP; only raster images and PDFs are shown inline. An agent reaches only its own
+  computer's files through Glass.
+- `ctx.route(name, fn)`: a raw HTTP route at `/v1/<module>/<name>`, the same shape link uses.
+- `deck/glass`: Screen, Files and a disabled Terminal tab, the take-over bar, Sign in privately,
+  a phone layout with touch gestures, drag and drop upload, and drag-out download. noVNC 1.7.0 is
+  vendored under `deck/glass/vendor/novnc` (MPL 2.0, as separate files); Glass needs an RFB client
+  in the browser and noVNC is the maintained one.
+
+#### Link heartbeat
+
+- The Mac's link heartbeat ran every 30 seconds on every Mac, paired or not, which broke the
+  60-second floor for recurring timers (principle 8, `scripts/perf-check`). It now starts only
+  once the Mac is paired, runs once a minute, and stops on unpair or when the box forgets the
+  Mac. Recovery does not depend on it, because a failed call only pauses retries.
+
+#### Link follow-ups
+
+- The tailnet peer that box's listener establishes now reaches the tool. `handler(policy)`
+  forwards the fourth argument `{ node, stableId, login }`, and the router passes it to
+  `registry.call` as `meta.peer`. The box can now tie a pairing and a link key to the Mac's node,
+  and it lets the owner approve a pairing from another of their devices. A `peer` in tool input
+  is still only input.
+- A test drives pairing through the real names listener, with whois simulated. The Mac's node
+  starts the request. Approving from that node is refused, and approving from the phone works.
+  Only the Mac's node collects the key, and the key is refused from any other node.
+- `link.find` on the Mac lists online tailnet peers that answer as a Vyre box. For each one it
+  reads the name on the peer's certificate, because the box answers at `<you>.vyre.run` and
+  checks Host. It pins the connection to that peer's stable ID. `vyre up` can offer pairing from
+  this list.
+- Files: the key rule is narrower. A Keynote document is a folder named `*.key`, and the old rule
+  hid every one. Now only regular files named `*.key` or `*.pem` are refused, plus any file
+  whose first bytes are a private key (PEM, OpenSSH or PuTTY), whatever it is called.
+
+#### Link and files
+
+- `core/link` (module `link`, both roles) makes the Mac and the box one system. The Mac's vyred
+  pairs with the box once. The Mac asks for pairing and shows a six-digit code. The owner types
+  that code on the box (`vyre link approve 123-456`), or approves from another of their devices.
+  A process on the box never sees the code, and the Mac cannot approve its own request, so
+  pairing needs the owner at both ends. Codes are kept only in memory, as HMACs under a key made
+  at start. Five wrong codes cancel every request.
+- The Mac pins the box's Tailscale node when it pairs, and checks every connection's peer with
+  its own `tailscale whois` before it writes a byte. A changed DNS record cannot send the Mac to
+  another node. The box identifies the Mac by whois too (ADR 0002), so no header is trusted in
+  either direction.
+- `ctx.remote(tool, input)` lets a Mac module call a box tool. It resolves like `ctx.call`, or to
+  `box_unreachable` or `no_link`. Once the box is known to be down, calls fail fast and retry
+  with a growing pause, so the Mac keeps working on its own (floor rule 9). Events `link.lost`
+  and `link.connected` say when that changes.
+- `GET /v1/link/events` on the Mac's socket proxies the box's event stream, each event tagged
+  `source: "box"`, so the Capsule sees box threads as they stream. It says `link.down` while the
+  box is away instead of hanging.
+- `core/files` (module `files`, both roles): `files.search`, `files.stat`, `files.preview` and
+  `files.fetch`. The Mac searches with Spotlight. The box searches file names and, with
+  ripgrep, contents, under `files.roots` only (default `/work`). A Mac search merges both
+  machines, tags each result with its source, and does not wait more than four seconds for the
+  box. Every path goes through realpath and must stay inside a root. Vyre's home, the vault,
+  credential folders, secret-looking files and dotfiles (apart from a short harmless list) are
+  never served or listed. `files.fetch` pulls a box file to the Mac in 1 MiB chunks, and fails
+  if the file changes on the way.
+- Core: `registry.call` takes a fourth `meta` argument, which reaches `run` beside the caller.
+  A network listener uses it to pass the tailnet peer, and it never enters tool input. Modules
+  can serve a raw route on the socket at `/v1/<module>/<name>` (`ctx.route`), which is what a
+  stream needs. vyred's stop now closes those connections too.
+- `vyre link`: status, `pair <address>`, `approve <code>`, `deny <id>`, `unpair`.
+
+#### Push
+
+- `core/push` (module `push`, ADR 0011): Web Push to the Deck and the Capsule for `ask.raised`,
+  `gate.held`, `thread.watched` and `lesson.proposed`. The payload is `{kind, title, path, tag, at}`:
+  a fixed title and a Deck path holding only an id, never content. Tools, for people's surfaces
+  only (`cli`, `local`, `deck`, `capsule`): `push.key` -> `{public_key}`, `push.subscribe
+  {subscription, label?}` -> `{device}`, `push.unsubscribe {device|endpoint}`, `push.devices`
+  (never the endpoint), `push.settings {quiet?: {start, end, timezone?}|null, kinds?}`,
+  `push.test {device?}`.
+- VAPID (RFC 8292) and aes128gcm (RFC 8291) use node:crypto only, with no dependency. They match
+  RFC 8291 Appendix A byte for byte. The VAPID private key is made on first use and kept in the
+  Vault as `push-vapid`, granted to `push`. Endpoints must be https on a known push service host.
+  A 404 or 410, or a passed `expirationTime`, drops the device.
+
 #### Switchboard
 
 - `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
@@ -42,6 +173,63 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   internal `threads.vouch {agent, key}` finds a live thread of that agent holding that key. The
   Harness takes the agent from `harness:agent:<name>` over `input.agent`; Memory reads
   `agent:<name>` after a space or a colon.
+- Usage metering: every turn is a row (`threads_turns`: thread, agent, auth, cost, duration,
+  input/output/cache tokens), and `thread.finished` carries `tokens`. `agents.usage {agent?, since?}`
+  returns, per agent, `{agent, kind, auth, turns, threads, duration_ms, cost_usd, api_cost_usd,
+  tokens: {input, output, cache_read, cache_write}, by_auth: {<auth>: {turns, duration_ms,
+  cost_usd}}, budget_usd, spent_usd, left_usd, limit, last_at}`. With no agent, a row with `agent:
+  null` covers threads no agent ran. The CLI is `vyre agents usage [name]`.
+- Budgets are enforced turn by turn for API-key agents. At 80% the thread gets a notice, and at 100%
+  it stops with `thread.stopped {reason: "budget"}` and a note naming the command that raises it.
+  New internal tools `threads.notice` and `threads.halt` carry both.
+- The subscription's rate limit: every `rate_limit_event` becomes `thread.limit {status, kind,
+  resets_at, utilization?}`, is kept on the thread (`last_limit`), and a warning or a refusal is
+  said in the thread once per status.
+- Learned skills: `<home>/learned/account/` loads into every thread with the Harness, and
+  `<home>/learned/projects/<slug>/` into that project's threads, each only if it holds
+  `.claude-plugin/plugin.json`. Lean threads and jobs load none of them. `threads.launch
+  {plugins: [dirs]}` adds folders explicitly, even with `plugin: false`.
+- `agents.list` rows carry `computer` again; without it core/computers refused every agent a
+  computer. Found by the computers workstream, which made the same one-line fix on its branch.
+- Lean threads: `threads.start {lean: true}` runs with no Vyre plugin, `--tools ""`,
+  `--strict-mcp-config` and `--setting-sources ""`. Checked on Claude Code 2.1.283 with haiku:
+  "What is 2+2?" cost $0.013 (6.5k tokens of Claude Code's own system prompt), where the
+  Capsule measured $0.027 with the plugin. Not `--bare`, which skips keychain reads and with
+  them a subscription's login.
+- Jobs: internal `threads.launch` takes `plugin: false`, `tools: "none"`, `settings: false` and
+  `once: true`. A one-shot thread stops after its first `thread.finished`, with
+  `thread.stopped {reason: "done"}`. These options are kept on the thread (`threads_runs.opts`),
+  so a resume runs the same way.
+- `ask.answered` carries `tool` and `summary`, so an approval or a denial can teach Learning.
+- `threads.watch {thread, until?: finished|asks|either, notify?, note?}` -> `{watch, fired}` and
+  `threads.unwatch {watch}`. Exactly once, `thread.watched {watch, reason: finished|asked|stopped,
+  notify, note, by, summary?}` is emitted. A stop always fires it, and a thread already stopped
+  fires at once. Watches are rows (`threads_watches`), so they survive a vyred restart.
+- `agents.history {agent?, limit?, before?}`: past exchanges with an agent, or with every agent,
+  newest last: `[{id, at, agent, thread, project, surface, text, answer}]`. `text` is what was
+  sent and `answer` the done replies before the next send. `before` takes an exchange's `id`.
+  Built by the internal `threads.history` from stored `thread.sent` and done `thread.text`
+  events. Guarded like `agents.threads`. This is the shape the Deck's ask view reads.
+- Adopt: `threads.send` to a session the Switchboard did not start (a terminal `claude`) finds its
+  transcript, makes its record (cwd and name from the transcript, `stopped_reason: "adopted"`) and
+  resumes it headless with the lease. Before resuming any thread that is not running here, it
+  refuses with `{sent: false, open_elsewhere: true, note}` if the session is open elsewhere: bound
+  to a running claude that is not ours, named by a running claude's arguments (`--resume <id>`),
+  or its transcript written in the last 30 seconds by anything but our own child
+  (`core/switchboard/adopt.js`).
+- Tools learn the verified thread: `registry.call(tool, input, caller, via)` and
+  `run(input, { caller, thread?, agent? })`. vyred sets both for an agent caller whose key it
+  vouched. For any other session, the SessionStart hook calls `threads.bind {session, pid}` for
+  its claude process (its parent, as the MCP server's is) and writes the key to
+  `<home>/sessions/<pid>.json` (0600). The MCP server sends `x-vyre-session` and
+  `x-vyre-session-key` from that file on every call. vyred refuses a claim whose key does not match
+  or whose process is gone. A session binds only from a running `claude` (or a live headless
+  child), and a session bound to one live process cannot be taken by another.
+- `gate.request` files a held item under the verified thread, and its project when the
+  Switchboard knows it. From a model, a different `thread` in the input is refused.
+- `threads.answer` declares `presence: { summary }` for security's presence proof (ADR 0004); the
+  summary reads like "Allow Write to /work/notes.md: write notes.md (thread Intake)". The loader
+  ignores the key until presence lands.
 - `callerKind` (and the vault's rules) drop the agent part: `mcp:agent:kit` is an `mcp` caller to
   every allowlist, so an agent's `vault.grant` waits as pending like any model's.
 - Tests: the vault's per-agent stub is module `roster`, not `agents`; Memory's graph test and the
@@ -361,7 +549,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and deletes are safe to repeat). Keychain tests share `core/vault/testing.js`: a keychain with a
   unique name per test, taken off the user's search list under a machine-wide lock, never a
   rewrite of the whole list, and cleanup registered first. Ten parallel runs pass together.
-- Autofill (`docs/adr/0001-autofill.md`): a fill listener (`vault.fill: {host, port}` in
+- Autofill (`docs/adr/0010-vault-autofill.md`): a fill listener (`vault.fill: {host, port}` in
   config) that only paired browser extensions reach. Pairing is a one-time code from `vyre vault
   pair`; nothing is filled until the person unlocks with their unlock passphrase (or the vault
   passphrase, or later Touch ID through the Capsule), sessions end after 10 idle minutes, and a
@@ -439,6 +627,50 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Drive and watch sessions from the Capsule. "watch the intake thread" offers a row per thread it
+  could mean; picking one sets a watch (`lib/watch.js`), a filter on the event stream the Capsule
+  follows anyway. When the thread finishes, fails, stops or asks, a macOS notification says so and
+  the report (the last thing it said, and its cost) waits in the empty Capsule until read. "tell
+  the intake thread to run the tests" shows the thread and the words, sends them as the user and
+  watches the thread; a thread someone else holds says who, and only ⌘⏎ takes it.
+- In the Capsule: clipboard items rank beside apps and files, "clipboard" lists them newest first
+  with a row that clears the history, and Enter puts one back on the pasteboard and closes, for the
+  user's own ⌘V. `@` an agent opens a DM: its history, your messages from any surface, the reply
+  streaming into the list, and its asks in Beacon to click and answer. A test run watches a
+  private pasteboard, never the user's.
+- Clipboard history, on this Mac only (`lib/clips.js`, `clip.watch` in `bin/local`): the helper
+  reads the pasteboard's change count every 750 ms, the one thing that runs while the Capsule is
+  hidden. Concealed, transient and auto-generated items, password managers, Universal Clipboard,
+  and anything that looks like a secret (token prefixes, JWTs, keys, codes, card numbers,
+  high-entropy strings) are never recorded. At most 200 items for 7 days, in a 0600 file. Picking
+  one writes it to the pasteboard for the user's own ⌘V; nothing is typed for them.
+- Direct messages with agents (`bridge.openDm`, `st.applyDm`): an agent's current thread as
+  history, the user's messages from any surface marked with where they came from, a sent message
+  shown at once and reconciled when it lands, the reply streaming into the same list, and the
+  agent's asks beside it. Nothing is fetched unless a DM is open.
+- Result rows look native: each has its real picture (a 24 px box that never moves when the
+  icon lands), its name, where it is, and its kind or the key that takes it, with the selected
+  row in Signal. Vyre's own kinds (agents, the assistant, projects, threads, memory in Recall gold,
+  the vault, box files, held items in Beacon, quick answers) are drawn as one set of glyphs.
+- A question shows "Ask Claude", the assistant and "deeper" as the top rows, each naming its
+  destination. Enter streams the answer in place, rendered from markdown (built node by node,
+  never as HTML), with Copy, a one-press deeper retry, the model, cost and time, and what memory
+  said in gold. Esc stops a streaming answer; the next Esc closes. Follow-ups go to the same
+  thread. Enter pressed before the destination for the new words is worked out shows it and
+  sends nothing.
+- Files rank a little below the same match on an app or a pane, and at most four show beside
+  other results. Icons from the first build were drawn a quarter size; the cache moved to
+  `icons-2`.
+- Real icons, fetched by `bin/local` in batches off the main thread: app bundle icons,
+  system type icons or QuickLook thumbnails for files, each settings pane's own icon (resolved
+  from its extension bundle), and contact photos when Contacts is already allowed. `lib/icons.js`
+  keeps them as 64 px PNGs in a bounded cache (1500 files, 24 MB, least recently used first),
+  keyed by path and mtime.
+- Questions get answers in place: a bare query that reads as a question offers Claude (a fast
+  model, haiku) or the assistant, whichever fits: the assistant first when it names the user's own
+  projects, threads, agents or people. A deeper option runs sonnet. A quick answer is a headless
+  thread started in `<vyred home>/capsule/ask`; follow-ups go to the same thread, `cancel()` stops
+  it, and the reply carries its model, cost and what memory said.
 - `vyre capsule` opens an installed Vyre.app (/Applications or ~/Applications) when there is no
   dist build of this source, and leaves it on its own bundled helpers. Packaged apps declare
   `NSContactsUsageDescription`, without which macOS refuses the Contacts ask silently.

@@ -22,16 +22,17 @@ export const fixturesOn = (() => { try { return store?.getItem("vyre.fixtures") 
 export const fromFixtures = new Set();
 
 /** Tools are named for what they do; some live in a module of another name. */
-const MODULE = { threads: "switchboard", agents: "switchboard", onboard: "box", gate: "gate", learn: "learning" };
+const MODULE = { threads: "switchboard", agents: "switchboard", onboard: "box", gate: "gate", learn: "learn" };
 
 export class ApiError extends Error {
-  /** @param {string} code @param {string} message @param {string} tool */
-  constructor(code, message, tool) {
+  /** @param {string} code @param {string} message @param {string} tool @param {Record<string, any>} [detail] the whole error body vyred sent, for fields beyond code/message (e.g. presence_required's `methods`) */
+  constructor(code, message, tool, detail) {
     super(message);
     this.code = code;
     this.tool = tool;
     this.module = MODULE[tool.split(".")[0]] || tool.split(".")[0];
     this.missing = code === "no_such_tool" || code === "offline";
+    if (detail) this.detail = detail;
   }
 }
 
@@ -55,7 +56,7 @@ export async function call(name, input = {}) {
     return fallback(name, input, new ApiError("offline", "vyred did not answer", name));
   }
   if (body && "data" in body && !body.error) return body.data;
-  const err = new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name);
+  const err = new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
   if (err.missing || res.status === 404) return fallback(name, input, err);
   throw err;
 }
@@ -63,6 +64,36 @@ export async function call(name, input = {}) {
 /** Call, but resolve to { data } or { error } so a view can render either without try/catch. */
 export async function attempt(name, input = {}) {
   try { return { data: await call(name, input) }; } catch (error) { return { error }; }
+}
+
+/**
+ * The one byte transfer the Deck makes outside call(): a body PUT to a same-origin ticketed path
+ * (e.g. what glass.files.upload returns), with progress. Moved here from deck/glass/transfer.js
+ * so js/api.js stays the only place that talks to vyred.
+ * @param {string} path a same-origin ticketed put path
+ * @param {Blob} body
+ * @param {(sent: number, total: number) => void} [progress]
+ * @returns {{ done: Promise<any>, abort: () => void }}
+ */
+export function upload(path, body, progress) {
+  const x = new XMLHttpRequest();
+  const done = new Promise((resolve, reject) => {
+    if (!path.startsWith("/")) { reject(Object.assign(new Error("the upload path is not on this box"), { code: "bad_path" })); return; }
+    x.open("PUT", path);
+    x.setRequestHeader("content-type", "application/octet-stream");
+    x.setRequestHeader("x-vyre-caller", "deck");
+    x.upload.onprogress = e => progress?.(e.loaded, e.lengthComputable ? e.total : body.size);
+    x.onload = () => {
+      let b = null;
+      try { b = JSON.parse(x.responseText); } catch {}
+      if (x.status >= 200 && x.status < 300 && !b?.error) resolve(b?.data ?? b);
+      else reject(Object.assign(new Error(b?.error?.message || x.statusText || `the box answered ${x.status}`), { code: b?.error?.code || `http_${x.status}` }));
+    };
+    x.onerror = () => reject(Object.assign(new Error("the upload did not reach the box"), { code: "offline" }));
+    x.onabort = () => reject(Object.assign(new Error("upload cancelled"), { code: "aborted" }));
+    x.send(body);
+  });
+  return { done, abort: () => x.abort() };
 }
 
 const fixtureFiles = new Map();

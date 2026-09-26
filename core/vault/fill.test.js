@@ -8,12 +8,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Fill, FILL_MIGRATION, FILL_TOOLS, serveFill } from "./fill.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXT = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
@@ -22,7 +22,7 @@ const UNLOCK = `fixture-unlock-${crypto.randomBytes(8).toString("hex")}`;
 const SEED = "JBSWY3DPEHPK3PXP";
 
 async function setup(t, { now } = {}) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-fill-"));
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-fill-"));
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const events = [];

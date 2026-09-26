@@ -126,6 +126,36 @@ test("bridge: with the switchboard, the assistant is the default and a reply str
   assert.ok(!fc.calls.some(x => x[0] === "threads.lease"));
 });
 
+test("bridge: a question names memory beside the model's answer, and people in projects make it the user's own", async t => {
+  const { c } = await vyred(t, { bare: true });
+  const root = fs.mkdtempSync(path.join(path.dirname(c.socket), "home-"));
+  const fc = withFakes(c, {
+    "agents.list": () => [{ name: "juno", kind: "assistant" }],
+    "memory.relevant": () => [{ text: "Paris is where the offsite is.", score: 0.9, ref: { session: "s1", seq: 2, name: "Offsite" } }],
+    "recall.search": () => [],
+    "threads.start": i => ({ id: "q1", ...i }),
+  });
+  const b = new Bridge(fc, { home: root });
+  await b.refresh();
+  const own = await b.destinations(null, "what is Dana's email?");
+  assert.deepEqual(own.options.map(o => o.kind), ["assistant", "quick", "quick"], "Dana is in Harlow Legal's people");
+  const gen = await b.destinations(null, "what is the capital of France?");
+  assert.deepEqual(gen.options.map(o => [o.kind, o.show.who]), [["quick", "Claude"], ["assistant", "juno"], ["quick", "Claude · deeper"]]);
+  await b.recall("what is the capital of France?");
+  assert.deepEqual(await b.send(gen.options[0], "what is the capital of France?"), { thread: "q1" });
+  const start = fc.calls.find(x => x[0] === "threads.start")?.[1];
+  assert.equal(start.model, "haiku");
+  assert.equal(start.cwd, path.join(root, "capsule", "ask"));
+  assert.ok(fs.statSync(start.cwd).isDirectory(), "made on demand");
+  assert.doesNotMatch(start.prompt, /Paris/, "nothing from memory reaches the quick model");
+  const snap = b.snapshot();
+  assert.deepEqual([snap.reply?.model, snap.reply?.memory?.answer, snap.reply?.memory?.sources[0].name], ["haiku", "Paris is where the offsite is.", "Offsite"]);
+  assert.equal(snap.has.stop, false);
+  const stop = await b.cancel();
+  assert.match(String(stop.note), /Stopped following/, "no threads.stop: it says so");
+  assert.deepEqual([b.snapshot().reply?.finished, b.snapshot().reply?.error], [true, "stopped"]);
+});
+
 test("bridge: another surface holding the keyboard stops the send and says who, and only the user takes it", async t => {
   const { c } = await vyred(t);
   let holder = "terminal";
@@ -317,7 +347,7 @@ test("real switchboard: every tool the Capsule calls is open to the capsule call
   const { c, b } = await live(t);
   await b.refresh();
   for (const tool of ["agents.list", "agents.ask", "agents.threads", "threads.list", "threads.start", "threads.send", "threads.lease",
-    "threads.release", "threads.asks", "threads.answer", "threads.get", "projects.list"]) assert.ok(b.has(tool), `${tool} is listed for capsule`);
+    "threads.release", "threads.asks", "threads.answer", "threads.get", "threads.stop", "projects.list"]) assert.ok(b.has(tool), `${tool} is listed for capsule`);
   const mf = JSON.parse(fs.readFileSync(path.resolve(path.dirname(FAKE), "..", "module.json"), "utf8"));
   assert.ok(mf.does.tools.includes("threads.asks"));
   assert.equal((await c.call("threads.asks")).error, undefined);
@@ -470,4 +500,154 @@ test("real switchboard: a session the switchboard never started cannot be typed 
   const r = await b.send({ kind: "thread", thread: "11111111-aaaa-4000-8000-000000000001", meta: "" }, "hello");
   assert.ok(r.error);
   assert.doesNotMatch(String(r.error), /^no thread/);
+});
+
+test("real switchboard: a question goes to a fast model in the Capsule's folder, follows up in its thread, and Stop stops it", async t => {
+  const { root, b, cli } = await live(t);
+  const log = path.join(root, "fake-claude.log");
+  process.env.FAKE_CLAUDE_LOG = log;
+  t.after(() => { delete process.env.FAKE_CLAUDE_LOG; });
+  await b.refresh();
+  const d = await b.destinations(null, "What is 2+2?");
+  assert.deepEqual(d.options.map(o => [o.kind, o.model]), [["quick", "haiku"], ["quick", "sonnet"]], "no assistant: the model only");
+  assert.equal(d.unavailable, null);
+  const sent = await b.send(d.options[0], "What is 2+2?");
+  assert.equal(sent.error, undefined, sent.error);
+  await until(() => b.snapshot().reply?.finished, "the quick reply");
+  const snap = b.snapshot().reply;
+  assert.equal(snap?.thread, sent.thread);
+  assert.match(String(snap?.text), /^echo: What is 2\+2\?/);
+  assert.deepEqual([snap?.ok, snap?.model, snap?.cost, snap?.ms], [true, "haiku", 0.001, 5]);
+  const launch = JSON.parse(fs.readFileSync(log, "utf8").trim().split("\n")[0]);
+  assert.equal(launch.argv[launch.argv.indexOf("--model") + 1], "haiku");
+  assert.equal(fs.realpathSync(launch.cwd), fs.realpathSync(path.join(root, "capsule", "ask")));
+  const rec = (await cli("threads.get", { thread: sent.thread, limit: 1 })).data.thread;
+  assert.deepEqual([rec.name, rec.model, rec.holder], ["Capsule: What is 2+2?", "haiku", "capsule"]);
+
+  // A follow-up is a thread send, and lands in the same thread.
+  const again = await b.send({ kind: "thread", thread: sent.thread, meta: "" }, "and 3+3?");
+  assert.deepEqual(again, { thread: sent.thread });
+  await until(() => b.snapshot().reply?.finished && b.snapshot().reply?.text === "echo: and 3+3?", "the follow-up");
+  assert.equal(b.snapshot().reply?.model, "haiku");
+
+  // Closing the Capsule stops the idle process, and the answer on screen stays an answer.
+  await b.releaseLease();
+  await until(async () => (await cli("threads.get", { thread: sent.thread, limit: 1 })).data.thread.status === "stopped", "the quick thread to stop");
+  await until(() => b.stopping.size === 0, "thread.stopped to arrive");
+  assert.deepEqual([b.snapshot().reply?.ok, b.snapshot().reply?.error], [true, null]);
+
+  // Stop, mid-reply: the thread is resumed by the send, then stopped.
+  const long = "x".repeat(3000);
+  assert.deepEqual(await b.send({ kind: "thread", thread: sent.thread, meta: "" }, long), { thread: sent.thread });
+  await until(() => (b.snapshot().reply?.text || "").length > 0, "the long reply to start");
+  const stop = await b.cancel();
+  assert.deepEqual([stop.ok, stop.stopped], [true, true]);
+  await until(async () => (await cli("threads.get", { thread: sent.thread, limit: 1 })).data.thread.status === "stopped", "Stop to stop it");
+  await until(() => b.stopping.size === 0, "thread.stopped to arrive");
+  const after = b.snapshot().reply;
+  assert.deepEqual([after?.finished, after?.ok, after?.error], [true, false, "stopped"]);
+  assert.ok(String(after?.text).length < 3006, "it did not run to the end");
+});
+
+// ------------------------------------------------------------ DMs with the real switchboard
+
+test("real switchboard: a DM loads the agent's history in order, and nothing is fetched until it is open", async t => {
+  const { b, cli } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  for (const q of ["first", "second", "third"]) assert.equal((await cli("agents.ask", { agent: "juno", text: q })).data.text, `echo: ${q}`);
+  await b.refresh();
+  assert.equal(b.snapshot().dm, null, "no DM until one is opened");
+  const once = await b.dm("assistant");
+  assert.equal(once.agent, "juno");
+  assert.deepEqual(once.messages.map(m => [m.role, m.text, m.surface ?? null]), [
+    ["user", "first", "cli"], ["agent", "echo: first", null], ["user", "second", "cli"], ["agent", "echo: second", null],
+    ["user", "third", "cli"], ["agent", "echo: third", null]]);
+  assert.deepEqual([once.busy, once.holder, once.asks], [false, null, []]);
+  assert.ok(once.messages.every((m, i, all) => i === 0 || m.at >= all[i - 1].at), "oldest first");
+  assert.equal((await b.dm("juno", { limit: 2 })).messages.map(m => m.text).join("|"), "third|echo: third");
+  assert.equal(b.snapshot().dm, null, "reading one is not opening it");
+  assert.match(String((await b.dm("nobody")).error), /no agent called nobody/);
+});
+
+test("real switchboard: in an open DM a send shows pending, then streams, once; another surface's words carry it; close clears", async t => {
+  const { b, cli } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  assert.ok((await cli("agents.create", { name: "kit", projects: [] })).data);
+  await b.refresh();
+  // kit has no thread yet: the DM is empty, and its first words start one.
+  const opened = await b.openDm("kit");
+  assert.deepEqual([opened.agent, opened.thread, opened.messages], ["kit", null, []]);
+  const seen = [];
+  b.on("change", () => { const d = b.snapshot().dm; if (d) seen.push(d.messages.map(m => `${m.role}:${m.pending ? "pending:" : ""}${m.text}`).join(" / ")); });
+  // Long enough that the switchboard's 20-a-second throttle sends it in more than one piece.
+  const words = "hello kit " + "and more ".repeat(60).trim();
+  const d = (await b.destinations(b.complete("kit")[0], words)).options[0];
+  const sent = await b.send(d, words);
+  assert.equal(sent.error, undefined, sent.error);
+  assert.equal(seen[0], `user:pending:${words}`, "shown at once, pending");
+  await until(() => b.snapshot().dm?.messages.at(-1)?.done, "kit's reply to finish in the DM");
+  let dm = b.snapshot().dm;
+  assert.equal(dm?.thread, sent.thread);
+  assert.deepEqual(dm?.messages.map(m => [m.role, m.text, Boolean(m.pending)]), [["user", words, false], ["agent", `echo: ${words}`, false]]);
+  assert.ok(seen.some(x => x.startsWith(`user:${words} / agent:echo: hello`) && x !== `user:${words} / agent:echo: ${words}`), "the reply streamed in pieces");
+  assert.ok(seen.every(x => x.split(" / ").filter(m => m.startsWith("user:")).length <= 1), "the user's words never appear twice");
+  assert.equal(dm?.busy, false);
+  assert.equal(dm?.holder, "capsule", "agents.ask wait:false keeps the keyboard for the Capsule");
+
+  // The Deck types into kit's thread: it shows as the user's, from the deck.
+  await b.releaseLease();
+  assert.equal((await cli("threads.send", { thread: sent.thread, text: "from the deck", surface: "deck" })).data.sent, true);
+  await until(() => b.snapshot().dm?.messages.at(-1)?.text === "echo: from the deck" && b.snapshot().dm?.messages.at(-1)?.done, "the deck's turn");
+  dm = b.snapshot().dm;
+  assert.deepEqual(dm?.messages.slice(-2).map(m => [m.role, m.text, m.surface ?? null]), [["user", "from the deck", "deck"], ["agent", "echo: from the deck", null]]);
+  assert.equal(dm?.holder, "deck");
+
+  // A second open reads the same history back from vyred, whole.
+  const again = await b.openDm("kit");
+  assert.deepEqual(again.messages.map(m => [m.role, m.text, m.surface ?? null]), dm?.messages.map(m => [m.role, m.text, m.surface ?? null]));
+
+  assert.deepEqual(b.closeDm(), { ok: true });
+  assert.equal(b.snapshot().dm, null);
+  const finished = async () => (await cli("threads.get", { thread: sent.thread })).data.events.filter(e => e.type === "thread.finished").length;
+  const turns = await finished();
+  await cli("threads.release", { thread: sent.thread, surface: "deck" });
+  await cli("threads.send", { thread: sent.thread, text: "while closed", surface: "cli" });
+  await until(async () => (await finished()) > turns, "the turn while closed");
+  assert.equal(b.snapshot().dm, null, "a closed DM folds nothing");
+  assert.equal(b.chat, null);
+});
+
+test("real switchboard: an ask in the DM's thread shows in dm.asks and in the waiting list, and goes when answered", async t => {
+  const { b, cli, work } = await live(t);
+  assert.ok((await cli("agents.create", { name: "juno", kind: "assistant" })).data);
+  await b.refresh();
+  await b.openDm("juno");
+  const target = path.join(work, "dm-notes.txt");
+  const d = (await b.destinations(null, `write ${target}`)).options[0];
+  assert.equal(d.kind, "assistant");
+  const sent = await b.send(d, `write ${target}`);
+  assert.equal(sent.error, undefined, sent.error);
+  await until(() => b.snapshot().dm?.asks.length === 1, "the ask in the DM");
+  const snap = b.snapshot();
+  const ask = snap.dm?.asks[0];
+  assert.equal(ask?.thread, sent.thread);
+  assert.equal(ask?.tool, "Write");
+  assert.match(String(ask?.title), /^juno asks to Write .*dm-notes\.txt/);
+  assert.deepEqual(snap.waiting.map(w => w.id), [ask?.id], "still in the global waiting list");
+  assert.equal(snap.dm?.busy, true);
+  assert.equal(snap.dm?.messages.at(-1)?.tools?.[0]?.summary.startsWith("Write "), true, "the tool call is one line");
+
+  // Reopened mid-question, the ask comes from the table, not the stream.
+  const re = await b.openDm("juno");
+  assert.deepEqual(re.asks.map(a => a.id), [ask?.id]);
+
+  assert.deepEqual(await b.answer(/** @type {any} */ (ask), "allow"), { ok: true });
+  await until(() => fs.existsSync(target), "the file the answer allowed");
+  await until(() => b.snapshot().dm?.asks.length === 0 && b.snapshot().dm?.busy === false, "the ask to go from the DM and the turn to end");
+  assert.deepEqual(b.snapshot().waiting, []);
+  const last = b.snapshot().dm?.messages.at(-1);
+  assert.deepEqual([last?.role, last?.text, last?.tools?.[0]?.done, last?.tools?.[0]?.error], ["agent", "Wrote it.", true, false]);
+  b.closeDm();
+  assert.equal(b.snapshot().dm, null);
+  await b.releaseLease();
 });

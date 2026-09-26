@@ -30,7 +30,8 @@ Claude Code itself:
   Vyre steps aside and uses theirs.
 - **Not a hosted service.** Vyre AI runs one thing: the name directory for `<you>.vyre.run`. It
   holds no user data.
-- **Not an IDE.** It uses Claude Code for coding; its own Chat is a window onto real Claude Code sessions, not a separate assistant.
+- **Not an IDE.** It uses Claude Code for coding; Chat is part of the Deck, a window onto real
+  Claude Code sessions, not a separate assistant.
 
 ### Install and onboarding
 
@@ -125,6 +126,8 @@ vyre/
     ship/                  preview, repo, live                     (later)
     computers/             agents' containers and the screen pool  (workstream: computers)
     names/                 <you>.vyre.run, Tailscale, certificates (workstream: box)
+    link/                  the Mac and the box as one system: pairing, ctx.remote, box events (workstream: link)
+    files/                 search, preview and fetch files on both machines, inside their roots (workstream: link)
     cli/                   every `vyre` command
   harness/                 a Claude Code plugin
     .claude-plugin/plugin.json
@@ -137,7 +140,7 @@ vyre/
     capsule/               the Capsule                             (workstream: capsule)
     hands-mac/             computer use on macOS                   (workstream: capsule)
   deck/                    the web app, served by vyred             (workstream: deck)
-  modules/                 first-party optional modules (hands-desktop, hands-chrome, chat)
+  modules/                 first-party optional modules (hands-desktop, hands-chrome)
   docs/                    this spec, the module guide, ADRs, workstream notes
   test/                    cross-module tests; unit tests sit beside their code
   CHANGELOG.md
@@ -228,7 +231,8 @@ export default {
     // ctx.memory     teach(kind, fact) — goes to the curator's queue
     // ctx.projects   read projects and threads
     // ctx.log        structured logging
-    // ctx.tool(name, { input, run })   register a tool declared in `does`
+    // ctx.tool(name, { input, run })   register a tool declared in `does`; run(input, { caller,
+    //                thread?, agent? }): thread and agent only when vyred verified them
     return { async stop() {} };
   },
 };
@@ -244,6 +248,11 @@ it as:
 - a **CLI command** `vyre <module> <tool>` when the manifest lists it under `shows.cli`.
 
 Every call passes through the Rules (section 11) before `run` executes.
+
+A tool learns where a call came from only from what vyred checked. `caller` is a claim. `agent`
+and `thread` are set when the caller proved them: an agent's thread by the key the Switchboard
+gave it, any other session by the key its SessionStart hook was given for its `claude` process.
+A thread named in the input is a claim like any other.
 
 ---
 
@@ -565,7 +574,7 @@ through `ctx` or the API, never by importing its files.
 | deck | `deck/` | the API only | M6 |
 | capsule | `local/capsule/`, `local/hands-mac/` | the API only | M7 |
 | computers | `core/computers/`, `modules/hands-desktop/`, `modules/hands-chrome/` | switchboard | M8 |
-| gate + chat | `core/gate/`, `modules/chat/` | switchboard, vault | M9 |
+| gate + chat | `core/gate/`, `deck/chat/` | switchboard, vault, deck | M9 |
 
 How to start them, and the order (wave 1 now, wave 2 after the switchboard and vault merge), is
 in `docs/work/LAUNCH.md`.
