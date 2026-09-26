@@ -168,13 +168,14 @@ vyre backup                   # vyre-backup-YYYY-MM-DD.tar.gz, mode 0600, in /ho
 
 The file lands in `/home/vyre`, inside the `vyre_vyre-home` volume. Copy it out with
 `cd /srv/vyre && docker compose cp vyre:/home/vyre/<file> .`. Restore needs vyred stopped, and
-vyred is the container's main process, so restore runs in a one-off container:
+vyred is the container's main process, so restore runs in a one-off container. `--force` lets it
+replace the store the box already has; without it restore refuses:
 
 ```
 cd /srv/vyre
 docker compose cp <file> vyre:/home/vyre/
 docker compose stop vyre
-docker compose run --rm vyre vyre restore /home/vyre/<file>
+docker compose run --rm vyre vyre restore /home/vyre/<file> --force
 vyre up
 ```
 
