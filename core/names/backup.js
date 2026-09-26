@@ -89,7 +89,9 @@ export async function backup({ root = config.home(), file, db }) {
 
 /** Is a vyred alive for this root? The pid file first, then whether the socket answers. */
 async function defaultAlive({ pid, socket }) {
-  if (pid) {
+  // A pid file outlives a killed container, and the one-off container that runs the restore can
+  // hand this process the same pid (vyred and the CLI are both pid 7 under docker-init).
+  if (pid && pid !== process.pid) {
     try { process.kill(pid, 0); return true; }
     catch (e) { if (/** @type {any} */ (e).code === "EPERM") return true; }
   }

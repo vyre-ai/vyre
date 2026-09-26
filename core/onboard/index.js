@@ -28,6 +28,12 @@ const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
 // The switchboard's agents module starts the headless sessions and hands them this credential.
 const CREDENTIAL_READERS = ["agents"];
+const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
+/** An agent's name from a display name: "Juno Two" becomes "juno-two". */
+export const slug = s => {
+  const v = String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^[^a-z]+|-+$/g, "").slice(0, 31).replace(/-+$/, "");
+  return v.length >= 2 ? v : "assistant";
+};
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 
@@ -248,15 +254,45 @@ export default {
       },
     });
 
+    /**
+     * The assistant (spec section 10): made once, on every project, signed in with what the Claude
+     * step put in the Vault, and greeting the person in its first thread. Without a Claude sign-in
+     * there is nothing to run it on yet, so it waits for Settings; a failure never blocks finishing.
+     */
+    async function meet() {
+      const auth = ob().claude;
+      if (!auth) return null;
+      if (ob().greeted) return { name: ob().greeted.agent, display: ob().assistant || null, thread: ob().greeted.thread };
+      try {
+        const display = ob().assistant || "Juno";
+        const list = await call("agents.list");
+        let a = (Array.isArray(list) ? list : list.agents || []).find(x => x.kind === "assistant");
+        if (!a) {
+          const name = slug(display);
+          const person = ob().person ? ` You work for ${ob().person}.` : "";
+          a = await call("agents.create", { name, kind: "assistant", projects: "*",
+            auth: { vault: VAULT_ITEM[auth === "api-key" ? "api-key" : "subscription"], ...(auth === "api-key" ? {} : { fallback: VAULT_ITEM["api-key"] }) },
+            instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
+        }
+        const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
+        save({ onboard: { greeted: { agent: a.name, thread: r.thread } } });
+        return { name: a.name, display, thread: r.thread };
+      } catch (e) {
+        ctx.log("onboard: the assistant was not made: " + /** @type {Error} */ (e).message);
+        return { name: null, display: ob().assistant || null, thread: null, why: /** @type {Error} */ (e).message };
+      }
+    }
+
     ctx.tool("onboard.finish", {
       description: "Finish the onboarding.",
       input: obj(),
       run: async (_, { caller }) => {
+        const assistant = await meet();
         save({ onboard: { finished: new Date().toISOString() } });
         ctx.events.emit("onboard.finished", {});
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
-        return { ...s, url: s.address };
+        return { ...s, url: s.address, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
       },
     });
 

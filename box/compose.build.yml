@@ -6,6 +6,9 @@
 services:
   vyre:
     image: vyre:local
+    # Never look for vyre:local on a registry; it only ever exists here. Missing, it is built;
+    # present, it is used ("build" would rebuild on every up). `vyre update` rebuilds.
+    pull_policy: never
     build:
       context: ${VYRE_SOURCE:-..}
       dockerfile: box/Dockerfile

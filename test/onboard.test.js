@@ -271,3 +271,24 @@ if [ "$code" = "good-code" ]; then printf '\\nYour token: ${token}\\n'; else pri
   const events = fs.readdirSync(root, { recursive: true }).filter(f => /\.(jsonl|log|db)$/.test(String(f)));
   for (const f of events) assert.ok(!fs.readFileSync(path.join(root, String(f))).includes(token), `${f} holds the token`);
 });
+
+test("onboard: finishing makes the assistant once, on every project, signed in with the Claude step's item", async t => {
+  const { root } = await box(t, { vault: { keystore: "file" } });
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+  await tool(base, session, "onboard.you", { name: "Alex", assistant: "Mira Two" });
+  const before = await (await tool(base, session, "onboard.finish")).json();
+  assert.equal(before.data.assistant, null, "no Claude sign-in yet, so no assistant to run");
+  await tool(base, session, "onboard.claude", { mode: "api-key", key: "sk-ant-api" + "0".repeat(40) });
+  const done = await (await tool(base, session, "onboard.finish")).json();
+  assert.equal(done.data.ready, "Vyre is ready.");
+  assert.equal(done.data.assistant.name, "mira-two");
+  assert.equal(done.data.assistant.display, "Mira Two");
+  const agents = (await call("agents.list", {}, { root, caller: "cli" })).data;
+  const a = agents.find(x => x.kind === "assistant");
+  assert.equal(a.name, "mira-two");
+  assert.equal(a.projects, "*");
+  await tool(base, session, "onboard.finish");
+  assert.equal((await call("agents.list", {}, { root, caller: "cli" })).data.filter(x => x.kind === "assistant").length, 1, "finishing again makes no second assistant");
+});
