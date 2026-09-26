@@ -6,6 +6,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Learning
 
+- Lessons are checked with vyred down, as the floor is. Learning keeps the accepted lessons in
+  `<home>/lessons.json` (mode 0600), rewritten on every change. When vyred does not answer,
+  `hook.js` runs the tool and Stop checks in-process from it (`core/learn/offline.js`), keeping
+  each thread's turn in `<home>/learn-offline/`. What it caught or saw broken is appended to a
+  log that the learn module counts on its next start, escalation included. Offline, only lessons
+  scoped to everyone or to this agent apply, since Projects is not there to place a folder.
+  Verified in real Claude Code with vyred unable to start: an em dash reply sent back once and
+  the final reply clean; a code-only turn sent back until it updated the changelog; both counted
+  when vyred came back.
 - `core/learn`: lessons Vyre learns from corrections and enforces with hooks, so a lesson is code
   rather than advice (section 7.11). Tools `learn.lessons`, `learn.add`, `learn.accept`,
   `learn.edit`, `learn.retire`, `learn.check {stage: tool|stop|brief}` and the internal

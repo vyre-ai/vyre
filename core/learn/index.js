@@ -15,7 +15,8 @@
 // user; a reply is sent back), block (a tool call is denied; a reply is sent back). A lesson
 // broken again moves up one level.
 
-import { distill, invalid, atStop, atTool, weakens } from "./checks.js";
+import { distill, invalid, atStop, atTool, weakens, sentBack, held, MAX_BLOCKS } from "./checks.js";
+import { writeSnapshot, drain } from "./offline.js";
 
 const MIGRATIONS = [
   `CREATE TABLE learn_lessons (
@@ -30,8 +31,7 @@ const MIGRATIONS = [
    CREATE INDEX learn_commands_session ON learn_commands (session, at);`,
 ];
 
-/** How many times one turn is sent back before it is allowed to end with the lesson broken. */
-export const MAX_BLOCKS = 2;
+export { MAX_BLOCKS };
 const LEVELS = ["remind", "ask", "block"];
 
 const scopeSchema = { anyOf: [{ type: "string" }, { type: "object" }] };
@@ -96,7 +96,7 @@ export default {
       const to = l.broken + 1 >= 2 && from !== "block" ? LEVELS[LEVELS.indexOf(from) + 1] : from;
       bump.run(0, 0, 1, to, now(), l.id);
       ctx.events.emit("lesson.broken", { lesson: l.id, session: session || null, level: from }, { thread: session || undefined });
-      if (to !== from) ctx.events.emit("lesson.escalated", { lesson: l.id, from, to });
+      if (to !== from) { ctx.events.emit("lesson.escalated", { lesson: l.id, from, to }); snap(); }
       owe.push(l.id);
     };
 
@@ -115,6 +115,24 @@ export default {
       const r = await ctx.call("harness.touched", { session, limit: 500 });
       return r && Array.isArray(r.data) ? r.data.filter(f => f.at >= since) : [];
     };
+
+    // The hooks' copy of the accepted lessons, for when vyred is down (offline.js). Rewritten on
+    // every change; a home that cannot be written costs the offline checks, never a tool call.
+    const root = ctx.paths && ctx.paths.root;
+    const snap = () => {
+      if (!root) return;
+      try { writeSnapshot(root, active()); } catch (e) { ctx.log("lessons snapshot not written: " + /** @type {Error} */ (e).message); }
+    };
+    // What the hooks caught or saw broken while vyred was down, counted now, escalation included.
+    if (root) for (const e of drain(root)) {
+      const l = get(e.lesson);
+      if (!l || l.status !== "active") continue;
+      if (e.kind === "caught") {
+        bump.run(0, 1, 0, l.level, now(), l.id);
+        ctx.events.emit("lesson.caught", { lesson: l.id, session: e.session || null, stage: "offline" }, { thread: e.session || undefined });
+      } else if (e.kind === "broken") broke(l, e.session, []);
+    }
+    snap();
 
     const off = ctx.events.on("tool.held", e => {
       const p = e.payload || {};
@@ -141,6 +159,7 @@ export default {
         const l = create({ rule: rule || (d ? d.rule : String(text)), when: when || (d && d.when) || "always", level: level || (d ? d.level : undefined),
           scope, check: check !== undefined ? check : d ? d.check : null, source: { kind: "remember", session: session || null, text: text || rule } }, "active");
         ctx.events.emit("lesson.learned", { lesson: l.id, rule: l.rule, level: l.level, checked: Boolean(l.check) });
+        snap();
         return l;
       },
     });
@@ -154,6 +173,7 @@ export default {
         if (l.status !== "proposed") throw new Error(`lesson ${id} is ${l.status}`);
         db.prepare("UPDATE learn_lessons SET status = 'active', updated = ? WHERE id = ?").run(now(), id);
         ctx.events.emit("lesson.learned", { lesson: id, rule: l.rule, level: l.level, checked: Boolean(l.check) });
+        snap();
         return get(id);
       },
     });
@@ -171,6 +191,7 @@ export default {
           vals.push(k === "scope" ? JSON.stringify(change[k]) : k === "check" ? (change[k] ? JSON.stringify(change[k]) : null) : change[k]);
         }
         if (sets.length) db.prepare(`UPDATE learn_lessons SET ${sets.join(", ")}, updated = ? WHERE id = ?`).run(...vals, now(), id);
+        snap();
         return get(id);
       },
     });
@@ -182,6 +203,7 @@ export default {
         must(id);
         db.prepare("UPDATE learn_lessons SET status = 'retired', updated = ? WHERE id = ?").run(now(), id);
         ctx.events.emit("lesson.retired", { lesson: id });
+        snap();
         return get(id);
       },
     });
@@ -264,7 +286,7 @@ export default {
         bump.run(1, 1, 0, l.level, now(), l.id);
         ctx.events.emit("lesson.caught", { lesson: l.id, session: session || null, stage: "tool", tool: tool_name }, { thread: session || undefined });
         if (!verdict.decision || (verdict.decision === "ask" && l.level === "block")) {
-          verdict = { decision: l.level === "block" ? "deny" : "ask", reason: `Vyre lesson ${l.id}, which the user taught: ${l.rule} ${r.problem}`, lesson: l.id };
+          verdict = { decision: l.level === "block" ? "deny" : "ask", reason: held(l, r.problem), lesson: l.id };
         }
       }
       saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]) });
@@ -294,10 +316,7 @@ export default {
           ctx.events.emit("lesson.caught", { lesson: l.id, session: session || null, stage: "stop", attempt: t.blocks }, { thread: session || undefined });
         }
         saveTurn(t);
-        const reason = [`Vyre sent this turn back (${t.blocks} of ${MAX_BLOCKS}). ${back.length === 1 ? "A lesson" : "Lessons"} the user taught ${back.length === 1 ? "is" : "are"} broken:`,
-          ...back.map(({ l, problem }) => `- Lesson ${l.id}: ${l.rule} ${problem}`),
-          "Fix this now, then finish. Do not mention Vyre or this check unless the user asks."].join("\n");
-        return { decision: "block", reason, lessons: back.map(f => f.l.id) };
+        return { decision: "block", reason: sentBack(t.blocks, back), lessons: back.map(f => f.l.id) };
       }
       for (const { l } of failed) broke(l, session, owe);
       saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]) });
