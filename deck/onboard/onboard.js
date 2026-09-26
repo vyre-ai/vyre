@@ -556,12 +556,16 @@ function showEnding(d) {
     { id: "history", label: "Your history", done: stepState("history") !== "todo" },
   ];
   put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo")));
+  // A passkey (ADR 0004) proves a person is present for a Gate approval or a Glass take-over;
+  // with none enrolled yet, onboard.finish's passkeyUrl sends the person to set one up first.
+  const open = d.passkeyUrl || (d.url.replace(/\/$/, "") + "/now");
   put(root, h("div", { class: "ob-end" },
     h("span", { class: "brand", "aria-label": "vyre" }, mark(24), wordmark(26)),
     h("h1", { class: "h1" }, "Vyre is ready."),
     greet,
     h("div", { class: "ob-panel" }, ticks),
-    h("a", { class: "btn btn-primary ob-end-open", href: d.url.replace(/\/$/, "") + "/now" }, "Open Vyre")));
+    h("a", { class: "btn btn-primary ob-end-open", href: open }, d.passkeyUrl ? "Add a passkey" : "Open Vyre"),
+    d.passkeyUrl ? h("p", { class: "small faint", style: { marginTop: "10px" } }, h("a", { class: "link", href: d.url.replace(/\/$/, "") + "/now" }, "Skip for now")) : null));
   if (!d.thread) { put(greet, `${state.assistant || "Your assistant"} is ready when you are.`); return; }
   let text = "";
   const draw = () => put(greet, text || h("span", { class: "busy-inline faint" }, "Saying hello…"));

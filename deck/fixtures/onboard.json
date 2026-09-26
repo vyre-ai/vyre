@@ -182,6 +182,7 @@
   },
   "onboard.finish": {
     "url": "https://alex.tail-example.ts.net",
-    "thread": null
+    "thread": null,
+    "passkeyUrl": "https://alex.tail-example.ts.net/onboard/passkey#e=abc123"
   }
 }
