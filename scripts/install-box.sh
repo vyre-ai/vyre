@@ -5,10 +5,17 @@
 #   --dry-run          print every change, make none (read-only checks still run)
 #   --yes              answer yes to every prompt
 #   --from DIR         use the box files in a local checkout DIR and build the image from it
+#   --print-link       end with only VYRE_LINK=<url> (and VYRE_SSH=<line>) on stdout, for a
+#                      program to read; everything else goes to stderr (or VYRE_LINK_ONLY=1)
 #   --uninstall        stop the stack and remove /usr/local/bin/vyre; volumes stay
 #   --purge            with --uninstall: also delete the volumes, after asking
 #
-# Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/).
+# Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
+# VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
+# when the image can be pulled.
+#
+# Every downloaded file is checked against SHA256SUMS from the same place, and a file without a
+# line there, or with a different hash, stops the install.
 #
 # It never installs anything without asking, and uses sudo only for what needs root: Docker,
 # the stack folder when its parent is root's, and /usr/local/bin/vyre. Everything lives inside
@@ -27,6 +34,9 @@ DOCKER_SUDO=""
 OWNER=""
 GROUP=""
 TMP=""
+TGZ=0
+LINK_ONLY=${VYRE_LINK_ONLY:-0}
+IMAGE=${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
 DIR=${VYRE_DIR:-/srv/vyre}
 BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 # Overridable for tests only.
@@ -35,7 +45,8 @@ TUN=${VYRE_TUN:-/dev/net/tun}
 # A line only our wrapper carries, so we never replace or remove someone else's vyre.
 MARK="vyre on a Docker box"
 
-say() { printf '%s\n' "$*"; }
+# In --print-link mode stdout carries only the machine-readable lines, so the talk goes to stderr.
+say() { if [ "$LINK_ONLY" = 1 ]; then printf '%s\n' "$*" >&2; else printf '%s\n' "$*"; fi; }
 die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
 
 # show CMD...: the command as one line, for "would run:" and prompts.
@@ -152,6 +163,62 @@ mine() {
   [ -w "$p" ]
 }
 
+# sha256 FILE: its hex digest.
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  else die "need sha256sum or shasum to verify downloads"
+  fi
+}
+
+# get_sums: SHA256SUMS first. Cloudflare Pages answers a missing file with 200 and a web page,
+# so curl -f proves nothing: every line must look like "<64 hex>  <path>".
+get_sums() {
+  fetch SHA256SUMS "$TMP/SHA256SUMS"
+  if [ ! -s "$TMP/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$TMP/SHA256SUMS"; then
+    die "$BASE""SHA256SUMS is not a checksum list; is VYRE_BOX_URL right?"
+  fi
+}
+
+# get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
+get() {
+  mkdir -p "$TMP/$(dirname "$1")"
+  fetch "$1" "$TMP/$1"
+  want=$(awk -v p="$1" '$2 == p || $2 == "*" p { print $1; exit }' "$TMP/SHA256SUMS")
+  [ -n "$want" ] || die "SHA256SUMS has no line for $1"
+  got=$(sha256 "$TMP/$1")
+  [ "$got" = "$want" ] || die "checksum mismatch for $BASE$1 (want $want, got $got)"
+}
+
+# pick_build: without --from, pull the image when the registry has it, else build from
+# vyre.tgz (VYRE_BUILD=tgz forces that).
+pick_build() {
+  [ -n "$FROM" ] && return 0
+  if [ "${VYRE_BUILD:-}" = tgz ]; then
+    TGZ=1
+    say "building the image from vyre.tgz (VYRE_BUILD=tgz)"
+  elif ! dk_quiet manifest inspect "$IMAGE" >/dev/null 2>&1; then
+    TGZ=1
+    say "cannot pull $IMAGE; building it from vyre.tgz instead"
+  fi
+}
+
+# unpack: vyre.tgz into DIR/src, replacing what was there, for compose.build.yml to build.
+unpack() {
+  if mine "$DIR"; then x=run; else x=priv; fi
+  $x rm -rf "$DIR/src.new"
+  $x mkdir -p "$DIR/src.new"
+  $x tar -xzf "$TMP/vyre.tgz" -C "$DIR/src.new" --strip-components=1
+  if [ "$DRY" = 0 ] && [ ! -f "$DIR/src.new/box/Dockerfile" ]; then
+    $x rm -rf "$DIR/src.new"
+    die "vyre.tgz has no box/Dockerfile"
+  fi
+  $x rm -rf "$DIR/src"
+  $x mv "$DIR/src.new" "$DIR/src"
+  [ "$x" = priv ] && priv chown -R "$OWNER:$GROUP" "$DIR/src"
+  return 0
+}
+
 # put SRC DEST MODE: install a file into the stack folder, owned by OWNER.
 put() {
   if mine "$(dirname "$2")"; then
@@ -174,35 +241,37 @@ mkdir_owned() {
 # The box files: from a checkout with --from, else downloaded from BASE.
 write_stack() {
   mkdir_owned "$DIR"
-  mkdir_owned "$DIR/chat"
   if [ -n "$FROM" ]; then
     put "$FROM/box/compose.yml" "$DIR/compose.yml" 0644
-    put "$FROM/box/compose.chat.yml" "$DIR/compose.chat.yml" 0644
     put "$FROM/box/compose.build.yml" "$DIR/compose.build.yml" 0644
     put "$FROM/box/vyre.env.example" "$DIR/vyre.env.example" 0644
-    put "$FROM/modules/chat/compose.yml" "$DIR/chat/compose.yml" 0644
     WRAPPER_SRC="$FROM/box/vyre"
   else
     TMP=$(mktemp -d)
-    for f in compose.yml compose.chat.yml vyre.env.example vyre chat/compose.yml; do
-      if [ "$DRY" = 1 ]; then say "would download: $BASE$f"; continue; fi
-      mkdir -p "$TMP/$(dirname "$f")"
-      fetch "$f" "$TMP/$f"
-    done
-    for f in compose.yml compose.chat.yml vyre.env.example chat/compose.yml; do
+    files="compose.yml compose.build.yml vyre.env.example vyre"
+    [ "$TGZ" = 1 ] && files="$files vyre.tgz"
+    if [ "$DRY" = 1 ]; then
+      say "would download: $BASE""SHA256SUMS"
+      for f in $files; do say "would download and verify: $BASE$f"; done
+    else
+      get_sums
+      for f in $files; do get "$f"; done
+    fi
+    for f in compose.yml compose.build.yml vyre.env.example; do
       put "$TMP/$f" "$DIR/$f" 0644
     done
     WRAPPER_SRC="$TMP/vyre"
+    [ "$TGZ" = 0 ] || unpack
   fi
 }
 
 # /srv/vyre/.env names the project and its compose files. Written once, never overwritten:
-# it is where the person adds Chat, TS_AUTHKEY and anything else of theirs.
+# it is where the person adds TS_AUTHKEY, COMPOSE_PROFILES and anything else of theirs.
 write_env() {
   if [ -e "$DIR/.env" ]; then
     say "$DIR/.env exists; leaving it as it is"
-    if [ -n "$FROM" ] && ! grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env"; then
-      say "  (it does not list compose.build.yml, so the image is pulled, not built from $FROM)"
+    if { [ -n "$FROM" ] || [ "$TGZ" = 1 ]; } && ! grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env"; then
+      say "  (it does not list compose.build.yml, so the image is pulled, not built from source)"
     fi
     return 0
   fi
@@ -213,6 +282,9 @@ write_env() {
     if [ -n "$FROM" ]; then
       say "COMPOSE_FILE=compose.yml:compose.build.yml"
       say "VYRE_SOURCE=$FROM"
+    elif [ "$TGZ" = 1 ]; then
+      say "COMPOSE_FILE=compose.yml:compose.build.yml"
+      say "VYRE_SOURCE=$DIR/src"
     else
       say "COMPOSE_FILE=compose.yml"
     fi
@@ -237,7 +309,11 @@ install_wrapper() {
 # wrapper needs SSH_CONNECTION to print the ssh -L line.
 start() {
   say ""
-  dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up
+  if [ "$LINK_ONLY" = 1 ]; then
+    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up --print-link
+  else
+    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up
+  fi
   if [ -n "$DOCKER_SUDO" ]; then
     say ""
     say "Your account cannot reach Docker, so the vyre command needs sudo: sudo vyre up."
@@ -287,9 +363,10 @@ main() {
       --yes|-y) YES=1 ;;
       --from) [ $# -ge 2 ] || die "--from needs a folder"; FROM=$2; shift ;;
       --from=*) FROM=${1#--from=} ;;
+      --print-link) LINK_ONLY=1 ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;
-      -h|--help) sed -n '2,12p' "$0" 2>/dev/null || true; exit 0 ;;
+      -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
       *) die "unknown option $1" ;;
     esac
     shift
@@ -324,6 +401,7 @@ main() {
   pick_owner
   need_docker
   need_tun
+  pick_build
   say "the stack goes in $DIR, owned by $OWNER"
   write_stack
   write_env

@@ -214,7 +214,6 @@ The decision above holds as written, because of how the two containers share a n
   `net.ipv4.ip_unprivileged_port_start=0` in that namespace only lets vyred bind 443 as uid 1000.
 - **Other containers and the host are strangers.** They reach the namespace from a bridge or
   loopback address, never a tailnet one, so whois refuses them like any other non-tailnet peer.
-  The same holds for Mattermost on the `vyre` network.
 - **The onboarding listener binds the container's address on the `vyre` network** (the alias
   `vyred`), never `0.0.0.0`, which in this namespace would include `tailscale0`. Docker publishes
   it on the host's `127.0.0.1:7300` only, and the `ssh -L` line reaches it as before.
