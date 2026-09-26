@@ -51,6 +51,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
     The token is hashed, single use, and expires after an hour.
   - The listener checks for a loopback Host (against DNS rebinding) and a JSON body with a
     loopback Origin. It closes when the owner first reaches the tailnet address.
+- Installing on a box: `scripts/install-box.sh` sits behind
+  `curl -fsSL https://vyre.run/install.sh | sh`. It asks before installing Node, Tailscale or
+  Claude Code, and prints every change with `--dry-run`.
+  - `core/names/system.js` plans the systemd units and the Tailscale operator setting, and
+    `apply` changes nothing unless asked. `vyre.socket` binds port 443 on `tailscale0` and
+    `vyre.service` runs as the owner's own account, never root (docs/INSTALL.md).
+  - `core/names/backup.js` backs up config, a consistent store copy, vault, watchers, modules
+    and certificates, and restores them with traversal checks.
+  - No Linux box was used: the Linux paths are proven by unit tests and a dry run against stub
+    binaries.
 
 ### Shared core for the parallel workstreams (2026-09-26)
 
