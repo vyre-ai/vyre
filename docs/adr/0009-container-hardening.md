@@ -1,4 +1,4 @@
-# ADR 0004 · Hardening an agent's container
+# ADR 0009 · Hardening an agent's container
 
 Status: accepted, 26 Sep 2026 · Workstream: computers · Spec: section 7.9
 
@@ -73,3 +73,12 @@ never will. Every one of the following is hard-coded, not merely defaulted:
   the box's first real container is also the first real check of whether that list is complete.
 - `computers.capAdd` remains the one escape hatch, and stays config, not code: a box that finds
   a capability genuinely needed adds exactly that one, never a default list.
+- **Known gap (security, 26 Sep):** none of the above holds against a caller that reaches the
+  restricted proxy directly instead of through `DockerDriver.create()` — a Claude session's own
+  Bash shares vyred's container and network namespace, so a raw `curl` to `docker-api:2375` can
+  ask for `Privileged: true` and a host bind mount, and the proxy (which filters endpoints, not
+  bodies) forwards it: root on the host. A text filter in the harness floor denies the obvious
+  strings (`docker-api`, `:2375`, `:2376`) but is not the real fix. The real fix is a
+  body-checking proxy vyred itself owns in front of the Engine (accepting only exactly the shape
+  this file builds), or moving Claude's own sessions off the `docker-api` network entirely —
+  open, and bigger than this file, since it needs box and security too.
