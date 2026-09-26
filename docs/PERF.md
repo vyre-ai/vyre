@@ -117,6 +117,43 @@ over the 0.2%-hidden-combined budget by itself before the renderer's share is ev
 wasn't isolated further (no A/B without `clips.start()`) — reported to `capsule` as the next
 place to look, since it's their process, not the Swift poller they asked about.
 
+## Glass audit (main, af4dc91)
+
+Verified what `glass`/`computers` described:
+- `deck/glass/watch.js`: disconnects on `visibilitychange` hidden (`conn = "hidden"`, drops the
+  RFB client but keeps the last frame), reconnects with exponential backoff (1, 2, 4... capped
+  at 30s) only while visible — confirmed at watch.js:297/340.
+- `deck/glass/takeover.js:26-33`: the held-time tick is `setInterval(draw, 1000)`, gated behind
+  `mine() && s.visible() && s.holder?.since` and torn down (`clearInterval`) every time `timer()`
+  re-runs — only ticks while this tab holds the keyboard and is visible.
+- `core/glass/`: no `setInterval`/`setTimeout` anywhere; confirmed.
+- `core/computers/glass.js`: the RFB/WebSocket relay itself never originates a ping — it only
+  echoes back `ping` control frames it receives (both instances found are `if (f.control ===
+  "ping") socket.write(...)`, reactive, not a timer). Couldn't find a self-initiated 30s ping
+  interval anywhere in `core/computers` or the vendored `deck/glass/vendor/novnc`; if there's a
+  30s cadence per open viewer it's likely the browser's own WebSocket keepalive, not Vyre code —
+  doesn't change the audit either way, since it only exists while a viewer socket is open
+  (active use, not idle).
+
+**One real finding, not what was described but a genuine idle-budget violation**:
+`core/computers/index.js:70-79` runs `setInterval(sweep, sweepMs)` with `sweepMs` defaulting to
+**5,000ms** — `keyboard.sweep()` + `pool.sweep()`, unconditionally, for as long as vyred runs,
+whether or not any computer is checked out. Each tick is cheap (in-memory `Map` iteration, no
+DB/network when the pool is empty), but the *interval* is 12x tighter than the "no polling
+faster than once a minute when idle" budget — the same shape as the `core/watchers` TICK_MS
+issue fixed earlier in this audit.
+
+Not fixed directly here: unlike the watchers case, this one has a real tradeoff.
+`pool.sweep()`'s job is freezing idle computers (`freezeMs` defaults to 15,000ms, `idleMs` to
+60,000ms) — a 5s sweep catches a computer at most 5s past its freeze deadline; bumping the
+interval straight to 60s would mean a computer could sit running-but-unwatched for up to ~75s
+instead of ~20s before it freezes, which is a real cost regression for exactly the SPEC bullet
+this budget is about ("heavy work... pauses... never blocks"). Flagged to `computers` with the
+numbers; suggested fix is adaptive — sweep at 5s only while the pool has something non-frozen
+to watch (an active or not-yet-frozen checkout), back off toward 60s when everything is already
+frozen or the pool is empty (the common case for most installs, since `computers` is not yet
+widely used).
+
 ## Deck audit
 
 `grep -rn "setInterval\|setTimeout" deck` — one real violation, everything else is either a
