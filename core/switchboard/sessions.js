@@ -54,21 +54,27 @@ export class Sessions {
   /**
    * Bind a session to the claude process it runs in, and return a new key for it. Binding again
    * from the same process (a /clear keeps the process, a new id comes) replaces the key.
-   * @param {string} session @param {number} pid
+   * @param {string} session @param {number} pid @param {string|null} [cwd] where it runs, for its project
    */
-  bind(session, pid) {
+  bind(session, pid, cwd = null) {
     if (!/^[A-Za-z0-9-]{8,80}$/.test(session)) throw new Error("not a session id");
     if (!this.alive(pid) || !(this.children().includes(pid) || this.isClaude(pid))) throw new Error(`process ${pid} is not a running claude`);
     const had = /** @type {any} */ (this.db.prepare("SELECT pid FROM threads_binds WHERE session = ?").get(session));
     if (had && Number(had.pid) !== pid && this.alive(Number(had.pid))) throw new Error(`session ${session.slice(0, 8)} is bound to another running process`);
     const key = crypto.randomBytes(24).toString("base64url");
-    this.db.prepare(`INSERT INTO threads_binds (session, key_hash, pid, at) VALUES (?,?,?,?)
-      ON CONFLICT(session) DO UPDATE SET key_hash = excluded.key_hash, pid = excluded.pid, at = excluded.at`).run(session, hash(key), pid, Date.now());
+    this.db.prepare(`INSERT INTO threads_binds (session, key_hash, pid, at, cwd) VALUES (?,?,?,?,?)
+      ON CONFLICT(session) DO UPDATE SET key_hash = excluded.key_hash, pid = excluded.pid, at = excluded.at, cwd = excluded.cwd`).run(session, hash(key), pid, Date.now(), cwd);
     // Sessions whose process is gone are forgotten on the way.
     for (const r of /** @type {any[]} */ (this.db.prepare("SELECT session, pid FROM threads_binds").all())) {
       if (!this.alive(Number(r.pid))) this.db.prepare("DELETE FROM threads_binds WHERE session = ?").run(r.session);
     }
     return { session, key };
+  }
+
+  /** The folder a bound session runs in, or null. @param {string} session */
+  cwdOf(session) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT cwd FROM threads_binds WHERE session = ?").get(String(session)));
+    return r && r.cwd ? String(r.cwd) : null;
   }
 
   /** The process a session is bound to, or null. @param {string} session */

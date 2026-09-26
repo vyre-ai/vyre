@@ -54,6 +54,7 @@ export const MIGRATIONS = [
    CREATE TABLE threads_watches (id TEXT PRIMARY KEY, thread TEXT NOT NULL, until TEXT NOT NULL, notify TEXT, note TEXT, by TEXT, at INTEGER NOT NULL);
    CREATE INDEX threads_watches_thread ON threads_watches (thread);`,
   USAGE_MIGRATION,
+  `ALTER TABLE threads_binds ADD COLUMN cwd TEXT;`,
 ];
 
 
@@ -776,8 +777,20 @@ export default {
     });
     // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
     tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",
-      { type: "object", required: ["session", "pid"], properties: { session: str, pid: { type: "integer" } } },
-      async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
+      { type: "object", required: ["session", "pid"], properties: { session: str, pid: { type: "integer" }, cwd: str } },
+      async i => sb.sessions.bind(i.session, i.pid, i.cwd || null), ["harness"]);
+
+    // What vyred verified about the caller, for the MCP server to scope its calls (Memory wants a
+    // room). Only verified facts: with no verified thread, nothing but the agent, if any.
+    tool("threads.whoami", "The thread this call verifiably comes from, its project, and the agent, if any.",
+      { type: "object", properties: {} },
+      async (_, { thread, agent }) => {
+        if (!thread) return { thread: null, project: null, agent: agent || null, kind: agent ? sb.kindOf(agent) : null };
+        const rec = sb.record(thread);
+        const cwd = rec ? rec.cwd : sb.sessions.cwdOf(thread);
+        const project = rec && rec.project ? rec.project : cwd ? ((await ctx.call("projects.of", { cwd })).data?.slug || null) : null;
+        return { thread, project, agent: agent || (rec && rec.agent) || null, kind: agent ? sb.kindOf(agent) : null };
+      });
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     return { async stop() { await sb.stopAll(); } };

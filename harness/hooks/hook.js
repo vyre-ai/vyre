@@ -51,7 +51,7 @@ async function main() {
     // MCP server can say which session its calls come from. Every SessionStart: /clear changes the id.
     if (h.session_id && !down(r)) {
       const pid = process.ppid;
-      const b = await call("threads.bind", { session: h.session_id, pid }, opts);
+      const b = await call("threads.bind", { session: h.session_id, pid, ...(h.cwd ? { cwd: h.cwd } : {}) }, opts);
       if (b.data && b.data.key) try { writeKey(paths(home()).sessions, pid, b.data); } catch {}
     }
   } else if (piece === "enrich") {
