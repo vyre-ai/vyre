@@ -785,12 +785,20 @@ export default {
     });
 
     const ASK = "Tell the user this in one line and ask whether to keep it. Their next message decides: a plain yes keeps it, a plain no drops it. Do not call any Vyre tool for this; accepting a lesson is the user's alone.";
+    /** Where a reply cannot accept (no person typing at a terminal): where the user accepts instead. */
+    const elsewhere = id => `the user accepts it from a terminal (\`vyre learn accept ${id}\`), the Deck or the Capsule`;
+    const ASK_ELSEWHERE = id => `Tell the user this in one line: it is not in force until ${elsewhere(id)}. A reply here does not accept it. Do not call any Vyre tool for this; accepting a lesson is the user's alone.`;
 
     ctx.tool("learn.signal", {
       internal: true,
-      description: "Enrich: a prompt starts a turn. Opens with lessons broken last turn; takes a plain yes or no as the answer to proposals told last prompt; proposes a lesson when the prompt is a correction; and returns reminders whose `when` matches.",
-      input: { type: "object", required: ["session"], properties: { session: { type: "string" }, prompt_id: { type: "string" }, prompt: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" } } },
-      run: async ({ session, prompt_id, prompt = "", cwd, agent }) => {
+      description: "Enrich: a prompt starts a turn. Opens with lessons broken last turn; takes a plain yes or no as the answer to proposals told last prompt, only from a person in an interactive session (interactive true); proposes a lesson when the prompt is a correction; and returns reminders whose `when` matches.",
+      input: { type: "object", required: ["session"], properties: { session: { type: "string" }, prompt_id: { type: "string" }, prompt: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" },
+        interactive: { type: "boolean" } } },
+      run: async ({ session, prompt_id, prompt = "", cwd, agent, interactive = false }) => {
+        // A person typed this prompt at an interactive Claude Code: the hook saw its claude process
+        // with a terminal and none of -p, --print, --output-format, --input-format, outside a
+        // Switchboard thread. An agent's thread never is, whatever it says.
+        const person = interactive === true && !agent;
         const t = turnOf(session) || { session, seq: -1, owed: "[]", asked: "[]", stopped: 1 };
         // The same prompt_id again is the same prompt: nothing restarts, nothing is answered or
         // proposed. Claude Code sends one UserPromptSubmit per prompt; a second is a forge (a
@@ -812,17 +820,26 @@ export default {
         const late = open ? [] : owed.map(get).filter(l => l && l.status === "active");
         if (late.length) lines.push(`Last turn broke ${late.length === 1 ? "this lesson" : "these lessons"}. Keep ${late.length === 1 ? "it" : "them"} this turn.`, ...late.map(l => `- Lesson ${l.id}: ${l.rule}`));
 
-        // Accept by reply. This prompt is what the user typed (Claude Code fills it), so a plain
-        // yes to a proposal told last prompt accepts it here, and a plain no declines it. A lesson
-        // named by number may be any proposal this thread was told about.
-        // Accepting only makes Vyre stricter, so a yes counts even then; a no waits for a real turn.
+        // Accept by reply (ADR 0007, decision 11, with Security's condition): a forged yes would be
+        // a prompt injection that lasts, so a plain yes or no answers a proposal only when
+        //   - a person typed it: an interactive Claude Code prompt (`person`), never `-p` input, a
+        //     headless Switchboard thread, an agent's thread or a prompt an agent sent;
+        //   - the proposal was told in the immediately preceding turn of this thread (`waiting`),
+        //     never an earlier one, even when named by number;
+        //   - that turn has ended (passed a Stop): a prompt mid-turn is a forge or an interrupt.
+        // Otherwise the answer does nothing and Claude is told where the user accepts instead.
         const answer = reply(prompt);
-        if (answer && !answer.yes && open) asked.push(...waiting);
-        else if (answer) {
-          const told = id => waiting.includes(id) || Boolean(db.prepare("SELECT 1 FROM learn_signals WHERE session = ? AND lesson = ? AND kind IN ('prompt','edited','proposed') LIMIT 1").get(session, id));
-          const ids = answer.id ? (told(answer.id) ? [answer.id] : []) : waiting;
-          for (const l of ids.map(get)) {
-            if (!l || l.status !== "proposed") continue;
+        if (answer) {
+          const ids = answer.id ? (waiting.includes(answer.id) ? [answer.id] : []) : waiting;
+          const pending = ids.map(get).filter(l => l && l.status === "proposed");
+          if (pending.length && !person) {
+            lines.push(...pending.map(l => `The user's ${answer.yes ? "yes" : "no"} did not ${answer.yes ? "accept" : "decline"} lesson ${l.id} ("${l.rule}"): Vyre takes an answer by reply only from a person typing in an interactive Claude Code session. It stays proposed until ${elsewhere(l.id)}. Say so in one line.`));
+          } else if (pending.length && open) {
+            // The last turn has not ended (the user interrupted it, or this is not a real prompt).
+            // The proposals stay waiting for the next prompt after a Stop.
+            asked.push(...waiting);
+            lines.push(...pending.map(l => `The user's ${answer.yes ? "yes" : "no"} was not taken for lesson ${l.id} ("${l.rule}"): the turn before it had not finished. Ask again after this turn, or ${elsewhere(l.id)}.`));
+          } else for (const l of pending) {
             if (answer.yes) {
               const a = await activate(l, "reply");
               lines.push(`The user said yes: lesson ${a.id} is in force now: "${a.rule}" ${enforced(a)} Say so in a few words.`);
@@ -842,7 +859,7 @@ export default {
           const l = get(s.lesson);
           db.prepare("UPDATE learn_signals SET told = 1 WHERE id = ?").run(s.id);
           if (!l || l.status !== "proposed") continue;
-          lines.push(`${why(String(s.kind), s.meta ? JSON.parse(String(s.meta)) : {}, l)} Vyre drafted it as lesson ${l.id}, not yet in force: "${l.rule}" ${enforced(l)}`, ASK);
+          lines.push(`${why(String(s.kind), s.meta ? JSON.parse(String(s.meta)) : {}, l)} Vyre drafted it as lesson ${l.id}, not yet in force: "${l.rule}" ${enforced(l)}`, person ? ASK : ASK_ELSEWHERE(l.id));
           asked.push(l.id);
         }
 
@@ -873,12 +890,12 @@ export default {
           if (proposed) {
             ctx.events.emit("lesson.proposed", { lesson: proposed.id, rule: proposed.rule, checked: Boolean(proposed.check) }, { thread: session });
             lines.push(`The user's prompt reads as a standing rule. Vyre drafted it as lesson ${proposed.id}, not yet in force: "${proposed.rule}" ${enforced(proposed)}${widened ? " It was said in another project too, so it would hold everywhere." : ""}`,
-              `${ASK} Follow the rule this turn either way.`);
+              `${person ? ASK : ASK_ELSEWHERE(proposed.id)} Follow the rule this turn either way.`);
             asked.push(proposed.id);
             // Plain words with no check: a model may find one, off the path.
             if (!proposed.check) jobs.enqueue("distill", key, { text: prompt.slice(0, 1000), session, lesson: proposed.id, scope: proposed.scope });
           } else if (same.status === "proposed") {
-            lines.push(`Lesson ${same.id} ("${same.rule}") is still waiting for the user's answer. ${ASK}`);
+            lines.push(`Lesson ${same.id} ("${same.rule}") is still waiting for the user's answer. ${person ? ASK : ASK_ELSEWHERE(same.id)}`);
             asked.push(same.id);
           } else if (/\b(again|i told you|already said)\b/i.test(prompt)) {
             await broke(same, session, [], "prompt");

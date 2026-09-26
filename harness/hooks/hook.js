@@ -10,9 +10,12 @@
 // is gone). Neither is switched off by stopping a daemon.
 
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { call } from "../../core/daemon/client.js";
 import { rules } from "../../core/harness/rules.js";
+import { interactiveFrom } from "../../core/harness/index.js";
+import { reply } from "../../core/learn/checks.js";
 import { offlineTool, offlineTouched, offlineStop } from "../../core/learn/offline.js";
 import { home, paths } from "../../core/config/index.js";
 import { writeKey } from "../../core/switchboard/sessions.js";
@@ -24,6 +27,25 @@ async function stdin() {
   let raw = "";
   for await (const c of process.stdin) raw += c;
   try { return JSON.parse(raw || "{}"); } catch { return {}; }
+}
+
+/**
+ * Did a person type this prompt? Claude Code runs this hook as a child of its claude process
+ * (the pid threads.bind records at SessionStart), so look at that process once: an interactive
+ * one has a terminal and no -p, --print, --output-format or --input-format. Our own headless
+ * threads (VYRE_THREAD is this session) and agents' threads (VYRE_AGENT) never are. ps is given
+ * 500 ms; anything that fails means no.
+ * @param {string|undefined} session
+ * @returns {Promise<boolean>}
+ */
+function typedByPerson(session) {
+  if (process.env.VYRE_AGENT) return Promise.resolve(false);
+  if (process.env.VYRE_THREAD && process.env.VYRE_THREAD === session) return Promise.resolve(false);
+  return new Promise(resolve => {
+    try {
+      execFile("ps", ["-o", "tty=,args=", "-p", String(process.ppid)], { timeout: 500 }, (err, out) => resolve(!err && interactiveFrom(String(out))));
+    } catch { resolve(false); }
+  });
 }
 
 /** @param {string} hookEventName @param {Record<string, any>} fields */
@@ -59,7 +81,10 @@ async function main() {
       if (b.data && b.data.key) try { writeKey(paths(home()).sessions, pid, b.data); } catch {}
     }
   } else if (piece === "enrich") {
-    const r = await call("harness.enrich", { ...base, ...scope, prompt: String(h.prompt || "") }, opts);
+    const prompt = String(h.prompt || "");
+    // Only a plain yes or no can answer a lesson, so only then is ps worth running (about 10 ms).
+    const interactive = reply(prompt) ? await typedByPerson(h.session_id) : false;
+    const r = await call("harness.enrich", { ...base, ...scope, prompt, interactive }, opts);
     if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });
   } else if (piece === "rules") {
     const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}), plugin_root };

@@ -90,11 +90,14 @@ export default {
 
     ctx.tool("harness.enrich", {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
-      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" } } },
-      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects }, { caller } = {}) => {
+      input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
+        interactive: { type: "boolean" } } },
+      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects, interactive }, { caller } = {}) => {
         const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
-        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent }) : null;
+        // interactive: the hook saw a person's Claude Code (a terminal, no -p); only then may a
+        // plain yes or no answer a lesson. An agent's thread never is.
+        const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: interactive === true && !agent }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
         // A lesson broken last turn opens this one, ahead of memory.
         const first = Boolean(learned && Array.isArray(learned.broke) && learned.broke.length);
@@ -184,6 +187,34 @@ export default {
     return { async stop() {} };
   },
 };
+
+/** Flags that make a claude process headless: its prompt comes from stdin or an argument, not a person. */
+const HEADLESS_FLAGS = new Set(["-p", "--print", "--output-format", "--input-format"]);
+
+/**
+ * Is this `ps -o tty=,args=` line an interactive Claude Code, one a person types into? It is a
+ * `claude` (as threads.bind knows one: by the name it was started as), has a controlling
+ * terminal, and has none of -p, --print, --output-format, --input-format (also as
+ * --flag=value, or -p among joined short flags such as -cp). Anything unreadable is not.
+ * ps prints arguments unquoted, so a prompt given as an argument may add words: those can only
+ * make the answer no, never yes.
+ * @param {string} line
+ */
+export function interactiveFrom(line) {
+  const m = /^\s*(\S+)\s+(.+?)\s*$/.exec(String(line || "").split("\n")[0]);
+  if (!m) return false;
+  const [, tty, args] = m;
+  if (/^(\?+|-|none)$/i.test(tty)) return false;
+  const argv = args.split(/\s+/);
+  if (argv[0].split("/").pop() !== "claude") return false;
+  for (const a of argv.slice(1)) {
+    if (a === "--") break;
+    const flag = a.split("=")[0];
+    if (HEADLESS_FLAGS.has(flag)) return false;
+    if (/^-[A-Za-z]{2,}$/.test(a) && a.includes("p")) return false;
+  }
+  return true;
+}
 
 /**
  * Memory for a prompt, as Claude will read it. Each line says it is memory, where it came from

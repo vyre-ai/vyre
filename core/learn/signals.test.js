@@ -71,7 +71,7 @@ async function learning(t, { projects = false, switchboard = false, memory = fal
   const of = type => events.since(0, { limit: 5000 }).filter(e => e.type === type);
   const lessons = async () => (await reg.call("learn.lessons", { status: "all" })).data;
   const signals = kind => db.prepare("SELECT * FROM learn_signals WHERE kind = ? ORDER BY id").all(kind);
-  const say = (prompt, session, prompt_id, cwd = where ? where.harlow : "/w/harlow-site") => reg.call("harness.enrich", { prompt, cwd, session, prompt_id });
+  const say = (prompt, session, prompt_id, cwd = where ? where.harlow : "/w/harlow-site") => reg.call("harness.enrich", { prompt, cwd, session, prompt_id, interactive: true });
   const stop = (session, prompt_id, extra = {}) => reg.call("harness.stop", { session, prompt_id, stop_hook_active: false, ...extra });
   return { home, db, events, reg, of, lessons, signals, say, stop, where };
 }
@@ -359,8 +359,9 @@ test("scope: narrowing a lesson (to a project, an agent, or some files) is learn
 });
 
 test("preference: an accepted 'use pnpm not npm' teaches Memory the user prefers pnpm; retiring forgets it", async t => {
-  const { reg, say } = await learning(t, { memory: true });
+  const { reg, say, stop } = await learning(t, { memory: true });
   await say("use pnpm not npm", "s1", "p1");
+  await stop("s1", "p1", { text: "Keep it?" });
   await say("yes", "s1", "p2");
   const taught = /** @type {any} */ (globalThis).__taught;
   assert.equal(taught.length, 1);

@@ -124,7 +124,7 @@ const CWD = "/w/harlow-site";
 
 test("learn: a correction is proposed, Claude is told to ask, and nothing is enforced until it is accepted", async t => {
   const { reg, lesson } = await learning(t);
-  const e = await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1" });
+  const e = await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1", interactive: true });
   assert.match(e.data.text, /drafted it as lesson 1, not yet in force/);
   assert.match(e.data.text, /ask whether to keep it/);
   assert.match(e.data.text, /a plain yes keeps it/);
@@ -370,8 +370,9 @@ test("learn: a project lesson applies in that project's folders and nowhere else
 
 test("learn: accept by reply: a plain yes to what the thread was told accepts it, with no tool call", async t => {
   const { reg, lesson, of } = await learning(t);
-  await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1" });
-  const y = await reg.call("harness.enrich", { prompt: "Yes, keep it.", cwd: CWD, session: "s1", prompt_id: "p2" });
+  await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1", interactive: true });
+  await reg.call("harness.stop", { session: "s1", prompt_id: "p1", text: "Keep it?", stop_hook_active: false });
+  const y = await reg.call("harness.enrich", { prompt: "Yes, keep it.", cwd: CWD, session: "s1", prompt_id: "p2", interactive: true });
   assert.match(y.data.text, /The user said yes: lesson 1 is in force now/);
   const l = await lesson(1);
   assert.equal(l.status, "active");
@@ -384,7 +385,7 @@ test("learn: a plain no declines; anything else leaves the proposal waiting; ano
   const { reg, lesson } = await learning(t);
   // Each prompt is a whole turn: Claude Code takes the next prompt after the Stop.
   const say = async (prompt, session = "s1", prompt_id = prompt) => {
-    const r = await reg.call("harness.enrich", { prompt, cwd: CWD, session, prompt_id });
+    const r = await reg.call("harness.enrich", { prompt, cwd: CWD, session, prompt_id, interactive: true });
     await reg.call("harness.stop", { session, prompt_id, text: "ok", stop_hook_active: false });
     return r;
   };
@@ -396,7 +397,10 @@ test("learn: a plain no declines; anything else leaves the proposal waiting; ano
   await say("yes");
   assert.equal((await lesson(1)).status, "proposed", "the window was the next prompt only");
   await say("sure, keep lesson 1");
-  assert.equal((await lesson(1)).status, "active", "a lesson named by number that this thread was told about");
+  assert.equal((await lesson(1)).status, "proposed", "named by number, but told two turns ago: only the turn just before counts");
+  await say("never use em dashes");
+  await say("sure, keep lesson 1");
+  assert.equal((await lesson(1)).status, "active", "named by number, told in the turn just before");
   await say("always run the tests before you commit");
   const n = await say("No thanks");
   assert.match(n.data.text, /The user said no: lesson 2/);
@@ -518,7 +522,8 @@ test("learn: guards ask at every level, online, even for a lesson scoped elsewhe
 test("learn: a forged enrich mid-turn restarts nothing: the same prompt_id is a duplicate, a new one keeps the turn's edits and its no declines nothing", async t => {
   const { reg, lesson } = await learning(t);
   await reg.call("learn.add", { text: "update CHANGELOG.md whenever you change code" });
-  const enrich = (prompt, prompt_id) => reg.call("harness.enrich", { prompt, cwd: CWD, session: "s1", prompt_id }, "harness");
+  // A forge claims interactive too; only the turn's state stops it.
+  const enrich = (prompt, prompt_id) => reg.call("harness.enrich", { prompt, cwd: CWD, session: "s1", prompt_id, interactive: true }, "harness");
   const stop = active => reg.call("harness.stop", { session: "s1", prompt_id: "p1", text: "done", stop_hook_active: active });
   await enrich("never use em dashes in anything you write", "p0");
   await reg.call("harness.stop", { session: "s1", prompt_id: "p0", text: "Shall I keep it?", stop_hook_active: false });
@@ -547,10 +552,47 @@ test("learn: a forged enrich mid-turn restarts nothing: the same prompt_id is a 
   assert.equal((await lesson(2)).status, "retired");
 });
 
-test("learn: a yes mid-turn still accepts, since accepting only tightens", async t => {
+test("learn: a yes mid-turn accepts nothing and waits for the next prompt after a Stop", async t => {
   const { reg, lesson } = await learning(t);
-  await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1" });
-  await reg.call("harness.enrich", { prompt: "yes", cwd: CWD, session: "s1", prompt_id: "p2" });
+  const enrich = (prompt, prompt_id) => reg.call("harness.enrich", { prompt, cwd: CWD, session: "s1", prompt_id, interactive: true });
+  await enrich("never use em dashes in anything you write", "p1");
+  const y = await enrich("yes", "p2");                                   // no Stop between: a forge, or an interrupt
+  assert.equal((await lesson(1)).status, "proposed");
+  assert.match(y.data.text, /was not taken for lesson 1.*had not finished.*vyre learn accept 1/);
+  await reg.call("harness.stop", { session: "s1", prompt_id: "p2", text: "Keep it?", stop_hook_active: false });
+  await enrich("yes", "p3");
+  assert.equal((await lesson(1)).status, "active", "still waiting after the interrupted turn, and taken once that turn ended");
+});
+
+test("learn: a yes that is not a person's accepts nothing: -p input, a headless thread, an agent's thread, an agent's prompt", async t => {
+  const { reg, lesson } = await learning(t);
+  const turn = async (prompt, prompt_id, extra = {}, caller) => {
+    const r = await reg.call("harness.enrich", { prompt, cwd: CWD, session: "s1", prompt_id, ...extra }, caller);
+    await reg.call("harness.stop", { session: "s1", prompt_id, text: "ok", stop_hook_active: false }, caller);
+    return r;
+  };
+  // The hook says interactive false for -p, --print, stream-json and our own headless threads.
+  const told = await turn("never use em dashes in anything you write", "p1");
+  assert.match(told.data.text, /not in force until the user accepts it from a terminal \(`vyre learn accept 1`\), the Deck or the Capsule/);
+  assert.doesNotMatch(told.data.text, /a plain yes keeps it/, "a headless thread is not told a reply will do");
+  const no = await turn("yes", "p2", { interactive: false });
+  assert.match(no.data.text, /did not accept lesson 1.*only from a person typing in an interactive Claude Code session.*vyre learn accept 1/);
+  assert.equal((await lesson(1)).status, "proposed");
+  await turn("never use em dashes", "p3");
+  await turn("yes", "p4");                                               // interactive absent: no
+  assert.equal((await lesson(1)).status, "proposed", "absent means no");
+  // An agent's thread, even claiming interactive; as the input or as the caller.
+  await turn("never use em dashes", "p5", { interactive: true });
+  await turn("yes", "p6", { interactive: true, agent: "scout" });
+  assert.equal((await lesson(1)).status, "proposed", "agent named in the input");
+  await turn("never use em dashes", "p7", { interactive: true });
+  const direct = await reg.call("learn.signal", { session: "s1", prompt_id: "p8", prompt: "no", cwd: CWD, agent: "scout", interactive: true }, "module:harness");
+  assert.match(direct.data.text, /did not decline lesson 1/);
+  assert.equal((await lesson(1)).status, "proposed", "an agent's no declines nothing either");
+  await reg.call("harness.stop", { session: "s1", prompt_id: "p8", text: "ok", stop_hook_active: false });
+  // A person, in the turn right after: accepted.
+  await turn("never use em dashes", "p9", { interactive: true });
+  await turn("yes", "p10", { interactive: true });
   assert.equal((await lesson(1)).status, "active");
 });
 
