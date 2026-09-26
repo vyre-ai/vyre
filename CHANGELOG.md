@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Gate
+
+- `core/gate`: the only way out for an agent (sections 7.7 and 11, floor rules 1 and 2). An agent
+  calls `gate.request {kind: send|spend|delete, via, to, content}`; the item is held until a person
+  approves the final content with `gate.approve {id, edited?}` or discards it with `gate.reject`.
+  `gate.held`, `gate.get` (draft, final and a word-level diff) and `gate.senders` complete the set.
+  A model never approves: every `mcp` caller is refused, and a module may approve only when
+  `gate.approvers` in config.json names it (default `chat`, which checks the owner pressed the button).
+- Senders are configured by the person in config.json: `gmail` (a hand-built RFC 822 message to the
+  Gmail send endpoint) and `http` (exact-origin allowlist, `{{vault}}` only in headers or the body,
+  redirects never followed). The credential is fetched from the Vault at the moment of sending
+  (`needs.vault: ["per-sender"]`, each item granted to `gate`), or added by the owner's Vyre through
+  `vault.relay` for a sender with a relayed pass, and results and errors are scrubbed of it.
+- Events `gate.held`, `gate.released`, `gate.failed` and `gate.rejected` say what and where, never
+  the content: a draft is the user's words and every module reads the log. A failed send returns to
+  held with its error so the user can try again; two Sends at once send once.
+- What the user changed before approving is taught to Memory as `draft.edited` (the recipient, the
+  agent and the diff, keyed `gate:<id>`), the first of the Gate's learning signals (section 7.11).
+- `gate.route` (internal) tells harness.rules to deny a sending MCP tool inside an agent's thread and
+  point the agent at `gate_request`; the user's own sessions keep the interim ask-first rule.
+- `core/modules`: `ctx.vault.fetch` accepts any `per-<thing>` declaration, not only `per-watcher`,
+  so the Gate (`per-sender`) and agents (`per-agent`) can fetch items named at run time.
+
 #### Learning
 
 - `core/learn`: lessons Vyre learns from corrections and enforces with hooks, so a lesson is code
