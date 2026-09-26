@@ -85,7 +85,7 @@ export function fromLesson(l, name = slug => slug) {
     title: `Vyre proposes: "${rule}"`,
     sub: [scopeWords(l.scope, name), sourceWords(l.source)].filter(Boolean).join(" · "),
     thread: (l.source && typeof l.source === "object" && l.source.session) || null, project: (l.scope && l.scope.project) || null,
-    rule, scope: l.scope ?? null, quiet: true, why: null, tool: null,
+    rule, scope: l.scope ?? null, where: scopeWords(l.scope, name) || null, from: sourceWords(l.source) || null, quiet: true, why: null, tool: null,
   });
 }
 

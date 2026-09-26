@@ -476,8 +476,9 @@ function paint() {
       if (S.summary) body.push(h("div", { class: "body" }, S.summary));
     } else if (w.source === "lesson") {
       body.push(h("div", { class: "body lesson" }, w.rule || ""));
-      body.push(h("div", { class: "grid" }, w.scope ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.scope)] : null,
-        w.sub ? [h("span", { class: "k" }, "From"), h("span", { class: "v" }, w.sub)] : null));
+      // scope is "all" or {project} or {agent}; state.js has already put it in words.
+      body.push(h("div", { class: "grid" }, w.where ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.where)] : null,
+        w.from ? [h("span", { class: "k" }, "From"), h("span", { class: "v" }, w.from)] : null));
     } else {
       body.push(h("div", { class: "grid" }, w.tool ? [h("span", { class: "k" }, "Tool"), h("span", { class: "v mono" }, w.tool)] : null, w.sub ? [h("span", { class: "k" }, "Where"), h("span", { class: "v" }, w.sub)] : null));
     }

@@ -177,3 +177,10 @@ test("state: a DM from threads.get, trimmed to its limit, with open asks from th
   const carried = dmCarry(dmHistory(dm("juno", "t1"), mine, x => /** @type {any} */ (x)), [{ id: "p1", role: "user", text: "two", at: 9, pending: true }], 4);
   assert.equal(carried.messages.filter(m => m.role === "user").length, 2, "not duplicated");
 });
+
+test("state: a lesson scoped to a project or an agent reads in words", () => {
+  const p = fromLesson({ id: 7, rule: "Cite the case number.", scope: { project: "harlow" }, source: { kind: "prompt" }, created: 1 }, s => (s === "harlow" ? "Harlow Legal" : s));
+  assert.ok(p.where && !/object/.test(p.where), p.where);
+  const a = fromLesson({ id: 8, rule: "Ask before deploying.", scope: { agent: "kit" }, source: { kind: "edit" }, created: 2 });
+  assert.ok(a.where && !/object/.test(a.where), a.where);
+});

@@ -636,6 +636,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- A lesson scoped to a project or an agent reads in words on its card, not as an object.
 - An action marked `hide: true` in shows.capsule (the vault's fill) runs with the Capsule out of the
   way: it hides, waits until the app the user was in is frontmost again, calls, and says the
   result as a notification.
