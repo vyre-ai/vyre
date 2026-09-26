@@ -60,6 +60,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   sign-in: it raises the computers shield, and undoes the take-over when the shield is missing.
   Hand-back leaves a note in the agent's thread (who, how long, the person's note), never what
   was typed.
+- The Deck proves presence with a passkey for `glass.take` and `glass.release`: it asks
+  `/v1/presence/challenge` for WebAuthn options, gets Touch ID or Face ID, and repeats the same
+  call with `x-vyre-presence` (`deck/glass/presence.js`, to move into `js/api.js`).
 - Files: one guard for every path. Paths are relative, no `..`, no NUL, symlinks must stay
   inside the root, and secret places (`.vyre`, `.ssh`, `.env*`, keys, Chrome's cookie and
   login stores) are refused and hidden at any depth. Bytes move only on ticketed

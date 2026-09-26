@@ -4,11 +4,13 @@
 // bar counts the time. Hand-back is the button, Ctrl+Enter, or the lease lapsing on the box.
 //
 // Both glass.take and glass.release need a presence proof. When the box asks for one
-// (presence_required), the view shows a "Confirm it's you" step with what it would accept.
+// (presence_required), the view shows a "Confirm it's you" step; its button makes a passkey
+// proof (presence.js) and repeats the same call with it.
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { gicon, errText, clock, surfaceKind } from "./util.js";
+import { proveAndCall, canProve } from "./presence.js";
 
 /**
  * @param {any} s the screen state from watch.js: name, target, surface, holder, phone, visible()
@@ -44,13 +46,14 @@ export function takeover(s, hooks) {
   }
 
   /** @param {boolean} priv */
-  async function take(priv) {
+  async function take(priv, proved = false) {
     if (busy || mine()) return;
     busy = true; hooks.changed();
-    const r = await attempt("glass.take", { target: s.target, surface: s.surface, ...(priv ? { private: true } : {}) });
+    const input = { target: s.target, surface: s.surface, ...(priv ? { private: true } : {}) };
+    const r = proved ? await proveAndCall("glass.take", input) : await attempt("glass.take", input);
     busy = false;
     if (r.error) {
-      hooks.notice(r.error.code === "presence_required" ? confirm(r.error, () => take(priv)) : failed(priv ? "Private sign-in did not start" : "Take-over did not start", r.error));
+      hooks.notice(r.error.code === "presence_required" && !proved ? confirm(r.error, () => take(priv, true)) : failed(priv ? "Private sign-in did not start" : "Take-over did not start", r.error));
       hooks.changed();
       return;
     }
@@ -59,14 +62,15 @@ export function takeover(s, hooks) {
     hooks.changed();
   }
 
-  async function release() {
+  async function release(proved = false) {
     if (busy || !mine()) return;
     busy = true; hooks.changed();
     const text = note.value.trim();
-    const r = await attempt("glass.release", { target: s.target, surface: s.surface, ...(text ? { note: text } : {}) });
+    const input = { target: s.target, surface: s.surface, ...(text ? { note: text } : {}) };
+    const r = proved === true ? await proveAndCall("glass.release", input) : await attempt("glass.release", input);
     busy = false;
     if (r.error) {
-      hooks.notice(r.error.code === "presence_required" ? confirm(r.error, release) : failed("Hand-back did not go through", r.error));
+      hooks.notice(r.error.code === "presence_required" && proved !== true ? confirm(r.error, () => release(true)) : failed("Hand-back did not go through", r.error));
       hooks.changed();
       return;
     }
@@ -77,10 +81,12 @@ export function takeover(s, hooks) {
     hooks.changed();
   }
 
-  /** The "Confirm it's you" step. The Deck cannot make a passkey proof yet, so it says what the box asked for. */
+  /** The "Confirm it's you" step: its button makes a passkey proof and repeats the call with it. */
   function confirm(err, retry) {
     const methods = [err.methods, err.detail?.methods, err.data?.methods].find(Array.isArray) || [];
-    const how = methods.length ? `The box accepts: ${methods.join(", ")}.` : "The box asks for a passkey (Touch ID or Face ID) on this device.";
+    const passkey = canProve() && (!methods.length || methods.includes("passkey"));
+    const how = passkey ? "Use your passkey: Touch ID or Face ID on this device."
+      : methods.length ? `This device cannot make that proof. The box accepts: ${methods.join(", ")}.` : "This browser cannot use a passkey.";
     return h("div", { class: "gl-notice gl-notice-hold", role: "alert" },
       h("div", { class: "gl-notice-text" },
         h("div", { class: "lbl beacon" }, "Confirm it's you"),
@@ -88,7 +94,7 @@ export function takeover(s, hooks) {
         h("p", { class: "code" }, err.message || err.code)),
       h("div", { class: "gl-notice-acts" },
         h("button", { type: "button", class: "btn btn-ghost", onclick: () => hooks.notice(null) }, "Cancel"),
-        h("button", { type: "button", class: "btn", onclick: retry }, "Try again")));
+        passkey ? h("button", { type: "button", class: "btn btn-primary", onclick: retry }, gicon("shield"), "Confirm with passkey") : null));
   }
 
   function failed(title, err) {
