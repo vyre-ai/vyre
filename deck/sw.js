@@ -25,7 +25,7 @@ const OFFLINE_MAX_AGE_MS = 7 * 86_400_000; // a week
 // there too. deck/test/sw.test.js checks every path here exists.
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
   "/css/deck.css", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
-  "/js/pwa.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/first-passkey.js", "/js/assistant-setup.js",
+  "/js/pwa.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js",
   "/views/now.js", "/css/views/now.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
   "/views/find.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
   "/chat/index.js", "/chat/session.js", "/chat/composer.js", "/chat/nav.js", "/chat/ask-item.js", "/chat/gate-item.js",

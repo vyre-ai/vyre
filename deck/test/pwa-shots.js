@@ -37,6 +37,7 @@ const SCREENS = [
   { name: "now-paper", path: "/now", theme: "paper" },
   { name: "find", path: "/find" },
   { name: "find-query", path: "/find?q=intake", wait: 2500 },
+  { name: "find-command", path: "/find?q=tell%20intake%20to%20add%20a%20phone%20field", wait: 2500 },
   { name: "pull-to-find", path: "/projects", drag: true },
   { name: "chat", path: "/chat" },
   { name: "chat-project", path: "/chat", script: `click('.chat-projects a.thread-row'); await wait(1500);` },
