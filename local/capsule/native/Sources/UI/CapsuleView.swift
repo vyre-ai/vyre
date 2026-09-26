@@ -30,11 +30,16 @@ struct CapsuleView: View {
                 VStack(spacing: 0) {
                     if let a = model.presenceAsk {
                         PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
+                    } else if AgentLayout.deskShown(model) {
+                        // What waits on the user (the list, a card) takes the whole area while open.
+                        AgentLayout.desk(model)
                     } else if model.asked != nil && model.groups.isEmpty && side == nil {
                         // An answer alone gets the whole area, and scrolls in it.
                         ScrollView(.vertical, showsIndicators: false) { answer }
                             .frame(maxHeight: .infinity, alignment: .top)
                     } else {
+                        // The conversation with an @agent sits above the rows (Agent/, UI/Agent*).
+                        AgentLayout.above(model)
                         if model.asked != nil { answer.frame(maxHeight: 260, alignment: .top).clipped(); Rule() }
                         if model.showsMemory, let m = model.memory { MemoryBox(memory: m).padding(.vertical, 4); Rule() }
                         HStack(alignment: .top, spacing: 0) {
@@ -52,6 +57,8 @@ struct CapsuleView: View {
                 .clipped()
             } else if let line = model.line, !line.isEmpty {
                 Rule(); lineView(line)
+            } else if AgentLayout.slim(model) {
+                AgentLayout.slimView(model)
             }
         }
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
@@ -157,6 +164,7 @@ struct CapsuleView: View {
             if let n = model.reply?.notice, !n.isEmpty {
                 Text(n).font(Theme.label).foregroundColor(Theme.ash).lineLimit(2)
             }
+            AgentReplyActions(model: model)
         }
         .padding(.horizontal, 18).padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,13 +262,14 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = 30
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.presenceAsk != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil
+        m.presenceAsk != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
     /// The panel's height: the bar alone, the bar and a line, or the bar and the fixed area.
     @MainActor static func panelHeight(_ m: CapsuleModel) -> CGFloat {
         if isOpen(m) { return Theme.barHeight + 1 + area }
         if let l = m.line, !l.isEmpty { return Theme.barHeight + 1 + lineHeight }
+        if AgentLayout.slim(m) { return Theme.barHeight + 1 + lineHeight }
         return Theme.barHeight
     }
 

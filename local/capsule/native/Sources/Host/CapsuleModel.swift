@@ -44,7 +44,7 @@ public final class CapsuleModel: ObservableObject {
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
-    @Published public var target: VyreCandidate? { didSet { if target != oldValue { search() } } }
+    @Published public var target: VyreCandidate? { didSet { if target != oldValue { targetChanged(); search() } } }
     public internal(set) var catalog = VyreCatalog.empty
     /// What extensions add (ExtensionHost.load): rows, named commands, and side panels.
     var extensionProviders: [ResultProvider] = []
@@ -71,6 +71,28 @@ public final class CapsuleModel: ObservableObject {
     let frecency: Frecency
     let vyred: VyredClient
     let home: String
+    /// The threads the Capsule holds, released and stopped on hide (Agent/Keeper.swift).
+    lazy var keeper = Keeper(vyred: vyred)
+    /// The conversation with the agent in the chip (Agent/Direct.swift).
+    public lazy var direct: Direct = {
+        let d = Direct(vyred: vyred)
+        d.changed = { [weak self] in self?.objectWillChange.send() }
+        d.projectName = { [weak self] s in self?.catalog.projectName(s) ?? s }
+        d.onError = { [weak self] why in self?.line = why }
+        return d
+    }()
+    /// ⌘K: the highlighted row's verbs (Agent/Wiring.swift).
+    lazy var actionMenu: ActionMenu = { let a = ActionMenu(); a.changed = { [weak self] in self?.objectWillChange.send() }; return a }()
+    /// Each agent's threads, for where @agent sends (Agent/Destinations.swift).
+    lazy var routes = RouteCache()
+    /// What waits on the user and the card that answers it (Agent/Desk.swift).
+    public lazy var desk: Desk = {
+        let d = Desk(vyred: vyred)
+        d.changed = { [weak self] in self?.objectWillChange.send() }
+        d.who = { [weak self] t in self?.catalog.who(t) }
+        d.projectName = { [weak self] s in self?.catalog.projectName(s) ?? s }
+        return d
+    }()
     private var token = 0
     private var partial: [String: [ResultItem]] = [:]
     private var replySub: VyredSubscription?
@@ -100,6 +122,7 @@ public final class CapsuleModel: ObservableObject {
     public func willShow(front: FrontApp?) {
         self.front = front
         (providers + extensionProviders).forEach { $0.warm() }
+        keeper.shown()
         vyred.follower.setShown(true)
         if !vyred.follower.started { vyred.follower.start() }
         Task { @MainActor [vyred] in
@@ -107,6 +130,10 @@ public final class CapsuleModel: ObservableObject {
             guard vyred.isUp else { return }
             self.catalog = await CatalogLoader.load(vyred)
             if self.mentionQuery != nil { self.search() }
+            self.targetChanged()
+            await self.loadBox()
+            self.desk.follow()
+            await self.desk.load()
         }
         if !text.isEmpty { search() }
     }
@@ -117,6 +144,10 @@ public final class CapsuleModel: ObservableObject {
         frecency.flush()
         vyred.follower.setShown(false)
         attachTask?.cancel(); attachments = []; removedAttachments = []
+        keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
+        desk.hidden()
+        direct.close()
+        actionMenu.close()
         token += 1
         confirming = nil
     }
@@ -206,7 +237,7 @@ public final class CapsuleModel: ObservableObject {
         }
         if let c = target {
             recallTask?.cancel(); memory = nil
-            groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: [askItem(q)])]
+            groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: askItems(q))]
             selected = 0
             if c.kind == .app { attachments = [] } else { refreshAttachments(q.text, to: c.kind == .agent ? .agent : c.kind == .project ? .project : .thread) }
             return
@@ -214,18 +245,7 @@ public final class CapsuleModel: ObservableObject {
         refreshAttachments(q.text, to: .ask)
         recall(q.text, token: t)
         if q.normalized.isEmpty { partial = [:]; groups = []; selected = 0; return }
-        if var c = calcResult(q) {
-            // Enter copies the answer, as the footer says.
-            let copy = c.copyText ?? c.title
-            c.actions = [ResultAction(id: "copy", title: "Copy", symbol: "doc.on.doc", shortcut: KeyShortcut("return")) { _, _ in
-                await MainActor.run {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(copy, forType: .string)
-                }
-                return .close("Copied \(copy)")
-            }]
-            partial["calc"] = [c]
-        }
+        if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
             let s = Match.score(q.normalized, c.title, synonyms: c.keywords)
@@ -272,6 +292,7 @@ public final class CapsuleModel: ObservableObject {
             }
         }
         all.sort { $0.score > $1.score }
+        let best = all.first { $0.section != .answer }
         var out: [Group] = []
         if let top = all.first, top.score >= 0.6, top.section != .answer {
             out.append(Group(section: .top, items: [top]))
@@ -284,7 +305,12 @@ public final class CapsuleModel: ObservableObject {
         }
         // Answers (calc) sit first: they are what the user typed, worked out.
         if let i = out.firstIndex(where: { $0.section == .answer }), i != 0 { out.insert(out.remove(at: i), at: 0) }
-        out.append(Group(section: .vyre, items: [askItem(q)]))
+        // Where the words go (Agent/Destinations.swift): first for a question nothing here answers,
+        // or with a chip or an answer on screen; last otherwise.
+        var asks = Group(section: .vyre, items: askItems(q))
+        // One Vyre group: rows from Vyre's own providers (Glass, watch) join the destinations.
+        if let i = out.firstIndex(where: { $0.section == .vyre }) { asks.items += out.remove(at: i).items }
+        if asksFirst(q, top: best) { out.insert(asks, at: out.first?.section == .answer ? 1 : 0) } else { out.append(asks) }
         let keep = current?.id
         groups = out
         if let keep, let i = flat.firstIndex(where: { $0.id == keep }) { selected = i } else { selected = 0 }
@@ -408,20 +434,14 @@ public final class CapsuleModel: ObservableObject {
         return .replaceQuery(rest.trimmingCharacters(in: .whitespaces))
     }
 
-    func askItem(_ q: Query) -> ResultItem {
+    /// The one row for an extension's @ target: "Send to Notes", through the extension.
+    func appSendItem(_ q: Query, _ c: VyreCandidate) -> ResultItem {
         let words = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let c = target {
-            let to = c.kind == .project ? "a new thread in \(c.label)" : c.label
-            let via = c.kind == .app ? (appTargets[c.id]?.sendsTo ?? c.label) : c.label
-            return ResultItem(id: "send", kind: "ask", title: "Send to \(to)", subtitle: words, icon: .mark, section: .vyre, score: 0,
-                              actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
-                                  await self?.send(words, to: c) ?? .failed("The Capsule closed.")
-                              }], sendsTo: via)
-        }
-        return ResultItem(id: "ask", kind: "ask", title: "Ask", subtitle: words, icon: .mark, section: .vyre, score: 0,
-                          actions: [ResultAction(id: "ask", title: "Ask", symbol: "sparkle") { [weak self] _, _ in
-                              await self?.ask(words) ?? .failed("The Capsule closed.")
-                          }], sendsTo: "a model, through vyred")
+        return ResultItem(id: "send:\(c.id)", kind: "ask", title: "Send to \(c.label)", subtitle: words, icon: appTargets[c.id]?.icon ?? .mark,
+                          section: .vyre, score: 0,
+                          actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
+                              await self?.send(words, to: c) ?? .failed("The Capsule closed.")
+                          }], sendsTo: appTargets[c.id]?.sendsTo ?? c.label)
     }
 
     // MARK: moving and picking
@@ -510,7 +530,7 @@ public final class CapsuleModel: ObservableObject {
 
     // MARK: asking
 
-    func ask(_ words: String) async -> ActionOutcome {
+    func ask(_ words: String, model: String = "haiku") async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
@@ -530,18 +550,20 @@ public final class CapsuleModel: ObservableObject {
         var thread: String?
         replySub = vyred.on("thread.*") { [weak self] e in
             guard let self else { return }
+            self.keeper.heard(e)
             guard let t = thread else { early.append(e); return }
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
         let name = "Capsule: " + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
-        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": "haiku",
+        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": model,
                                                    "cwd": dir.path, "surface": "capsule", "name": name], presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
         guard let d = r.data as? [String: Any], let id = d["id"].map({ "\($0)" }) else { asked = nil; return .failed("vyred did not say which thread it started.") }
         thread = id
+        keeper.startedQuick(id)
         var rep = VyState.reply(id)
-        rep.model = "haiku"
+        rep.model = model
         for e in early where e.thread == id { rep = VyState.applyReply(rep, e) }
         reply = rep
         return .said("")
@@ -553,7 +575,9 @@ public final class CapsuleModel: ObservableObject {
     private func follow(_ thread: @escaping () -> String?) {
         replySub?.cancel()
         replySub = vyred.on("thread.*") { [weak self] e in
-            guard let self, let r = self.reply else { return }
+            guard let self else { return }
+            self.keeper.heard(e)
+            guard let r = self.reply else { return }
             let t = thread() ?? (r.thread.isEmpty ? nil : r.thread)
             if r.thread.isEmpty, e.type == "thread.sent", VJ.str(e.payload["surface"]) == "capsule", let et = e.thread {
                 var x = r; x.thread = et; self.reply = VyState.applyReply(x, e); return
@@ -562,7 +586,7 @@ public final class CapsuleModel: ObservableObject {
         }
     }
 
-    func send(_ words: String, to c: VyreCandidate) async -> ActionOutcome {
+    func send(_ words: String, to c: VyreCandidate, model: String? = nil) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type what to send first.") }
         asked = words
         askedMemory = nil
@@ -575,6 +599,7 @@ public final class CapsuleModel: ObservableObject {
             return await send(words, c, Query(words, front: front))
         case .thread:
             reply = VyState.reply(c.id)
+            reply?.model = model
             follow { c.id }
             let r = await vyred.call("threads.send", ["thread": c.id, "text": withAttachments(words), "surface": "capsule"], presence: false)
             pending = false
@@ -591,6 +616,7 @@ public final class CapsuleModel: ObservableObject {
                 if let h = VJ.nonEmpty(d["holder"]) { return .failed("\(h) has the keyboard in this thread.") }
                 return .failed(VJ.nonEmpty(d["note"]) ?? "This thread could not be typed into.")
             }
+            keeper.typed(into: c.id)
             return .said("")
         case .agent:
             reply = VyState.reply("")
@@ -603,6 +629,7 @@ public final class CapsuleModel: ObservableObject {
             if VJ.bool(d["ok"]) == false { reply = nil; asked = nil; return .failed(VJ.nonEmpty(d["note"]) ?? "\(c.label) did not get it.") }
             thread = VJ.nonEmpty(d["thread"]) ?? reply?.thread
             if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            if let t = thread, !t.isEmpty { keeper.typed(into: t) }
             return .said("")
         case .project:
             reply = VyState.reply("")
@@ -613,6 +640,7 @@ public final class CapsuleModel: ObservableObject {
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             thread = (r.data as? [String: Any]).flatMap { VJ.nonEmpty($0["id"]) }
             if let t = thread, reply?.thread.isEmpty == true { reply?.thread = t }
+            if let t = thread { keeper.typed(into: t) }
             return .said("")
         }
     }
@@ -625,8 +653,8 @@ public final class CapsuleModel: ObservableObject {
         // A queued message has no interrupt path into a terminal session: stop following only.
         if r.queued != nil { line = "Stopped following. \(r.queued!.name) still gets the message when its turn ends."; return }
         if r.thread.isEmpty { return }
-        let t = r.thread
-        Task { _ = await vyred.call("threads.stop", ["id": t], presence: false) }
+        // threads.stop takes {thread}: with {id} it was refused and the process ran on.
+        keeper.stop(r.thread)
     }
 }
 

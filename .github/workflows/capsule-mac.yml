@@ -34,6 +34,12 @@ jobs:
       - name: Native Capsule app
         if: hashFiles('local/capsule/native/build.sh') != ''
         run: sh local/capsule/native/build.sh app
+      - name: Native Capsule app (even when a test failed)
+        if: always() && hashFiles('local/capsule/native/build.sh') != ''
+        run: sh local/capsule/native/build.sh app
+      - name: Native Capsule driven and measured
+        if: always() && hashFiles('local/capsule/native/build.sh') != ''
+        run: node scripts/capsule-native-check.mjs local/capsule/native/.build/Vyre.app
       - name: Node tests that need a Mac
         run: |
           npm ci --no-audit --no-fund

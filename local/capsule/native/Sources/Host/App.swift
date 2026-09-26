@@ -3,6 +3,7 @@
 // vyred follower backs off to a minute, and the event tap only wakes on key events.
 
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -16,14 +17,21 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var menuBar: MenuBarItem?
     lazy var health = Health(vyred: vyred)
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
+    /// Clipboard, contacts, modules, Glass and watches (Agent/Wiring.swift).
+    let wiring: AgentWiring
+    /// The menu-bar item's button, for the Beacon mark (Agent/MenuBar.swift).
+    var status: NSStatusItem? { menuBar?.item }
+    /// Repaints the mark when the waiting list changes (Agent/MenuBar.swift).
+    var agentSink: AnyCancellable?
 
     override init() {
         let env = ProcessInfo.processInfo.environment
         home = env["VYRE_HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? (NSHomeDirectory() as NSString).appendingPathComponent(".vyre")
         vyred = VyredClient(socket: vyredSocketPath(env))
+        wiring = AgentWiring(home: home, vyred: vyred)
         model = CapsuleModel(home: home, vyred: vyred, providers: [
             AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(),
-        ])
+        ] + wiring.providers)
         super.init()
     }
 
@@ -54,6 +62,17 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         vyred.follower.start()
         panel.onShownChange = { [weak self] shown in if shown { self?.health.refresh() } else { self?.menuBar?.close() } }
         if !headless { makeStatusItem() }
+        followWaiting()
+        wiring.attach(model)
+        wiring.requested = { [weak self] action in
+            guard let self else { return }
+            switch action {
+            case "hide": self.panel.hide()
+            case "toggle": self.panel.toggle()
+            default: if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
+            }
+        }
+        Drive.start(self)
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }
 
@@ -84,6 +103,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     func plainMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Capsule", action: #selector(openCapsule), keyEquivalent: "").target = self
+        addWaitingItem(menu)
+        menu.addItem(.separator())
         if !hotkeys.doubleControl {
             menu.addItem(withTitle: "Turn on Control twice…", action: #selector(turnOnDoubleControl), keyEquivalent: "").target = self
         }
