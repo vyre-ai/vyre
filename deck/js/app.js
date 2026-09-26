@@ -262,4 +262,12 @@ window.addEventListener("deck:navigate", route);
   on("project.*", drawRail);
 })();
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // A notification tap on an already-open tab: the SW posts the path rather than reloading it.
+  navigator.serviceWorker.addEventListener("message", e => {
+    if (e.data?.type !== "vyre:navigate" || !e.data.path) return;
+    history.pushState(null, "", e.data.path);
+    window.dispatchEvent(new Event("deck:navigate"));
+  });
+}
