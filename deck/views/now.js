@@ -36,8 +36,17 @@ export default async function now(ctx) {
     const r = running ? `${count(running)} thread${running === 1 ? " is" : "s are"} running on ${running === 1 ? "its" : "their"} own.` : "Nothing is running.";
     put(sub, n ? `${r} Nothing else is waiting on you.` : r);
   };
-  const tick = setInterval(() => put(date, today()), 30_000);
-  ctx.cleanup(() => clearInterval(tick));
+  // The clock only needs to be right while someone can see it. In a background tab, SPEC's
+  // budget is "no timers faster than a minute" — so pause the tick on visibilitychange rather
+  // than let it burn 30s wakeups the whole time this view is mounted but unseen, and catch up
+  // immediately (and re-tick) the moment the tab is looked at again.
+  let tick = null;
+  const startTick = () => { if (!tick) tick = setInterval(() => put(date, today()), 30_000); };
+  const stopTick = () => { if (tick) { clearInterval(tick); tick = null; } };
+  const onVisible = () => { if (document.hidden) stopTick(); else { put(date, today()); startTick(); } };
+  document.addEventListener("visibilitychange", onVisible);
+  if (!document.hidden) startTick();
+  ctx.cleanup(() => { stopTick(); document.removeEventListener("visibilitychange", onVisible); });
 
   // Needs you
   const drawNeeds = list => {
