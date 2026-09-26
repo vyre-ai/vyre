@@ -8,16 +8,17 @@ import * as config from "../config/index.js";
  * One request to vyred over its socket. Resolves to the parsed { data } or { error } body, or to
  * { error: { code: "unreachable" } } when vyred is not running, so callers can degrade instead
  * of throwing. The Harness hooks rely on that: no vyred means Claude Code behaves as if Vyre
- * were not installed.
+ * were not installed. `opts.headers` adds headers, such as a presence proof; the caller header
+ * and the body's own headers win on a clash.
  */
-export function request(method, path, payload, { root = config.home(), caller = "cli", timeout = 10_000 } = {}) {
+export function request(method, path, payload, { root = config.home(), caller = "cli", timeout = 10_000, headers = {} } = {}) {
   const socketPath = config.paths(root).socket;
   return new Promise(resolve => {
     const data = payload === undefined ? undefined : JSON.stringify(payload);
     // agent: false, so no connection is pooled. A pooled one outlives a vyred restart, and the
     // first call after it fails as "unreachable" although the new vyred is up.
     const req = http.request({ socketPath, path, method, timeout, agent: false,
-      headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
+      headers: { ...headers, "content-type": "application/json", "x-vyre-caller": caller, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
       let raw = "";
       res.setEncoding("utf8");
       res.on("data", c => { raw += c; });
