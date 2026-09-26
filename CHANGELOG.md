@@ -14,7 +14,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `config.save(patch, root, live)` writes config.json atomically at 0600 and updates the loaded
   config every module shares. `paths()` gains `certs`, `names`, `models` and `env`. `/v1/health`
   reports `supervisor` ("systemd" or null), so `vyre up` knows who restarts vyred.
+- `core/names`, the parts that reach the outside world, each with a fake-server test:
+  - an RFC 8555 ACME client for DNS-01 (ES256 JWS, nonce retry, and TXT records always cleared);
+  - a hand-rolled PKCS#10 CSR;
+  - a Cloudflare client that refuses any name outside the configured zone, because the user's
+    token may cover other zones;
+  - a 0600 certificate store.
 
+  None of these add a dependency. Exercised live once: records under `_vyre-test.vyre.run` were
+  created, updated in place and deleted (0 left), and a Let's Encrypt staging account was
+  created. Staging refused the `_vyre-test` order with `rejectedIdentifier`, as expected for an
+  underscore label, so issuance itself still needs a real name.
 
 ### Shared core for the parallel workstreams (2026-09-26)
 
