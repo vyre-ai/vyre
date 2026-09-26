@@ -18,6 +18,7 @@ import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
+import * as deckTools from "./tools/deck.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -166,6 +167,8 @@ export default {
 
     tool("vault.offboard", ["cli", "local", "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller));
+
+    deckTools.register({ ctx, vault });
 
     return {
       async stop() {

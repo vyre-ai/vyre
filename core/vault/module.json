@@ -37,7 +37,11 @@
       "vault.devices",
       "vault.device.revoke",
       "vault.device.unlock",
-      "vault.unlock-passphrase"
+      "vault.unlock-passphrase",
+      "vault.caps",
+      "vault.health",
+      "vault.breach.check",
+      "vault.update"
     ]
   },
   "watches": {
