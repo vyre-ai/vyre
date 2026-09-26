@@ -10,6 +10,10 @@
 //     are shown as they are, success or failure.
 //   - "Ask about my screen" calls screen.context once, shows a summary in the side panel, and
 //     puts "About <window>: " in the box. A blind place or a secure field is shown as such.
+//   - Words that point at the screen ("summarize this"), or a selection in the app in front,
+//     get screen context attached as a chip the user sees and can remove (ScreenAttach.swift).
+//     screenAttachment(for:) is what the Capsule's send path asks; the session panel does the same
+//     for its own prompt.
 //   - The talk chord (Option-Return, while the Capsule is open and key) starts vyre-mic and
 //     streams it to voice's listen stream; pressed again, it stops and leaves the words in the
 //     box. Hiding the Capsule stops the mic.
@@ -101,9 +105,13 @@ final class SightExtension: CapsuleExtension {
     /// Where spoken words go: the Capsule's box, or the panel's prompt.
     private var talkToPanel = false
 
+    /// Screen context for the Capsule's box: read once per show, cleared on hide.
+    private(set) lazy var attacher = ScreenAttacher(vyred: host.vyred) { [weak self] in self?.host.log($0) }
+
     init(host: CapsuleHost) {
         self.host = host
         panel = SessionPanelModel(vyred: host.vyred)
+        panel.attacher = ScreenAttacher(vyred: host.vyred) { [weak host] in host?.log($0) }
         panel.onTalk = { [weak self] in self?.toggleTalk(toPanel: true) }
     }
 
@@ -116,6 +124,15 @@ final class SightExtension: CapsuleExtension {
     func capsuleWillShow(front: FrontApp?) {
         // Once per show, for the rows below; never on a timer.
         Task { @MainActor in known = await loadSessions() }
+        // The light read, for a selection in the app in front. Nothing is sent from it.
+        attacher.prime()
+    }
+
+    /// What an Ask from the Capsule's box carries about the screen, or nil. The host shows `chip`
+    /// before sending, lets one key remove it, and appends `body` to the words only if it stayed.
+    func screenAttachment(for words: String) async -> (id: String, chip: String, bundle: String?, body: String)? {
+        guard let c = await attacher.attachment(for: words) else { return nil }
+        return (ScreenChip.id, c.chip, c.bundle, c.body)
     }
 
     var commands: [CapsuleCommand] {
@@ -156,6 +173,7 @@ final class SightExtension: CapsuleExtension {
     }
 
     func capsuleDidHide() {
+        attacher.reset()
         // Talk started from the panel keeps going: the panel is where its words land.
         if talkToPanel && panelOpen { return }
         stopTalk()

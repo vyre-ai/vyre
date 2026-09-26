@@ -73,6 +73,12 @@ final class SessionPanelModel: ObservableObject {
     @Published var line: String?
     @Published var talking = false
     @Published var sending = false
+    /// Screen context for the words in the box, shown as a chip above it until removed or sent.
+    @Published var chip: ScreenChip?
+    /// The user removed the chip; it stays away until the box is sent or emptied.
+    @Published var chipRemoved = false
+    var attacher: ScreenAttacher?
+    private var chipTask: Task<Void, Never>?
 
     private let vyred: VyredLink
     private var sub: VyredSubscription?
@@ -135,6 +141,34 @@ final class SessionPanelModel: ObservableObject {
         dm = x
     }
 
+    /// The words changed: work out the chip again after a short pause in typing.
+    func draftChanged() {
+        chipTask?.cancel()
+        chipTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            await self?.refreshChip()
+        }
+    }
+
+    /// The chip for the words in the box now. An empty box forgets the screen, so the next words
+    /// read it fresh.
+    func refreshChip() async {
+        let words = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let a = attacher else { chip = nil; return }
+        if words.isEmpty { chip = nil; chipRemoved = false; a.reset(); return }
+        if chipRemoved { return }
+        let c = await a.attachment(for: words)
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines) == words, !chipRemoved { chip = c }
+    }
+
+    /// Take the chip off this message (its x, or Command-Backspace with the caret at the start).
+    func removeChip() {
+        guard chip != nil else { return }
+        chip = nil
+        chipRemoved = true
+    }
+
     /// Send the box's words to the shown session.
     func send() async {
         let words = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -145,11 +179,16 @@ final class SessionPanelModel: ObservableObject {
         line = nil
         sending = true
         dm = VyState.dmPending(dm, key, words, vyNowMs())
+        // The screen goes only with a chip the user saw and left in place.
+        let text = words + (chipRemoved ? "" : chip?.body ?? "")
+        chipTask?.cancel()
+        chip = nil; chipRemoved = false
+        attacher?.reset()
         let r: VyredResult
         if s.isAssistant {
-            r = await vyred.call("agents.ask", ["agent": s.agent, "text": words, "surface": "capsule", "wait": false], presence: false)
+            r = await vyred.call("agents.ask", ["agent": s.agent, "text": text, "surface": "capsule", "wait": false], presence: false)
         } else {
-            r = await vyred.call("threads.send", ["thread": s.thread ?? "", "text": words, "surface": "capsule"], presence: false)
+            r = await vyred.call("threads.send", ["thread": s.thread ?? "", "text": text, "surface": "capsule"], presence: false)
         }
         sending = false
         let d = (r.data as? [String: Any]) ?? [:]
@@ -200,6 +239,7 @@ struct SessionPanelView: View {
             Divider().overlay(Theme.rule)
             conversation
             Divider().overlay(Theme.rule)
+            if let c = model.chip { chipView(c) }
             prompt
             status
         }
@@ -272,6 +312,29 @@ struct SessionPanelView: View {
         }
     }
 
+    private func chipView(_ c: ScreenChip) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "text.viewfinder").font(.system(size: 10)).foregroundColor(Theme.recall)
+            Text(c.chip).font(Theme.label).foregroundColor(Theme.stone).lineLimit(1).truncationMode(.middle)
+            Button { model.removeChip() } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).foregroundColor(Theme.ash)
+            }
+            .buttonStyle(.plain).help("Send without your screen (Command-Backspace at the start of the box)")
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Capsule().fill(Theme.raised))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12).padding(.top, 8)
+    }
+
+    /// True when the box's caret sits at the very start, so Command-Backspace has nothing of the
+    /// words to delete and removes the chip instead.
+    private func caretAtStart() -> Bool {
+        guard let tv = NSApp.keyWindow?.firstResponder as? NSTextView else { return model.draft.isEmpty }
+        let r = tv.selectedRange()
+        return r.location == 0 && r.length == 0
+    }
+
     private var prompt: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField(model.talking ? "Listening" : "Message \(model.shown?.label ?? "the session")", text: $model.draft, axis: .vertical)
@@ -286,6 +349,12 @@ struct SessionPanelView: View {
                     model.onTalk()
                     return .handled
                 }
+                .onKeyPress(.delete, phases: .down) { press in
+                    guard press.modifiers.contains(.command), model.chip != nil, caretAtStart() else { return .ignored }
+                    model.removeChip()
+                    return .handled
+                }
+                .onChange(of: model.draft) { _, _ in model.draftChanged() }
             Button { model.onTalk() } label: {
                 Image(systemName: model.talking ? "mic.fill" : "mic").font(.system(size: 13))
                     .foregroundColor(model.talking ? Theme.signal : Theme.stone)

@@ -28,6 +28,10 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
 ## Doing
+- Screen context on Ask (ScreenAttach.swift): done in the sight extension and the session panel;
+  combined tree 203 pass, 1 fail (capsule-pro's icon test). Waiting on capsule-pro's host hook
+  (proposed SendAttaching / SendAttachment in Kit) to show the chip in the Capsule's own box;
+  the adapter wraps `SightExtension.screenAttachment(for:) async -> (id, chip, bundle, body)?`.
 - hands asks from capsule-apps (WhatsApp ax adapter): hands.find + observe match, settleMs cap
   5000, needs_front for a key to a background app. hands tests on the test box: 53 pass, 6 skip.
 - e263e22 + f7830bd: session panel in the sight extension (Capsule-owned window slides in at 29%,
