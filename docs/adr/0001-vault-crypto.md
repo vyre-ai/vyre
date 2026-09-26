@@ -1,4 +1,12 @@
-# ADR 0001 · How the Vault seals, releases and shares credentials
+---
+title: ADR 0001: How the Vault seals, releases and shares credentials
+summary: How the Vault seals credentials at rest, releases one item at a time to a declared module or agent, and shares items as relayed or sealed passes.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0001: How the Vault seals, releases and shares credentials
 
 Status: accepted, 26 Sep 2026 · Workstream: vault · Spec: sections 7.5 and 11 (floor rule 8)
 

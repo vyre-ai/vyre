@@ -14,8 +14,14 @@
 // google.* events that change what it shows (debounced, one redraw per burst). google.test makes
 // real calls to Google, so it runs only when the person presses Test, never on open.
 //
+// Adding a Google account is "Sign in with Google" by default: grant the OAuth client item, call
+// google.connect, open Google's page in a new tab, and wait for google.connected (or a pasted
+// address, for a browser on another device). An open sign-in is cancelled when the form closes or
+// the view goes away. A service account gets the admin console's two values to copy instead.
+//
 // Tools: mcp.servers, mcp.add, mcp.update, mcp.remove, mcp.test, mcp.restart, google.accounts,
-// google.add, google.remove, google.test, vault.list, vault.grant, projects.list, agents.list.
+// google.add, google.remove, google.test, google.connect, google.connect.finish,
+// google.connect.cancel, vault.list, vault.grant, projects.list, agents.list.
 
 import { h, put, empty } from "../js/dom.js";
 import { attempt as apiAttempt } from "../js/api.js";
@@ -28,18 +34,25 @@ export const ITEM_KINDS = {
   env: ["api-key", "secret", "env-set"],
   oauth: ["env-set"],
   "service-account": ["note", "secret"],
+  signin: ["env-set"],
 };
 const AUTH_WORDS = { none: "None", bearer: "Bearer token", env: "Env vars", oauth: "OAuth", "service-account": "Service account" };
+/** The ways a Google account signs in, as the form's segment shows them. */
+const SIGN_WORDS = [["signin", "Sign in with Google"], ["service-account", "Service account"], ["oauth", "Refresh token item"]];
+/** How the OAuth client gets into the vault (core/cli/commands/vault.js); the values are typed at its prompts. */
+export const CLIENT_PUT = "vyre vault put google-oauth-client --kind env-set --field client_id --field client_secret";
 const MODE_WORDS = [["read", "Read"], ["write", "Held"], ["off", "Off"]];
 const STATE_WORDS = { stopped: "stopped", starting: "starting", running: "running", failed: "failed" };
 /** The events that change what this section shows. mcp.called is left out: it only moves lastUsed. */
 export const EVENTS = ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed",
-  "google.added", "google.removed", "vault.granted"];
+  "google.added", "google.removed", "google.connected", "google.connect-failed", "vault.granted"];
 
 const str = v => (typeof v === "string" ? v : "");
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === "string") : []);
 const num = v => (typeof v === "number" && isFinite(v) ? v : null);
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
+/** @typedef {{ id: string, name: string, url: string, over: boolean, stt: HTMLElement, win?: Window | null }} Flow */
 
 // ---- what the page reads, named fields only ------------------------------------------------------
 
@@ -139,6 +152,8 @@ export async function drawConnections(el, ctx, deps = {}) {
     /** A row asking "Remove?" */
     confirming: "",
     form: /** @type {"" | "mcp" | "google"} */ (""),
+    /** The open "Sign in with Google", if any. */
+    flow: /** @type {Flow | null} */ (null),
   };
 
   const top = h("div");
@@ -298,6 +313,7 @@ export async function drawConnections(el, ctx, deps = {}) {
         meta("Vault item", h("code", { class: "set-mono" }, a.auth.item)),
         meta("Scopes", t ? scopeList(t) : h("span", { class: "muted" }, "Not checked yet. Test asks Google for each one."))),
       t && t.error ? h("div", { class: "small cn-err", "data-hint": "scopes" }, t.error) : null,
+      t && a.auth.type === "service-account" ? adminBlock(t) : null,
       st.confirming === `google:${a.name}`
         ? h("div", { class: "set-actions cn-confirm" },
           h("span", { class: "small" }, `Disconnect ${a.name}? Its vault item stays, and so does its grant.`),
@@ -313,9 +329,8 @@ export async function drawConnections(el, ctx, deps = {}) {
         : h("div", { class: "set-actions cn-acts" },
           h("button", { type: "button", class: "btn btn-sm", "data-act": "test", onclick: async (/** @type {Event} */ e) => {
             busy(e, "Testing");
-            const r = await attempt("google.test", { name: a.name });
+            await testAccount(a.name);
             if (!ctx.alive()) return;
-            st.gtested.set(a.name, r.error ? { ok: false, scopes: {}, error: errText(r.error) } : pickGoogleTest(r.data));
             drawAccounts();
           } }, "Test"),
           h("button", { type: "button", class: "btn btn-ghost btn-sm", "data-act": "remove", onclick: () => { st.confirming = `google:${a.name}`; drawAccounts(); } }, "Remove")),
@@ -324,6 +339,35 @@ export async function drawConnections(el, ctx, deps = {}) {
   function sayG(name, text) {
     const r = googleBox.querySelector(`[data-account="${name}"] .set-status`);
     if (r) put(/** @type {HTMLElement} */ (r), text);
+  }
+
+  /**
+   * What a Workspace admin pastes to let a service account act for people: its client ID and the
+   * scope line, each with Copy. Both are public identifiers, never a key.
+   */
+  function adminBlock(t) {
+    return h("div", { class: "cn-admin", "data-admin": "delegation" },
+      h("div", { class: "small" }, "Allow it in the Google Workspace admin console. Under Security, API controls, Domain-wide delegation, add a new client with this client ID and these scopes."),
+      h("div", { class: "cn-copies" },
+        t.client_id ? copyRow("Client ID", t.client_id, "client_id")
+          : h("div", { class: "small muted" }, "The client ID is the client_id in the service account's JSON."),
+        t.admin_scopes ? copyRow("Scopes", t.admin_scopes, "admin_scopes") : null));
+  }
+
+  /** A label, the value in a read-only box, and Copy. When the clipboard is not allowed, the value is selected instead. */
+  function copyRow(label, value, key) {
+    const box = /** @type {HTMLInputElement} */ (h("input", { class: "input set-mono cn-copy-v", readonly: true, value, "aria-label": label, spellcheck: "false" }));
+    const b = h("button", { type: "button", class: "btn btn-sm", "data-copy": key, onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(value);
+        put(b, "Copied");
+      } catch {
+        box.focus();
+        box.select();
+        put(b, "Selected. Copy it with your keyboard.");
+      }
+    } }, "Copy");
+    return h("div", { class: "cn-copy", "data-value": key }, h("span", { class: "cn-k" }, label), box, b);
   }
 
   function scopeList(t) {
@@ -336,13 +380,14 @@ export async function drawConnections(el, ctx, deps = {}) {
   // ---- add forms ----
 
   async function openForm(kind) {
+    cancelFlow();
     st.form = kind;
     put(formBox, h("div", { class: "empty" }, "Loading your vault's item names."));
     const { vaultErr } = await loadChoices();
     if (!ctx.alive() || st.form !== kind) return;
     if (kind === "mcp") mcpForm(vaultErr); else googleForm(vaultErr);
   }
-  const closeForm = () => { st.form = ""; put(formBox); };
+  const closeForm = () => { cancelFlow(); st.form = ""; put(formBox); };
 
   /** The vault item select for one auth type, or a note when there is none of that kind. */
   function itemSelect(type, id, current = "") {
@@ -493,26 +538,35 @@ export async function drawConnections(el, ctx, deps = {}) {
   }
 
   function googleForm(vaultErr) {
-    let type = "oauth";
+    let type = "signin";
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
     const email = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-email", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "alex@harlowlegal.com" }));
     const subject = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-subject", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "The address above" }));
-    const seg = h("div", { class: "seg", role: "group", "aria-label": "How it signs in" });
-    const itemBox = h("div", { class: "set-v" });
+    const seg = h("div", { class: "seg cn-seg", role: "group", "aria-label": "How it signs in" });
+    const rest = h("div", { class: "rows" });
     const subjectRow = h("div");
     const stt = h("div", { class: "small muted set-status", role: "status" });
-    let item = itemSelect("oauth", "cg-item");
-    const drawSeg = () => put(seg, [["oauth", "OAuth"], ["service-account", "Service account"]].map(([v, t]) =>
-      h("button", { type: "button", "aria-pressed": String(type === v), "data-auth": v, onclick: () => { type = v; drawSeg(); drawRest(); } }, t)));
+    let item = itemSelect("signin", "cg-item");
+    const save = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary", "data-act": "save" }));
+    const drawSeg = () => put(seg, SIGN_WORDS.map(([v, t]) =>
+      h("button", { type: "button", "aria-pressed": String(type === v), "data-auth": v, onclick: () => { type = v; put(stt); drawSeg(); drawRest(); } }, t)));
     const drawRest = () => {
       item = itemSelect(type, "cg-item");
-      put(itemBox, item, h("span", { class: "small faint" }, type === "oauth" ? "An env set with client_id, client_secret, refresh_token and token_uri."
-        : "A note or secret holding the service account's JSON. It acts as the address below through domain-wide delegation."));
+      const hint = type === "signin"
+        ? [h("span", { class: "small faint" }, "A Desktop app OAuth client from Google Cloud console, kept in the vault as an env set with client_id and client_secret:"),
+          h("code", { class: "set-mono cn-cmd" }, CLIENT_PUT)]
+        : h("span", { class: "small faint" }, type === "oauth" ? "An env set with client_id, client_secret, refresh_token and token_uri."
+          : "A note or secret holding the service account's JSON. It acts as the address below through domain-wide delegation.");
+      put(rest,
+        type === "signin" ? null : frow("cg-email", "Address", email),
+        h("div", { class: "set-row" }, h("div", { class: "set-k" }, h("label", { for: "cg-item" }, type === "signin" ? "OAuth client" : "Vault item")),
+          h("div", { class: "set-v" }, item, hint)));
       put(subjectRow, type === "service-account" ? h("div", { class: "rows" }, frow("cg-subject", "Acts as", subject, "Leave empty to act as the account's own address.")) : null);
+      put(save, type === "signin" ? "Sign in with Google" : "Add account");
     };
-    const save = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary" }, "Add account"));
     const form = h("form", { class: "set-form cn-form", "data-form": "google", onsubmit: async (/** @type {Event} */ e) => {
       e.preventDefault();
+      if (type === "signin") return signIn();
       const input = { name: name.value.trim(), email: email.value.trim(), auth: /** @type {Record<string, string>} */ ({ type, item: item.value }) };
       if (!input.name || !input.email) { put(stt, "Give the account a name and its address."); return; }
       if (!item.value) { put(stt, "Choose the vault item this account uses."); return; }
@@ -526,9 +580,8 @@ export async function drawConnections(el, ctx, deps = {}) {
       if (!ctx.alive()) return;
       if (!left.length) {
         put(stt, "Checking scopes with Google.");
-        const t = await attempt("google.test", { name: input.name });
+        await testAccount(input.name);
         if (!ctx.alive()) return;
-        st.gtested.set(input.name, t.error ? { ok: false, scopes: {}, error: errText(t.error) } : pickGoogleTest(t.data));
       }
       done(left, input.name, "google");
       await load();
@@ -537,14 +590,128 @@ export async function drawConnections(el, ctx, deps = {}) {
       vaultErr ? empty("The vault did not list its items, so none can be picked.", vaultErr) : null,
       h("div", { class: "rows" },
         frow("cg-name", "Name", name, "What the assistant calls it, like work or home."),
-        frow("cg-email", "Address", email),
-        h("div", { class: "set-row" }, h("div", { class: "set-k" }, "Signs in with"), h("div", { class: "set-v" }, seg)),
-        h("div", { class: "set-row" }, h("div", { class: "set-k" }, h("label", { for: "cg-item" }, "Vault item")), itemBox)),
+        h("div", { class: "set-row" }, h("div", { class: "set-k" }, "Signs in with"), h("div", { class: "set-v" }, seg))),
+      rest,
       subjectRow,
       h("div", { class: "set-actions" }, save, h("button", { type: "button", class: "btn btn-ghost", onclick: closeForm }, "Cancel")), stt);
+
+    /** Sign in with Google: grant the client item, start the sign-in, open Google's page, wait. */
+    async function signIn() {
+      const input = { name: name.value.trim(), client: item.value };
+      if (!input.name) { put(stt, "Give the account a name."); return; }
+      if (!input.client) { put(stt, "Choose the vault item that holds your OAuth client."); return; }
+      save.disabled = true;
+      // The tab opens now, before any await, while the press still counts as the person's own
+      // action, so the browser does not block it. It gets Google's address once there is one.
+      const w = window.open("", "_blank");
+      if (w) try { w.opener = null; } catch {}
+      const shut = () => { if (w) try { w.close(); } catch {} };
+      const left = await grantAll([input.client], "google", stt);
+      if (!ctx.alive()) { shut(); return; }
+      if (left.length) {
+        shut();
+        save.disabled = false;
+        put(stt, "The google module cannot read the OAuth client yet. Run this on the box, then press Sign in with Google again: ",
+          h("code", { class: "set-mono" }, grantCommand(input.client, "google")));
+        return;
+      }
+      put(stt, "Opening Google.");
+      const r = await attempt("google.connect", input);
+      const id = str(r.data?.id), url = str(r.data?.url);
+      if (!ctx.alive()) { shut(); if (id) attempt("google.connect.cancel", { id }); return; }
+      if (r.error || !id || !/^https:\/\//.test(url)) { shut(); save.disabled = false; put(stt, r.error ? errText(r.error) : "Vyre did not return Google's address. Try again."); return; }
+      if (st.form !== "google") { shut(); attempt("google.connect.cancel", { id }); return; }
+      if (w && !w.closed) w.location.href = url;
+      waiting({ id, name: input.name, url, over: false, stt: h("div"), win: w }, !w);
+    }
+
     drawSeg(); drawRest();
     put(formBox, form);
     name.focus();
+  }
+
+  /**
+   * The open sign-in's panel: waiting for Google, a paste box for a browser on another device,
+   * and Cancel. Google's address is not a secret (the client ID and a PKCE challenge), so when
+   * the browser blocked the tab it is shown as a link, and only then.
+   * @param {Flow} flow @param {boolean} blocked
+   */
+  function waiting(flow, blocked) {
+    st.flow = flow;
+    const paste = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-paste", autocomplete: "off", spellcheck: "false", placeholder: "http://127.0.0.1:…/google/callback?state=…" }));
+    const finish = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm", "data-act": "finish", onclick: async () => {
+      const url = paste.value.trim();
+      if (!url) { put(flow.stt, "Paste the whole address from the browser's address bar."); return; }
+      finish.disabled = true;
+      put(flow.stt, "Finishing.");
+      const r = await attempt("google.connect.finish", { id: flow.id, url });
+      if (!ctx.alive() || flow.over) return;
+      if (r.error) { finish.disabled = false; put(flow.stt, errText(r.error)); return; }
+      await connected(flow, str(r.data?.name) || flow.name, str(r.data?.email));
+    } }, "Finish"));
+    put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "google", "data-signin": "waiting" },
+      h("h3", { class: "set-h3" }, "Add a Google account"),
+      h("p", { class: "cn-wait-t" }, blocked ? "Waiting for Google." : "Waiting for Google. Finish in the tab that opened."),
+      blocked ? h("p", { class: "small", "data-hint": "blocked" }, "Your browser blocked the new tab: ",
+        h("a", { href: flow.url, target: "_blank", rel: "noopener noreferrer", "data-act": "open-google" }, "open Google's sign-in page")) : null,
+      h("div", { class: "rows" },
+        h("div", { class: "set-row" }, h("div", { class: "set-k" }, h("label", { for: "cg-paste" }, "Another device")),
+          h("div", { class: "set-v" },
+            h("span", { class: "small faint" }, "Signed in on another device? Paste the address the browser landed on."),
+            h("div", { class: "cn-paste" }, paste, finish)))),
+      h("div", { class: "set-actions" }, h("button", { type: "button", class: "btn btn-ghost", "data-act": "cancel-signin", onclick: () => closeForm() }, "Cancel")),
+      h("div", { class: "small muted set-status", role: "status" }, flow.stt)));
+  }
+
+  /** The sign-in finished, by the loopback (an event) or a paste: check scopes, then close. */
+  async function connected(flow, name, email) {
+    if (flow.over) return;
+    flow.over = true;
+    st.flow = null;
+    put(flow.stt, email ? `Signed in as ${email}. Checking scopes with Google.` : "Signed in. Checking scopes with Google.");
+    await testAccount(name);
+    if (!ctx.alive()) return;
+    done([], name, "google");
+    await load();
+  }
+
+  /** The sign-in ended without an account: say why, and offer to start again. */
+  function failed(flow, error) {
+    if (flow.over) return;
+    flow.over = true;
+    st.flow = null;
+    put(formBox, h("div", { class: "set-form cn-form cn-wait", "data-form": "google", "data-signin": "failed" },
+      h("h3", { class: "set-h3" }, "Add a Google account"),
+      h("p", { class: "small cn-err", "data-hint": "signin-failed" }, error || "The sign-in ended without an account."),
+      h("div", { class: "set-actions" },
+        h("button", { type: "button", class: "btn btn-sm", "data-act": "again", onclick: () => openForm("google") }, "Start again"),
+        h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => closeForm() }, "Close"))));
+  }
+
+  /** Cancel the open sign-in, if any. Nothing waits on the answer. */
+  function cancelFlow() {
+    const flow = st.flow;
+    if (!flow || flow.over) return;
+    flow.over = true;
+    st.flow = null;
+    if (flow.win) try { flow.win.close(); } catch {}
+    attempt("google.connect.cancel", { id: flow.id });
+  }
+
+  /** google.connected and google.connect-failed, for the open sign-in only. */
+  function onFlow(type, e) {
+    const flow = st.flow;
+    const p = isObj(e?.payload) ? e.payload : {};
+    if (!flow || flow.over || p.id !== flow.id || !ctx.alive()) return;
+    if (type === "google.connected") connected(flow, str(p.name) || flow.name, str(p.email));
+    else if (type === "google.connect-failed") failed(flow, str(p.error));
+  }
+
+  /** google.test for one account, kept for its row. */
+  async function testAccount(name) {
+    const t = await attempt("google.test", { name });
+    if (!ctx.alive()) return;
+    st.gtested.set(name, t.error ? { ok: false, scopes: {}, error: errText(t.error), client_id: "", admin_scopes: "" } : pickGoogleTest(t.data));
   }
 
   /**
@@ -576,8 +743,8 @@ export async function drawConnections(el, ctx, deps = {}) {
   }
 
   let t = 0;
-  for (const type of EVENTS) ctx.on(type, () => { clearTimeout(t); t = setTimeout(load, 400); });
-  ctx.cleanup(() => clearTimeout(t));
+  for (const type of EVENTS) ctx.on(type, e => { onFlow(type, e); clearTimeout(t); t = setTimeout(load, 400); });
+  ctx.cleanup(() => { clearTimeout(t); cancelFlow(); });
   await load();
 }
 
@@ -592,7 +759,10 @@ export function pickTest(d) {
 export function pickGoogleTest(d) {
   const scopes = {};
   if (isObj(d?.scopes)) for (const [k, v] of Object.entries(d.scopes)) scopes[k] = v === true;
-  return { ok: d?.ok === true, scopes, error: str(d?.error) };
+  // A service account's two admin console values: a numeric client ID and Google scope URLs only.
+  const client_id = /^\d{5,30}$/.test(str(d?.client_id)) ? str(d?.client_id) : "";
+  const admin_scopes = str(d?.admin_scopes).split(",").filter(x => /^https:\/\/www\.googleapis\.com\/auth\/[\w.]+$/.test(x)).join(",");
+  return { ok: d?.ok === true, scopes, error: str(d?.error), client_id, admin_scopes };
 }
 
 // ---- small parts --------------------------------------------------------------------------------

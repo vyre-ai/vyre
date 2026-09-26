@@ -20,7 +20,7 @@ import { Leases, TTL } from "./lease.js";
 import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
 import { MIGRATIONS, answerSummary } from "./index.js";
-import { Sessions } from "./sessions.js";
+import { Sessions, claudeCommand } from "./sessions.js";
 import { migrate } from "../store/index.js";
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
@@ -325,7 +325,9 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
   t.after(() => s.close());
   const id = (await tool("threads.start", { cwd: work, surface: "deck:1" })).data.id;
   assert.equal((await tool("threads.claimed", { session: id })).error.code, "no_such_tool", "internal: modules only");
-  assert.deepEqual((await tool("probe.claimed", { session: id })).data, { headless: true, holder: "deck:1", status: (await tool("threads.get", { thread: id })).data.thread.status });
+  // Past "starting", so the status cannot move between the two reads.
+  const status = await until(async () => { const st = (await tool("threads.get", { thread: id })).data.thread.status; return st !== "starting" && st; }, "the thread to start");
+  assert.deepEqual((await tool("probe.claimed", { session: id })).data, { headless: true, holder: "deck:1", status });
   assert.equal((await tool("probe.claimed", { session: "not-a-thread" })).data.headless, false);
 
   // Our own child's SessionStart (headless true) is not a second writer.
@@ -960,4 +962,28 @@ test("fake claude: the echo and ask turns are written to the transcript too", as
   assert.equal(lines[1].message.content[0].text, "echo: hello kit");
   assert.equal(lines[3].message.content[0].name, "AskUserQuestion");
   assert.match(lines[4].message.content[0].content, /User has answered your questions: "Which palette should the Northwind Bakery menu use\?"="Plain"/);
+});
+
+test("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
+  const { tool } = await boot(t);
+  await tool("agents.create", { name: "kit", projects: [] });
+  const r = await tool("agents.update", { agent: "kit", computer: true }, "deck");
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.equal(r.data.computer, true);
+  assert.equal(r.data.name, "kit", "agent is not stored as a field");
+  assert.equal((await tool("agents.update", { name: "kit", computer: false })).data.computer, false, "name still works");
+  assert.match((await tool("agents.update", { name: "kit", agent: "juno", computer: true })).error.message, /different agents/);
+  assert.match((await tool("agents.update", { computer: true })).error.message, /say which agent/);
+  assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
+});
+
+test("sessions: claude is known by its command line, since node 24 names its main thread MainThread", () => {
+  for (const args of ["claude", "/usr/local/bin/claude --resume abc", "/opt/homebrew/bin/node /usr/local/bin/claude", "node /Users/alex/.npm/bin/claude -p hi"]) assert.equal(claudeCommand(args), true, args);
+  for (const args of ["MainThread", "node /usr/local/bin/vyre", "/usr/bin/python3 claude.py", "bash -c claude", ""]) assert.equal(claudeCommand(args), false, args);
+});
+
+test("queue: a person's words are queued for a terminal-busy session, the owner's phone over the tailnet included; a model's are refused", async () => {
+  const { queuesFor } = await import("./index.js");
+  for (const c of ["deck", "capsule", "cli", "local", "tailnet:alex@example.com"]) assert.equal(queuesFor(c), true, c);
+  for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "tailnet:agent:kit", "cli agent:kit", "tailnet:"]) assert.equal(queuesFor(c), false, c);
 });

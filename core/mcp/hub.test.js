@@ -118,6 +118,7 @@ test("looksSecret and target", () => {
   assert.deepEqual(target({ channel: "#northwind", to: "" }, "chat"), { key: "channel", to: ["#northwind"], list: false });
   assert.deepEqual(target({ to: ["dana@harlowlegal.com"] }, "chat"), { key: "to", to: ["dana@harlowlegal.com"], list: true });
   assert.deepEqual(target({ title: "x" }, "tracker"), { key: null, to: ["tracker"], list: false });
+  assert.deepEqual(target({ channel_id: "C0NORTHWIND", text: "hi" }, "slack"), { key: "channel_id", to: ["C0NORTHWIND"], list: false });
 });
 
 test("whoFrom: people see all, a model is scoped by what vyred verified", () => {

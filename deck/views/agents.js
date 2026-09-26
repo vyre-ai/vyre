@@ -332,7 +332,7 @@ function drawJob(sec, a, w, stub, listErr) {
     ta.value = a.instructions || "";
     const save = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const r = await attempt("agents.update", { agent: a.name, instructions: ta.value.trim() });
+      const r = await attempt("agents.update", { name: a.name, instructions: ta.value.trim() });
       /** @type {HTMLButtonElement} */ (save).disabled = false;
       if (r.error) { put(status, why(r.error)); return; }
       a.instructions = ta.value.trim();
@@ -475,7 +475,7 @@ function drawModel(sec, a, stub, listErr) {
     onclick: () => { a.effort = v; drawSeg(); save(); } }, l)));
   const save = async () => {
     put(status, "Saving…");
-    const r = await attempt("agents.update", { agent: a.name, model: sel.value, effort: a.effort || "medium" });
+    const r = await attempt("agents.update", { name: a.name, model: sel.value, effort: a.effort || "medium" });
     put(status, r.error ? why(r.error) : "Saved.");
     if (!r.error) a.model = sel.value;
   };
@@ -502,8 +502,8 @@ function preview(c, name) {
   return s("svg", { viewBox: "0 0 472 295", class: "ab-pv", role: "img", "aria-label": `${name}'s screen. A still drawing, not a live picture; open Glass to watch.` },
     s("rect", { width: 472, height: 295, class: "pv-ground" }),
     s("rect", { width: 472, height: 16, class: "pv-bar" }),
-    s("text", { x: 10, y: 11.5, class: "pv-t" }, c.name || name),
-    s("text", { x: 462, y: 11.5, "text-anchor": "end", class: "pv-t" }, `screen ${c.screen?.index ?? "?"}`),
+    s("text", { x: 10, y: 11.5, class: "pv-t" }, name),
+    s("text", { x: 462, y: 11.5, "text-anchor": "end", class: "pv-t" }, c.screen ? `screen ${c.screen}` : c.state || ""),
     s("rect", { x: 16, y: 30, width: 292, height: 248, rx: 4, class: "pv-win" }),
     s("rect", { x: 16, y: 30, width: 292, height: 18, rx: 4, class: "pv-chrome" }),
     s("rect", { x: 60, y: 34, width: 150, height: 10, rx: 3, class: "pv-field" }),
@@ -527,12 +527,12 @@ function spec(label, value, note) {
 function drawComputer(aside, a, cr, stub, listErr, reload) {
   const status = h("div", { class: "small muted ab-comp-status", role: "status" });
   const c = cr.data;
-  const right = c ? h("span", { class: "code faint" }, `${c.name}${c.host ? ` on ${c.host}` : ""}`) : null;
+  const right = c ? h("span", { class: "code faint" }, c.state || "none") : null;
   if (stub) { put(aside, sectionHead("ab-comp", "Computer"), empty(`Whether ${a.name} has a computer is kept by the switchboard.`, listErr)); return; }
   if (!a.computer) {
     const give = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (give).disabled = true;
-      const r = await attempt("agents.update", { agent: a.name, computer: true });
+      const r = await attempt("agents.update", { name: a.name, computer: true });
       /** @type {HTMLButtonElement} */ (give).disabled = false;
       if (r.error) { put(status, why(r.error)); return; }
       a.computer = true;
@@ -548,8 +548,17 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
     put(aside, sectionHead("ab-comp", "Computer"), cr.error ? empty(`${a.name} has a computer, but it cannot be shown.`, cr.error) : h("div", { class: "empty" }, `${a.name}'s computer is not set up yet.`));
     return;
   }
-  const sc = c.screen || {};
-  const disk = c.disk ? `${c.disk.used_gb} of ${c.disk.total_gb} GB` : "?";
+  // computers.get: { agent, state (none|running|frozen|stopped), screen (its number while checked
+  // out, else null), screens, size { w, h }, viewers, takeover (the surface holding it), paused,
+  // cpus, memory_gb }.
+  const size = c.size || {};
+  const who = a.name;
+  const live = c.takeover ? `Taken over from ${c.takeover}. ${who}'s hands wait.`
+    : c.state === "running" && c.screen ? `Live. Screen ${c.screen} of ${c.screens ?? "?"} from the pool.`
+    : c.state === "running" ? "Running, not on a screen right now."
+    : c.state === "frozen" ? `Resting. It wakes when ${who} or you need it.`
+    : c.state === "stopped" ? `Stopped. It starts when ${who} or you need it.`
+    : `Not made yet. It is made the first time ${who} or you need it.`;
   const limits = h("button", { type: "button", class: "btn", "aria-expanded": "false", "aria-controls": "ab-limits" }, "Change limits");
   const box = h("div", { class: "ab-limits", id: "ab-limits", hidden: true });
   limits.addEventListener("click", () => {
@@ -557,42 +566,42 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
     box.hidden = !open;
     limits.setAttribute("aria-expanded", String(open));
     if (!open) return;
-    const num = (label, v, min, max) => /** @type {HTMLInputElement} */ (h("input", { class: "input", type: "number", min, max, value: v, "aria-label": label }));
-    const cpu = num("Processor cores", c.cpu ?? 2, 1, 16), mem = num("Memory in GB", c.memory_gb ?? 4, 1, 64), dsk = num("Disk in GB", c.disk?.total_gb ?? 20, 5, 500);
+    const num = (label, v, min, max) => /** @type {HTMLInputElement} */ (h("input", { class: "input", type: "number", min, max, step: 1, value: v, "aria-label": label }));
+    const cpu = num("Processor cores", c.cpus ?? 2, 1, 16), mem = num("Memory in GB", Math.round(c.memory_gb ?? 3), 1, 64);
     const save = h("button", { type: "button", class: "btn", onclick: async () => {
-      const input = { agent: a.name, cpu: Number(cpu.value), memory_gb: Number(mem.value), disk_gb: Number(dsk.value) };
-      const r = await attempt("computers.limits", input);
+      const r = await attempt("computers.limits", { agent: who, cpus: Number(cpu.value), memory_gb: Number(mem.value) });
       if (r.error) { put(status, why(r.error)); return; }
-      c.cpu = input.cpu; c.memory_gb = input.memory_gb; c.disk = { ...(c.disk || {}), total_gb: input.disk_gb };
+      Object.assign(c, r.data || {});
       drawComputer(aside, a, cr, stub, listErr, reload);
+      const fresh = aside.querySelector(".ab-comp-status");
+      if (fresh) put(fresh, `Saved. Restart ${who}'s computer to apply them.`);
     } }, "Save limits");
     put(box, h("div", { class: "ab-limits-grid" },
-      h("label", { class: "small faint" }, "Cores", cpu), h("label", { class: "small faint" }, "Memory GB", mem), h("label", { class: "small faint" }, "Disk GB", dsk)),
+      h("label", { class: "small faint" }, "Cores", cpu), h("label", { class: "small faint" }, "Memory GB", mem)),
       h("div", { class: "ab-row-acts" }, save, h("span", { class: "small faint" }, "Applies after a restart.")));
   });
   let armed = false;
   const restart = h("button", { type: "button", class: "btn btn-ghost", onclick: async () => {
-    if (!armed) { armed = true; put(restart, "Restart now"); put(status, `This closes what is open on ${a.name}'s screen. Its threads keep going.`); return; }
+    if (!armed) { armed = true; put(restart, "Restart now"); put(status, `This closes what is open on ${who}'s screen. Its files and signed-in sites stay.`); return; }
     /** @type {HTMLButtonElement} */ (restart).disabled = true;
-    const r = await attempt("computers.restart", { agent: a.name });
+    put(status, `Restarting ${who}'s computer.`);
+    const r = await attempt("computers.restart", { agent: who });
     /** @type {HTMLButtonElement} */ (restart).disabled = false;
     armed = false;
     put(restart, "Restart computer");
-    put(status, r.error ? why(r.error) : `Restarting ${c.name}.`);
+    if (r.error) { put(status, why(r.error)); return; }
+    await reload();
   } }, "Restart computer");
 
   put(aside, sectionHead("ab-comp", "Computer", right),
-    link(glassHref(a.name), { class: "ab-screen", "aria-label": `Open ${a.name}'s screen in Glass` }, preview(c, a.name)),
+    link(glassHref(who), { class: "ab-screen", "aria-label": `Open ${who}'s screen in Glass` }, preview(c, who)),
     h("div", { class: "ab-live small" },
-      h("span", { class: "ab-live-t" }, h("span", { class: "ag-dot on", "aria-hidden": "true" }),
-        c.state && c.state !== "live" ? `${c.state[0].toUpperCase()}${c.state.slice(1)}.` : `Live. Screen ${sc.index ?? "?"} of ${sc.pool ?? "?"} from the pool.`),
-      link(glassHref(a.name), { class: "link", style: { color: "var(--text-2)" } }, "Take the wheel in Glass")),
+      h("span", { class: "ab-live-t" }, h("span", { class: "ag-dot" + (c.state === "running" ? " on" : ""), "aria-hidden": "true" }), live),
+      link(glassHref(who), { class: "link", style: { color: "var(--text-2)" } }, "Take the wheel in Glass")),
     h("dl", { class: "ab-specs" },
-      spec("Processor", `${c.cpu ?? "?"} core${c.cpu === 1 ? "" : "s"}`),
+      spec("Processor", `${c.cpus ?? "?"} core${c.cpus === 1 ? "" : "s"}`),
       spec("Memory", `${c.memory_gb ?? "?"} GB`),
-      spec("Disk", disk),
-      spec("Screen", sc.w ? `${sc.w} × ${sc.h}` : "?", sc.idle_return_min ? `Returns to the pool after ${sc.idle_return_min} min idle` : null),
-      spec("Network", c.network || "?"),
-      spec("Rules", c.rules ? `${c.rules.count} apply to ${a.name}` : "None", c.rules?.example ? `Including: ${c.rules.example}` : null)),
+      spec("Screen", size.w ? `${size.w} × ${size.h}` : "?"),
+      spec("Watching", c.viewers ? `${c.viewers} ${c.viewers === 1 ? "screen" : "screens"}` : "Nobody", c.paused ? `${who}'s hands are paused.` : null)),
     h("div", { class: "ab-row-acts ab-comp-acts" }, limits, restart), box, status);
 }
