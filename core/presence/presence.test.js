@@ -286,8 +286,15 @@ test("presence: the box never takes a terminal code; its first passkey comes fro
   assert.equal((await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
   assert.equal((await p.challenge({ tool: "presence.enroll", input: {}, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
   assert.equal((await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: "x", code: "y" } })).ok, false);
+  p.network = () => ({ owner: "Me@example.com", address: "https://me.vyre.run" });
   const { code } = p.mintCode();
-  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "tailnet:me@example.com", proof: { method: "code", code } })).ok, true);
+  for (const caller of ["cli", "local", "capsule", "tailnet:other@example.com", "mcp"]) {
+    assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller, proof: { method: "code", code } })).ok, false, caller);
+  }
+  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "tailnet:me@example.com", proof: { method: "code", code } })).ok, true, "the owner's device");
+  const other = p.mintCode();
+  p.network = () => ({});
+  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "tailnet:me@example.com", proof: { method: "code", code: other.code } })).ok, false, "no owner yet, no enrolment");
 });
 
 test("presence: a session proves reveal, copy and TOTP for a while, on one device, for items that allow it", async t => {

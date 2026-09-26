@@ -44,7 +44,7 @@ export async function start(opts = {}) {
   const events = new Events(db);
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.role });
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.role, network: () => cfg.network || {} });
   const started = Date.now();
   /** Open event streams, closed on stop so server.close() is not held open by them. */
   const streams = new Set();

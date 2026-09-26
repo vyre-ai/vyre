@@ -30,6 +30,13 @@ export default {
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str },
         ["kind", "public_key"]),
       run: async input => {
+        // On the box a passkey must belong to the Deck's own address, not a name in the request.
+        if (ctx.config.role === "box" && input.kind === "passkey") {
+          let host = null;
+          try { host = new URL(String((ctx.config.network || {}).address || "")).hostname; } catch {}
+          if (!host) throw new Error("the box has no address yet, so no passkey can be enrolled");
+          if (String(input.rp_id || "").toLowerCase() !== host.toLowerCase()) throw new Error(`a passkey here must be for ${host}`);
+        }
         const k = presence.enroll(input);
         ctx.events.emit("presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
         return k;

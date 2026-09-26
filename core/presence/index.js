@@ -162,12 +162,13 @@ function writeTty(file, text) {
 export class Presence {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events?: any, log?: (m: string) => void, platform?: string,
-   *           role?: string, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
+   *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
    *           touchid?: any, webauthn?: any, now?: () => number }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", who: whoFn, writeTty: write, statTty, touchid, webauthn, now }) {
+  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now }) {
     this.db = db;
     this.role = role;
+    this.network = network;
     this.events = events;
     this.log = log;
     this.platform = platform;
@@ -396,6 +397,12 @@ export class Presence {
 
     if (method === "code") {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey");
+      // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
+      // So the code counts only from the owner's own device over the tailnet, where they cannot be.
+      if (this.role === "box") {
+        const owner = String((this.network() || {}).owner || "").toLowerCase();
+        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+      }
       const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
         .run(this.now(), sha(normal(proof.code)).toString("hex"), this.now());
       if (Number(r.changes) !== 1) return refuse("that code is wrong, used or expired");

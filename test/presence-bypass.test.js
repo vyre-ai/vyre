@@ -179,3 +179,24 @@ test("bypass: a presence session never approves, and only a strong proof opens o
   assert.equal(r.status, 403);
   assert.equal(b.mail.got.length, 0);
 });
+
+test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it fetched, and the owner can only for the box's own address", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", vault: { keystore: "file" }, modules: { disable: ["names", "onboard", "link"] },
+    network: { tailscale: true, owner: "me@example.com", address: "https://me.vyre.run" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const key = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const enroll = rp_id => ({ kind: "passkey", name: "x", public_key: key, alg: -7, rp_id, credential_id: "cred-" + rp_id.replace(/\./g, "-") });
+  // What Claude could get: a fresh code, as a module (onboarding) would mint it.
+  const code = () => d.registry.call("presence.code", {}, "module:onboard").then(r => r.data.code);
+  for (const caller of ["cli", "local", "capsule"]) {
+    const r = await raw(d.paths.socket, "/v1/tools/presence.enroll", enroll("me.vyre.run"), { "x-vyre-caller": caller, "x-vyre-presence": `code code=${await code()}` });
+    assert.equal(r.status, 403, caller);
+  }
+  const wrong = await d.registry.call("presence.enroll", enroll("evil.example.com"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
+  assert.match(wrong.error.message, /must be for me\.vyre\.run/);
+  const ok = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
+  assert.ok(ok.data, JSON.stringify(ok));
+  assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
+});

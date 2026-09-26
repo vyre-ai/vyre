@@ -227,7 +227,10 @@ reasons:
 
 The first passkey comes from onboarding instead. `onboard.finish` mints a `presence.code` as a
 module caller and hands the person a Deck link carrying it. Pairing and every later approval on
-the box use a passkey. On a Mac, `ssh localhost` gives a model a login terminal in the same way
+the box use a passkey. Claude's sessions share the box's socket and can ask onboarding for a fresh code,
+so on the box a code enrolls a passkey only from `tailnet:<network.owner>`, which is reachable
+only over WireGuard from another of the owner's devices. The passkey must also be for the box's
+own address (the host of `network.address`), whatever the request names. On a Mac, `ssh localhost` gives a model a login terminal in the same way
 when Remote Login is on. That is one more reason `vyre` uses Touch ID first.
 
 **Box identity.** `tailnet:<login>` is an owner device, not a person. Claude on the Mac shares
