@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The planner from the terminal: vyre alarm, timer, remind, todo, notes, agenda and snooze
+
+- `vyre alarm 7am`, `vyre alarm 6:30 weekdays`, `vyre alarm` (upcoming), `vyre alarm off <id>`;
+  `vyre timer 10m [label]`; `vyre remind "call juno" at 6`, `vyre remind me in 20 minutes to
+  check the oven` (words the parser cannot place say so, and nothing is added); `vyre todo`
+  (open todos by list), `vyre todo add buy flour !high`, `vyre todo done <id>`; `vyre notes`
+  (pinned first), `vyre notes add <text>`, `vyre notes show <id>`; `vyre agenda [tomorrow|
+  YYYY-MM-DD]`; `vyre snooze <id> [minutes]`. Times print in the planner's zone. --json on all.
+  A "Time and lists" group in `vyre help`. Tests in core/cli/commands/planner.test.js.
+
 #### The planner: alarms, timers, reminders, todos and notes kept on the box (ADR 0025, slice 1)
 
 - New core module `planner` (core/planner, both roles). Tools: planner.add, list, get, update,
