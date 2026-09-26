@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Link follow-ups
+
+- The tailnet peer that box's listener establishes now reaches the tool. `handler(policy)`
+  forwards the fourth argument `{ node, stableId, login }`, and the router passes it to
+  `registry.call` as `meta.peer`. The box can now tie a pairing and a link key to the Mac's node,
+  and it lets the owner approve a pairing from another of their devices. A `peer` in tool input
+  is still only input.
+- `link.find` on the Mac lists online tailnet peers that answer as a Vyre box. For each one it
+  reads the name on the peer's certificate, because the box answers at `<you>.vyre.run` and
+  checks Host. It pins the connection to that peer's stable ID. `vyre up` can offer pairing from
+  this list.
+- Files: the key rule is narrower. A Keynote document is a folder named `*.key`, and the old rule
+  hid every one. Now only regular files named `*.key` or `*.pem` are refused, plus any file
+  whose first bytes are a private key (PEM, OpenSSH or PuTTY), whatever it is called.
+
 #### Link and files
 
 - `core/link` (module `link`, both roles) makes the Mac and the box one system. The Mac's vyred

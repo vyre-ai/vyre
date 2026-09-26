@@ -30,8 +30,30 @@ const DOT_OK = new Set([".github", ".gitignore", ".gitattributes", ".editorconfi
   ".nvmrc", ".node-version", ".dockerignore", ".well-known"]);
 
 /** Names that hold keys, passwords or tokens. Matched against every segment, case-insensitively. */
-const SECRET = [/^id_rsa/i, /^id_ed25519/i, /^id_ecdsa/i, /\.pem$/i, /\.key$/i, /\.p12$/i, /\.pfx$/i, /\.kdbx$/i,
+const SECRET = [/^id_rsa/i, /^id_ed25519/i, /^id_ecdsa/i, /\.p12$/i, /\.pfx$/i, /\.kdbx$/i,
   /\.keychain/i, /^\.npmrc$/i, /^\.pypirc$/i, /^\.git-credentials$/i, /^credentials\.json$/i, /^service-account.*\.json$/i];
+
+/**
+ * Names refused only for a regular file. A Keynote document is a folder named *.key, and must stay
+ * reachable; a file named *.key or *.pem is a key more often than not.
+ */
+const SECRET_FILE = [/\.pem$/i, /\.key$/i];
+
+/** A private key, whatever the file is called: PEM, OpenSSH and PuTTY all say so in their first line. */
+const KEY_HEAD = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|PuTTY-User-Key-File-/;
+
+/** Does this regular file look like a key, by its name or by its first bytes? */
+export function looksLikeKey(file, names = [path.basename(file)]) {
+  let fd;
+  try {
+    if (!fs.statSync(file).isFile()) return false;
+    if (names.some(n => SECRET_FILE.some(r => r.test(n)))) return true;
+    fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(512);
+    const n = fs.readSync(fd, buf, 0, 512, 0);
+    return KEY_HEAD.test(buf.subarray(0, n).toString("latin1"));
+  } catch { return true; } finally { if (fd !== undefined) fs.closeSync(fd); }
+}
 
 /** Why a path is refused. Its message is always the same, on purpose. */
 export class Refused extends Error {
@@ -107,6 +129,8 @@ export function guard(opts) {
     // Step 3: the real location must still be inside that same root, and pass the same rules.
     const r = real(lexical);
     if (!r || !inside(r, root.real) || isDenied(r) || !namesOk(r, root.real)) throw new Refused();
+    // Step 4: a regular file that is a key, by name or by content, is never served.
+    if (looksLikeKey(r, [path.basename(lexical), path.basename(r)])) throw new Refused();
     return { path: lexical, real: r, root };
   }
 

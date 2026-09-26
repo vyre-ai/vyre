@@ -30,11 +30,13 @@ Files: see CHANGELOG; the shapes were sent to capsule.
 
 ## Needs from others
 
-- box: the names listener should pass the whois result as `meta.peer = { node, stableId, login }`
-  into `registry.call(tool, input, caller, meta)`, through `handler(policy)(req, res, caller, peer)`.
-  Until it does, the box cannot tell which node is calling. Two things are affected. Approval is
-  limited to the box's own terminal. The link key is also not tied to a node on the box; the
-  Mac's pin still holds.
+- box adopted the peer shape in 4be1219 on work/box: the names listener calls
+  `handle(req, res, "tailnet:<login>", { node, stableId, login })`. Once both merge, the router
+  has to forward it, and that is link's job. In core/daemon, `handler(policy)` returns
+  `(req, res, caller, peer) => route(..., { ...policy, caller, peer })`, and the tool call
+  becomes `registry.call(name, body, caller, policy.peer ? { peer: policy.peer } : {})`.
+  Until then, approval works only from the box's terminal, and the box does not tie a link key
+  to a node.
 - box: `callerKind("tailnet:<login>")` returns the whole string, so a tool's `callers` list
   cannot name tailnet callers. The link checks in `run` for now.
 

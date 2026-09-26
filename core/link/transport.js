@@ -12,6 +12,7 @@ import http from "node:http";
 import https from "node:https";
 import fs from "node:fs";
 import net from "node:net";
+import tls from "node:tls";
 import { execFile } from "node:child_process";
 
 const V4 = new net.BlockList();
@@ -134,4 +135,40 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
   }
 
   return { address: base.href.replace(/\/$/, ""), open, json };
+}
+
+/**
+ * The owner's tailnet peers that are online: where a box could be.
+ * @returns {Promise<{ ip: string, dns: string, stableId: string, host: string }[]>}
+ */
+export function tailnetPeers() {
+  return new Promise(resolve => {
+    execFile(tailscaleBin(), ["status", "--json"], { timeout: 5000, maxBuffer: 8_000_000 }, (err, out) => {
+      if (err) return resolve([]);
+      try {
+        const peers = Object.values(JSON.parse(out).Peer || {});
+        resolve(peers.filter(p => p.Online && (p.TailscaleIPs || []).length).map(p => ({
+          ip: p.TailscaleIPs.find(a => net.isIPv4(a)) || p.TailscaleIPs[0], dns: String(p.DNSName || "").replace(/\.$/, ""),
+          stableId: String(p.ID || ""), host: String(p.HostName || "") })));
+      } catch { resolve([]); }
+    });
+  });
+}
+
+/**
+ * The names a peer's certificate on 443 is for. The box may serve `<you>.vyre.run` rather than its
+ * ts.net name, and that is the name the Mac must use (the box checks Host). Nothing is sent: the
+ * handshake is only read, then closed; the real connection verifies the certificate as usual.
+ * @returns {Promise<string[]>}
+ */
+export function certNames(ip, servername, timeout = 1500) {
+  return new Promise(resolve => {
+    const s = tls.connect({ host: ip, port: 443, servername: servername || undefined, rejectUnauthorized: false, timeout }, () => {
+      const alt = String((s.getPeerCertificate() || {}).subjectaltname || "");
+      s.destroy();
+      resolve(alt.split(/,\s*/).filter(x => x.startsWith("DNS:")).map(x => x.slice(4)).filter(n => !n.includes("*")));
+    });
+    s.on("error", () => resolve([]));
+    s.on("timeout", () => { s.destroy(); resolve([]); });
+  });
 }

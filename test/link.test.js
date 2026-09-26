@@ -14,7 +14,7 @@ import { start } from "../core/daemon/index.js";
 import { request } from "../core/daemon/client.js";
 import { seams as linkSeams } from "../core/link/index.js";
 import { seams as fileSeams } from "../core/files/index.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, writeModule } from "./helpers.js";
 
 const OWNER = "owner@example.com";
 const MAC = { login: OWNER, node: "test-mac", stableId: "nMAC" };
@@ -34,6 +34,7 @@ function tailnet(box, net, port = 0) {
     const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (!who || who.login !== OWNER) return json(403, { error: { code: "not_owner", message: "not served" } });
     const url = new URL(req.url || "/", "http://box");
+    if (req.method === "GET" && url.pathname === "/v1/health") return json(200, { data: { role: box.config.role, version: "0.0.0" } });
     if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
       let raw = "";
       for await (const c of req) raw += c;
@@ -63,8 +64,10 @@ async function pair(t, { approve = true } = {}) {
   t.after(() => { fs.rmSync(boxWork, { recursive: true, force: true }); fs.rmSync(macWork, { recursive: true, force: true }); });
   fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "testbox", transcripts: [], files: { roots: [boxWork] } }));
   fs.writeFileSync(path.join(macRoot, "config.json"), JSON.stringify({ role: "local", transcripts: [], files: { roots: [macWork] } }));
-  const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX) };
-  linkSeams.set(macRoot, { insecure: true, verify: async () => net.box, pollMs: 20, heartbeat: 100, hostname: "test-mac", timeout: 1500, ttl: 0 });
+  const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX), address: "" };
+  // Two peers on the simulated tailnet: the box, and the phone, whose node the box's address does not match.
+  linkSeams.set(macRoot, { peers: async () => [{ ip: "127.0.0.1", dns: "test-box", stableId: "nBOX" }, { ip: "127.0.0.1", dns: "test-phone", stableId: "nPHONE" }],
+    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat: 100, hostname: "test-mac", timeout: 1500, ttl: 0 });
   // Spotlight, simulated: every file under the Mac's work folder whose name holds the query.
   fileSeams.set(macRoot, { platform: "darwin", remoteTimeout: 1500,
     mdfind: async args => fs.readdirSync(args[1]).filter(n => n.toLowerCase().includes(String(args[2]).toLowerCase())).map(n => path.join(args[1], n)) });
@@ -81,6 +84,7 @@ async function pair(t, { approve = true } = {}) {
   server = await tailnet(box, net);
   mac = await start({ root: macRoot, log: () => {} });
   const address = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
+  net.address = address;
   for (const [n, d] of [["box", box], ["mac", mac]]) {
     const failed = d.registry.status().filter(m => ["link", "files"].includes(m.name) && m.state !== "running");
     assert.deepEqual(failed, [], `${n}: link and files are running`);
@@ -88,6 +92,8 @@ async function pair(t, { approve = true } = {}) {
   const macCall = (tool, input = {}, caller = "cli") => mac.registry.call(tool, input, caller);
   const boxCall = (tool, input = {}, caller = "cli", meta = {}) => box.registry.call(tool, input, caller, meta);
   let code = null;
+  const find = (await macCall("link.find")).data;
+  assert.deepEqual(find.boxes.map(b => b.node), ["test-box"], "only the node that is the box is offered");
   if (approve) {
     const p = await macCall("link.pair", { box: address });
     assert.ok(!p.error, JSON.stringify(p.error));
@@ -244,4 +250,28 @@ test("link: with the box down, the Mac degrades to its own results and recovers"
   const connected = (await request("GET", "/v1/events?type=link.connected", undefined, { root: s.macRoot })).data;
   assert.equal(connected.length, 2);
   assert.deepEqual((await s.macCall("link.call", { tool: "system.echo", input: { text: "back" } })).data, { text: "back" });
+});
+
+test("link: a listener's tailnet peer reaches the tool through vyred's router, never its input", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [] }));
+  // A module fronting its own listener, as names does: it establishes caller and peer itself.
+  writeModule(path.join(root, "modules"), "peerprobe", { roles: ["box"], does: { tools: ["peerprobe.who"] } }, `
+    import http from "node:http";
+    export default { async start(ctx) {
+      ctx.tool("peerprobe.who", { input: { type: "object" }, run: async (input, meta) => ({ input, caller: meta.caller, peer: meta.peer || null }) });
+      const handle = ctx.handler({});
+      const server = http.createServer((req, res) => handle(req, res, "tailnet:owner@example.com", { node: "test-mac", stableId: "nMAC", login: "owner@example.com" }));
+      await new Promise(r => server.listen(0, "127.0.0.1", r));
+      globalThis.__peerprobePort = server.address().port;
+      return { async stop() { server.closeAllConnections(); await new Promise(r => server.close(r)); } };
+    } };`);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const port = /** @type {any} */ (globalThis).__peerprobePort;
+  const r = await fetch(`http://127.0.0.1:${port}/v1/tools/peerprobe.who`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ peer: "forged" }) });
+  const body = await r.json();
+  assert.deepEqual(body.data.input, { peer: "forged" });
+  assert.equal(body.data.caller, "tailnet:owner@example.com");
+  assert.deepEqual(body.data.peer, { node: "test-mac", stableId: "nMAC", login: "owner@example.com" });
 });
