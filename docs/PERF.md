@@ -117,6 +117,21 @@ over the 0.2%-hidden-combined budget by itself before the renderer's share is ev
 wasn't isolated further (no A/B without `clips.start()`) — reported to `capsule` as the next
 place to look, since it's their process, not the Swift poller they asked about.
 
+**Fixed** by `capsule` on `work/capsule` (5f738a7): it was the health/stream retry loop, not the
+clipboard watcher. With no vyred reachable, main retried `/v1/health` + `bridge.refresh()` every
+3s forever, and the event stream reconnected every 1.5s, regardless of hidden state. Fix backs
+both off while hidden — health retry doubles 3s to 60s, stream reconnect doubles to 30s and
+resets on open — and looks again immediately once the Capsule is shown. Re-measured (real,
+non-driven launch, temp `VYRE_HOME` + `--user-data-dir`, `--hidden`, 3 minutes each):
+
+| Condition | Main process CPU (3-min avg) |
+|---|---|
+| vyred down (before fix, 654db49) | 0.791% |
+| vyred down (after fix, 5f738a7) | 0.210% overall; converges to ~0.18% once the backoff reaches steady state (~t+90s) |
+| vyred up (after fix, 5f738a7) | 0.061% |
+
+Both now at or under the 0.2% hidden budget.
+
 ## Glass audit (main, af4dc91)
 
 Verified what `glass`/`computers` described:
