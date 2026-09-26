@@ -30,7 +30,7 @@ Claude Code itself:
   Vyre steps aside and uses theirs.
 - **Not a hosted service.** Vyre AI runs one thing: the name directory for `<you>.vyre.run`. It
   holds no user data.
-- **Not an IDE or a chat app.** It uses Claude Code for coding and Mattermost for chat.
+- **Not an IDE.** It uses Claude Code for coding; its own Chat is a window onto real Claude Code sessions, not a separate assistant.
 
 ### Install and onboarding
 
@@ -460,7 +460,7 @@ The Harness also ships:
 | Capsule | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
 | Deck | The web app at `<you>.vyre.run`: Now, Projects, Memory, Agents, Vault, Settings | `deck/` |
 | Glass | An agent's screen, live, with take-over | `deck/` + `core/computers` |
-| Chat | A better interface over real sessions: Mattermost on your box, a thread per session, driving the same Claude Code sessions as the terminal | `modules/chat` |
+| Chat | Vyre's own chat layer: projects, then sessions, each session the terminal mirrored as a readable conversation (tool calls folded, diffs, asks and held items inline), on phone and computer, driving the same Claude Code sessions as the terminal. No third-party chat server. | `deck/chat` |
 | Phone | Now, approvals, drafts, Glass, Ask | later; a Deck view first |
 
 Every surface talks to vyred's API. None reads the store directly.
