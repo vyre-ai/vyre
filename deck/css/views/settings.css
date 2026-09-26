@@ -36,6 +36,8 @@
 .set-state { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-2); }
 .set-state.faint { color: var(--label); }
 .set-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
+.set-lock-steps { margin: 12px 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.set-lock-steps code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 .set-status:not(:empty) { margin-top: 10px; }
 .set-form .input { max-width: 520px; }
 .set-form .rows > .set-row { align-items: start; }

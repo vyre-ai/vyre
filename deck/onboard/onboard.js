@@ -8,6 +8,7 @@ import { call, attempt, on, setHeader } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { base, when, plural } from "../js/fmt.js";
 import qrcode from "../vendor/qrcode.js";
+import { LOCK, lockState, lockSteps } from "../js/lock.js";
 
 const STEPS = [
   { id: "you", title: "You" },
@@ -130,6 +131,12 @@ function command(text) {
     try { await navigator.clipboard.writeText(text); put(b, icon("check")); later(() => put(b, icon("copy")), 1500); } catch {}
   } }, icon("copy"));
   return h("div", { class: "cmd" }, h("code", null, text), b);
+}
+
+/** Tailnet Lock's steps, each with its command or key to copy. The person runs them; Vyre never does. */
+function lockCommands(d) {
+  return [h("ol", { class: "ob-lock-steps" }, lockSteps(d).map(x => h("li", null, h("p", { class: "small" }, x.text), x.copy ? command(x.copy) : null))),
+    h("p", { class: "notice" }, icon("lock", 14), LOCK.never)];
 }
 
 /** One row of a live checklist. state: todo | doing | done | failed */
@@ -309,10 +316,41 @@ const SCREENS = {
         progressRow("This machine joins your tailnet", signed ? "done" : "todo",
           signed && t.node ? `${t.node.dns || state.host} at ${t.node.ip}` : null)),
         t.loginUrl && !signed ? h("p", { class: "notice" }, "The sign-in page did not open? ",
-          h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null);
+          h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null,
+        signed ? lockCard() : null);
       if (signed) s.foot({ label: "Continue", run: s.next });
       else if (opened) s.foot({ label: "Waiting for Tailscale", disabled: true, run: () => {} });
       else s.foot({ label: "Connect", run: connect });
+    };
+    // Once this machine is on the tailnet, an optional card offers Tailnet Lock. Made once per
+    // screen, so the poll redrawing the panel keeps what the person opened or dismissed.
+    let lock = /** @type {HTMLElement|null} */ (null);
+    const lockCard = () => {
+      if (lock) return lock;
+      const card = lock = h("div", { class: "ob-lock" });
+      (async () => {
+        const r = await attempt("onboard.tailscale", { action: "lock" });
+        if (r.error) { card.remove(); return; }
+        const d = r.data || {};
+        const on = lockState(d);
+        if (on) { put(card, h("div", { class: "found" }, icon("lock"), h("span", { class: "what" }, on))); return; }
+        const steps = h("div");
+        const toggle = h("button", { type: "button", class: "btn" }, LOCK.show);
+        toggle.addEventListener("click", () => {
+          const open = !steps.childNodes.length;
+          put(steps, open ? lockCommands(d) : null);
+          put(toggle, open ? LOCK.hide : LOCK.show);
+        });
+        put(card,
+          h("div", { class: "lbl" }, "Optional"),
+          h("h3", { class: "h3" }, LOCK.title),
+          h("p", { class: "small muted" }, LOCK.what),
+          h("p", { class: "small muted" }, LOCK.cost),
+          h("div", { class: "ob-lock-act" }, toggle,
+            h("button", { type: "button", class: "btn btn-ghost", onclick: () => put(card, h("p", { class: "notice" }, LOCK.laterNote)) }, LOCK.later)),
+          steps);
+      })();
+      return card;
     };
     const poll = () => every(async () => {
       const r = await attempt("onboard.tailscale", { action: "poll" });

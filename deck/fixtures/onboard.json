@@ -133,52 +133,69 @@
     }
   },
   "onboard.tailscale": {
-    "$seq": [
-      {
-        "state": "off",
-        "step": "todo",
-        "installed": true,
-        "install": "curl -fsSL https://tailscale.com/install.sh | sh",
-        "operator": {
-          "ok": true,
-          "fix": null
+    "$by": "action",
+    "cases": {
+      "lock": {
+        "enabled": false,
+        "nodeKey": "tlpub:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        "key": "tlpub:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        "trusted": null,
+        "signed": null,
+        "why": null,
+        "commands": {
+          "mac": "tailscale lock",
+          "init": "tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> tlpub:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
         }
       },
-      {
-        "state": "needs-login",
-        "step": "working",
-        "installed": true,
-        "loginUrl": "https://login.tailscale.com/a/example",
-        "operator": {
-          "ok": true,
-          "fix": null
-        }
-      },
-      {
-        "state": "needs-login",
-        "step": "working",
-        "installed": true,
-        "loginUrl": "https://login.tailscale.com/a/example",
-        "operator": {
-          "ok": true,
-          "fix": null
-        }
-      },
-      {
-        "state": "connected",
-        "step": "done",
-        "installed": true,
-        "operator": {
-          "ok": true,
-          "fix": null
-        },
-        "owner": "alex@example.com",
-        "node": {
-          "ip": "100.101.12.7",
-          "dns": "alex-box.tail-example.ts.net"
-        }
+      "*": {
+        "$seq": [
+          {
+            "state": "off",
+            "step": "todo",
+            "installed": true,
+            "install": "curl -fsSL https://tailscale.com/install.sh | sh",
+            "operator": {
+              "ok": true,
+              "fix": null
+            }
+          },
+          {
+            "state": "needs-login",
+            "step": "working",
+            "installed": true,
+            "loginUrl": "https://login.tailscale.com/a/example",
+            "operator": {
+              "ok": true,
+              "fix": null
+            }
+          },
+          {
+            "state": "needs-login",
+            "step": "working",
+            "installed": true,
+            "loginUrl": "https://login.tailscale.com/a/example",
+            "operator": {
+              "ok": true,
+              "fix": null
+            }
+          },
+          {
+            "state": "connected",
+            "step": "done",
+            "installed": true,
+            "operator": {
+              "ok": true,
+              "fix": null
+            },
+            "owner": "alex@example.com",
+            "node": {
+              "ip": "100.101.12.7",
+              "dns": "alex-box.tail-example.ts.net"
+            }
+          }
+        ]
       }
-    ]
+    }
   },
   "onboard.passkey": {
     "address": "https://alex.tail-example.ts.net",

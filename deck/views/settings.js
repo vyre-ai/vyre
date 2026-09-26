@@ -4,7 +4,7 @@
 // Setup list. Route /settings, with an optional #section.
 //
 // Every section loads on its own and shows its own empty state, so one missing module never
-// blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box), agents.list and
+// blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box, also its read-only "lock"), agents.list and
 // agents.update (switchboard), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 
@@ -12,6 +12,7 @@ import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt, modules, canProve, callWithCode } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
+import { LOCK, lockState, lockSteps } from "../js/lock.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -222,11 +223,34 @@ async function drawNetwork(el) {
   if (r.error) { put(el, empty("Tailscale is checked by the box module.", r.error), foot(toOnboard("tailscale", "Connect"))); return; }
   const t = r.data || {};
   const on = t.state === "connected" && t.node;
+  const lockRow = h("div");
   put(el, h("div", { class: "rows" },
       row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
       on ? row("Node", mono(t.node.dns || t.node.name || "")) : null,
-      on ? row("Tailnet IP", mono(t.node.ip || "")) : null),
+      on ? row("Tailnet IP", mono(t.node.ip || "")) : null,
+      on ? lockRow : null),
     on ? null : foot(toOnboard("tailscale", "Connect")));
+  if (on) await drawLock(lockRow);
+}
+
+/** Tailnet Lock: on or off, read only. While it is off, the commands the person runs on their Mac. */
+async function drawLock(el) {
+  const r = await attempt("onboard.tailscale", { action: "lock" });
+  if (r.error) { put(el, row("Tailnet Lock", h("span", { class: "muted" }, errText(r.error)))); return; }
+  const d = r.data || {};
+  const on = lockState(d);
+  if (on) { put(el, row("Tailnet Lock", h("span", null, "On"), h("div", { class: "small faint" }, on))); return; }
+  const steps = h("div");
+  const toggle = h("button", { type: "button", class: "btn btn-sm" }, LOCK.show);
+  toggle.addEventListener("click", () => {
+    const open = !steps.childNodes.length;
+    put(steps, open ? [
+      h("ol", { class: "set-lock-steps" }, lockSteps(d).map(x => h("li", null, h("div", { class: "small" }, x.text), x.copy ? h("code", { class: "set-mono" }, x.copy) : null))),
+      h("div", { class: "small faint" }, LOCK.never)] : null);
+    put(toggle, open ? LOCK.hide : LOCK.show);
+  });
+  put(el, row("Tailnet Lock", h("span", { class: "muted" }, "Off"),
+    h("div", { class: "small faint" }, LOCK.what), h("div", { class: "small faint" }, LOCK.cost), foot(toggle), steps));
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------
