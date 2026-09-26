@@ -74,7 +74,7 @@ export class Pool {
     /** @type {Map<string, number>} */
     this.idle = new Map();
     /** Where each running computer answers, from the driver's last inspect. */
-    /** @type {Map<string, { host: string, ports: { vnc: number, cdp: number, helper: number } }>} */
+    /** @type {Map<string, { host: string, ports: { vnc: number, helper: number } }>} */
     this.hosts = new Map();
     /** @type {Map<string, { agent: string, surface: string, expires: number }>} */
     this.tickets = new Map();
@@ -407,11 +407,15 @@ export class Pool {
     return { host: h.host, port: h.ports.vnc, password: String(r.vnc_password) };
   }
 
-  /** Chrome's debugging URL and computerd's URL and token, for the hands. */
+  /**
+   * computerd's URL and token, for the hands. Chrome's own debugging port is not handed out
+   * directly: it stays loopback-only inside the container, and hands-chrome reaches it only
+   * through computerd's authenticated `/cdp/...` proxy at this same URL (see cdp.js).
+   */
   endpoint(agent) {
     const h = this.hosts.get(agent), r = this.row(agent);
     if (!h || !r) throw new Error(`${agent}'s computer is not running`);
-    return { cdp: `http://${h.host}:${h.ports.cdp}`, helper: { url: `http://${h.host}:${h.ports.helper}`, token: String(r.helper_token) } };
+    return { helper: { url: `http://${h.host}:${h.ports.helper}`, token: String(r.helper_token) } };
   }
 
   size(_agent) { return { ...this.opts.size }; }
