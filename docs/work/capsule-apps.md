@@ -34,7 +34,8 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   a reminder, the weather, opening a chat). Refuses a sending action with code `sends`.
 - `apps.send {app, action, args}`: an action that sends, posts, pays or deletes as the person.
   Declares `presence` with the summary "WhatsApp → juno: <text>", so every non-module caller,
-  models included, needs a person's proof for each call. Not in SESSIONABLE: one proof, one send.
+  models included, needs a person's proof for each call. In SESSIONABLE (the lead's decision):
+  a short presence session opened by one strong proof covers a burst of sends, each previewed.
 - `apps.route {text, app?}`: natural words to `{app, action, args, sends}` (rules first; a lean
   model call only for what the rules cannot place). Never runs anything itself.
 
@@ -95,4 +96,8 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 - lead/user: import of the Vyre Clock shortcuts once (one click each), checked on the real Mac.
 
 ## Changed contracts
-- None yet. New module `apps` (local/apps) and CLI file core/cli/commands/apps.js.
+- New module `apps` (local/apps) and CLI file core/cli/commands/apps.js.
+- core/presence/index.js (owner: presence/security): `apps.send` added to SESSIONABLE, so a
+  presence session (ADR 0004: one strong proof, 5 min idle, 30 max, device-bound) proves it.
+  docs/adr/0004-presence.md's list of session tools says so. apps.send declares
+  `presence.session: () => true`. HUMAN_ONLY is unchanged.

@@ -48,7 +48,10 @@ export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session
  * one after another. The floor fixes this list; a tool must also say yes for the input at hand
  * (`presence.session(input)`), so an item that asks every time never rides a session.
  */
-export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp",
+  // A person's messages from the Capsule (ADR 0022): each send is still previewed and confirmed
+  // there, and the session secret lives only in the surface that opened it.
+  "apps.send"]);
 
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (

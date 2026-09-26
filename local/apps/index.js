@@ -6,8 +6,9 @@
 // apps.targets lists the things inside one app a person might pick (notes, reminder lists, later
 // chats and channels). apps.act runs an action that sends nothing as the person. apps.send runs
 // one that does (a message, a post), and declares presence, so every caller that is not a module,
-// models included, needs a person's proof for each call. There is no session for it: one proof,
-// one send.
+// models included, needs a person's proof for each call. That proof may be the short presence
+// session (ADR 0004) opened by one strong proof in the surface that holds its secret, so a
+// burst of messages does not ask for Touch ID each time; each send is still previewed there.
 //
 // Starting the module costs nothing: no scan, no process, no timer. The folders are read on the
 // first apps.list, and each cache expires when it is read. Every contact with the Mac goes
@@ -113,6 +114,8 @@ export default {
       description: "Do one thing in an app that sends, posts or pays as the person. Every call needs a person's proof, shown the preview (\"WhatsApp → juno: running late\"). Returns said and the action's data.",
       input: actInput,
       presence: {
+        // Every send may ride a session; the floor's SESSIONABLE list is what allows it at all.
+        session: () => true,
         summary: async (/** @type {any} */ input) => {
           const a = registry.find(input && input.app);
           const act = a && Object.prototype.hasOwnProperty.call(a.actions, input.action) ? a.actions[input.action] : null;

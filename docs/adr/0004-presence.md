@@ -260,7 +260,8 @@ Touch ID, a Capsule signature or a passkey. It returns a secret that lasts 5 min
 at most, bound to the tailnet node that opened it. The proof is then
 `x-vyre-presence: session id=<id> secret=<secret>`.
 
-Only the floor's `SESSIONABLE` tools (`vault.reveal`, `vault.copy`, `vault.totp`) take it, and
+Only the floor's `SESSIONABLE` tools (`vault.reveal`, `vault.copy`, `vault.totp`, and `apps.send`
+for a burst of messages from the Capsule, ADR 0022) take it, and
 only when the tool's `presence.session(input)` says yes, so a reprompt item never rides a
 session. A tool-side skip that reads headers is not accepted, because headers are what a model
 forges.

@@ -29,6 +29,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Mac's time zone. An AppleScript that does not answer is `setup`, pointing at the Automation
   consent. Weather requests time out after 10 s. `local/apps/mac.test.js` compiles the real
   scripts with osacompile, only when VYRE_MAC_REAL=1 on a Mac.
+- `apps.send` rides the short presence session (ADR 0004): one Touch ID, Capsule or passkey proof
+  opens it, and a burst of messages from the Capsule then goes without asking each time, each
+  still previewed there. It is added to the floor's SESSIONABLE list (`core/presence/index.js`)
+  and declares `presence.session`. A tool off that list still refuses a session proof.
 
 #### Connectors (ADR 0016)
 
