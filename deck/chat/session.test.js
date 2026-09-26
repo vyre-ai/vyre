@@ -17,7 +17,8 @@ doc.importNode = n => n;
 doc.createDocumentFragment = () => new /** @type {any} */ (globalThis).Element("fragment");
 const store = new Map();
 Object.assign(globalThis, {
-  DOMParser: class { parseFromString() { return { documentElement: new /** @type {any} */ (globalThis).Element("svg") }; } },
+  // An svg with a circle in it, which icons.js's mark() colours.
+  DOMParser: class { parseFromString() { const E = /** @type {any} */ (globalThis).Element; const svg = new E("svg"); svg.append(new E("circle")); return { documentElement: svg }; } },
   CustomEvent: class extends /** @type {any} */ (globalThis).Event { constructor(t, o) { super(t); this.detail = o?.detail; } },
   dispatchEvent: () => true,
   addEventListener: () => {}, removeEventListener: () => {},
@@ -62,18 +63,43 @@ const second = [
 
 const calls = [];
 let reads = 0;
+// The second session: a live headless thread the transcript read cannot find yet.
+const LIVE = "9d0e4c1a-live-thread";
+let liveReads = 0;
+const liveBlocks = [
+  { seq: 0, kind: "user", ts: T0, text: "ask" },
+  { seq: 1, kind: "text", ts: T0 + 1000, message: "msg_q", text: "Two questions first." },
+  { seq: 2, kind: "tool", ts: T0 + 2000, id: "toolu_q", tool: "AskUserQuestion", input: { questions: [] }, output: "answered", error: false, done_ts: T0 + 3000, duration_ms: 1000 },
+  { seq: 3, kind: "turn", ts: T0, duration_ms: 3000, tokens: { input: 900, output: 40 }, model: "sample-model", open: true },
+];
+const liveEvents = [
+  { id: 1, type: "thread.sent", thread: LIVE, at: T0, payload: { text: "ask", surface: "deck" } },
+  { id: 2, type: "thread.text", thread: LIVE, at: T0 + 1000, payload: { message: "msg_q", text: "Two questions first.", done: true } },
+  { id: 3, type: "thread.tool", thread: LIVE, at: T0 + 2000, payload: { id: "toolu_q", tool: "AskUserQuestion", phase: "started", summary: "2 questions" } },
+];
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   let data;
-  if (tool === "threads.get") data = { thread: { id: SID, name: "order form fix", cwd: fx.session.cwd, status: "running", holder: "deck", agent: null }, events: [], asks: [] };
+  if (input.thread === LIVE || input.session === LIVE) {
+    if (tool === "threads.get") data = { thread: { id: LIVE, name: null, cwd: fx.session.cwd, status: "running", holder: null, agent: null }, events: liveEvents, asks: [fx.asks[0]] };
+    else if (tool === "recall.transcript") {
+      if (liveReads++ === 0) return { status: 404, statusText: "", json: async () => ({ error: { code: "not_found", message: "no transcript for this session yet" } }) };
+      data = { session: { id: LIVE, cwd: fx.session.cwd }, blocks: liveBlocks, next: 3, first: 0 };
+    } else if (tool === "threads.asks") data = [fx.asks[0]];
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
+  if (tool === "system.info") data = owner ? { owner: { name: owner } } : {};
+  else if (tool === "threads.get") data = { thread: { id: SID, name: "order form fix", cwd: fx.session.cwd, status: "running", holder: "deck", agent: null }, events: [], asks: [] };
   else if (tool === "recall.transcript") data = reads++ === 0 ? { session: fx.session, blocks: fx.blocks, next: 0, first: 0 } : { session: fx.session, blocks: second, next: 19, first: 0 };
   else if (tool === "threads.asks") data = fx.asks.filter(a => a.kind === "question");
   else if (tool === "memory.facts") data = { facts: [] };
   else data = {};
   return { status: 200, statusText: "", json: async () => ({ data }) };
 });
+let owner = null;
 const wait = (ms = 10) => new Promise(r => setTimeout(r, ms));
 
 const { mountSession } = await import("./session.js");
@@ -81,6 +107,12 @@ const container = new El("div");
 doc.body.append(container);
 const stop = mountSession(container, { thread: SID, project: null, onBack() {} });
 await wait();
+
+test("chips: a plain dot for you when the name is unknown, the Vyre mark for replies", () => {
+  assert.ok($(container, ".cv-user .cv-av-dot"));
+  assert.doesNotMatch(text($(container, ".cv-user .msg-av")), /YO/);
+  assert.ok($(container, ".cv-head .cv-av-vyre svg"));
+});
 
 test("open: blocks as rows, one Vyre header per run, tool cards, the turn footer, never claude", () => {
   assert.equal($$(container, ".cv-user").length, 1);
@@ -158,4 +190,30 @@ test("a question: raised, filled from threads.asks, answered by keys, folded whe
   assert.match(text(card), /Mornings only/);
   stop();
   assert.equal(keys.size, 0, "cleanup drops the key listener");
+});
+
+test("a live thread the transcript cannot find yet: threads.get's events drawn, then swapped for blocks", async () => {
+  owner = "alex";
+  const box = new El("div");
+  doc.body.append(box);
+  const stop2 = mountSession(box, { thread: LIVE, project: null, onBack() {} });
+  await wait(30);
+  const you = $(box, ".cv-user");
+  assert.ok(you, "the person's own message shows");
+  assert.match(text(you), /you/);
+  assert.match(text(you), /ask/);
+  assert.equal(text($(you, ".msg-av")), "A", "the owner's initial");
+  assert.match(text(box), /Two questions first\./);
+  assert.ok($(box, ".cv-tool[data-tool=AskUserQuestion]"));
+  assert.ok($(box, ".cv-q"), "the open question card");
+  emit("thread.finished", { ok: true, cost_usd: 0.01, duration_ms: 3000, tokens: { input: 900, output: 40 } }, LIVE);
+  await wait(30);
+  const all = text($(box, ".thread-view"));
+  assert.equal(all.split("Two questions first.").length - 1, 1, "the reply once");
+  assert.equal($$(box, ".cv-user").length, 1, "the message once");
+  assert.equal($$(box, ".cv-tool").length, 1, "the tool once");
+  assert.match(text($(box, ".cv-tool")), /done/);
+  assert.equal($$(box, ".cv-turn").length, 1);
+  assert.ok($(box, ".cv-q"), "the card stays");
+  stop2();
 });

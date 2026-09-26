@@ -432,3 +432,10 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-q-review, .cv-q-done, .cv-kv { grid-template-columns: 1fr; }
   .cv-q-opt { min-height: 44px; }
 }
+/* The timeline is a flex column that scrolls: its rows keep their natural height, never shrink. */
+.cv-timeline > * { flex-shrink: 0; }
+.cv-tool, .cv-tool-body { min-height: min-content; }
+.cv-av { flex-shrink: 0; }
+.cv-av-vyre { color: var(--text); }
+.cv-av-vyre svg { display: block; }
+.cv-av-dot .cv-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--text-2); }

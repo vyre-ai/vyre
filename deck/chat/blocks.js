@@ -11,7 +11,7 @@
 // Nothing here uses innerHTML: every string is a text node.
 
 import { h, add, put } from "../js/dom.js";
-import { icon } from "../js/icons.js";
+import { icon, mark } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { renderUnified } from "./lib/diff.js";
@@ -19,16 +19,42 @@ import { highlight } from "./lib/highlight.js";
 import { clip, commandText, duration, langOf, rawLines, toolState, toolTitle, turnParts } from "./lib/blocks.js";
 
 const OUTPUT_LINES = 12;
-/** Tools whose card opens on its own: what they did is the point. The rest open on a tap. */
-const OPEN = new Set(["Bash", "Edit", "MultiEdit", "Write", "TodoWrite"]);
+/** Bash shows this much of what it printed before "show all". */
+const BASH_LINES = 6;
+/** An edit's diff opens on its own up to this many lines. */
+const DIFF_OPEN = 30;
+
+/** Whether a card starts open: the checklist and a run always, an edit when its diff is short,
+ * a new file's preview; reads, searches and the rest open on a tap. A failure always opens. */
+function opensByDefault(b) {
+  if (b.error) return true;
+  const i = b.input || {};
+  if (b.tool === "TodoWrite" || b.tool === "Bash" || b.tool === "Write") return true;
+  const lines = s => String(s ?? "").split("\n").length;
+  if (b.tool === "Edit") return lines(i.old_string) + lines(i.new_string) <= DIFF_OPEN;
+  if (b.tool === "MultiEdit") return (Array.isArray(i.edits) ? i.edits : []).reduce((n, e) => n + lines(e.old_string) + lines(e.new_string), 0) <= DIFF_OPEN;
+  return false;
+}
+
+/** The chip beside "you" (the owner's initial when the Deck knows the name, else a plain dot) or another surface (its initial). */
+export function personAv(who, me) {
+  const letter = who === "you" ? (me ? String(me).trim().charAt(0).toUpperCase() : "") : String(who || "").trim().charAt(0).toUpperCase();
+  return h("span", { class: "av-person msg-av cv-av" + (letter ? "" : " cv-av-dot"), title: who === "you" && me ? me : who }, letter || h("span", { class: "cv-dot" }));
+}
+
+/** The chip beside a reply: the Vyre mark, or an agent's two letters. */
+export function agentAv(who) {
+  if (who === "Vyre") return h("span", { class: "av-agent msg-av cv-av cv-av-vyre", title: "Vyre" }, mark(16));
+  return h("span", { class: "av-agent msg-av cv-av", title: who }, String(who).slice(0, 2).toLowerCase());
+}
 
 /** A row's kind, for the header rule (lib/blocks.js plan): user, assistant, turn, or card. */
 const tag = (el, kind, ts) => { /** @type {any} */ (el)._kind = kind; /** @type {any} */ (el)._ts = ts ?? null; return el; };
 
 /** "you" (or a surface's name) and the words, as a chat message. */
-export function userRow(who, text, ts) {
+export function userRow(who, text, ts, me = null) {
   return tag(h("div", { class: "msg cv-row cv-user" },
-    h("span", { class: "av-person msg-av" }, String(who).slice(0, 2).toUpperCase()),
+    personAv(who, me),
     h("div", { class: "msg-body" },
       h("div", { class: "msg-head" }, h("span", { class: "msg-who" }, who), ts ? h("span", { class: "msg-when" }, clock(ts)) : null),
       h("div", { class: "msg-text cv-user-text" }, String(text ?? ""))),
@@ -38,7 +64,7 @@ export function userRow(who, text, ts) {
 /** The header an assistant run starts with: "Vyre" (or the agent's name) and the time. */
 export function headRow(who, ts) {
   return tag(h("div", { class: "cv-row cv-head" },
-    h("span", { class: "av-agent msg-av" }, String(who).slice(0, 2).toLowerCase()),
+    agentAv(who),
     h("span", { class: "msg-who" }, who),
     ts ? h("span", { class: "msg-when" }, clock(ts)) : null,
   ), "assistant", ts);
@@ -138,7 +164,7 @@ function toolBody(b) {
     case "Bash":
       parts.push(h("pre", { class: "cv-cmd" }, h("code", null, "$ " + String(i.command ?? b.summary ?? ""))));
       if (i.description) parts.push(h("div", { class: "cv-note" }, String(i.description)));
-      if (out != null && out !== "") parts.push(outputEl(out, { err, lang: "text" }));
+      if (out != null && out !== "") parts.push(outputEl(out, { err, lang: "text", max: BASH_LINES }));
       break;
     case "Edit":
       parts.push(fileLine(i.file_path));
@@ -205,7 +231,7 @@ export function toolCard(b) {
   el.update = nb => {
     b = nb;
     const state = toolState(b);
-    if (open === null && (state !== "running" || b.input)) open = OPEN.has(b.tool) || state === "failed";
+    if (open === null && (state !== "running" || b.input)) open = opensByDefault({ ...b, error: state === "failed" });
     const title = b.input ? toolTitle(b.tool, b.input) : (b.summary || "");
     const d = duration(b.duration_ms);
     el.setAttribute("data-tool", String(b.tool || ""));
@@ -230,9 +256,9 @@ function displayName(tool) {
   return ({ TodoWrite: "Todos", MultiEdit: "Edit", WebFetch: "Fetch", WebSearch: "Search web", NotebookEdit: "Notebook" })[tool] || String(tool || "tool");
 }
 
-/** A block as its row. @param {any} b @param {{ who?: string }} [ctx] */
+/** A block as its row. @param {any} b @param {{ who?: string, me?: string|null }} [ctx] */
 export function blockRow(b, ctx = {}) {
-  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts); if (b.command) el.classList.add("cv-command"); return el; }
+  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me); if (b.command) el.classList.add("cv-command"); return el; }
   if (b.kind === "text") return textRow(b.text, b.ts);
   if (b.kind === "thinking") return thinkingRow(b.text, b.ts);
   if (b.kind === "tool") return toolCard(b);

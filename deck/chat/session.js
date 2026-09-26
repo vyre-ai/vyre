@@ -93,15 +93,24 @@ export function mountSession(container, opts) {
   put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
+  /** The owner's name, when the box knows it (system.info), for the chip beside "you". */
+  let me = /** @type {string|null} */ (null);
+  let replaying = false;
   const agentName = () => whoLabel({ role: "assistant", agent: record.current?.agent });
 
   // ---- open -----------------------------------------------------------------------
 
   async function boot() {
-    const r = opts.recorded ? { error: { message: "not a Switchboard session" } } : await attempt("threads.get", { thread, since: 0, limit: 500 });
+    const [r, t, info] = await Promise.all([
+      opts.recorded ? { error: { message: "not a Switchboard session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
+      readTail(),
+      attempt("system.info"),
+    ]);
+    me = /** @type {any} */ (info).data?.owner?.name || null;
     if (!r.error) record.current = /** @type {any} */ (r).data.thread;
-    const t = await readTail();
-    if (t.error && t.error.missing) return legacyBoot(r);
+    // Only a box without the tool gets the earlier view: api.js calls any 404 "missing", and a
+    // transcript not found yet (code not_found) is a live thread that still reads as blocks.
+    if (t.error && t.error.missing && t.error.code !== "not_found") return legacyBoot(r);
     if (t.error && r.error) { timeline.replaceChildren(empty("Could not open this session.", t.error)); drawHead(); return; }
     recorded.on = !!r.error;
     if (t.data?.session) recorded.session = t.data.session;
@@ -111,7 +120,15 @@ export function mountSession(container, opts) {
     if (!got.length && recorded.on) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
     appendBlocks(got);
     drawEarlier();
-    if (!r.error) {
+    if (!r.error && !got.length) {
+      // A live thread the transcript read has nothing for yet (not written, not found): draw what
+      // the Switchboard's events say, as live rows. Once the transcript answers, refresh() swaps
+      // each for its block, so nothing shows twice.
+      const data = /** @type {any} */ (r).data;
+      replaying = true;
+      try { for (const e of data.events) applyEvent(e, false); } finally { replaying = false; }
+      for (const a of data.asks) upsertAsk(a);
+    } else if (!r.error) {
       const data = /** @type {any} */ (r).data;
       for (const e of data.events) {
         if (e.type === "thread.finished") { finished.push({ at: e.at, cost_usd: e.payload?.cost_usd }); turnSeq++; }
@@ -219,7 +236,7 @@ export function mountSession(container, opts) {
   function rowFor(b, who) {
     const k = blockKey(b);
     seen.add(k);
-    const el = blockRow(b, { who: who || "you" });
+    const el = blockRow(b, { who: who || "you", me });
     rows.set(k, el);
     return el;
   }
@@ -379,7 +396,7 @@ export function mountSession(container, opts) {
     if (e.type === "thread.sent") {
       maybeDayRule(e.at);
       const who = whoLabel({ role: "user", surface: p.surface });
-      const el = /** @type {any} */ (userRow(who, p.text, e.at));
+      const el = /** @type {any} */ (userRow(who, p.text, e.at, me));
       el._who = who;
       const key = "live:u:" + (++liveN);
       pending.set(key, { row: el, block: { kind: "user", text: p.text } });
@@ -438,7 +455,7 @@ export function mountSession(container, opts) {
       pending.set(key, { row: el, block: t, marker: turnSeq });
       timeline.append(el);
       turnMarkers.set(turnSeq, el);
-      refresh();
+      if (!replaying) refresh();
       return;
     }
   }
@@ -473,7 +490,7 @@ export function mountSession(container, opts) {
       recorded.next = Math.max(recorded.next, (t.seq ?? 0) + 1);
       if (!t.text) continue;
       maybeDayRule(t.ts || Date.now());
-      if (t.role === "user") { timeline.append(userRow("you", t.text, t.ts)); continue; }
+      if (t.role === "user") { timeline.append(userRow("you", t.text, t.ts, me)); continue; }
       timeline.append(headRow(agentName(), t.ts), blockRow({ kind: "text", text: t.text, ts: t.ts }));
     }
   }
@@ -497,7 +514,7 @@ export function mountSession(container, opts) {
     const p = e.payload || {};
     if (e.type === "thread.sent") {
       maybeDayRule(e.at);
-      timeline.append(userRow(whoLabel({ role: "user", surface: p.surface }), p.text, e.at));
+      timeline.append(userRow(whoLabel({ role: "user", surface: p.surface }), p.text, e.at, me));
       lastMessageEl = null; lastMessageId = null;
       return;
     }

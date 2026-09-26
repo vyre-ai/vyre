@@ -12,7 +12,8 @@ const doc = /** @type {any} */ (install());
 doc.importNode = n => n;
 doc.createDocumentFragment = () => new /** @type {any} */ (globalThis).Element("fragment");
 Object.assign(globalThis, {
-  DOMParser: class { parseFromString() { return { documentElement: new /** @type {any} */ (globalThis).Element("svg") }; } },
+  // An svg with a circle in it, which icons.js's mark() colours.
+  DOMParser: class { parseFromString() { const E = /** @type {any} */ (globalThis).Element; const svg = new E("svg"); svg.append(new E("circle")); return { documentElement: svg }; } },
   CustomEvent: class extends /** @type {any} */ (globalThis).Event { constructor(t, o) { super(t); this.detail = o?.detail; } },
   dispatchEvent: () => true,
   PublicKeyCredential: function PublicKeyCredential() {},
@@ -163,4 +164,25 @@ test("permission card: no Always unless offered; an Edit shows its diff; the old
   legacy.answered("cancelled");
   assert.match(text(legacy), /Withdrawn/);
   assert.doesNotMatch(everything(edit) + everything(legacy), /claude/i);
+});
+
+test("tool cards: the checklist, a short diff and a run open on their own; a read waits for a tap; Bash shows 6 lines", async () => {
+  const { toolCard, personAv, agentAv } = await import("./blocks.js");
+  const byTool = t => fx.blocks.find(b => b.tool === t);
+  const open = el => !$(el, ".cv-tool-body").hidden;
+  assert.equal(open(toolCard(byTool("TodoWrite"))), true);
+  assert.equal(open(toolCard(byTool("Edit"))), true);
+  const long = { ...byTool("Edit"), input: { file_path: "a.js", old_string: "x\n".repeat(20), new_string: "y\n".repeat(20) } };
+  assert.equal(open(toolCard(long)), false, "a long diff waits for a tap");
+  assert.equal(open(toolCard(byTool("Read"))), false);
+  assert.equal(open(toolCard({ ...byTool("Read"), error: true, output: "no such file" })), true, "a failure opens");
+  const bash = toolCard(byTool("Bash"));
+  assert.equal(open(bash), true);
+  assert.equal(text($(bash, ".cv-out")).split("\n").length, 6);
+  assert.match(text(bash), /show all \(7 lines\)/);
+  assert.equal(text(personAv("you", "alex")), "A");
+  assert.ok($(personAv("you", null), ".cv-dot"));
+  assert.equal(text(personAv("capsule")), "C");
+  assert.ok($(agentAv("Vyre"), "svg"));
+  assert.equal(text(agentAv("juno")), "ju");
 });
