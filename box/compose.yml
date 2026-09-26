@@ -16,10 +16,9 @@
 # can reach vyred's tailnet listener except over WireGuard.
 #
 # Room for more, as extra compose files rather than edits here, listed in COMPOSE_FILE in
-# /srv/vyre/.env (COMPOSE_PROJECT_NAME=vyre there keeps one project):
-#   - Chat: modules/chat/compose.yml plus box/compose.chat.yml (labels). Mattermost joins the
-#     `vyre` network, where vyred answers as `vyred` (Chat's listener, port 8766).
-#   - The agents' computers: the `docker-api` service below, under the `computers` profile.
+# /srv/vyre/.env (COMPOSE_PROJECT_NAME=vyre there keeps one project). Other services join the
+# `vyre` network, where vyred answers as `vyred`. The agents' computers are the `docker-api`
+# service below, under the `computers` profile.
 
 name: vyre
 

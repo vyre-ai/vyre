@@ -137,8 +137,8 @@ export default {
       const steps = ROWS.map((id, j) => ({ id, state: j < i ? "done" : j > i ? "todo" : failed ? "failed" : i === 0 ? "todo" : "doing", note: failed && j === i ? s.why : null }));
       return { ...s, steps, url: s.phase === "serving" ? s.address : null };
     };
-    /** Tailscale as the page reads it: state is off, needs-login or connected; the step's own state is `step`. */
-    const link = s => ({ ...s, step: s.state, state: s.state === "done" ? "connected" : s.loginUrl ? "needs-login" : "off" });
+    /** Tailscale as the page reads it: state is off, needs-login, connected or blocked (with why and operator.fix); the step's own state is `step`. */
+    const link = s => ({ ...s, step: s.state, state: s.state === "done" ? "connected" : s.state === "blocked" ? "blocked" : s.loginUrl ? "needs-login" : "off" });
 
     ctx.tool("onboard.status", {
       description: "Where the onboarding stands: every step's state and what it needs.",
