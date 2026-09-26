@@ -45,3 +45,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0014 | tailnet | tailnet |
 | 0016 | connectors | Connectors: the MCP hub and native accounts |
 | 0020 | cc-plugin | Vyre as an installable Claude Code plugin, and the status line |
+| 0024 | chat | Chat: new sessions, the box's folders, a terminal in the browser, and questions |
