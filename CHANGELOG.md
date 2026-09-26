@@ -6,6 +6,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0015)
 
+- The connectors credential tests make their token and private-key fixtures at run time, so the
+  hygiene scan finds no secret-shaped literal in shipped code and stays as strict as it was.
 - `vyre mcp` runs the Vyre MCP server on stdio, so a plain `claude` outside a Vyre thread gets
   the same tools with one line. `vyre mcp install` prints that line
   (`claude mcp add -s user vyre -- vyre mcp`) and runs it only with `--yes`: Vyre never edits a
