@@ -35,6 +35,9 @@ and docs share. The user found the Deck rudimentary: the new-agent form reads as
     paper; ONE accent lime (primary actions, focus, running); ONE attention (violet #B8A4FF dark,
     #5B3FC4 paper, pending the user's pick). Drop recall gold, del-wash hue and every other hue.
     Memory, success and info = neutrals plus an icon. No red anywhere.
+  - Phone offset (agreed with phone-design, 0a92c08): +2 on the 15 and 20 steps only (17 for
+    messages and row titles, 22 for page labels), for iOS body size and no zoom-on-focus. 12, 13
+    and 28 are shared.
   - Meta text on any tint uses text-2 (label is 4.48:1 on paper washes, per phone-design).
   - Add --beacon-badge-ink (#0E0D0C dark, #F4F1EA paper; phone-design found paper ink fails on
     violet) or keep badges as primary-ink on the dot per theme.
