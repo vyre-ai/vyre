@@ -45,10 +45,26 @@ Small changes outside the scope, each through the owner's contract and listed be
   tailnet, fake Gate senders on 127.0.0.1 so approvals really send (to them), a fake claude,
   and `/__test/code|hold|ask|outbox`. `deck/test/world.js` now exports its pieces.
 
+- Android (8bcb6f1): builds (assembleDebug, 28/28 JVM tests). First run, five tabs, Capsule,
+  Files, Agents, Memory, Vault, Settings. Runs in the emulator against apps/test/world.js and
+  enrolls with a one-time code (27 Sep 2026).
+
 ## Doing
-- Server side, iOS and Android, in parallel.
+- iOS: screens written (20f6262), full xcodebuild waits on the iOS 26.5 simulator runtime
+  (downloaded once through the build lock). Then boot one simulator against the test world.
+- Android: the "OPEN" label overlaps the card title on Now.
+
+How to run the phone against the test world (Mac, one emulator or simulator at a time):
+- `VYRE_NO_DIALOGS=1 node apps/test/world.js 4801`
+- Android: AVD `vyre-mobile` (android-34 google_apis arm64), headless
+  (`emulator -avd vyre-mobile -no-window -no-audio -no-snapshot`). The device key needs a
+  screen lock and a fingerprint: `adb shell locksettings set-pin 1111`, then the fingerprint
+  enroll screen with `adb emu finger touch 1` repeated. Install the debug APK and start with
+  `adb shell am start -n sh.vyre.app/.MainActivity -e sh.vyre.app.TEST_BOX http://10.0.2.2:4801`.
 
 ## Next
+- Screenshots of every screen on both platforms against the test world; perf numbers.
+- apps/RELEASE.md: real-device installs, TestFlight and Play Store steps for the user.
 - Share sheet in and out, Taildrop (tailnet team), widgets and Live Activities (later).
 
 ## Needs from others

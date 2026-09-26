@@ -41,6 +41,7 @@ process.on("exit", () => { try { fs.rmSync(root, { recursive: true, force: true 
 // No real Claude Code, no hooks in the user's settings, no login keychain: a fake claude that
 // speaks stream-json, a harness dir inside the home, and the file keystore.
 process.env.VYRE_HOME = root;
+process.env.VYRE_NO_DIALOGS = "1";
 process.env.VYRE_CLAUDE_BIN = path.join(REPO, "core", "switchboard", "testing", "fake-claude.js");
 process.env.VYRE_HARNESS_DIR = path.join(root, "no-harness");
 process.env.FAKE_CLAUDE_LOG = path.join(root, "claude.log");
