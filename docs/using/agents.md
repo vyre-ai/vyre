@@ -46,7 +46,8 @@ vyre agents ask juno "What changed in the Harlow Legal project this week?"
 agent under **Agents**, and talk a line at a time. An empty line goes back to the list.
 
 In the Deck, open **Ask** (`/ask`) to talk to the assistant or any agent, or **Agents**
-(`/agents`) for every agent and what it is doing. `/agents/<name>` is one agent's board: its
+(`/agents`) for every agent and what it is doing. On a phone, **Find** asks the assistant what you
+type, and `@kit ...` there asks kit. `/agents/<name>` is one agent's board: its
 threads, its watchers and its computer.
 
 If an agent stops on a permission question, the reply says so and names the question. Answer it
@@ -122,6 +123,20 @@ thread.
 In the Deck, `/agents` has a form for a new agent, including **Give it its own computer, from the
 pool**. Claude can call `agents.create` and `agents.update`.
 
+## Make the assistant later
+
+If you skipped the assistant at onboarding, Now and Agents show **Create your assistant**:
+
+1. Type its name under **Its name**, for example juno.
+2. Tick **Give it its own computer, from the pool.** if it should have a computer (see
+   [Give an agent a computer](#give-an-agent-a-computer)).
+3. Press **Create**.
+
+The Deck makes it as onboarding would: kind assistant, every project, the Claude sign-in that
+onboarding stored (or this machine's own Claude Code login when there is none), and instructions
+that give its name and yours. From a terminal, `vyre agents create juno --assistant` makes one
+too, with the flags you give it.
+
 ## See what agents are doing and what they cost
 
 ```sh
@@ -147,8 +162,8 @@ come from a small shared pool and are checked out only while the agent needs to 
 something; an idle computer is frozen and its home volume stays. Computers need a machine that
 can run containers; on one that cannot, `computers.list` reports driver `none`.
 
-Turn it on with `computer: true` on `agents.create` or `agents.update`, or **Give <name> a
-computer** on the agent's board in the Deck. Watch the screen, take over the keyboard and give it
+Turn it on with `computer: true` on `agents.create` or `agents.update`, or **Give kit a
+computer** (with the agent's name) in the Computer panel of its board in the Deck. Watch the screen, take over the keyboard and give it
 back in [Glass](glass.md). Taking over needs you to prove you are present.
 
 ## The `vyre` home

@@ -15,14 +15,10 @@ The status is `draft` because several rules are only partly enforced.
 ## Where the floor lives
 
 - **The Harness `PreToolUse` hook** (`core/harness/rules.js`), for every tool call Claude Code makes in a session that loads the Vyre plugin. It can only deny or ask; it never loosens Claude Code's own permissions. It also runs in-process when vyred is down (`harness/hooks/hook.js`).
+- **The same rules in vyred** (`registryRules` in `core/harness/rules.js`), for every tool call through the module registry that does not come from you at your own surface. The CLI, the Capsule, the Deck and `local`, naming no agent, are left to presence and the Gate. Every other caller (an agent through the Switchboard or MCP, a module, a device on the tailnet) gets the rules' answer, and an "ask" becomes a refusal, since nobody is there to say yes.
 - **Presence** (`core/presence`), checked by vyred on every call to a human-only tool, whoever the caller is. See [presence](presence.md).
 - **The Gate** (`core/gate`), which holds what would go out as you until you approve the final words.
 - **The event log** (`core/events`), which refuses payloads that look like secrets.
-
-The module registry has a hook for a rules check on every tool call, but vyred does not wire one in today. Tool calls through vyred are checked for input shape, allowed callers and presence; the rules themselves run in Claude Code's hook.
-
-> [!GAP]
-> vyred does not run the Rules on tool calls yet. See [known gaps](../known-gaps.md#rules-do-not-run-on-calls-through-vyred).
 
 ## 1. Nothing goes out as you until you have seen the final words
 

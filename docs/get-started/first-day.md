@@ -95,7 +95,10 @@ Put a credential in the vault once, and never paste it into a session again. Cla
 vyre vault put harlow-stripe --kind api-key --description "Harlow Legal billing key"
 ```
 
-It prompts for the value without echoing it. Putting a value is a human-only action, so Vyre asks you to prove you are there (Touch ID on the Mac, a passkey in the Deck) first.
+It prompts for the value without echoing it. Putting a value is a human-only action: you prove you are there with Touch ID on the Mac or a passkey in the Deck.
+
+> [!GAP]
+> `vyre vault put` does not ask for that proof yet, so it stops with code 3. Add the item in the Deck instead. See [known gaps](../known-gaps.md#the-vault-cli-never-proves-presence).
 
 To use it from a script outside Vyre, let the vault hand it to that one process:
 
@@ -107,7 +110,7 @@ The value reaches only that process's environment, and is scrubbed from its outp
 
 ## Find something from last week
 
-Recall searches every session you have had, on this machine and indexed from your history.
+Recall searches every session you have had, on this machine and indexed from your history. In the Deck on your box, the paired Mac's sessions are listed too, marked with the Mac's name.
 
 ```
 vyre recall "retainer template"
@@ -123,6 +126,8 @@ vyre recall "retainer template"
 
 Each hit shows the session's name, its id, how long ago it was, who said it (`user` or `assistant`), the folder it ran in, and the matching words in gold. Resume the session with `claude --resume <id>`, or open it in its project with `vyre resume <thread>`. Add `--here` to search only sessions from the current folder, `--user` for only what you said.
 
+Until the search model is on this machine, recall matches keywords, and says so on its last line. `vyre recall --setup` fetches the model (about 130 MB) now.
+
 Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Deck: its threads are listed newest first.
 
 You can also ask for it in words. In the Capsule, ask your assistant ("what did we decide about the Northwind Bakery invoice last week?"); the answer comes from memory, marked in gold, with the turns it came from. From the terminal, `vyre why <fact>` shows the turns a fact came from. More in [Memory](../using/memory.md).
@@ -130,7 +135,8 @@ You can also ask for it in words. In the Capsule, ask your assistant ("what did 
 ## What is not here yet
 
 - A date filter for recall, as above.
-- A native phone app. On the phone, open your address and add the Deck to the home screen. See [On your phone](../using/mobile.md).
+- A native phone app. On the phone, open your address in Safari and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
+- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Capsule.
 - Automatic updates. On the box run `vyre update`; on the Mac run the install line again. See [Looking after the box](../using/box-care.md).
 
 ## Where to go next

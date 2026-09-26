@@ -33,6 +33,10 @@ npm install -g https://vyre.run/box/vyre.tgz
 
 Once Vyre is published, this becomes `npm install -g vyre`.
 
+The package is about 6 MB. Search by meaning uses a local model of about 130 MB, which Vyre
+fetches into `~/.vyre` (`embedder/` and `models/`) the first time it indexes; until then search
+matches keywords. `vyre recall --setup` fetches it now.
+
 ## Run it
 
 ::: tabs
@@ -45,8 +49,9 @@ vyre up --connect https://vyre.tail1234.ts.net   # a box you already set up
 ```
 
 A Mac's role is `local` by default. `vyre up` starts vyred for this Mac, finds your box on the
-tailnet (or asks where Vyre should run), asks the box to pair this Mac, and opens the Capsule
-if it is installed (`--no-capsule` skips that). The full walk-through is
+tailnet (or asks where Vyre should run), asks the box to pair this Mac (you approve it in the
+Deck on your phone), offers once to add Vyre's line to Claude Code's status line, and opens the
+Capsule if it is installed (`--no-capsule` skips that). The full walk-through is
 [Onboarding](onboarding.md).
 
 `vyre up --box` sets the role to `box` and prints the onboarding link. On a Mac it also opens

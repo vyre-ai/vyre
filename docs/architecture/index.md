@@ -21,12 +21,14 @@ Everything is a module, including the core services, and every module uses the s
 | Layer | Where it runs | What it is | Code |
 | --- | --- | --- | --- |
 | Core | the box (and the Mac, for the parts a Mac needs) | The services inside `vyred`: config, the store (SQLite through `node:sqlite`), the event log, the module loader, projects and threads, recall, memory, the vault, watchers, the Gate, the Switchboard (headless sessions), agents, computers, names and certificates, pairing, files, presence, learning, push. | `core/` |
-| Harness | inside every Claude Code session Vyre starts | A Claude Code plugin, loaded with `--plugin-dir` so your global Claude Code setup is never changed. Hooks (Brief at session start, Enrich on each prompt, Rules before each tool call, Learn after file changes and commands, Stop at the end of each turn), the `vyre` MCP server that exposes module tools to Claude, three skills and the `/vyre` command. All hooks run one script, `harness/hooks/hook.js`, which calls `vyred`. If `vyred` is not running, Rules still runs in-process, so the floor holds. | `harness/` |
+| Harness | inside every Claude Code session Vyre starts, and any session with the plugin installed | A Claude Code plugin. Vyre's own sessions load it with `--plugin-dir`, so your global Claude Code setup is never changed; you can also install it in your own Claude Code from the `vyre-ai/vyre` marketplace ([ADR 0020](../adr/0020-claude-code-plugin.md)). Hooks (Brief at session start, Enrich on each prompt, Rules before each tool call, Learn after file changes and commands, Stop at the end of each turn), the `vyre` MCP server that exposes module tools to Claude, three skills and the `/vyre` command. Every hook starts at `harness/hooks/run.js`, which runs the Vyre package's `harness/hooks/hook.js`, which calls `vyred`; with no Vyre on the machine it says how to install it once and does nothing else. If `vyred` is not running, Rules still runs in-process, so the floor holds. | `harness/` |
 | Local | the Mac only | The Capsule (the Control-twice command bar) and `hands-mac` (computer use through the macOS accessibility tree). | `local/` |
 
 Optional first-party modules live in `modules/`: `hands-desktop` and `hands-chrome` (module name `chrome`) for agents' computers. `modules/vault-extension` is not a vyred module: it is the browser extension for vault autofill.
 
-The box and the Mac are paired into one system by `core/link`: the Mac can call the box's tools, and the box's events reach the Mac. See [The box and the Mac](../concepts/box-and-mac.md).
+The box and the Mac are paired into one system by `core/link`: the Mac can call the box's tools, the box's events reach the Mac, and the box reads the Mac's sessions through a request the Mac holds open, so the Mac opens no port ([ADR 0021](../adr/0021-box-reads-the-mac.md)). See [The box and the Mac](../concepts/box-and-mac.md).
+
+The floor's rules run twice: in Claude Code's `PreToolUse` hook, and in `vyred` for every tool call that does not come from you at your own surface. See [the security floor](../concepts/floor.md#where-the-floor-lives).
 
 ## Surfaces
 
@@ -39,7 +41,8 @@ Every surface talks to `vyred`'s API. None reads the store directly ([Section 9 
 | Deck | The web app at your address: Now, Projects, Memory, Agents, Chat, Vault, Settings. | `deck/` |
 | Chat | Projects, then every Claude Code session on the machine, each shown as a readable conversation that follows the terminal live. Sending from Chat drives the same session. | `deck/chat` |
 | Glass | An agent's screen, live, with take-over. | `deck/glass` and `core/computers` |
-| Phone | The Deck installed on the phone, with a phone tab bar (Now, Projects, Chat, Ask, Agents) and Web Push. A native app is not built. | `deck/` |
+| Phone | The Deck added to the Home Screen as a web app: full screen, a phone tab bar (Now, Projects, Chat, Find, Agents), Web Push, and the last screen kept for when the phone is offline. A native app is not built. | `deck/` |
+| Status line | Vyre's line under every Claude Code session in your terminal, such as `vyre · 2 need you · box ok · juno idle`. `vyre statusline install` adds it. | `core/statusline`, `harness/statusline` |
 
 A thread is one thing wherever it is viewed, and one screen types into it at a time (floor rules 3 and 4). Every session is a real Claude Code session, in a terminal or headless under the Switchboard; Vyre never imitates Claude Code.
 
@@ -61,7 +64,7 @@ docs/             these pages, the spec, the ADRs
 test/             cross-module tests; unit tests sit beside their code
 ```
 
-Runtime data never lives in the repository. It lives in `~/.vyre/` (override with `VYRE_HOME`): `config.json`, the store `vyre.db`, the sealed `vault/`, installed `modules/`, `watchers/`, `certs/`, `models/`, `logs/` and the socket. On a Docker box that folder is inside the `vyre_vyre-home` volume. See [Looking after the box](../using/box-care.md).
+Runtime data never lives in the repository. It lives in `~/.vyre/` (override with `VYRE_HOME`): `config.json`, the store `vyre.db`, the sealed `vault/`, installed `modules/`, `watchers/`, `certs/`, `models/` and `embedder/` (the search model, fetched on first use), `logs/` and the socket. On a Docker box that folder is inside the `vyre_vyre-home` volume. See [Looking after the box](../using/box-care.md).
 
 ## Principles that shape the code
 
@@ -91,7 +94,11 @@ Architecture decision records live in `docs/adr/`. Each states the problem, the 
 | [0010](../adr/0010-vault-autofill.md) | Vault autofill |
 | [0011](../adr/0011-web-push.md) | Web Push for the moments you are needed |
 | [0012](../adr/0012-cdp-proxy.md) | Chrome's debugging port never leaves the container unauthenticated |
+| [0014](../adr/0014-tailnet.md) | Using the tailnet fully |
+| [0016](../adr/0016-connectors.md) | Connectors, the MCP hub and native accounts (proposed) |
 | [0019](../adr/0019-docs-site.md) | This docs site: one source in `docs/`, checked and built without a framework |
+| [0020](../adr/0020-claude-code-plugin.md) | Vyre as an installable Claude Code plugin |
+| [0021](../adr/0021-box-reads-the-mac.md) | The box reads the paired Mac through the link |
 
 ## Where to go next
 

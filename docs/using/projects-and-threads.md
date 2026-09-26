@@ -101,6 +101,25 @@ command says so:
 In the Deck, a session in no project opens at `/threads/<thread>` with **Add to a project**. The
 tools behind these are `projects.catalog`, `projects.add-threads` and `projects.remove-threads`.
 
+## Sessions on your paired Mac
+
+On a box with a paired Mac, the catalogue, `vyre threads`, the Deck's lists and search also take
+in the Mac's sessions and projects, asked from the Mac as you read
+([ADR 0021](../adr/0021-box-reads-the-mac.md)). In the Deck each of them carries a chip with the
+Mac's name. The box keeps none of them: a Mac session's turns load from the Mac when you open it.
+
+- You can pick a Mac session into a box project (**Add to a project** offers the box's projects).
+  The pick keeps the session's id, and the project's thread list finds it on the Mac.
+- A project's brief never includes a Mac session, so a new thread on the box is not told about
+  one.
+- A Mac thread is read-only on the box: "On alex-mac. Open it there to continue." Resume it on
+  the Mac.
+- A Mac project is listed with its chip, but opens no board on the box.
+- When the Mac is offline, you see the box's own sessions only, and the Deck shows an offline chip
+  for the Mac.
+
+Agents, MCP clients and guests see only the box's own sessions, never the Mac's.
+
 ## See a project and its brief
 
 ```sh
@@ -192,6 +211,7 @@ Inside a Claude Code session, `/vyre project` shows the current folder's brief.
 - Sort sessions into projects by topic. Projects and picks are yours.
 - Remove a pick on its own. Only `vyre unpick` or `projects.remove-threads` does.
 - Put one project's threads or memory into another project's brief.
+- Copy a session from your paired Mac onto the box, or type into it from the box.
 
 ## Next
 

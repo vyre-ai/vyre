@@ -99,7 +99,9 @@ vyre start                # a new thread in this folder's project
 vyre context              # what a new thread here would be told
 ```
 
-These hand your terminal to Claude Code until it exits.
+These hand your terminal to Claude Code until it exits. They load Vyre's hooks and tools with
+`--plugin-dir`. To get the same in a `claude` you start yourself, install the Vyre plugin: see
+[Vyre in Claude Code](claude-code.md).
 
 ## Drive a running session
 
@@ -211,4 +213,5 @@ For machine-readable output from a command, use `--json` where it exists: `vyre 
 
 - [CLI reference](../reference/cli.md), every command and usage line.
 - [Projects and threads](projects-and-threads.md), what the project commands work on.
+- [Vyre in Claude Code](claude-code.md), the plugin and `vyre statusline`.
 - [Tools reference](../reference/tools.md), everything `vyre call` can run.

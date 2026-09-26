@@ -21,7 +21,7 @@ reference for the screens.
 3. ![Step 3 of 6, Tailscale: all three rows ticked, and the machine on the tailnet as alex-box.tail4e2a.ts.net](shots/onboarding-tailscale.png "Tailscale")
 4. ![Step 4 of 6, Your address: https://alex-box.tail4e2a.ts.net reserved, pointed at the machine and certified, with a Switch to button](shots/onboarding-name.png "Your address")
 5. ![Step 5 of 6, Your history: 6 sessions read and searchable, and a picker to group them into first projects](shots/onboarding-history.png "Your history")
-6. ![Step 6 of 6, Your devices: QR codes for the Tailscale app and for the address on a phone, and the Capsule for the Mac](shots/onboarding-devices.png "Your devices")
+6. ![Step 6 of 6, Your devices: Pair this Mac, with the install command, vyre up and a field for the Mac's code, and Open Vyre on your phone, with QR codes for Tailscale and for the address](shots/onboarding-devices.png "Your devices")
 :::
 
 > [!WHY] Why start on the Mac and not on the server?
@@ -157,8 +157,8 @@ in [Install, step 8](install.md#8-your-address).
 ## 5. Your history
 
 
-**Your history.** Vyre reads the Claude Code sessions already on the box so you can search them
-by what was said. The panel counts sessions and turns and fills its bar as it reads. It keeps
+**Your history.** Vyre reads the Claude Code sessions already on this machine so you can search
+them by what was said. The panel counts sessions and turns and fills its bar as it reads. It keeps
 reading in the background, so you do not have to wait.
 
 Under **Make your first projects** you can group sessions into a project, such as a client:
@@ -167,27 +167,65 @@ Under **Make your first projects** you can group sessions into a project, such a
 2. Search the sessions by what was said, and tick the ones that belong.
 3. Press **Make project**. The project appears above the picker. A session can be in several.
 
-Press **Continue** when you are done, or at once. On a new server the page says "No Claude Code
-sessions found on this machine yet."
+Press **Continue** when you are done, or at once.
+
+On a new server the box has no sessions of its own, and the page says "This box has no sessions
+of its own. Your Mac's sessions show up here once you pair it, right after setup." with a
+**Pair your Mac** link to step 6. Once the Mac is paired, the picker lists its sessions too. They
+stay on the Mac: the box reads them through the link. See
+[The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
+
+On a Mac that is its own box, with no sessions yet, it says "No Claude Code sessions found on this
+machine yet."
 
 ## 6. Your devices
 
 
-**Your devices.** Three columns:
+**Your devices.** "Pair your Mac and open Vyre on your phone." Two cards, side by side on a wide
+screen and stacked on a narrow one.
 
-- **Tailscale**: a QR code for `tailscale.com/download`, and the account to sign in with.
-- **Phone**: a QR code for your address. Scan it after Tailscale is on the phone, then add the
-  page to your home screen. More in [Mobile](../using/mobile.md).
-- **Mac**: the Capsule. It says **Connected** once your Mac is paired with the box; until then
-  **Download for Mac** is there. The terminal way to install it is in
-  [Install, step 13](install.md#13-open-the-capsule).
+**Pair this Mac**:
 
-**Open the Deck** finishes the setup. This screen has no Skip.
+1. **Install Vyre**: `npm i -g https://vyre.run/box/vyre.tgz` on the Mac.
+2. **Pair it with this box**: `vyre up` on the Mac. It finds the box on your tailnet and shows a
+   code.
+3. A card appears here, "A Mac wants to pair:" and the Mac's name, with a field for **Code on that
+   Mac**, **Approve** and **Deny**. Type the code, press **Approve**, and confirm with your
+   passkey. The card counts down the request's ten minutes.
+
+When it is done the card says "Mac paired:" and the name, and "Press Control twice to open the
+Capsule." The Capsule itself is in [Install, step 14](install.md#14-open-the-capsule).
+
+> [!SNAG] "The Mac that is asking cannot approve itself. Open Vyre on your phone and approve it there."
+> You are on the Mac you are pairing. The box takes the approval only from another of your
+> devices. Open Vyre on your phone (the card beside this one), and approve the request on Now.
+
+> [!GAP]
+> The step says to type the code here, but on the Mac being paired that is refused. See
+> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+
+**Open Vyre on your phone**:
+
+1. **Install Tailscale**: a QR code for `tailscale.com/download`, and the account to sign in with.
+   When Tailscale lists your phone, the step is ticked and says "Already on your tailnet:" and the
+   phone's name. A phone that is offline in Tailscale is named, with "Open the Tailscale app and
+   turn it on, then scan."
+2. **Open** your address: a QR code for your address with `/now`. Before the address works it
+   says "After Tailscale and your address".
+3. **Add to Home Screen**: "Share, then Add to Home Screen. It opens like an app."
+
+More in [On your phone](../using/mobile.md).
+
+**Open Vyre** finishes the setup. This screen has no Skip.
 
 ## The last screen
 
 The page says **Vyre is ready.**, your assistant says hello, and three rows tick for your Mac,
 your phone and your history. **Open Vyre** takes you to the Deck at your address.
+
+If you skipped the Claude Code step, no assistant was made. Now and Agents in the Deck then show
+**Create your assistant**: give it a name, tick **Give it its own computer, from the pool** if you
+want it to browse and use apps you can watch in Glass, and press **Create**.
 
 > [!SNAG] "Your address is not set up yet, so this page cannot open the Deck."
 > You skipped **Your address**. The Deck is served only at your address, so go back to step 4 and
@@ -195,13 +233,13 @@ your phone and your history. **Open Vyre** takes you to the Deck at your address
 
 ## Finish a skipped step
 
-Open the Deck, then Settings. **Setup** lists the six steps with **To do** or **Done**, and a
-**Finish** button beside each one left, which opens the same screen as here.
+Open the Deck, then Settings. **Setup** lists the six steps with **To do**, **Skipped** or
+**Done**, the command that finishes each from a terminal (`vyre up`, or `vyre index` for your
+history), and a **Finish** button beside each one left, which opens the same screen as here.
+`vyre up` picks up at the first step not finished.
 
-> [!GAP]
-> Settings shows a command beside each step, such as `vyre up --step tailscale`. The CLI has no
-> `--step` flag. Use the **Finish** button, or run `vyre up` again. See
-> [known gaps](../known-gaps.md#the-decks-setup-commands-name-a-flag-the-cli-lacks).
+**Your devices** in Settings lists your devices on the tailnet, online or offline, and marks a
+paired Mac "Paired with this box". **Add a device** opens step 6.
 
 If you skipped **Your address**, the Deck cannot open yet: run `vyre box add alex@192.0.2.10`
 from the Mac, or `vyre up` on the server, for a fresh setup link. The page keeps every step you

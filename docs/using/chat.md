@@ -13,7 +13,9 @@ machine that serves the Deck (normally your box): the ones you ran in a terminal
 ones vyred runs (an agent's thread, the assistant, a thread you started). A session shows its text
 as it is written, its tool calls, file edits as diffs, and anything it needs from you, inline. You
 type into it like a message box, and the words go to the session as you. Chat lives at `/chat`
-in the [Deck](deck.md), on a laptop and on a phone.
+in the [Deck](deck.md), on a laptop and on a phone. On a box with a paired Mac, Chat also lists
+the Mac's sessions, which you can read but not type into (see
+[Sessions from your Mac](#sessions-from-your-mac)).
 
 ## Find a session
 
@@ -54,9 +56,16 @@ turn completes, not word by word.
 3. Anything starting with `/` goes to Claude Code as is, so its own commands (`/rename`, for
    example) work.
 
-One surface holds a session's keyboard at a time (its lease). The header says who has it: "No one
-is typing", or a name. If another surface holds it, press **Take**. Your first keystroke takes it
-too.
+One surface holds a session's keyboard at a time (its lease). The line above the conversation
+says who has it: "No one is typing", "You have the keyboard here", or another surface's name with
+"has the keyboard". If another surface holds it, press **Take**. Your first keystroke takes it
+too. What you send shows as yours, and the session's replies as claude's (or the agent's name).
+
+On a phone, Enter makes a new line and the send button sends.
+
+If the session is busy in your terminal, the message waits instead of failing: a line above the
+box says "Queued for" the session's name, and the message goes in when that turn ends. A queued
+message cannot be taken back yet.
 
 Typing into a session you started in a terminal makes vyred resume it headless from then on.
 
@@ -87,6 +96,19 @@ in the conversation.
 The box may ask for your passkey first (see [Deck](deck.md#add-a-passkey)). If the send fails,
 the card says "failed:" with the reason, and Send tries again.
 
+## Sessions from your Mac
+
+With a Mac paired, the box's Chat lists the Mac's sessions and projects beside its own, newest
+first, each with a chip that names the Mac, for example `alex-mac`
+([ADR 0021](../adr/0021-box-reads-the-mac.md)). Open one and its turns load from the Mac; the box
+keeps no copy.
+
+A Mac session is read-only here. In place of the box to type into, it says "On alex-mac. Open it
+there to continue." Continue it on the Mac.
+
+When the Mac cannot be reached, the Chat header shows a dashed "alex-mac offline" chip and lists
+only the box's sessions.
+
 ## When the box is out of reach
 
 Chat shows the session list from your last visit, with the time it was saved. The list holds
@@ -98,8 +120,8 @@ from the Deck's offline cache.
 - It is not a separate chat server. Everything is a call to vyred, so a message typed here is the
   same as one typed in the Capsule or with `vyre threads send`.
 - It never renders a session's text as HTML.
-- It lists only the sessions on the machine that serves the Deck. The box's Chat does not show
-  sessions you ran on your Mac; use `vyre threads` there.
+- It does not type into a session on your paired Mac. The box's Chat shows those sessions
+  read-only; sending to one from the box is not built yet.
 
 ## Next
 

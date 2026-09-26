@@ -163,8 +163,20 @@ The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tail
 
 The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre up` again for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
 
+### "The Mac that is asking cannot approve itself."
+
+You approved the pairing in the Deck on the Mac you are pairing. The box takes the approval only from another of your devices. Open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
+
 > [!GAP]
-> There is no Deck screen that approves a pairing yet, which can also leave a Mac waiting here. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> With only the Mac, a pairing cannot be approved yet. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+
+### "That code does not match. Check the code on the Mac and try again."
+
+Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`. After too many wrong codes the box cancels every request ("Too many wrong codes, so every request was cancelled. Start again on the Mac."): run `vyre up` on the Mac again.
+
+### A Mac's sessions show "offline" on the box
+
+The Deck on the box lists the paired Mac's sessions while the Mac is awake and on the tailnet. When it is not, the Deck shows the box's own sessions and a chip such as "alex-mac offline". Wake the Mac, check Tailscale is connected, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
 
 ## The Capsule
 
@@ -205,11 +217,16 @@ You built `Vyre.app` with `vyre capsule build --app`, then the source changed (a
   212 sessions · 18342 turns indexed · indexing now
 ```
 
-On a new install the first pass takes a while; run `vyre index` to index new and changed sessions now. Search by meaning needs the optional embedding model; without it, recall still works as full text.
+On a new install the first pass takes a while; run `vyre index` to index new and changed sessions now.
+
+Search by meaning needs a local model of about 130 MB. Vyre fetches it into `~/.vyre` the first time it indexes, and searches by keyword until then; `vyre recall` says so on its last line, for example "downloading the search model (about 128 MB, once); search is by keyword until then · vyre recall --setup". Run `vyre recall --setup` to fetch it now and wait for it. If it fails, it says why: check the network and run it again.
 
 ### The vault says it is locked, or asks for presence
 
-`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. With the passphrase keystore, `vyre vault unlock`. For your personal vault account, `vyre vault account unlock`. Human-only actions, like putting a value, ask for Touch ID on the Mac or a passkey in the Deck.
+`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, need Touch ID on the Mac or a passkey in the Deck.
+
+> [!GAP]
+> `vyre vault` never asks for that proof, so a human-only verb (`put`, `unlock`, `approve` and others) exits with code 3. Use the Deck, or `vyre call`, which asks for Touch ID on the Mac. See [known gaps](../known-gaps.md#the-vault-cli-never-proves-presence).
 
 ### An agent stopped: budget
 

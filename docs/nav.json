@@ -4,6 +4,7 @@
     { "title": "Start here", "pages": ["index.md"] },
     { "title": "Get started", "pages": [
       "get-started/install.md",
+      "get-started/tailscale.md",
       "get-started/onboarding.md",
       "get-started/first-day.md",
       "get-started/without-docker.md",
@@ -14,6 +15,7 @@
       "using/deck.md",
       "using/chat.md",
       "using/cli.md",
+      "using/claude-code.md",
       "using/projects-and-threads.md",
       "using/agents.md",
       "using/vault.md",

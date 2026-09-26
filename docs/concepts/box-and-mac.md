@@ -25,11 +25,11 @@ Every module declares the roles it runs in (`"roles"` in its `module.json`; both
 
 | Runs on | Modules |
 |---|---|
-| Box only | `names` (address, certificates, the tailnet listener), `onboard`, `computers`, `glass`, `chrome`, `hands-desktop` |
+| Box only | `names` (address, certificates, the tailnet listener), `network`, `onboard`, `hooks`, `computers`, `glass`, `chrome`, `hands-desktop` |
 | Mac only | `capsule`, `hands` (computer use on macOS) |
-| Both | `projects`, `recall`, `memory`, `vault`, `watchers`, `threads` (the Switchboard), `agents`, `gate`, `learn`, `harness`, `presence`, `link`, `files`, `push`, `system` |
+| Both | `projects`, `recall`, `memory`, `vault`, `watchers`, `threads` (the Switchboard), `agents`, `gate`, `learn`, `harness`, `presence`, `link`, `files`, `push`, `system`, `mcp`, `google`, `statusline` |
 
-A module that runs on both machines works on that machine's own data: recall on the Mac searches the Mac's Claude Code transcripts, recall on the box searches the box's. `vyre modules` lists what started on the machine you run it on, and why anything failed.
+A module that runs on both machines works on that machine's own data: recall on the Mac searches the Mac's Claude Code transcripts, recall on the box searches the box's. The one exception is reading: on the box, you see the paired Mac's sessions beside the box's own, read through the link (see [The box reads the Mac's sessions](#the-box-reads-the-macs-sessions)). `vyre modules` lists what started on the machine you run it on, and why anything failed.
 
 You can move a module on or off with `modules.enable` and `modules.disable` in `config.json`. `enable` starts a module even when its roles do not include this machine's role.
 
@@ -100,12 +100,13 @@ On a Docker box it is `/home/vyre/.vyre`, inside the `vyre_vyre-home` volume.
   certs/                  acme-production.key, <name>.crt, <name>.key
   names/                  the name directory key, once the hosted directory exists
   modules/, watchers/     what you installed and what Claude wrote
-  models/                 embedding weights (about 23 MB), a cache: safe to delete
+  embedder/               the search model's library (about 105 MB), fetched on first use: safe to delete
+  models/                 the search model's weights (about 23 MB), a cache: safe to delete
   logs/                   YYYY-MM-DD.log from vyred
   vyred.sock, vyred.pid
 ```
 ::: tab On this Mac
-On the Mac it is `~/.vyre` in your own home folder. It has the same store, vault, models and logs, and no `certs/` or `names/`, because the Mac serves nothing on the tailnet. It also holds `link.json` (0600), the key that pairs this Mac with its box, and `logs/capsule.out`, the Capsule's log.
+On the Mac it is `~/.vyre` in your own home folder. It has the same store, vault, search model and logs, and no `certs/` or `names/`, because the Mac serves nothing on the tailnet. It also holds `link.json` (0600), the key that pairs this Mac with its box, and `logs/capsule.out`, the Capsule's log.
 :::
 
 ### Claude Code on the box
@@ -156,18 +157,32 @@ The Mac's vyred is a client of the box's tailnet listener, at `network.box`. The
 
 The `link` module turns the two machines into one system:
 
-- **Pairing.** On the Mac, `vyre link pair <address>` asks the box and shows a code. You approve it in the Deck on the box, which asks for your passkey (see [presence](presence.md)). The Mac keeps a link key in `~/.vyre/link.json` (mode 0600) and pins the box's Tailscale node, so a different node at that address is refused.
+- **Pairing.** On the Mac, `vyre link pair <address>` (or `vyre up`) asks the box and shows a code. The Deck shows the request on Now, and on onboarding's **Your devices** step: type the code, press **Approve**, and confirm with your passkey (see [presence](presence.md)). The approval must come from another of your devices, such as your phone: the box refuses one from the Mac that is asking. The Mac keeps a link key in `~/.vyre/link.json` (mode 0600) and pins the box's Tailscale node, so a different node at that address is refused.
 - **Box tools from the Mac.** A module on the Mac calls `ctx.remote(tool, input)`; a surface calls `link.call`. Both reach `POST /v1/tools/<tool>` on the box.
 - **Box events on the Mac.** The Mac proxies the box's event stream at `/v1/link/events`, so the Capsule sees box threads as they happen.
+- **The Mac's sessions on the box.** The box reads the paired Mac's sessions through the link. See the next section.
 
 > [!GAP]
-> No Deck screen approves a pairing yet, so pairing a Mac with a box can stall at the approval step. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> The Deck open on the Mac being paired cannot approve that Mac. Approve it from your phone or another device. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 ```
 vyre link                 # on the Mac: paired or not, and whether the box answers
 vyre link pair https://vyre.tail1234.ts.net
 vyre link unpair          # forget the box
 ```
+
+## The box reads the Mac's sessions
+
+Your Claude Code history stays on the Mac. The box reads it through the link when you ask, so the Deck on the box, and your phone, list the Mac's sessions beside the box's own ([ADR 0021](../adr/0021-box-reads-the-mac.md)).
+
+- **No port on the Mac.** While paired, the Mac holds one request open to the box (`link.serve`). The box answers it with a question, or with nothing after 60 seconds; the Mac runs the question and sends the answer back (`link.reply`), then asks again. An idle Mac costs one request a minute.
+- **Six read tools, nothing else.** Only `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread` and `threads.list` cross, and both ends check the list (`core/link/allow.js`). The Mac runs them as `module:link`.
+- **Only for you.** On the box these tools take `machines: "all"` or `"local"`. They ask the Mac when you call them from the Deck, the CLI, the Capsule or your own device on the tailnet, or when a module passes `machines: "all"`. Agents, MCP and guests get the box's rows alone. Each row the Mac sends is labelled `source: "mac"` and `machine` (the Mac's paired name); the box's rows say `source: "box"`.
+- **Nothing is copied.** Nothing the Mac answers is written to the box's store. Only `recall.thread` carries a conversation, and only when you open a session the box does not have.
+- **Read-only on the box.** The Deck shows a Mac session with the Mac's name on a chip and the note "On alex-mac. Open it there to continue.": no composer, no **Take**. You can add a Mac session to a box project; the project's thread list reads it from the Mac.
+- **An absent Mac is an answer.** A Mac that is not polling answers `mac_offline` at once and the box shows its own rows, with an "alex-mac offline" chip read from `link.macs`. A slow Mac delays a read by at most 5 seconds. A Mac that dropped off in the middle of a request looks online for up to a minute, and a read in that window ends in `timeout`.
+
+The box cannot search the Mac's files: files are not on the list.
 
 ## When the box is away
 
@@ -178,6 +193,7 @@ The Mac keeps working without the box (floor rule 9, see [the security floor](fl
 - The Mac never serves the Deck on the tailnet. The Deck lives on the box.
 - The box never trusts the Mac because of a header or a shared secret alone: every connection is identified by its tailnet source address first.
 - Link tools on the box (`link.*`) cannot be driven through `ctx.remote` or `link.call`.
+- The box never runs a tool on the Mac outside the six reads above, and never sends into a Mac session.
 
 ## Next
 

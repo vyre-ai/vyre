@@ -129,9 +129,6 @@ time. A session ends after 10 minutes idle or 12 hours at most, when the Mac sle
 locks, or on `vyre vault lock`. Set other limits in `config.json` under `vault.lock`, for example
 `{ "idle": "5m", "max": "8h" }`.
 
-> [!GAP]
-> The `vault.caps` description says reveal is off by default; vyred has it on, behind presence. See [known gaps](../known-gaps.md#the-vault-says-reveal-is-off-by-default).
-
 ## Let an agent, module or watcher use an item
 
 A grant lets one module, or one watcher, fetch one item. Agents run as the `agents` module, so an

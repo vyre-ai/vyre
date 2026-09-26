@@ -76,9 +76,10 @@ Then the Mac pairs with the box:
 
 1. The Mac asks the box to pair and shows a code. `vyre link pair <address>` does the same by
    hand.
-2. You approve that code from the box's side. Approving needs your passkey, and a terminal on the
-   box cannot give one, so `vyre link approve <code>` on the box answers "approve it in the
-   Deck", which names the Mac asking and asks for your passkey.
+2. Approve that code in the Deck. Now shows a card, "A Mac wants to pair", naming the Mac. Type
+   the code from the Mac's screen into **Code on that Mac** and press **Approve**, which asks for
+   your passkey. **Deny** turns it down. A terminal on the box cannot give a passkey, so
+   `vyre link approve <code>` there answers "approve it in the Deck".
 3. Check it on the Mac with `vyre link`:
 
    ```output
@@ -86,7 +87,10 @@ Then the Mac pairs with the box:
    ```
 
 > [!GAP]
-> There is no Deck screen that approves a pairing yet, so step 2 cannot be finished today and the Mac stays at "waiting for approval". See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> A Mac cannot approve its own pairing, and the Mac's browser is on the tailnet as that Mac, so
+> the Deck open on the Mac being paired cannot approve it. Open the Deck on your phone or another
+> computer on your tailnet. A passkey you made on the Mac works on an iPhone when iCloud Keychain
+> is on. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 The first connection pins the box's Tailscale node, so a different machine answering at the same
 name later is refused. `vyre link unpair` forgets the box on the Mac, or a Mac on the box

@@ -126,6 +126,7 @@ export default {
 | `ctx.upgrade(name, handler)` | a WebSocket at `/v1/streams/<module>/<name>` |
 | `ctx.route(name, fn)` | a raw HTTP route at `/v1/<module>/<name>` on vyred's socket |
 | `ctx.handler(policy)` | vyred's router, for a module that opens a listener of its own (`names`, `onboard`) |
+| `ctx.upgrader(policy)` | vyred's WebSocket router for such a listener, so streams (Glass) work over it too |
 
 > [!GAP]
 > Spec Section 5.2 lists `ctx.projects`; the code has none. Call `ctx.call("projects.list", {})` and the other `projects.*` tools instead. See [known gaps](../known-gaps.md#ctxprojects-does-not-exist).
@@ -150,7 +151,7 @@ ctx.tool("invoices.file", {
 | `description` | what the tool does; Claude reads this |
 | `input` | a JSON schema. The loader checks `type` (`object`, `array`, `string`, `number`, `integer`, `boolean`), `required`, `enum`, nested `properties` and `items`. Anything subtler, check in `run` |
 | `run` | `async (input, meta)`. Return any JSON value; it becomes `{ data }`. Throw to fail |
-| `callers` | caller kinds that may use it: `cli`, `local`, `deck`, `capsule`, `mcp`, `module` and others. Omitted means any. Others get `denied` and do not see it in listings |
+| `callers` | caller kinds that may use it: `cli`, `local`, `deck`, `capsule`, `mcp`, `module` and others. Omitted means any. Others get `denied` and do not see it in listings. On a box the Deck arrives as `tailnet:<login>`, the owner at the box's address, so a tool open to `deck` is open to that caller too; an agent's node (`tailnet:agent:<name>`) and a guest (`tailnet-guest:...`) are not |
 | `internal` | only other modules may call it, and it is left out of every listing |
 | `hook` | the tool answers only the webhook route and no other caller. The route `POST /v1/<module>/<name>/hook` calls the tool `<module>.hook` with `{ name, token, body }` as the caller `hook`, so name the tool `<module>.hook`. The tool checks the token itself |
 | `presence` | the call needs a person present. See [presence](../concepts/presence.md) |
@@ -175,15 +176,14 @@ Every call runs these checks, in order:
 |---|---|---|
 | the tool exists (and is not `internal` for a non-module caller, nor a `hook` tool outside the webhook route) | `no_such_tool` | 404 |
 | the caller's kind is in `callers` | `denied` | 403 |
+| a guest from another tailnet is not calling a presence tool | `denied` | 403 |
 | the input matches the schema | `bad_input` | 400 |
+| the floor's rules allow it, for any caller but you at the CLI, `local`, the Deck or the Capsule (see [the security floor](../concepts/floor.md#where-the-floor-lives)) | `denied` | 403 |
 | a person proved presence, for a presence tool and a caller that is not a module | `presence_required` | 403 |
 | a Touch ID proof was asked for where Vyre may raise no dialog (under tests, or a home other than `~/.vyre`) | `no_dialog` | 403 |
 | `run` succeeds | the thrown code, or `failed` | 500 |
 
 Responses are `{ "data": ... }` or `{ "error": { "code", "message" } }`.
-
-> [!GAP]
-> The spec says every call also passes through the Rules. The registry has the hook for it, but vyred does not wire one in: the Rules run only in Claude Code's `PreToolUse` hook, so a call from a module or a surface is not checked by them. See [the security floor](../concepts/floor.md) and [known gaps](../known-gaps.md#rules-do-not-run-on-calls-through-vyred).
 
 ## Next
 

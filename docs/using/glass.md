@@ -1,44 +1,64 @@
 ---
-title: Glass
-summary: Watch an agent's computer live from the Deck, take the keyboard and hand it back, sign in to a site without the agent seeing, and move files on the agent's computer and the box.
+title: Glass and agent computers
+summary: Give an agent its own computer on your box, watch its screen live from the Deck, take the keyboard and hand it back, sign in to a site privately, browse its files, and change its limits.
 audience: users
 owner: polish-surfaces
 status: draft
 ---
 
-# Glass
+# Glass and agent computers
 
-Glass is how you see and touch an agent's computer. An agent that has a computer works in its
-own container on your box, with a desktop, Chrome and a terminal. Glass shows that screen live in
-the [Deck](deck.md), lets you take the keyboard and give it back, lets you sign in to a site for
-the agent without the agent seeing the page, and gives you a file browser for the agent's home
-and for the box. It runs on the box as the `glass` module. The design is in
-[ADR 0005](../adr/0005-glass.md), and how the screen is streamed in
-[ADR 0003](../adr/0003-glass-stream.md).
+An agent can have its own computer on your box: a desktop with Chrome and a terminal, in its own
+container. Glass lets you watch that screen live in the [Deck](deck.md), take over the keyboard,
+and browse the computer's files. It also browses the box's own folders. Glass works only from your
+own tailnet: only you, the tailnet owner, and guests you list can open it. It runs on the box as
+the `glass` module. The design is in [ADR 0005](../adr/0005-glass.md), and how the screen is
+streamed in [ADR 0003](../adr/0003-glass-stream.md).
 
 ## Before you start
 
 1. Turn agents' computers on. On a Docker box that is the `computers` profile: add
    `COMPOSE_PROFILES=computers` to `/srv/vyre/.env`, then run `vyre up`. See
    [Box care](box-care.md).
-2. Give the agent a computer: in the Deck, open Agents, then the agent, then **Give juno a
-   computer**. Or run `vyre call agents.update '{"name":"juno","computer":true}'`.
-3. Add a passkey on this device (see [Deck](deck.md#add-a-passkey)). Taking the keyboard and
-   handing it back both ask for it.
+2. Add a passkey for the Deck on this device (see [Deck](deck.md#add-a-passkey)). Taking the
+   keyboard and handing it back both ask for it. Without one, the dialog says so and links to
+   Settings.
 
-## Open an agent's screen
+## Give an agent a computer
 
-Any of these opens the same page:
+Open Agents, then the agent (kit). In the Computer panel, press **Give kit a computer**. Or run
+`vyre call agents.update '{"name":"kit","computer":true}'`.
 
-- In the Deck, Agents, then the agent, then Open Glass. The path is `/agents/<name>/glass`, or
-  `/glass/<name>`.
-- In the [Capsule](capsule.md), type `glass juno`, or pick Open Glass on one of juno's threads.
+The panel then says:
+
+```output
+Not made yet. It is made the first time kit or you need it.
+```
+
+It also shows Processor 2 cores, Memory 3 GB and Screen 1440 × 900, the box's defaults. Nothing
+runs yet. The computer is made the first time kit uses it or you open Glass.
+
+## Watch kit's screen
+
+Press **Open Glass** at the top of the agent page, or the screen picture in the Computer panel.
+Other ways to the same page:
+
+- The path `/agents/<name>/glass`, or `/glass/<name>`.
+- In the [Capsule](capsule.md), type `glass kit`, or pick Open Glass on one of kit's threads.
 - `/glass/box` opens the box itself, which has files and no screen.
 
-The Screen tab shows the agent's desktop live. While you only watch, nothing you type or click
-reaches it. A computer nobody is watching is frozen and uses almost nothing; opening Glass wakes it.
+The first time, the computer is made and starts, which takes a few seconds. Then the screen
+appears with a LIVE badge, and the title reads "kit's computer" and "running". Below the screen:
 
-> [!SNAG] "No box is paired yet" or "juno's computer runs on your box"
+```output
+Watching kit's screen. Nothing you do here reaches it until you take over.
+```
+
+Watching keeps the computer awake. About a minute after nobody is watching or using it, the
+computer rests: it is frozen and uses no processor time. The next time kit or you need it, it
+wakes where it left off.
+
+> [!SNAG] "No box is paired yet" or "kit's computer runs on your box"
 > You opened Glass on a Deck that has no box behind it, such as your Mac's own. Agents' computers
 > run on the box. Put Vyre on a server with `vyre box add you@your-server`, or open the box's
 > Deck instead.
@@ -48,42 +68,81 @@ reaches it. A computer nobody is watching is frozen and uses almost nothing; ope
 
 ## Take the keyboard, then hand it back
 
-1. Press **Take over** (or `T`). Confirm with your passkey.
-2. The agent's hands stop. You type and click; everyone else watching is read-only. The bar
-   counts how long you have held it.
-3. Optionally, write a note for the agent about what you changed (up to 280 characters).
-4. Press **Hand back to juno** (or Control-Enter when focus is outside the screen), and confirm
-   with your passkey.
+1. Press **Take over** (or `T`). Vyre asks for your passkey (Touch ID, Face ID or a security
+   key), because taking the keyboard pauses kit.
+2. You see a green frame, "You have control", a timer, and **Hand back to kit**. While you drive,
+   kit's hands wait. Your clicks and typing reach kit's screen, and other people watching can't
+   type.
+3. Optionally, leave kit a note (up to 280 characters).
+4. Press **Hand back to kit** (or Ctrl+Enter when focus is outside the screen), and confirm with
+   your passkey.
 
 ```output
-You handed the keyboard back to juno. Your note is in its thread.
+You handed the keyboard back to kit. Your note is in its thread.
 ```
 
-The agent carries on from where it stopped, with a note in its thread: who had the keyboard, for
-how long, and your note. Never what you typed. If you close the tab, or the hold lapses on the
-box, the keyboard goes back to the agent on its own.
+kit carries on from where it stopped and gets a note in its thread: who had the keyboard, for how
+long, and your note. It never sees what you typed. The activity list shows "You took the
+keyboard." and "You handed back to kit." If you close the tab, or the hold lapses on the box, the
+keyboard goes back to kit on its own.
 
-## Sign in to a site for the agent
+## Sign in to a site in kit's Chrome
 
-Take over leaves the agent's link to Chrome open, so it could read the page. For a password, use
-Sign in privately instead:
+Take over leaves kit's link to Chrome open, so it could read the page. For a password, use
+**Sign in privately** instead. It also hides the page from kit while you type.
 
 1. Press **Sign in privately**, then **Start**, and confirm with your passkey.
-2. The agent can no longer see the page. Sign in to the site in its Chrome.
-3. Hand back. The agent sees the page again and can use the signed-in session.
+2. In kit's Chrome, go to the site's sign-in page (for example `accounts.example.com`) and sign
+   in.
+3. Hand back. kit sees the page again and can use the signed-in session.
 
-## Move files
+Chrome keeps the sign-in in kit's home folder, so it survives a rest, a restart and changed
+limits. Chrome's own password saving is off, because passwords belong in the
+[Vault](vault.md).
 
-The Files tab browses the agent's home, or on `/glass/box` the box's folders. You can list,
-preview text and images, download, upload, make folders, move and trash. Every change says what
-happened. Downloads and uploads use a one-time ticket, so a link cannot be reused.
+## Browse and move files
+
+Open the **Files** tab in Glass. It shows "kit's home": its folders and files, with size and
+date. On `/glass/box` it shows the box's folders you chose for Glass.
+
+- Choose a file to preview it (text and images), then download, rename or trash it.
+- Drop files onto the list to upload them into the folder you are in.
+- **New folder** and **Upload** are at the top.
+
+Every change says what happened. Downloads and uploads use a one-time ticket, so a link cannot be
+reused. Trash goes to a `.vyre-trash` folder, not away, so you can take a file back out.
 
 ![Glass on the box: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash](shots/glass-files.png)
 
 Secret places are hidden and refused at any depth, whatever their case. Among them: `.vyre`,
 `.claude`, `.ssh`, `.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.npmrc`, `.env` and `.env.*`,
-`*.pem`, `*.key`, `*.kdbx`, `id_*`, `credentials.json`, browser cookie and login stores, and any
-file whose first bytes are a private key. Trash goes to a `.vyre-trash` folder, not away.
+`*.pem`, `*.key`, `*.kdbx`, `id_*`, `credentials.json`, and browser cookie and login stores. Glass
+never opens or moves a file whose first bytes are a private key, whatever its name.
+
+## Change kit's limits, then restart
+
+1. In the Computer panel, press **Change limits**.
+2. Set **Cores** (1 to 16) and **Memory GB** (1 to 64), then press **Save limits**.
+
+   ```output
+   Saved. Restart kit's computer to apply them.
+   ```
+
+3. Press **Restart computer**, then **Restart now**.
+
+Restarting closes what is open on kit's screen. Its files and signed-in sites stay. The new limits
+then appear in the panel. Only you or your assistant can change limits, never the agent itself.
+
+## If a computer does not start
+
+When the computer's software on the box is broken, Glass says so instead of showing a black
+screen, and the Computer panel shows the computer as stopped:
+
+```output
+kit's computer stopped as soon as it started (exit code 1); its image (vyre/computer:0.1) may be broken: see docker logs vyre-computer-kit on the box
+```
+
+Run the `docker logs` command it names on the box to see why.
 
 ## On a phone
 
@@ -95,12 +154,13 @@ with the same Take over and Hand back. See [Mobile](mobile.md).
 - An agent cannot open Glass, take or release a keyboard. Those are for people.
 - It does not show your Mac's screen. Glass is for agents' computers and the box.
 - It never lets two people type at once.
+- The Terminal tab is not in this version.
 
 Coming: an idle hand-back after five minutes, a cap of four viewers per computer, and filling a
 login from your vault into the agent's Chrome.
 
 ## Next
 
-- [Agents](agents.md), to give an agent a computer.
+- [Agents](agents.md), for the rest of the agent page.
 - [Vault](vault.md), for credentials an agent uses without seeing.
 - [ADR 0005](../adr/0005-glass.md), for why take-over and sign-in work this way.

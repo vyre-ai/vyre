@@ -22,24 +22,43 @@ The phone reaches your box over Tailscale, like every other device (see
    `https://vyre.tail1234.ts.net/now`.
 3. Add it to the home screen. On an iPhone: the Share button, then Add to Home Screen. On Android:
    the browser menu, then Install app or Add to Home screen.
-4. Open Vyre from the home screen icon.
+4. Open Vyre from the home screen icon. It opens at once, full screen, on the screen you
+   last had open if that was within a day, else on Now.
 
-> [!SNAG] The phone QR code opens 127.0.0.1:7300 and nothing loads
-> If you skipped the address step in onboarding, the QR code encodes the address you had open,
-> the SSH tunnel's `127.0.0.1:7300`, which means nothing on the phone. Finish the address step
-> (see [Tailscale](tailscale.md)), then type your box's address on the phone.
+Now then shows **Set up this phone**, three steps with what is left:
+
+- **Install**: done once Vyre runs from the Home Screen. On Android, **Install** opens Chrome's
+  install prompt.
+- **Notifications**: **Turn on**, then allow the prompt (see
+  [Turn on notifications](#turn-on-notifications)).
+- **Passkey**: **Add**, then a code and a name for the phone (see
+  [Approving from the phone](#approving-from-the-phone)).
+
+**Not now** hides the card on that phone.
+
+> [!SNAG] The phone QR code says "After Tailscale and your address"
+> Onboarding never shows a QR code for `127.0.0.1`: until your box has its address, the phone has
+> nowhere to go. Finish the Tailscale and address steps (see [Tailscale](tailscale.md)), and the
+> QR code for your box's `/now` appears.
 
 ## What you can do from the phone
 
-The tab bar at the bottom has Now, Projects, Chat, Ask and Agents.
+The tab bar at the bottom has Now, Projects, Chat, Find and Agents.
 
 - **Now**: what needs you and what is running.
 - **Approve or edit a held draft**: tap it in Now. It opens full screen; tap a field to edit it,
   then Send or Discard.
 - **Answer a permission question**: tap it in Now, then Allow or Deny.
 - **Chat**: your Claude Code sessions, including the ones you run in a terminal, mirrored a
-  moment after each turn.
-- **Ask**: talk to your assistant or any agent.
+  moment after each turn. With a Mac paired to the box, the Mac's sessions are listed too, each
+  with the Mac's name on a chip; you can read them, and continue them on the Mac. If a session is
+  busy in your Mac's terminal, what you send waits and the line above the box says "Queued for"
+  the session's name; it goes in when that turn ends.
+- **Find**: one box for sessions, files, agents, memory and projects, and for asking your
+  assistant. Pull down from the top of any screen to open it. `@kit ...` asks an agent,
+  `tell <session> to ...` types into a session, and `watch <session>` notifies you when it
+  finishes or asks. The line under the box says what Enter will do.
+- **Ask**: talk to your assistant or any agent, at `/ask`.
 - **Glass**: watch an agent's computer and take over. A tap is a click, a long press a right
   click, two fingers scroll, pinch zooms your view, and a keyboard button opens the soft
   keyboard. See [Glass](glass.md).
@@ -60,6 +79,8 @@ a narrow screen.
 5. Press **Send a test**.
 
 Other devices you turned on are listed with when a notification last reached them, and Remove.
+Settings, **Your devices** lists every device on your tailnet and whether Tailscale sees it
+online.
 
 > [!SNAG] On an iPhone there is no Turn on notifications button
 > iOS delivers notifications only to an installed app (iOS 16.4 or later), not to a Safari tab.
@@ -83,16 +104,17 @@ cannot reach the internet cannot notify, but the Deck still shows everything whe
 
 ## Approving from the phone
 
-Sending a held draft and taking over an agent's screen need proof that a person is at the device.
-On the phone that is a passkey (Face ID or Touch ID). Add one from the phone in Settings,
-Security, with a one-time code from `vyre presence code` on the box (see
-[Deck](deck.md#add-a-passkey)).
+Send, Discard, Allow, Deny and taking over an agent's screen need proof that a person is at the
+device. On the phone that is a passkey, with Face ID or Touch ID. If you made your first passkey
+in Safari on your Mac, iCloud Keychain brings it to your iPhone, and the phone offers it when you
+approve. To make one on the phone itself, see [Deck](deck.md#add-a-passkey).
 
 ![A held email on a phone, full screen, with Send and Discard in reach of your thumb](shots/phone-held.png)
 
 ## Offline
 
-When the box is out of reach, the installed app still opens. Now shows the counts from your last
+When the box is out of reach, the installed app still opens. One line says "This phone is
+offline." or "Your box is not answering.", with **Retry**. Now shows the counts from your last
 visit and when they were taken, and Chat shows your recent session list. Nothing can be sent or
 approved until the box answers.
 
