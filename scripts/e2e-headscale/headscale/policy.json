@@ -1,0 +1,10 @@
+{
+  "tagOwners": { "tag:vyre-box": ["alex@"], "tag:vyre-egress": ["alex@"] },
+  "acls": [ { "action": "accept", "src": ["*"], "dst": ["*:*"] } ],
+  "grants": [
+    { "src": ["alex@"], "dst": ["alex@", "tag:vyre-box"], "ip": ["*"],
+      "app": { "vyre.run/cap/vault": [{ "items": ["northwind-*"], "mode": "relayed" }], "vyre.run/cap/guest": [{ "tools": ["threads.get"] }] } }
+  ],
+  "nodeAttrs": [ { "target": ["alex@"], "attr": ["drive:share", "drive:access"] } ],
+  "ssh": [ { "action": "accept", "src": ["alex@"], "dst": ["tag:vyre-box"], "users": ["root", "autogroup:nonroot"] } ]
+}

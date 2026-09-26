@@ -13,7 +13,7 @@
 import { judge, breachCheck } from "../health.js";
 import { generate as makeValue } from "../generate.js";
 import { KINDS } from "../vault.js";
-import { callerKind } from "../../modules/index.js";
+import { callerAllowed } from "../../modules/index.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
@@ -97,7 +97,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
       return `${old ? "Change" : "Add"} ${input.kind || (old && old.kind) || "item"} "${input.name}"${what}`;
     } },
     run: async (input, { caller }) => {
-      if (!PEOPLE.includes(callerKind(caller))) throw new Error("vault.update is for people");
+      if (!callerAllowed(PEOPLE, caller)) throw new Error("vault.update is for people");
       const old = vault.row(input.name);
       const kind = input.kind || (old ? old.kind : "secret");
       if (old && input.kind && input.kind !== old.kind) throw new Error(`${input.name} is a ${old.kind}; make a new item to change its kind`);
