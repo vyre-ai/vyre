@@ -34,7 +34,10 @@ async function main() {
 
   if (piece === "brief") {
     const project = process.env.VYRE_PROJECT || undefined;
-    const r = await call("harness.brief", { ...base, ...scope, source: h.source, ...(project ? { project } : {}) }, opts);
+    // Inside our own headless child VYRE_THREAD is its session id; anything else (a terminal
+    // resume of the same id) may be a second writer, which harness.brief warns about.
+    const headless = Boolean(process.env.VYRE_THREAD) && process.env.VYRE_THREAD === h.session_id;
+    const r = await call("harness.brief", { ...base, ...scope, source: h.source, headless, ...(project ? { project } : {}) }, opts);
     if (r.data && r.data.text) answer(EVENT.brief, { additionalContext: r.data.text });
   } else if (piece === "enrich") {
     const r = await call("harness.enrich", { ...base, ...scope, prompt: String(h.prompt || "") }, opts);

@@ -110,7 +110,7 @@ async function until(fn, what, ms = 8000) {
   }
 }
 
-async function boot(t, { vault } = {}) {
+async function boot(t, { vault, probe } = {}) {
   const root = tempHome(t);
   const log = path.join(root, "claude.log");
   const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
@@ -124,6 +124,14 @@ async function boot(t, { vault } = {}) {
       export default { async start(ctx) {
         ctx.tool("vault.release", { internal: true, input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
           run: async ({ name }, { caller }) => { if (!caller.startsWith("module:")) throw new Error("modules only"); if (!(name in items)) throw new Error("no item " + name); return { value: items[name] }; } });
+        return { async stop() {} };
+      } };`);
+  }
+  if (probe) {
+    // Internal tools answer only modules: a module that asks threads.claimed for the test.
+    writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.claimed"] } }, `
+      export default { async start(ctx) {
+        ctx.tool("probe.claimed", { input: { type: "object" }, run: async ({ session }) => (await ctx.call("threads.claimed", { session })).data });
         return { async stop() {} };
       } };`);
   }
@@ -216,6 +224,34 @@ test("switchboard: a stopped thread's open question is closed, not left waiting"
   await until(() => of(s.got, id, "ask.answered")[0], "the ask closing");
   assert.equal(of(s.got, id, "ask.answered")[0].payload.decision, "cancelled");
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" })).data.answered, false);
+});
+
+test("switchboard: a terminal resume of a live headless thread is warned about, never blocked", async t => {
+  const { root, work, tool } = await boot(t, { probe: true });
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, surface: "deck:1" })).data.id;
+  assert.equal((await tool("threads.claimed", { session: id })).error.code, "no_such_tool", "internal: modules only");
+  assert.deepEqual((await tool("probe.claimed", { session: id })).data, { headless: true, holder: "deck:1", status: (await tool("threads.get", { thread: id })).data.thread.status });
+  assert.equal((await tool("probe.claimed", { session: "not-a-thread" })).data.headless, false);
+
+  // Our own child's SessionStart (headless true) is not a second writer.
+  const own = (await tool("harness.brief", { cwd: work, session: id, headless: true }, "harness")).data;
+  assert.doesNotMatch(own.text, /running headless/);
+  assert.equal(of(s.got, id, "thread.contended").length, 0);
+
+  // A terminal `claude --resume <id>`: the brief warns and the switchboard says so to every surface.
+  const term = (await tool("harness.brief", { cwd: work, session: id, headless: false }, "harness")).data;
+  assert.match(term.text, /^Warning from Vyre: this conversation is also running headless under Vyre right now \(holder: deck:1\)/);
+  assert.ok(term.text.includes(`vyre threads stop ${id.slice(0, 8)}`));
+  const ev = await until(() => of(s.got, id, "thread.contended")[0], "thread.contended");
+  assert.deepEqual(ev.payload, { thread: id, session: id, holder: "deck:1" });
+
+  await tool("threads.stop", { thread: id });
+  await until(() => of(s.got, id, "thread.stopped")[0], "thread.stopped");
+  assert.equal((await tool("probe.claimed", { session: id })).data.headless, false, "a stopped thread is nobody's writer");
+  assert.doesNotMatch((await tool("harness.brief", { cwd: work, session: id, headless: false }, "harness")).data.text, /running headless/);
+  assert.equal(of(s.got, id, "thread.contended").length, 1);
 });
 
 test("switchboard: vyred restarting marks its threads stopped", async t => {
