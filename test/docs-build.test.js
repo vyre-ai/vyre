@@ -289,8 +289,8 @@ test("build: a fixture tree produces the expected site", t => {
 
   const assets = fs.readdirSync(path.join(out, "assets")).sort();
   assert.equal(assets.length, 2);
-  assert.match(assets[0], /^docs\.[0-9a-f]{10}\.css$/);
-  assert.match(assets[1], /^docs\.[0-9a-f]{10}\.js$/);
+  assert.equal(assets.filter(a => /^docs\.[0-9a-f]{10}\.css$/.test(a)).length, 1, assets.join(" "));
+  assert.equal(assets.filter(a => /^docs\.[0-9a-f]{10}\.js$/.test(a)).length, 1, assets.join(" "));
 
   // Links: .md to pretty URLs on the HTML side, kept in the raw copy.
   const home = read("index.html");
