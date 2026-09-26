@@ -93,6 +93,8 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   const status = await page.tool("onboard.status");
   assert.equal(status.steps.history, "done");
   const fin = await page.tool("onboard.finish");
+  // box add waits for the first passkey before it asks to pair; the person makes it on their phone.
+  if (address) await rig.boxPasskey();
   assert.ok(fin.finished);
   assert.equal(fin.owner, "alex@example.com", "the login that signed the box in owns it");
 
