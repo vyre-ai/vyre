@@ -298,7 +298,13 @@ export class Registry {
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
     try { return { data: await def.run(input, { ...meta, caller }) }; }
-    catch (e) { return { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
+    catch (e) {
+      // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
+      // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".
+      const err = /** @type {any} */ (e);
+      const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
+      return { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } };
+    }
   }
 
   status() {

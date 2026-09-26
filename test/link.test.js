@@ -193,7 +193,7 @@ test("link: a device that is not the owner is refused, and a Mac cannot approve 
   // After pairing, a different login behind the same address is refused by the box.
   s.net.who = { login: "someone-else@example.com", node: "stranger", stableId: "nX" };
   const r = await s.macCall("link.call", { tool: "system.echo", input: { text: "x" } });
-  assert.equal(r.error.code, "failed");
+  assert.equal(r.error.code, "not_owner");
   assert.match(r.error.message, /does not recognise this device/);
   // And the Mac refuses a node other than the one it paired with.
   s.net.who = MAC;
