@@ -30,10 +30,17 @@ export const HUMAN_ONLY = new Set([
   "learn.accept", "learn.retire", "learn.relax", "learn.skill_install",
   // A person's hands on an agent's computer, and a new machine joined to this one.
   "computers.takeover", "computers.giveback", "link.pair.approve",
-  "presence.enroll", "presence.remove", "presence.code",
+  "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
 ]);
 
-export const METHODS = ["touchid", "tty", "capsule", "passkey", "code"];
+export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
+
+/**
+ * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
+ * one after another. The floor fixes this list; a tool must also say yes for the input at hand
+ * (`presence.session(input)`), so an item that asks every time never rides a session.
+ */
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
 
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
@@ -52,12 +59,27 @@ export const MIGRATIONS = [`
     expires INTEGER NOT NULL,
     used INTEGER
   );
+`, `
+  CREATE TABLE presence_sessions (
+    id TEXT PRIMARY KEY,
+    hash TEXT NOT NULL,
+    key_id TEXT,
+    method TEXT NOT NULL,
+    peer TEXT,
+    created INTEGER NOT NULL,
+    last_used INTEGER NOT NULL,
+    expires INTEGER NOT NULL
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
 const CAPSULE_SKEW = 60_000;
 const COOL_DOWN = 30_000;
 const CODE_TTL = 10 * 60_000;
+const SESSION_IDLE = 5 * 60_000;
+const SESSION_MAX = 30 * 60_000;
+/** The proofs strong enough to open a session: hardware or a key the model cannot read. */
+const SESSION_FROM = new Set(["touchid", "capsule", "passkey"]);
 const MAX_OPEN = 64;
 // No 0/O, 1/I/L: a code is read off a screen and typed by hand.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -107,6 +129,8 @@ const same = (a, b) => crypto.timingSafeEqual(sha(a), sha(b));
 const randomCode = n => Array.from({ length: n }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join("");
 /** Codes are typed by hand: case and spaces do not matter. */
 const normal = code => String(code || "").toUpperCase().replace(/[\s-]/g, "");
+/** The tailnet node a request came from, when a listener established one. */
+const peerId = peer => (peer && (peer.stableId || peer.node) ? String(peer.stableId || peer.node) : null);
 const spki = b64 => crypto.createPublicKey({ key: Buffer.from(String(b64), "base64url"), format: "der", type: "spki" });
 
 /** Load one of the helper modules lazily. Another file may not exist yet; a failed import is "unavailable". */
@@ -215,22 +239,22 @@ export class Presence {
   }
 
   /**
-   * Start a proof that needs one: tty writes a code to a login terminal, passkey hands back
-   * WebAuthn options. Returns { challenge, ... } or { error: { code, message } }.
-   * @param {{ tool: string, input: any, method: string, tty?: string, def?: any }} a
-   */
-  /**
    * A code on a login terminal proves a person only where a model cannot open a login terminal
    * of its own. On the box it can: the Mac it runs on usually holds SSH keys to the box. So on the
-   * box a terminal proves presence only to enroll the first passkey; after that, passkeys do.
+   * box a terminal proves presence only until the first passkey is enrolled (onboarding, and the
+   * first pairing); after that, passkeys do.
    * @param {string} [tool]
    */
   ttyAllowed(tool) {
     if (this.role !== "box") return true;
-    const any = this.db.prepare("SELECT 1 FROM presence_keys WHERE kind = 'passkey' LIMIT 1").get();
-    return !any && (tool === undefined || tool === "presence.enroll" || tool === "presence.code");
+    return !this.db.prepare("SELECT 1 FROM presence_keys WHERE kind = 'passkey' LIMIT 1").get();
   }
 
+  /**
+   * Start a proof that needs one: tty writes a code to a login terminal, passkey hands back
+   * WebAuthn options. Returns { challenge, ... } or { error: { code, message } }.
+   * @param {{ tool: string, input: any, method: string, tty?: string, def?: any }} a
+   */
   async challenge({ tool, input, method, tty, def }) {
     this.prune();
     if (this.challenges.size >= MAX_OPEN) return { error: { code: "denied", message: "too many presence challenges are open; wait for them to expire" } };
@@ -271,7 +295,7 @@ export class Presence {
    * the client could use instead.
    * @param {{ tool: string, input: any, caller: string, proof: any, def?: any }} a
    */
-  async verify({ tool, input, caller, proof, def }) {
+  async verify({ tool, input, caller, proof, def, peer = null }) {
     const method = proof && typeof proof.method === "string" ? proof.method : null;
     // A call with no proof is how a client learns what to offer, so only a failed proof is an event.
     const refuse = async message => {
@@ -357,6 +381,19 @@ export class Presence {
       return proved(row.id);
     }
 
+    if (method === "session") {
+      if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
+      const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
+      if (ok !== true) return refuse("this item needs its own proof every time");
+      const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));
+      const now = this.now();
+      if (!row || row.expires <= now || row.last_used + SESSION_IDLE <= now) return refuse("no such session, or it ended");
+      if (!same(sha(String(proof.secret || "")).toString("hex"), row.hash)) return refuse("that session secret is wrong");
+      if (row.peer && row.peer !== peerId(peer)) return refuse("that session belongs to another device");
+      this.db.prepare("UPDATE presence_sessions SET last_used = ? WHERE id = ?").run(now, row.id);
+      return proved(row.key_id);
+    }
+
     if (method === "code") {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey");
       const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
@@ -366,6 +403,26 @@ export class Presence {
     }
 
     return refuse(`unknown presence method ${method}`);
+  }
+
+  /**
+   * Open a short session after a strong proof. The secret is returned once and kept only as a
+   * hash; it lasts 5 minutes idle and 30 at most, and only on the device that opened it.
+   * @param {{ method?: string, keyId?: string|null, peer?: any }} proved how the opening call was proved
+   */
+  openSession({ method, keyId = null, peer = null } = {}) {
+    if (!method || !SESSION_FROM.has(method)) throw new Error("a session opens only after Touch ID, the Capsule or a passkey");
+    const now = this.now();
+    this.db.prepare("DELETE FROM presence_sessions WHERE expires <= ? OR last_used <= ?").run(now, now - SESSION_IDLE);
+    const id = b64url(12), secret = b64url(32);
+    this.db.prepare("INSERT INTO presence_sessions (id, hash, key_id, method, peer, created, last_used, expires) VALUES (?,?,?,?,?,?,?,?)")
+      .run(id, sha(secret).toString("hex"), keyId, method, peerId(peer), now, now, now + SESSION_MAX);
+    return { session: id, secret, expires: now + SESSION_MAX, idle: SESSION_IDLE };
+  }
+
+  /** @param {string} id */
+  closeSession(id) {
+    return Number(this.db.prepare("DELETE FROM presence_sessions WHERE id = ?").run(String(id)).changes) > 0;
   }
 
   /** A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. */

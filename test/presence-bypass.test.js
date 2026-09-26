@@ -167,3 +167,15 @@ test("bypass: the person's own routes still work, once each", async t => {
   const notLogin = await raw(b.socket, "/v1/presence/challenge", { tool: "gate.reject", input, method: "tty", tty: "/dev/ttys099" }, {});
   assert.equal(notLogin.status, 403, "a terminal who does not list, like a script pty, gets no code");
 });
+
+test("bypass: a presence session never approves, and only a strong proof opens one", async t => {
+  const b = await box(t);
+  const tty = await raw(b.socket, "/v1/tools/presence.session.open", {}, { "x-vyre-caller": "cli" });
+  assert.equal(tty.status, 403, "no proof, no session");
+  const opened = await raw(b.socket, "/v1/tools/presence.session.open", {}, { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("presence.session.open", {}) });
+  assert.equal(opened.status, 200, JSON.stringify(opened.body));
+  const { session, secret } = opened.body.data;
+  const r = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": `session id=${session} secret=${secret}` });
+  assert.equal(r.status, 403);
+  assert.equal(b.mail.got.length, 0);
+});

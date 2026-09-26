@@ -279,14 +279,39 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   assert.equal(reg.listTools().find(x => x.name === "chat.press").presence, undefined);
 });
 
-test("presence: on the box a terminal proves presence only to enroll the first passkey", async t => {
+test("presence: on the box a terminal proves presence only until the first passkey", async t => {
   const { p } = setup(t);
   p.role = "box";
-  assert.ok((await p.methods()).includes("tty"), "before any passkey, the terminal bootstraps one");
-  assert.equal((await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/pts/3" })).error.code, "denied", "never for an approval");
-  assert.equal((await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: "x", code: "y" } })).ok, false);
+  assert.ok((await p.methods()).includes("tty"), "before any passkey, the terminal is all there is");
   const ec = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
   p.enroll({ kind: "passkey", name: "Phone", public_key: ec, alg: -7, rp_id: "box.example.com", credential_id: "cred-0002" });
   assert.ok(!(await p.methods()).includes("tty"), "after one, passkeys only");
+  assert.equal((await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
   assert.equal((await p.challenge({ tool: "presence.enroll", input: {}, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
+  assert.equal((await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: "x", code: "y" } })).ok, false);
+});
+
+test("presence: a session proves reveal, copy and TOTP for a while, on one device, for items that allow it", async t => {
+  const { p, tick } = setup(t);
+  const def = { presence: { session: i => !i.reprompt } };
+  assert.throws(() => p.openSession({ method: "tty" }), /only after/);
+  const s = p.openSession({ method: "passkey", keyId: "cred-1", peer: { stableId: "phone" } });
+  const proof = { method: "session", id: s.session, secret: s.secret };
+  const reveal = { tool: "vault.reveal", input: { name: "bank" }, caller: "tailnet:me@example.com", def };
+  assert.deepEqual(await p.verify({ ...reveal, proof, peer: { stableId: "phone" } }), { ok: true, method: "session", keyId: "cred-1" });
+  assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "laptop" } })).ok, false, "another device");
+  assert.equal((await p.verify({ ...reveal, input: { name: "card", reprompt: true }, proof, peer: { stableId: "phone" } })).ok, false, "an item that asks every time");
+  assert.equal((await p.verify({ ...reveal, def: { presence: true }, proof, peer: { stableId: "phone" } })).ok, false, "a tool that did not say yes");
+  assert.equal((await p.verify({ ...APPROVE, def, proof, peer: { stableId: "phone" } })).ok, false, "never an approval");
+  assert.equal((await p.verify({ ...reveal, proof: { ...proof, secret: "wrong" }, peer: { stableId: "phone" } })).ok, false);
+  tick(6 * 60_000);
+  assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "phone" } })).ok, false, "idle too long");
+  const s2 = p.openSession({ method: "touchid" });
+  const proof2 = { method: "session", id: s2.session, secret: s2.secret };
+  for (let i = 0; i < 7; i++) { tick(4 * 60_000); assert.ok((await p.verify({ ...reveal, proof: proof2 })).ok, "kept alive " + i); }
+  tick(4 * 60_000);
+  assert.equal((await p.verify({ ...reveal, proof: proof2 })).ok, false, "30 minutes at most");
+  const s3 = p.openSession({ method: "capsule", keyId: "k1" });
+  assert.ok(p.closeSession(s3.session));
+  assert.equal((await p.verify({ ...reveal, proof: { method: "session", id: s3.session, secret: s3.secret } })).ok, false, "closed");
 });

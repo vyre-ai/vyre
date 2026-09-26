@@ -54,6 +54,22 @@ export default {
       run: async () => presence.mintCode(),
     });
 
+    ctx.tool("presence.session.open", {
+      description: "After one strong proof (Touch ID, the Capsule or a passkey), a secret that proves presence for revealing, copying and TOTP codes for 5 minutes idle, 30 at most, on this device only.",
+      presence: { summary: async () => "Keep revealing and copying vault items for up to 30 minutes on this device" },
+      input: obj({}),
+      run: async (_, meta) => {
+        if (!meta.presence) throw new Error("a session opens from a person's proof, not from a module");
+        return presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer });
+      },
+    });
+
+    ctx.tool("presence.session.close", {
+      description: "End a presence session now.",
+      input: obj({ session: str }, ["session"]),
+      run: async ({ session }) => ({ closed: presence.closeSession(session) }),
+    });
+
     return { async stop() {} };
   },
 };
