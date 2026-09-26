@@ -54,22 +54,31 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 
 ## How to rerun the shots (the test box)
 - `rsync -a --delete --exclude node_modules --exclude .git ./ the test box:~/vyre-ci/pwa/`
-- Chrome: `docker run -d --rm --name vyre-pwa-chrome --network host --shm-size=1g chromedp/headless-shell:latest --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1`
+- Chrome (connectors' shared install): `/usr/local/bin/vyre-chrome --headless=new --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/pwa-chrome-prof about:blank`
 - World: `cd ~/vyre-ci/pwa && VYRE_NO_DIALOGS=1 nice -n 15 node deck/test/world.js 4790`
 - `CDP=http://127.0.0.1:9422 node deck/test/pwa-shots.js http://127.0.0.1:4790 ~/vyre-ci/pwa-out`
-  (`ONLY=<regex>` for some screens). Stop the world and `docker stop vyre-pwa-chrome` after.
+  (`ONLY=<regex>` for some screens, `DESKTOP=1280x800,1440x900,2000x1100` adds desktop sizes,
+  `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
 ## Doing
-- Nothing running. Waiting on the lead to try it on the phone.
+- Nothing running (world and Chrome stopped). Waiting on the lead and the user's live try.
 
 ## Next
-- Wire the queue once capsule-now names it (composer.js `sendInput`, QUEUE SEAM comment).
+- Find: "@agent text" and "tell/watch <session>" commands, matching the native Capsule (asked mobile
+  for the grammar).
+- Step 6 Mac card: show "Already on your tailnet" for an online Mac node, as the phone card does.
+- threads.unqueue (withdraw) once capsule-now ships it.
 - See a live streamed reply in a browser: the world has no harness, so streaming is unit-level only.
 - Real iPhone check by the user: launch screens, push on the Home Screen app, Face ID passkey.
 - A monochrome badge icon for Android notifications (the colour icon shows as a white square).
 
 ## Needs from others
-- capsule-now: the queue-to-busy-session contract (tool and event names). Asked 2026-09-27.
+- polish-cli: add `vyre up --step <id>` (then Settings goes back to per-step commands) or not.
+- box: review the additive `onboard.status` detail.devices.peers and parsePeers (core/onboard).
+  Also onboard.finish sends auth {vault: "anthropic-api-key"} for an API key, which agents reads as
+  a subscription token (the assistant card sends {fallback: "anthropic-api-key"} instead).
+- presence: the first passkey on the phone for the box's real hostname (rpId), if onboarding made
+  it on 127.0.0.1.
 - link / files: the box cannot search the Mac's files (link carries Mac to box only). Find says
   "Files on your Mac show here when your Mac is online."
 - lead or e2e: confirm the phone's first passkey code comes from `vyre presence code` on the Mac
@@ -77,6 +86,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- onboard.status: detail.devices.peers [{name, dns, os, online, lastSeen}] (additive), parsePeers export.
+- docs/JOURNEY.md step 6 describes pairing the Mac and Add to Home Screen.
 - Tabs on the phone: Now, Projects, Chat, Find, Agents (Ask moved off the tab bar; /ask stays).
 - api.js exports `reachable` and fires `deck:reach` on window. No tool or event changes.
 - Now's first child on a phone may be the setup card (phone-setup.js).
