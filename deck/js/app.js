@@ -28,6 +28,7 @@ const ROUTES = [
   ["/memory", "memory"],
   ["/agents", "agents"],
   ["/agents/:name", "agents"],
+  ["/agents/:name/glass", "glass"],
   ["/vault", "vault"],
   ["/settings", "settings"],
   ["/ask", "ask"],

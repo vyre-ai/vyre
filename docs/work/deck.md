@@ -52,11 +52,19 @@ checked by screenshot against the boards.
 - Shell (header, search, rail, phone tab bar, router) and Now, live and against fixtures, at
   1440 and 390. PWA manifest, icons, service worker.
 
+- Projects, Memory, Agents, Vault, Settings, each live where its module is on main and against
+  fixtures otherwise, at 1440 and 390.
+- Phone views: `/needs/:id` (PhoneApprove, PhoneDraft), `/ask` (PhoneAsk); every view checked
+  for overflow at 360. `/agents/:name/glass` loads `deck/glass/` (computers stream).
+
 ## Doing
-- Projects, Memory, Agents, Vault, Settings (one subagent each).
+- Nothing; waiting on shapes from box, switchboard, vault and learning to switch fixtures to live.
 
 ## Next
-- The phone views at 360 px: approvals and drafts (`/needs/:id`), Ask, Glass later.
+- Switch each view to live tools as switchboard, box, vault, learning and gate merge; drop the
+  fixture fields that turn out different.
+- computers: Glass goes in `deck/glass/index.js` (default export is a view, same contract as
+  `deck/views/*.js`); the route and loader exist.
 
 ## Needs from others
 - box: `onboard.*` as assumed in `deck/fixtures/onboard.json` (sent 2026-09-26): `onboard.status`,
@@ -67,6 +75,11 @@ checked by screenshot against the boards.
 - main: `GET /v1/events/stream?since=latest` (or a way to read the newest event id), so a fresh
   Deck does not page the whole log to find where to start. vyred serves `.mjs` as
   octet-stream; `.js` works, so nothing is blocked.
+- vault: the Deck's writes are denied (caller `deck` not allowed on put, grant, pass.create,
+  offboard); item names cannot have spaces; `vault.usage` vs `vault.audit`. Sent 2026-09-26.
+- box: confirm the per-step `vyre` commands Settings shows (`vyre up --step <id>`).
+- switchboard: `agents.ask` returning `recalled` (answer, ms, sources), `agents.history`,
+  `computers.*` shapes (`computers.get`, `restart`, `limits`), `watchers.list/pause` shapes.
 - main: `deck/**/*.test.js` is outside the `npm test` globs; if the Deck gets unit tests, add it.
 
 ## Changed contracts

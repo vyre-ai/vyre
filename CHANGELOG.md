@@ -44,6 +44,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - **Settings**: every onboarding step with its state and a way to finish it, the assistant,
   Claude Code and network status, history and memory with re-index and rebuild, lessons from
   Learning with edit and retire, the modules vyred runs, dark or paper, and this machine.
+- **Phone views**, checked at 360 and 390 px: one held item full screen (`/needs/:id`), either a
+  question with what it changes and Allow once / Always in this project / Deny, or a draft held
+  at the Gate with its recipient, subject, the words that came from memory numbered against their
+  sources, and Send / Edit / Discard fixed above the tab bar. **Ask** (`/ask`) talks to the
+  assistant or any agent with @-chips, and shows an answer that came from memory as memory, with
+  its sources and the time it took, and an "Ask a model" to go further. Every view fits 360 px
+  without sideways scrolling.
+- `/agents/:name/glass` loads Glass from `deck/glass/`, which the computers workstream builds, and
+  says plainly that it is not here until then.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.

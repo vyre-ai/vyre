@@ -84,19 +84,85 @@
     "cases": {
       "juno": {
         "thread": "t-juno-intake-summary",
-        "project": "harlow-legal"
+        "project": "harlow-legal",
+        "recalled": {
+          "answer": "Before the Harlow partners meet on Monday 29 Sep at 10:00.",
+          "ms": 200,
+          "sources": [
+            {
+              "text": "\"Can we have it before the partners meet Monday?\"",
+              "thread": "t-juno-intake-summary",
+              "threadName": "Q3 report",
+              "who": "Dana",
+              "at": "$ago:8d",
+              "project": "harlow-legal"
+            },
+            {
+              "text": "Harlow partners meeting, Mon 29 Sep, 10:00",
+              "threadName": "Calendar",
+              "who": "Harlow Legal"
+            }
+          ]
+        },
+        "answer": "Dana asked for the Q3 report before the Harlow partners meet on Monday 29 Sep at 10:00. I would send it by Friday so Theo has the weekend to read it."
       },
       "kit": {
         "thread": "t-kit-hero",
-        "project": "launch-site"
+        "project": "launch-site",
+        "answer": "The Launch site hero is drafted. I left two headline options in the thread for you to pick."
       },
       "pax": {
         "thread": "t-pax-invoices",
-        "project": "northwind-bakery"
+        "project": "northwind-bakery",
+        "answer": "Two invoices came in overnight. I filed both under Northwind Bakery; the week's total goes out on Friday."
       },
       "*": {
         "thread": "t-new"
       }
     }
-  }
+  },
+  "agents.history": [
+    {
+      "at": "$ago:1d",
+      "agent": "kit",
+      "text": "How did the Northwind spring ads do?",
+      "answer": "They reached 4,100 people for 180 dollars. The sourdough ad brought most of the clicks.",
+      "thread": "t-kit-hero",
+      "project": "launch-site"
+    },
+    {
+      "at": "$ago:5h",
+      "agent": "pax",
+      "text": "What came in overnight for Northwind?",
+      "answer": "Two invoices and one refund request. I filed the invoices and held the refund for you to approve.",
+      "thread": "t-pax-invoices",
+      "project": "northwind-bakery"
+    },
+    {
+      "at": "$ago:12m",
+      "agent": "juno",
+      "text": "When does Dana need the Q3 report?",
+      "thread": "t-juno-intake-summary",
+      "project": "harlow-legal",
+      "recalled": {
+        "answer": "Before the Harlow partners meet on Monday 29 Sep at 10:00.",
+        "ms": 200,
+        "sources": [
+          {
+            "text": "\"Can we have it before the partners meet Monday?\"",
+            "thread": "t-juno-intake-summary",
+            "threadName": "Q3 report",
+            "who": "Dana",
+            "at": "$ago:8d",
+            "project": "harlow-legal"
+          },
+          {
+            "text": "Harlow partners meeting, Mon 29 Sep, 10:00",
+            "threadName": "Calendar",
+            "who": "Harlow Legal"
+          }
+        ]
+      }
+    }
+  ]
 }
