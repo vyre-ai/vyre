@@ -32,12 +32,16 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `modules.disable` | `string[]` | `[]` | Modules never to start. |
 | `network` | `object` | see [network](#network) | How this machine is reached. See [Tailscale](../using/tailscale.md). |
 | `onboard` | `any` | unset | Onboarding's own settings. |
+| `glass` | `{ roots?: string[], egress: { enabled: boolean, sites: string[] } }` | none | Not described yet. |
+| `computers` | `{ tailnet: { enabled: boolean, tag: string }, [k: string]: any }` | none | Not described yet. |
+| `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |
+| `theme` | `{ colors?: { dark?: Record<string, string>, light?: Record<string, string> } }` | unset | Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`. |
 
 ### network
 
 | Key | Type | Default | What it is for |
 | --- | --- | --- | --- |
-| `network.tailscale` | `boolean` | `false` | Whether this machine serves over Tailscale. |
+| `network.tailscale` | `boolean` | none | Whether this machine serves over Tailscale. |
 | `network.address` | `string` | unset | The https URL the Deck is served at. |
 | `network.owner` | `string` | unset | The one Tailscale login this box serves (ADR 0002). Set by `vyre owner`. |
 | `network.domain` | `string` | unset | The domain the box's name is under. |
@@ -47,6 +51,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `network.box` | `string` | unset | On a Mac: the address of the box it is paired with. |
 | `network.onboardPort` | `number` | unset | The loopback port onboarding listens on. 7300 when unset. |
 | `network.ownerSeen` | `string` | unset | When the owner was first seen on the tailnet. Written by Vyre. |
+| `network.guests` | `{ enabled: boolean, people: Record<string, { tools: string[] }> }` | unset | Not described yet. |
 
 Modules keep their own settings under a key named after them (`vault`, `recall`, `learn`, and so on). Their pages describe them.
 
@@ -65,6 +70,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |
 | `VYRE_CAPSULE_DRIVE` | In a development build, lets a script drive the Capsule. | `local/capsule/app/main.js` |
 | `VYRE_CAPSULE_LOG` | Writes the Capsule's log to stdout from a packaged build. | `local/capsule/app/main.js` |
+| `VYRE_CAPSULE_STAY` | Not described yet. | `local/capsule/app/main.js` |
 | `VYRE_CAPSULE_TRACE_WAKE` | Times each wake of the Capsule. | `local/capsule/app/main.js` |
 | `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
 | `VYRE_CLOUDFLARE_API` | The Cloudflare API base URL, in place of the real one. | `core/names/index.js` |
@@ -72,16 +78,19 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_LABEL_PREFIX` | The label prefix that marks Vyre's containers. Default `run.vyre.computers`. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_NETWORK` | The Docker network agent computers join. Default `vyre-computers`. | `core/dockerproxy/main.js` |
+| `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
 | `VYRE_DOWNLOAD_BASE` | Where `vyre capsule install` downloads the app from. | `core/cli/commands/capsule-install.js` |
+| `VYRE_EGRESS_PROXY` | Not described yet. | `core/computers/egress.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
-| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/switchboard/index.js`, `local/capsule/app/main.js`, `local/capsule/lib/bridge.js`, `local/capsule/lib/dialogs.js`, `local/capsule/lib/vyred.js` |
+| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/capsule/app/main.js`, `local/capsule/lib/bridge.js`, `local/capsule/lib/dialogs.js`, `local/capsule/lib/vyred.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/box.js`, `core/cli/commands/up.js` |
+| `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `core/cli/commands/up.js`, `core/daemon/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/transport.js` |
@@ -100,7 +109,8 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_AGENT_KEY` | The key that proves a thread's calls come from its agent. | `core/daemon/client.js`, `core/switchboard/index.js` |
 | `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_CAPSULE_BIN` | The folder holding the Capsule's native helpers. | `local/capsule/app/main.js` |
-| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `local/capsule/lib/dialogs.js` |
+| `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
+| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/capsule/lib/dialogs.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
@@ -111,5 +121,5 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `local/capsule/lib/dialogs.js` |
+| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `core/files/drive.js`, `local/capsule/lib/dialogs.js` |
 | `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js` |

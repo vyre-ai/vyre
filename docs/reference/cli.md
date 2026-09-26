@@ -29,7 +29,7 @@ In the order `vyre help` lists them.
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
 | [`vyre open`](#vyre-open) | a project: what its threads are told, and its threads |
 | [`vyre threads`](#vyre-threads) | headless threads vyred runs: start, send, list, watch, lease, release, asks, answer, stop (anything else searches sessions) |
-| [`vyre threads`](#vyre-threads-1) | every session on this machine, searched by what was said (--project, --all) |
+| [`vyre threads`](#vyre-threads-1) | every session on this machine, searched by what was said |
 | [`vyre resume`](#vyre-resume) | open a thread in Claude Code where it ran, with its project's brief (--project, --name) |
 | [`vyre start`](#vyre-start) | a new thread in this folder's project, with its brief (--project) |
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
@@ -43,7 +43,12 @@ In the order `vyre help` lists them.
 | [`vyre learn`](#vyre-learn) | the lessons Vyre learned from you, and what it proposed |
 | [`vyre vault`](#vyre-vault) | credentials, sealed; shared by pass; used without being seen |
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
+| [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
+| [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
+| [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
+| [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -57,7 +62,7 @@ In the order `vyre help` lists them.
 Start vyred and print the onboarding link, or this box's address.
 
 ```
-vyre up [--box|--connect <addr>] [--json] [--no-capsule]
+vyre up [--box|--connect <addr>] [--json] [--no-capsule] [--keep-link]
 ```
 
 ### vyre down
@@ -73,7 +78,7 @@ vyre down
 Put Vyre on a server from this Mac, and look after it.
 
 ```
-vyre box [add|update|backup|move|remove]
+vyre box [status|add|update|backup|move|remove] [--json]
 ```
 
 ### vyre status
@@ -81,7 +86,7 @@ vyre box [add|update|backup|move|remove]
 Is it running, and what is it running.
 
 ```
-vyre status
+vyre status [--json]
 ```
 
 ### vyre projects
@@ -89,7 +94,7 @@ vyre status
 Every project.
 
 ```
-vyre projects
+vyre projects [--json]
 ```
 
 ### vyre recall
@@ -97,15 +102,20 @@ vyre projects
 Search every session for what was said (vyre recall eval <file> to measure it).
 
 ```
-vyre recall <query>
+vyre recall <query> [--limit n] [--here] [--json]
 ```
+
+--user or --assistant: only what that side said · --keyword: no vectors
+vyre recall with no query: how much is indexed
+vyre recall --setup: install the search model now (it installs itself on first use)
+vyre recall eval <labelled.json> [--k 10]: measure search against a labelled set
 
 ### vyre index
 
 Index new and changed sessions now.
 
 ```
-vyre index
+vyre index [--json]
 ```
 
 ### vyre new
@@ -121,7 +131,7 @@ vyre new [name]
 A project: what its threads are told, and its threads.
 
 ```
-vyre open <project>
+vyre open <project> [--json]
 ```
 
 ### vyre threads
@@ -129,15 +139,15 @@ vyre open <project>
 Headless threads vyred runs: start, send, list, watch, lease, release, asks, answer, stop (anything else searches sessions).
 
 ```
-vyre threads start|send|watch|answer|stop …
+vyre threads start|send|watch|answer|stop … [--json]
 ```
 
 ### vyre threads
 
-Every session on this machine, searched by what was said (--project, --all).
+Every session on this machine, searched by what was said.
 
 ```
-vyre threads [search]
+vyre threads [search] [--project p] [--all] [--json]
 ```
 
 ### vyre resume
@@ -161,7 +171,7 @@ vyre start [name]
 What a new thread in a project is told.
 
 ```
-vyre context [project]
+vyre context [project] [--json]
 ```
 
 ### vyre pick
@@ -185,7 +195,7 @@ vyre unpick <project> <thread>...
 Agents: list, create, update, ask, threads, usage, stop, delete.
 
 ```
-vyre agents [create|update|ask|threads|usage|stop|delete] …
+vyre agents [list|create|update|ask|threads|usage|stop|delete] … [--json]
 ```
 
 ### vyre capsule
@@ -201,15 +211,24 @@ vyre capsule [--dev] | build [--app] | install
 What memory holds, or everything about one thing.
 
 ```
-vyre memory [about] [--project <slug>] · correct|corrections|uncorrect|merge|split|pin|mute
+vyre memory [about] [--project <slug>] [--json]
 ```
+
+Change what it holds:
+  vyre memory correct <fact> wrong|ended|replace|confirm [new object] [--at <date>] [--note <why>] [--project <slug>]
+  vyre memory correct '<subject>|<rel>|<object>' add [--project <slug>]
+  vyre memory corrections [--all] · vyre memory uncorrect <id>
+  vyre memory merge <node> <into>
+  vyre memory split <node> --project <slug>   (that project's one is someone else)
+  vyre memory split <node> <other>             (keep two nodes apart)
+  vyre memory pin|mute <node> [--off]
 
 ### vyre name
 
 This box's address: <you>.vyre.run.
 
 ```
-vyre name [check <n>|claim <n>|ts.net|release]
+vyre name [check <n>|claim <n>|ts.net|release] [--json]
 ```
 
 ### vyre why
@@ -217,7 +236,7 @@ vyre name [check <n>|claim <n>|ts.net|release]
 The turns a fact came from.
 
 ```
-vyre why <fact> [--project <slug>]
+vyre why <fact> [--project <slug>] [--json]
 ```
 
 ### vyre learn
@@ -225,7 +244,7 @@ vyre why <fact> [--project <slug>]
 The lessons Vyre learned from you, and what it proposed.
 
 ```
-vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills]
+vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills] [--json]
 ```
 
 Also: `vyre lessons`.
@@ -243,7 +262,23 @@ vyre vault <command>
 What the watchers are doing, and turning them on and off.
 
 ```
-vyre watchers [test|create|pause|resume|logs|items] [name]
+vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]
+```
+
+### vyre connect
+
+MCP servers and Google accounts Vyre can reach for you.
+
+```
+vyre connect list|add|remove|test
+```
+
+### vyre hooks
+
+Webhooks from the internet through Funnel, one route at a time.
+
+```
+vyre hooks [status|on|off|open|close] [name]
 ```
 
 ### vyre link
@@ -251,7 +286,31 @@ vyre watchers [test|create|pause|resume|logs|items] [name]
 Pair this Mac with your box, or approve a Mac on the box.
 
 ```
-vyre link [pair|approve|deny|unpair]
+vyre link [pair|approve|deny|unpair] [--json]
+```
+
+### vyre send
+
+Send files from this Mac to your box with Taildrop.
+
+```
+vyre send <file> [more files]
+```
+
+### vyre statusline
+
+Vyre's line under every Claude Code session.
+
+```
+vyre statusline [install|uninstall]
+```
+
+### vyre mcp
+
+The Vyre MCP server on stdio, for plain claude.
+
+```
+vyre mcp [install [--yes]]
 ```
 
 ### vyre backup
@@ -267,7 +326,7 @@ vyre backup [file]
 The keys that prove you are here, and a code to enroll a passkey.
 
 ```
-vyre presence [keys|code|remove <id>]
+vyre presence [keys|code|remove <id>] [--json]
 ```
 
 ### vyre modules
@@ -275,7 +334,7 @@ vyre presence [keys|code|remove <id>]
 Every module and whether it started.
 
 ```
-vyre modules
+vyre modules [--json]
 ```
 
 ### vyre tools
@@ -283,7 +342,7 @@ vyre modules
 Every tool Claude and the surfaces can call.
 
 ```
-vyre tools
+vyre tools [--json]
 ```
 
 ### vyre call
@@ -293,6 +352,9 @@ Run any tool, e.g. vyre call system.echo '{"text":"hi"}'.
 ```
 vyre call [--tty] <tool> [json]
 ```
+
+Prints the tool's data as JSON. A tool that needs you (approving a draft, answering an ask)
+asks you to prove you are here first: Touch ID, or with --tty a code typed back.
 
 ### vyre help
 

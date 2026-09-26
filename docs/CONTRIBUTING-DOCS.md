@@ -190,7 +190,8 @@ Shots are taken, not drawn. `npm run docs:shots` (on the test box, never the Mac
 world in a temp home and captures every shot listed in `scripts/lib/docs/shots.js`, in light and
 dark, with `CHROME` pointing at a headless Chrome. Each entry there names the source files the
 shot shows. `docs/shots.json` records a hash of those files at capture time, and docs-check fails a
-shot once any of them changes, so a screen that moved on gets retaken. To add a shot, add an entry
+shot once any of them changes, so a screen that moved on gets retaken before the next deploy.
+`npm test` only notes stale shots, so a Deck change never turns another team's suite red. To add a shot, add an entry
 to `shots.js`, run `npm run docs:shots -- --only <name>`, and put it on the page. Command output
 is text, not a picture: paste it into an `output` block (`npm run docs:shots -- --cli` prints the
 real output of the common commands from the sample world).
