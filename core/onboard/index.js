@@ -10,8 +10,12 @@ import os from "node:os";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
+import { setupToken } from "./setup-token.js";
 
-export const STEPS = ["you", "claude", "tailscale", "address", "history", "devices"];
+export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
+/** names phases, in order; the page shows them as reserve, dns and cert rows. */
+const PHASES = ["idle", "dns", "certificate", "serving"];
+const ROWS = ["reserve", "dns", "cert"];
 const MAC_DOWNLOAD = "https://vyre.run/download/mac";
 const CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code";
 // Prefixes only; a real value never appears in code, logs or events.
@@ -43,6 +47,8 @@ export default {
     const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m) });
     let claimUrl = null;
     let indexing = null;
+    let lastPhase = "idle";
+    const signin = setupToken();
     /** @type {Record<string, string>} */
     let lastStates = {};
 
@@ -59,9 +65,11 @@ export default {
       const n = names.__error ? null : names;
       const t = n && n.tailscale;
 
-      const you = { state: ctx.config.name ? "done" : "todo", why: null, name: ctx.config.name || null };
+      const you = { state: ctx.config.name ? "done" : "todo", why: null, name: ctx.config.name || null, assistant: ob().assistant || null };
 
-      const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth: ob().claude || null };
+      const auth = ob().claude || null;
+      const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth,
+        signedIn: Boolean(auth), via: auth === "api-key" ? "api-key" : auth ? "setup-token" : null };
       if (claude.auth) claude.state = "done";
       else if (!version) Object.assign(claude, { state: "blocked", why: "Claude Code is not installed on this machine" });
 
@@ -70,7 +78,8 @@ export default {
       if (!t) Object.assign(tailscale, { state: "blocked", why: names.__error || "Tailscale status is unavailable" });
       else {
         Object.assign(tailscale, { installed: t.installed, install: t.install, backend: t.backend, loginUrl: t.loginUrl,
-          operator: t.operator || tailscale.operator, node: t.node && { name: t.node.name, dnsName: t.node.dnsName, ips: t.node.ips } });
+          operator: t.operator || tailscale.operator,
+          node: t.node && { name: t.node.name, dnsName: t.node.dnsName, ips: t.node.ips, dns: t.node.dnsName, ip: (t.node.ips || []).find(a => a.includes(".")) || null } });
         if (!t.installed) Object.assign(tailscale, { state: "blocked", why: "Tailscale is not installed" });
         else if (!tailscale.operator.ok) Object.assign(tailscale, { state: "blocked", why: "Vyre may not sign this machine in to Tailscale yet" });
         else if (t.running && !t.tun) Object.assign(tailscale, { state: "blocked", why: "Tailscale runs in userspace networking mode; Vyre needs its network interface" });
@@ -96,7 +105,7 @@ export default {
       if (!r) Object.assign(history, { state: "blocked", why: recall.__error });
       else {
         const cat = await tryCall("projects.catalog", { limit: 100000 });
-        history.sessions = Math.max(Array.isArray(cat) ? cat.length : 0, history.indexed);
+        history.sessions = Math.max(cat.__error ? 0 : Number(cat.total) || 0, history.indexed);
         if (history.running) history.state = "working";
         else if (history.sessions === 0) Object.assign(history, { state: "done", why: "no Claude Code sessions on this machine yet" });
         else if (ob().history && history.indexed >= history.sessions) history.state = "done";
@@ -104,19 +113,32 @@ export default {
 
       const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD };
 
-      const steps = { you: mark("you", you), claude: mark("claude", claude), tailscale: mark("tailscale", tailscale),
-        address: mark("address", address), history: mark("history", history), devices: mark("devices", devices) };
+      // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
+      // steps: the page's view of it, todo, done or skipped.
+      const detail = { you: mark("you", you), claude: mark("claude", claude), tailscale: mark("tailscale", tailscale),
+        name: mark("name", address), history: mark("history", history), devices: mark("devices", devices) };
       for (const k of STEPS) {
-        if (lastStates[k] && lastStates[k] !== steps[k].state) ctx.events.emit("onboard.stepped", { step: k, state: steps[k].state });
+        if (lastStates[k] && lastStates[k] !== detail[k].state) ctx.events.emit("onboard.stepped", { step: k, state: detail[k].state });
       }
-      lastStates = Object.fromEntries(STEPS.map(k => [k, steps[k].state]));
-      const current = STEPS.find(k => !["done", "skipped"].includes(steps[k].state)) || null;
+      lastStates = Object.fromEntries(STEPS.map(k => [k, detail[k].state]));
+      const steps = Object.fromEntries(STEPS.map(k => [k, ["done", "skipped"].includes(detail[k].state) ? detail[k].state : "todo"]));
+      const current = STEPS.find(k => steps[k] === "todo") || null;
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       return { mode, role: ctx.config.role, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
-        current, finished: Boolean(ob().finished), steps };
+        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, assistant: ob().assistant || null,
+        current, finished: Boolean(ob().finished), steps, detail };
     }
 
-    const stepOf = async (k, caller) => (await status(caller)).steps[k];
+    const stepOf = async (k, caller) => (await status(caller)).detail[k];
+    /** The address step as progress rows (reserve, dns, cert), and its url once it serves. */
+    const progress = s => {
+      if (s.phase !== "failed") lastPhase = s.phase;
+      const failed = s.phase === "failed", i = Math.min(PHASES.indexOf(failed ? lastPhase : s.phase), failed ? 2 : 3);
+      const steps = ROWS.map((id, j) => ({ id, state: j < i ? "done" : j > i ? "todo" : failed ? "failed" : i === 0 ? "todo" : "doing", note: failed && j === i ? s.why : null }));
+      return { ...s, steps, url: s.phase === "serving" ? s.address : null };
+    };
+    /** Tailscale as the page reads it: state is off, needs-login or connected; the step's own state is `step`. */
+    const link = s => ({ ...s, step: s.state, state: s.state === "done" ? "connected" : s.loginUrl ? "needs-login" : "off" });
 
     ctx.tool("onboard.status", {
       description: "Where the onboarding stands: every step's state and what it needs.",
@@ -124,9 +146,22 @@ export default {
       run: async (_, { caller }) => status(caller),
     });
 
+    ctx.tool("onboard.you", {
+      description: "Step 1: your name, checked like onboard.name and saved, and your assistant's name.",
+      input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
+      run: async ({ name, assistant }, { caller }) => {
+        const a = String(assistant ?? "").trim();
+        if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
+        const c = await call("names.check", { name });
+        if (!c.valid || !c.available) throw new Error(`${c.name}.vyre.run cannot be yours: ${c.why || "someone else has that name"}`);
+        save({ name: c.name, ...(a ? { onboard: { assistant: a } } : {}) });
+        return stepOf("you", caller);
+      },
+    });
+
     ctx.tool("onboard.name", {
-      description: "Step 1 checks <name>.vyre.run and saves it; step 4 claims it (DNS and certificate) or falls back to the ts.net name.",
-      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "claim", "ts.net"] } }),
+      description: "Step 1 checks <name>.vyre.run and saves it; step 4 reserves it (DNS and certificate, as progress rows) or falls back to the ts.net name.",
+      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] } }),
       run: async ({ name, action = "check" }, { caller }) => {
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
@@ -135,15 +170,22 @@ export default {
           await status(caller);
           return c;
         }
-        await call(action === "claim" ? "names.claim" : "names.fallback", action === "claim" && name ? { name } : {});
-        return stepOf("address", caller);
+        if (action !== "status") await call(action === "ts.net" ? "names.fallback" : "names.claim", action !== "ts.net" && name ? { name } : {});
+        return progress(await stepOf("name", caller));
       },
     });
 
     ctx.tool("onboard.claude", {
-      description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned.",
-      input: obj({ action: { type: "string", enum: ["status"] }, kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
-      run: async ({ kind, token }, { caller }) => {
+      description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
+      input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
+        kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
+      run: async ({ mode, key, code, kind, token }, { caller }) => {
+        if (mode === "setup-token" && !key && !token) {
+          if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
+          [kind, token] = ["subscription", await signin.finish(code)];
+        }
+        kind ||= mode === "api-key" ? "api-key" : mode === "setup-token" ? "subscription" : undefined;
+        token ??= key;
         if (kind) {
           const t = String(token || "").trim();
           if (!t.startsWith(PREFIX[kind]) || t.length < 40 || /\s/.test(t)) {
@@ -152,23 +194,22 @@ export default {
           await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t, grants: CREDENTIAL_READERS });
           save({ onboard: { claude: kind } });
         }
-        return stepOf("claude", caller);
+        return { ...(await stepOf("claude", caller)), url: null, needsCode: signin.active() };
       },
     });
 
     ctx.tool("onboard.tailscale", {
       description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link.",
-      input: obj({ action: { type: "string", enum: ["status", "connect"] } }),
+      input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect"] } }),
       run: async ({ action = "status" }, { caller }) => {
         if (action === "connect") {
           const s = await stepOf("tailscale", caller);
-          if (s.state === "done") return s;
-          if (!s.installed || !s.operator.ok) return s;
+          if (s.state === "done" || !s.installed || !s.operator.ok) return link(s);
           const r = await call("names.connect");
           const after = await stepOf("tailscale", caller);
-          return { ...after, loginUrl: after.loginUrl || r.loginUrl || null };
+          return link({ ...after, loginUrl: after.loginUrl || r.loginUrl || null });
         }
-        return stepOf("tailscale", caller);
+        return link(await stepOf("tailscale", caller));
       },
     });
 
@@ -200,7 +241,8 @@ export default {
         save({ onboard: { finished: new Date().toISOString() } });
         ctx.events.emit("onboard.finished", {});
         if (net().ownerSeen) await lb.close();
-        return status(caller);
+        const s = await status(caller);
+        return { ...s, url: s.address };
       },
     });
 
@@ -217,6 +259,6 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); await lb.close(); await indexing; } };
+    return { async stop() { if (typeof off === "function") off(); signin.stop(); await lb.close(); await indexing; } };
   },
 };

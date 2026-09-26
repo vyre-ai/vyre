@@ -7,12 +7,12 @@
 // across every port of 127.0.0.1, so any other local web server the person visits would get it.
 // It travels in the redirect's fragment (never sent to a server), the page keeps it in memory
 // and sends it as the x-vyre-onboard header, or as ?s= on the event stream, which cannot set
-// headers. The page's own files carry nothing secret and are served to anyone on loopback. The
-// listener closes for good once the owner has been seen on the tailnet.
+// headers. The page's own files, and the Deck's shared css, js and vendor files it loads, carry
+// nothing secret and are served to anyone on loopback. The listener closes for good once the
+// owner has been seen on the tailnet.
 
 import crypto from "node:crypto";
 import http from "node:http";
-import os from "node:os";
 
 const HOUR = 3_600_000;
 const SESSION = 12 * HOUR;
@@ -20,25 +20,23 @@ const HEADER = "x-vyre-onboard";
 const sha = s => crypto.createHash("sha256").update(String(s)).digest("hex");
 
 /** The tools the onboarding page may call. onboard.link is not one: only the socket mints links. */
-export const TOOLS = new Set(["onboard.status", "onboard.name", "onboard.claude", "onboard.tailscale", "onboard.history",
-  "onboard.skip", "onboard.finish", "projects.catalog", "projects.create", "recall.status"]);
+export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.name", "onboard.claude", "onboard.tailscale", "onboard.history",
+  "onboard.skip", "onboard.finish", "projects.catalog", "projects.create", "projects.list", "recall.status"]);
 
 const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");
+/** The Deck's shared files the onboarding page loads: static, the same for everyone. */
+const assetPath = p => /^\/(css|js|vendor)\/[\w./-]+$/.test(p) && !p.includes("..") || p === "/icon.svg";
 const TAILNET4 = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./;
 
 /**
  * Where the listener binds. On a host, 127.0.0.1. In the box's container the port is published
- * from the host's loopback by Docker, which forwards to the container's own network address,
- * never to its 127.0.0.1; so there it binds that address (not 0.0.0.0, which would include the
- * tailnet interface), and the person still reaches it as 127.0.0.1 through `ssh -L`.
+ * from the host's loopback by Docker, which forwards to the container's address on the `vyre`
+ * network, never to its 127.0.0.1. So there VYRE_ONBOARD_HOST names that address by the
+ * container's alias on the network (`vyred`), not 0.0.0.0, which would include the tailnet
+ * interface; the person still reaches it as 127.0.0.1 through `ssh -L`.
  */
-export function bindAddress(mode = process.env.VYRE_ONBOARD_HOST, ifaces = os.networkInterfaces()) {
-  if (mode !== "container") return "127.0.0.1";
-  for (const [name, list] of Object.entries(ifaces)) {
-    if (name === "lo" || name.startsWith("tailscale")) continue;
-    for (const a of list || []) if (a.family === "IPv4" && !a.internal && !TAILNET4.test(a.address)) return a.address;
-  }
-  throw new Error("no container network address to bind the onboarding listener to");
+export function bindAddress(env = process.env) {
+  return env.VYRE_ONBOARD_HOST || "127.0.0.1";
 }
 
 /**
@@ -54,7 +52,7 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
   const sessions = new Map();
   const handle = handler({
     tool: n => TOOLS.has(n),
-    path: (m, p) => (m === "GET" && onboardPath(p)) || (m === "POST" && p.startsWith("/v1/tools/")) || (m === "GET" && p === "/v1/events/stream"),
+    path: (m, p) => (m === "GET" && (onboardPath(p) || assetPath(p))) || (m === "POST" && p.startsWith("/v1/tools/")) || (m === "GET" && p === "/v1/events/stream"),
     eventType: "onboard.*",
     headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
   });
@@ -89,7 +87,7 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
       return res.end();
     }
     if (req.method === "GET" && url.pathname === "/") { res.writeHead(302, { location: "/onboard" }); return res.end(); }
-    if (req.method === "GET" && onboardPath(url.pathname)) return handle(req, res, "onboard");
+    if (req.method === "GET" && (onboardPath(url.pathname) || assetPath(url.pathname))) return handle(req, res, "onboard");
     if (!session(req, url)) return json(res, 403, "denied", "Open the link `vyre up` printed on the box.");
     if (req.method === "POST") {
       // Same-origin fetches send JSON and a loopback Origin; a form from another page cannot.
@@ -104,7 +102,13 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
     return new Promise((resolve, reject) => {
       const s = http.createServer((req, res) => { onRequest(req, res).catch(e => json(res, 500, "internal", e.message)); });
       s.once("error", reject);
-      s.listen(p, host, () => { s.off("error", reject); resolve(s); });
+      s.listen(p, host, () => {
+        s.off("error", reject);
+        // A name that resolved to the tailnet would open onboarding to every device on it.
+        const a = /** @type {any} */ (s.address()).address;
+        if (TAILNET4.test(a) || /^fd7a:115c:a1e0:/i.test(a)) { s.close(); return reject(new Error(`${host} is a tailnet address (${a}); onboarding stays off the tailnet`)); }
+        resolve(s);
+      });
     });
   }
 
