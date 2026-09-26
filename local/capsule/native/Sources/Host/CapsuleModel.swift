@@ -51,6 +51,8 @@ public final class CapsuleModel: ObservableObject {
     let home: String
     /// The threads the Capsule holds, released and stopped on hide (Agent/Keeper.swift).
     lazy var keeper = Keeper(vyred: vyred)
+    /// Each agent's threads, for where @agent sends (Agent/Destinations.swift).
+    lazy var routes = RouteCache()
     /// What waits on the user and the card that answers it (Agent/Desk.swift).
     public lazy var desk: Desk = {
         let d = Desk(vyred: vyred)
@@ -135,7 +137,7 @@ public final class CapsuleModel: ObservableObject {
         }
         if target != nil {
             recallTask?.cancel(); memory = nil
-            groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: [askItem(q)])]
+            groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: askItems(q))]
             selected = 0
             return
         }
@@ -165,6 +167,7 @@ public final class CapsuleModel: ObservableObject {
         var all = partial.values.flatMap { $0 }
         for i in all.indices { all[i].score += frecency.boost(all[i].id, query: q.normalized) }
         all.sort { $0.score > $1.score }
+        let best = all.first { $0.section != .answer }
         var out: [Group] = []
         if let top = all.first, top.score >= 0.6, top.section != .answer {
             out.append(Group(section: .top, items: [top]))
@@ -177,7 +180,10 @@ public final class CapsuleModel: ObservableObject {
         }
         // Answers (calc) sit first: they are what the user typed, worked out.
         if let i = out.firstIndex(where: { $0.section == .answer }), i != 0 { out.insert(out.remove(at: i), at: 0) }
-        out.append(Group(section: .vyre, items: [askItem(q)]))
+        // Where the words go (Agent/Destinations.swift): first for a question nothing here answers,
+        // or with a chip or an answer on screen; last otherwise.
+        let asks = Group(section: .vyre, items: askItems(q))
+        if asksFirst(q, top: best) { out.insert(asks, at: out.first?.section == .answer ? 1 : 0) } else { out.append(asks) }
         let keep = current?.id
         groups = out
         if let keep, let i = flat.firstIndex(where: { $0.id == keep }) { selected = i } else { selected = 0 }
@@ -309,7 +315,7 @@ public final class CapsuleModel: ObservableObject {
 
     // MARK: asking
 
-    func ask(_ words: String) async -> ActionOutcome {
+    func ask(_ words: String, model: String = "haiku") async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
@@ -332,7 +338,7 @@ public final class CapsuleModel: ObservableObject {
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
         let name = "Capsule: " + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
-        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": "haiku",
+        let r = await vyred.call("threads.start", ["prompt": words, "append": append, "lean": true, "model": model,
                                                    "cwd": dir.path, "surface": "capsule", "name": name], presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
@@ -340,7 +346,7 @@ public final class CapsuleModel: ObservableObject {
         thread = id
         keeper.startedQuick(id)
         var rep = VyState.reply(id)
-        rep.model = "haiku"
+        rep.model = model
         for e in early where e.thread == id { rep = VyState.applyReply(rep, e) }
         reply = rep
         return .said("")
@@ -363,7 +369,7 @@ public final class CapsuleModel: ObservableObject {
         }
     }
 
-    func send(_ words: String, to c: VyreCandidate) async -> ActionOutcome {
+    func send(_ words: String, to c: VyreCandidate, model: String? = nil) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type what to send first.") }
         asked = words
         askedMemory = nil
@@ -371,6 +377,7 @@ public final class CapsuleModel: ObservableObject {
         switch c.kind {
         case .thread:
             reply = VyState.reply(c.id)
+            reply?.model = model
             follow { c.id }
             let r = await vyred.call("threads.send", ["thread": c.id, "text": words, "surface": "capsule"], presence: false)
             pending = false

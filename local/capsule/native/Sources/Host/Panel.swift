@@ -122,6 +122,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             if !model.replyText.isEmpty { h += min(240, CGFloat(model.replyText.split(separator: "\n", omittingEmptySubsequences: false).reduce(0) { $0 + $1.count / 78 + 1 }) * 19) }
             if model.reply?.finished == true, model.reply?.error != nil { h += 18 }
             if let n = model.reply?.notice, !n.isEmpty { h += 22 }
+            if AgentReplyActions.shown(model) { h += AgentReplyActions.height }
         }
         if model.showsMemory, let m = model.memory { h += 1 + MemoryBox.height(m) }
         let side = model.panelFor?(model.current) != nil

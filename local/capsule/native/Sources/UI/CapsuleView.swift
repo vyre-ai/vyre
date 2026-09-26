@@ -102,6 +102,7 @@ struct CapsuleView: View {
             if let n = model.reply?.notice, !n.isEmpty {
                 Text(n).font(Theme.label).foregroundColor(Theme.ash).lineLimit(2).padding(.horizontal, 16).padding(.top, 6)
             }
+            AgentReplyActions(model: model)
         }
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, alignment: .leading)

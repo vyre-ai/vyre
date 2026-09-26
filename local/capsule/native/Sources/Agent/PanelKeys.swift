@@ -1,6 +1,8 @@
 // The keys of the waiting list and its cards, taken before the Capsule's own (Host/Panel.swift).
 //
 //   ↑ in an empty box            opens the list, when anything waits
+//   ⌘C in an empty box            copies the answer on screen
+//   Tab                           sends the words to the first destination, whatever is highlighted
 //   list: ↑↓ move, ⏎ open, A allow (yes to the row), Esc closes the list; ↑ on the first row goes back
 //   card: ⌘⏎ yes (Send, Allow, Accept); ⏎ yes for an ask or a lesson, which have no fields;
 //         Esc goes back to the list
@@ -16,6 +18,13 @@ extension PanelController {
         case .none:
             if e.keyCode == 126, f.isEmpty, model.text.isEmpty, model.target == nil, model.asked == nil, !desk.waiting.isEmpty {
                 desk.openList(); return true
+            }
+            // ⌘C under an answer, with nothing typed, copies the answer.
+            if e.keyCode == 8, f == .command, model.text.isEmpty, model.copyReply() { return true }
+            // Tab sends the words on, to the first destination, whatever row is highlighted.
+            if e.keyCode == 48, f.isEmpty, !model.text.isEmpty, model.current?.kind != "mention",
+               let i = model.flat.firstIndex(where: { $0.kind == "ask" }) {
+                model.selected = i; model.run(); return true
             }
             return false
         case .list:

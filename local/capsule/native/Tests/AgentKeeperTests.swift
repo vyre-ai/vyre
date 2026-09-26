@@ -41,11 +41,11 @@ let agentKeeperSuite = Suite("agent keeper") { t in
             _ = await until { m.vyred.isUp }
             _ = await until { m.vyred.follower.isStreaming }
             // q1 answers and finishes; q2 is still answering when the Capsule hides.
-            await MainActor.run { m.text = "first question"; m.selected = m.flat.firstIndex { $0.kind == "ask" } ?? 0; m.run() }
+            await MainActor.run { m.text = "what is first?"; m.selected = m.flat.firstIndex { $0.kind == "ask" } ?? 0; m.run() }
             _ = await until { m.reply?.thread == "q1" }
             _ = v.emit("thread.finished", thread: "q1", ["ok": true])
             _ = await until { m.reply?.finished == true }
-            await MainActor.run { m.text = "second question"; m.selected = m.flat.firstIndex { $0.kind == "ask" } ?? 0; m.run() }
+            await MainActor.run { m.text = "what is second?"; m.selected = m.flat.firstIndex { $0.kind == "ask" } ?? 0; m.run() }
             _ = await until { m.reply?.thread == "q2" }
             await MainActor.run { m.didHide() }
             _ = await until { !v.callsOf("threads.stop").isEmpty && !v.callsOf("threads.release").isEmpty }
