@@ -29,7 +29,9 @@ test("plugin: the manifest, hooks and MCP config are valid and point at files th
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "vyre");
   const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN, "hooks", "hooks.json"), "utf8")).hooks;
-  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
+  assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "PostToolUseFailure", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"]);
+  assert.match(hooks.PostToolUse[0].matcher, /\bBash\b/, "PostToolUse hears Bash too");
+  assert.match(hooks.PostToolUseFailure[0].matcher, /\bBash\b/);
   for (const groups of Object.values(hooks)) for (const g of groups) for (const h of g.hooks) {
     const file = h.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/)[1];
     assert.ok(fs.existsSync(path.join(PLUGIN, file)), `${file} is missing`);
@@ -44,8 +46,8 @@ test("plugin: the manifest, hooks and MCP config are valid and point at files th
 
 test("hooks: with vyred down, every hook prints nothing and exits 0, except the floor", async t => {
   const env = { VYRE_HOME: tempHome(t) };
-  for (const piece of ["brief", "enrich", "learn", "stop"]) {
-    const r = await hook(piece, { session_id: "s1", cwd: "/tmp", prompt: "hi", tool_name: "Edit", tool_input: { file_path: "a" } }, env);
+  for (const piece of ["brief", "enrich", "learn", "fail", "stop"]) {
+    const r = await hook(piece, { session_id: "s1", cwd: "/tmp", prompt: "hi", tool_name: "Edit", tool_input: { file_path: "a" }, tool_use_id: "toolu_1", error: "boom" }, env);
     assert.deepEqual(r, { code: 0, out: "" }, piece);
   }
   const ok = await hook("rules", { tool_name: "Read", tool_input: { file_path: "/tmp/a" }, cwd: "/tmp" }, env);
@@ -66,6 +68,27 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   assert.deepEqual(await hook("learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, env), { code: 0, out: "" });
   assert.equal(d.registry.deps.db.prepare("SELECT path FROM harness_files WHERE session='s1'").get().path, "/w/notes.md");
   assert.deepEqual(await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env), { code: 0, out: "" }, "outside a project the brief is empty");
+});
+
+test("hooks: PostToolUseFailure and PostToolUse on Bash reach Learning as failed, then fixed", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const env = { VYRE_HOME: root };
+  const base = { session_id: "s1", cwd: "/w", prompt_id: "p1" };
+  await hook("enrich", { ...base, prompt: "fix the build" }, env);
+  const pre = id => hook("rules", { ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: id }, env);
+  await pre("toolu_1");
+  // Exactly the fields Claude Code 2.1.283 sends to a PostToolUseFailure hook.
+  const fail = await hook("fail", { ...base, hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_input: { command: "npm test" },
+    tool_use_id: "toolu_1", error: "Exit code 1\n1 failing test", is_interrupt: false, duration_ms: 812 }, env);
+  assert.deepEqual(fail, { code: 0, out: "" });
+  await pre("toolu_2");
+  await hook("learn", { ...base, hook_event_name: "PostToolUse", tool_name: "Bash", tool_input: { command: "npm test" }, tool_use_id: "toolu_2", tool_response: { stdout: "ok" } }, env);
+  const db = d.registry.deps.db;
+  assert.deepEqual(db.prepare("SELECT kind FROM learn_signals WHERE kind IN ('failed','fixed') ORDER BY id").all().map(r => r.kind), ["failed", "fixed"]);
+  assert.ok(!db.prepare("SELECT 1 FROM learn_signals WHERE meta LIKE '%failing%' OR text LIKE '%failing%'").get(), "the error itself is never kept");
+  assert.deepEqual(db.prepare("SELECT id, outcome FROM learn_calls ORDER BY id").all().map(r => [r.id, r.outcome]), [["toolu_1", "failed"], ["toolu_2", "ok"]]);
 });
 
 test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top-level shape", async t => {

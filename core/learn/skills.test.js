@@ -92,11 +92,22 @@ test("the same clean procedure in 3 sessions proposes one skill; a corrected tur
   assert.equal(s.name, "learned-npm-test-edit-code-git-add-git-commit-git-push");
   assert.deepEqual(skills.candidates(), [], "a proposed procedure and its shorter runs are not proposed again");
   const ev = events.find(e => e.name === "skill.proposed");
-  assert.deepEqual(ev.payload, { skill: s.id, name: s.name, scope: { project: "harlow-site" }, sessions: 3 });
+  assert.deepEqual(ev.payload, { skill: s.id, sessions: 3, scope: "project" }, "ids, counts and kinds only");
 
   skills.dismiss(s.id);
   assert.deepEqual(skills.candidates(), [], "dismissed stays out");
   assert.equal(skills.list({ status: "dismissed" }).length, 1);
+});
+
+test("a retired skill's procedure is not proposed again, however often it repeats", t => {
+  const { skills, home } = setup(t);
+  const steps = shipSteps();
+  for (const session of ["s1", "s2", "s3"]) { skills.record({ session, seq: 1, steps }); skills.mark({ session, seq: 1, clean: true }); }
+  const s = skills.propose(skills.candidates()[0]);
+  skills.install(s.id, { home: path.join(home, "v"), scope: "account" });
+  skills.retire(s.id);
+  for (const session of ["s4", "s5", "s6"]) { skills.record({ session, seq: 1, steps }); skills.mark({ session, seq: 1, clean: true }); }
+  assert.deepEqual(skills.candidates(), [], "retired stays out");
 });
 
 test("a clean turn stays clean when the same procedure is recorded again in that session", t => {
@@ -154,13 +165,13 @@ test("install: account, project, private project and agent each land in their ow
   fs.mkdirSync(projectHome, { recursive: true });
 
   const a = skills.install(proposed(skills).id, { home: vyre, scope: "account" });
-  assert.equal(a.path, path.join(vyre, "learned", "skills", a.name, "SKILL.md"));
-  const manifest = JSON.parse(fs.readFileSync(path.join(vyre, "learned", ".claude-plugin", "plugin.json"), "utf8"));
+  assert.equal(a.path, path.join(vyre, "learned", "account", "skills", a.name, "SKILL.md"));
+  const manifest = JSON.parse(fs.readFileSync(path.join(vyre, "learned", "account", ".claude-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "vyre-learned");
   assert.equal(mode(a.path), 0o600);
   assert.equal(mode(path.dirname(a.path)), 0o700);
-  assert.equal(mode(path.join(vyre, "learned")), 0o700);
-  assert.equal(mode(path.join(vyre, "learned", ".claude-plugin", "plugin.json")), 0o600);
+  assert.equal(mode(path.join(vyre, "learned", "account")), 0o700);
+  assert.equal(mode(path.join(vyre, "learned", "account", ".claude-plugin", "plugin.json")), 0o600);
   assert.match(a.hash, /^[0-9a-f]{64}$/);
   assert.equal(fs.readFileSync(a.path, "utf8"), a.body);
 
@@ -177,13 +188,13 @@ test("install: account, project, private project and agent each land in their ow
   assert.equal(mode(g.path), 0o600);
 
   assert.deepEqual(pluginDirs(vyre, { project: "harlow-site", agent: "scout" }),
-    [path.join(vyre, "learned"), path.join(vyre, "learned", "projects", "harlow-site"), path.join(vyre, "learned", "agents", "scout")]);
-  assert.deepEqual(pluginDirs(vyre, { project: "other", agent: "../scout" }), [path.join(vyre, "learned")], "only folders that exist, never a path that climbs");
+    [path.join(vyre, "learned", "account"), path.join(vyre, "learned", "projects", "harlow-site"), path.join(vyre, "learned", "agents", "scout")]);
+  assert.deepEqual(pluginDirs(vyre, { project: "other", agent: "../scout" }), [path.join(vyre, "learned", "account")], "only folders that exist, never a path that climbs");
   assert.deepEqual(pluginDirs(path.join(home, "empty")), []);
 
   const inst = events.filter(e => e.name === "skill.installed");
   assert.deepEqual(inst.map(e => e.payload.scope), ["account", "project", "project", "agent"]);
-  assert.deepEqual(Object.keys(inst[0].payload).sort(), ["name", "scope", "skill"]);
+  assert.deepEqual(Object.keys(inst[0].payload).sort(), ["scope", "skill"]);
   assert.throws(() => skills.install(a.id, { home: vyre, scope: "account" }), /installed/, "installed once");
 });
 
@@ -196,11 +207,11 @@ test("install: never under ~/.claude, never outside its roots, never over someon
   assert.ok(!fs.existsSync(path.join(home, ".claude")), "nothing written");
   // A symlinked learned/skills that points into ~/.claude is caught by the real path.
   fs.mkdirSync(path.join(home, ".claude", "skills"), { recursive: true });
-  fs.mkdirSync(path.join(vyre, "learned"), { recursive: true });
-  fs.symlinkSync(path.join(home, ".claude", "skills"), path.join(vyre, "learned", "skills"));
+  fs.mkdirSync(path.join(vyre, "learned", "account"), { recursive: true });
+  fs.symlinkSync(path.join(home, ".claude", "skills"), path.join(vyre, "learned", "account", "skills"));
   assert.throws(() => skills.install(s.id, { home: vyre, scope: "account" }), /refusing to write under/);
   assert.deepEqual(fs.readdirSync(path.join(home, ".claude", "skills")), []);
-  fs.unlinkSync(path.join(vyre, "learned", "skills"));
+  fs.unlinkSync(path.join(vyre, "learned", "account", "skills"));
   // Names that climb, and relative homes.
   assert.throws(() => skills.install(s.id, { home: vyre, scope: "agent", agent: "../../x" }), /agent's name/);
   assert.throws(() => skills.install(s.id, { home: vyre, scope: "project", private: true, project: "../x" }), /slug/);
@@ -230,10 +241,10 @@ test("drift: a changed or missing file is reported; retire removes the file", t 
   assert.equal(r.status, "retired");
   assert.ok(!fs.existsSync(a.path), "file gone");
   assert.ok(!fs.existsSync(path.dirname(a.path)), "its empty folder too");
-  assert.ok(fs.existsSync(path.join(vyre, "learned", ".claude-plugin", "plugin.json")), "the plugin stays");
+  assert.ok(fs.existsSync(path.join(vyre, "learned", "account", ".claude-plugin", "plugin.json")), "the plugin stays");
   assert.deepEqual(skills.drift().map(d => d.id), [b.id]);
   assert.throws(() => skills.retire(a.id), /retired/);
-  assert.deepEqual(events.find(e => e.name === "skill.retired").payload, { skill: a.id, name: a.name });
+  assert.deepEqual(events.find(e => e.name === "skill.retired").payload, { skill: a.id });
 });
 
 test("events never carry a skill's body", t => {

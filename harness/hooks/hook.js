@@ -15,7 +15,7 @@ import { offlineTool, offlineTouched, offlineStop } from "../../core/learn/offli
 import { home, paths } from "../../core/config/index.js";
 import { writeKey } from "../../core/switchboard/sessions.js";
 
-const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", stop: "Stop" };
+const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", fail: "PostToolUseFailure", stop: "Stop" };
 const piece = /** @type {keyof typeof EVENT} */ (process.argv[2]);
 
 async function stdin() {
@@ -58,15 +58,23 @@ async function main() {
     const r = await call("harness.enrich", { ...base, ...scope, prompt: String(h.prompt || "") }, opts);
     if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });
   } else if (piece === "rules") {
-    const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} };
+    const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}) };
     const r = await call("harness.rules", input, opts);
     let v = r.data || (r.error && ["unreachable", "timeout", "no_such_tool"].includes(r.error.code)
       ? rules({ tool: input.tool_name, input: input.tool_input, cwd: h.cwd }) : null);
     if (down(r) && v && !v.decision) v = offlineTool({ ...offline, tool: input.tool_name, input: input.tool_input });
     if (v && v.decision) answer(EVENT.rules, { permissionDecision: v.decision, permissionDecisionReason: v.reason || "Vyre security floor" });
   } else if (piece === "learn") {
-    const r = await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} }, opts);
+    const r = await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {},
+      ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}) }, opts);
     if (down(r)) offlineTouched({ ...offline, tool: String(h.tool_name || ""), input: h.tool_input || {} });
+  } else if (piece === "fail") {
+    // PostToolUseFailure (Claude Code 2.1.283 sends tool_name, tool_input, tool_use_id, error,
+    // is_interrupt). Read tolerantly: a field a later release drops is simply absent. Only the
+    // head of the error goes to vyred. With vyred down, nothing: a failure changes no file.
+    await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ok: false,
+      ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}),
+      ...(typeof h.error === "string" ? { error_head: h.error.slice(0, 200) } : {}), ...(h.is_interrupt === true ? { interrupted: true } : {}) }, opts);
   } else if (piece === "stop") {
     const text = typeof h.last_assistant_message === "string" ? h.last_assistant_message : undefined;
     const r = await call("harness.stop", { ...base, text, stop_hook_active: Boolean(h.stop_hook_active) }, opts);

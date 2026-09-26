@@ -15,9 +15,10 @@
 //   - `--plugin-dir <path>` is repeatable ("--plugin-dir A --plugin-dir B.zip"), so the Harness
 //     and each learned plugin load side by side, for that session only;
 //   - "a folder of plugins loads each child": a --plugin-dir that is not itself a plugin loads
-//     every child plugin. So `<home>/learned` is always a plugin in its own right, and pluginDirs
-//     never passes `<home>/learned/projects` or `<home>/learned/agents`, which would load every
-//     project's private skills and every agent's into one thread;
+//     every child plugin. So the account's skills are a plugin of their own at
+//     `<home>/learned/account` (where the Switchboard's learnedDirs loads them), and nothing ever
+//     passes `<home>/learned`, `<home>/learned/projects` or `<home>/learned/agents`, which would
+//     load every project's private skills and every agent's into one thread;
 //   - project skills live at `<project>/.claude/skills/<name>/SKILL.md`, Claude Code's own
 //     project scope, with no plugin needed.
 // Never `~/.claude` (the user's own setup is not ours to change) and never `harness/skills`.
@@ -341,7 +342,8 @@ function real(p) {
 
 /** The account plugin, and the ones made for a project's private skills and for an agent. */
 const plugins = home => ({
-  account: path.join(home, "learned"),
+  root: path.join(home, "learned"),
+  account: path.join(home, "learned", "account"),
   project: slug => path.join(home, "learned", "projects", slug),
   agent: agent => path.join(home, "learned", "agents", agent),
 });
@@ -400,7 +402,9 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
     WHERE learn_procs.clean = 0`);
   const markClean = db.prepare("UPDATE learn_procs SET clean = 1 WHERE session = ? AND seq = ?");
   const getSkill = db.prepare("SELECT * FROM learn_skills WHERE id = ?");
-  const taken = db.prepare("SELECT source FROM learn_skills WHERE status IN ('proposed','installed','dismissed')");
+  // Every skill ever made from a procedure, retired ones too: the user took it out once, so the
+  // same procedure is never proposed again on its own.
+  const taken = db.prepare("SELECT source FROM learn_skills");
   const nameUsed = db.prepare("SELECT 1 FROM learn_skills WHERE name = ? AND status IN ('proposed','installed')");
 
   const row = r => r && {
@@ -452,8 +456,8 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
     },
 
     /**
-     * Hashes clean in at least `min` distinct sessions, not already proposed, installed or
-     * dismissed; among runs that contain one another, the longest.
+     * Hashes clean in at least `min` distinct sessions, never proposed before (proposed,
+     * installed, retired or dismissed); among runs that contain one another, the longest.
      * @returns {{ hash: string, steps: string[], sessions: number, scope: "all"|{project: string} }[]}
      */
     candidates({ min = 3 } = {}) {
@@ -492,7 +496,8 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
         VALUES (?,?,'proposed',?,NULL,NULL,?,?,?,?)`).run(name, JSON.stringify(candidate.scope ?? "all"), final,
         JSON.stringify({ kind: body ? "drafted" : "template", fp: candidate.hash, steps: candidate.steps }), candidate.sessions || 0, at, at);
       const s = must(Number(r.lastInsertRowid));
-      emit("skill.proposed", { skill: s.id, name: s.name, scope: s.scope, sessions: s.sessions });
+      // Events carry ids, counts and kinds: a skill's name is made from the user's commands.
+      emit("skill.proposed", { skill: s.id, sessions: s.sessions, scope: s.scope === "all" ? "all" : "project" });
       return s;
     },
 
@@ -516,7 +521,7 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
         const slug = where.project || (s.scope && s.scope.project);
         if (!slug || !SLUG.test(slug)) throw new Error("a private project skill needs the project's slug");
         root = p.project(slug);
-        guard(path.join(root, "skills"), p.account);
+        guard(path.join(root, "skills"), p.root);
         ensurePlugin(root, MANIFEST(`vyre-learned-project-${slug}`.toLowerCase(), `project ${slug}`));
       } else if (scope === "project") {
         if (!where.projectHome || !path.isAbsolute(where.projectHome)) throw new Error("a project skill needs the project's home folder");
@@ -525,7 +530,7 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
       } else if (scope === "agent") {
         if (!where.agent || !SLUG.test(where.agent)) throw new Error("an agent skill needs the agent's name");
         root = p.agent(where.agent);
-        guard(path.join(root, "skills"), p.account);
+        guard(path.join(root, "skills"), p.root);
         ensurePlugin(root, MANIFEST(`vyre-learned-agent-${where.agent}`.toLowerCase(), `agent ${where.agent}`));
       } else throw new Error('scope must be "account", "project" or "agent"');
       dir = dir || path.join(root, "skills", s.name);
@@ -543,7 +548,7 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
       const source = { ...s.source, install };
       db.prepare("UPDATE learn_skills SET status = 'installed', hash = ?, path = ?, source = ?, updated = ? WHERE id = ?")
         .run(sha256(s.body), file, JSON.stringify(source), now(), id);
-      emit("skill.installed", { skill: id, name: s.name, scope });
+      emit("skill.installed", { skill: id, scope });
       return must(id);
     },
 
@@ -571,7 +576,7 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
         try { fs.rmdirSync(dir); } catch { /* not empty: leave what someone else put there */ }
       }
       db.prepare("UPDATE learn_skills SET status = 'retired', updated = ? WHERE id = ?").run(now(), id);
-      emit("skill.retired", { skill: id, name: s.name });
+      emit("skill.retired", { skill: id });
       return must(id);
     },
 
