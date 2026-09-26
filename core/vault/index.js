@@ -22,6 +22,7 @@ import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 
 export { presence };
+import * as shareTools from "./tools/share.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -42,7 +43,7 @@ export default {
     }
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), onRelay: (env, meta) => vault.onRelay(env, meta) });
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity, onRelay: (env, meta) => vault.onRelay(env, meta) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
@@ -90,8 +91,8 @@ export default {
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
     tool("vault.put", ["cli", "local", "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
-      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs }, ["name"]),
-      async ({ value, grants, ...input }, { caller }) => {
+      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }) }, ["name"]),
+      async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
         if (value !== undefined) input.fields = { ...(input.fields || {}), value };
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
@@ -102,6 +103,7 @@ export default {
           input.origin = caller;
         }
         const out = await vault.put(input, caller);
+        if (relayRules) vault.share.setRelayRules(input.name, relayRules);
         for (const g of grants || []) await vault.grant({ name: input.name, module: g }, caller);
         return { ...out, ...(grants ? { granted: grants } : {}) };
       }, presence("Save an item in the vault", ({ name, kind }) => {
@@ -188,7 +190,7 @@ export default {
       obj({}), () => vault.card());
 
     tool("vault.pass.create", ["cli", "local", "mcp"], "Share items with another person's Vyre. Relayed by default: the value never leaves this box. From Claude it waits for approval.",
-      obj({ holder: str, card: str, items: strs, mode: { type: "string", enum: ["relayed", "sealed"] }, hosts: strs, expires: str, note: str }, ["holder", "items"]),
+      obj({ holder: str, card: str, items: strs, mode: { type: "string", enum: ["relayed", "sealed"] }, hosts: strs, methods: strs, paths: strs, expires: str, note: str }, ["holder", "items"]),
       (input, { caller }) => vault.createPass(input, caller),
       presence("Share vault items with someone", ({ holder, items, mode, expires }) => {
         let until = "";
@@ -201,12 +203,12 @@ export default {
     tool("vault.pass.revoke", null, "End a pass. A relayed pass stops at once; a sealed one lists what to rotate.",
       obj({ id: str }, ["id"]), (input, { caller }) => vault.revokePass(input, caller));
 
-    tool("vault.pass.accept", ["cli", "local", "mcp"], "Take a pass ticket someone sent you.",
+    tool("vault.pass.accept", ["cli", "local", "mcp"], "Take a signed pass ticket someone sent you. From Claude it waits for a person to approve it.",
       obj({ ticket: str }, ["ticket"]), (input, { caller }) => vault.accept(input, caller),
       presence("Accept a pass someone sent", ({ ticket }) => {
         const t = decodeTicket(ticket);
         return `Accept a ${t.mode} pass from ${t.owner} holding ${list(t.items)}`;
-      }));
+      }, { skip: ({ caller }) => callerKind(caller) === "mcp" }));
 
     tool("vault.relay", ["cli", "local", "mcp", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
@@ -218,8 +220,11 @@ export default {
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
       presence("Offboard someone", ({ person }) => `Revoke every pass ${String(person).slice(0, 64)} holds and forget their card`));
 
+    const kits = shareTools.register({ ctx, vault, tool });
+
     return {
       async stop() {
+        await kits.stop();
         vault.lock();
         if (listener) await listener.close();
         if (fillListener) await fillListener.close();

@@ -12,7 +12,8 @@ import os from "node:os";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import mod from "./index.js";
-import { encodeTicket } from "./relay.js";
+import { encodeTicket, encodeCard } from "./relay.js";
+import { newIdentity } from "./crypto.js";
 
 export const NEEDS_PRESENCE = [
   "vault.put", "vault.delete", "vault.import", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
@@ -21,7 +22,8 @@ export const NEEDS_PRESENCE = [
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
-  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock"];
+  "vault.pass.list", "vault.pass.revoke", "vault.devices", "vault.device.revoke", "vault.account.lock",
+  "vault.people", "vault.fingerprint"];
 
 /** Start the vault module against a ctx that records every tool definition. */
 export async function recorded(t, extra = {}) {
@@ -73,7 +75,10 @@ test("presence: summaries name items and destinations and never a value, and nev
   assert.match(await sum("vault.totp", { name: "billing-key" }), /one-time code for "billing-key"/);
   assert.match(await sum("vault.device.code", { name: "laptop chrome" }), /Pair a new browser \(laptop chrome\)/);
   assert.match(await sum("vault.device.unlock", { device: "d_none" }), /Unlock autofill in a paired browser/);
-  const ticket = encodeTicket({ pass: "p_x", owner: "alex", relay: "https://relay.acme.test", ownerSign: "k", holder: "dana", items: ["stripe-key"], mode: "relayed", expires: null });
+  const alex = newIdentity(), dana = newIdentity();
+  const ownerCard = encodeCard({ name: "alex", sign: alex.sign.public, box: alex.box.public, relay: "https://relay.acme.test" }, alex.sign.private);
+  const ticket = encodeTicket({ pass: "p_x", owner: "alex", relay: "https://relay.acme.test", ownerSign: alex.sign.public, ownerCard,
+    holder: "dana", holderSign: dana.sign.public, items: ["stripe-key"], mode: "relayed", expires: null }, alex.sign.private);
   assert.match(await sum("vault.pass.accept", { ticket }), /Accept a relayed pass from alex holding "stripe-key"/);
   // A malformed input falls back to the generic words rather than printing the input.
   assert.equal(await sum("vault.pass.accept", { ticket: canary }), "Accept a pass someone sent");

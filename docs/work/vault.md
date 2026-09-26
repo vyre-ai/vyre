@@ -32,6 +32,12 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   (`vault.relay.identity: "tailscale"`).
 - Keychain tests that hold up under parallel runs (`testing.js`): a unique keychain per test,
   taken off the search list under a machine-wide lock, `security` retried when busy.
+- Sharing, ADR 0006 decision 5 (`share.js`, `kit.js`, `qr.js`, `tools/share.js`): signed v2
+  cards and tickets, pinned people with fingerprints and safety words, agent requests that wait
+  for a person, relay hardening (headers only unless `relay.body`, method and path allowlists,
+  nonces in vyre.db, https off loopback, audience-bound v2 envelopes, generic 500s, rate-limited
+  unknown-pass audit rows, Tailscale identity on loopback only), and the one-time recovery kit
+  page with a plain JS QR encoder. Shared vaults and multi-device join are the next wave.
 
 ## Doing
 
@@ -110,3 +116,27 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 - Cards may carry `login`. With `vault.relay.identity: "tailscale"` the relay listener requires
   the `Tailscale-User-Login` header from `tailscale serve`, and a pass made from a card with a
   login answers only that login.
+- Sharing (ADR 0006, decision 5):
+  - Cards are `vyre-card:v2:` = {acct?, name, sign, box, login?, relay, devices[], sig}, signed
+    by the identity sign key. v1 cards are read but block passes until verified.
+  - Tickets are `vyre-pass:v2:` with `ownerCard`, `holderSign` and `sig` over
+    {tag: "vyre-ticket-v1", ...}. `vyre-pass:v1:` is refused with a readable message.
+    `vault_held` is keyed on (owner_sign, id). Held rows from v1 tickets are dropped by the
+    migration.
+  - Envelopes are v2: `{v: 2, aud, pass, item, request, ts, nonce, sig}`, signed over
+    {tag: "vyre-relay-v2", ...}, and `aud` must equal the owner's relay url. v1 envelopes are
+    refused, so both sides need this version.
+  - `relay.envelope({..., aud})`, `checkEnvelope(env, {holderKey, audience, seen})`,
+    `substitute(req, fields, default, {body})`, `encodeCard(card, privDer)`,
+    `encodeTicket(ticket, privDer)`; `serve({identity})` refuses "tailscale" off loopback.
+  - `vault.pass.create` takes `methods` and `paths` (prefix match). `vault.put` takes
+    `relay: {body: true}` (stored in `vault_items.relay`). `vault.pass.accept` from mcp returns
+    `{pending}`; `vault.approve` takes its id. `vault.pending` adds `people` and `accepts`.
+  - New tools: `vault.people`, `vault.person.add {card, name?}` (mcp: pending),
+    `vault.people.verify {name, fingerprint}` (cli/local, presence), `vault.fingerprint {with?}`,
+    `vault.kit` (cli/local, presence) returning `{url, expires}`. `vault.identity` adds
+    `fingerprint`.
+  - Events: `vault.card-changed`, `vault.person-verified`, `vault.kit-printed`,
+    `person.requested`, `pass.accept-requested`. `pass.accepted` names the owner as pinned here.
+  - For vault-core: `vault.kit` uses `vault.secretKey()` and the card uses `vault.accountId()`
+    when the Vault has them. `vault_items.relay` should move into the sealed meta with hosts.

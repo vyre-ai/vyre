@@ -40,7 +40,12 @@
       "vault.unlock-passphrase",
       "vault.account.create",
       "vault.account.unlock",
-      "vault.account.lock"
+      "vault.account.lock",
+      "vault.people",
+      "vault.person.add",
+      "vault.people.verify",
+      "vault.fingerprint",
+      "vault.kit"
     ]
   },
   "watches": {
@@ -62,7 +67,12 @@
       "vault.filled",
       "vault.restored",
       "vault.unlocked",
-      "vault.locked"
+      "vault.locked",
+      "vault.card-changed",
+      "vault.person-verified",
+      "vault.kit-printed",
+      "person.requested",
+      "pass.accept-requested"
     ]
   },
   "shows": {
