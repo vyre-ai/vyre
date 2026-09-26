@@ -6,6 +6,19 @@
 .now-assistant { font-size: 13px; line-height: 18px; color: var(--text-2); }
 .now-assistant:empty { display: none; }
 .now-assistant b { color: var(--text); font-weight: 500; }
+/* No assistant yet: the Create your assistant card (js/assistant-setup.js) stands in for the line.
+   The same rules are in agents.css, since each view loads only its own stylesheet. */
+.now-assistant.has-card { font-size: inherit; line-height: inherit; color: var(--text); margin-top: 8px; }
+.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--r-3); background: var(--panel); }
+.asst-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--text); }
+.asst-lede { margin: 4px 0 0; font-size: 14px; line-height: 20px; }
+.asst-form { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; max-width: 480px; }
+.asst-label { color: var(--text-2); }
+.asst-row { display: flex; gap: 8px; }
+.asst-row .input { flex: 1; min-width: 0; }
+.asst-go { height: 40px; flex-shrink: 0; }
+.asst-status { margin: 2px 0 0; color: var(--beacon-ink); }
+.asst-status:empty { display: none; }
 .now-needs { display: flex; flex-direction: column; gap: 12px; }
 .now-label { display: flex; align-items: center; gap: 10px; padding-left: 64px; }
 .now-sec { margin-top: 26px; padding-left: 64px; }
@@ -63,10 +76,17 @@
   .now-needs { gap: 8px; }
   .work-agent, .work-watch { display: none; }
   .work-row { gap: 12px; min-height: 56px; }
-  .work-title { flex-direction: column; gap: 0; }
+  .work-title { flex-direction: column; align-items: stretch; gap: 0; }
   .work-title .small { display: none; }
   .work-since { display: none; }
   .work-chev { color: var(--text-2); display: flex; }
   .now-sec .section-head .lbl + .lbl { display: none; }
   .fact-row .ibtn { display: none; }
+  .now-assistant.has-card { margin-top: 4px; }
+  .asst-card { padding: 16px 16px 14px; }
+  /* 16px keeps iOS from zooming into the field; 44px is a thumb. */
+  .asst-card .input { font-size: 16px; height: 44px; }
+  .asst-go { height: 44px; }
 }
+.asst-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; color: var(--text); cursor: pointer; }
+.asst-check input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--primary-bg); }

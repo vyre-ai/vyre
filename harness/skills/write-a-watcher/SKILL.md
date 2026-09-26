@@ -39,7 +39,10 @@ fits; "watch X and file it into this project" leaves nothing open.
 4. **Schedule**: cron syntax (five fields, `*`, `*/n`, ranges, lists, or `@hourly`, `@daily`).
    Default `*/15 * * * *`. Use less often when the source is slow or rate limited. A step
    cannot exceed its field: every two hours is `0 */2 * * *`, never `*/120 * * * *`. For a source
-   that pushes (a form, a webhook), use `"webhook"`.
+   that pushes (a form, a webhook), use `"webhook"`. For a webhook that comes from the internet
+   through a hooks route (`hooks_list` shows them), leave `schedule` out and set
+   `"on": "hook.received"` with `"where": { "route": "<route name>" }`; the watcher then runs once
+   per verified delivery on that route.
 
 ## 2. Credentials come from the Vault, by name, granted to this one watcher
 
@@ -125,7 +128,11 @@ Rules for `watch.js`:
   ms), and whatever the user will want to see. `about` (optional) names the person or
   organisation an item concerns, so memory links it there. Never secrets, never whole
   documents; link to them.
-- `hook` is the JSON body of the webhook call for a `"webhook"` watcher, and `null` otherwise.
+- `hook` is the JSON body of the webhook call for a `"webhook"` watcher. For a watcher with
+  `on`, it is the event: `{ event, ...payload }`, and for `hook.received` also `delivery`, with
+  `headers` and `body` (the raw text; `JSON.parse` it, or `new URLSearchParams` for a form). It is
+  `null` in a dry run without an event, and otherwise. Use the payload's `id` as the item id when
+  the body has no id of its own.
 - `log(...)` one line of what each run read ("checked 30 stories, 2 match"), so a run with no
   items still shows the source was reached. Throw on failure. Do not catch and hide errors, do
   not retry by hand, do not sleep.

@@ -36,6 +36,14 @@
 .set-state { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-2); }
 .set-state.faint { color: var(--label); }
 .set-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
+.set-lock-steps { margin: 12px 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.set-lock-steps code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+/* A command the person runs themselves, with its copy button; lists inside a row; a finding. */
+.set-cmd { display: flex; align-items: flex-start; gap: 6px; max-width: 100%; margin-top: 2px; }
+.set-cmd code { flex: 1 1 auto; min-width: 0; padding: 5px 8px; border-radius: var(--r-1); background: var(--code-bg); font-size: 12px; line-height: 18px; }
+.set-cmd .ibtn { width: 28px; height: 28px; }
+.set-plain { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
+.set-warn { color: var(--beacon-ink); }
 .set-status:not(:empty) { margin-top: 10px; }
 .set-form .input { max-width: 520px; }
 .set-form .rows > .set-row { align-items: start; }
@@ -92,3 +100,7 @@
   .set-table th:nth-child(2), .set-table td:nth-child(2) { width: 64px; }
   .set-table th:nth-child(3), .set-table td:nth-child(3) { width: 84px; }
 }
+
+/* Your devices: a phone or tablet Tailscale reports offline. */
+.set-off { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 8px 12px; background: var(--beacon-wash); border-radius: var(--r-2); max-width: 520px; }
+.set-off svg { flex-shrink: 0; margin-top: 1px; color: var(--beacon-ink); }

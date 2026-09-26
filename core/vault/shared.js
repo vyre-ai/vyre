@@ -350,6 +350,8 @@ export class Shared {
    */
   async sync({ vault: ref } = {}, caller = "cli") {
     const rows = ref ? [this.mustRow(ref)] : /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_shared WHERE role != 'removed'").all());
+    // No shared vaults: nothing to pull, and asking for this device's identity would make a key.
+    if (!rows.length) return { synced: [] };
     const me = await this.me();
     const out = [];
     for (const v of rows) {
@@ -452,8 +454,7 @@ export class Shared {
 
   /** Pull one vault (or all) in a moment. */
   soon(id = null) {
-    const t = setTimeout(() => { this.sync(id ? { vault: id } : {}, "vault").catch(e => this.vault.log(`vault shared sync: ${/** @type {Error} */ (e).message}`)); }, 200);
-    t.unref();
+    this.vault.later(() => this.sync(id ? { vault: id } : {}, "vault").catch(e => this.vault.log(`vault shared sync: ${/** @type {Error} */ (e).message}`)), 200);
   }
 
   /** An admin change: applied here at the home, or sent to it. */

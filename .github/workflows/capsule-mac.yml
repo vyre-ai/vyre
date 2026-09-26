@@ -1,0 +1,52 @@
+# The Capsule on macOS: the Swift helpers, the native app once it lands on main, its Swift tests,
+# and the Capsule's Node tests that only run on a Mac. Built here so no one compiles it on their own Mac.
+name: capsule-mac
+on:
+  push:
+    paths: ["local/**", "core/vault/native*", "package*.json", ".github/workflows/capsule-mac.yml"]
+  pull_request:
+    paths: ["local/**", "core/vault/native*", "package*.json", ".github/workflows/capsule-mac.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: capsule-mac-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Toolchain
+        run: sw_vers && swiftc --version && xcodebuild -version
+      - name: Swift helpers (hotkey, vyre-launcher, local)
+        run: sh local/capsule/build.sh
+      - name: Native Capsule tests
+        if: hashFiles('local/capsule/native/build.sh') != ''
+        run: sh local/capsule/native/build.sh test
+      - name: Native Capsule app
+        if: hashFiles('local/capsule/native/build.sh') != ''
+        run: sh local/capsule/native/build.sh app
+      - name: Node tests that need a Mac
+        run: |
+          npm ci --no-audit --no-fund
+          node --test --test-reporter=spec "local/*/*.test.js" "local/*/lib/*.test.js"
+      - name: Package
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent local/capsule/bin dist/capsule-helpers.zip
+          if [ -d local/capsule/native/.build/Vyre.app ]; then
+            ditto -c -k --keepParent local/capsule/native/.build/Vyre.app dist/Vyre-capsule.app.zip
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capsule-mac-${{ github.sha }}
+          path: dist/*.zip
+          retention-days: 14

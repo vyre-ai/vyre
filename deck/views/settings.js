@@ -4,21 +4,28 @@
 // Setup list. Route /settings, with an optional #section.
 //
 // Every section loads on its own and shows its own empty state, so one missing module never
-// blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box), agents.list and
-// agents.update (switchboard), recall.status, recall.index, memory.stats, memory.curate,
+// blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box, also its read-only "lock"), agents.list and
+// agents.update (switchboard), link.health (link), files.drive.status and files.drive.audit (files), hooks.list and hooks.status (hooks),
+// network.guests.list (network), computers.tailnet.status and computers.egress.status (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
+// Connections is drawn by views/connections.js (the connectors workstream, ADR 0016).
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules, canProve, callWithCode } from "../js/api.js";
+import { attempt, modules, canProve } from "../js/api.js";
+import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
+import { LOCK, lockState, lockSteps } from "../js/lock.js";
+import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
   ["you", "You and your address"],
   ["assistant", "The assistant"],
   ["claude", "Claude Code"],
+  ["connections", "Connections"],
   ["network", "Network"],
+  ["devices", "Your devices"],
   ["history", "History and memory"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
@@ -28,14 +35,15 @@ const SECTIONS = [
   ["machine", "This machine"],
 ];
 
-/** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same. */
+/** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same.
+ * `vyre up` picks up at the first step not finished; it has no flag for one step (asked polish-cli). */
 const STEPS = [
   { id: "you", title: "You", cmd: "vyre up" },
-  { id: "claude", title: "Claude Code", cmd: "vyre up --step claude" },
-  { id: "tailscale", title: "Tailscale", cmd: "vyre up --step tailscale" },
-  { id: "name", title: "Your address", cmd: "vyre up --step name" },
+  { id: "claude", title: "Claude Code", cmd: "vyre up" },
+  { id: "tailscale", title: "Tailscale", cmd: "vyre up" },
+  { id: "name", title: "Your address", cmd: "vyre up" },
   { id: "history", title: "Your history", cmd: "vyre index" },
-  { id: "devices", title: "Your devices", cmd: "vyre up --step devices" },
+  { id: "devices", title: "Your devices", cmd: "vyre up" },
 ];
 
 const onTailnet = () => /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
@@ -85,7 +93,9 @@ export default async function settings(ctx) {
 
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
-    drawNetwork(body.network), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    // Imported on its own, so a problem in that file shows here and never blanks Settings.
+    import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
+    drawNetwork(body.network, ctx), drawDevices(body.devices), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -218,16 +228,259 @@ async function drawClaude(el) {
 
 // ---- 5. Network ----------------------------------------------------------------------------
 
-async function drawNetwork(el) {
+async function drawNetwork(el, ctx) {
   const r = await attempt("onboard.tailscale", { action: "detect" });
-  if (r.error) { put(el, empty("Tailscale is checked by the box module.", r.error), foot(toOnboard("tailscale", "Connect"))); return; }
   const t = r.data || {};
-  const on = t.state === "connected" && t.node;
-  put(el, h("div", { class: "rows" },
-      row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
+  const on = !r.error && t.state === "connected" && t.node;
+  const conn = h("div");
+  const lockRow = h("div");
+  // The tailnet features below each load on their own; a tool not on this vyred leaves its row out.
+  const extra = ["shares", "hooks", "guests", "agents", "egress"].map(() => h("div"));
+  put(el, r.error ? empty("Tailscale is checked by the box module.", r.error) : null,
+    h("div", { class: "rows" },
+      r.error ? null : row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
       on ? row("Node", mono(t.node.dns || t.node.name || "")) : null,
-      on ? row("Tailnet IP", mono(t.node.ip || "")) : null),
+      on ? row("Tailnet IP", mono(t.node.ip || "")) : null,
+      conn,
+      on ? lockRow : null,
+      extra),
     on ? null : foot(toOnboard("tailscale", "Connect")));
+  if (on) drawLink(conn, ctx);
+  const [shares, hooks, guests, agents, egress] = extra;
+  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress)]);
+}
+
+/** How the box reaches this device (link.health, the calling node), kept current by deck/js/health.js. */
+function drawLink(el, ctx) {
+  ctx.cleanup(watchHealth(x => {
+    if (!ctx.alive()) return;
+    // No link module on this vyred: the row is left out rather than shown empty.
+    if (!x) { put(el); return; }
+    const shook = handshakeLine(x);
+    put(el, row("This device", h("span", { class: "set-inline" }, h("span", { class: `dot health-${linkDot(x)}` }),
+      h("span", x.path === "unknown" ? { class: "muted" } : null, linkLine(x))),
+      shook ? h("div", { class: "small faint" }, shook) : null));
+  }));
+}
+
+/** A command the person runs themselves, with a copy button. */
+function cmd(text) {
+  const b = h("button", { type: "button", class: "ibtn", "aria-label": "Copy command", title: "Copy", onclick: async () => {
+    try { await navigator.clipboard.writeText(text); put(b, icon("check", 14)); setTimeout(() => put(b, icon("copy", 14)), 1500); } catch {}
+  } }, icon("copy", 14));
+  return h("div", { class: "set-cmd" }, h("code", { class: "set-mono" }, text), b);
+}
+const faint = (...s) => h("div", { class: "small faint" }, s);
+const plainList = (items, draw) => h("ul", { class: "set-plain" }, items.map(x => h("li", null, draw(x))));
+/** A tool's list, whether it came as an array or an object keyed by name. */
+const listOf = (v, key) => Array.isArray(v) ? v : v && typeof v === "object" ? Object.entries(v).map(([k, x]) => ({ [key]: k, ...(x || {}) })) : [];
+
+/**
+ * One optional row: ask its tool, and draw it. A tool this vyred does not have leaves nothing
+ * (its module may not be merged yet); any other failure is said in the row.
+ */
+async function optional(el, label, tool, draw) {
+  const r = await attempt(tool);
+  if (r.error) { put(el, r.error.missing ? null : row(label, h("span", { class: "muted" }, errText(r.error)))); return; }
+  put(el, draw(r.data || {}));
+}
+
+const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "Off");
+
+/**
+ * Box shares (Taildrive): each folder the box offers, shared or not, and who the tailnet policy
+ * lets reach them. The check runs on demand, and a drive.exposed event (after any share) shows
+ * its findings here too. Sharing stays with the owner's terminal and the Capsule.
+ */
+function drawShares(el, ctx) {
+  const found = h("div");
+  const st = status();
+  const showAudit = (/** @type {any} */ a) => {
+    const f = Array.isArray(a?.findings) ? a.findings : [];
+    put(found, f.length
+      ? [h("div", { class: "small set-warn" }, `${plural(f.length, "device")} outside your paired Macs can reach these shares:`),
+        plainList(f, x => [mono(x.node || "a device"), x.login ? h("span", { class: "small faint" }, ` ${x.login}`) : null]),
+        faint("Only the tailnet policy decides this. Remove them in the Tailscale admin console, Access controls. Vyre does not change it.")]
+      : a ? faint(`Only your paired Macs can reach them. ${a.checked != null ? `Checked ${plural(a.checked, "online device")}.` : ""}`.trim()) : null);
+  };
+  ctx.on("drive.exposed", (/** @type {any} */ e) => { if (ctx.alive()) showAudit(e.payload); });
+  const check = h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
+    check.disabled = true; put(st, "Checking…");
+    const a = await attempt("files.drive.audit");
+    check.disabled = false; put(st);
+    if (a.error) put(st, errText(a.error)); else showAudit(a.data);
+  } }, "Check who can reach them");
+  return optional(el, "Box shares", "files.drive.status", d => {
+    const shares = listOf(d.shares, "name");
+    if (!d.enabled) return row("Box shares", onOff(false),
+      faint("Your box's folders, open in Finder on your Mac through Taildrive."), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
+    return row("Box shares", h("span", null, d.access === "rw" ? "Read and write" : "Read only"),
+      shares.length ? plainList(shares, x => [mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
+        x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null]) : faint("The box offers no folders (files.drive.shares)."),
+      d.error ? faint(d.error) : null,
+      shares.some(x => !x.shared) ? [faint("Share one from the box's terminal:"), cmd(`vyre call files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null,
+      foot(check), st, found);
+  });
+}
+
+/**
+ * Webhooks: off, or the open routes (hooks.list) and where Funnel and Vyre disagree
+ * (hooks.status). Turning hooks on and opening a route need you there (presence), so the Deck
+ * shows the command rather than doing it; the Funnel commands are Tailscale's, which Vyre never runs.
+ */
+async function drawHooks(el) {
+  const st = attempt("hooks.status");
+  await optional(el, "Webhooks", "hooks.list", d => {
+    const routes = listOf(d.routes, "name");
+    if (!d.enabled) return row("Webhooks", onOff(false),
+      faint("A webhook lets a service such as a payment processor tell Vyre that something happened. It is the one part of Vyre open to the internet, so it stays off until you turn it on from the box's terminal:"),
+      cmd("vyre hooks on"));
+    const mism = h("div");
+    st.then(r => {
+      const m = Array.isArray(r.data?.mismatches) ? r.data.mismatches : [];
+      put(mism, m.length ? [h("div", { class: "small set-warn" }, "Funnel and Vyre disagree:"),
+        plainList(m, x => [h("div", { class: "small" + (x.harmless ? " faint" : "") }, x.harmless ? `${x.message}. Harmless.` : `${x.message}.`),
+          x.fix ? cmd(x.fix) : null])] : null);
+    });
+    return row("Webhooks", h("span", null, routes.length ? `On, ${plural(routes.length, "open route")}` : "On, no open routes"),
+      d.listening === false ? h("div", { class: "small set-warn" }, `The hooks listener is not answering${d.error ? ` (${d.error})` : ""}.`) : null,
+      routes.length ? plainList(routes, x => [
+        h("div", null, mono(x.path || `/hooks/${x.name}`), h("span", { class: "small faint" },
+          ` ${x.verify?.scheme || ""}${typeof x.deliveries === "number" ? `, ${plural(x.deliveries, "delivery", "deliveries")} kept` : ""}`)),
+        x.funnel?.open ? [faint("Publish it with Funnel:"), cmd(x.funnel.open)] : null,
+        x.funnel?.close ? [faint("Stop publishing it:"), cmd(x.funnel.close)] : null]) : null,
+      mism,
+      faint("Vyre never runs tailscale funnel. Run these yourself, on the box."),
+      faint("Open a route from the box's terminal:"),
+      cmd("vyre hooks open <name> --scheme hmac-sha256 --header <header> --secret <vault item>"),
+      routes.length ? [faint("Close one:"), cmd(`vyre hooks close ${routes[0].name}`)] : null,
+      faint("Turn webhooks off:"), cmd("vyre hooks off"));
+  });
+}
+
+/** Guests: people from another tailnet this box is shared with, and the tools each may call. */
+function drawGuests(el) {
+  return optional(el, "Guests", "network.guests.list", d => {
+    const people = listOf(d.people, "login");
+    const safe = Array.isArray(d.safe) ? d.safe : [];
+    const safeLine = safe.length ? faint(`A guest can only ever call these: ${safe.join(", ")}.`) : null;
+    if (!d.enabled) return row("Guests", onOff(false),
+      faint("A guest is someone on another tailnet you shared this box with. They may call only the tools you list for them, and never act as you."),
+      safeLine, faint("Turn guests on from the box's terminal:"), cmd(`vyre call --tty network.guests.enable '{"on":true}'`));
+    return row("Guests", h("span", null, people.length ? `On, ${plural(people.length, "person", "people")}` : "On, no one yet"),
+      people.length ? plainList(people, x => {
+        const allowed = Array.isArray(x.allowed) ? x.allowed : Array.isArray(x.tools) ? x.tools : [];
+        const asked = Array.isArray(x.tools) ? x.tools.filter(t => !allowed.includes(t)) : [];
+        return [mono(x.login), h("div", { class: "set-tags" }, allowed.map(t => h("span", { class: "tag" }, t))),
+          asked.length ? faint(`Listed but not guest-safe, so refused: ${asked.join(", ")}.`) : null];
+      }) : null,
+      safeLine,
+      faint("Add someone from the box's terminal:"),
+      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["glass.open"]}'`),
+      people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null,
+      faint("Turn guests off:"), cmd(`vyre call --tty network.guests.enable '{"on":false}'`));
+  });
+}
+
+/** Agent nodes: whether each agent's computer joins the tailnet as its own tagged node. */
+function drawAgentNodes(el) {
+  return optional(el, "Agent nodes", "computers.tailnet.status", d => {
+    const comps = listOf(d.computers, "agent");
+    const tag = d.tag || "tag:vyre-agent";
+    const v = d.vault || null;
+    // Whether the auth key is in the Vault and granted: never its value.
+    const key = v ? faint(`Auth key ${v.item || ""} in the Vault: ${v.exists == null ? "not known" : v.exists ? (v.granted ? "there, and granted" : "there, not granted yet") : "not there yet"}${v.why ? ` (${v.why})` : ""}.`) : null;
+    const problem = d.problem ? h("div", { class: "small set-warn" }, d.problem) : null;
+    if (!d.enabled) return row("Agent nodes", onOff(false),
+      faint(`With this on, each agent's computer joins your tailnet as its own node, tagged ${tag}, so your tailnet policy can tell agents apart.`),
+      problem, key, cmd(`vyre call --tty computers.tailnet.set '{"enabled":true}'`));
+    return row("Agent nodes", h("span", null, "On"), faint(`Tagged ${tag}.`), problem, key,
+      comps.length ? plainList(comps, x => [h("span", null, x.agent || "an agent"), x.node ? [" ", mono(x.node)] : null,
+        h("span", { class: "small faint" }, x.running ? " running" : " not running")]) : faint("No agent has a computer yet."),
+      d.applies ? faint(`This ${d.applies}.`) : null,
+      cmd(`vyre call --tty computers.tailnet.set '{"enabled":false}'`));
+  });
+}
+
+/** Glass egress: the listed sites leave an agent's Chrome through your Mac, when the sidecar answers. */
+function drawEgress(el) {
+  return optional(el, "Glass egress", "computers.egress.status", d => {
+    const sites = Array.isArray(d.sites) ? d.sites : [];
+    const side = d.sidecar || {};
+    if (!d.enabled) return row("Glass egress", onOff(false),
+      faint("Some sites refuse a datacenter address. The sites you list leave an agent's Chrome through your own Mac instead."),
+      cmd(`vyre call --tty computers.egress.set '{"enabled":true,"sites":["portal.northwind.example"]}'`));
+    return row("Glass egress", h("span", null, sites.length ? `On, ${plural(sites.length, "site")}` : "On, no sites yet"),
+      sites.length ? h("div", { class: "set-tags" }, sites.map(x => h("span", { class: "tag" }, String(x)))) : null,
+      side.answers ? faint("The egress sidecar answers.")
+        : h("div", { class: "small set-warn" }, `The egress sidecar does not answer${side.why ? ` (${side.why})` : ""}. The listed sites fail until it does, rather than show the box's address.`),
+      d.problem ? h("div", { class: "small set-warn" }, d.problem) : null,
+      d.applies ? faint(`This ${d.applies}.`) : null,
+      cmd(`vyre call --tty computers.egress.set '{"enabled":false}'`));
+  });
+}
+
+/** Tailnet Lock: on or off, read only. While it is off, the commands the person runs on their Mac. */
+async function drawLock(el) {
+  const r = await attempt("onboard.tailscale", { action: "lock" });
+  if (r.error) { put(el, row("Tailnet Lock", h("span", { class: "muted" }, errText(r.error)))); return; }
+  const d = r.data || {};
+  const on = lockState(d);
+  if (on) { put(el, row("Tailnet Lock", h("span", null, "On"), h("div", { class: "small faint" }, on))); return; }
+  const steps = h("div");
+  const toggle = h("button", { type: "button", class: "btn btn-sm" }, LOCK.show);
+  toggle.addEventListener("click", () => {
+    const open = !steps.childNodes.length;
+    put(steps, open ? [
+      h("ol", { class: "set-lock-steps" }, lockSteps(d).map(x => h("li", null, h("div", { class: "small" }, x.text), x.copy ? h("code", { class: "set-mono" }, x.copy) : null))),
+      h("div", { class: "small faint" }, LOCK.never)] : null);
+    put(toggle, open ? LOCK.hide : LOCK.show);
+  });
+  put(el, row("Tailnet Lock", h("span", { class: "muted" }, "Off"),
+    h("div", { class: "small faint" }, LOCK.what), h("div", { class: "small faint" }, LOCK.cost), foot(toggle), steps));
+}
+
+// ---- 5b. Your devices ----------------------------------------------------------------------
+
+/**
+ * What a tailnet node is, by the OS Tailscale reports. Tailscale says iOS for an iPad too, so the
+ * node's name tells them apart. handheld: a phone or tablet, the ones the offline line is for.
+ * @param {string} os @param {string} [name]
+ */
+function deviceKind(os, name = "") {
+  const o = String(os || "").toLowerCase();
+  if (o === "ios") return { kind: /ipad/i.test(name) ? "iPad" : "iPhone", handheld: true };
+  if (o === "android") return { kind: "Android phone", handheld: true };
+  const k = { macos: "Mac", windows: "Windows PC", linux: "Linux computer" }[o];
+  return { kind: k || os || "Device", handheld: false };
+}
+
+/** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
+async function drawDevices(el) {
+  const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
+  if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
+  const peers = st.data?.detail?.devices?.peers || [];
+  const paired = Array.isArray(macs.data) ? macs.data : [];
+  const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
+  const pairedHere = p => paired.some(m => same(m, p));
+  const order = p => (deviceKind(p.os, p.name).handheld ? 0 : 1) * 2 + (p.online ? 0 : 1);
+  const rows = [...peers].sort((a, b) => order(a) - order(b)).map(p => {
+    const { kind, handheld } = deviceKind(p.os, p.name);
+    return row(kind,
+      h("span", { class: "set-inline" }, mono(p.name), stateLbl(p.online ? "Online" : "Offline", p.online ? "" : "faint")),
+      pairedHere(p) ? h("div", { class: "small muted" }, "Paired with this box") : null,
+      handheld && !p.online ? h("div", { class: "set-off small" }, icon("phone", 14),
+        h("span", null, `Your ${kind} is offline in Tailscale. Open the Tailscale app and turn it on.`)) : null);
+  });
+  // A paired Mac Tailscale did not list (Tailscale not running here, say) still shows.
+  for (const m of paired) {
+    if (peers.some(p => same(m, p))) continue;
+    rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
+  }
+  put(el,
+    rows.length ? h("div", { class: "rows" }, rows)
+      : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
+    foot(toOnboard("devices", rows.length ? "Add a device" : "Open")));
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------
@@ -405,84 +658,58 @@ function lessonRow(l, reload) {
 }
 
 // ---- notifications ---------------------------------------------------------------------------
-
-/** base64url (as push.key gives it) to the raw bytes pushManager.subscribe wants. */
-const b64 = s => {
-  const pad = "=".repeat((4 - (s.length % 4)) % 4);
-  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from(raw, c => c.charCodeAt(0));
-};
-const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
-const isStandalone = () => !!(window.matchMedia?.("(display-mode: standalone)").matches || /** @type {any} */ (window.navigator).standalone);
-/** push.devices never gives back an endpoint to match against, so this device's id is kept here,
- * set once from push.subscribe's own answer. */
-const DEVICE_KEY = "vyre.push.device";
-const myDevice = () => { try { return localStorage.getItem(DEVICE_KEY); } catch { return null; } };
-const setMyDevice = id => { try { id ? localStorage.setItem(DEVICE_KEY, id) : localStorage.removeItem(DEVICE_KEY); } catch {} };
+// Subscribing, unsubscribing and "is this device on" live in js/phone-setup.js, shared with the
+// phone's setup card, so there is one implementation.
 
 async function drawNotifications(el, ctx) {
-  // iOS only delivers Web Push to an installed (Home Screen) app; asking for permission from an
-  // ordinary Safari tab silently cannot work, so say so instead of showing a button that fails.
-  if (isIOS() && !isStandalone()) {
-    put(el, note('iOS only delivers notifications to an installed app. Add Vyre to your Home Screen first — the Share button, then "Add to Home Screen" — then open it from there and come back here.'));
-    return;
-  }
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-    put(el, note("This browser does not support push notifications."));
-    return;
-  }
   const deviceBox = h("div");
   const settingsBox = h("div");
   const st = status();
-  put(el, deviceBox, settingsBox, st);
 
   const draw = async () => {
-    const [devicesR, settingsR] = await Promise.all([attempt("push.devices"), attempt("push.settings")]);
+    const p = await pushState();
     if (!ctx.alive()) return;
-    if (devicesR.error) { put(deviceBox, empty("Push is kept by its own module.", devicesR.error)); return; }
-    const reg = await navigator.serviceWorker.ready.catch(() => null);
-    const sub = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
-    const devices = devicesR.data || [];
+    // iOS only delivers Web Push to the Home Screen app; asking from a Safari tab cannot work, so
+    // say why instead of showing a switch that does nothing.
+    if (!p.ok && p.why === "install") {
+      put(el, note("iOS only delivers notifications to the Home Screen app (iOS 16.4 or later). Add Vyre to your Home Screen: tap Share, then Add to Home Screen. Open it from there and turn notifications on here."));
+      return;
+    }
+    if (!p.ok) { put(el, note("This browser does not support push notifications.")); return; }
+    if (!el.contains(deviceBox)) put(el, deviceBox, settingsBox, st);
+    if (p.error) { put(deviceBox, empty("Push is kept by its own module.", p.error)); put(settingsBox); return; }
+    const sub = p.sub;
+    const mine = p.device;
 
-    const subscribe = async () => {
-      put(st, "Asking for permission…");
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") { put(st, "Notifications were not allowed."); return; }
-      const key = await attempt("push.key");
-      if (key.error) { put(st, errText(key.error)); return; }
-      put(st, "Turning on…");
-      let newSub;
-      try { newSub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key.data.public_key) }); }
-      catch (e) { put(st, String(/** @type {any} */ (e)?.message || e)); return; }
-      const label = isIOS() ? "iPhone" : /Android/.test(navigator.userAgent) ? "Android" : "This browser";
-      const r = await attempt("push.subscribe", { subscription: newSub.toJSON(), label });
-      if (r.error) { put(st, errText(r.error)); newSub.unsubscribe().catch(() => {}); return; }
-      setMyDevice(r.data?.device || null);
-      put(st, "");
-      draw();
+    // Called straight from the click: subscribePush asks for permission before it awaits
+    // anything, which iOS needs.
+    const subscribe = () => {
+      put(st, "Asking for permission.");
+      subscribePush(deviceName()).then(() => { put(st, ""); draw(); }, e => put(st, errText(e)));
     };
     // "This device" unsubscribes by the id push.subscribe gave; if that was lost (another tab,
     // cleared storage) but the browser still holds a live subscription, the endpoint still
-    // identifies it server-side. A listed device unsubscribes by its id, browser-side or not.
+    // identifies it on the box. A listed device unsubscribes by its id.
     const unsubscribe = async (device, endpoint) => {
-      put(st, "Turning off…");
-      const r = await attempt("push.unsubscribe", device ? { device } : { endpoint });
-      if (r.error) { put(st, errText(r.error)); return; }
-      if (device && device === myDevice()) setMyDevice(null);
-      if (sub && (device === myDevice() || endpoint === sub.endpoint)) await sub.unsubscribe().catch(() => {});
+      put(st, "Turning off.");
+      try { await unsubscribePush({ device, endpoint, sub }); } catch (e) { put(st, errText(e)); return; }
       put(st, "");
       draw();
     };
 
-    const mine = myDevice();
     put(deviceBox, h("div", { class: "rows" },
       sub
         ? row("This device", stateLbl("On"), h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => unsubscribe(mine, sub.endpoint) }, "Turn off"))
-        : row("This device", h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: subscribe }, "Turn on notifications")),
-      ...devices.filter(d => d.device !== mine).map(d => row(d.label || "A device",
+        : p.permission === "denied"
+          ? row("This device", stateLbl("Blocked", "faint"), h("div", { class: "small muted" }, deniedHelp()))
+          : row("This device", h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: subscribe }, "Turn on notifications"),
+            h("div", { class: "small faint" }, "Only that something needs you, never what: asks and held drafts.")),
+      ...p.devices.filter(d => d.device !== mine).map(d => row(d.label || "A device",
         h("span", { class: "small faint" }, d.fails ? "failing" : d.last_ok ? `last delivered ${since(d.last_ok)} ago` : "not tried yet"),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => unsubscribe(d.device) }, "Remove")))));
 
+    const settingsR = await attempt("push.settings");
+    if (!ctx.alive()) return;
     if (settingsR.error) { put(settingsBox); return; }
     const s = settingsR.data || {};
     const quietOn = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: !!s.quiet }));
@@ -502,65 +729,55 @@ async function drawNotifications(el, ctx) {
         return row(label, box);
       })),
       sub ? foot(h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
-        put(st, "Sending…"); const t = await attempt("push.test");
+        put(st, "Sending."); const t = await attempt("push.test");
         put(st, t.error ? errText(t.error) : t.data?.sent ? "Sent." : "Not sent.");
       } }, "Send a test")) : null);
   };
-  draw();
+  await draw();
 }
 
 // ---- security (passkeys, ADR 0004) -------------------------------------------------------------
 
-/** WebAuthn's own base64url, for the enrollment call (api.js's is not exported; this one is
- * small enough to keep local rather than widen api.js's surface for one call site). */
-const b64url = buf => btoa(String.fromCharCode(.../** @type {any} */ (new Uint8Array(buf)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
 /**
  * Add a passkey: proves a person is here for a Gate approval or a Glass take-over (ADR 0004).
  * The first one needs a one-time code from `vyre presence code`, typed on the box, since there
- * is no passkey yet to prove with.
+ * is no passkey yet to prove with. The enrollment itself is js/phone-setup.js's enrollPasskey,
+ * shared with the phone's setup card.
  */
 function drawSecurity(el, ctx) {
   if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet.")); return; }
-  const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "off", spellcheck: "false",
-    placeholder: "from vyre presence code, on the box" }));
-  const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: "e.g. My MacBook" }));
+  const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "one-time-code", spellcheck: "false",
+    autocapitalize: "off", placeholder: "from vyre presence code, on the box" }));
+  const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: deviceName() }));
   const st = status();
+  const keysBox = h("div");
   const btn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: enroll }, "Add a passkey"));
-  async function enroll() {
-    const code = codeIn.value.trim();
-    if (!code) { put(st, "Paste the code first."); return; }
+  // Called straight from the click: Safari makes a passkey only inside a user gesture.
+  function enroll() {
+    if (!codeIn.value.trim()) { put(st, "Paste the code first."); return; }
     btn.disabled = true;
-    put(st, "Waiting for your passkey…");
-    /** @type {any} */ let cred;
-    try {
-      cred = await navigator.credentials.create({ publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp: { name: "Vyre", id: location.hostname },
-        user: { id: crypto.getRandomValues(new Uint8Array(16)), name: nameIn.value.trim() || "you", displayName: nameIn.value.trim() || "you" },
-        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-        authenticatorSelection: { userVerification: "required" }, timeout: 60_000,
-      } });
-    } catch (e) { btn.disabled = false; put(st, `The passkey was not created: ${/** @type {any} */ (e)?.message || e}`); return; }
-    if (!cred) { btn.disabled = false; put(st, "The passkey was cancelled."); return; }
-    const r = cred.response;
-    try {
-      await callWithCode("presence.enroll", {
-        kind: "passkey", name: nameIn.value.trim() || "This device",
-        public_key: b64url(r.getPublicKey()), alg: r.getPublicKeyAlgorithm(),
-        rp_id: location.hostname, credential_id: b64url(cred.rawId),
-      }, code);
-    } catch (e) { btn.disabled = false; put(st, errText(e)); return; }
-    codeIn.value = "";
-    btn.disabled = false;
-    put(st, "Passkey added.");
+    put(st, "Waiting for your passkey.");
+    enrollPasskey({ name: nameIn.value, code: codeIn.value }).then(() => {
+      codeIn.value = "";
+      btn.disabled = false;
+      put(st, "Passkey added.");
+      drawKeys();
+    }, e => { btn.disabled = false; put(st, errText(e)); });
   }
+  const drawKeys = async () => {
+    const k = await passkeyState();
+    if (!ctx.alive()) return;
+    put(keysBox, k.keys.length ? h("div", { class: "rows" }, row("Passkeys", h("div", { class: "set-list" }, k.keys.map(x =>
+      h("span", null, x.name || "A passkey", h("span", { class: "small faint" }, x.last_used ? `  used ${since(x.last_used)} ago` : "  not used yet")))))) : null);
+  };
   put(el,
-    note("A passkey (Touch ID, Face ID, a security key) proves you're the one approving a Gate item or taking over a session in Glass — never typed, never phished."),
+    note("A passkey (Touch ID, Face ID, a security key) proves you are the one approving a Gate item or taking over a session in Glass. It is never typed, so it cannot be phished."),
+    keysBox,
     h("div", { class: "rows" },
       row("Code", codeIn),
       row("Name this device", nameIn)),
     foot(btn), st);
+  drawKeys();
 }
 
 // ---- 8. Modules ----------------------------------------------------------------------------

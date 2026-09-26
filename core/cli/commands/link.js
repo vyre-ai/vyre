@@ -12,15 +12,20 @@
 
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import { json, emit, failTool, usage } from "../kit.js";
 
-const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
-const fail = r => { out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message); return 1; };
+const fail = r => failTool(r.error);
 const ago = ms => { const s = Math.round((Date.now() - ms) / 1000); return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`; };
 
 async function status() {
   const r = await call("link.status");
   if (r.error) return fail(r);
   const s = r.data;
+  if (json()) {
+    if (s.role !== "box") return emit(s);
+    const [p, peers] = await Promise.all([call("link.pending"), call("link.peers")]);
+    return emit({ ...s, waiting: p.data || [], macs: peers.data || [] });
+  }
   if (s.role === "box") {
     out(`  ${bold(String(s.peers))} paired Mac${s.peers === 1 ? "" : "s"} · ${s.pending} waiting`);
     const p = await call("link.pending");
@@ -37,26 +42,27 @@ async function status() {
 }
 
 export default {
-  name: "link", order: 45, usage: "vyre link [pair|approve|deny|unpair]", summary: "pair this Mac with your box, or approve a Mac on the box",
+  name: "link", order: 45, usage: "vyre link [pair|approve|deny|unpair] [--json]", summary: "pair this Mac with your box, or approve a Mac on the box",
   async run(args) {
-    const [sub, arg] = args;
+    const [sub, arg] = args.filter(a => a !== "--json");
     if (!sub) return status();
     if (sub === "pair") {
-      if (!arg) { out("  vyre link pair <your box's address>"); return 1; }
+      if (!arg) return usage("vyre link pair needs your box's address", "vyre link pair <address>, e.g. vyre link pair alex.vyre.run");
       const r = await call("link.pair", { box: arg });
       if (r.error) return fail(r);
+      if (json()) return emit(r.data);
       out(`  approve this Mac in your Deck, with the code  ${bold(r.data.code)}`);
       out(dim(`  The Deck names this Mac and asks for your passkey. The code expires in ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
       return 0;
     }
     if (sub === "approve") {
-      if (!arg) { out("  vyre link approve <the code the Mac shows>"); return 1; }
+      if (!arg) return usage("vyre link approve needs the code the Mac shows", "vyre link approve <code>, or approve it in the Deck");
       const r = await call("link.pair.approve", { code: arg });
       // A terminal is not proof the owner is here (a model can ssh in with the code), so the box
       // asks for a passkey, and only the Deck can give one.
       if (r.error && r.error.code === "presence_required") {
         out(`  approve it in the Deck: it names the Mac asking and asks for your passkey ${dim("(the code is " + arg + ")")}`);
-        return 1;
+        return 3;
       }
       if (r.error) return fail(r);
       out(`  ${signal("●")} paired with ${bold(r.data.name)}`);
@@ -74,7 +80,6 @@ export default {
       out(r.data.unpaired ? "  unpaired" : "  was not paired");
       return 0;
     }
-    out("  vyre link [pair <address>|approve <code>|deny <id>|unpair [id]]");
-    return 1;
+    return usage(`vyre link ${sub}: not a subcommand`, "vyre link [pair <address>|approve <code>|deny <id>|unpair [id]]");
   },
 };

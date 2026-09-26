@@ -43,14 +43,16 @@ async function box(t, extra = {}) {
 }
 
 /** Exchange the one-time link for the session, the way the page does: from the redirect's fragment. */
+// Every request closes its connection: a test that restarts vyred on the same port would
+// otherwise send its next request down a kept-alive socket the old vyred already closed.
 async function redeem(url) {
-  const r = await fetch(url, { redirect: "manual" });
+  const r = await fetch(url, { redirect: "manual", headers: { connection: "close" } });
   const location = r.headers.get("location") || "";
   return { status: r.status, location, session: (location.match(/#s=([A-Za-z0-9_-]+)$/) || [])[1] || "", cookie: r.headers.get("set-cookie") };
 }
 
 const tool = (base, session, name, input = {}, headers = {}) => fetch(`${base}/v1/tools/${name}`, {
-  method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, ...headers }, body: JSON.stringify(input) });
+  method: "POST", headers: { "content-type": "application/json", "x-vyre-onboard": session, connection: "close", ...headers }, body: JSON.stringify(input) });
 
 test("onboard: the link works once, becomes a session, and the session reaches only the onboarding", async t => {
   const { root } = await box(t);
@@ -151,6 +153,40 @@ test("onboard: a new link voids the old unredeemed one; the owner arriving on th
   assert.equal(await fetch(`http://127.0.0.1:${b.port}/onboard`).then(() => "open", () => "closed"), "closed");
 });
 
+/** A free port that is not 7300, for a test that restarts vyred and needs the link's port again. */
+async function freePort() {
+  const s = http.createServer();
+  await new Promise(r => s.listen(0, "127.0.0.1", () => r(undefined)));
+  const port = /** @type {any} */ (s.address()).port;
+  await new Promise(r => s.close(() => r(undefined)));
+  return port;
+}
+
+test("onboard: vyre update's report mints nothing, and the unused link and an open page survive vyred restarting", async t => {
+  const port = await freePort();
+  const { root, d } = await box(t, { network: { onboardPort: port } });
+  const a = (await call("onboard.link", {}, { root })).data;
+  const opened = (await call("onboard.link", {}, { root })).data;
+  const { session } = await redeem(opened.url);
+  const unused = (await call("onboard.link", {}, { root })).data;
+  const report = (await call("onboard.link", { mint: false }, { root })).data;
+  assert.deepEqual([report.url, report.pending, report.expires], [null, true, unused.expires], "a report, not a link");
+  assert.equal(fs.statSync(path.join(root, "onboard-link.json")).mode & 0o777, 0o600);
+  assert.ok(!fs.readFileSync(path.join(root, "onboard-link.json"), "utf8").includes(new URL(unused.url).searchParams.get("t")), "only the hash is kept");
+  // vyre update: the container is recreated, so vyred stops and starts.
+  await d.stop();
+  const d2 = await start({ root, log: () => {} });
+  t.after(() => d2.stop());
+  assert.equal((await tool(`http://127.0.0.1:${port}`, session, "onboard.status")).status, 200, "the open page keeps working");
+  assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, true);
+  assert.equal((await redeem(unused.url)).status, 302, "the link the user was sent still works");
+  assert.equal((await redeem(a.url)).status, 403, "a voided one stays void");
+  assert.equal((await call("onboard.link", { mint: false }, { root })).data.pending, false);
+  d2.events.emit("names", "owner.seen", {});
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(fs.existsSync(path.join(root, "onboard-link.json")), false, "the owner arriving forgets it for good");
+});
+
 test("onboard: on a host the listener binds loopback; in the box's container, the name the compose gives it", () => {
   assert.equal(bindAddress({}), "127.0.0.1");
   assert.equal(bindAddress({ VYRE_ONBOARD_HOST: "vyred" }), "vyred");
@@ -240,6 +276,29 @@ test("onboard: reserve goes to ts.net without a zone token and says so when the 
   const yes = await (await tool(base, session, "onboard.name", { name: "kit", action: "reserve", confirm: true })).json();
   assert.ok(!yes.error, JSON.stringify(yes.error));
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, "kit", "confirmed, so it is the name");
+});
+
+test("onboard: when tailscale cert itself refuses because HTTPS is off, the address step says so with the admin console link", async t => {
+  const { root } = await box(t);
+  const bins = fs.mkdtempSync(path.join(root, "ts-"));
+  const st = JSON.stringify({ BackendState: "Running", TUN: true, CertDomains: ["box.tail0000.ts.net"], OperatorUser: os.userInfo().username,
+    Self: { HostName: "box", DNSName: "box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.9"], ID: "n1", UserID: 1 }, User: {} });
+  // The status lists the cert domain, so the check before `tailscale cert` passes; the cert call is what refuses.
+  const bin = path.join(bins, "tailscale");
+  fs.writeFileSync(bin, `#!/bin/sh\nif [ "$1" = cert ]; then echo "500 Internal Server Error: your Tailscale account does not support getting TLS certs" >&2; exit 1; fi\ncat <<'EOF'\n${st}\nEOF\n`, { mode: 0o755 });
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+
+  let r = (await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).data;
+  for (let i = 0; i < 50 && r.state !== "blocked"; i++) {
+    await new Promise(res => setTimeout(res, 20));
+    r = (await (await tool(base, session, "onboard.name", { action: "status" })).json()).data;
+  }
+  assert.equal(r.state, "blocked");
+  assert.equal(r.code, "https_off", r.why);
+  assert.equal(r.adminUrl, "https://login.tailscale.com/admin/dns");
 });
 
 /** Can this machine run claude under a pty the way onboard.claude does? */
@@ -353,4 +412,20 @@ test("onboard: finishing with an address hands over a one-time link to make the 
   const again = (await call("onboard.link", {}, { root })).data;
   assert.equal(again.url, null);
   assert.match(again.passkeyUrl, link);
+});
+
+test("onboard: tailscale lock reads Tailnet Lock and hands back this box's key and the commands, running only lock status", async t => {
+  const { root } = await box(t);
+  const dir = fs.mkdtempSync(path.join(root, "ts-"));
+  const bin = path.join(dir, "tailscale"), log = path.join(dir, "args.log");
+  const key = "tlpub:" + "b0".repeat(32);
+  fs.writeFileSync(bin, `#!/bin/sh\necho "$*" >> ${JSON.stringify(log)}\nif [ "$1" = lock ]; then echo '${JSON.stringify({ Enabled: false, PublicKey: key, NodeKeySigned: false })}'; else echo '{"BackendState":"Running","TUN":true}'; fi\n`, { mode: 0o755 });
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  const r = await call("onboard.tailscale", { action: "lock" }, { root });
+  assert.ok(r.data, JSON.stringify(r.error));
+  assert.deepEqual({ ...r.data, commands: undefined }, { enabled: false, nodeKey: key, key, trusted: null, signed: null, why: null, commands: undefined });
+  assert.equal(r.data.commands.mac, "tailscale lock");
+  assert.equal(r.data.commands.init, `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${key}`);
+  const lockCalls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("lock"));
+  assert.deepEqual([...new Set(lockCalls)], ["lock status --json"], "Vyre never runs lock init or sign");
 });

@@ -16,6 +16,9 @@ import { attempt, on, fromFixtures, fixturesOn } from "./api.js";
 import { icon, mark, wordmark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
+import * as pwa from "./pwa.js";
+// Loaded with the shell, not with Now, so it hears Chrome's one beforeinstallprompt.
+import "./phone-setup.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -39,6 +42,7 @@ const ROUTES = [
   ["/vault/:place/:name", "vault"],
   ["/settings", "settings"],
   ["/ask", "ask"],
+  ["/find", "find"],
 ];
 const PLACES = [
   { href: "/now", label: "Now", icon: "now", view: "now" },
@@ -52,7 +56,9 @@ const PLACES = [
 const TABS = [
   { href: "/now", label: "Now", icon: "clock", view: "now" },
   { href: "/projects", label: "Projects", icon: "projects", view: "projects" },
-  { href: "/ask", label: "Ask", icon: "chat", view: "ask" },
+  { href: "/chat", label: "Chat", icon: "chat", view: "chat" },
+  // Find is the phone's Capsule: one box for files, sessions, agents, memory and asking juno.
+  { href: "/find", label: "Find", icon: "search", view: "find" },
   { href: "/agents", label: "Agents", icon: "agents", view: "agents" },
 ];
 
@@ -142,7 +148,9 @@ window.addEventListener("deck:pins", drawRail);
 async function drawFoot() {
   const r = await attempt("system.info");
   info.host = r.data?.host || location.hostname;
-  put(avatar, initials(info.host).slice(0, 2) || "V");
+  // The owner's own initials when onboarding saved a name, else the machine's.
+  put(avatar, initials(r.data?.owner?.name || info.host).slice(0, 2) || "V");
+  if (r.data?.owner?.name) avatar.setAttribute("title", r.data.owner.name);
   const onTailnet = /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
   put(foot,
     h("div", { class: "code", style: { color: "var(--text-2)" } }, info.host),
@@ -212,10 +220,11 @@ async function route() {
   put(address.lastChild, location.host, h("b", null, location.pathname === "/" ? "/now" : location.pathname));
   for (const a of [...railLinks, ...tabs]) {
     const v = a.getAttribute("data-view");
-    a.setAttribute("aria-current", v === name || (name === "needs" && v === "now") ? "page" : "false");
+    a.setAttribute("aria-current", v === name || (name === "needs" && v === "now") || (name === "ask" && v === "find") ? "page" : "false");
     if (a.getAttribute("aria-current") === "false") a.removeAttribute("aria-current");
   }
   railOwned = false;
+  pwa.remember(location.pathname + location.search);
   drawRail();
   put(railLower);
   view.scrollTop = 0;
@@ -258,10 +267,17 @@ window.addEventListener("popstate", route);
 window.addEventListener("deck:navigate", route);
 
 // First visit before setup is finished goes to the onboarding.
+// onboard.status can be slow (it asks Tailscale and Claude Code on a cold cache), so the Deck waits
+// for it at most a moment and never leaves the phone on a blank screen: a late answer that says
+// there is no owner yet still sends the page to the onboarding.
 (async () => {
-  const st = await attempt("onboard.status");
-  if (st.data && st.data.owner === false && !fixturesOn) { location.replace("/onboard"); return; }
+  const status = attempt("onboard.status");
+  const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
+  const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;
+  if (toOnboard(first)) { location.replace("/onboard"); return; }
+  if (!first) status.then(st => { if (toOnboard(st)) location.replace("/onboard"); });
   drawFoot();
+  pwa.start({ view, deck });
   route();
   needs.load();
   for (const t of ["ask.raised", "ask.answered", "gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());

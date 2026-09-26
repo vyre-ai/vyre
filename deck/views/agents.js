@@ -3,7 +3,7 @@
 // Board: DeckAgent. Spec section 10.
 //
 // Tools: agents.list, agents.create, agents.update, agents.stop, agents.ask (switchboard),
-// watchers.list, watchers.pause (watchers), computers.get, computers.restart, computers.limits
+// watchers.list, watchers.pause, watchers.resume (watchers), computers.get, computers.restart, computers.limits
 // (computers), threads.list for thread names and times, projects.list for project names.
 // Each may be missing; each section then says which module is not running.
 
@@ -11,6 +11,7 @@ import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
+import { assistantCard } from "../js/assistant-setup.js";
 import { since, initial, count, plural, clock } from "../js/fmt.js";
 
 const MODELS = [
@@ -68,9 +69,11 @@ async function list(ctx) {
   const newBtn = h("button", { type: "button", class: "btn btn-primary", "aria-expanded": "false", "aria-controls": "ag-new" }, icon("plus", 14), "New agent");
   const form = h("section", { class: "ag-new", id: "ag-new", hidden: true, "aria-label": "New agent" });
   const rows = h("section", { class: "ag-list", "aria-labelledby": "ag-list-h" });
+  // No assistant yet: the card to make one comes before everything else on the page.
+  const setup = h("div", { class: "ag-setup" });
   put(ctx.root, h("div", { class: "ag" }, h("div", { class: "ag-col" },
     h("div", { class: "ag-top" }, h("div", { class: "ag-top-text" }, title, sub), newBtn),
-    form, rows)));
+    setup, form, rows)));
 
   /** @type {any[]} */ let all = [];
   let w = await world();
@@ -80,6 +83,7 @@ async function list(ctx) {
     const headRow = head("Every agent", h("span", { class: "lbl" }, listErr ? "" : `${all.filter(a => a.status === "working").length} working`));
     /** @type {HTMLElement} */ (headRow.firstChild).id = "ag-list-h";
     if (listErr) {
+      put(setup);
       put(sub, "Agents are kept by the switchboard.");
       put(rows, headRow, empty("No agents can be listed.", listErr));
       return;
@@ -87,8 +91,12 @@ async function list(ctx) {
     const assistant = all.find(a => a.kind === "assistant");
     const others = all.filter(a => a.kind !== "assistant");
     put(sub, assistant ? `${assistant.name} is your assistant and can see every project. ${others.length ? `${count(others.length)} other agent${others.length === 1 ? "" : "s"} work${others.length === 1 ? "s" : ""} in the projects you gave ${others.length === 1 ? "it" : "them"}.` : "No other agents yet."}`
-      : "No assistant yet. Onboarding makes one.");
-    put(rows, headRow, all.length ? h("div", { class: "rows" }, [assistant, ...others].filter(Boolean).map(a => agentRow(a, w))) : h("div", { class: "empty" }, "No agents yet."));
+      : "No assistant yet.");
+    // The card is drawn once and kept across redraws, so a name half typed is not lost.
+    if (assistant) put(setup);
+    else if (!setup.firstChild) put(setup, assistantCard({ onCreated: a => { if (!ctx.alive()) return; all = [a, ...all.filter(x => x.name !== a.name)]; draw(); } }));
+    // No agents at all: the card is the empty state, not a blank list.
+    put(rows, all.length ? [headRow, h("div", { class: "rows" }, [assistant, ...others].filter(Boolean).map(a => agentRow(a, w)))] : null);
   };
 
   const load = async () => {
@@ -385,7 +393,8 @@ function watcherRow(x, w) {
   sw.addEventListener("click", async () => {
     const on_ = sw.getAttribute("aria-checked") !== "true";
     /** @type {HTMLButtonElement} */ (sw).disabled = true;
-    const r = await attempt("watchers.pause", on_ ? { name: x.name, off: true } : { name: x.name });
+    // On is watchers.resume, off is watchers.pause; neither takes more than the name.
+    const r = await attempt(on_ ? "watchers.resume" : "watchers.pause", { name: x.name });
     /** @type {HTMLButtonElement} */ (sw).disabled = false;
     if (r.error) { put(status, why(r.error)); return; }
     put(status);

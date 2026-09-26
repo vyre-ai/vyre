@@ -8,20 +8,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { open, migrate } from "../../core/store/index.js";
 import { Vault, MIGRATIONS } from "../../core/vault/vault.js";
 import { Fill, serveFill } from "../../core/vault/fill.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const canary = () => `fixture-canary-${crypto.randomBytes(12).toString("hex")}`;
 const ID = "abcdefghijklmnopabcdefghijklmnop";
 
 async function setup(t) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-ext-"));
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-ext-"));
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const vault = new Vault({ db, dir: path.join(tmp, "vault"), config: { vault: { keystore: "file" } }, emit: () => {} });

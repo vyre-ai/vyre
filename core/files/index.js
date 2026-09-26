@@ -21,6 +21,8 @@ import { StringDecoder } from "node:string_decoder";
 import { guard } from "./safety.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
+import { drop } from "./drop.js";
+import { drive } from "./drive.js";
 
 const run = promisify(execFile);
 const KIB = 1024, MIB = 1024 * KIB, GIB = 1024 * MIB;
@@ -203,7 +205,7 @@ export default {
       // PNG and GIF keep transparency; everything else becomes JPEG, which every browser shows
       // (a HEIC photo straight from a phone would not).
       const png = ext === ".png" || ext === ".gif";
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-thumb-"));
+      const tmp = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-thumb-"));
       const out = path.join(tmp, png ? "thumb.png" : "thumb.jpg");
       try {
         if (platform === "darwin") await run("sips", ["-s", "format", png ? "png" : "jpeg", "-Z", "512", real, "--out", out], { timeout: 15_000 });
@@ -309,6 +311,11 @@ export default {
       },
     });
 
-    return { async stop() {} };
+    // Taildrop: files.send on the Mac, the inbox receiver on the box (drop.js).
+    const dropped = drop(ctx, { role, g, cfg });
+    // Taildrive: the box's chosen folders, mounted on the paired Mac (drive.js).
+    drive(ctx, { role, guard: g, roots });
+
+    return { async stop() { await dropped.stop(); } };
   },
 };

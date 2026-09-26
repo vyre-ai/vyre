@@ -10,6 +10,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { interactiveFrom } from "../core/harness/index.js";
+import { HUMAN_ONLY } from "../core/presence/index.js";
+import { socketPath } from "../core/config/index.js";
 import { tempHome } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 
@@ -350,4 +352,166 @@ test("sessions: an MCP call says which session it is in, and gate.request files 
   // Binding needs a running claude: the test process is node, and it cannot bind for itself.
   assert.match((await call("threads.bind", { session, pid: process.pid }, { root, caller: "harness" })).error.message, /not a running claude/);
   assert.equal((await call("threads.bind", { session, pid: process.pid }, { root, caller: "mcp" })).error.code, "denied");
+});
+
+test("mcp: the hub's tools are offered through the one vyre entry; a read reaches the server and a send is held", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const log = path.join(root, "fake-mcp.log");
+  const fakeMcp = path.join(PLUGIN, "..", "core", "mcp", "testing", "fake-mcp.js");
+  const added = await d.registry.call("mcp.add", { name: "issues", transport: "stdio", command: process.execPath, args: [fakeMcp, "--stdio"], vars: { FAKE_MCP_LOG: log } }, "cli");
+  assert.equal(added.data?.test?.ok, true, JSON.stringify(added));
+
+  const p = spawn(process.execPath, [path.join(PLUGIN, "mcp", "server.js")], { env: { ...process.env, VYRE_HOME: root, VYRE_AGENT: "", VYRE_AGENT_KEY: "" } });
+  t.after(() => p.kill());
+  const replies = new Map();
+  let buf = "";
+  p.stdout.on("data", c => {
+    buf += c;
+    for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.get(m.id)?.(m); }
+  });
+  const rpc = (id, method, params) => new Promise(r => { replies.set(id, r); p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
+
+  const init = await rpc(1, "initialize", { protocolVersion: "2025-06-18" });
+  assert.equal(init.result.capabilities.tools.listChanged, false);
+  const tools = (await rpc(2, "tools/list", {})).result.tools;
+  const byName = new Map(tools.map(x => [x.name, x]));
+  assert.ok(byName.has("system_echo"), "module tools are still offered");
+  assert.ok(byName.has("issues__list_issues"));
+  assert.equal(byName.get("issues__list_issues").description, "List open issues.");
+  assert.match(byName.get("issues__send_message").description, /^\(held for approval\) Send a message/);
+  assert.deepEqual(byName.get("issues__send_message").inputSchema.required, ["to", "text"]);
+  for (const x of tools) assert.match(x.name, /^[A-Za-z0-9_-]{1,64}$/);
+
+  const read = (await rpc(3, "tools/call", { name: "issues__list_issues", arguments: {} })).result;
+  assert.equal(read.structuredContent.issues.length, 2, JSON.stringify(read));
+  const echo = (await rpc(4, "tools/call", { name: "system_echo", arguments: { text: "still here" } })).result;
+  assert.equal(JSON.parse(echo.content[0].text).text, "still here");
+
+  const send = (await rpc(5, "tools/call", { name: "issues__send_message", arguments: { to: "dana@harlowlegal.com", text: "Friday works" } })).result;
+  assert.ok(!send.isError, JSON.stringify(send));
+  assert.match(send.content[0].text, /Held at the Gate|approve/i);
+  assert.ok(send.structuredContent.held);
+  const held = (await d.registry.call("gate.held", {}, "local")).data;
+  assert.equal(held.length, 1);
+  assert.equal(held[0].via, "mcp:issues");
+  const calls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("call "));
+  assert.ok(calls.some(l => l.startsWith("call list_issues")));
+  assert.ok(!calls.some(l => l.startsWith("call send_message")), "a held send never reaches the server");
+
+  const unknown = (await rpc(6, "tools/call", { name: "nowhere__list_things", arguments: {} })).result;
+  assert.equal(unknown.isError, true);
+  assert.match(unknown.content[0].text, /^denied: /);
+});
+
+/** Talk JSON-RPC to Vyre's MCP server over stdio. */
+function entry(t, env) {
+  const p = spawn(process.execPath, [path.join(PLUGIN, "mcp", "server.js")], { env: { ...process.env, ...env } });
+  t.after(() => p.kill());
+  const replies = new Map();
+  let buf = "";
+  p.stdout.on("data", c => {
+    buf += c;
+    for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.get(m.id)?.(m); }
+  });
+  let n = 0;
+  /** @returns {Promise<any>} */
+  const rpc = (method, params) => new Promise(r => { const id = ++n; replies.set(id, r); p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
+  const notify = method => p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method }) + "\n");
+  return { rpc, notify };
+}
+
+test("mcp: the hub is never a route around the floor", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  // A presence that records every prompt and answers no, until a person is there.
+  const prompts = [];
+  let here = false;
+  const presence = {
+    required: (tool, def) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence),
+    verify: async ({ tool, caller }) => { prompts.push(`${tool} ${caller}`); return here ? { ok: true, method: "test" } : { ok: false, message: "nobody is there" }; },
+    challenge: async () => ({ error: { code: "bad_input", message: "no challenge in this test" } }),
+  };
+  const d = await start({ root, presence, log: () => {} });
+  t.after(() => d.stop());
+  const cli = (tool, input = {}) => d.registry.call(tool, input, "cli");
+  const log = path.join(root, "fake-mcp.log");
+  const fakeMcp = path.join(PLUGIN, "..", "core", "mcp", "testing", "fake-mcp.js");
+  const chat = { name: "chat", transport: "stdio", command: process.execPath, args: [fakeMcp, "--stdio"], vars: { FAKE_MCP_LOG: log } };
+  const added = await cli("mcp.add", { ...chat, tools: { mode: { echo_env: "read" } } });
+  assert.equal(added.data?.test?.ok, true, JSON.stringify(added));
+  const calls = () => fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("call "));
+  const sent = () => calls().filter(l => l.startsWith("call send_message"));
+
+  // Through the one vyre entry, as a model in a person's session.
+  const { rpc } = entry(t, { VYRE_HOME: root, VYRE_AGENT: "", VYRE_AGENT_KEY: "" });
+  await rpc("initialize", { protocolVersion: "2025-06-18" });
+  const listed = (await rpc("tools/list", {})).result.tools.map(x => x.name);
+  for (const x of ["mcp_add", "mcp_update", "mcp_remove", "mcp_release"]) assert.ok(!listed.includes(x), `${x} is offered to a model`);
+  const via = async (name, args) => (await rpc("tools/call", { name, arguments: args })).result;
+  for (const [tool, args] of [["mcp.add", { ...chat, name: "sneaky" }], ["mcp.update", { name: "chat", tools: {} }], ["mcp.remove", { name: "chat" }]]) {
+    const r = await via(tool, args);
+    assert.equal(r.isError, true, tool);
+    assert.match(r.content[0].text, /^denied: /, tool);
+  }
+  assert.match((await via("mcp.release", { id: "g-1", content: {} })).content[0].text, /^no_such_tool: /);
+
+  // A hub send is held, and nothing reaches the server.
+  const send = await via("chat__send_message", { to: "dana@harlowlegal.com", text: "Friday works" });
+  const id = send.structuredContent?.held;
+  assert.ok(id, JSON.stringify(send));
+  assert.deepEqual(sent(), []);
+  assert.match((await via("gate.approve", { id })).content[0].text, /^denied: gate.approve is not available to mcp callers/, "the model approves its own send");
+  assert.deepEqual(sent(), []);
+
+  // The same, as an agent vyred verified.
+  const juno = (tool, input) => d.registry.call(tool, input, "mcp:agent:juno", { agent: "juno", thread: "t-1" });
+  for (const [tool, args] of [["mcp.add", { ...chat, name: "sneaky" }], ["mcp.update", { name: "chat", tools: {} }], ["mcp.remove", { name: "chat" }]])
+    assert.equal((await juno(tool, args)).error?.code, "denied", tool);
+  assert.equal((await juno("mcp.release", { id, content: {} })).error?.code, "no_such_tool");
+  assert.equal((await juno("gate.approve", { id })).error?.code, "denied");
+  assert.deepEqual(sent(), []);
+
+  // A person without presence cannot approve either; with it, the send reaches the server once.
+  assert.equal((await cli("gate.approve", { id })).error?.code, "presence_required");
+  assert.deepEqual(sent(), []);
+  here = true;
+  const ok = await cli("gate.approve", { id });
+  assert.equal(ok.data?.state, "sent", JSON.stringify(ok));
+  assert.deepEqual(sent(), [`call send_message ${JSON.stringify({ to: "dana@harlowlegal.com", text: "Friday works" })}`]);
+  here = false;
+  // A model's approval is refused before presence is even asked; a person's is asked each time.
+  assert.deepEqual(prompts, ["gate.approve cli", "gate.approve cli"], "only a person's approvals asked, and nothing else did");
+
+  // A person cannot mark a send as a read, at add or at update.
+  const always = /send_message sends as the person, so it is always held and cannot be read: set send_message to write or off/;
+  assert.match((await cli("mcp.add", { ...chat, name: "chat-two", tools: { mode: { send_message: "read" } } })).error?.message, always);
+  assert.match((await cli("mcp.update", { name: "chat", tools: { mode: { send_message: "read" } } })).error?.message, always);
+  assert.equal((await cli("mcp.update", { name: "chat", tools: { mode: { send_message: "write", echo_env: "read" } } })).data?.name, "chat");
+
+  // Vyre's own MCP server is never a hub server, and VYRE_ settings are Vyre's.
+  const own = /that is Vyre's own MCP server; its tools are already offered through the one vyre entry/;
+  assert.match((await cli("mcp.add", { name: "loop", transport: "stdio", command: path.join(PLUGIN, "..", "bin", "vyre"), args: ["mcp"] })).error?.message, own);
+  assert.match((await cli("mcp.add", { name: "loop", transport: "stdio", command: process.execPath, args: [path.join(PLUGIN, "mcp", "server.js")] })).error?.message, own);
+  assert.match((await cli("mcp.add", { ...chat, name: "loop", vars: { VYRE_HOME: root } })).error?.message, /VYRE_ settings belong to Vyre, not a server/);
+  assert.match((await cli("mcp.update", { name: "chat", vars: { VYRE_HUB_CHILD: "" } })).error?.message, /VYRE_ settings belong to Vyre/);
+  assert.deepEqual((await cli("mcp.servers")).data.map(x => x.name), ["chat"]);
+
+  // Every hub child carries VYRE_HUB_CHILD, and Vyre's server run under it refuses everything
+  // without reaching vyred: in a home with no vyred, none is started.
+  assert.equal((await cli("mcp.call", { server: "chat", tool: "echo_env", arguments: { name: "VYRE_HUB_CHILD" } })).data?.structuredContent?.set, true);
+  const empty = fs.mkdtempSync(path.join(SCRATCH, "vyre-hubchild-"));
+  t.after(() => fs.rmSync(empty, { recursive: true, force: true }));
+  const child = entry(t, { VYRE_HOME: empty, VYRE_HUB_CHILD: "1" });
+  child.notify("notifications/initialized");
+  const refusal = { code: -32000, message: "Vyre's MCP server does not run inside the MCP hub" };
+  const init = await child.rpc("initialize", { protocolVersion: "2025-06-18" });
+  assert.deepEqual([init.error, init.result], [refusal, undefined]);
+  const list = await child.rpc("tools/list", {});
+  assert.deepEqual([list.error, list.result], [refusal, undefined], "no tools are listed");
+  assert.deepEqual((await child.rpc("tools/call", { name: "system_echo", arguments: {} })).error, refusal);
+  assert.equal(fs.existsSync(socketPath(empty)), false, "it started or reached a vyred");
+  assert.deepEqual(fs.readdirSync(empty), []);
 });

@@ -19,10 +19,23 @@ import os from "node:os";
 import path from "node:path";
 import { socketPath } from "../config/index.js";
 import { HUMAN_ONLY } from "../presence/index.js";
+import { ownerOverTailnet } from "../modules/index.js";
 import { flatten, words, dynamic, globReaches } from "./shell.js";
 
 /** Words in an MCP tool's own name that mean it sends something as the user. */
 const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
+/**
+ * The MCP hub's tools inside Vyre's own MCP server (ADR 0016), as `vyre mcp` or as the plugin:
+ * a hub server name, then its tool. The hub holds their outward calls at the Gate itself, and its
+ * rule is stricter than the name rule (unknown is outward), so rule 1 steps aside for them.
+ */
+const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
+/**
+ * Vyre module tools with a send word that hold at the Gate themselves, so rule 1 would only ask
+ * about a call that already waits for the person. google.mail.send is always held (ADR 0016
+ * decision 6). A Vyre tool that really sends, such as threads_send, is not listed and still asks.
+ */
+const GATED = new Set(["google_mail_send"].flatMap(t => [`mcp__vyre__${t}`, `mcp__plugin_vyre_vyre__${t}`]));
 /** Where a sending tool keeps its destination, in the order worth showing. */
 const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "email", "thread_id", "chat_id", "user", "url"];
 
@@ -53,7 +66,7 @@ export function rules({ tool, input, cwd, home, userHome }) {
   }
 
   // Rules 1 and 2. Only MCP tools: those are the ones that reach people (mail, chat, posts).
-  if (tool.startsWith("mcp__")) {
+  if (tool.startsWith("mcp__") && !HUB.test(tool) && !GATED.has(tool)) {
     const own = tool.split("__").pop() || "";
     if (SENDS.test(own) && !/(^|_)(draft|list|get|search|read)(_|$)/i.test(own)) {
       const dest = DEST_KEYS.map(k => input[k]).find(v => v != null && v !== "");
@@ -213,4 +226,28 @@ function toolRoutes(tool, input, { vyreHome, cwd }) {
     if (INTERNAL_FILE.test(g) || globReaches(g, vyreHome)) return { decision: "deny", rule: 8, reason: INTERNALS };
   }
   return null;
+}
+
+/** Callers that are the person at one of Vyre's own surfaces, when they name no agent. The
+ * owner's own Deck or phone at the box's address (`tailnet:<owner>`) is one too. */
+const PERSON = new Set(["cli", "local", "deck", "capsule"]);
+
+/**
+ * The same floor for every tool call through vyred's Registry (SPEC 5.3), not only Claude Code's
+ * PreToolUse hook. A person at a surface is not held back here: presence and the Gate speak for
+ * them. Every other caller (an agent through the switchboard, the Capsule or MCP, a module, a
+ * guest or an agent node on the tailnet) gets the rules' answer, and "ask" is a refusal, since
+ * nobody is there to answer.
+ * @param {{ home: string }} o VYRE_HOME, for rule 8's paths
+ * @returns {(call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>}
+ */
+export function registryRules({ home }) {
+  return async ({ tool, input, caller }) => {
+    const c = String(caller);
+    if (PERSON.has(c) || ownerOverTailnet(c)) return { allow: true };
+    const v = rules({ tool, input: input && typeof input === "object" ? input : {}, home });
+    if (v.decision === "deny") return { allow: false, reason: v.reason };
+    if (v.decision === "ask") return { allow: false, reason: `${v.reason} Only a person can say yes, and ${c} is not one.` };
+    return { allow: true };
+  };
 }

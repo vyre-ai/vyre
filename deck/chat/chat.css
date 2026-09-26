@@ -44,6 +44,13 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (max-width: 760px) { .session-back { display: inline-flex; } }
 
 .thread-view { flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 16px 20px 24px; }
+/* The timeline's frame, so the "Jump to latest" pill can sit over its bottom edge. */
+.thread-wrap { position: relative; flex-grow: 1; min-height: 0; display: flex; flex-direction: column; }
+.jump-latest { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 14px; border: 1px solid var(--rule-strong); border-radius: 16px; background: var(--panel); box-shadow: var(--popover);
+  color: var(--text); font-size: 13px; cursor: pointer; z-index: 5; }
+.jump-latest[hidden] { display: none; }
+.jump-latest:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .day-rule { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
 .day-rule .line { flex-grow: 1; height: 1px; background: var(--rule); }
 
@@ -160,3 +167,70 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .thread-view { padding-left: 16px; padding-right: 16px; }
   .composer-menu { left: 16px; right: 16px; }
 }
+
+/* The session list pages: /chat and /chat/:project. */
+.chat-pad { padding: 20px 20px 32px; display: flex; flex-direction: column; gap: 20px; max-width: 880px; }
+.chat-head { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 32px; }
+.chat-title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; min-width: 0; }
+.chat-count { flex-shrink: 0; margin-left: auto; }
+.chat-back { display: none; align-items: center; gap: 2px; height: 32px; margin-left: -6px; padding-right: 6px; color: var(--text-2);
+  text-decoration: none; font-size: 15px; flex-shrink: 0; }
+.chat-back:hover { color: var(--text); }
+.chat-rows, .chat-recent .rows, .chat-projects .rows { margin-top: -8px; }
+.chat-projects { display: none; }
+.chat-projects .r1 svg { color: var(--label); flex-shrink: 0; }
+.chat-offline { padding: 12px 20px 0; }
+.chat-session { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.thread-row .meta { min-width: 0; }
+.rows > .thread-row { border-radius: 0; }
+.thread-row .av-agent { flex-shrink: 0; color: var(--text-2); }
+.thread-row .meta > span { flex-shrink: 0; }
+.thread-row .meta > span.ellipsis { flex-shrink: 1; }
+.thread-row:focus-visible, .chat-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.lease-bar .lease-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.composer-note { font-size: 12px; line-height: 16px; color: var(--beacon-ink); padding: 0 2px; }
+.composer-note:empty { display: none; }
+/* {sent: false, note}: the session is busy elsewhere, not broken. Quiet, with a way to retry. */
+.composer-note.soft { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--text-2); }
+.composer-retry { margin-left: -4px; }
+.composer-queued { display: flex; align-items: center; gap: 4px; max-width: 100%; min-height: 28px; padding: 4px 10px; margin-bottom: 6px;
+  border-radius: var(--r-2); background: var(--signal-wash); color: var(--text); font-size: 13px; line-height: 18px; }
+.composer-queued .faint { flex-shrink: 0; }
+.composer-queued-text { color: var(--text-2); }
+.composer-queued[hidden] { display: none; }
+.chat-problem .err { color: var(--beacon-ink); }
+.ask-card.answered { background: var(--panel); border-color: var(--rule); }
+
+@media (max-width: 760px) {
+  .chat-pad { padding: 16px 16px 24px; gap: 16px; }
+  .chat-back { display: inline-flex; }
+  .chat-projects { display: block; }
+  .composer-hint { display: none; }
+  /* The view scrolls the page on a phone; a session fills the view's box instead (inside its
+     padding for the tab bar and the offline line, if any): header, timeline (the one scroller), composer. */
+  .chat-session { height: 100%; }
+  .thread-view { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
+  /* Thumb targets: 44px for Back and Send, 56px session rows, the whole row one link. */
+  .session-back { width: 44px; height: 44px; margin-left: -10px; }
+  .chat-back { height: 44px; min-width: 44px; }
+  .thread-row { min-height: 56px; justify-content: center; }
+  .composer-send { width: 44px; height: 44px; flex-shrink: 0; }
+  .composer-row { align-items: flex-end; padding: 4px 4px 4px 14px; }
+  /* 16px stops iOS zooming the page when the box is focused. */
+  .composer textarea { font-size: 16px; line-height: 22px; padding: 11px 0; }
+  .composer { background: var(--bg); padding-bottom: 4px; }
+
+  /* Asks and held drafts: full-width two-button rows, labels over values, a body that reads at 16px. */
+  .ask-card .gate-actions, .gate-card .gate-actions { flex-wrap: wrap; }
+  .ask-card .gate-actions .btn, .gate-card .gate-actions .btn { flex: 1 1 0; height: 44px; }
+  .gate-actions .btn .kbd { display: none; }
+  .gate-grid { grid-template-columns: 1fr; gap: 2px; }
+  .gate-grid .gate-key { font-size: 12px; }
+  .gate-grid .gate-val { font-size: 16px; margin-bottom: 8px; overflow-wrap: anywhere; }
+  .gate-grid .gate-val.mono { font-size: 15px; }
+  .gate-body { font-size: 16px; line-height: 24px; min-height: 72px; overflow-wrap: anywhere; }
+  .gate-row { flex-wrap: wrap; }
+}
+/* A touch screen sends with the button, so the keyboard line has nothing to say. */
+@media (pointer: coarse) { .composer-hint { display: none; } }

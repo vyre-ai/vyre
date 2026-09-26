@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
 import crypto from "node:crypto";
-import { Glass } from "./glass.js";
+import { Glass, Pacer } from "./glass.js";
 import { encodeClientFrame } from "./ws.js";
 
 const PASSWORD = "s3cr3t8!";
@@ -141,7 +141,7 @@ function fakePool({ port, host = "127.0.0.1", password = PASSWORD, running = tru
   return {
     tickets,
     viewerCalls: [],
-    issue(agent, surface) { const t = crypto.randomBytes(8).toString("hex"); tickets.set(t, { agent, surface }); return t; },
+    issue(agent, surface, slow = false) { const t = crypto.randomBytes(8).toString("hex"); tickets.set(t, { agent, surface, slow }); return t; },
     redeem(t) { const v = tickets.get(t); if (!v) return null; tickets.delete(t); return v; },
     async viewer(agent, delta) { this.viewerCalls.push([agent, delta]); },
     vnc(agent) { return running ? { host, port, password } : null; },
@@ -177,10 +177,10 @@ test("glass: a ticket is spent once; reusing it is refused the same way", async 
 });
 
 /** Runs a full connection end to end: real fake-Xvnc server, real Glass, real browser socket. */
-async function connected({ canType = () => true, renew = undefined, width = 800, height = 600 } = {}) {
+async function connected({ canType = () => true, renew = undefined, width = 800, height = 600, slow = false } = {}) {
   const xvnc = await fakeXvnc({ width, height });
   const pool = fakePool({ port: xvnc.port });
-  const ticket = pool.issue("kit", "glass:laptop");
+  const ticket = pool.issue("kit", "glass:laptop", slow);
   const logs = [];
   const glass = new Glass({ pool, keyboard: /** @type {any} */ ({ canType, renew }), log: m => logs.push(m) });
   const upgradeServer = net.createServer(sock => glass.handle(req(), sock, Buffer.alloc(0), { url: new URL(`http://vyred/v1/streams/computers/glass?ticket=${ticket}`) }));
@@ -324,4 +324,85 @@ test("glass: a request with no Sec-WebSocket-Key is refused as a bad request, ti
   assert.equal(pool.redeem(ticket), null); // already spent, even though the upgrade itself failed
   await new Promise(r => upgradeServer.close(r));
   sock.destroy();
+});
+
+// ---- the slow-link pacer --------------------------------------------------------------------
+
+/** A fake clock and one-shot timers the test fires by hand. */
+function fakeTimers() {
+  const clock = { t: 1000 };
+  /** @type {Map<number, { at: number, fn: () => void }>} */
+  const timers = new Map();
+  let id = 0;
+  return {
+    clock, timers,
+    now: () => clock.t,
+    setTimer: /** @type {any} */ ((fn, ms) => { const k = ++id; timers.set(k, { at: clock.t + ms, fn }); return k; }),
+    clearTimer: /** @type {any} */ (k => { timers.delete(k); }),
+    advance(ms) {
+      clock.t += ms;
+      for (const [k, x] of [...timers]) if (x.at <= clock.t) { timers.delete(k); x.fn(); }
+    },
+  };
+}
+
+const fbur = (n, incremental = 1) => Buffer.from([3, incremental, 0, 0, 0, 0, 1, 0, n, 0]);
+
+test("glass pacer: the first request goes at once, then at most one per 200 ms, keeping only the latest", () => {
+  const ft = fakeTimers();
+  const sent = [];
+  const p = new Pacer(b => sent.push(b[8]), ft);
+  p.push(fbur(1));
+  assert.deepEqual(sent, [1], "nothing waits for the first request");
+  p.push(fbur(2)); p.push(fbur(3)); p.push(fbur(4));
+  assert.deepEqual(sent, [1]);
+  assert.equal(ft.timers.size, 1, "one timer at a time, however many requests wait");
+  ft.advance(199);
+  assert.deepEqual(sent, [1]);
+  ft.advance(1);
+  assert.deepEqual(sent, [1, 4], "the waiting requests collapse into the latest");
+  assert.equal(ft.timers.size, 0);
+  ft.advance(500);
+  p.push(fbur(5));
+  assert.deepEqual(sent, [1, 4, 5], "after a quiet spell the next one goes straight out");
+});
+
+test("glass pacer: close clears the timer and drops what waits", () => {
+  const ft = fakeTimers();
+  const sent = [];
+  const p = new Pacer(b => sent.push(b[8]), ft);
+  p.push(fbur(1)); p.push(fbur(2));
+  assert.equal(ft.timers.size, 1);
+  p.close();
+  assert.equal(ft.timers.size, 0);
+  ft.advance(1000);
+  p.push(fbur(3));
+  assert.deepEqual(sent, [1]);
+});
+
+/** Wait until the fake Xvnc has received n bytes. */
+const bytesAt = (c, n) => new Promise(resolve => { const check = () => (Buffer.concat(c.xvnc.received).length >= n ? resolve(undefined) : setTimeout(check, 5)); check(); });
+
+test("glass: on a slow ticket, incremental update requests are paced; full requests and input are not", async () => {
+  const c = await connected({ slow: true, canType: () => true });
+  const keyEvent = Buffer.concat([Buffer.from([4, 1]), Buffer.alloc(2), Buffer.from([0, 0, 0, 65])]);
+  // Three incremental requests, a full-frame one and a key, all in one burst.
+  c.sock.write(encodeClientFrame(Buffer.concat([fbur(1), fbur(2), fbur(3), fbur(9, 0), keyEvent])));
+  await bytesAt(c, 10 + 10 + 8);
+  const first = Buffer.concat(c.xvnc.received);
+  assert.deepEqual(first, Buffer.concat([fbur(1), fbur(9, 0), keyEvent]), "the first incremental, the full request and the key go at once");
+  await bytesAt(c, 38);
+  const all = Buffer.concat(c.xvnc.received);
+  assert.deepEqual(all.subarray(28), fbur(3), "then only the latest incremental request, once the window opens");
+  await new Promise(r => setTimeout(r, 250));
+  assert.equal(Buffer.concat(c.xvnc.received).length, 38, "the middle request was never sent");
+  await c.teardown();
+});
+
+test("glass: without the slow mark, every update request passes straight through", async () => {
+  const c = await connected({ canType: () => false });
+  c.sock.write(encodeClientFrame(Buffer.concat([fbur(1), fbur(2), fbur(3)])));
+  await bytesAt(c, 30);
+  assert.deepEqual(Buffer.concat(c.xvnc.received), Buffer.concat([fbur(1), fbur(2), fbur(3)]));
+  await c.teardown();
 });

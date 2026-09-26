@@ -28,6 +28,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import { sign, verify, canonical } from "./crypto.js";
+import { capValues } from "../link/transport.js";
 
 const CARD_V1 = "vyre-card:v1:";
 const CARD_PREFIX = "vyre-card:v2:";
@@ -297,7 +298,23 @@ export function allowedOrigin(url, hosts) {
   return false;
 }
 
-const PLACEHOLDER = /\{\{\s*vault(?:\.([A-Za-z0-9_-]+))?\s*\}\}/g;
+/** The app capability a tailnet grant carries to let a peer use relayed vault items (ADR 0014, part 7). */
+export const VAULT_CAP = "vyre.run/cap/vault";
+
+/**
+ * Whether the tailnet policy, as `whois` reported it for a peer, grants that peer `item` in
+ * `mode`. A grant entry is `{ items: ["northwind-*", "harlow-portal"], mode: "relayed"|"sealed"|"any" }`;
+ * an item pattern is an exact name or a trailing-* prefix, nothing else, and an entry without a
+ * mode or items grants nothing. The answer only ever narrows: the pass is still what gives access.
+ * @param {{ caps?: Record<string, any[]> } | null | undefined} who @param {string} item @param {string} mode
+ */
+export function grantCovers(who, item, mode) {
+  return capValues(who, VAULT_CAP).some(g => g && typeof g === "object" && (g.mode === "any" || g.mode === mode)
+    && Array.isArray(g.items) && g.items.some(p => typeof p === "string" && p !== ""
+      && (p.endsWith("*") ? String(item).startsWith(p.slice(0, -1)) : p === item)));
+}
+
+const PLACEHOLDER =/\{\{\s*vault(?:\.([A-Za-z0-9_-]+))?\s*\}\}/g;
 const HAS_PLACEHOLDER = /\{\{\s*vault(?:\.[A-Za-z0-9_-]+)?\s*\}\}/;
 
 /**

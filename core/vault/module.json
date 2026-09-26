@@ -27,6 +27,7 @@
       "vault.identity",
       "vault.pass.create",
       "vault.pass.list",
+      "vault.grants.status",
       "vault.pass.revoke",
       "vault.pass.accept",
       "vault.relay",

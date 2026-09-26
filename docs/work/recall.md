@@ -17,8 +17,9 @@ with a new migration step and a note below), `core/cli/commands/recall.js`.
 - **recall** module: indexes into the schema tables. APPEND-ONLY: a grown transcript appends
   its new turns and keeps every existing vector; a rewritten one (the first indexed turns no
   longer match) is re-indexed from scratch. Size+mtime unchanged means skip. Vectors are
-  optional: embeddings via `@huggingface/transformers` (all-MiniLM-L6-v2, int8) as an
-  `optionalDependencies` entry, loaded lazily; without it Recall is full-text only and says so.
+  optional: embeddings via `@huggingface/transformers` (all-MiniLM-L6-v2, int8), no longer a
+  package dependency: vyre installs it on first use into <VYRE_HOME>/embedder (core/recall/embed.js),
+  so `npm i -g vyre` stays small; until then Recall is full-text only and says so.
   Embed one turn at a time (see the measurements in `the prototype's bin/embed.cjs`), chunk 900/200.
   Before writing a vector, check the turn still exists (a re-index can delete it mid-embed).
 - Indexes on start and then every `config.recall.every` minutes (default 5) in the background,
@@ -56,7 +57,7 @@ tests in `the prototype's bin/test/t-recall-append.cjs`, `t-session-names.cjs` a
 - `core/transcripts/` adapter and redactor (51a65b4).
 - `core/recall/` module: append-only indexer, vectors, hybrid search, five tools, `session.indexed` (7b75f8c).
 - `vyre recall <query>`, `vyre index` (6ce43c8).
-- `@huggingface/transformers` as an optional dependency; everything works and tests pass without it.
+- `@huggingface/transformers`, installed by vyre on first use (not a package dependency); everything works and tests pass without it.
 - Done-when: the corpus indexes to exactly `seedRecall()`'s rows; grown and rewritten tests pass;
   the read-only smoke run over the real transcripts completed, 26 Sep 2026, temp VYRE_HOME:
   613 sessions, 23,389 turns. `vyre up` returned in 0.56s; the first pass finished in the

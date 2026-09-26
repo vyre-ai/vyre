@@ -2,15 +2,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { execFileSync } from "node:child_process";
 import { Apps, files, mdQuery, noise, settings, match, Frecency, open, tilde, PANES, taste, filenameLike, mdLine } from "./local.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 const DAY = 86_400_000;
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "vyre-local-"));
+/** A temp folder, removed when the test ends. */
+const tmp = t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-local-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
+};
 
 /** A fake spawn: records its args and streams `lines` as mdfind would, one chunk each. */
 function fakeRun(lines, { hang = false } = {}) {
@@ -45,8 +50,8 @@ test("match: tiers keep route.js's order", () => {
   assert.ok(match("volume", "Sound", ["volume"]) < 1 && match("volume", "Sound", ["volume"]) > 0.9, "a synonym is a shade under the label");
 });
 
-test("apps: scans one and two levels deep, dedupes, and searches from the cache", async () => {
-  const root = tmp();
+test("apps: scans one and two levels deep, dedupes, and searches from the cache", async ctx => {
+  const root = tmp(ctx);
   const a = path.join(root, "Applications"), u = path.join(a, "Utilities"), home = path.join(root, "home");
   for (const d of [a, u, path.join(a, "Adobe Thing"), path.join(a, "Adobe Thing", "Adobe Photo Editor.app"),
     path.join(a, "Visual Studio Code.app"), path.join(a, "Safari.app", "Contents", "Inner.app"), path.join(u, "Terminal.app"), path.join(a, ".Hidden.app")]) {
@@ -72,8 +77,8 @@ test("apps: scans one and two levels deep, dedupes, and searches from the cache"
   void home;
 });
 
-test("apps: frecency boost reorders close matches", async () => {
-  const root = tmp();
+test("apps: frecency boost reorders close matches", async t => {
+  const root = tmp(t);
   for (const n of ["Notes.app", "Notion.app"]) fs.mkdirSync(path.join(root, n));
   const apps = new Apps({ dirs: [root] });
   await apps.list();
@@ -216,8 +221,8 @@ test("settings: synonyms find the pane people mean", () => {
   assert.equal(new Set(PANES.map(p => p[1])).size, PANES.length, "ids are unique");
 });
 
-test("frecency: picks lift, decay with a 7-day half-life, and stay capped", () => {
-  const dir = tmp();
+test("frecency: picks lift, decay with a 7-day half-life, and stay capped", t => {
+  const dir = tmp(t);
   let now = 1_000 * DAY;
   const f = new Frecency(path.join(dir, "deep", "frecency.json"), { now: () => now });
   assert.equal(f.boost("app:/A.app", "a"), 0);
@@ -248,8 +253,8 @@ test("frecency: picks lift, decay with a 7-day half-life, and stay capped", () =
   f.flush(); g.flush(); h.flush();
 });
 
-test("frecency: writes atomically on a debounce, reloads, and survives a corrupt file", async () => {
-  const dir = tmp();
+test("frecency: writes atomically on a debounce, reloads, and survives a corrupt file", async t => {
+  const dir = tmp(t);
   const file = path.join(dir, "sub", "frecency.json");
   const f = new Frecency(file, { delayMs: 20 });
   f.pick("setting:com.apple.wifi-settings-extension", "wifi please turn it on");
@@ -290,7 +295,7 @@ test("tilde", () => {
 
 test("smoke: real mdfind finds a file created under the temp dir (read-only)", async t => {
   if (process.platform !== "darwin") return t.skip("macOS only");
-  const dir = tmp();
+  const dir = tmp(t);
   const name = `vyrelocalsmoke${process.pid}.txt`;
   fs.writeFileSync(path.join(dir, name), "x");
   try { execFileSync("/usr/bin/mdimport", [dir], { stdio: "ignore", timeout: 5000 }); } catch {}
