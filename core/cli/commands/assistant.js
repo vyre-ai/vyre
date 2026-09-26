@@ -11,6 +11,7 @@ import * as config from "../../config/index.js";
 import { out, dim, bold, signal } from "../style.js";
 import { json, emit, failTool, usage, fail } from "../kit.js";
 import { up } from "./projects.js";
+import { callAsPerson } from "../presence.js";
 
 /** core/onboard's slug(): "Juno Two" becomes "juno-two"; too short becomes "assistant". */
 export const slug = (/** @type {string} */ s) => {
@@ -70,7 +71,14 @@ export default {
     const via = (st.data && st.data.detail && st.data.detail.claude && st.data.detail.claude.auth) || null;
     const input = { name: slug(display), kind: "assistant", projects: "*", auth: authFor(via),
       instructions: `Your name is ${display}.${person ? ` You work for ${person}.` : ""} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` };
-    const r = await t("agents.create", input);
+    // Making an agent needs the person (ADR 0004): here, the code on this terminal or Touch ID.
+    // Through the link the box cannot see this terminal, so the Deck at the box's address asks.
+    const cfg = config.load();
+    const remote = cfg.role === "local" && cfg.network && cfg.network.box;
+    const r = remote ? await t("agents.create", input) : await callAsPerson("agents.create", input);
+    if (r.error && remote && /presence/.test(String(r.error.code))) {
+      return fail("making the assistant needs you on the box", { code: r.error.code, exit: 3, next: `open ${remote} on your phone: Now, Create your assistant` });
+    }
     if (r.error) return failTool(r.error);
     if (json()) return emit(r.data);
     out(`  made your assistant ${bold(display)} ${dim(`(${input.name}) · every project${via ? "" : " · on this machine's own Claude login until Claude is signed in"}`)}`);

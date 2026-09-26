@@ -155,8 +155,10 @@ computer container and its home volume.
 
 ## Needs from others
 
-- lead: yes or no to letting the asking Mac approve its own pairing once a passkey proves presence
-  (plus a Deck card for link.pending). The user cannot pair his Mac tonight without it or a phone.
+- Done 27 Sep: the asking Mac approves its own pairing with a fresh passkey and its code
+  (a3652ab; the Deck card is pwa's pair.js). glass.release needs no presence (0d648df). box add
+  waits for the switch and mints the pairing code once a passkey exists (8faaef7).
+- pwa: snags 16, 17, 18 and 22 (sent).
 
 - deck and link (lead decides): a Deck card for `link.pending` with the code and Approve/Deny
   behind presence (snag 15), and whether the Mac's own browser may approve its own pairing once a

@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fakeTerminal } from "../screen/testing.js";
 import { stripAnsi } from "../screen/width.js";
-import { tempHome } from "../../../test/helpers.js";
+import { tempHome, present } from "../../../test/helpers.js";
 import { open } from "../../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../../test/fixtures/corpus.js";
 import { homeItems, projectItems, step, initial, visible, keyName, render, plain, interactive } from "./home.js";
@@ -99,7 +99,8 @@ async function world(t) {
   db.close();
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ projectsDir: path.join(root, "projects"),
     roots: [path.join(home, "Work")], transcripts: [], modules: { disable: ["recall", "memory"] } }));
-  const d = await start({ root, log: () => {} });
+  // `present`: making an agent needs a person (ADR 0004); these tests are about the screen after.
+  const d = await start({ root, log: () => {}, presence: present });
   t.after(() => d.stop());
   const fake = path.join(root, "fakebin");
   fs.mkdirSync(fake);
