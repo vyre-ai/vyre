@@ -68,4 +68,51 @@ let capsuleModelSuite = Suite("capsule model") { t in
         }
         t.eq(r, ["juno", "s1", "rebuild the bakery menu", "juno is busy in your terminal. I'll hand it your message when this turn ends.", "delivered"])
     }
+
+    t.test("@ with spaces finds a live terminal session by its name, memory stays quiet, and Enter queues to it") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        let now = Date().timeIntervalSince1970 * 1000
+        v.tool("projects.list") { _ in ["projects": [Any]()] }
+        v.tool("projects.catalog") { _ in ["sessions": [
+            ["id": "old1", "name": "Northwind menu", "cwd": "/home/alex/Work/northwind", "last": now - 9 * 86_400_000],
+            ["id": "cu1", "name": "COMPUTER USE SETTINGS", "cwd": "/home/alex/Work/vyre", "last": now - 60_000],
+        ]] }
+        v.tool("recall.search") { _ in [["session": "x", "role": "user", "text": "computer use settings are in the vault"]] }
+        v.tool("memory.relevant") { _ in [Any]() }
+        v.tool("threads.send") { _ in ["sent": false, "queued": true, "thread": "cu1", "name": "COMPUTER USE SETTINGS",
+                                       "note": "COMPUTER USE SETTINGS is busy in your terminal. I'll hand it your message when this turn ends."] }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
+            _ = await until { !m.catalog.threads.isEmpty }
+            for c in "@computer use settings" { await MainActor.run { m.text.append(c) } }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            let first = await MainActor.run { m.current }
+            let memoryQuiet = await MainActor.run { m.memory == nil } && v.callsOf("recall.search").isEmpty
+            await MainActor.run { m.run() }
+            _ = await until { m.target != nil }
+            let box = await MainActor.run { m.text }
+            await MainActor.run { m.text = "what is left to do?" }
+            await MainActor.run { m.run() }
+            _ = await until { m.reply?.queued != nil }
+            let sent = v.callsOf("threads.send").first
+            await MainActor.run { m.didHide() }
+            return [first?.title ?? "", first?.subtitle ?? "", "\(memoryQuiet)", box, VJ.s(sent?["thread"]), VJ.s(sent?["text"])]
+        }
+        t.eq(r, ["COMPUTER USE SETTINGS", "live in terminal · vyre · 1 min", "true", "", "cu1", "what is left to do?"])
+    }
+
+    t.test("@ a name then words: the name is the chip and the words stay as the message") {
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in
+                let m = CapsuleModel(home: vyScratch("at-words"), vyred: VyredClient(socket: vyScratch("x") + "/none.sock"), providers: [])
+                m.catalog = VyreCatalog(agents: [VyreAgent(name: "juno", kind: "assistant")])
+                m.text = "@juno rebuild the bakery menu"
+                m.run()
+                return m
+            }
+            _ = await until { m.target != nil }
+            return await MainActor.run { [m.target?.label ?? "", m.text] }
+        }
+        t.eq(r, ["juno", "rebuild the bakery menu"])
+    }
 }

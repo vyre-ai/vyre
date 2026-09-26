@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### @ finds sessions by their whole name
+
+- After a leading `@` the whole text is the name ("@computer use settings"), matched without
+  case, by prefix or by the start of each word; when the whole text names nothing, fewer words
+  are tried and the rest stays as the message ("@juno rebuild the menu"). Claude Code sessions
+  from `projects.catalog` are candidates, the recent ones read on show and older ones searched
+  by name as you type; one active in the last 15 minutes that vyred does not run is marked
+  "live in terminal" and listed first. The memory box stays quiet while the text starts with
+  `@`. Picking a live session makes it the chip, and Enter queues the message for it.
+
 #### A stable signing identity for the Capsule, with consent
 
 - On the person's own install only (the real ~/.vyre, dialogs allowed, a terminal), `vyre

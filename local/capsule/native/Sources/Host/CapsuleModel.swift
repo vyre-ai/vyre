@@ -35,7 +35,7 @@ public final class CapsuleModel: ObservableObject {
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
     @Published public var target: VyreCandidate? { didSet { if target != oldValue { search() } } }
-    public private(set) var catalog = VyreCatalog.empty
+    public internal(set) var catalog = VyreCatalog.empty
     /// What extensions add (ExtensionHost.load): rows, named commands, and side panels.
     var extensionProviders: [ResultProvider] = []
     var extensionCommands: [CapsuleCommand] = []
@@ -82,7 +82,7 @@ public final class CapsuleModel: ObservableObject {
             _ = await vyred.refreshTools()
             guard vyred.isUp else { return }
             self.catalog = await CatalogLoader.load(vyred)
-            if Route.mention(self.text).completing != nil { self.search() }
+            if self.mentionQuery != nil { self.search() }
         }
         if !text.isEmpty { search() }
     }
@@ -113,13 +113,15 @@ public final class CapsuleModel: ObservableObject {
         // Rows of slow providers stay until replaced; the instant ones are recomputed below.
         partial["calc"] = nil; partial["commands"] = nil; partial["ext-commands"] = nil
         let q = Query(text, front: front)
-        // `@` being typed: the list is what it can name, nothing else.
-        if target == nil, let m = Route.mention(text).completing {
+        // `@` being typed: the list is what it can name, nothing else, and memory stays quiet.
+        if target == nil, let m = mentionQuery {
             recallTask?.cancel(); memory = nil
-            let rows = Route.complete(m, catalog).map(candidateItem)
+            let (found, _) = mentionCandidates(m)
+            let rows = found.map(candidateItem)
             groups = rows.isEmpty ? [] : [Group(section: .vyre, items: rows)]
             selected = 0
-            if rows.isEmpty { line = vyred.isUp ? "Nothing called that in Vyre." : "vyred is not running. Start it with vyre up." }
+            if rows.isEmpty { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start it with vyre up." }
+            searchSessions(m, token: t)
             return
         }
         if target != nil {
@@ -197,9 +199,72 @@ public final class CapsuleModel: ObservableObject {
         return r
     }
 
+    // MARK: @ names
+
+    /// What follows a leading `@`, spaces and all ("@computer use settings"), or an `@` being
+    /// typed mid-text; nil when no `@` is being typed or a destination is already picked.
+    var mentionQuery: String? {
+        guard target == nil else { return nil }
+        if text.hasPrefix("@") { return String(text.dropFirst()) }
+        return Route.mention(text).completing
+    }
+
+    /// Candidates for the `@` words, and the words left over as the message. The whole text is
+    /// tried first; then fewer words, so "@juno rebuild the menu" finds juno with a message.
+    func mentionCandidates(_ q: String) -> ([VyreCandidate], String) {
+        let all = Route.complete(q, catalog)
+        if !all.isEmpty || !q.contains(" ") { return (liveFirst(all), "") }
+        let words = q.split(separator: " ", omittingEmptySubsequences: true)
+        for n in stride(from: words.count - 1, through: 1, by: -1) {
+            let found = Route.complete(words[0..<n].joined(separator: " "), catalog)
+            if !found.isEmpty { return (liveFirst(found), words[n...].joined(separator: " ")) }
+        }
+        return ([], "")
+    }
+
+    /// A session active in the last 15 minutes that vyred does not run is live in a terminal.
+    func isLive(_ c: VyreCandidate) -> Bool {
+        guard c.kind == .thread, let t = catalog.thread(c.id), t.agent == nil, let last = t.last else { return false }
+        return vyNowMs() - last < 15 * 60_000
+    }
+
+    func liveFirst(_ list: [VyreCandidate]) -> [VyreCandidate] {
+        list.enumerated().sorted { a, b in
+            let la = isLive(a.element), lb = isLive(b.element)
+            return la != lb ? la : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    private var sessionSearch: Task<Void, Never>?
+
+    /// Ask vyred for sessions by name as well (projects.catalog q), for the ones older than the
+    /// recent list read on show. Merged into the catalog; the list redraws if still on the words.
+    func searchSessions(_ q: String, token t: Int) {
+        sessionSearch?.cancel()
+        let words = q.trimmingCharacters(in: .whitespaces)
+        guard words.count >= 2, vyred.isUp else { return }
+        sessionSearch = Task { @MainActor [vyred] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            if Task.isCancelled || t != self.token { return }
+            let r = await vyred.call("projects.catalog", ["q": words, "limit": 10, "human": true], presence: false)
+            guard t == self.token, let rows = (r.data as? [String: Any])?["sessions"] as? [[String: Any]] else { return }
+            let known = Set(self.catalog.threads.map(\.id))
+            let add = rows.compactMap { x -> VyreThread? in
+                let id = VJ.s(x["id"])
+                guard !id.isEmpty, !known.contains(id) else { return nil }
+                return VyreThread(id: id, label: VJ.nonEmpty(x["label"]) ?? VJ.nonEmpty(x["name"]) ?? VJ.nonEmpty(x["title"]) ?? String(id.prefix(8)),
+                                  cwd: VJ.str(x["cwd"]), last: VJ.num(x["last"]))
+            }
+            if add.isEmpty { return }
+            self.catalog.threads += add
+            self.search()
+        }
+    }
+
     func candidateItem(_ c: VyreCandidate) -> ResultItem {
         let symbol = c.kind == .agent ? "person.crop.circle" : c.kind == .project ? "folder" : "text.bubble"
-        return ResultItem(id: "at:\(c.kind.rawValue):\(c.id)", kind: "mention", title: c.label, subtitle: c.sub, icon: .symbol(symbol, .bone),
+        let sub = isLive(c) ? (c.sub.isEmpty ? "live in terminal" : "live in terminal · " + c.sub) : c.sub
+        return ResultItem(id: "at:\(c.kind.rawValue):\(c.id)", kind: "mention", title: c.label, subtitle: sub, icon: .symbol(symbol, isLive(c) ? .signal : .bone),
                           section: .vyre, score: 1, actions: [ResultAction(id: "pick", title: "Pick", symbol: "at") { [weak self] _, _ in
                               await self?.pick(c) ?? .failed("The Capsule closed.")
                           }])
@@ -207,11 +272,19 @@ public final class CapsuleModel: ObservableObject {
 
     /// The `@` row was picked: it becomes the chip, and the `@...` leaves the box.
     func pick(_ c: VyreCandidate) -> ActionOutcome {
-        let m = Route.mention(text)
-        var chars = Array(text)
-        if m.start >= 0 { chars.removeSubrange(m.start..<m.end) }
+        var rest: String
+        if text.hasPrefix("@") {
+            // The words after the name, if the name was only the first words ("@juno rebuild ...").
+            let (_, left) = mentionCandidates(String(text.dropFirst()))
+            rest = left
+        } else {
+            let m = Route.mention(text)
+            var chars = Array(text)
+            if m.start >= 0 { chars.removeSubrange(m.start..<m.end) }
+            rest = String(chars)
+        }
         target = c
-        return .replaceQuery(String(chars).trimmingCharacters(in: .whitespaces))
+        return .replaceQuery(rest.trimmingCharacters(in: .whitespaces))
     }
 
     func askItem(_ q: Query) -> ResultItem {

@@ -233,6 +233,9 @@ public enum Route {
             if label == q || c.id.lowercased() == q { return 5 }
             if label.hasPrefix(q) { return 4 }
             if labelWords(label).contains(where: { $0.hasPrefix(q) }) { return 3 }
+            // Several words ("comp use set"): each starts a word of the label.
+            let qw = labelWords(q)
+            if qw.count > 1 { let lw = labelWords(label); if qw.allSatisfy({ w in lw.contains { $0.hasPrefix(w) } }) { return 3 } }
             if c.kind == .thread && c.id.lowercased().hasPrefix(q) { return 2 }
             if label.contains(q) { return 1 }
             return 0
