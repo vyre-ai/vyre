@@ -32,6 +32,8 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   Chrome fitted by sideview.open `panel`). Combined tree 191 pass, 1 fail (capsule-pro's icon
   test); the test box: sideview 15 pass, 1 skip. Builds only against capsule-pro's UNCOMMITTED host
   (ExtensionHost.swift, Stream.swift, sessionWindow(owner:)): waiting on their commit.
+- 35b22ad: Talk uses capsule-pro's public VyredLink.stream; own WebSocket code deleted (-275/+59).
+  Combined vs 4b15618: 190 pass, 1 fail (their icon test). Builds against COMMITTED 4b15618 now.
 - Real-Mac test skipped per lead: the user tries `vyre sideview` himself.
 
 ## Next

@@ -22,7 +22,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   view, Side view with Glass and Close side view; Ask about my screen, with a side panel and the
   window put in the box, blind places shown as off limits; Option-Return push-to-talk through
   vyre-mic and the voice listen stream, words live in the box, stopped when the Capsule hides.
-  `voice.status` returns the built mic helper's path.
+  `voice.status` returns the built mic helper's path. Push-to-talk opens its stream through
+  `VyredLink.stream`, the Capsule's own WebSocket client.
 - screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
 #### CI on GitHub's free runners
 
