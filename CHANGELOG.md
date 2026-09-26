@@ -4,6 +4,30 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Glass
+
+- ADR 0005: Glass is a module and a set of Deck views on top of computers. RFB over a WebSocket
+  stays the stream (ADR 0003). A hidden tab disconnects, so a background Deck runs no timer.
+- `core/glass` (module `glass`, role box). Tools: `glass.targets`, `open`, `close`, `take`,
+  `release`, and `glass.files.list`, `stat`, `preview`, `download`, `upload`, `move`, `mkdir`,
+  `trash`. Events: `glass.opened`, `closed`, `taken`, `released`, `file.uploaded`, `moved`,
+  `trashed`, `created`, carrying paths and sizes, never content.
+- `glass.take` and `glass.release` declare presence. `take {private: true}` is the private
+  sign-in: it raises the computers shield, and undoes the take-over when the shield is missing.
+  Hand-back leaves a note in the agent's thread (who, how long, the person's note), never what
+  was typed.
+- Files: one guard for every path. Paths are relative, no `..`, no NUL, symlinks must stay
+  inside the root, and secret places (`.vyre`, `.ssh`, `.env*`, keys, Chrome's cookie and
+  login stores) are refused and hidden at any depth. Bytes move only on ticketed
+  `/v1/glass/raw` and `/v1/glass/put` (one use, 60 s, size-bound), served `nosniff` with a
+  sandboxing CSP; only raster images and PDFs are shown inline. An agent reaches only its own
+  computer's files through Glass.
+- `ctx.route(name, fn)`: a raw HTTP route at `/v1/<module>/<name>`, the same shape link uses.
+- `deck/glass`: Screen, Files and a disabled Terminal tab, the take-over bar, Sign in privately,
+  a phone layout with touch gestures, drag and drop upload, and drag-out download. noVNC 1.7.0 is
+  vendored under `deck/glass/vendor/novnc` (MPL 2.0, as separate files); Glass needs an RFB client
+  in the browser and noVNC is the maintained one.
+
 #### Switchboard
 
 - `core/switchboard` (module `threads`): headless Claude Code sessions owned by vyred, so they
