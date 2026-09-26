@@ -40,11 +40,37 @@ export const TESTS = "\\b(npm (run )?test|npm t\\b|node --test|pnpm (run )?test|
 export const DOCS = "\\.(md|mdx|rst|txt|adoc)$|(^|/)docs?/";
 const TEST_FILES = "(\\.|_)(test|spec)\\.[a-z0-9]+$|(^|/)(tests?|__tests__)/";
 
-/** Words that make a correction a rule the user means every time. Such lessons start at block. */
-const FIRM = /\b(never|always|from now on|whenever|every time|each time|no more|i told you|under no circumstances)\b/i;
+/**
+ * Words that make a correction a rule the user means every time. Such lessons start at block.
+ * The directives (never, always, no more) count only where they start a clause said to Claude:
+ * "never push to main", "please never...", "yes, and always...", not "users never see it" or
+ * "the README says never use sed -i". The adverbs (whenever, every time) count anywhere.
+ */
+const DIRECTIVE = /\b(?:never|always|no more|under no circumstances)\b/gi;
+const ADVERB = /\b(from now on|whenever|every time|each time|i told you)\b/i;
 /** Weaker words: enough to fit a known check, not enough to propose a free-text rule on their own. */
-const SOFT = /\b(don'?t|do not|stop|avoid|quit|no longer|remember to|make sure (to|you))\b/i;
+const SOFT = /\b(?:don'?t|do not|stop|avoid|quit|no longer|remember to|make sure (?:to|you))\b/gi;
 const NEG = "(?:never|don'?t|do not|stop|avoid|no more|quit)";
+/** What may stand before a directive at the start of a clause said to Claude. */
+const LEAD = /(?:^|[.;:!?,(\u2014]\s*|\b(?:please|you|and|but|so|also|then|just|now|ok|okay|yes|no|you should|you must|you'll|you will|remember,?)\s+)$/i;
+/** Does a word matching `re` (global) start a clause directed at Claude? */
+const directed = (text, re) => { for (const m of text.matchAll(re)) if (LEAD.test(text.slice(0, m.index))) return true; return false; };
+/** A question, not an instruction: "can you check why we never push to main?". */
+const QUESTION = /^(?:why|can|could|how|what|where|is|are|does|do you|would|should|will you)\b/i;
+/**
+ * Words that make an instruction about now, not a standing rule: "don't push to main yet",
+ * "don't touch migrations for this PR". "In this repo" is a scope, taken off before this is asked.
+ */
+const TEMPORARY = /\b(?:yet|for now|here|this time|right now|for this (?!repo|repository|project|codebase)[a-z]+)\b/i;
+/**
+ * Is this a question or an instruction for now, which no lesson comes from? A sentence starting
+ * with "when" is a question unless a clause follows a comma ("when you commit, run lint").
+ * @param {string} text
+ */
+export function notARule(text) {
+  const t = String(text || "").trim();
+  return /\?\s*$/.test(t) || QUESTION.test(t) || (/^when\b/i.test(t) && !t.includes(",")) || TEMPORARY.test(t);
+}
 /** Scope words: where the user means a rule to hold. They also make a sentence a standing rule. */
 const SCOPE_PROJECT = /\s*,?\s*\b(?:in|for|across)\s+this\s+(?:repo(?:sitory)?|project|codebase)\b\s*,?/i;
 const SCOPE_ALL = /\s*,?\s*(?:\beverywhere\b|\b(?:in|for|across)\s+(?:all|every)\s+(?:(?:of\s+)?(?:my|our|the)\s+)?(?:repos?|repositories|projects?|codebases?)\b)\s*,?/i;
@@ -114,13 +140,14 @@ export function distill(said) {
   if (/^never\s*mind\b/i.test(text)) return null;
   const scope = SCOPE_ALL.test(text) ? "all" : SCOPE_PROJECT.test(text) ? "project" : null;
   if (scope) text = text.replace(SCOPE_ALL, " ").replace(SCOPE_PROJECT, " ").replace(/\s+/g, " ").replace(/\s+([.,!?])/g, "$1").replace(/^[,\s]+|[,\s]+$/g, "").trim();
+  if (notARule(text)) return null;
   const d = shape(text, Boolean(scope));
   return d && scope ? { ...d, scope } : d;
 }
 
 /** @returns {any} */
 function shape(text, scoped) {
-  const firm = FIRM.test(text) || scoped, soft = SOFT.test(text);
+  const firm = directed(text, DIRECTIVE) || ADVERB.test(text) || scoped, soft = directed(text, SOFT);
   const level = firm ? "block" : "remind";
 
   // "in docs never use X": the rest, narrowed to those files.
@@ -192,7 +219,7 @@ function shape(text, scoped) {
 
   if (!firm && !soft) return null;
 
-  if (new RegExp(`\\b${NEG}\\b`, "i").test(text)) {
+  if (directed(text, new RegExp(`\\b${NEG}\\b`, "gi"))) {
     // "never use em dashes"
     for (const c of CHARS) if (c.name.test(text)) {
       return { rule: c.rule, when: "always", level, check: { kind: "text", pattern: c.pattern, ...(c.flags ? { flags: c.flags } : {}), label: c.label } };

@@ -9,7 +9,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { TESTS } from "./checks.js";
+import { TESTS, notARule } from "./checks.js";
 import { shapeOf } from "./skills.js";
 
 /** Files larger than this are not hashed: a revert of one is not worth reading it twice a turn. */
@@ -49,12 +49,16 @@ export const toolKey = tool => "tool:" + String(tool || "");
 /** A file's key, by its path. */
 export const fileKey = file => "file:" + short(String(file || ""));
 
-/** A correction that fits no shape, said plainly at the start: "stop adding comments everywhere". */
+/**
+ * A correction that fits no shape, said plainly at the start: "stop adding comments everywhere".
+ * "Stop" and "quit" need a habit after them ("stop adding"): "stop the server" is a task. A
+ * question or an instruction for now ("don't push yet") is not a correction.
+ */
 export function softCorrection(prompt) {
   const t = String(prompt || "").trim();
-  if (!t || t.length > 200 || t.startsWith("/")) return false;
+  if (!t || t.length > 200 || t.startsWith("/") || notARule(t)) return false;
   if (/^(?:no[,.!]?\s+)?(?:please\s+)?(?:don'?t|do not)\s+(?:worry|bother|mind|forget)\b/i.test(t)) return false;
-  return /^(?:no[,.!]?\s+)?(?:please\s+)?(?:don'?t|do not|stop|quit|no longer|avoid)\b/i.test(t);
+  return /^(?:no[,.!]?\s+)?(?:please\s+)?(?:(?:don'?t|do not|no longer|avoid)\b|(?:stop|quit)\s+[a-z]+ing\b)/i.test(t);
 }
 
 /** Is this command a test run? */

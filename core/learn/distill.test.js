@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { distill, invalid, atTool, atStop, loosens, CODE, TESTS } from "./checks.js";
 import { writeSnapshot, offlineTool, offlineTouched, offlineStop } from "./offline.js";
+import { softCorrection } from "./signals.js";
 import { tempHome } from "../../test/helpers.js";
 
 const DASH = "\u2014";
@@ -160,4 +161,18 @@ test("offline: tool, path and after checks work with vyred down", t => {
   assert.match(/** @type {any} */ (s).reason, /Lesson 3/);
   offlineTool({ ...base, tool: "Bash", input: { command: "pnpm run lint" } });
   assert.equal(offlineStop({ ...base, stop_hook_active: true }).decision, null);
+});
+
+test("distill: questions, words about someone else and instructions for now are not rules", () => {
+  for (const s of [
+    "can you check why we never push to main in CI?", "Explain why the README says never use sed -i", "add a test that users never see the em dash",
+    "fix the bug where users are never logged out", "why does the script always run npm install?", "don't push to main yet, I want to review first",
+    "stop the server", "don't touch the migrations folder for this PR", "don't use rm here, use trash", "I always forget: what's the git command to squash?",
+    "use pnpm not npm for this install", "never push to main for now", "when does the linter always run",
+  ]) assert.equal(distill(s), null, s);
+  for (const s of ["stop the server", "don't push to main yet, I want to review first", "can you stop adding comments?", "quit the app"]) assert.equal(softCorrection(s), false, s);
+  for (const s of ["stop adding comments everywhere", "please don't reformat files", "no, avoid the class syntax"]) assert.equal(softCorrection(s), true, s);
+  // Directed at Claude, at the start of a clause: still rules.
+  for (const s of ["never push to main", "please never push to main", "yes, and never push to main", "OK. Always run the tests before you commit",
+    "you never use em dashes", "when you edit ts, always run lint after editing ts"]) assert.ok(distill(s)?.check, s);
 });
