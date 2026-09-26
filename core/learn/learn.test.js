@@ -440,6 +440,11 @@ test("learn: accept, retire and relax refuse local, MCP, agents, hooks and unkno
   }
   assert.match(defs["learn.relax"].presence.summary({ id: 1, level: "remind" }), /lowers the level from block to remind/);
   assert.equal(defs["learn.edit"].callers, undefined, "tightening is free for any caller");
+
+  // Human-only refusals carry presence_required and name the tool a surface's presence flow calls.
+  await assert.rejects(defs["learn.edit"].run({ id: 1, level: "remind" }), e => e.code === "presence_required" && e.detail.tool === "learn.relax" && e.detail.id === 1);
+  db.prepare("INSERT INTO learn_lessons (scope, when_text, rule, level, status, source, created, updated) VALUES ('\"all\"','always','Never say synergy.','remind','proposed','{}',1,1)").run();
+  await assert.rejects(defs["learn.edit"].run({ id: 2, level: "block" }), e => e.code === "presence_required" && e.detail.tool === "learn.accept" && e.detail.id === 2);
 });
 
 test("learn: learn.edit refuses every weakening and names learn.relax; tightening is free", async t => {
@@ -450,7 +455,8 @@ test("learn: learn.edit refuses every weakening and names learn.relax; tightenin
   for (const change of [{ level: "ask" }, { scope: { project: "harlow-site" } }, { scope: { agent: "kit" } }, { check: null },
     { check: { kind: "text", pattern: "x", label: "x" } }, { when: "reply" }, { max_level: "ask" }, { pinned: true }, { rule: "Em dashes are fine." }]) {
     const r = await edit(change);
-    assert.equal(r.error?.code, "failed", JSON.stringify(change));
+    // presence_required once main's registry passes codes through (b27e6ff); "failed" before it.
+    assert.ok(["presence_required", "failed"].includes(r.error?.code), JSON.stringify(change));
     assert.match(r.error.message, /learn\.relax/, JSON.stringify(change));
   }
   assert.deepEqual([(await lesson(1)).level, (await lesson(1)).check.kind], ["block", "text"], "nothing changed");

@@ -113,6 +113,15 @@ const OWNER = ["cli", "local", "deck", "capsule"];
  * terminal (core/cli/confirm.js) and weakens() asks before a model's shell reaches these tools.
  */
 const HUMAN = ["cli", "deck", "capsule"];
+/**
+ * A refusal only a person can get past: the error carries code "presence_required" (the
+ * registry passes a short code through), so a surface can run its presence flow and call the
+ * named human-only tool; `detail` says which tool and lesson.
+ * @param {string} message @param {{ tool: string, id?: number }} detail
+ */
+export function presenceRequired(message, detail) {
+  return Object.assign(new Error(message), { code: "presence_required", detail });
+}
 const HOUR = 3600 * 1000, DAY = 24 * HOUR, WEEK = 7 * DAY;
 /** Per-turn rows (commands, calls, writes, turns) are kept this long. */
 const KEEP = WEEK;
@@ -584,11 +593,11 @@ export default {
       run: async ({ id, ...change }) => {
         const l = must(id);
         // A proposal is accepted as the user was shown it; changing it first would accept something else.
-        if (l.status === "proposed") throw new Error(`lesson ${id} is proposed: the user accepts it as they were shown it, then it can be tightened`);
+        if (l.status === "proposed") throw presenceRequired(`lesson ${id} is proposed: the user accepts it as they were shown it (learn.accept, with presence), then it can be tightened`, { tool: "learn.accept", id });
         clean(change);
         if (change.scope !== undefined) change.scope = await slugged(change.scope);
         const loose = loosens(l, change);
-        if (loose.length) throw new Error(`this change ${loose.join(", ")}, which weakens lesson ${id}. Weakening a lesson is the user's call: learn.relax, from the CLI or the Deck.`);
+        if (loose.length) throw presenceRequired(`this change ${loose.join(", ")}, which weakens lesson ${id}. Weakening a lesson is the user's call: learn.relax, from the CLI or the Deck.`, { tool: "learn.relax", id });
         return apply(id, change);
       },
     });
