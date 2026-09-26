@@ -14,18 +14,42 @@
 // second observation says whether anything happened, so act always observes again and the
 // answer carries `verified` from that observation alone. When it cannot be verified, the answer
 // says so and why; it never rounds a maybe up to a success.
+//
+// Three more rules come from the floor (SPEC section 11), and they run before anything is done:
+//
+// NOT THERE. Some places are off limits whatever a model asks: Vyre's own surfaces, system
+// sign-in and permission dialogs, password managers, the security panes of System Settings. An
+// agent that can press the button approving its own request has walked around every human-only
+// tool without calling one. There, observe returns the app and window and nothing else, and act
+// refuses (code floor). A secure field is refused too (code secure): signing in is vault.fill's job.
+//
+// NOT ALONE. An act that sends something as the person (a Send button, Return in a chat) is held,
+// not done. It goes through hands.commit, which needs a person's proof, and the summary they see
+// says what will be pressed and where.
+//
+// STOPPABLE. While Vyre acts, a pill says so and Escape or a double Control stops it at once. A
+// stop aborts the act in flight and refuses every later act until the caller passes resume: true,
+// which it should do only after asking the person.
+//
+// The floor list itself is shared with the screen module and lives beside it: importing
+// ../screen-mac/floor.js is a deliberate exception to "modules talk only through the contract",
+// because two copies of the floor would drift, and a floor that drifts is not a floor.
 
 import { of, resolve, describe } from "./selector.js";
-import { verdict, diff, signature } from "./verify.js";
+import { verdict, diff, signature, ACTIONS } from "./verify.js";
 import { HandsError } from "./runner.js";
+import { NO_OVERLAY, center } from "./overlay.js";
+import { untouchable, outward } from "../screen-mac/floor.js";
 
-export const KINDS = ["press", "set", "focus", "type", "key"];
+export const KINDS = ["press", "set", "focus", "action", "type", "key"];
+export { ACTIONS };
 
 /**
  * @typedef {import("./selector.js").Element} Element
  * @typedef {import("./selector.js").Selector} Selector
  * @typedef {import("./verify.js").Snap} Snap
  * @typedef {(request: Record<string, unknown>) => Promise<any>} Runner
+ * @typedef {{ box?: string | null }} Known
  */
 
 const VALUE_MAX = 200;           // what a caller sees of a value
@@ -40,8 +64,15 @@ export function present(/** @type {Element} */ e) {
   if (e.secure) out.secure = true;
   else if (e.value != null) out.value = clip(e.value);
   if (e.frame) out.frame = e.frame;
+  if (Array.isArray(e.actions) && e.actions.length) out.actions = e.actions;
   return out;
 }
+
+/** Where an observation says it is, in the words the floor reads. */
+const placeOf = (/** @type {any} */ s) => ({ bundle: s.bundle || null, app: s.app || null, window: s.window || null, url: s.origin || null });
+
+/** Codes the helper uses for "nothing was done, and here is why". */
+const MISSES = ["moved", "disabled", "not_found", "no_window", "no_app", "not_owner", "unsupported_action"];
 
 /** Which app to talk to. A pid wins over a name; neither means the frontmost app. */
 function target(/** @type {{ app?: string, pid?: number, window?: string }} */ i) {
@@ -54,11 +85,58 @@ function target(/** @type {{ app?: string, pid?: number, window?: string }} */ i
 
 export class Hands {
   /**
-   * @param {{ run: Runner, sleep?: (ms: number) => Promise<void>, emit?: (type: string, payload: any) => void }} deps
+   * @param {{ run: Runner, sleep?: (ms: number) => Promise<void>, emit?: (type: string, payload: any) => void,
+   *   overlay?: import("./overlay.js").Overlay, known?: () => Promise<Known> }} deps
    */
-  constructor({ run, sleep = ms => new Promise(r => setTimeout(r, ms)), emit = () => {} }) {
-    this.run = run; this.sleep = sleep; this.emit = emit;
+  constructor({ run, sleep = ms => new Promise(r => setTimeout(r, ms)), emit = () => {}, overlay = NO_OVERLAY, known = async () => ({}) }) {
+    this.run = run; this.sleep = sleep; this.emit = emit; this.overlay = overlay; this.known = known;
+    /** Set by a stop, cleared only by an act that passes resume: true. @type {{ app: string | null, by: string } | null} */
+    this.stopped = null;
+    /** The app of the live control session, for the stop event. @type {string | null} */
+    this.current = null;
+    // Every stop bumps the generation and settles `halted`. An act compares its generation after
+    // each wait, so a stop between two steps ends it there, and a wait in the settle loop is
+    // cut short rather than slept out.
+    this.gen = 0;
+    this.newHalt();
+    overlay.onStop(() => this.halt("person"));
   }
+
+  newHalt() {
+    /** @type {() => void} */
+    let fire = () => {};
+    /** @type {Promise<void>} */
+    this.halted = new Promise(r => { fire = r; });
+    this.fireHalt = fire;
+  }
+
+  /**
+   * Stop controlling the Mac: from the person's keys (by "person") or from hands.stop (by "tool").
+   * Idempotent, so Escape pressed twice is one stop.
+   * @param {"person" | "tool"} by
+   */
+  halt(by) {
+    if (!this.stopped) {
+      this.stopped = { app: this.current, by };
+      this.gen++;
+      this.fireHalt();
+      this.emit("hands.stopped", { app: this.current, by });
+    }
+    this.current = null;
+    this.overlay.done();
+    return { stopped: true, app: this.stopped.app, by: this.stopped.by };
+  }
+
+  /** The floor's view of the world: the paired box's origin, when there is one. */
+  async knownPlace() {
+    try { return (await this.known()) || {}; } catch { return {}; }
+  }
+
+  /**
+   * Which app and window a request reaches, read without reading anything in it.
+   * @param {Record<string, unknown>} t
+   */
+  where(t) { return this.run({ cmd: "where", ...t }); }
 
   /** @param {Record<string, unknown>} t @param {{ limit?: number, valueMax?: number }} [o] @returns {Promise<Snap>} */
   snap(t, { limit, valueMax } = {}) {
@@ -67,51 +145,114 @@ export class Hands {
 
   /** @param {{ app?: string, pid?: number, window?: string, limit?: number }} input */
   async observe(input = {}) {
-    const s = await this.snap(target(input), { limit: input.limit });
+    // The place first, and the floor on it, before a single value is read: a password manager's
+    // contents must never reach this process at all, not just be dropped before the answer.
+    const w = await this.where(target(input));
+    const k = await this.knownPlace();
+    const blind = (/** @type {any} */ s, /** @type {string} */ why) => ({ app: s.app, pid: s.pid, window: s.window, blind: why, elements: [], texts: [], truncated: false });
+    const off = untouchable(placeOf(w), k);
+    if (off) return blind(w, off);
+    // Pinned to the pid just checked, so the snap cannot land on an app that came to the front since.
+    const s = await this.snap({ pid: w.pid, ...(input.window ? { window: input.window } : {}) }, { limit: input.limit });
+    const late = untouchable(placeOf(s), k);
+    if (late) return blind(s, late);
     return {
-      app: s.app, pid: s.pid, window: s.window, front: s.front,
+      app: s.app, pid: s.pid, bundle: s.bundle || null, window: s.window, front: s.front,
       elements: (s.elements || []).map(present), texts: s.texts || [],
       truncated: Boolean(s.truncated),
     };
   }
 
   /**
-   * @param {{ selector: Selector, kind: string, value?: string, key?: string, modifiers?: string[],
-   *   app?: string, pid?: number, window?: string, limit?: number, settleMs?: number }} input
+   * Do one thing to one control, and prove it. `commit` is set only by hands.commit, after the
+   * registry has checked a person's proof; it skips the outward hold and nothing else.
+   *
+   * @param {{ selector: Selector, kind: string, action?: string, value?: string, key?: string, modifiers?: string[],
+   *   app?: string, pid?: number, window?: string, limit?: number, settleMs?: number, resume?: boolean }} input
+   * @param {{ commit?: boolean }} [o]
    */
-  async act(input) {
+  async act(input, { commit = false } = {}) {
     const { selector, kind } = input;
     if (!KINDS.includes(kind)) throw new HandsError("bad_input", `kind must be one of ${KINDS.join(", ")}`);
     if ((kind === "set" || kind === "type") && typeof input.value !== "string") throw new HandsError("bad_input", `${kind} needs a value`);
     if (kind === "key" && typeof input.key !== "string") throw new HandsError("bad_input", "key needs a key, e.g. return");
+    if (kind === "action" && !ACTIONS.includes(String(input.action))) throw new HandsError("bad_input", `action must be one of ${ACTIONS.join(", ")}`);
     if (!selector || typeof selector.role !== "string") throw new HandsError("bad_input", "selector needs at least a role; take it from hands.observe");
 
+    // A stop is the person's decision, and it outlives the act it cut short. Carrying on needs a
+    // caller that says so in the input, which is visible in the call log and in hands.resumed.
+    if (this.stopped) {
+      if (input.resume !== true) {
+        const where = this.stopped.app ? ` of ${this.stopped.app}` : "";
+        const who = this.stopped.by === "person" ? "The person stopped" : "hands.stop stopped";
+        throw new HandsError("stopped", `${who} Vyre's control${where}. Nothing was done. Ask the person whether to carry on, and only then call again with resume: true`);
+      }
+      const was = this.stopped.app;
+      this.stopped = null;
+      this.newHalt();
+      this.emit("hands.resumed", { app: was });
+    }
+    const gen = this.gen;
+    const halted = () => this.gen !== gen;
+
+    // The place, and the floor on it, before anything in it is read.
+    const k = await this.knownPlace();
+    const w = await this.where(target(input));
+    const off = untouchable(placeOf(w), k);
+    if (off) throw new HandsError("floor", `Vyre does not act in ${off}. Nothing was done; this is for the person to do`);
+
     // The fresh frame. Whatever observation the selector came from may no longer exist.
-    const opts = { limit: input.limit || 300, valueMax: VALUE_FULL };
-    const before = await this.snap(target(input), opts);
     // Pin the app by pid from here on. Otherwise "the frontmost app" could be a different app
     // by the time the action runs, and the check after it would read a third.
-    const pinned = { pid: before.pid, ...(input.window ? { window: input.window } : {}) };
+    const opts = { limit: input.limit || 300, valueMax: VALUE_FULL };
+    const pinned = { pid: w.pid, ...(input.window ? { window: input.window } : {}) };
+    const before = await this.snap(pinned, opts);
+    // The window can change between the two looks; the floor is checked on what was read.
+    const late = untouchable(placeOf(before), k);
+    if (late) throw new HandsError("floor", `Vyre does not act in ${late}. Nothing was done; this is for the person to do`);
+    if (halted()) return this.cut({ input, before, acted: false });
     const bound = resolve(selector, before.elements || []);
     const miss = (/** @type {string} */ reason) => this.finish({ input, before, after: null, acted: false, verified: false, reason });
     if (!bound.element) return miss(`nothing was done: ${"why" in bound ? bound.why : ""}`);
     const el = bound.element;
+    if (el.secure) throw new HandsError("secure", `${describe(selector)} is a secure field. Vyre never types, sets or reads a password through the screen; sign in with vault.fill, which fills it without the value passing through here`);
     if (el.enabled === false) return miss(`nothing was done: ${describe(selector)} is disabled right now`);
+    if (kind === "action" && Array.isArray(el.actions) && !el.actions.includes(String(input.action))) {
+      return miss(`nothing was done: ${describe(selector)} does not offer ${input.action} (it offers ${el.actions.join(", ") || "none"})`);
+    }
+
+    // Held, not refused: sending as the person needs the person. hands.commit carries it.
+    // Confirm and pick are other ways to press a control, and a Send button confirmed is sent.
+    const asKind = kind === "action" && (input.action === "AXConfirm" || input.action === "AXPick") ? "press" : kind;
+    const out = commit ? null : outward(placeOf(before), { kind: asKind, name: el.name, role: el.role, key: input.key, modifiers: input.modifiers, value: input.value });
+    if (out) {
+      const r = this.finish({ input, before, after: null, acted: false, verified: false, reason: `${out}, so it was held and nothing was done. A person has to allow it: call hands.commit with the same input`, held: true });
+      return { ...r, held: true, use: "hands.commit" };
+    }
+
+    // Visible before it happens. In real use this starts the indicator and its stop keys, and
+    // refuses (no_indicator) when they cannot be shown.
+    const at = center(el.frame);
+    await this.overlay.controlling(before.app, at);
+    this.current = before.app;
+    if (halted()) return this.cut({ input, before, acted: false });
 
     let acted = false, refused = "";
     try {
       const r = await this.run({
-        cmd: "act", ...pinned, path: el.path, role: el.role, ...(el.name ? { name: el.name } : {}),
-        kind, value: input.value, key: input.key, modifiers: input.modifiers,
+        cmd: "act", ...pinned, ...(before.bundle ? { bundle: before.bundle } : {}),
+        path: el.path, role: el.role, ...(el.name ? { name: el.name } : {}),
+        kind, action: input.action, value: input.value, key: input.key, modifiers: input.modifiers,
       });
       acted = r.acted === true;
       if (!acted) refused = `the app refused the action${r.axError != null ? ` (accessibility error ${r.axError})` : ""}`;
     } catch (e) {
       // The helper's last-moment check found a different control at that path, or the app went
       // away. Nothing was done, and saying so is the whole answer.
-      if (!(e instanceof HandsError) || !["moved", "disabled", "not_found", "no_window", "no_app"].includes(e.code)) throw e;
+      if (!(e instanceof HandsError) || !MISSES.includes(e.code)) throw e;
       refused = e.message;
     }
+    if (halted()) return this.cut({ input, before, acted });
 
     // Always look again, whatever the helper said. Apps repaint asynchronously, so a check made
     // at once can see the screen from before the action and report a working action as a miss;
@@ -121,9 +262,14 @@ export class Hands {
     let waited = 0, after = before, v = { verified: false, reason: "", target: /** @type {Element|null} */ (null) };
     do {
       const step = Math.min(250, Math.max(budget - waited, 0)) || 0;
-      if (step) { await this.sleep(step); waited += step; }
+      if (step) {
+        await Promise.race([this.sleep(step), this.halted]);
+        waited += step;
+      }
+      if (halted()) return this.cut({ input, before, acted });
       after = await this.snap({ ...pinned }, opts);
-      v = verdict({ kind, value: input.value, selector, before, after });
+      if (halted()) return this.cut({ input, before, acted });
+      v = verdict({ kind, value: input.value, action: input.action, selector, before, after });
     } while (!v.verified && waited < budget);
 
     // An action that was refused is never verified, even if the window changed meanwhile: a
@@ -131,17 +277,35 @@ export class Hands {
     // success this module exists to prevent.
     const verified = acted && v.verified;
     const reason = acted ? v.reason : `${refused}${v.verified ? "; the window did change meanwhile, but not because of this action" : ""}`;
+    if (at) this.overlay.ring({ ...at, ok: verified });
+    // The act can lead somewhere off limits (a press that opens a sign-in sheet). The verdict was
+    // reached in memory; what the answer shows of that place is only that it is off limits.
+    const blindAfter = untouchable(placeOf(after), k);
+    if (blindAfter) {
+      const r = this.finish({ input, before, after: null, acted, verified, reason, bound: el });
+      return { ...r, after: { blind: blindAfter } };
+    }
     return this.finish({ input, before, after, acted, verified, reason, bound: el, target: v.target });
   }
 
+  /** The answer for an act a stop cut short: no further look, and never verified. */
+  cut(/** @type {{ input: any, before: Snap, acted: boolean }} */ { input, before, acted }) {
+    const reason = acted
+      ? "stopped by the person after the action was sent and before its effect was checked, so it is not verified"
+      : "stopped before anything was done";
+    const r = this.finish({ input, before, after: null, acted, verified: false, reason });
+    return { ...r, stopped: true };
+  }
+
   /**
-   * @param {{ input: any, before: Snap, after: Snap | null, acted: boolean, verified: boolean, reason: string, bound?: Element, target?: Element | null }} r
+   * @param {{ input: any, before: Snap, after: Snap | null, acted: boolean, verified: boolean, reason: string, bound?: Element, target?: Element | null, held?: boolean }} r
    */
-  finish({ input, before, after, acted, verified, reason, bound, target: now }) {
+  finish({ input, before, after, acted, verified, reason, bound, target: now, held }) {
     // Recorded for the audit trail: which app, what kind of action, on what, and whether it
     // was proven. Never the value or the keys: typed text can be a password.
     const { role, name, identifier, container } = input.selector || {};
-    this.emit("hands.acted", { app: before.app, kind: input.kind, selector: { role, name, identifier, container }, acted, verified });
+    this.emit("hands.acted", { app: before.app, kind: input.kind, ...(input.kind === "action" ? { action: input.action } : {}),
+      selector: { role, name, identifier, container }, acted, verified, ...(held ? { held: true } : {}) });
     const side = (/** @type {Snap} */ s, /** @type {Element|null|undefined} */ e) => ({ window: s.window, signature: signature(s), target: e ? present(e) : null });
     return {
       acted, verified, reason,
@@ -149,5 +313,30 @@ export class Hands {
       after: after ? side(after, now) : null,
       changes: after ? diff(before, after) : null,
     };
+  }
+
+  /**
+   * What a person sees before allowing hands.commit: what will be pressed or sent, in which app
+   * and which window. It looks the place up (never the contents), and falls back to what the
+   * input says when the look fails, because a summary that throws shows the person nothing.
+   * @param {any} input
+   */
+  async summary(input) {
+    let app = input.app || (input.pid != null ? `pid ${input.pid}` : "the frontmost app"), win = input.window || "";
+    try { const w = await this.where(target(input)); app = w.app || app; win = w.window || win; } catch {}
+    const sel = input.selector || {};
+    const what = sel.name ? `"${String(sel.name).slice(0, 60)}"` : String(sel.role || "a control").replace(/^AX/, "").toLowerCase();
+    const mods = (input.modifiers || []).map((/** @type {string} */ m) => m[0].toUpperCase() + m.slice(1)).join("-");
+    const key = input.key ? (mods ? `${mods}-` : "") + String(input.key)[0].toUpperCase() + String(input.key).slice(1) : "";
+    const text = String(input.value ?? "");
+    const quoted = text.length > 60 ? `"${text.slice(0, 60)}..." (${text.length} characters)` : `"${text}"`;
+    const verb =
+      input.kind === "press" ? `Press ${what}` :
+      input.kind === "key" ? `Press ${key} in ${what}` :
+      input.kind === "type" ? `Type ${quoted} into ${what}` :
+      input.kind === "set" ? `Set ${what} to ${quoted}` :
+      input.kind === "action" ? `${String(input.action || "").replace(/^AX/, "")} ${what}` :
+      `Act on ${what}`;
+    return `${verb} in ${app}${win ? `, window "${String(win).slice(0, 80)}"` : ""}`;
   }
 }
