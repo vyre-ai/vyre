@@ -158,6 +158,8 @@ fun Swipe(onRight: () -> Unit, rightLabel: String, onLeft: () -> Unit, leftLabel
         customActions = listOf(CustomAccessibilityAction(rightLabel) { onRight(); true }, CustomAccessibilityAction(leftLabel) { onLeft(); true })
     }, backgroundContent = {
         val dir = state.dismissDirection
+        // Nothing behind the card at rest: its Beacon wash is translucent, so a label here would show through.
+        if (dir == SwipeToDismissBoxValue.Settled) return@SwipeToDismissBox
         Box(Modifier.fillMaxSize().padding(vertical = 4.dp).background(V.c.panel), contentAlignment = if (dir == SwipeToDismissBoxValue.EndToStart) Alignment.CenterEnd else Alignment.CenterStart) {
             Label(if (dir == SwipeToDismissBoxValue.EndToStart) leftLabel else rightLabel, Modifier.padding(horizontal = Space.l), if (dir == SwipeToDismissBoxValue.StartToEnd) V.c.focus else V.c.label)
         }

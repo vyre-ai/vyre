@@ -60,7 +60,7 @@ import sh.vyre.app.design.VButton
 fun NeedCard(label: String, meta: String, title: @Composable () -> Unit, sub: String?, onClick: () -> Unit) {
     val c = V.c
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(Radius.panel)).background(c.beaconWash)
+        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(Radius.panel)).background(c.ground).background(c.beaconWash)
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = Space.l, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
