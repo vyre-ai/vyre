@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
-import { tempHome, writeModule } from "./helpers.js";
+import { tempHome } from "./helpers.js";
 import { bindAddress } from "../core/onboard/loopback.js";
 import { execFileSync } from "node:child_process";
 import { ptyCommand } from "../core/onboard/setup-token.js";
@@ -307,12 +307,8 @@ test("onboard: once finished with an address, vyre up gets the address, not anot
 
 test("onboard: finishing with an address hands over a one-time link to make the first passkey there", async t => {
   const root = tempHome(t);
-  // A stand-in presence module: no keys yet, and a code on request.
-  writeModule(path.join(root, "modules"), "presence", { roles: ["box"], does: { tools: ["presence.keys", "presence.code"] } }, `let made = 0; export default { async start(ctx) {
-    ctx.tool("presence.keys", { input: { type: "object" }, run: async () => [] });
-    ctx.tool("presence.code", { input: { type: "object" }, run: async () => ({ code: "AB12CD34", expires: Date.now() + 600000, made: ++made }) });
-    return { async stop() {} };
-  } };`);
+  // The core presence module answers: no keys yet, and a fresh one-time code on request.
+  const link = /^https:\/\/alex\.vyre\.run\/onboard\/passkey#e=[A-Z0-9]{8}$/;
   const cfg = path.join(root, "config.json");
   const bins = fs.mkdtempSync(path.join(root, "bin-"));
   const saved = process.env.VYRE_TAILSCALE_BIN;
@@ -321,16 +317,16 @@ test("onboard: finishing with an address hands over a one-time link to make the 
   const { start: boot } = await import("../core/daemon/index.js");
   const d = await boot({ root, log: () => {} });
   t.after(async () => { await d.stop(); if (saved === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = saved; });
-  assert.equal((await call("onboard.passkey", {}, { root })).data.passkeyUrl, "https://alex.vyre.run/onboard/passkey#e=AB12CD34", "before finishing too, without finishing");
+  assert.match((await call("onboard.passkey", {}, { root })).data.passkeyUrl, link, "before finishing too, without finishing");
   assert.equal((await d.registry.call("onboard.status", {}, "cli")).data.finished, false);
   assert.equal((await d.registry.call("onboard.passkey", {}, "tailnet:alex@example.com")).data.passkeyUrl, null);
   const tailnet = await d.registry.call("onboard.finish", {}, "tailnet:alex@example.com");
   assert.equal(tailnet.data.passkeyUrl, null, "never to a tailnet caller: a model on the Mac is one");
   const r = await call("onboard.finish", {}, { root });
   assert.ok(r.data, JSON.stringify(r.error));
-  assert.equal(r.data.passkeyUrl, "https://alex.vyre.run/onboard/passkey#e=AB12CD34");
+  assert.match(r.data.passkeyUrl, link);
   // The code expired unused: `vyre up` on the box offers a fresh one, for as long as there is no passkey.
   const again = (await call("onboard.link", {}, { root })).data;
   assert.equal(again.url, null);
-  assert.equal(again.passkeyUrl, "https://alex.vyre.run/onboard/passkey#e=AB12CD34");
+  assert.match(again.passkeyUrl, link);
 });
