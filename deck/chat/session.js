@@ -38,7 +38,7 @@ import { questionCard } from "./question.js";
 import { mountComposer } from "./composer.js";
 import { plan, sideOf, mergeBlocks, blockKey } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
-import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
+import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, toolCard, turnRow, rawView } from "./blocks.js";
 
 const PAGE = 400;
@@ -102,9 +102,15 @@ export function mountSession(container, opts) {
   const health = healthDot();
   /** Where it lives when that is the paired Mac: then nothing here may send to it, lease it or take it. */
   const where = { source: opts.source || null, machine: opts.machine || null };
-  const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat" });
+  /** The Mac's name as the view says it. */
+  const macName = () => where.machine || "your Mac";
+  /** A Mac session: what waits in its queue (from the composer), and whether the last send found the Mac offline. */
+  const mac = { queued: 0, name: "", offline: /** @type {string|null} */ (null) };
+  const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat", machine: isMac(where) ? macName() : null,
+    onQueue: (n, name) => { mac.queued = n; mac.name = name; if (isMac(where)) drawHead(); },
+    onOffline: m => { mac.offline = m; drawHead(); } });
 
-  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, isMac(where) ? null : composer.el);
+  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, composer.el);
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   /** The assistant's and the owner's names (system.info, read once per page): replies are labelled with the first, "you" wears the second's initial. */
@@ -195,12 +201,14 @@ export function mountSession(container, opts) {
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
       ),
       machineChip(where),
+      mac.offline ? h("span", { class: "tag machine off cv-offline", title: `${mac.offline} is not reachable` }, `${mac.offline} offline`) : null,
       rec?.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null,
       mode === "blocks" ? h("button", { class: "btn btn-ghost btn-sm cv-raw-toggle", type: "button", "aria-pressed": String(raw), title: "Show it the way the terminal prints it",
         onclick: () => setRaw(!raw) }, raw ? "Rich" : "Raw") : null,
       health.el,
     );
-    if (isMac(where)) { put(leaseBar, icon("lock", 12), h("span", { class: "lease-note" }, readOnlyNote(where))); return; }
+    // A Mac session: the keyboard is the Mac's own (the lease is not forwarded), so no Take.
+    if (isMac(where)) { put(leaseBar, icon("laptop", 12), h("span", { class: "lease-note" }, `On ${macName()}` + (mac.queued ? ` · Queued for ${mac.name || "this session"}` : ""))); return; }
     put(leaseBar,
       icon("lock", 12),
       rec?.holder && OURS.has(rec.holder) ? h("span", null, "You have the keyboard here")
@@ -211,8 +219,8 @@ export function mountSession(container, opts) {
     );
   }
   async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
-  /** A Mac session: no composer at all, so nothing typed here can reach threads.send or threads.lease. */
-  function readOnly() { composer.el.remove(); }
+  /** Found to be the Mac's from recall.thread's answer: sends from now on carry the machine. */
+  function onMac() { composer.setMachine(macName()); }
 
   function setRaw(v) {
     raw = v; saveRaw(v);
@@ -502,7 +510,7 @@ export function mountSession(container, opts) {
       recorded.on = true;
       recorded.session = t.data.session;
       // A session the list did not know may turn out to be the Mac's from the answer itself.
-      if (isMac(t.data)) { where.source = "mac"; where.machine = t.data.machine || where.machine; readOnly(); }
+      if (isMac(t.data)) { where.source = "mac"; where.machine = t.data.machine || where.machine; onMac(); }
       drawHead();
       timeline.replaceChildren();
       if (from > 0) timeline.append(earlierTurns(from));
@@ -549,16 +557,21 @@ export function mountSession(container, opts) {
       into.append(headFor(t.ts), blockRow({ kind: "text", text: t.text, ts: t.ts }));
     }
   }
+  /** Live rows drawn for a Mac session, replaced by the turns the next re-read brings. */
+  const macLive = /** @type {Element[]} */ ([]);
+  function liveAppend(/** @type {any[]} */ ...els) { timeline.append(...els); if (isMac(where)) macLive.push(...els); }
   async function readMoreLegacy() {
-    if (!recorded.on || isMac(where)) return;
+    if (!recorded.on && !isMac(where)) return;
     if (recorded.busy) { recorded.again = true; return; }
     recorded.busy = true;
     try {
       do {
         recorded.again = false;
-        const r = await attempt("recall.thread", { session: thread, from: recorded.next, limit: 400 });
-        if (!recorded.on || r.error) break;
+        const r = await attempt("recall.thread", { session: thread, from: recorded.next, limit: 400, ...(isMac(where) ? { source: "mac" } : {}) });
+        if ((!recorded.on && !isMac(where)) || r.error) break;
         if (r.data.turns.length) timeline.querySelector(".th-wait")?.remove();
+        // The Mac's turns stand in for what was drawn live, so nothing shows twice.
+        if (r.data.turns.length && macLive.length) { for (const el of macLive.splice(0)) { el.remove(); for (const [k, v] of rows) if (v === el) rows.delete(k); } lastMessageEl = null; lastMessageId = null; }
         if (r.data.session) { recorded.session = r.data.session; drawHead(); }
         appendTurns(r.data.turns);
         if (r.data.turns.length) grew();
@@ -569,18 +582,20 @@ export function mountSession(container, opts) {
     const p = e.payload || {};
     if (e.type === "thread.sent") {
       maybeDayRule(e.at);
-      timeline.append(userRow(labelFor({ role: "user", surface: p.surface }, names), p.text, e.at, me));
+      liveAppend(userRow(labelFor({ role: "user", surface: p.surface }, names), p.text, e.at, me));
       lastMessageEl = null; lastMessageId = null;
+      // A queued message handed over on the Mac: its turn is in the transcript now.
+      if (isMac(where) && (p.queued != null || p.via)) readMoreLegacy();
       return;
     }
     if (e.type === "thread.text") {
       maybeDayRule(e.at);
-      if (p.notice) { timeline.append(noticeMsg(p.text, e.at)); return; }
+      if (p.notice) { liveAppend(noticeMsg(p.text, e.at)); return; }
       if (p.message !== lastMessageId) {
         lastMessageId = p.message;
-        timeline.append(headFor(e.at));
+        liveAppend(headFor(e.at));
         lastMessageEl = liveTextRow(e.at);
-        timeline.append(lastMessageEl);
+        liveAppend(lastMessageEl);
       }
       if (p.delta) lastMessageEl.push(p.delta);
       if (p.done && p.text) { lastMessageEl.set(p.text); lastMessageEl.done(); }
@@ -592,7 +607,7 @@ export function mountSession(container, opts) {
         if (rows.has(key)) return;
         const b = { kind: "tool", id: p.id, tool: p.tool, summary: p.summary, destination: p.destination, ts: e.at, output: null };
         const el = /** @type {any} */ (toolCard(b)); el._block = b;
-        rows.set(key, el); timeline.append(el);
+        rows.set(key, el); liveAppend(el);
         toolKeys.push(key);
         while (toolKeys.length > 6) { const old = toolKeys.shift(); rows.get(old)?.remove(); rows.delete(old); }
       } else {
@@ -603,10 +618,11 @@ export function mountSession(container, opts) {
     }
     if (e.type === "thread.finished") {
       if (lastMessageEl) lastMessageEl.done();
-      if (!p.ok || p.error) timeline.append(h("div", { class: "turn-foot" }, h("span", { class: "err" }, "turn failed: " + (p.error || p.stop_reason || "error"))));
-      timeline.append(turnRow({ ts: e.at, duration_ms: p.duration_ms, tokens: p.tokens, cost_usd: p.cost_usd }));
+      if (!p.ok || p.error) liveAppend(h("div", { class: "turn-foot" }, h("span", { class: "err" }, "turn failed: " + (p.error || p.stop_reason || "error"))));
+      liveAppend(turnRow({ ts: e.at, duration_ms: p.duration_ms, tokens: p.tokens, cost_usd: p.cost_usd }));
       turnSeq++;
       turnMarkers.set(turnSeq, timeline.lastElementChild);
+      if (isMac(where)) readMoreLegacy();
       return;
     }
   }
@@ -620,9 +636,11 @@ export function mountSession(container, opts) {
     // the reply. So while it is read from the transcript, the queue's events are not drawn twice.
     const queueFlow = e.type === "thread.queued" || p.queued != null || p.via === "stop" || p.via === "prompt" || p.via === "terminal"
       || (typeof p.message === "string" && p.message.startsWith("inbox-"));
-    if (recorded.on && queueFlow) return;
+    // A Mac session is always read that way, but its live events are drawn: they are the only
+    // sign of a reply until the re-read on thread.finished replaces them.
+    if (recorded.on && queueFlow && !isMac(where)) return;
     // The first live event for a recorded session: a send adopted it, so the Switchboard has it now.
-    if (live && recorded.on && /^(thread|lease)\./.test(e.type)) {
+    if (live && recorded.on && !isMac(where) && /^(thread|lease)\./.test(e.type)) {
       recorded.on = false;
       attempt("threads.get", { thread, since: 0, limit: 1 }).then(r => { if (r.data) { record.current = r.data.thread; drawHead(); } });
     }
@@ -657,7 +675,7 @@ export function mountSession(container, opts) {
   /** A question or a permission ask, drawn once and filled in as more of it is read. */
   function upsertAsk(a) {
     const key = "ask:" + a.id;
-    const full = { ...a, agent: agentName() };
+    const full = { ...a, agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : {}) };
     let el = rows.get(key);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return el; }
     el = a.kind === "question" ? questionCard(full) : askCard(full);

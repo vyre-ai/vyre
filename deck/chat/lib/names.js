@@ -4,7 +4,8 @@
 //
 //   a reply        the agent's own name when the thread is an agent's, else the assistant's name
 //                  from onboarding (system.info's assistant.name), else "Vyre"
-//   the person     "you" when it came from this person's own surfaces (or says nothing)
+//   the person     "you" when it came from this person's own surfaces (or says nothing, or is
+//                  "box:<surface>", a message the box forwarded to the paired Mac)
 //   another surface  its own name
 //
 // Never "claude": a name that says Claude falls back to the assistant's name (a reply) or
@@ -28,7 +29,8 @@ export function labelFor(row, names = {}) {
     return a && !/claude/i.test(a) ? a : fallback;
   }
   const s = clean(row.surface);
-  if (!s || OURS.has(s)) return "you";
+  // "box:<surface>": the paired Mac's word for a message the box forwarded, which is this person's.
+  if (!s || OURS.has(s) || s.startsWith("box:")) return "you";
   if (/claude/i.test(s)) return "terminal";
   return s;
 }

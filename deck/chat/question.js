@@ -20,7 +20,7 @@ import { problemLine } from "./presence.js";
 import { emptyPick, choose, answerText, answered, answerInput } from "./lib/answers.js";
 
 /**
- * @param {{ id: string, questions?: any[], agent?: string|null }} ask
+ * @param {{ id: string, questions?: any[], agent?: string|null, elsewhere?: string|null }} ask elsewhere: the machine to answer on (the paired Mac), no buttons here
  * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any) => void, onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
  */
 export function questionCard(ask) {
@@ -87,6 +87,12 @@ export function questionCard(ask) {
     otherInput = null; nextBtn = null;
     if (state.decided) { put(el, title, folded()); el.classList.add("answered"); return; }
     if (!questions.length) { put(el, title, h("div", { class: "cv-note" }, "Reading the question…")); return; }
+    // A session on the paired Mac: answers are not forwarded, so the questions show and say where to answer.
+    if (ask.elsewhere) {
+      put(el, title, h("dl", { class: "cv-q-review" }, questions.map(q => [h("dt", null, q.header || q.question), h("dd", null, q.options.map(o => o.label).join(" / "))])),
+        h("div", { class: "cv-elsewhere" }, icon("laptop", 12), `Answer it on ${ask.elsewhere}`));
+      return;
+    }
     put(el, title, onReview() ? review() : stepView(state.step), actions(), state.error ? problemLine(state.error) : null);
   }
 
@@ -184,9 +190,9 @@ export function questionCard(ask) {
     else if (!state.shown && state.decided === "allow") { try { state.shown = answerInput(ask.id, questions, picks).answers; } catch { state.shown = null; } }
     draw();
   };
-  el.isOpen = () => !state.decided;
+  el.isOpen = () => !state.decided && !ask.elsewhere;
   el.onKey = e => {
-    if (state.decided || state.busy || !questions.length) return false;
+    if (state.decided || state.busy || !questions.length || ask.elsewhere) return false;
     if (e.key === "Escape") { back(); return true; }
     if (onReview()) { if (e.key === "Enter") { submit(); return true; } return false; }
     const i = state.step, q = questions[i];

@@ -72,7 +72,8 @@ function what(ask) {
 
 /**
  * @param {{ id: string, tool: string, summary?: string|null, destination?: string|null, reason?: string|null, agent?: string|null,
- *   kind?: string, detail?: any, always?: boolean }} ask
+ *   kind?: string, detail?: any, always?: boolean, always_project?: string|null, elsewhere?: string|null }} ask
+ * elsewhere: the machine the session runs on, when answers cannot go there from here (the paired Mac).
  * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string) => void, onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
  */
 export function askCard(ask) {
@@ -96,6 +97,13 @@ export function askCard(ask) {
     if (state.decided) {
       put(el, title, h("div", { class: "gate-resolved" }, icon(state.decided === "deny" || state.decided === "cancelled" ? "close" : "check", 14), WORDS[state.decided] || state.decided));
       el.classList.add("answered");
+      return;
+    }
+    // A session on the paired Mac: answers are not forwarded, so the card says where to answer.
+    if (ask.elsewhere) {
+      put(el, title, h("div", { class: "cv-ask-what" }, what(ask)),
+        ask.reason ? h("div", { class: "gate-note cv-ask-why" }, String(ask.reason)) : null,
+        h("div", { class: "cv-elsewhere" }, icon("laptop", 12), `Answer it on ${ask.elsewhere}`));
       return;
     }
     const whyInput = state.denying ? h("input", { class: "cv-why", type: "text", placeholder: `Tell ${who} why (optional)`, value: state.why,
@@ -127,10 +135,10 @@ export function askCard(ask) {
 
   el.update = a => { Object.assign(ask, a); if (!state.decided) draw(); };
   el.answered = decision => { state.busy = false; state.error = null; state.decided = ["allow", "always", "deny"].includes(decision) ? decision : "cancelled"; draw(); };
-  el.isOpen = () => !state.decided;
+  el.isOpen = () => !state.decided && !ask.elsewhere;
   /** A key routed here by the session (focus not in the composer). Returns whether it was used. */
   el.onKey = e => {
-    if (state.decided || state.busy) return false;
+    if (state.decided || state.busy || ask.elsewhere) return false;
     if (e.key === "Enter" && !state.denying) { answer("allow"); return true; }
     if (e.key === "Escape") { if (state.denying) { state.denying = false; draw(); } else { state.denying = true; draw(); } return true; }
     return false;

@@ -16,6 +16,8 @@ test("replies: the agent's name, else the assistant's name from onboarding, else
 test("people: you on this person's surfaces, another surface its name, never claude", () => {
   for (const s of [null, undefined, "", ...OURS]) assert.equal(labelFor({ role: "user", surface: s }), "you");
   assert.equal(labelFor({ role: "user", surface: "capsule" }), "capsule");
+  assert.equal(labelFor({ role: "user", surface: "box:deck" }), "you", "a message the box forwarded to the Mac");
+  assert.equal(labelFor({ role: "user", surface: "box:capsule" }), "you");
   assert.equal(labelFor({ role: "user", surface: "claude-code" }), "terminal");
 });
 

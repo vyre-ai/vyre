@@ -486,3 +486,6 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-q-other-wrap .cv-q-input { margin-left: 16px; }
   .cv-ask-why { white-space: normal; }
 }
+/* A Mac session's cards: where to answer, in place of the buttons. */
+.cv-elsewhere { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.cv-q > .cv-elsewhere, .cv-q > .cv-q-review { margin: 0 16px 14px; }

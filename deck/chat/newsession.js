@@ -4,7 +4,7 @@
 //   Where: a project (projects.list), a folder (files.recent, or "Browse..." into the folder
 //          browser in pick mode), or no folder. threads.start needs a folder, so "No folder"
 //          starts in the first of the box's roots, and says which.
-//   Who:   "Vyre", a plain session (threads.start), or one of the agents (agents.ask with
+//   Who:   the assistant (its name from onboarding, lib/names.js; "Vyre" when none), a plain session (threads.start), or one of the agents (agents.ask with
 //          wait: false, then that agent's thread opens). An agent works where its own projects
 //          are, so the folder choice is switched off for one, with a note that says why.
 //   What:  the first message. Cmd/Ctrl+Enter starts; Esc closes the sheet.
@@ -14,6 +14,7 @@ import { h, put, go } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { threadHref } from "./lib/routes.js";
+import { readNames, labelFor } from "./lib/names.js";
 
 /** The last segment of a path, for a short label. @param {string} p */
 export const baseName = p => String(p).replace(/\/+$/, "").split("/").pop() || p;
@@ -67,6 +68,7 @@ export function mountNewSession(container, opts) {
     /** @type {string|null} */ agent: null,
     /** @type {any[]} */ projects: [], /** @type {any[]} */ recent: [], /** @type {any[]} */ agents: [],
     /** @type {string|null} */ root: null,
+    /** The assistant's name, for the plain-session choice. */ assistant: "Vyre",
     loaded: false, starting: false, /** @type {string|null} */ error: null,
   };
 
@@ -99,8 +101,9 @@ export function mountNewSession(container, opts) {
   load();
 
   async function load() {
-    const [p, r, a, d] = await Promise.all([attempt("projects.list"), attempt("files.recent", { limit: 8 }), attempt("agents.list"), attempt("files.dirs", {})]);
+    const [p, r, a, d, nm] = await Promise.all([attempt("projects.list"), attempt("files.recent", { limit: 8 }), attempt("agents.list"), attempt("files.dirs", {}), readNames(attempt)]);
     if (!alive) return;
+    state.assistant = labelFor({ role: "assistant" }, nm);
     state.projects = p.data?.projects || [];
     state.recent = Array.isArray(r.data) ? r.data : [];
     state.agents = Array.isArray(a.data) ? a.data : [];
@@ -122,7 +125,7 @@ export function mountNewSession(container, opts) {
     if (!alive) return;
     const w = state.where;
     put(whoBox, h("div", { class: "ns-choices", role: "radiogroup", "aria-label": "Who" },
-      choice("Vyre", "a session in the folder you pick", state.agent === null, () => { state.agent = null; }),
+      choice(state.assistant, "a session in the folder you pick", state.agent === null, () => { state.agent = null; }),
       state.agents.map(a => choice(a.name, a.kind === "assistant" ? "your assistant, in its own thread" : "an agent, in its own thread",
         state.agent === a.name, () => { state.agent = a.name; }))));
 
