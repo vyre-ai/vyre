@@ -132,7 +132,7 @@ published on the host; vyred reaches them over the internal network.
   worktree.
 
 - The docker driver is hardened against a privileged or host-mounted container (`driver/docker.js`,
-  `docs/adr/0004-container-hardening.md`): the restricted proxy only filters endpoints, not
+  `docs/adr/0009-container-hardening.md`): the restricted proxy only filters endpoints, not
   request bodies, so Privileged, host devices, host network/PID and extra capabilities are never
   read from anywhere, `CapDrop` is always `ALL`, the root filesystem is read-only with tmpfs for
   the paths `entrypoint.sh` actually writes, and every container and volume carries a fixed

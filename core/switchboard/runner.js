@@ -23,14 +23,20 @@ import { spawn } from "node:child_process";
 
 /**
  * The command line for a headless session.
+ * `tools: "none"` is `--tools ""` (no built-in tools) and `--strict-mcp-config` with no config
+ * (no MCP servers). `settings: false` is `--setting-sources ""`: none of the user's settings,
+ * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
+ * subscription's login.
  * @param {{ id: string, resume?: boolean, plugin?: string|null, model?: string|null, name?: string|null,
- *           append?: string|null, budgetUsd?: number|null }} o
+ *           append?: string|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
     "--permission-prompts", "host", "--permission-prompt-tool", "stdio"];
   a.push(...(o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
   if (o.plugin) a.push("--plugin-dir", o.plugin);
+  if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
+  if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);
   if (o.name && !o.resume) a.push("-n", o.name);
   if (o.append) a.push("--append-system-prompt", o.append);
