@@ -36,9 +36,13 @@ let agentWiringSuite = Suite("agent wiring") { t in
             let (m, w) = await MainActor.run { () -> (CapsuleModel, AgentWiring) in let x = wired(v); x.0.willShow(front: nil); return x }
             _ = await until { !m.catalog.threads.isEmpty && m.vyred.follower.isStreaming }
             await MainActor.run { m.text = "watch the harlow intake thread" }
-            _ = await until { m.flat.contains { $0.kind == "watch" } }
+            if !(await until { m.flat.contains { $0.kind == "watch" } }) {
+                let f = await MainActor.run { m.flat.map { "\($0.kind):\($0.title)" } + ["threads=\(m.catalog.threads.map(\.label))"] }
+                FileHandle.standardError.write("wiring: no watch row: \(f)\n".data(using: .utf8)!)
+                return nil
+            }
             let row = await MainActor.run { () -> String? in
-                let i = m.flat.firstIndex { $0.kind == "watch" }!
+                let i = m.flat.firstIndex { $0.kind == "watch" } ?? 0
                 m.selected = i; m.run(); return m.flat[i].title
             }
             _ = await until { !v.callsOf("threads.watch").isEmpty }
@@ -62,8 +66,12 @@ let agentWiringSuite = Suite("agent wiring") { t in
             let (m, _) = await MainActor.run { () -> (CapsuleModel, AgentWiring) in let x = wired(v); x.0.willShow(front: nil); return x }
             _ = await until { !m.catalog.threads.isEmpty }
             await MainActor.run { m.text = "tell the harlow intake thread to run the tests" }
-            _ = await until { m.flat.contains { $0.kind == "drive" } }
-            await MainActor.run { m.selected = m.flat.firstIndex { $0.kind == "drive" }!; m.run() }
+            if !(await until { m.flat.contains { $0.kind == "drive" } }) {
+                let f = await MainActor.run { m.flat.map { "\($0.kind):\($0.title)" } + ["threads=\(m.catalog.threads.map(\.label))"] }
+                FileHandle.standardError.write("wiring: no drive row: \(f)\n".data(using: .utf8)!)
+                return nil
+            }
+            await MainActor.run { m.selected = m.flat.firstIndex { $0.kind == "drive" } ?? 0; m.run() }
             _ = await until { !v.callsOf("threads.watch").isEmpty }
             await MainActor.run { m.didHide() }
             return (v.callsOf("threads.send").first, v.callsOf("threads.watch").count)
