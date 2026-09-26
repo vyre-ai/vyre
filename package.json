@@ -6,7 +6,7 @@
   "bin": { "vyre": "bin/vyre" },
   "engines": { "node": ">=22.5" },
   "scripts": {
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\""
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\" \"test/**/*.test.js\""
   },
   "optionalDependencies": { "@huggingface/transformers": "^4.3.0" },
   "files": ["bin", "core", "harness", "local", "deck", "modules", "docs", "LICENSE", "README.md"],
