@@ -2,7 +2,7 @@
 // recall — search over every turn of every Claude Code session on this machine.
 //
 // Full-text search (FTS5) over every user and assistant turn, re-ranked by local embeddings
-// when the optional model is installed. The index is built from the transcript files by
+// once the search model is installed (on first use, or `vyre recall --setup`; see embed.js). The index is built from the transcript files by
 // core/transcripts, the only code that reads them, and lives in Recall's tables
 // (core/recall/schema.js), which Memory and Projects read directly.
 //
@@ -14,8 +14,11 @@
 // Settings, all optional, under "recall" in config.json:
 //   every      minutes between passes (default 5; 0 turns the timer off)
 //   vectors    false to never load the model
-//   download   false to never fetch the model weights (then they must already be in `models`)
+//   download   false to never fetch the library or the weights (then they must already be in
+//              `embedder` and `models`)
 //   models     where the weights live (default <VYRE_HOME>/models)
+//   embedder   where the library that runs them is installed (default <VYRE_HOME>/embedder)
+//   npm        the npm that installs it (default the one next to node, else npm on PATH)
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
@@ -25,7 +28,7 @@ import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
 import { evaluate } from "./eval.js";
-import { load as loadModel, cached } from "./embed.js";
+import { load as loadModel, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { Dense } from "./dense.js";
 
 /** @type {import("./embed.js").Embedder | null} */
@@ -117,11 +120,14 @@ export default {
           return Promise.resolve(null);
         }
         const models = opts.models || path.join(ctx.paths.root, "models");
-        // The one network call Recall ever makes, once. Said out loud, so a first `vyre status`
+        const runtime = opts.embedder || path.join(ctx.paths.root, "embedder");
+        // The only network calls Recall ever makes, once. Said out loud, so a first `vyre status`
         // explains the wait instead of looking stuck.
-        vec.why = injected || cached(models) ? "loading the model" : "downloading the search model (23 MB, once)";
+        const mb = (installed(runtime) ? 0 : DOWNLOAD_MB.runtime) + (cached(models) ? 0 : DOWNLOAD_MB.model);
+        vec.why = injected || !mb ? "loading the model" : `downloading the search model (about ${mb} MB, once); search is by keyword until then`;
+        if (!injected && mb) ctx.log(vec.why);
         vec.loading = (injected ? Promise.resolve({ embedder: injected })
-          : loadModel({ cacheDir: models, download: opts.download !== false }))
+          : loadModel({ cacheDir: models, runtime, download: opts.download !== false, npm: opts.npm }))
           .then(r => {
             if (r.embedder) { vec.embedder = r.embedder; vec.why = `on (${r.embedder.model})`; return r.embedder; }
             vec.on = false; vec.why = r.why || "unavailable";
@@ -195,8 +201,21 @@ export default {
         return {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
           folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
-          vectors: { on: vec.on, why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
+          vectors: { on: vec.on, ready: Boolean(vec.embedder), why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
         };
+      },
+    });
+
+    ctx.tool("recall.setup", {
+      description: "Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.",
+      input: { type: "object", properties: {} },
+      run: async () => {
+        if (opts.vectors === false) return { ready: false, why: vec.why };
+        // A failed install or load is not final: setup is the way to try again.
+        if (!vec.embedder && !vec.on) { vec.on = true; vec.loading = null; }
+        const e = await embedder();
+        if (e) vectorLoop();
+        return { ready: Boolean(e), why: vec.why, model: e ? e.model : null };
       },
     });
 

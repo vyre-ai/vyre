@@ -97,8 +97,9 @@ Run that line on the server (`ssh <you>@<server>`, then `vyre link approve 123-4
 expires after a few minutes; `vyre up` again prints a fresh one. `vyre link` on the Mac says
 when it is paired. Last, `vyre up` opens the Capsule if you have installed it (next step).
 
-The install is about 480 MB, most of it the optional local embedding model that lets search
-find things by meaning. Search still works without it, as full text.
+The install is about 6 MB. Search by meaning needs a local model (about 130 MB); Vyre fetches it
+into `~/.vyre` the first time it indexes, and searches by keyword until it is there.
+`vyre recall --setup` fetches it now and waits.
 
 To use Vyre's tools inside Claude Code on the Mac:
 

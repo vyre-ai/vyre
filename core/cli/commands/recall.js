@@ -4,8 +4,9 @@
 import fs from "node:fs";
 import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
-import { out, dim, bold, recall as gold } from "../style.js";
+import { out, dim, bold, beacon, recall as gold } from "../style.js";
 import { json, emit, fail, failTool, usage } from "../kit.js";
+import { DOWNLOAD_MB } from "../../recall/embed.js";
 
 /** "3h ago", "2d ago": how long since a session was last active. */
 export function ago(ms, now = Date.now()) {
@@ -24,7 +25,7 @@ function parse(args) {
     const a = args[i];
     if (!a.startsWith("--")) { words.push(a); continue; }
     const k = a.slice(2);
-    if (["user", "assistant", "keyword", "json", "here"].includes(k)) flags[k] = true;
+    if (["user", "assistant", "keyword", "json", "here", "setup"].includes(k)) flags[k] = true;
     else flags[k] = args[++i] ?? "";
   }
   return { flags, words };
@@ -55,13 +56,35 @@ async function evalCommand(args) {
   return 0;
 }
 
+/** `vyre recall --setup`: install the search model now and wait for it. */
+async function setup() {
+  if (!(await up())) return 5;
+  if (!json()) out(dim(`  installing the search model (about ${DOWNLOAD_MB.runtime + DOWNLOAD_MB.model} MB the first time, then nothing) ...`));
+  const r = await call("recall.setup", {}, { timeout: 30 * 60_000 });
+  if (r.error) return failTool(r.error);
+  if (json()) return r.data.ready ? emit(r.data) : fail(r.data.why, { code: "unavailable", next: "vyre recall --setup to try again" });
+  if (!r.data.ready) return fail(r.data.why, { next: "check the network, then vyre recall --setup again" });
+  out(`  search by meaning is on ${dim(`· ${r.data.model} · vectors fill in over the next few minutes`)}`);
+  return 0;
+}
+
+/** One dim line when search is by keyword because the model is not ready yet. */
+async function keywordOnly() {
+  const s = await call("recall.status");
+  const v = s.data && s.data.vectors;
+  if (!v || v.ready || (!v.on && /config\.json/.test(v.why))) return;
+  // vyred's reason already ends "search is by keyword ...": it is the whole line.
+  out(dim(`\n  ${v.why} · vyre recall --setup`));
+}
+
 export default [
   {
     name: "recall", order: 20, usage: "vyre recall <query> [--limit n] [--here] [--json]",
-    help: "--user or --assistant: only what that side said · --keyword: no vectors\nvyre recall with no query: how much is indexed\nvyre recall eval <labelled.json> [--k 10]: measure search against a labelled set", summary: "search every session for what was said (vyre recall eval <file> to measure it)",
+    help: "--user or --assistant: only what that side said · --keyword: no vectors\nvyre recall with no query: how much is indexed\nvyre recall --setup: install the search model now (it installs itself on first use)\nvyre recall eval <labelled.json> [--k 10]: measure search against a labelled set", summary: "search every session for what was said (vyre recall eval <file> to measure it)",
     async run(args) {
       if (args[0] === "eval") return evalCommand(args.slice(1));
       const { flags, words } = parse(args);
+      if (flags.setup) return setup();
       const q = words.join(" ").trim();
       if (!(await up())) return 5;
       if (!q) {
@@ -85,6 +108,7 @@ export default [
       if (!r.data.length) {
         const s = await call("recall.status");
         out(`  nothing matching ${JSON.stringify(q)}` + (s.data && s.data.indexing ? dim(" · still indexing, try again in a moment") : ""));
+        if (!flags.keyword) await keywordOnly();
         return 0;
       }
       for (const h of r.data) {
@@ -96,6 +120,7 @@ export default [
         out(`    ${h.snippet.slice(0, 200).replace(/«([^»]*)»/g, (_, w) => gold(w))}`);
       }
       out(dim(`\n  resume one with: claude --resume <id>  ·  vyre call recall.thread '{"session":"<id>"}'`));
+      if (!flags.keyword) await keywordOnly();
       return 0;
     },
   },

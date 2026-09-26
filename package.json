@@ -18,9 +18,6 @@
     "eval:memory": "node scripts/eval-memory.js",
     "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
-  "optionalDependencies": {
-    "@huggingface/transformers": "^4.3.0"
-  },
   "files": [
     "bin",
     "core",

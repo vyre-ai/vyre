@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `npm i -g vyre` is 6 MB, not 750
+
+- The search model's library (`@huggingface/transformers` with ONNX Runtime) is no longer an npm
+  dependency of any kind. It made a global install 750 MB on Linux (onnxruntime-node 548 MB,
+  onnxruntime-web 141 MB), because npm ignores `--omit=optional` for a global package's own
+  optional deps. Measured on the test box from `npm pack`: the tarball is 1.50 MB before and after, and
+  the install into an empty prefix went from 750 MB to 5.9 MB on disk (4.5 MB of files; all of it
+  Vyre's own code, deck and docs). `package-lock.json` lost 1,048 lines.
+- Recall installs the library on first use into `<VYRE_HOME>/embedder` (on a box, the home's
+  volume) with the npm next to node, pinned to 4.3.0, and searches by keyword until then. It says
+  so in one line: `vyre recall` prints "downloading the search model (about 128 MB, once); search
+  is by keyword until then · vyre recall --setup", and vyred logs the same. `core/recall/embed.js`.
+- The install is pruned to what the CPU path opens: this platform's ONNX Runtime only, no GPU
+  providers (CUDA and TensorRT were 260 MB), and only onnxruntime-web's `ort.node` entry (its
+  WebAssembly builds were 115 MB). 500 MB becomes 105 MB, and the model loads and embeds the same
+  (checked on the test box: "croissant menu" vs "pastry list" 0.566, vs "kubernetes ingress" 0.065).
+- `vyre recall --setup` (new tool `recall.setup`) installs and loads it now and waits: 16 s on
+  the test box. A failed install leaves no half-written tree, says why, and `--setup` tries again. New
+  config keys `recall.embedder` (where it goes) and `recall.npm`.
+- `scripts/release-check.sh` now fails on any optional dependency and on an install over 10 MB.
+- `bin/vyre` hides Node 22's "SQLite is an experimental feature" warning, which printed on every
+  command (the box image already did this with NODE_OPTIONS).
+
 #### The Capsule is Spotlight's size
 
 - The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it

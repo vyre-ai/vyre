@@ -15,9 +15,17 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Done
 
+- Install size (lead's top priority, user said yes): `npm i -g vyre` 750 MB -> 5.9 MB on disk
+  (4.5 MB of files), tgz 1.50 MB before and after, measured on the test box from `npm pack` into an
+  empty prefix. The embedder is fetched on first use into <VYRE_HOME>/embedder (pinned
+  transformers 4.3.0, pruned 500 -> 105 MB), keyword search until then, `vyre recall --setup`
+  to fetch now (16 s on the test box, real network, temp home). Tests: core/recall/embed-install.test.js
+  (fake npm, no network). The 2 MB target: the rest is Vyre's own code, deck and docs.
+
 ## Doing
 
-- all three, in parallel
+- `vyre threads` prints nothing; `vyre threads --help` crashes; two vyreds on a symlinked home
+  (realpath the home for the pid/lock). Then the interactive `vyre` screen.
 
 ## Next
 
@@ -27,3 +35,13 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- recall (owner: recall team): `package.json` has no optionalDependencies; `core/recall/embed.js`
+  installs the library on first use (`install`, `installed`, `load({ runtime, npm })`, `PACKAGE`,
+  `RANGE`, `DOWNLOAD_MB`); new tool `recall.setup` in module.json; `recall.status.vectors.ready`;
+  config `recall.embedder`, `recall.npm`. docs/work/recall.md still says "optionalDependencies".
+- ci/release: `scripts/release-check.sh` asserts no optional deps and an install under 10 MB.
+- learn (merge): the learn CLI uses kit exits, so a refused presence is 3 and a usage slip 2
+  (test/cli.test.js updated).
+- Known, not mine: core/cli/commands/box.test.js "sudo with a password ... docker group" fails
+  on the test box (its user is already in the docker group, so the step is never offered).
