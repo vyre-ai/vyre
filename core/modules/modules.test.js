@@ -228,3 +228,18 @@ test("modules: ctx.remote says no_link without a link, and a listener's peer rea
   assert.equal(r.data.remote.error.code, "no_link");
   assert.ok(reg.routes.has("/v1/notes/feed"));
 });
+
+test("modules: a tool's error code passes through when it is a plain code; anything else is failed", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async ({ text }) => {
+      if (text === "p") throw Object.assign(new Error("prove it"), { code: "presence_required", detail: { methods: ["touchid"] } });
+      if (text === "x") throw Object.assign(new Error("odd"), { code: "EPIPE" });
+      throw new Error("plain");
+    } });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", good, src]]);
+  assert.deepEqual(await reg.call("notes.add", { text: "p" }), { error: { code: "presence_required", message: "prove it", detail: { methods: ["touchid"] } } });
+  assert.equal((await reg.call("notes.add", { text: "x" })).error.code, "failed", "an uppercase system code is not passed through");
+  assert.equal((await reg.call("notes.add", { text: "y" })).error.code, "failed");
+});
