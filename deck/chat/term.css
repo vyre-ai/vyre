@@ -1,0 +1,24 @@
+/* terminal: a live shell in a folder (deck/chat/term.js). Loaded with xterm's own stylesheet only
+   when a terminal opens. Deck tokens only; xterm's colours come from the same tokens in term.js. */
+
+.term { display: flex; flex-direction: column; height: 100%; min-height: 320px; background: var(--panel);
+  border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+.term-head { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px 0 4px; border-bottom: 1px solid var(--rule); flex-shrink: 0; }
+.term-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-where { font-family: var(--mono); font-size: 13px; color: var(--text); }
+.term-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.term-dot { background: var(--label); }
+.term[data-state="live"] .term-dot { background: var(--signal); }
+.term[data-state="connecting"] .term-dot, .term[data-state="waiting"] .term-dot { background: var(--recall); }
+.term[data-state="error"] .term-dot, .term[data-state="locked"] .term-dot { background: var(--beacon-dot); }
+.term-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-2);
+  border-bottom: 1px solid var(--rule); background: var(--hover); }
+.term-screen { flex: 1 1 auto; min-height: 0; padding: 8px 4px 4px 10px; }
+.term-screen .xterm { height: 100%; }
+.term-screen .xterm-viewport { background-color: transparent !important; }
+.term[data-state="ended"] .term-screen { opacity: 0.7; }
+
+@media (max-width: 599px) {
+  .term { border-radius: 0; border-left: 0; border-right: 0; }
+  .term-screen { padding: 4px 2px 2px 6px; }
+}
