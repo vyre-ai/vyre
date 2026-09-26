@@ -58,6 +58,10 @@ test("argsFor: the flags a headless session needs, new and resumed", () => {
   const r = argsFor({ id: "u1", resume: true, name: "Site copy", budgetUsd: 4.5 });
   assert.ok(r.includes("--resume") && !r.includes("--session-id") && !r.includes("-n"), "a resumed thread keeps its name");
   assert.deepEqual(r.slice(-2), ["--max-budget-usd", "4.50"]);
+  const lean = argsFor({ id: "u1", tools: "none", settings: false });
+  assert.ok(!lean.includes("--plugin-dir"));
+  assert.deepEqual(lean.slice(lean.indexOf("--tools"), lean.indexOf("--tools") + 3), ["--tools", "", "--strict-mcp-config"]);
+  assert.deepEqual(lean.slice(lean.indexOf("--setting-sources"), lean.indexOf("--setting-sources") + 2), ["--setting-sources", ""]);
 });
 
 test("lease: one holder, take-over says who had it, quiet holders expire", t => {
@@ -223,6 +227,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   assert.deepEqual(ans.data, { ask: raised.payload.ask, answered: true, decision: "allow" });
   await until(() => of(a.got, id, "ask.answered")[0], "ask.answered");
   assert.equal(of(a.got, id, "ask.answered")[0].payload.by, "capsule");
+  assert.equal(of(a.got, id, "ask.answered")[0].payload.tool, "Write", "what was allowed, as a learning signal");
+  assert.equal(of(a.got, id, "ask.answered")[0].payload.summary, raised.payload.summary);
   await until(() => fs.existsSync(target), "the file the answer allowed");
   assert.deepEqual((await tool("threads.asks", { thread: id })).data, []);
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny" })).data.answered, false, "an answered ask stays answered");
@@ -503,4 +509,61 @@ test("agents.history: each question with its answer and thread, newest last, pag
   const inside = async (agent, call) => JSON.parse((await tool("agents.ask", { agent, text: `vyre ${call}` })).data.text);
   assert.match((await inside("scout", "agents.history {}")).error.message, /only the assistant/);
   assert.match((await tool("agents.history", { agent: "nobody" })).error.message, /no agent nobody/);
+});
+
+test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a job stops after its answer", async t => {
+  const { d, tool, work, launches } = await boot(t);
+  const lean = (await tool("threads.start", { cwd: work, prompt: "what is 2+2", lean: true, surface: "capsule" })).data;
+  await until(async () => (await tool("threads.get", { thread: lean.id })).data.events.some(e => e.type === "thread.finished"), "the answer");
+  const argv = (await until(() => launches().at(-1), "the launch")).argv;
+  assert.ok(!argv.includes("--plugin-dir") && argv.includes("--strict-mcp-config") && argv[argv.indexOf("--tools") + 1] === "" && argv[argv.indexOf("--setting-sources") + 1] === "");
+  await tool("threads.stop", { thread: lean.id });
+  assert.equal((await tool("threads.send", { thread: lean.id, text: "and 3+3", surface: "capsule" })).data.sent, true);
+  const again = (await until(() => launches().length === 2 && launches()[1], "the resume")).argv;
+  assert.ok(again.includes("--resume") && !again.includes("--plugin-dir") && again.includes("--strict-mcp-config"), "a lean thread stays lean");
+
+  // A job: Learning's shape. Internal, so only a module may launch one.
+  assert.equal((await tool("threads.launch", { cwd: work, prompt: "x" })).error.code, "no_such_tool");
+  const job = (await d.registry.call("threads.launch", { cwd: work, prompt: "distil this", plugin: false, tools: "none", once: true, model: "haiku" }, "module:learn")).data;
+  const stopped = await until(async () => (await tool("threads.get", { thread: job.id })).data.events.find(e => e.type === "thread.stopped"), "the job to stop");
+  assert.equal(stopped.payload.reason, "done");
+  const events = (await tool("threads.get", { thread: job.id })).data.events;
+  assert.equal(events.find(e => e.type === "thread.text" && e.payload.done).payload.text, "echo: distil this");
+  const jobArgv = launches().at(-1).argv;
+  assert.ok(!jobArgv.includes("--plugin-dir") && jobArgv.includes("--strict-mcp-config") && jobArgv[jobArgv.indexOf("--model") + 1] === "haiku");
+});
+
+test("threads.watch: said once when the thread finishes or asks, always when it stops, and not for other agents", async t => {
+  const { root, tool, work } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  const { id } = (await tool("threads.start", { cwd: work, prompt: "hello", surface: "deck" })).data;
+  await until(async () => (await tool("threads.get", { thread: id })).data.events.some(e => e.type === "thread.finished"), "the first turn");
+
+  const w = (await tool("threads.watch", { thread: id, until: "finished", notify: "capsule", note: "tell me when the intake is done" }, "capsule")).data;
+  assert.match(w.watch, /^w[0-9a-f]{12}$/);
+  await tool("threads.send", { thread: id, text: "build the intake", surface: "deck" });
+  const fired = await until(() => of(s.got, id, "thread.watched")[0], "thread.watched");
+  assert.deepEqual([fired.payload.watch, fired.payload.reason, fired.payload.notify, fired.payload.note, fired.payload.summary],
+    [w.watch, "finished", "capsule", "tell me when the intake is done", "echo: build the intake"]);
+  await tool("threads.send", { thread: id, text: "again", surface: "deck" });
+  await until(() => of(s.got, id, "thread.finished").length >= 3, "the next turn");
+  assert.equal(of(s.got, id, "thread.watched").length, 1, "once, then it clears itself");
+
+  // Asks: fires on the question, with its summary.
+  const asks = (await tool("threads.watch", { thread: id, until: "asks" })).data;
+  await tool("threads.send", { thread: id, text: `write ${path.join(work, "n.txt")}`, surface: "deck" });
+  const asked = await until(() => of(s.got, id, "thread.watched").find(e => e.payload.watch === asks.watch), "the ask watch");
+  assert.equal(asked.payload.reason, "asked");
+  assert.match(asked.payload.summary, /n\.txt/);
+
+  // Unwatch, and a stopped thread ends every watch.
+  const gone = (await tool("threads.watch", { thread: id })).data;
+  assert.deepEqual((await tool("threads.unwatch", { watch: gone.watch })).data, { removed: true });
+  const last = (await tool("threads.watch", { thread: id, until: "finished" })).data;
+  await tool("threads.stop", { thread: id });
+  const end = await until(() => of(s.got, id, "thread.watched").find(e => e.payload.watch === last.watch), "the stop");
+  assert.equal(end.payload.reason, "stopped");
+  assert.ok(!of(s.got, id, "thread.watched").some(e => e.payload.watch === gone.watch));
+  assert.equal((await tool("threads.watch", { thread: id })).data.fired, true, "a stopped thread fires at once");
 });

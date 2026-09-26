@@ -95,6 +95,10 @@ with real Claude Code, not only a fake.
   with the reason when something does (core/switchboard/adopt.js). The switchboard tests now point
   `transcripts` at the temp home.
 
+- For others: `agents.history` (Deck), lean threads and `threads.watch` (Capsule), job options for
+  `threads.launch` and `tool`/`summary` on `ask.answered` (Intelligence). Still open from
+  Intelligence: `plugins: [dirs]`, so learned skills load in headless threads.
+
 ## Answers
 - gate-chat asked whether a tool called inside a thread can see its session id. Inside a thread the
   Switchboard started, yes: the child's env has `VYRE_THREAD=<session id>`, and the MCP server and
