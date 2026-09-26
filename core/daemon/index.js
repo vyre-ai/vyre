@@ -11,6 +11,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as config from "../config/index.js";
+import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
@@ -31,6 +32,9 @@ export function moduleRoots(root) {
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
+  // A vyred on any home but ~/.vyre (a demo or dev world started in-process with `root`) raises
+  // nothing on screen: every dialog gate reads the environment, so say it there.
+  if (!isRealHome(root) && !process.env.NODE_TEST_CONTEXT) process.env.VYRE_NO_DIALOGS = "1";
   const p = config.ensure(root);
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");

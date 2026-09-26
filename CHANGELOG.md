@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The login keychain and every dialog belong to ~/.vyre alone
+
+- A dev world (`deck/test/world.js`), a demo and a stress run each started a real vyred on a temp
+  `VYRE_HOME` outside `node --test`, so the vault's test guard did not apply: with no
+  `vault.keystore` a Mac defaulted to the login keychain, and 32 `vyre-vault` items built up in the
+  user's login keychain while prompts kept reaching their screen. All 32 are deleted.
+- The vault now uses the login keychain only for `~/.vyre` (the account's home from the user
+  database, not `$HOME`) or a home whose config says `vault.keychain: true`. Any other home that
+  picks no keystore gets the file keystore; one that asks for `keychain` is refused with a message
+  naming both fixes, before any helper is built or `security` runs. `vault.keychain` as a string is
+  still a keychain file for tests. `vyre up` on a real Mac install writes `vault.keychain: true`.
+- `dialogsAllowed()` (and the Capsule's copy) is false for a `VYRE_HOME` other than `~/.vyre`, and
+  vyred started in-process on such a root sets `VYRE_NO_DIALOGS=1` outside tests.
+- `deck/test/world.js`, `deck/test/vault-shots.js`, `test/fixtures/vyred-present.js` and
+  `scripts/release-check.sh` pass `VYRE_NO_DIALOGS=1` and the file keystore.
+- `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and
+  `osascript` that record calls, keeps its key in a file, builds no keychain helper and calls
+  neither; a temp home that asks for the keychain is refused; the world scripts set the flags.
+
 #### No Touch ID prompt, or anything else on screen, under tests
 
 - A test run raised a real Touch ID dialog ("Relax Vyre lesson 1") on the user's screen: presence's

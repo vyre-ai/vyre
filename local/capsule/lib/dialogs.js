@@ -1,13 +1,20 @@
 // @ts-check
 // dialogs: the Capsule's copy of core/config/dialogs.js (the packaged app carries only
 // local/capsule, so it cannot import core). Keep the two rules the same: nothing reaches the
-// screen under node --test unless VYRE_TEST_DIALOGS=1, and never with VYRE_NO_DIALOGS=1.
+// screen under node --test unless VYRE_TEST_DIALOGS=1, never with VYRE_NO_DIALOGS=1, and never
+// for a VYRE_HOME other than ~/.vyre.
 import { execFile } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 
 /** @param {NodeJS.ProcessEnv} [env] */
 export function dialogsAllowed(env = process.env) {
   if (env.VYRE_NO_DIALOGS === "1") return false;
-  if (env.NODE_TEST_CONTEXT && env.VYRE_TEST_DIALOGS !== "1") return false;
+  if (env.NODE_TEST_CONTEXT) return env.VYRE_TEST_DIALOGS === "1";
+  const home = env.VYRE_HOME && path.resolve(env.VYRE_HOME.replace(/^~(?=$|\/)/, os.homedir()));
+  let mine = os.homedir();
+  try { mine = os.userInfo().homedir || mine; } catch {}
+  if (home && home !== path.join(mine, ".vyre")) return false;
   return true;
 }
 
