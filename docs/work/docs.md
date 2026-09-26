@@ -68,7 +68,10 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 - Deploy: Cloudflare Pages project `vyre-docs`, `npx wrangler pages deploy docs-site
   --project-name vyre-docs --branch main`, custom domain docs.vyre.run. Token is the vault's
   CLOUDFLARE_API_TOKEN (source .env.vyre, never print it). Only after the user's yes.
-- Each team refines its seeded pages (owner field says whose).
+- Each team refines its seeded pages (owner field says whose). Teams send a patch against
+  work/docs; a patch describing unmerged code waits until that code is on main, then apply it,
+  `npm run docs:ref`, docs-check. Pending: connectors (using/connectors.md, build/mcp-hub.md:
+  hub, `vyre connect`, `vyre mcp install`, Google; Google sign-in and SA helper as coming).
 
 ## Needs from others
 
