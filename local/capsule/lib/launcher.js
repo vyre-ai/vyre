@@ -45,8 +45,10 @@ const CLIPS = /^(clipboard|clips?|paste)\b/i;
 const BOX_TIMEOUT = 1200;
 const LINK_TTL = 30_000;
 const UNREACHABLE = "The box is not reachable right now.";
+/** A send waits for Taildrop to finish, so it gets what `vyre send` gets, not a tool call's usual ten seconds. */
+export const SEND_TIMEOUT = 61 * 60_000;
 
-/** @typedef {(tool: string, input: object) => Promise<{ data?: any, error?: any }>} Vyred */
+/** @typedef {(tool: string, input: object, opts?: { timeout?: number }) => Promise<{ data?: any, error?: any }>} Vyred */
 
 const errText = e => (e && typeof e === "object" ? String(e.message || e.code || "") : String(e || ""));
 const boxDown = e => /unreach|timeout|timed out|not linked|offline|ECONN|EHOST|down|refused/i.test(errText(e) + " " + (e && e.code ? e.code : ""));
@@ -330,7 +332,7 @@ export class Launcher {
   async send(r) {
     if (!r || r.kind !== "file" || typeof r.target !== "string" || !path.isAbsolute(r.target)) return { error: "only a file on this Mac can be sent" };
     if (!this.vyred) return { error: "Vyre is not running, so nothing can be sent." };
-    const s = await this.vyred("files.send", { path: r.target }).catch(e => ({ error: e }));
+    const s = await this.vyred("files.send", { path: r.target }, { timeout: SEND_TIMEOUT }).catch(e => ({ error: e }));
     if (s && s.data && s.data.sent) return { ok: true, note: `Sent ${s.data.sent} to ${this.boxName || s.data.to || "the box"}.` };
     return { error: `Could not send it: ${errText(s && s.error) || "nothing came back"}.` };
   }

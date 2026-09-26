@@ -1,0 +1,30 @@
+{
+  "hooks.status": {
+    "enabled": true,
+    "port": 7310,
+    "routes": [
+      {
+        "name": "northwind-payments",
+        "path": "/hooks/northwind-payments",
+        "verify": "stripe",
+        "open": true,
+        "funnel": true,
+        "command": "tailscale funnel --bg --set-path /hooks/northwind-payments http://127.0.0.1:7310/hooks/northwind-payments"
+      },
+      {
+        "name": "harlow-forms",
+        "path": "/hooks/harlow-forms",
+        "verify": "hmac-sha256",
+        "open": true,
+        "funnel": false,
+        "command": "tailscale funnel --bg --set-path /hooks/harlow-forms http://127.0.0.1:7310/hooks/harlow-forms"
+      }
+    ],
+    "mismatches": [
+      {
+        "route": "harlow-forms",
+        "why": "open in Vyre, but Funnel does not serve /hooks/harlow-forms"
+      }
+    ]
+  }
+}

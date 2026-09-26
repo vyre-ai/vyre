@@ -113,6 +113,10 @@
 .ob-lock-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .ob-lock-steps { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; }
 .ob-lock-steps li p { margin-bottom: 6px; }
+/* The address step: HTTPS for a ts.net address, then Tailnet Lock after it. */
+.ob-https { display: flex; flex-direction: column; gap: 10px; }
+.ob-https .h3, .ob-https p { margin: 0; }
+.ob-col > .ob-lock { margin-top: 20px; }
 .ob-collapse { margin-top: 20px; }
 .ob-collapse summary { cursor: pointer; font-size: 13px; line-height: 18px; color: var(--text-2); }
 .ob-collapse p { margin-top: 10px; }
