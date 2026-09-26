@@ -152,6 +152,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Docs and comments call the test server "the test box", the prototype's folder "the
   prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
   comments only).
+#### The Deck installs on a phone as an app
+
+- Add to Home Screen gives a full-screen app: a manifest with maskable icons, an Apple touch
+  icon, launch screens for twelve iPhone sizes, and a status bar in the theme's colour. The shell
+  keeps clear of the notch and the home indicator, never rubber-bands, and fills 100dvh.
+- Find is the phone's Capsule, a tab in place of Ask and a pull down from the top of any screen:
+  one box for asking juno, sessions (titles and what was said), box files, agents, memory and
+  projects. Vault items are never offered there.
+- Chat on the phone: a session fills the screen above the tab bar, a reply keeps the view at the
+  bottom or shows Jump to latest, and a session another keyboard has says so and keeps the draft.
+  Asks and held drafts answer inline with a passkey, and say Allowed, Denied or Sent after.
+- Now, the Deck's approvals (Send, Discard, Allow, Deny) prove a person with the passkey, as the
+  floor already required; before, they were refused with presence_required.
+- Set up this phone, on Now: install, notifications (asks and held drafts, iOS 16.4 and later from
+  the Home Screen app) and a passkey. Settings uses the same code for push and passkeys.
+- Offline: the service worker keeps the shell and the five phone tabs at install, a cold launch
+  reopens the last screen, and one line says when the phone is offline or the box is not answering.
 
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
@@ -248,6 +265,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a file to the box with option-return.
 - `scripts/perf-check` waits for Memory's startup pass to finish before it measures idle, so a
   slow start on a loaded host is no longer counted as idle CPU.
+#### The Capsule answers from memory, and messages a session busy in a terminal
+
+- Quick answers read the memory on screen. When the "From memory" box shows facts or session quotes
+  for the same words, the quick question's system prompt carries exactly those lines, with their
+  ages, under "What the user's own notes say:". Nothing else from memory is sent.
+  `local/capsule/lib/bridge.js` (`memoItems`, `memoLines`, `quickAppend`).
+- A transcript hit reads as a quote ("You said, 2 weeks ago: ..."), never as a fact; the distilled
+  fact from memory.relevant sits above it. A box with only quotes is labelled "From your sessions".
+- The quotes are chosen for the question, not its words (`local/capsule/lib/said.js`): the question
+  echoed back, the Capsule's own ask threads ("Capsule: ..." or its scratch folder) and turns that
+  quote the whole question are dropped; questions and Claude's words rank under the user's own
+  first-person statements; at most two show. When the best is a clear statement ("I own a blue
+  Volvo XC40"), one line on top says it to the user ("You own a blue Volvo XC40.") with the quote
+  under it as its source. Still no model: the box shows before anything is sent.
+- Vyre's notices (a usage limit, the switch to the API key) are a faint status line under the
+  answer or the DM, never part of the answer's text. `local/capsule/lib/state.js` keeps them as
+  `notice`.
+- The switchboard says a usage limit in the thread only at 80% used or more, or when refused.
+  Claude Code warns from far lower (27% was seen). `thread.limit` still carries every report.
+- The reply shows the user's question as their own line ("You"), then who answers, then the answer.
+- `@<session>` for a session open in a terminal no longer refuses. A person's words are queued
+  (`threads_inbox`, event `thread.queued`), and the Harness hands them over when that session's
+  turn ends: the Stop hook returns `decision: block` with "Message from the user via the Capsule:
+  <text>", or the next prompt carries them when the session is idle. The Stop that ends the
+  answering turn emits its last message as the thread's `thread.text` and `thread.finished`, so the
+  Capsule shows the reply like any other. A model's send (caller `mcp*`) is still refused.
+  `vyre threads send` prints "queued". `core/switchboard`, `core/harness`, `core/cli/commands/threads.js`.
+- Opening over a full-screen app, behind `VYRE_CAPSULE_STAY=1` until checked: the panel joins every
+  Space again before each show, stays above full-screen windows, and becomes key without the app
+  activating, so macOS does not switch to the desktop Space. Off by default, where the app still
+  activates so typing reaches the panel over a normal app. `local/capsule/lib/present.js`;
+  `scripts/capsule-spaces/run.js` checks it against a throwaway full-screen window and runs only
+  with `VYRE_FULLSCREEN_OK=1`.
 
 #### The Capsule is Spotlight's size
 

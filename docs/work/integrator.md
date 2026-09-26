@@ -32,12 +32,24 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 
 ## Doing
 
-- Waiting on the lead: merge work/polish-cli now or after its lock work and stress run (asked).
-  work/connectors waits for its lead's ready.
+- FROZEN for ci's history rewrite (no git commands until ci says "done").
 
 ## Next
 
-- polish-cli, then connectors: one at a time, full suite on the test box, report sha and numbers.
+After ci's done, with the rewritten heads ci reports, one at a time, targeted tests on the test box,
+sha to the lead after each:
+1. work/pwa (presence-proof fix, pairing approve card)
+2. work/capsule-now (switchboard MIGRATIONS gains threads_inbox at the end: order after any other appended migration)
+3. work/connectors (then run connectors, harness, presence-bypass tests)
+4. work/cc-plugin
+5. work/polish-cli (bin/vyre conflict with core/quiet.js: keep both; run recall, cli, release-check tests;
+   update docs/work/recall.md optionalDependencies line or tell docs)
+6. work/docs
+Then security fixes on main: the Rules hook in the registry call path for non-person callers
+(test: agent call to a rules-denied tool refused); vault.reveal default (core/vault/tools/deck.js
+returns reveal: true: gate on presence, default off). Then ctx.projects (SPEC 5.2), site/start
+page, ADR 0008 box update. Details in ../vyre-docs/docs/work/docs.md "Needs from others".
+Remove ../vyre-tailnet-surfaces and work/tailnet-surfaces.
 
 ## Needs from others
 

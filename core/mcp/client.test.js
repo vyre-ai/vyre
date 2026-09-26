@@ -124,10 +124,11 @@ test("stdio: close ends the child, and SIGKILL follows a SIGTERM it ignores", as
 });
 
 test("stdio: timeout, oversized reply and a missing command are clean errors", async t => {
-  const tools = JSON.stringify([{ name: "slow", delay: 2000 }, { name: "huge", bytes: 5 * 1024 * 1024 }]);
-  const c = await stdio(t, { env: { FAKE_MCP_TOOLS: tools }, timeout: 300 });
+  // The timeout covers initialize too, so it leaves room for a fresh node to start on a loaded machine.
+  const tools = JSON.stringify([{ name: "slow", delay: 4000 }, { name: "huge", bytes: 5 * 1024 * 1024 }]);
+  const c = await stdio(t, { env: { FAKE_MCP_TOOLS: tools }, timeout: 1500 });
   await c.initialize();
-  await assert.rejects(c.callTool("slow", {}), (/** @type {any} */ e) => e.code === "timeout" && /timed out after 300 ms/.test(e.message));
+  await assert.rejects(c.callTool("slow", {}), (/** @type {any} */ e) => e.code === "timeout" && /timed out after 1500 ms/.test(e.message));
 
   const big = await stdio(t, { env: { FAKE_MCP_TOOLS: tools } });
   await big.initialize();

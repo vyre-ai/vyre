@@ -129,7 +129,13 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .replyhead .lbl.on { color: var(--signal); }
 .replyhead .who { font-size: 13px; color: var(--stone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .replyhead .state { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ash); white-space: nowrap; }
-.asked { padding: 4px 16px 8px 44px; font-size: 13px; line-height: 18px; color: var(--stone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.asked { display: flex; align-items: baseline; gap: 12px; padding: 10px 16px 0 44px; font-size: 14px; line-height: 20px; color: var(--bone); min-width: 0; }
+.asked .q { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; user-select: text; }
+.status { padding: 4px 16px 8px 44px; font-family: var(--mono); font-size: 11px; line-height: 15px; color: var(--ash); }
+.recall.memo .said, .recall.memo .fact { font-size: 13px; line-height: 19px; color: var(--stone); user-select: text; }
+.recall.memo .said .who { color: var(--ash); }
+.recall.memo .said .srcl, .recall.memo .fact .srcl, .recall.memo .answer .srcl { margin-left: 8px; font-weight: 400; letter-spacing: 0; }
+.srcl.on { color: var(--recall); }
 .reply { padding: 8px 16px 14px 44px; font-size: 14px; line-height: 21px; color: var(--bone); white-space: pre-wrap; user-select: text; max-height: 300px; overflow: auto; }
 .reply .caret { display: inline-block; width: 2px; height: 16px; background: var(--signal); vertical-align: -2px; margin-left: 1px; }
 .tools { padding: 0 16px 10px 44px; display: flex; flex-direction: column; gap: 2px; }
