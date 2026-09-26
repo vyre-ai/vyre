@@ -793,3 +793,9 @@ test("sessions: claude is known by its command line, since node 24 names its mai
   for (const args of ["claude", "/usr/local/bin/claude --resume abc", "/opt/homebrew/bin/node /usr/local/bin/claude", "node /Users/alex/.npm/bin/claude -p hi"]) assert.equal(claudeCommand(args), true, args);
   for (const args of ["MainThread", "node /usr/local/bin/vyre", "/usr/bin/python3 claude.py", "bash -c claude", ""]) assert.equal(claudeCommand(args), false, args);
 });
+
+test("queue: a person's words are queued for a terminal-busy session, the owner's phone over the tailnet included; a model's are refused", async () => {
+  const { queuesFor } = await import("./index.js");
+  for (const c of ["deck", "capsule", "cli", "local", "tailnet:alex@example.com"]) assert.equal(queuesFor(c), true, c);
+  for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "tailnet:agent:kit", "cli agent:kit", "tailnet:"]) assert.equal(queuesFor(c), false, c);
+});
