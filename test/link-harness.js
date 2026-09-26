@@ -61,17 +61,21 @@ export function tailnet(box, net, port = 0) {
 /**
  * A box and a Mac, both running, with a work folder on each.
  * @param {any} t
- * @param {{ approve?: boolean, hold?: number, allow?: string[], macTranscripts?: boolean }} [opts]
+ * @param {{ approve?: boolean, hold?: number, allow?: string[], macTranscripts?: boolean, boxTranscripts?: any[] }} [opts]
  *   hold: how long the box holds link.serve (short, so stopping is quick); allow: the box's list of
  *   tools it may ask the Mac for, to reach the Mac's own check; macTranscripts: the Mac indexes the
- *   fixture corpus, so it has sessions for the box to read.
+ *   fixture corpus, so it has sessions for the box to read; boxTranscripts: sessions (in the
+ *   corpus's shape) the box indexes as its own, so a federated read has rows from both.
  */
-export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false } = {}) {
+export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
   t.after(() => { fs.rmSync(boxWork, { recursive: true, force: true }); fs.rmSync(macWork, { recursive: true, force: true }); });
-  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "testbox", transcripts: [], files: { roots: [boxWork] } }));
+  let boxSessions = [];
+  if (boxTranscripts) { boxSessions = [path.join(boxRoot, "transcripts")]; writeTranscripts(boxSessions[0], boxTranscripts); }
+  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "testbox", transcripts: boxSessions, files: { roots: [boxWork] },
+    ...(boxTranscripts ? { recall: { every: 0, vectors: false } } : {}) }));
   let macSessions = [];
   if (macTranscripts) { macSessions = [path.join(macRoot, "transcripts")]; writeTranscripts(macSessions[0]); }
   fs.writeFileSync(path.join(macRoot, "config.json"), JSON.stringify({ role: "local", transcripts: macSessions, files: { roots: [macWork] },
