@@ -299,7 +299,7 @@ test("memory: with no Recall tables there is nothing to curate, and nothing fail
   assert.deepEqual(graph.relevant({ text: "Harlow Legal" }), []);
   assert.deepEqual(graph.facts({}), { about: null, facts: [] });
   assert.equal(graph.stats().recall, false);
-  assert.deepEqual(graph.why({ fact: "anything" }), { fact: null, turns: [], gone: 0 });
+  assert.deepEqual(graph.why({ fact: "anything" }), { fact: null, turns: [], taught: [], gone: 0 });
 });
 
 // ------------------------------------------------------------------ relevant, facts, steering

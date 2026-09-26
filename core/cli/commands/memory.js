@@ -59,7 +59,11 @@ export default [
         out(dim(`  ${t.name || t.session.slice(0, 8)} #${t.seq} · ${t.role}${t.age ? " · " + t.age + " ago" : ""}`));
         out(`    ${t.text.replace(/\s+/g, " ")}`);
       }
-      if (!d.turns.length) out(dim("  no supporting turns are left"));
+      for (const l of d.taught || []) {
+        out(dim(`  taught by ${l.module} · ${l.kind}${l.age ? " · " + l.age + " ago" : ""}`));
+        if (l.text) out(`    ${l.text}`);
+      }
+      if (!d.turns.length && !(d.taught || []).length) out(dim("  no supporting turns are left"));
       if (d.gone) out(dim(`  ${d.gone} supporting turn${d.gone === 1 ? " is" : "s are"} gone (the transcript was rewritten)`));
       out("");
       return 0;

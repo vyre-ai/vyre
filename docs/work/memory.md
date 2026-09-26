@@ -54,6 +54,7 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
   index is available, reports counts and timings only.
 
 ## Done
+- `memory.teach` and lesson provenance; paged cold derive (worst event-loop block 70 to 120ms).
 - Curator, graph, module, CLI (`core/memory/`, `core/cli/commands/memory.js`), on `work/memory`.
 - Every "Done when" item above holds against `seedRecall()`, including a working `memory.why`
   for every fact. Idempotency, bi-temporal and rewrite tests pass.
@@ -64,12 +65,12 @@ data is personal); tests `the prototype's bin/test/t-curator.cjs`.
 ## Doing
 
 ## Next
-- The first derive after vyred starts blocks the event loop for up to about 600ms on a large
-  corpus (building the rowid map). Split it further if the Enrich hook ever feels it.
-- `ctx.memory.teach(kind, fact)` (SPEC 5.2) is not in the loader yet; when it lands, taught facts
-  become observations with their own source, and the curator keeps being the only writer.
 - Short forms for people's first names are measured but few pass the 0.6 floor; that is by
   design. Revisit if the Enrich hook misses obvious first-name references.
+- Taught facts are not scoped to a project yet: `memory.facts {project_cwds}` finds things
+  through the sessions that name them, so a person known only from a lesson appears in `about`
+  and `relevant`, not in a project's list. If projects wants that, a lesson could carry a
+  `project_cwd`.
 
 ## Needs from others
 - recall: emit `session.indexed {session, from, to, rewritten}` after each index write. Memory
@@ -98,3 +99,10 @@ None to other modules' contracts. New, for dependents:
 - `memory.pin` / `memory.mute {node, scope?, off?}`: scope `*` (default) or a project folder.
 - `memory.curate {full?}` returns `{ recall, sessions, turns, nodes, edges, changed, ms }`.
 - Event `memory.curated {nodes, edges, ms}`, only when the graph changed.
+- `memory.teach {kind, fact, from}` (internal, modules only, through `ctx.memory.teach`). A
+  fact: `{ subject, rel?, object?, text?, at?, key?, forget? }`, where `subject` and `object`
+  are a name or `{ name, email?, domain?, repo?, kind? }` (`kind` is `person` or `org`).
+  Known rels: `works_at`, `has_email`, `has_domain`, `owned_by`; any other snake_case rel is
+  kept as written; a subject with only `text` becomes a note. Returns `{ key, changed }`.
+- Facts carry `taught: [{module, kind}]`; `memory.why` also returns `taught: [{module, kind,
+  key, text, at, age}]`. `memory.stats` counts `taught`.

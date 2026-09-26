@@ -20,6 +20,7 @@
 // passage retrieval better. So this holds facts, people and links, and leaves search to Recall.
 
 import { extract } from "./extract.js";
+import { lesson } from "./teach.js";
 import { MIGRATIONS } from "./schema.js";
 import { migrate } from "../store/index.js";
 import { OPENERS, HEADINGS, TOOL_WORDS, ORG_WORDS, FREE_MAIL, NO_PERSON, registrable, letters, stemOf } from "./lexicon.js";
@@ -41,11 +42,16 @@ export const T = {
   voteMin: 1, voteLead: 1.5,
   // An explicit "X at Y" phrasing or an address at Y's domain outweighs co-occurrence.
   cueVote: 3, emailVote: 3,
+  // A module saying so outright (ctx.memory.teach) outweighs any number of co-occurrences,
+  // but a transcript that says otherwise, again and again, can still outvote it.
+  taughtVote: 10,
   // Evidence kept per edge. Enough for memory.why to show where a fact came from without the
   // evidence table outgrowing the graph.
   evidencePerEdge: 6, turnsPerMention: 5,
 };
 
+/** Rows read per page before yielding to the event loop. */
+const PAGE = 5000;
 const parentOf = (id, sess) => sess.get(id)?.parent || (id.includes("/") ? id.split("/")[0] : id);
 const yieldNow = () => new Promise(r => setImmediate(r));
 
@@ -104,6 +110,29 @@ export class Curator {
   }
 
   /**
+   * Take a fact another module taught. Stored as given (checked, in a fixed shape) and folded
+   * into the graph on the next pass. Teaching the same fact twice changes nothing.
+   * @param {string} module  the module that taught it, as the loader identified the caller
+   * @param {string} kind    one of the kinds that module declares under teaches.memory
+   * @returns {{ key: string, changed: boolean }}
+   */
+  teach(module, kind, fact) {
+    const l = lesson(fact);
+    const db = this.db;
+    if (l.forget) {
+      const r = db.prepare("DELETE FROM memory_taught WHERE module = ? AND kind = ? AND key = ?").run(module, kind, l.key);
+      if (r.changes) this.dirty = true;
+      return { key: l.key, changed: r.changes > 0 };
+    }
+    const had = db.prepare("SELECT fact FROM memory_taught WHERE module = ? AND kind = ? AND key = ?").get(module, kind, l.key);
+    if (had && had.fact === l.stored) return { key: l.key, changed: false };
+    db.prepare(`INSERT INTO memory_taught (module, kind, key, fact, at) VALUES (?,?,?,?,?)
+      ON CONFLICT DO UPDATE SET fact = excluded.fact, at = excluded.at`).run(module, kind, l.key, l.stored, this.now());
+    this.dirty = true;
+    return { key: l.key, changed: true };
+  }
+
+  /**
    * Read whatever is new, then derive the graph. Yields to the event loop between batches, so
    * a first pass over a large history never stalls the daemon.
    * A pass that read nothing and reset nothing skips the derive, since the graph already
@@ -112,7 +141,12 @@ export class Curator {
    */
   async curate({ full = false, force = false, batch = 500, stopped = () => false } = {}) {
     const t0 = Date.now();
-    if (!this.hasRecall()) return { recall: false, sessions: 0, turns: 0, ...this.counts(), ms: Date.now() - t0 };
+    if (!this.hasRecall()) {
+      // Nothing to read, but taught facts still make a graph.
+      let changed = 0;
+      if (this.dirty || force) { this.dirty = false; changed = await this.derive(); }
+      return { recall: false, sessions: 0, turns: 0, ...this.counts(), changed, ms: Date.now() - t0 };
+    }
     const db = this.db;
     if (full) { this.tx(() => db.exec("DELETE FROM memory_obs; DELETE FROM memory_cues; DELETE FROM memory_curated;")); this.hw = 0; this.rowSession.clear(); }
 
@@ -225,7 +259,8 @@ export class Curator {
     const db = this.db;
     const now = this.now();
     /** @type {Map<string, { parent: string|null, started: number }>} */
-    const sess = new Map(db.prepare("SELECT id, parent, started FROM recall_sessions").all()
+    const recall = this.hasRecall();
+    const sess = new Map((recall ? db.prepare("SELECT id, parent, started FROM recall_sessions").all() : [])
       .map(r => [String(r.id), { parent: r.parent ? String(r.parent) : null, started: Number(r.started) || 0 }]));
     const S = new Set([...sess.keys()].map(id => parentOf(id, sess))).size;
     const hubCut = Math.max(T.hubFloor, T.hubShare * S);
@@ -252,12 +287,56 @@ export class Curator {
       if (!initial) a.mid = true;
     };
     const turnTs = new Map();
-    for (const r of db.prepare("SELECT session, seq, node, n, initial, ts FROM memory_obs ORDER BY session, seq").all()) {
-      turnTs.set(r.session + "\u0000" + r.seq, Number(r.ts));
-      touch(String(r.node), String(r.session), Number(r.seq), Number(r.n), Number(r.initial), Number(r.ts));
+    // Paged in key order, yielding between pages, for the same reason as the rowid map.
+    const obsPage = db.prepare(`SELECT session, seq, node, n, initial, ts FROM memory_obs
+      WHERE (session, seq, node) > (?, ?, ?) ORDER BY session, seq, node LIMIT ?`);
+    for (let at = ["", -1, ""]; ;) {
+      const rows = obsPage.all(at[0], at[1], at[2], PAGE);
+      for (const r of rows) {
+        turnTs.set(r.session + "\u0000" + r.seq, Number(r.ts));
+        touch(String(r.node), String(r.session), Number(r.seq), Number(r.n), Number(r.initial), Number(r.ts));
+      }
+      if (rows.length < PAGE) break;
+      const l = rows[rows.length - 1];
+      at = [String(l.session), Number(l.seq), String(l.node)];
+      await yieldNow();
     }
     const cues = db.prepare("SELECT session, seq, rel, a, b, ts FROM memory_cues ORDER BY session, seq").all()
       .map(r => ({ session: String(r.session), seq: Number(r.seq), rel: String(r.rel), a: String(r.a), b: String(r.b), ts: Number(r.ts) }));
+
+    // Taught facts: their things are nodes whatever the thresholds say, since a module asserted
+    // them, and each claim remembers which lessons made it.
+    /** @type {{ module: string, kind: string, key: string, at: number, factAt: number, text: string|null, claims: import("./teach.js").Claim[] }[]} */
+    const lessons = [];
+    for (const r of db.prepare("SELECT module, kind, key, fact, at FROM memory_taught ORDER BY module, kind, key").all()) {
+      try {
+        const l = lesson(JSON.parse(String(r.fact)));
+        lessons.push({ module: String(r.module), kind: String(r.kind), key: String(r.key), at: Number(r.at), factAt: l.at, text: l.text, claims: l.claims });
+      } catch { /* a fact that no longer checks out is ignored, not fatal */ }
+    }
+    const taughtIds = new Set(), hint = new Map();
+    /** claim "src|rel|dst" -> lessons, as [module, kind, key] */
+    const claimLessons = new Map();
+    const nodeLessons = new Map();
+    const note = (map, k, l) => { if (!map.has(k)) map.set(k, []); const list = map.get(k); if (!list.some(x => x[0] === l.module && x[1] === l.kind && x[2] === l.key)) list.push([l.module, l.kind, l.key]); };
+    for (const l of lessons) for (const c of l.claims) {
+      for (const r of [c.src, c.dst]) {
+        if (!r) continue;
+        if (!agg.has(r.id)) {
+          const i = r.id.indexOf(":");
+          agg.set(r.id, { id: r.id, kind: r.id.slice(0, i), key: r.id.slice(i + 1), by: new Map(), parents: new Set(), mentions: 0, first: l.at, last: l.at, mid: true });
+        }
+        taughtIds.add(r.id);
+        if (r.kind === "person" || r.kind === "org") hint.set(r.id, r.kind);
+        note(nodeLessons, r.id, l);
+      }
+      if (c.rel && c.dst) note(claimLessons, `${c.src.id}|${c.rel}|${c.dst.id}`, l);
+      else if (l.text) note(claimLessons, `${c.src.id}|noted|note:${l.module}/${l.kind}/${l.key}`, l);
+    }
+    const lessonsFor = (src, rel, dst) => claimLessons.get(`${src}|${rel}|${dst}`) || [];
+    /** For an edge derived from other facts: the lessons behind its ends, used only when no turn supports it. */
+    const lessonsOfEnds = (src, dst) => [...(nodeLessons.get(src) || []), ...(nodeLessons.get(dst) || [])]
+      .filter((v, i, all) => all.findIndex(w => w.join("\u0000") === v.join("\u0000")) === i);
 
     await yieldNow();
     // An address implies its domain. The domain's own observations are kept apart from the
@@ -311,6 +390,11 @@ export class Curator {
       else if (cueSubj.has(a.id)) kind.set(a.id, "person");
       else kind.set(a.id, "name");
     }
+    for (const [id, k] of hint) if (id.startsWith("name:")) kind.set(id, k);
+    // Taught relations say what their ends are, and override what the names alone suggest.
+    for (const l of lessons) for (const c of l.claims) {
+      if (c.rel === "has_domain" && c.dst && c.src.id.startsWith("name:")) orgDomain.set(c.src.id, c.dst.id);
+    }
 
     // A person's address: stated outright ("Dana Reyes (dana@...)"), or an address whose local
     // part spells the name, seen in the same session. Several people matching one address is
@@ -319,6 +403,10 @@ export class Curator {
     for (const c of cues) if (c.rel === "email_of" && agg.has(c.b) && kind.get(c.a) !== "org") {
       hasEmail.set(c.b, { person: c.a, conf: 0.95 });
       kind.set(c.a, "person");
+    }
+    for (const l of lessons) for (const c of l.claims) if (c.rel === "has_email" && c.dst && c.dst.id.startsWith("email:") && c.src.id.startsWith("name:")) {
+      hasEmail.set(c.dst.id, { person: c.src.id, conf: 0.9 });
+      kind.set(c.src.id, "person");
     }
     // Every local part a name could have, once, so matching an address is a lookup.
     const byLocal = new Map();
@@ -363,7 +451,7 @@ export class Curator {
     const kept = new Set();
     for (const a of agg.values()) {
       const k = kind.get(a.id), n = a.parents.size;
-      if (k === "email" || k === "repo") kept.add(a.id);
+      if (taughtIds.has(a.id) || k === "email" || k === "repo") kept.add(a.id);
       else if (k === "domain") {
         const ds = new Set([...domainSessions(a.id)].map(s => parentOf(s, sess)));
         if (ds.size >= T.domainSessions || viaEmail.has(a.id) || [...orgDomain.values()].includes(a.id)) kept.add(a.id);
@@ -375,7 +463,7 @@ export class Curator {
 
     await yieldNow();
     // ---- edges
-    /** @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, conf: number, ev: [string, number][] }} Want */
+    /** @typedef {{ src: string, rel: string, dst: string, weight: number, from: number, conf: number, ev: [string, number][], lessons?: string[][] }} Want */
     /** @type {Want[]} */
     const want = [];
     const turnsIn = (id, session, max = T.turnsPerMention) => (agg.get(id)?.by.get(session)?.turns || []).slice(0, max).map(t => /** @type {[string, number]} */ ([session, t.seq]));
@@ -400,26 +488,42 @@ export class Curator {
         want.push({ src: id, rel: "mentioned_in", dst: "session:" + session, weight: b.n, from: sess.get(session)?.started || 0, conf: 0.8, ev: turnsIn(id, session) });
       }
     }
+    // Edges derived from other facts carry lessons only when no turn supports them, so a
+    // lesson is never shown as the reason for something the transcripts already say.
+    const derived = (w) => { const own = lessonsFor(w.src, w.rel, w.dst); w.lessons = own.length ? own : w.ev.length ? [] : lessonsOfEnds(w.src, w.dst); want.push(w); };
     for (const [d, emails] of viaEmail) for (const e of emails) if (kept.has(e) && kept.has(d)) {
-      want.push({ src: e, rel: "at_domain", dst: d, weight: 1, from: 0, conf: 1, ev: [...agg.get(e).by.keys()].flatMap(s => turnsIn(e, s, 2)).slice(0, T.evidencePerEdge) });
+      derived({ src: e, rel: "at_domain", dst: d, weight: 1, from: 0, conf: 1, ev: [...agg.get(e).by.keys()].flatMap(s => turnsIn(e, s, 2)).slice(0, T.evidencePerEdge) });
     }
     for (const [o, d] of orgDomain) if (kept.has(o) && kept.has(d)) {
       const ev = together([o], [d, ...(viaEmail.get(d) || [])]);
-      want.push({ src: o, rel: "has_domain", dst: d, weight: 1, from: 0, conf: 0.9, ev: ev.length ? ev : [...turnsIn(o, [...agg.get(o).by.keys()][0], 3)] });
+      const first = [...agg.get(o).by.keys()][0];
+      derived({ src: o, rel: "has_domain", dst: d, weight: 1, from: 0, conf: 0.9, ev: ev.length ? ev : first ? turnsIn(o, first, 3) : [] });
     }
     for (const [e, h] of hasEmail) if (kept.has(e) && kept.has(h.person)) {
       const cueEv = cues.filter(c => c.rel === "email_of" && c.a === h.person && c.b === e).map(c => /** @type {[string, number]} */ ([c.session, c.seq]));
       const ev = [...cueEv, ...together([h.person], [e])].filter((v, i, all) => all.findIndex(w => w[0] === v[0] && w[1] === v[1]) === i).slice(0, T.evidencePerEdge);
-      want.push({ src: h.person, rel: "has_email", dst: e, weight: 1, from: 0, conf: h.conf, ev });
+      derived({ src: h.person, rel: "has_email", dst: e, weight: 1, from: 0, conf: h.conf, ev });
     }
     for (const id of kept) {
       if (kind.get(id) !== "repo") continue;
       const owner = letters(agg.get(id).key.split("/")[0]);
       for (const [o, d] of [...kept].filter(x => kind.get(x) === "org").map(o => [o, orgDomain.get(o)])) {
         if (orgStems(agg.get(o).key).includes(owner) || (d && stemOf(agg.get(d).key) === owner)) {
-          want.push({ src: id, rel: "owned_by", dst: o, weight: 1, from: 0, conf: 0.8, ev: together([id], [o]).length ? together([id], [o]) : turnsIn(id, [...agg.get(id).by.keys()][0], 3) });
+          const first = [...agg.get(id).by.keys()][0];
+          derived({ src: id, rel: "owned_by", dst: o, weight: 1, from: 0, conf: 0.8, ev: together([id], [o]).length ? together([id], [o]) : first ? turnsIn(id, first, 3) : [] });
         }
       }
+    }
+    // Taught relations the rules above did not already produce, and taught notes.
+    const have = new Set(want.map(w => `${w.src}|${w.rel}|${w.dst}`));
+    for (const l of lessons) for (const c of l.claims) {
+      const rel = c.rel && c.dst ? c.rel : l.text ? "noted" : null;
+      if (!rel || rel === "works_at") continue;
+      const dst = c.rel && c.dst ? c.dst.id : `note:${l.module}/${l.kind}/${l.key}`;
+      const k = `${c.src.id}|${rel}|${dst}`;
+      if (have.has(k) || !kept.has(c.src.id) || (c.dst && !kept.has(dst))) continue;
+      have.add(k);
+      want.push({ src: c.src.id, rel, dst, weight: 1, from: l.factAt || 0, conf: 0.9, ev: c.dst ? together([c.src.id], [dst]) : [], lessons: lessonsFor(c.src.id, rel, dst) });
     }
 
     // ---- short forms, measured
@@ -430,7 +534,7 @@ export class Curator {
       out.push(...(emailsOf.get(id) || []));
       return out;
     };
-    const forms = await this.shortForms([...kept].filter(id => ["org", "person"].includes(kind.get(id)) && role.get(id) !== "hub"), agg, cluster, sess);
+    const forms = !recall ? [] : await this.shortForms([...kept].filter(id => ["org", "person"].includes(kind.get(id)) && role.get(id) !== "hub"), agg, cluster, sess);
 
     // ---- who works where, by vote
     // Only outside organisations vote, and a session votes by focus: its share of the org
@@ -474,6 +578,11 @@ export class Curator {
         const d = "domain:" + registrable(agg.get(e).key.split("@")[1]);
         for (const o of eligible) if (orgDomain.get(o) === d) { votes.set(o, (votes.get(o) || 0) + T.emailVote); mark(o, agg.get(e).by.keys()); }
       }
+      const taughtAt = new Map();
+      for (const l of lessons) for (const c of l.claims) if (c.rel === "works_at" && c.src.id === p && c.dst && kept.has(c.dst.id)) {
+        votes.set(c.dst.id, (votes.get(c.dst.id) || 0) + T.taughtVote);
+        if (l.factAt) taughtAt.set(c.dst.id, Math.min(taughtAt.get(c.dst.id) ?? Infinity, l.factAt));
+      }
       const ranked = [...votes].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
       const [first, second] = ranked;
       if (!first || first[1] < T.voteMin || (second && first[1] < T.voteLead * second[1])) continue;
@@ -481,13 +590,15 @@ export class Curator {
       const o = first[0];
       const cueEv = cues.filter(c => c.rel === "works_at" && c.a === p && c.b === o).map(c => /** @type {[string, number]} */ ([c.session, c.seq]));
       const ev = [...cueEv, ...together([p, ...(emailsOf.get(p) || [])], cluster(o))].filter((v, i, all) => all.findIndex(w => w[0] === v[0] && w[1] === v[1]) === i).slice(0, T.evidencePerEdge);
-      if (!ev.length) continue;
+      const taught = lessonsFor(p, "works_at", o);
+      if (!ev.length && !taught.length) continue;
       const clear = ev.filter(([s]) => strong.get(o)?.has(s));
-      const from = Math.min(...(clear.length ? clear : ev).map(([s, q]) => tsOf(s, q) || sess.get(s)?.started || 0));
-      worksAt.set(p, { org: o, conf: Number(Math.min(1, first[1] / sum).toFixed(2)), from, weight: Number(first[1].toFixed(3)), ev });
+      const times = [...(clear.length ? clear : ev).map(([s, q]) => tsOf(s, q) || sess.get(s)?.started || 0), ...(taughtAt.has(o) ? [taughtAt.get(o)] : [])];
+      const from = times.length ? Math.min(...times) : 0;
+      worksAt.set(p, { org: o, conf: Number(Math.min(1, first[1] / sum).toFixed(2)), from, weight: Number(first[1].toFixed(3)), ev, lessons: taught });
     }
 
-    return this.write({ agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, now });
+    return this.write({ agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, now });
   }
 
   /**
@@ -500,8 +611,16 @@ export class Curator {
     const q = this.db.prepare("SELECT rowid FROM recall_turns WHERE recall_turns MATCH ?");
     const one = this.db.prepare("SELECT session FROM recall_turns WHERE rowid = ?");
     if (!this.rowSession.size) {
-      for (const r of this.db.prepare("SELECT rowid, session FROM recall_turns").iterate()) this.rowSession.set(Number(r.rowid), String(r.session));
-      await yieldNow();
+      // Paged by rowid with a yield between pages: one pass over 100k turns in one piece held
+      // the event loop for a quarter of a second.
+      const page = this.db.prepare("SELECT rowid, session FROM recall_turns WHERE rowid > ? ORDER BY rowid LIMIT ?");
+      for (let after = 0; ;) {
+        const rows = page.all(after, PAGE);
+        for (const r of rows) this.rowSession.set(Number(r.rowid), String(r.session));
+        if (rows.length < PAGE) break;
+        after = Number(rows[rows.length - 1].rowid);
+        await yieldNow();
+      }
     }
     const sessionOf = rowid => {
       let s = this.rowSession.get(rowid);
@@ -542,7 +661,7 @@ export class Curator {
   }
 
   /** Write the derived graph as a difference against what is stored. */
-  write({ agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, now }) {
+  write({ agg, kept, kind, role, want, worksAt, forms, together, cluster, emailsOf, lessonsFor, now }) {
     const db = this.db;
     let changed = 0;
     return this.tx(() => {
@@ -572,9 +691,11 @@ export class Curator {
       const del = db.prepare("DELETE FROM memory_edges WHERE id = ?");
       /** @type {Map<number, [string, number][]>} */
       const evidence = new Map();
+      /** @type {Map<number, string[][]>} */
+      const taught = new Map();
       const wanted = new Set();
       for (const w of want) {
-        if (!w.ev.length) continue;
+        if (!w.ev.length && !w.lessons?.length) continue;
         const k = key(w.src, w.rel, w.dst, w.from);
         let e = byKey.get(k);
         if (!e) {
@@ -586,6 +707,7 @@ export class Curator {
         }
         wanted.add(e.id);
         evidence.set(e.id, w.ev);
+        taught.set(e.id, w.lessons || []);
       }
 
       // works_at is bi-temporal. When the vote moves a person to another organisation, the old
@@ -609,21 +731,22 @@ export class Curator {
               upd.run(w.weight, w.conf, null, w.from, now, open.id); changed++;
               Object.assign(open, { from: w.from, weight: w.weight, conf: w.conf });
             }
-            wanted.add(open.id); evidence.set(open.id, w.ev);
+            wanted.add(open.id); evidence.set(open.id, w.ev); taught.set(open.id, w.lessons);
           } else {
             const same = byKey.get(key(p, "works_at", w.org, w.from));
             let id;
             if (same) { upd.run(w.weight, w.conf, null, w.from, now, same.id); id = same.id; }
             else id = Number(ins.run(p, "works_at", w.org, w.weight, w.from, now, w.conf).lastInsertRowid);
             changed++;
-            wanted.add(id); evidence.set(id, w.ev);
+            wanted.add(id); evidence.set(id, w.ev); taught.set(id, w.lessons);
           }
         }
-        // Every other works_at edge of this person stays while the turns behind it exist.
+        // Every other works_at edge of this person stays while the turns or lessons behind it exist.
         for (const e of mine) {
           if (wanted.has(e.id) || !kept.has(e.src) || !kept.has(e.dst)) continue;
           const ev = together([e.src, ...(emailsOf.get(e.src) || [])], cluster(e.dst));
-          if (ev.length) { wanted.add(e.id); evidence.set(e.id, ev); }
+          const ls = lessonsFor(e.src, "works_at", e.dst);
+          if (ev.length || ls.length) { wanted.add(e.id); evidence.set(e.id, ev); taught.set(e.id, ls); }
         }
       }
       for (const e of edges) if (!wanted.has(e.id)) { del.run(e.id); changed++; }
@@ -636,6 +759,15 @@ export class Curator {
       const delEv = db.prepare("DELETE FROM memory_evidence WHERE edge = ? AND session = ? AND seq = ?");
       for (const k of wantEv) if (!haveEv.has(k)) { const [e, s, q] = k.split("\u0000"); insEv.run(Number(e), s, Number(q)); changed++; }
       for (const k of haveEv) if (!wantEv.has(k)) { const [e, s, q] = k.split("\u0000"); delEv.run(Number(e), s, Number(q)); changed++; }
+
+      // lessons, the same way
+      const haveL = new Set(db.prepare("SELECT edge, module, kind, key FROM memory_lessons").all().map(r => [r.edge, r.module, r.kind, r.key].join("\u0000")));
+      const wantL = new Set();
+      for (const [id, list] of taught) for (const l of list) wantL.add([id, ...l].join("\u0000"));
+      const insL = db.prepare("INSERT INTO memory_lessons (edge, module, kind, key) VALUES (?,?,?,?)");
+      const delL = db.prepare("DELETE FROM memory_lessons WHERE edge = ? AND module = ? AND kind = ? AND key = ?");
+      for (const k of wantL) if (!haveL.has(k)) { const [e, m, kd, ky] = k.split("\u0000"); insL.run(Number(e), m, kd, ky); changed++; }
+      for (const k of haveL) if (!wantL.has(k)) { const [e, m, kd, ky] = k.split("\u0000"); delL.run(Number(e), m, kd, ky); changed++; }
 
       // short forms
       const haveSf = new Map(db.prepare("SELECT node, form, precision, sessions FROM memory_shortforms").all().map(r => [`${r.node}\u0000${r.form}`, r]));

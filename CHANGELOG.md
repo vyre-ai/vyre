@@ -79,6 +79,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory
 
+- `memory.teach {kind, fact, from}`, the internal tool behind `ctx.memory.teach`: only modules
+  can call it, and the lesson is recorded under the calling module the loader names, never the
+  `from` it claims. A fact is graph-shaped (`subject`, `rel`, `object`, `text`, `at`, `key`,
+  `forget`) and lands on the same nodes the transcripts build. Its provenance is
+  `{module, kind}` (table `memory_lessons`) where a transcript fact has `(session, seq)`, so
+  `memory.why` names the module that taught it, and a fact with no supporting turn has
+  `source: "taught by <module>"`. Teaching the same fact twice changes nothing; an explicit
+  key replaces; `forget` removes it. A taught `works_at` is a strong vote, not an override.
+  Taught facts make a graph even with no Recall index.
+- Facts now include every relation except `mentioned_in`, so taught relations and notes show in
+  `memory.facts` and `memory.relevant`.
+- The first derive after vyred starts no longer blocks the event loop for about 600ms on a
+  large corpus: the rowid map and the observations are read in pages with a yield between
+  pages. Measured on a copy of a real 103k-turn index: worst block 70 to 120ms.
+
 - `core/memory`: the graph and the curator, the only writer of `memory_*` tables. It reads
   Recall's tables and never runs a model. Each turn is read once by `(session, seq)` into
   observations; the graph (people, organisations, addresses, domains, repos, who works where,
