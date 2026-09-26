@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box's alarms and reminders ring on the Mac
+
+- The native Capsule keeps /v1/link/events open (hidden too: a timer on the box has to ring
+  here) and shows one banner per `planner.fired` firing, top right, with Done and Snooze; a later
+  ring replaces its banner, `planner.acked` from any device removes it, and one that fell due
+  offline says "Missed". Done and Snooze call planner.done and planner.snooze through vyred, or
+  link.call when this vyred does not carry the planner. On connect, planner.ringing shows what is
+  already ringing. `local/capsule/native/Sources/Host/Planner.swift` (ADR 0025).
+
 #### `vyre capsule install` builds; nothing is downloaded
 
 - The Vyre-mac.zip download is retired. `vyre capsule install` now builds the native Capsule on

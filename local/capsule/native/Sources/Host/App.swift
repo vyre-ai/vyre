@@ -17,6 +17,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var menuBar: MenuBarItem?
     lazy var health = Health(vyred: vyred)
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
+    /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
+    lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/Wiring.swift).
     let wiring: AgentWiring
     /// The menu-bar item's button, for the Beacon mark (Agent/MenuBar.swift).
@@ -73,6 +75,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             }
         }
         Drive.start(self)
+        // Kept open while hidden, on purpose: a timer on the box has to ring here.
+        if !headless { planner.start() }
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }
 
