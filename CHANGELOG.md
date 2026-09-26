@@ -6,6 +6,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0015)
 
+- `core/google/` is native Google Calendar and Gmail, so the assistant and the Capsule can read
+  the person's day and mail without an MCP server holding a token in its env. Accounts
+  (`google.add`, people only, never a model) name a vault item, an OAuth env-set or a
+  domain-wide-delegation service account, and never hold a value. Every call mints the narrowest
+  scope it needs (`calendar.readonly` and `gmail.readonly` for reads, `calendar.events`,
+  `gmail.compose`, and `gmail.send` only at the moment of a send), retries once on a 401, and
+  returns results scrubbed of every value it touched. A send is always held at the Gate, and so is
+  an event with attendees, because Calendar mails them an invite; each account is its own Gate
+  sender, `google:<account>`, so the person sees which address it leaves from. A draft and an event
+  without attendees are written directly, since neither reaches anyone. `google.test` names each
+  scope a Workspace admin console refuses. `google.find` and `google.open` put "what's next",
+  "today" and "email from dana" in the Capsule. Nothing polls.
+- The fake Google records the scopes of the token behind each API call, so a test can prove a
+  read never used a write scope and a send used `gmail.send` alone.
 - `core/mcp/client.js` talks to one MCP server over stdio, streamable HTTP or legacy SSE, with no
   dependencies, so the hub can reach any server a person adds. A stdio server gets only PATH,
   HOME, LANG, TMPDIR and the env it was given, so a token vyred holds for one server is never

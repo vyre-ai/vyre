@@ -30,7 +30,7 @@ const ME = "alex@example.com";
 
 /**
  * @typedef {{ method: string, path: string, query: Record<string, string>, auth: boolean,
- *   body: any, subject?: string }} FakeCall
+ *   body: any, subject?: string, scopes?: string[] }} FakeCall
  * @typedef {{ allowedScopes?: string[], users?: string[], oauthScopes?: string[], tokenTtl?: number,
  *   now?: () => number }} FakeOpts
  */
@@ -126,6 +126,8 @@ export async function startFakeGoogle(t, opts = {}) {
       return null;
     }
     call.subject = tok.subject;
+    // The scopes of the token that made the call, so a test can prove a read never used a write scope.
+    call.scopes = tok.scopes;
     if (!tok.scopes.some(s => need.includes(s))) {
       send(403, { error: { code: 403, message: "Request had insufficient authentication scopes.", status: "PERMISSION_DENIED" } });
       return null;

@@ -1,0 +1,26 @@
+{
+  "name": "google",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": ["vault", "gate"],
+  "does": {
+    "tools": [
+      "google.accounts", "google.add", "google.remove", "google.test",
+      "google.calendar.next", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
+      "google.mail.search", "google.mail.read", "google.mail.draft", "google.mail.send",
+      "google.find", "google.open", "google.release"
+    ]
+  },
+  "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent"] },
+  "shows": {
+    "deck": ["settings:connections"],
+    "capsule": {
+      "results:google.find": { "title": "Google" },
+      "action:google.open": { "title": "Open" },
+      "action:google.open#reply": { "title": "Draft a reply", "input": { "as": "reply" } }
+    },
+    "cli": ["connect"]
+  },
+  "needs": { "vault": ["per-connection"] },
+  "teaches": {}
+}
