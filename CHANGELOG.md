@@ -41,6 +41,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   people's Vyre, and offboarding. No value is ever shown: values only go in, through password
   inputs that are read once and cleared before the call is sent, and the view keeps only the named
   fields it draws from every response.
+- **Settings**: every onboarding step with its state and a way to finish it, the assistant,
+  Claude Code and network status, history and memory with re-index and rebuild, lessons from
+  Learning with edit and retire, the modules vyred runs, dark or paper, and this machine.
 - Vendored `deck/vendor/qrcode.js` (qrcode-generator 2.0.4, MIT, unmodified, one file) for the
   phone QR code in the onboarding: the Deck has no build step and loads nothing from a CDN, and
   a QR encoder is not worth writing. Named `.js` because vyred serves `.mjs` without a script type.
