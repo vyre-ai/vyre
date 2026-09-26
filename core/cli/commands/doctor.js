@@ -22,6 +22,7 @@ import { label as buildLabel } from "../../daemon/build.js";
 import * as config from "../../config/index.js";
 import { status as tailscaleStatus, probe } from "../tailnet.js";
 import { INSTALLED } from "./capsule.js";
+import { shadows } from "../shadow.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, EXIT } from "../kit.js";
 
@@ -69,7 +70,8 @@ export function installSize(dir = REPO, cap = 200_000) {
  * Every check, given how to reach things. Pure of the terminal, so a test gives fakes.
  * @param {{ health?: () => Promise<any>, tool?: (name: string, input?: any) => Promise<{ data?: any, error?: any }>,
  *   tailscale?: () => Promise<any>, resolve?: (h: string) => Promise<any>, probe?: (a: string, ms: number) => Promise<any>,
- *   capsuleApps?: string[], size?: () => { bytes: number, files: number }, role?: string, box?: string | null }} [deps]
+ *   capsuleApps?: string[], size?: () => { bytes: number, files: number }, role?: string, box?: string | null,
+ *   path?: () => ReturnType<typeof shadows> }} [deps]
  * @returns {Promise<{ role: string, checks: Check[], ms: number }>}
  */
 export async function diagnose(deps = {}) {
@@ -215,11 +217,23 @@ export async function diagnose(deps = {}) {
       : pass("install", "Install size", `${mb.toFixed(1)} MB`);
   });
 
-  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, size];
+  // Another `vyre` on PATH: an old prototype answered a user's first `vyre up` instead of this one.
+  const onPath = Promise.resolve().then(() => {
+    const s = (deps.path || shadows)();
+    const labelPath = "This is the vyre your shell runs";
+    const tilde = p => p.replace(os.homedir(), "~");
+    const first = s.others.find(o => o.first);
+    if (first) return failed("path", labelPath, `${tilde(first.path)} comes first on PATH${first.target !== first.path ? " (" + tilde(first.target) + ")" : ""}`, `rm ${tilde(first.path)}, then hash -r`);
+    if (s.others.length) return failed("path", labelPath, `another vyre is also on PATH: ${tilde(s.others[0].path)}; a shell that remembers it runs that one`, `rm ${tilde(s.others[0].path)}, then hash -r`);
+    if (!s.ours) return unknown("path", labelPath, "this vyre is not on PATH (run through a full path?)");
+    return pass("path", labelPath);
+  });
+
+  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, onPath, size];
   const left = Math.max(100, BUDGET_MS - (Date.now() - t0));
   const results = await Promise.all(all.map(p => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))));
-  const labels = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Install size"];
-  const ids = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "install"];
+  const labels = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "The vyre on PATH", "Install size"];
+  const ids = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "path", "install"];
   const checks = results.map((c, i) => c && c.id === "?" ? { ...c, id: ids[i], label: labels[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c).filter(Boolean);
   return { role, checks: /** @type {Check[]} */ (checks), ms: Date.now() - t0 };
 }

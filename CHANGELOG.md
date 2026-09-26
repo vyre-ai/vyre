@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A first `vyre up` that says what it is and what to do next
+
+- Root cause of a user's broken first run: `vyre` on their PATH was an old prototype
+  (`~/.local/bin/vyre`, a link into the prototype's bin/), not the package npm had just installed.
+  Its `up` printed "vyred running", started the prototype's daemon, which opens Chrome on
+  about:blank for its own automation, and never made `~/.vyre`. The published vyre.tgz, run in a
+  temp home on the test box, prints the full line and makes `~/.vyre`.
+- `npm i -g vyre` now ends with the mark and "Vyre installed. Run: vyre up", written to the
+  terminal (npm hides a script's output), and warns when another `vyre` comes first on PATH, with
+  the `rm` and `hash -r` to fix it. `scripts/postinstall.mjs`, `core/cli/shadow.js`.
+- `vyre doctor` flags any other `vyre` on PATH, first or later.
+- The first `vyre up` on a machine (no home yet) opens with the mark, "Vyre is installed ·
+  0.0.1 · <commit>", and two sentences on what Vyre is, instead of a status line. The "Where
+  should Vyre run?" choices each say what they mean. Choice 3 asks for the box's address, says it
+  is asking the box to pair, and prints "Approve this Mac on your phone at <address>" with the
+  code. While that approval is pending, `vyre up` ends with "Once you approve it, run vyre up
+  again to finish." instead of "Vyre is ready."; `--json` says `ready: false, pairing`.
+- `vyre up --box` on a Mac says "Opening it in your browser now." before it opens the setup page,
+  and opens nothing when dialogs are off. `core/cli/brand.js`, `core/cli/commands/up.js`,
+  `core/cli/commands/box.js`.
+
 #### `vyre doctor`
 
 - One read-only command that checks what a first night trips on and says what to do: vyred

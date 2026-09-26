@@ -40,7 +40,7 @@ function tools({ link = {}, box = {} } = {}) {
 const deps = (o = {}) => ({
   role: "local", health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
   tool: tools(), tailscale: async () => tailnet(), resolve: async () => ({ address: "100.64.0.2" }),
-  probe: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e" }), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }),
+  probe: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e" }), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }), path: () => ({ ours: true, others: [] }),
   ...o,
 });
 const byId = r => Object.fromEntries(r.checks.map(c => [c.id, c]));
@@ -153,4 +153,24 @@ test("doctor: the Capsule reports Control-twice through capsule.report, and the 
   await call("capsule.report", { ok: true }, { root, caller: "capsule" });
   const r = await request("GET", "/v1/events?type=capsule.hotkey&limit=1000", undefined, { root });
   assert.deepEqual(r.data.map(e => e.payload), [{ ok: false, message: "Input Monitoring is off" }, { ok: true, message: null }]);
+});
+
+test("doctor: an old vyre on PATH is flagged, first or later, with the command that removes it", async t => {
+  const c = byId(await diagnose(deps({ path: () => ({ ours: true, others: [{ path: "/Users/alex/.local/bin/vyre", target: "/Users/alex/proto/bin/vyre", first: true }] }) })));
+  assert.equal(c.path.ok, false);
+  assert.match(c.path.detail, /\.local\/bin\/vyre comes first on PATH/);
+  assert.match(c.path.fix, /^rm .*\.local\/bin\/vyre, then hash -r$/);
+  const later = byId(await diagnose(deps({ path: () => ({ ours: true, others: [{ path: "/opt/old/vyre", target: "/opt/old/vyre", first: false }] }) })));
+  assert.equal(later.path.ok, false);
+  assert.match(later.path.detail, /another vyre is also on PATH/);
+
+  // The real helper, over a PATH with a stand-in prototype before this install.
+  const { shadows, OURS } = await import("../shadow.js");
+  const dir = tempHome(t);
+  fs.writeFileSync(path.join(dir, "vyre"), "#!/bin/sh\necho vyred running\n", { mode: 0o755 });
+  const s = shadows({ PATH: [dir, path.dirname(OURS)].join(path.delimiter) });
+  assert.deepEqual([s.ours, s.others.length, s.others[0].first], [true, 1, true]);
+  assert.deepEqual(shadows({ PATH: [path.dirname(OURS), dir].join(path.delimiter) }).others[0].first, false);
+  // The postinstall runs before npm links the command; it knows the folder it will be in.
+  assert.equal(shadows({ PATH: [dir, "/nowhere/bin"].join(path.delimiter), binDir: "/nowhere/bin" }).others[0].first, true);
 });
