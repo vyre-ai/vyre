@@ -10,6 +10,11 @@
 //   every API call (401 without, 403 when the scope is too narrow). `expireTokens()` expires
 //   them all, to test the refresh-once-on-401 path.
 // - Every request lands in `calls`, so a test can prove that nothing was sent.
+// - "Sign in with Google": `oauthClient()` registers a client, `consent(url)` plays the browser
+//   and the person on Google's consent page and gives the address Google would send it back to,
+//   and the token endpoint's authorization_code grant checks PKCE (S256 of the verifier must be the
+//   challenge seen at consent), the redirect_uri and the client secret, uses each code once, and
+//   answers with a refresh token and an unsigned id_token carrying the email.
 // Data is the sample world: alex@example.com's mailbox and calendar, Harlow Legal and Northwind Bakery.
 
 import crypto from "node:crypto";
@@ -46,6 +51,10 @@ export async function startFakeGoogle(t, opts = {}) {
   /** @type {FakeCall[]} */ const calls = [];
   /** @type {Map<string, { publicKey: crypto.KeyObject }>} */ const keys = new Map();
   /** @type {Map<string, { client_secret: string, refresh_token: string, scopes: string[] }>} */ const clients = new Map();
+  /** Refresh tokens issued by the authorization_code grant: client, the person, the scopes. */
+  /** @type {Map<string, { client_id: string, subject: string, scopes: string[] }>} */ const issued = new Map();
+  /** Codes handed out at consent, each usable once. */
+  /** @type {Map<string, { client_id: string, redirect_uri: string, challenge: string, scopes: string[], email: string, refresh: boolean }>} */ const codes = new Map();
   /** @type {Map<string, { subject: string, scopes: string[], expired: boolean, expires: number }>} */ const tokens = new Map();
   const mail = seedMail(now());
   const calendar = seedCalendar(now());
@@ -86,8 +95,33 @@ export async function startFakeGoogle(t, opts = {}) {
     if (b.grant_type === "refresh_token") {
       const c = clients.get(b.client_id);
       if (!c || c.client_secret !== b.client_secret) return send(401, { error: "invalid_client", error_description: "The OAuth client was not found." });
-      if (c.refresh_token !== b.refresh_token) return send(400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
+      const got = issued.get(b.refresh_token);
+      if (got && got.client_id === b.client_id) return send(200, { ...mint(got.subject, got.scopes), scope: got.scopes.join(" ") });
+      if (!c.refresh_token || c.refresh_token !== b.refresh_token) return send(400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
       return send(200, { ...mint(ME, c.scopes), scope: c.scopes.join(" ") });
+    }
+    if (b.grant_type === "authorization_code") {
+      const c = clients.get(b.client_id);
+      if (!c || c.client_secret !== b.client_secret) return send(401, { error: "invalid_client", error_description: "The OAuth client was not found." });
+      const g = codes.get(String(b.code || ""));
+      codes.delete(String(b.code || ""));
+      if (!g || g.client_id !== b.client_id) return send(400, { error: "invalid_grant", error_description: "Malformed auth code." });
+      if (g.redirect_uri !== b.redirect_uri) return send(400, { error: "redirect_uri_mismatch", error_description: "Bad Request" });
+      const verifier = String(b.code_verifier || "");
+      if (!verifier || crypto.createHash("sha256").update(verifier).digest("base64url") !== g.challenge) {
+        return send(400, { error: "invalid_grant", error_description: "Invalid code verifier." });
+      }
+      const scopes = g.scopes.filter(x => ALL_SCOPES.includes(x));
+      const at = Math.floor(now() / 1000);
+      const idToken = [{ alg: "none", typ: "JWT" }, { iss: "https://accounts.google.com", aud: b.client_id, sub: `1${crypto.randomBytes(8).toString("hex")}`,
+        email: g.email, email_verified: true, iat: at, exp: at + 3600 }].map(x => Buffer.from(JSON.stringify(x)).toString("base64url")).join(".") + ".";
+      /** @type {Record<string, any>} */
+      const out = { ...mint(g.email, scopes), scope: g.scopes.join(" "), id_token: idToken };
+      if (g.refresh) {
+        out.refresh_token = `1//fake-${crypto.randomBytes(24).toString("base64url")}`;
+        issued.set(out.refresh_token, { client_id: b.client_id, subject: g.email, scopes });
+      }
+      return send(200, out);
     }
     if (b.grant_type === "urn:ietf:params:oauth:grant-type:jwt-bearer") {
       const parts = String(b.assertion || "").split(".");
@@ -251,6 +285,46 @@ export async function startFakeGoogle(t, opts = {}) {
       clients.set(fields.client_id, { client_secret: fields.client_secret, refresh_token: fields.refresh_token, scopes: opts.oauthScopes || ALL_SCOPES });
       return fields;
     },
+    /** An OAuth client for "Sign in with Google": the fields of its env-set, pointing here. */
+    oauthClient() {
+      const fields = { client_id: `${crypto.randomBytes(6).toString("hex")}.apps.googleusercontent.com`,
+        client_secret: `GOCSPX-${crypto.randomBytes(14).toString("base64url")}`, auth_uri: `${base}/o/oauth2/v2/auth`, token_uri: tokenUri };
+      clients.set(fields.client_id, { client_secret: fields.client_secret, refresh_token: "", scopes: opts.oauthScopes || ALL_SCOPES });
+      return fields;
+    },
+    /**
+     * The person on Google's consent page: checks the consent address the way Google would, and
+     * gives the address Google sends the browser back to, with a code and the state (or an error).
+     * `refresh: false` plays a client that was allowed before, which gets no refresh token.
+     * @param {string} consentUrl @param {{ email?: string, deny?: boolean, refresh?: boolean }} [o]
+     */
+    consent(consentUrl, o = {}) {
+      const u = new URL(consentUrl);
+      const q = u.searchParams;
+      if (`${u.origin}${u.pathname}` !== `${base}/o/oauth2/v2/auth`) throw new Error(`consent address is not this fake's: ${u.origin}${u.pathname}`);
+      for (const [k, v] of Object.entries({ response_type: "code", code_challenge_method: "S256", access_type: "offline", prompt: "consent" })) {
+        if (q.get(k) !== v) throw new Error(`consent address has ${k}=${q.get(k)}, want ${v}`);
+      }
+      const client_id = q.get("client_id") || "";
+      if (!clients.has(client_id)) throw new Error("consent address names an unknown client");
+      const redirect = new URL(q.get("redirect_uri") || "");
+      if (redirect.protocol !== "http:" || redirect.hostname !== "127.0.0.1") throw new Error("redirect_uri is not a loopback address");
+      const challenge = q.get("code_challenge") || "";
+      if (!/^[A-Za-z0-9_-]{43}$/.test(challenge)) throw new Error("code_challenge is not an S256 challenge");
+      const scopes = String(q.get("scope") || "").split(" ").filter(Boolean);
+      const back = new URL(redirect.toString());
+      if (o.deny) back.searchParams.set("error", "access_denied");
+      else {
+        const code = `4/fake-${crypto.randomBytes(18).toString("base64url")}`;
+        codes.set(code, { client_id, redirect_uri: redirect.toString(), challenge, scopes, email: o.email || ME, refresh: o.refresh !== false });
+        back.searchParams.set("code", code);
+        back.searchParams.set("scope", scopes.join(" "));
+      }
+      back.searchParams.set("state", q.get("state") || "");
+      return back.toString();
+    },
+    /** Every refresh token the authorization_code grant has issued. */
+    issued,
     /** Expire every access token issued so far; the next API call with one gets 401. */
     expireTokens() { for (const tok of tokens.values()) tok.expired = true; },
     /** Calls that carried an Authorization header to an API (not the token endpoint). */

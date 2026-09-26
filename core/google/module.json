@@ -6,12 +6,13 @@
   "does": {
     "tools": [
       "google.accounts", "google.add", "google.remove", "google.test",
+      "google.connect", "google.connect.finish", "google.connect.cancel",
       "google.calendar.next", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
       "google.mail.search", "google.mail.read", "google.mail.draft", "google.mail.send",
       "google.find", "google.open", "google.release"
     ]
   },
-  "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent"] },
+  "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent", "google.connected", "google.connect.failed"] },
   "shows": {
     "deck": ["settings:connections"],
     "capsule": {

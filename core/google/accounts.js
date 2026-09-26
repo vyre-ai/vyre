@@ -30,7 +30,8 @@ export function check(input) {
   return null;
 }
 
-function loopback(base) {
+/** True for a loopback origin such as http://127.0.0.1:8080, the only `base` allowed. */
+export function loopback(base) {
   try {
     const u = new URL(String(base));
     return (u.protocol === "http:" || u.protocol === "https:") && ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname) && u.pathname === "/" && !u.search && !u.username;

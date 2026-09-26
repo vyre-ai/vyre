@@ -18,13 +18,18 @@
 //
 // Every result and every error is scrubbed of every value the credential library touched, and
 // events carry names, never content or values (floor rule 8).
+//
+// "Sign in with Google" (connect.js) gets the first refresh token: the module puts it in a vault
+// item it makes for itself, google-<name>, granted to itself, and adds the account the way
+// google.add does. Only people start, finish or cancel a sign-in; a model never can.
 
 import { Credentials, CredentialError } from "../connectors/auth.js";
 import { client, SCOPE, SCOPES } from "./api.js";
-import { MIGRATIONS, check, store, forRead, forWrite, EMAIL } from "./accounts.js";
+import { MIGRATIONS, check, store, forRead, forWrite, EMAIL, loopback } from "./accounts.js";
 import { calendar, fieldsOf, dayRange } from "./calendar.js";
 import { mail, addresses, checkMessage, addressOf, nameOf } from "./mail.js";
 import { parse, parseRowId, eventRow, mailRow, whenText } from "./find.js";
+import { connector } from "./connect.js";
 
 const str = { type: "string" };
 const int = { type: "integer" };
@@ -94,14 +99,63 @@ export default {
       input: obj({ name: str, email: str, auth: obj({ type: { type: "string", enum: ["oauth", "service-account"] }, item: str, subject: str }, ["type", "item"]), base: str },
         ["name", "email", "auth"]),
       callers: PEOPLE,
-      run: safe(async input => {
-        const problem = check(input);
-        if (problem) throw fail(problem);
-        const acct = accounts.put(input, now());
-        await offer(acct);
-        ctx.events.emit("google.added", { name: acct.name });
-        return acct;
-      }),
+      run: safe(input => addAccount(input)),
+    });
+
+    /** The one way an account is added, by google.add and by a finished sign-in. */
+    async function addAccount(input) {
+      const problem = check(input);
+      if (problem) throw fail(problem);
+      const acct = accounts.put(input, now());
+      // A token cached for an item of the same name before must not outlive the new item.
+      for (const s of SCOPES) creds.invalidate(acct.auth, [SCOPE + s]);
+      await offer(acct);
+      ctx.events.emit("google.added", { name: acct.name });
+      return acct;
+    }
+
+    // ---- sign in with Google ----
+
+    const signIn = connector({
+      fetchItem: (item, field) => ctx.vault.fetch(item, { field }),
+      taken: name => Boolean(accounts.get(name)),
+      // The item a sign-in will make must be free, or one this module made before.
+      blocked: async item => {
+        const r = await ctx.call("vault.list", { filter: item });
+        const old = r.data?.items?.find(x => x.name === item);
+        return old && old.origin !== "module:google" ? `the vault already has an item named ${item} that Vyre's Google sign-in did not make; rename or delete it first` : null;
+      },
+      save: async (item, fields) => {
+        const r = await ctx.call("vault.put", { name: item, kind: "env-set", description: "Google sign-in (made by Vyre)", fields, grants: ["google"] });
+        if (r.error) throw fail(`could not save the sign-in in the vault: ${r.error.message}`, r.error.code || "vault");
+      },
+      add: async acct => { await addAccount(acct); },
+      emit: (type, payload) => ctx.events.emit(type, payload),
+      log: (m, x) => ctx.log(m, x),
+    });
+
+    ctx.tool("google.connect", {
+      description: "Start \"Sign in with Google\": `client` names a vault env-set with the OAuth client's client_id and client_secret (and optionally auth_uri, token_uri), granted to google. Returns { id, url, redirect }: open `url` in a browser. When Google sends the browser back, the account is added as `name` and google.connected is emitted. A browser on another device cannot reach `redirect`; paste the address it landed on into google.connect.finish.",
+      input: obj({ name: str, client: str, base: str }, ["name", "client"]),
+      callers: PEOPLE,
+      run: async ({ name, client, base }) => {
+        if (base !== undefined && !loopback(base)) throw fail("base must be a loopback origin such as http://127.0.0.1:8080 (it exists for test fakes)");
+        return signIn.start({ name, client, base });
+      },
+    });
+
+    ctx.tool("google.connect.finish", {
+      description: "Finish a sign-in with the whole address the browser landed on (for a browser on another device). Returns { name, email, item }.",
+      input: obj({ id: str, url: str }, ["id", "url"]),
+      callers: PEOPLE,
+      run: input => signIn.finish(input),
+    });
+
+    ctx.tool("google.connect.cancel", {
+      description: "Cancel an open sign-in.",
+      input: obj({ id: str }, ["id"]),
+      callers: PEOPLE,
+      run: input => signIn.cancel(input),
     });
 
     ctx.tool("google.remove", {
@@ -119,8 +173,27 @@ export default {
       description: "Check an account: mint a token for each scope Vyre uses and make a harmless call with each. Names any scope that is refused.",
       input: obj({ name: str }),
       callers: PEOPLE,
-      run: safe(async ({ name }) => testAccount(forWrite(accounts.all(), named(name)))),
+      run: safe(async ({ name }) => {
+        const acct = forWrite(accounts.all(), named(name));
+        const out = await testAccount(acct);
+        return acct.auth.type === "service-account" ? { ...out, ...(await delegation(acct)) } : out;
+      }),
     });
+
+    /**
+     * What a Workspace admin pastes under Security, API controls, Domain-wide delegation: the
+     * service account's numeric client ID (a public identifier) and the exact scope line. The
+     * key's other fields never leave this function.
+     */
+    async function delegation(acct) {
+      const admin_scopes = SCOPES.map(s => SCOPE + s).join(",");
+      let client_id;
+      try {
+        const key = JSON.parse(await ctx.vault.fetch(acct.auth.item, acct.auth.field ? { field: acct.auth.field } : {}));
+        if (/^\d{5,30}$/.test(String(key?.client_id ?? ""))) client_id = String(key.client_id);
+      } catch {}
+      return { ...(client_id ? { client_id } : {}), admin_scopes };
+    }
 
     /** @param {any} acct */
     async function testAccount(acct) {
@@ -385,6 +458,6 @@ export default {
       }),
     });
 
-    return { async stop() {} };
+    return { async stop() { signIn.stop(); } };
   },
 };

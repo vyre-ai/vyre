@@ -89,7 +89,7 @@ const b64url = s => Buffer.from(s).toString("base64url");
 const scopeList = scopes => [...new Set((scopes || []).filter(isStr))].sort();
 
 /** A token endpoint must be https, or http on loopback (the test fakes). */
-function checkTokenUri(uri, what) {
+export function checkTokenUri(uri, what) {
   let u;
   try { u = new URL(uri); } catch { throw new CredentialError(`${what} has no valid token_uri`, { code: "config" }); }
   const loop = ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname);
