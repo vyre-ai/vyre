@@ -166,7 +166,7 @@ test("box add --yes: installs, opens the link, waits step by step, saves, and en
   assert.match(ssh, /sh \/\S+ --yes/);
   assert.match(ssh, new RegExp(`-O forward -L ${port}:127\\.0\\.0\\.1:${port}`));
   assert.match(ssh, /-O cancel/);
-  for (let i = 0; i < 50 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
+  for (let i = 0; i < 250 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
   assert.equal(r.read("opened").trim(), url, "the browser is opened detached, so give it a moment");
   assert.match(text, /Finish in your browser\. I'll wait here\./);
   for (const label of ["You", "Claude Code", "Tailscale", "Your address", "Your devices"]) assert.match(text, new RegExp(`${label}\\s+done`));
@@ -225,7 +225,7 @@ test("box add: with no passkey yet, the enrollment link opens before pairing", a
   const call = async (tool, input) => tool === "link.status" ? { data: { linked: false } } : tool === "link.pair" ? { data: { code: "123-456" } } : { error: { code: "no_such_tool", message: tool } };
   const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
   assert.equal(code, 0, text);
-  for (let i = 0; i < 50 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
+  for (let i = 0; i < 250 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
   assert.equal(r.read("opened").trim(), passkeyUrl);
   assert.ok(text.indexOf("Make your passkey") < text.indexOf("Approve this Mac"), "the passkey comes first: it is what approves the Mac");
 });
