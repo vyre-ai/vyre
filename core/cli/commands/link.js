@@ -3,8 +3,10 @@
 //
 //   vyre link                   on the Mac: paired or not, and whether the box answers;
 //                               on the box: paired Macs and waiting requests
-//   vyre link pair <address>    on the Mac: start pairing, and show the code to approve on the box
-//   vyre link approve <code>    on the box: approve the Mac showing that code
+//   vyre link pair <address>    on the Mac: start pairing, and show the code to approve in the Deck
+//   vyre link approve <code>    on the box: approve the Mac showing that code. On a box this needs
+//                               the owner's passkey, which only the Deck can give, so this points
+//                               there when the passkey is missing (docs/adr/0004-presence.md)
 //   vyre link deny <id>         on the box: refuse a request
 //   vyre link unpair [id]       forget the box (on the Mac) or a Mac (on the box)
 
@@ -22,12 +24,12 @@ async function status() {
   if (s.role === "box") {
     out(`  ${bold(String(s.peers))} paired Mac${s.peers === 1 ? "" : "s"} · ${s.pending} waiting`);
     const p = await call("link.pending");
-    for (const q of (p.data || [])) out(`  ${beacon("?")} ${q.name} ${dim(`${q.login}${q.node ? " · " + q.node : ""} · id ${q.id}`)}\n    ${dim("vyre link approve <the code on that Mac>")}`);
+    for (const q of (p.data || [])) out(`  ${beacon("?")} ${q.name} ${dim(`${q.login}${q.node ? " · " + q.node : ""} · id ${q.id}`)}\n    ${dim("approve it in the Deck, with the code on that Mac")}`);
     const peers = await call("link.peers");
     for (const m of (peers.data || [])) out(`  ${signal("·")} ${m.name} ${dim(`${m.node || ""} · paired ${ago(m.paired_at)}${m.last_seen ? " · seen " + ago(m.last_seen) : ""} · id ${m.id}`)}`);
     return 0;
   }
-  if (s.pending) out(`  waiting for approval on the box: ${bold(s.pending.code)} ${dim("· on the box, vyre link approve " + s.pending.code)}`);
+  if (s.pending) out(`  waiting for approval: ${bold(s.pending.code)} ${dim("· approve it in your Deck, which asks for your passkey")}`);
   if (!s.linked) { out(`  not paired with a box${s.error ? dim(" · " + s.error) : ""} ${dim("· vyre link pair <address>")}`); return 0; }
   const where = `${s.box.name || s.box.address}${s.box.node ? dim(" · " + s.box.node) : ""}`;
   out(s.reachable ? `  ${signal("●")} linked to ${where}` : `  ${beacon("○")} linked to ${where}, not reachable now${s.error ? dim(" · " + s.error) : ""}`);
@@ -43,13 +45,19 @@ export default {
       if (!arg) { out("  vyre link pair <your box's address>"); return 1; }
       const r = await call("link.pair", { box: arg });
       if (r.error) return fail(r);
-      out(`  on the box, approve with:  ${bold("vyre link approve " + r.data.code)}`);
-      out(dim(`  or approve it in the Deck from another device. The code expires in ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
+      out(`  approve this Mac in your Deck, with the code  ${bold(r.data.code)}`);
+      out(dim(`  The Deck names this Mac and asks for your passkey. The code expires in ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
       return 0;
     }
     if (sub === "approve") {
       if (!arg) { out("  vyre link approve <the code the Mac shows>"); return 1; }
       const r = await call("link.pair.approve", { code: arg });
+      // A terminal is not proof the owner is here (a model can ssh in with the code), so the box
+      // asks for a passkey, and only the Deck can give one.
+      if (r.error && r.error.code === "presence_required") {
+        out(`  approve it in the Deck: it names the Mac asking and asks for your passkey ${dim("(the code is " + arg + ")")}`);
+        return 1;
+      }
       if (r.error) return fail(r);
       out(`  ${signal("●")} paired with ${bold(r.data.name)}`);
       return 0;

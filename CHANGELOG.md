@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre link` points to the Deck
+
+- On a box, approving a pairing needs the owner's passkey, which only the Deck can give. So
+  `vyre link pair` and `vyre link` now say "approve it in your Deck" with the code. When
+  `vyre link approve` gets `presence_required`, it points there instead of printing an error.
+
 #### Pairing needs the owner's presence
 
 - Security's review found that the box's terminal is not proof of presence. Claude's processes
