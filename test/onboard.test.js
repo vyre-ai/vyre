@@ -230,6 +230,29 @@ test("onboard: reserve goes to ts.net without a zone token and says so when the 
   assert.equal((await (await tool(base, session, "onboard.status")).json()).data.detail.name.via, "vyre.run");
 });
 
+test("onboard: when tailscale cert itself refuses because HTTPS is off, the address step says so with the admin console link", async t => {
+  const { root } = await box(t);
+  const bins = fs.mkdtempSync(path.join(root, "ts-"));
+  const st = JSON.stringify({ BackendState: "Running", TUN: true, CertDomains: ["box.tail0000.ts.net"], OperatorUser: os.userInfo().username,
+    Self: { HostName: "box", DNSName: "box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.9"], ID: "n1", UserID: 1 }, User: {} });
+  // The status lists the cert domain, so the check before `tailscale cert` passes; the cert call is what refuses.
+  const bin = path.join(bins, "tailscale");
+  fs.writeFileSync(bin, `#!/bin/sh\nif [ "$1" = cert ]; then echo "500 Internal Server Error: your Tailscale account does not support getting TLS certs" >&2; exit 1; fi\ncat <<'EOF'\n${st}\nEOF\n`, { mode: 0o755 });
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+
+  let r = (await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).data;
+  for (let i = 0; i < 50 && r.state !== "blocked"; i++) {
+    await new Promise(res => setTimeout(res, 20));
+    r = (await (await tool(base, session, "onboard.name", { action: "status" })).json()).data;
+  }
+  assert.equal(r.state, "blocked");
+  assert.equal(r.code, "https_off", r.why);
+  assert.equal(r.adminUrl, "https://login.tailscale.com/admin/dns");
+});
+
 /** Can this machine run claude under a pty the way onboard.claude does? */
 const ptyMissing = (() => { try { execFileSync(ptyCommand("true")[0] === "script" ? "script" : "python3", ["--version"], { stdio: "ignore" }); return false; } catch { return "no pty helper (script or python3) here"; } })();
 
