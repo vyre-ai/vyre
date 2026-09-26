@@ -458,6 +458,9 @@ through `ctx` or the API, never by importing its files.
 | computers | `core/computers/`, `modules/hands-desktop/`, `modules/hands-chrome/` | switchboard | M8 |
 | gate + chat | `core/gate/`, `modules/chat/` | switchboard, vault | M9 |
 
+How to start them, and the order (wave 1 now, wave 2 after the switchboard and vault merge), is
+in `docs/work/LAUNCH.md`.
+
 Each workstream keeps `docs/work/<stream>.md` current: what is done, what is next, what it needs
 from others. A workstream merges to `main` only with its tests passing and the full suite green.
 
