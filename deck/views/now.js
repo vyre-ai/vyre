@@ -21,6 +21,7 @@ import { pairRequests } from "../js/pair.js";
 import { firstPasskeyCard } from "../js/first-passkey.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
+import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 
 /** @param {any} ctx */
 export default async function now(ctx) {
@@ -156,7 +157,8 @@ export default async function now(ctx) {
     if (f.error) { put(learned, headRow, empty("Memory is not available.", f.error)); return; }
     if (!facts.length) {
       const total = (f.data?.facts || []).length;
-      put(learned, headRow, h("div", { class: "empty" }, total ? `Nothing new today. Memory holds ${plural(total, "fact")}.` : "Nothing learned yet."));
+      put(learned, headRow, total ? h("div", { class: "empty" }, `Nothing new today. Memory holds ${plural(total, "fact")}.`)
+        : h("div", { class: "empty" }, "Nothing learned yet. Memory learns people and what links them from your indexed sessions.", indexHistoryInline()));
       return;
     }
     put(learned, headRow, h("div", { class: "rows" }, facts.slice(0, 8).map(x => factRow(x, projectOf, names))));
@@ -173,7 +175,9 @@ export default async function now(ctx) {
     const headRow = head("Recent projects");
     /** @type {HTMLElement} */ (headRow.firstChild).id = "recent-h";
     if (r.error) { put(recentProjects); return; }
-    if (!list.length) { put(recentProjects); return; }
+    // Only a Mac's projects: nothing to open here. None at all: say so, with the way to make one.
+    if (!list.length && (r.data?.projects || []).length) { put(recentProjects); return; }
+    if (!list.length) { put(recentProjects, headRow, h("div", { class: "empty" }, "No projects yet. A project is a folder, its threads and the people in it.", createProjectInline())); return; }
     put(recentProjects, headRow, h("div", { class: "rows" }, list.map(p =>
       h("div", { class: "work-row" },
         h("span", { class: "initial", "aria-hidden": "true" }, icon("projects", 14)),

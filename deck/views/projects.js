@@ -22,6 +22,7 @@ import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, initials, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
+import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline } from "../js/empty-actions.js";
 
 const enc = encodeURIComponent;
 const TABS = [["threads", "Threads"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
@@ -82,11 +83,10 @@ async function list(ctx) {
       if (home.value.trim()) input.home = home.value.trim();
       const ppl = parsePeople(people.value);
       if (ppl.length) input.people = ppl;
-      const r = await attempt("projects.create", input);
+      const r = await createProject(input);
       submit.disabled = false;
-      if (r.error) { put(status, r.error.missing ? `The ${r.error.module} module is not running, so a project cannot be made here.` : String(r.error.message)); return; }
-      const slug = r.data?.slug || r.data?.project?.slug;
-      window.dispatchEvent(new Event("deck:pins"));
+      if (r.error) { put(status, r.error); return; }
+      const slug = r.slug;
       if (slug) go(`/projects/${enc(slug)}`);
       else { toggle(false); draw(); }
     } },
@@ -107,7 +107,8 @@ async function list(ctx) {
     const pinned = new Set(pins());
     put(count_, all.length ? `${plural(all.length, "project")}, most recent first.` : "No projects yet.");
     put(rows,
-      all.length ? all.map(p => projectRow(p, pinned.has(p.slug), draw)) : h("div", { class: "empty" }, "Make one with New project, or run vyre new in a folder."),
+      all.length ? all.map(p => projectRow(p, pinned.has(p.slug), draw))
+        : h("div", { class: "empty" }, "Name one and Vyre makes its folder. Or run vyre new in a folder you already have.", createProjectInline()),
       (r.data?.problems || []).map(pr => h("div", { class: "pl-problem small muted" }, typeof pr === "string" ? pr : (pr.message || pr.path || JSON.stringify(pr)))));
   };
   draw();
@@ -193,7 +194,7 @@ async function board(ctx) {
   const root = h("div", { class: "pj" + (chosen ? " has-thread" : "") + " tab-" + tab });
   put(ctx.root, root);
 
-  if (tab === "brief") { put(root, header, briefTab(p, cx)); return; }
+  if (tab === "brief") { put(root, header, briefTab(p, cx, sw.error)); return; }
   if (tab === "files") { put(root, header, filesTab(ctx, p, items)); return; }
   if (tab === "memory") { put(root, header, memoryTab(ctx, p)); return; }
 
@@ -201,7 +202,8 @@ async function board(ctx) {
   const drawList = () => put(threadList,
     h("div", { class: "lbl pj-threads-l" }, "Threads"),
     items.length ? items.map(it => threadItem(it, it.id === selected, hrefFor(it.id), needs.current()))
-      : h("div", { class: "empty pj-none" }, "No threads yet. Start one with New thread."),
+      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No threads yet. The switchboard module is not running, so one cannot start here.")
+      : h("div", { class: "empty pj-none" }, "No threads yet.", startThreadInline(p)),
     sw.error && !sw.error.missing ? h("div", { class: "code pj-none" }, String(sw.error.message)) : null);
   drawList();
   ctx.cleanup(needs.watch(drawList));
@@ -216,7 +218,7 @@ async function board(ctx) {
     centre, files));
 
   if (!selected) {
-    put(centre, h("div", { class: "th-empty" }, h("div", { class: "empty" }, "Pick a thread, or start one with New thread.")));
+    put(centre, h("div", { class: "th-empty" }, h("div", { class: "empty" }, "The thread you start shows here.")));
     put(files, h("div", { class: "pj-files-head" }, h("h2", { class: "lbl" }, "Files")), h("div", { class: "pj-files-pad empty" }, "The files a thread touches show here."));
     return;
   }
@@ -274,14 +276,11 @@ function newThreadButton(ctx, p, swErr) {
       e.preventDefault();
       go_.disabled = true;
       put(status, "Starting…");
-      const input = { project: p.slug, cwd: p.home };
-      if (ta.value.trim()) input.prompt = ta.value.trim();
-      const r = await attempt("threads.start", input);
+      const r = await startThread(p, ta.value.trim());
       go_.disabled = false;
-      if (r.error) { put(status, r.error.missing ? "The switchboard module is not running, so a thread cannot start here." : String(r.error.message)); return; }
-      const id = r.data?.id || r.data?.thread?.id || r.data?.thread;
+      if (r.error) { put(status, r.error); return; }
       toggle(false);
-      if (id && typeof id === "string") go(`/projects/${enc(p.slug)}/${enc(id)}`);
+      if (r.id) go(`/projects/${enc(p.slug)}/${enc(r.id)}`);
     };
     put(pop,
       h("div", { class: "code faint ellipsis" }, "In ", base(p.home)),
@@ -297,13 +296,13 @@ function newThreadButton(ctx, p, swErr) {
 
 // ---- tabs ---------------------------------------------------------------------------------
 
-function briefTab(p, cx) {
+function briefTab(p, cx, swErr) {
   const lines = briefLines(cx.data?.text);
   return h("div", { class: "pj-page" },
     head("Brief", h("span", { class: "code faint" }, "Built from this project's threads")),
     cx.error ? empty("The brief is not available.", cx.error)
       : lines.length ? h("div", { class: "pj-brief-full" }, lines.map(l => h("p", { class: /^(People|Other threads|From this project)/.test(l.text) ? "pj-brief-h" : "" }, l.text)))
-        : h("div", { class: "empty" }, "Nothing in the brief yet. It fills in as threads run."),
+        : h("div", { class: "empty" }, "Nothing in the brief yet. It fills in as threads run.", swErr?.missing ? null : startThreadInline(p)),
     h("div", { class: "pj-facts code" },
       h("div", null, h("span", { class: "faint" }, "Home  "), p.home || ""),
       (p.workspaces || []).filter(w => w !== p.home).map(w => h("div", null, h("span", { class: "faint" }, "Also  "), w))));
@@ -334,7 +333,7 @@ function memoryTab(ctx, p) {
     if (!ctx.alive()) return;
     if (r.error) { put(box, empty("Memory is not available.", r.error)); return; }
     const facts = r.data?.facts || [];
-    if (!facts.length) { put(box, h("div", { class: "empty" }, "Nothing learned from this project's threads yet.")); return; }
+    if (!facts.length) { put(box, h("div", { class: "empty" }, "Nothing learned from this project's threads yet. Memory learns from threads once they are indexed.", indexHistoryInline())); return; }
     put(box, facts.map(f => h("div", { class: "pj-fact" },
       h("span", { class: "dot recall", "aria-hidden": "true" }),
       h("span", { class: "pj-fact-text" }, f.text),

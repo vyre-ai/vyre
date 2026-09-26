@@ -145,7 +145,11 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .top { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid var(--rule); }
 .brand { width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; }
 .address { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid var(--rule);
-  border-radius: var(--r-2); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 0; max-width: 460px; }
+  border-radius: var(--r-2); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 1; min-width: 0; max-width: 460px;
+  white-space: nowrap; overflow: hidden; }
+/* One line: a long thread path ends in an ellipsis instead of wrapping the pill. */
+.address > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.address > svg { flex-shrink: 0; }
 .address b { font-weight: 400; color: var(--text); }
 .search { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; min-width: 160px;
   padding: 0 8px 0 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-2); color: var(--label); flex-shrink: 1; }
@@ -232,3 +236,14 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .ed-in:hover { border-bottom-color: var(--rule); }
 .ed-in:focus, .ed-in:focus-visible { outline: none; border-bottom-color: var(--focus); }
 .ed-dirty .ed-lbl::after { content: " ·"; color: var(--text-2); }
+
+/* The one action an empty state offers, in place (js/empty-actions.js). */
+.ea { margin-top: 10px; }
+.ea-form, .ea-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ea-in { flex: 1 1 180px; width: auto; min-width: 0; max-width: 320px; }
+.ea-in.ea-wide { flex-basis: 100%; max-width: none; height: auto; padding: 8px 12px; }
+@media (max-width: 760px) {
+  .ea .btn { min-height: 44px; }
+  .ea .input:not(.ea-wide) { height: 44px; }
+  .ea-in { max-width: none; }
+}

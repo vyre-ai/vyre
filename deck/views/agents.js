@@ -12,6 +12,8 @@ import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { assistantCard } from "../js/assistant-setup.js";
+import { createProjectInline, action } from "../js/empty-actions.js";
+import { createAgent } from "../js/agent-create.js";
 import { since, initial, count, plural, clock } from "../js/fmt.js";
 
 const MODELS = [
@@ -96,7 +98,8 @@ async function list(ctx) {
     if (assistant) put(setup);
     else if (!setup.firstChild) put(setup, assistantCard({ onCreated: a => { if (!ctx.alive()) return; all = [a, ...all.filter(x => x.name !== a.name)]; draw(); } }));
     // No agents at all: the card is the empty state, not a blank list.
-    put(rows, all.length ? [headRow, h("div", { class: "rows" }, [assistant, ...others].filter(Boolean).map(a => agentRow(a, w)))] : null);
+    put(rows, all.length ? [headRow, h("div", { class: "rows" }, [assistant, ...others].filter(Boolean).map(a => agentRow(a, w))),
+      assistant && !others.length && form.hidden ? h("div", { class: "empty" }, "No other agents yet. An agent works only in the projects you give it.", action("New agent", openNew)) : null] : null);
   };
 
   const load = async () => {
@@ -108,16 +111,19 @@ async function list(ctx) {
   };
   await load();
 
-  newBtn.addEventListener("click", () => {
+  function openNew() {
     newBtn.hidden = true;
     form.hidden = false;
     newBtn.setAttribute("aria-expanded", "true");
     put(form, newForm(w, {
       done: (a) => { form.hidden = true; newBtn.hidden = false; newBtn.setAttribute("aria-expanded", "false");
-        if (a) { all = all.filter(x => x.name !== a.name).concat(a); draw(); } newBtn.focus(); },
+        if (a) all = all.filter(x => x.name !== a.name).concat(a);
+        draw(); newBtn.focus(); },
     }));
+    draw();
     /** @type {HTMLElement|null} */ (form.querySelector("input"))?.focus();
-  });
+  }
+  newBtn.addEventListener("click", openNew);
 
   let t = 0;
   const later = () => { clearTimeout(t); t = window.setTimeout(async () => { w = await world(); if (ctx.alive()) load(); }, 300); };
@@ -155,7 +161,7 @@ function newForm(w, { done }) {
   const keyVault = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: VAULT_KEY, "aria-label": "Vault item for the API key", list: "na-vault", spellcheck: "false" }));
   const budget = /** @type {HTMLInputElement} */ (h("input", { class: "input na-budget", type: "number", min: "1", step: "1", value: "10", "aria-label": "Monthly budget in US dollars" }));
   const fallback = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: true }));
-  const computer = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox" }));
+  const computer = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", id: "na-computer" }));
   const vaultList = h("datalist", { id: "na-vault" });
   attempt("vault.list").then(r => {
     const items = Array.isArray(r.data) ? r.data : r.data?.items || [];
@@ -175,6 +181,19 @@ function newForm(w, { done }) {
   fallback.addEventListener("change", drawAuth);
   drawAuth();
 
+  // No projects yet: make the first one right here, and it comes in ticked.
+  const projGroup = h("div", { role: "group", "aria-labelledby": "na-where", class: "na-projects" });
+  const drawProjects = () => put(projGroup, slugs.length ? slugs.map((s, i) => h("label", { class: "na-pick" }, boxes[i], nameOf(w.names, s)))
+    : [h("span", { class: "small faint" }, "No projects yet. It will see none until you add some."),
+      createProjectInline({ primary: false, onCreated: (slug, pname) => {
+        if (!slug) return;
+        w.names.set(slug, pname);
+        slugs.push(slug);
+        boxes.push(/** @type {HTMLInputElement} */ (h("input", { type: "checkbox", value: slug, checked: true })));
+        drawProjects();
+      } })]);
+  drawProjects();
+
   const create = h("button", { type: "submit", class: "btn btn-primary" }, "Create agent");
   const submit = async (/** @type {Event} */ e) => {
     e.preventDefault();
@@ -189,10 +208,16 @@ function newForm(w, { done }) {
     const input = { name: n, kind: "agent", projects, instructions: instr.value.trim(), auth: a, computer: computer.checked };
     /** @type {HTMLButtonElement} */ (create).disabled = true;
     put(status, "Creating…");
-    const r = await attempt("agents.create", input);
+    const r = await createAgent(input, attempt);
     /** @type {HTMLButtonElement} */ (create).disabled = false;
     if (r.error) { put(status, r.error.missing ? `${why(r.error)} The agent was not created.` : why(r.error)); return; }
-    done({ ...input, role: "", state: "idle", skills: [], model: MODELS[1].id, ...(r.data && typeof r.data === "object" ? { name: r.data.name === "new-agent" ? n : r.data.name || n } : {}) });
+    // Made, but the computer was refused: say so and point at its page, whose button tries again.
+    if (r.computerError) {
+      /** @type {HTMLButtonElement} */ (create).disabled = true;
+      put(status, `${n} was made, but not given a computer: ${why(r.computerError)} `, link(agentHref(n), { class: "link" }, `Open ${n}`));
+      return;
+    }
+    done({ ...input, role: "", state: "idle", skills: [], model: MODELS[1].id, ...(r.data ? { name: r.data.name === "new-agent" ? n : r.data.name || n, computer: r.data.computer ?? input.computer } : {}) });
   };
 
   return h("form", { class: "na", onsubmit: submit, novalidate: true },
@@ -201,9 +226,7 @@ function newForm(w, { done }) {
       h("label", { class: "na-k lbl", for: "na-name" }, "Name"),
       h("div", null, name, h("div", { class: "small faint na-hint", id: "na-name-hint" }, "Lowercase, one word. It signs its threads with it.")),
       h("span", { class: "na-k lbl", id: "na-where" }, "Works in"),
-      h("div", { role: "group", "aria-labelledby": "na-where", class: "na-projects" },
-        slugs.length ? slugs.map((s, i) => h("label", { class: "na-pick" }, boxes[i], nameOf(w.names, s)))
-          : h("span", { class: "small faint" }, "No projects yet. It will see none until you add some.")),
+      projGroup,
       h("label", { class: "na-k lbl", for: "na-job" }, "Job"),
       instr,
       h("span", { class: "na-k lbl", id: "na-authl" }, "Runs on"),
@@ -323,7 +346,8 @@ function drawJob(sec, a, w, stub, listErr) {
     const edit = h("button", { type: "button", class: "link ab-edit", disabled: stub, onclick: () => editing() }, "Edit");
     put(sec, sectionHead("ab-job", "Job", stub ? null : edit),
       stub ? empty(`${a.name}'s job is kept by the switchboard.`, listErr)
-        : h("p", { class: "ab-job" }, a.instructions || h("span", { class: "faint" }, "No instructions yet.")),
+        : a.instructions ? h("p", { class: "ab-job" }, a.instructions)
+        : h("div", { class: "ab-job" }, h("span", { class: "faint" }, "No instructions yet."), action("Write its job", () => editing())),
       stub ? null : h("div", { class: "ab-where" }, h("span", { class: "small faint" }, "Works in"), where),
       status);
   };
@@ -379,7 +403,14 @@ function drawWakes(sec, a, w, ctx) {
     if (!ctx.alive()) return;
     if (r.error) { put(body, empty(`${a.name} wakes only when you talk to it.`, r.error)); return; }
     const list = (Array.isArray(r.data) ? r.data : r.data?.watchers || []).filter(x => !x.agent || x.agent === a.name);
-    if (!list.length) { put(body, h("div", { class: "empty" }, `Nothing wakes ${a.name} yet. It works when you talk to it.`)); return; }
+    // None yet: the way to add one (the Add watcher note) is shown open, right under this line.
+    if (!list.length) {
+      note.hidden = false;
+      add.setAttribute("aria-expanded", "true");
+      put(body, h("div", { class: "empty" }, `Nothing wakes ${a.name} yet. It works when you talk to it.`));
+      body.after(note);
+      return;
+    }
     put(body, list.map(x => watcherRow(x, w)));
   });
 }

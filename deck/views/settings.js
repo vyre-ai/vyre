@@ -480,7 +480,7 @@ async function drawDevices(el) {
   put(el,
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
-    foot(toOnboard("devices", rows.length ? "Add a device" : "Open")));
+    foot(toOnboard("devices", "Add a device")));
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------
