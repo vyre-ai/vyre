@@ -33,6 +33,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   opens it, and a burst of messages from the Capsule then goes without asking each time, each
   still previewed there. It is added to the floor's SESSIONABLE list (`core/presence/index.js`)
   and declares `presence.session`. A tool off that list still refuses a session proof.
+- `apps.route {text, app?, model?}` turns words into one app action without running it: timers
+  ("10 minute timer", "timer for 2 hours and 5 minutes"), alarms ("wake me at 7"), notes,
+  reminders ("remind me to call juno at 6" is the next 6:00 or 18:00; "remind me on friday to
+  pay rent" is Friday 09:00; "in 20 min"), the weather ("is it cold in Lahore today") and
+  messages ("whatsapp juno: running late", sending). Rules only, in the Mac's time zone
+  (`local/apps/route.js`); `app` is the Capsule's @App scope. What the rules cannot place is
+  ambiguous, and config `apps.model` (a function) may try it when the caller passes `model:
+  true`; whether its answer sends comes from the adapter, never from the model.
+- `apps.setup {app}`: Clock's one-time setup. It writes the Vyre Timer and Vyre Alarm shortcuts
+  under the Vyre home, signs them with `shortcuts sign --mode anyone`, and opens each so
+  Shortcuts shows its Add button, with steps in words and a by-hand recipe
+  (`local/apps/setup.js`). Two action identifiers are unverified and marked so. The dialog gate
+  refuses it under tests before any file is written.
 
 #### Connectors (ADR 0016)
 

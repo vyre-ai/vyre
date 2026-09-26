@@ -34,7 +34,7 @@ export function parseTime(/** @type {string} */ t) {
 async function need(/** @type {any} */ env, /** @type {string} */ name) {
   const have = await env.shortcuts.list();
   if (!have.includes(name)) {
-    throw new AppsError("setup", `Clock needs Vyre's ${name.replace(/^Vyre /, "")} shortcut, once: run "vyre apps setup clock"`);
+    throw new AppsError("setup", `Clock needs Vyre's ${name.replace(/^Vyre /, "")} shortcut, once: run "vyre apps setup clock" (the apps.setup tool)`);
   }
 }
 

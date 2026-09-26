@@ -2,7 +2,10 @@
 // apps: drive the Mac's apps from the Capsule, the CLI and the phone. "timer 10 min", "note: buy
 // milk", "remind me to call juno at 6", "weather tomorrow".
 //
-// Four tools. apps.list says what is installed and how well Vyre can reach each app.
+// apps.route turns a person's words into one of these calls without running it; apps.setup does
+// an app's one-time setup (Clock's two shortcuts).
+//
+// The action tools: apps.list says what is installed and how well Vyre can reach each app.
 // apps.targets lists the things inside one app a person might pick (notes, reminder lists, later
 // chats and channels). apps.act runs an action that sends nothing as the person. apps.send runs
 // one that does (a message, a post), and declares presence, so every caller that is not a module,
@@ -18,6 +21,10 @@ import { checkInput } from "../../core/modules/index.js";
 import { makeEnv, AppsError } from "./env.js";
 import { adapters } from "./adapters/index.js";
 import { installed, DEFAULT_DIRS } from "./installed.js";
+import { route } from "./route.js";
+import { setupFor } from "./setup.js";
+import path from "node:path";
+import * as vyreConfig from "../../core/config/index.js";
 
 export const TARGETS_TTL_MS = 60 * 1000;
 export const LIST_MAX = 100;
@@ -95,6 +102,48 @@ export default {
           targetCache.set(key, { at: now, targets });
         }
         return { targets: targets.slice(0, Math.max(1, limit)) };
+      },
+    });
+
+    /**
+     * A model's answer, made safe to hand on: it must name an app and an action, and whether the
+     * action sends comes from the adapter, never from the model. An app with no adapter yet is
+     * treated as sending, so it can only ever reach apps.send and its proof.
+     */
+    const fromModel = (/** @type {any} */ m) => {
+      if (!m || typeof m !== "object" || typeof m.app !== "string" || typeof m.action !== "string") return null;
+      const args = m.args && typeof m.args === "object" && !Array.isArray(m.args) ? m.args : {};
+      const a = registry.find(m.app);
+      const act = a && Object.prototype.hasOwnProperty.call(a.actions, m.action) ? a.actions[m.action] : null;
+      const app = a ? a.app : m.app;
+      return { app, action: m.action, args, sends: act ? act.sends : true, said: typeof m.said === "string" && m.said ? m.said : `${app} ${m.action}`, via: "model" };
+    };
+
+    ctx.tool("apps.route", {
+      description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
+      input: { type: "object", required: ["text"], properties: { text: str, app: str, model: { type: "boolean" } } },
+      async run({ text, app, model = false }) {
+        const r = route(text, { now: env.now(), timeZone: env.timeZone, ...(app ? { app } : {}) });
+        if (!("ambiguous" in r) || !model || typeof opts.model !== "function") return r;
+        // The seam for a lean model call (config apps.model): only for what the rules left
+        // ambiguous, only when the caller asked. It gets the words and what each app can do.
+        const catalog = registry.all.map(x => ({ app: x.app, actions: Object.entries(x.actions).map(([name, v]) => ({ name, title: v.title, sends: v.sends, input: v.input })) }));
+        let m = null;
+        try { m = fromModel(await opts.model(text, catalog)); } catch {}
+        return m || r;
+      },
+    });
+
+    ctx.tool("apps.setup", {
+      description: "An app's one-time setup, run when a person first asks for something that needs it. For Clock: writes Vyre's Timer and Alarm shortcuts, signs them and opens each in Shortcuts, where one click adds it. Returns steps (plain words to show) and files. ready: true when there is nothing to do.",
+      input: { type: "object", required: ["app"], properties: { app: str } },
+      async run({ app }) {
+        const a = registry.find(app);
+        const fn = a ? setupFor(a.id) : null;
+        if (!a || !fn) throw new AppsError("not_supported", `${a ? a.app : app} needs no setup`);
+        // Kept under the Vyre home, beside everything else Vyre wrote, never in Downloads.
+        const root = opts.setupDir || path.join((ctx.paths && ctx.paths.root) || vyreConfig.home(), "apps", "shortcuts");
+        return fn(env, root);
       },
     });
 

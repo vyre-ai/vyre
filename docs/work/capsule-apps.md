@@ -83,8 +83,11 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   targets, osascript timeouts are setup with the Automation hint, apps.list is capped at 100,
   targets are pruned on write and cleared after an act. 48 tests pass on the testbox.
 
+- Slice 1, T3 (part): `apps.route` (route.js, rules only, model seam at config apps.model) and
+  `apps.setup` (setup.js, Clock's shortcuts written, signed, opened).
+
 ## Doing
-- Nothing in flight.
+- Slice 1, T3: `vyre apps` (core/cli/commands/apps.js).
 
 ## Next
 - Slice 1, T3: `apps.route` (rules first) and `vyre apps` (core/cli/commands/apps.js), including

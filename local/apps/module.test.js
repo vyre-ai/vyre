@@ -60,10 +60,10 @@ test("module: the manifest is valid under the loader's rules", () => {
   assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"))), []);
 });
 
-test("module: starts in the Registry, registers the four tools, and starting runs nothing", async t => {
+test("module: starts in the Registry, registers its tools, and starting runs nothing", async t => {
   const { reg, calls } = await start(t);
   assert.equal(reg.status().find(m => m.name === "apps")?.state, "running");
-  assert.deepEqual(reg.listTools().map(x => x.name).sort(), ["apps.act", "apps.list", "apps.send", "apps.targets"]);
+  assert.deepEqual(reg.listTools().map(x => x.name).sort(), ["apps.act", "apps.list", "apps.route", "apps.send", "apps.setup", "apps.targets"]);
   assert.equal(reg.listTools().find(x => x.name === "apps.send")?.presence, true);
   assert.equal(reg.listTools().find(x => x.name === "apps.act")?.presence, undefined);
   assert.equal(calls.length, 0);
@@ -208,4 +208,48 @@ test("module: a presence session proves apps.send; a session never proves a tool
   assert.equal(other.ok, false);
   assert.match(other.message, /needs its own proof/);
   assert.equal(chat.sent.length, 2);
+});
+
+test("module: apps.route routes words by rules with the module's clock and zone, and runs nothing", async t => {
+  const now = Date.UTC(2026, 8, 24, 10, 0);
+  const { reg, calls, events } = await start(t, { apps: { now: () => now, timeZone: "Asia/Karachi" } });
+  const r = await reg.call("apps.route", { text: "remind me to call juno at 6" }, "capsule");
+  assert.deepEqual(r.data.args, { text: "call juno", due: "2026-09-24T18:00" });
+  assert.equal((await reg.call("apps.route", { text: "buy milk", app: "Notes" }, "capsule")).data.action, "create");
+  assert.equal(calls.length, 0);
+  assert.equal(events().filter((/** @type {any} */ e) => e.type.startsWith("apps.")).length, 0);
+});
+
+test("module: the model seam runs only for ambiguous words, only when asked, and sends come from the adapter", async t => {
+  /** @type {any[]} */
+  const asked = [];
+  const chat = chatApp();
+  const model = async (/** @type {string} */ text, /** @type {any[]} */ apps) => {
+    asked.push({ text, apps });
+    if (text.includes("lie")) return { app: "Chatter", action: "message", args: { to: "juno", text: "hi" }, sends: false };
+    if (text.includes("junk")) return { nope: true };
+    if (text.includes("throw")) throw new Error("model down");
+    return { app: "Clock", action: "timer", args: { seconds: 300 }, said: "Timer for 5 minutes" };
+  };
+  const { reg } = await start(t, { apps: { model, adapters: [chat.adapter] } });
+  assert.equal((await reg.call("apps.route", { text: "timer 10 min", model: true }, "capsule")).data.args.seconds, 600);
+  assert.equal(asked.length, 0, "the model was asked about words the rules placed");
+  assert.equal((await reg.call("apps.route", { text: "brew a tea for five minutes" }, "capsule")).data.ambiguous, true);
+  assert.equal(asked.length, 0, "the model was asked without model: true");
+  const m = await reg.call("apps.route", { text: "brew a tea for five minutes", model: true }, "capsule");
+  assert.deepEqual(m.data, { app: "Clock", action: "timer", args: { seconds: 300 }, sends: false, said: "Timer for 5 minutes", via: "model" });
+  assert.ok(asked[0].apps.find((/** @type {any} */ a) => a.app === "Clock").actions.some((/** @type {any} */ x) => x.name === "timer"));
+  assert.equal((await reg.call("apps.route", { text: "lie to me", model: true }, "capsule")).data.sends, true, "the model's sends: false was trusted");
+  assert.equal((await reg.call("apps.route", { text: "junk please", model: true }, "capsule")).data.ambiguous, true);
+  assert.equal((await reg.call("apps.route", { text: "throw it", model: true }, "capsule")).data.ambiguous, true);
+});
+
+test("module: apps.setup sets up Clock under the Vyre home and refuses an app that needs none", async t => {
+  const home = tempHome(t);
+  const f = fakeExec((file, args) => (args[0] === "sign" ? (fs.writeFileSync(args[args.indexOf("--output") + 1], "x"), {}) : {}));
+  const { reg } = await start(t, { apps: { exec: f.exec, setupDir: path.join(home, "shortcuts") } });
+  const r = await reg.call("apps.setup", { app: "clock" }, "cli");
+  assert.deepEqual(r.data.files.map((/** @type {string} */ x) => path.basename(x)), ["Vyre Timer.shortcut", "Vyre Alarm.shortcut"]);
+  assert.equal((await reg.call("apps.setup", { app: "Notes" }, "cli")).error.code, "not_supported");
+  assert.equal((await reg.call("apps.setup", { app: "Photoshop" }, "cli")).error.code, "not_supported");
 });

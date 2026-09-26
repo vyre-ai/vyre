@@ -154,6 +154,23 @@ export function makeEnv({ config = {}, call = async () => ({ error: { code: "no_
         fs.rmSync(dir, { recursive: true, force: true });
       }
     },
+    /**
+     * Sign a shortcut file so another Mac will import it. Signing asks Apple's servers, so it gets
+     * a minute.
+     * @param {string} input @param {string} output
+     */
+    async sign(input, output) {
+      guard("Shortcuts");
+      const r = await exec("shortcuts", ["sign", "--mode", "anyone", "--input", input, "--output", output], { timeoutMs: 60000 });
+      if (r.code !== 0) throw new AppsError("failed", `could not sign ${path.basename(output)}: ${r.stderr.trim() || `exit ${r.code}`}`);
+    },
+  };
+
+  /** Open a file in its app (a signed shortcut opens in Shortcuts at its Add button). Gated like `open -a`. */
+  const openFile = async (/** @type {string} */ file) => {
+    guard(`Opening ${path.basename(file)}`);
+    const r = await exec("open", [file]);
+    if (r.code !== 0) throw new AppsError("failed", r.stderr.trim() || `could not open ${file}`);
   };
 
   /** Bring an app up with `open -a`. It is an app launch, so it goes through the same gate. */
@@ -164,7 +181,9 @@ export function makeEnv({ config = {}, call = async () => ({ error: { code: "no_
   };
 
   return {
-    exec, osa, shortcuts, open, platform, call, config,
+    exec, osa, shortcuts, open, openFile, platform, call, config,
+    /** Refuse now, before any file is written, when the steps after would be refused. */
+    ready: (/** @type {string} */ what) => guard(what),
     fetch: typeof config.fetch === "function" ? config.fetch : (/** @type {any[]} */ ...a) => globalThis.fetch(.../** @type {[any, any]} */ (a)),
     now: typeof config.now === "function" ? config.now : Date.now,
     timeZone: config.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,

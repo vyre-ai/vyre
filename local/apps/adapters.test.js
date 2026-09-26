@@ -69,7 +69,7 @@ test("clock: alarm runs Vyre Alarm with JSON time and label", async t => {
 test("clock: a missing shortcut is code setup with the command that fixes it, and nothing runs", async t => {
   const w = shortcutsWorld(t, [ALARM]);
   await assert.rejects(clock.actions.timer.run({ seconds: 60 }, w.env), (/** @type {any} */ e) =>
-    e.code === "setup" && e.message === `Clock needs Vyre's Timer shortcut, once: run "vyre apps setup clock"`);
+    e.code === "setup" && e.message === `Clock needs Vyre's Timer shortcut, once: run "vyre apps setup clock" (the apps.setup tool)`);
   const w2 = shortcutsWorld(t, []);
   await assert.rejects(clock.actions.alarm.run({ time: "07:00" }, w2.env), (/** @type {any} */ e) => e.code === "setup" && /Alarm shortcut/.test(e.message));
   assert.equal(w.runs.length + w2.runs.length, 0);
