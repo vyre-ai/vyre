@@ -19,6 +19,8 @@ Code; load them with ToolSearch when they are deferred). Call them directly, nev
 1. `watchers_list` → its `dir` is where watchers live on this machine.
 2. `projects_of` with `{ "cwd": "<the current folder>" }` → the project's `slug`.
 3. Write `<dir>/<name>/watcher.json` and `<dir>/<name>/watch.js` (section 3).
+   If it needs a credential, `vault_grant` it to this watcher and have the user approve it
+   (section 2).
 4. `watchers_test` with `{ "name": "<name>" }` → fix and repeat until it returns `ok: true`.
 5. Show the user the items and the schedule; on their yes, `watchers_create` with `{ "name" }`.
 
@@ -39,13 +41,24 @@ fits; "watch X and file it into this project" leaves nothing open.
    cannot exceed its field: every two hours is `0 */2 * * *`, never `*/120 * * * *`. For a source
    that pushes (a form, a webhook), use `"webhook"`.
 
-## 2. Credentials come from the Vault, by name
+## 2. Credentials come from the Vault, by name, granted to this one watcher
 
 Never put a key, token or password in the watcher, in `watcher.json`, in a command line or in
-your reply. List the Vault item names the watcher needs under `needs`. Check they exist with the
-`vault_list` tool (names only). If one is missing, tell the user the exact name to add with
-`vyre vault put <name>` and stop there. You never see or handle the value yourself. A public
-source needs nothing: leave `needs` out.
+your reply. A public source needs nothing: leave `needs` out. Otherwise:
+
+1. `vault_list` (names only) to find the item. If it is missing, tell the user the exact name to
+   add with `vyre vault put <name>` and stop there. Never ask them to paste a value.
+2. List the item's name under `needs` in `watcher.json`.
+3. `vault_grant` with `{ "name": "<item>", "module": "watchers", "watcher": "<watcher name>" }`.
+   A grant is for one watcher, never for every watcher. From you it waits as `pending`: tell the
+   user to run `vyre vault approve <id>` with the `id` it returns (or, from their own terminal,
+   `vyre vault grant <item> watchers --watcher <watcher name>`).
+4. Until they approve, the dry run fails with "<item> is not granted to watchers/<name>". That
+   is expected; wait for them, then dry-run again.
+
+In `watch.js`, `await vault.fetch("<item>")` returns the value (`value`, a login's `password`, a
+card's `number`, a note's `text`). Pass `{ field: "username" }` for another field; an env set
+always needs a field. You never see or handle the value yourself.
 
 ## 3. Write two files in the watchers folder
 
