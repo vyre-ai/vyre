@@ -99,8 +99,11 @@ Perf:
   about.md has no profile lines and `/vyre remember` offers a lesson instead.
 - planner: confirm `planner.add {text, kind?: todo|reminder, at?, project?, thread?}` -> `{id, text, kind, at|null, project}`
   and `planner.agenda {day?, days?}` -> `{items: [{id, text, kind, at|null, done, project|null}]}`; who delivers
-  a due reminder; whether agents may call planner.add (if not, the MCP server hides it from them).
-- docs: using/claude-code.md needs the new `/vyre` rows and "About you" once this merges.
+  a due reminder. Lead's decision (27 Sep), passed to planner to enforce: agents may call planner.add and
+  planner.agenda (todos, reminders, notes), each item labelled with the agent and 20 per hour per agent;
+  only a person edits, completes, deletes or sets a ringing alarm. The MCP server keeps planner tools
+  visible to agents (its DRIVES filter hides only threads.* and agents.*).
+- docs: the new `/vyre` rows and an "Every session knows you" section are sent; docs holds them until c4a30dd merges.
 
 - ci: publish `vyre-ai/vyre` with `.claude-plugin/marketplace.json` at the root. Keep
   `harness/.claude-plugin/plugin.json`'s version equal to `package.json` on release (a test checks).
