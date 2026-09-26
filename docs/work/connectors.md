@@ -43,6 +43,7 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 
 - `gate.request` accepts `agent` in its input from a module caller only (core/gate/index.js), so
   the MCP hub can file a held call under the agent vyred verified for it.
+- `harness/mcp/server.js` refuses every request when `VYRE_HUB_CHILD` is set (3 lines).
 - `core/harness/rules.js` rule 1 and `gate.route` step aside for `GATED`, an explicit list of Vyre
   module tools that hold at the Gate themselves: today only `google_mail_send` (under
   `mcp__vyre__` and `mcp__plugin_vyre_vyre__`).
