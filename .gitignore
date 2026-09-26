@@ -8,3 +8,4 @@ site/box/
 site/install.sh
 site/_redirects
 __pycache__/
+box/Vyre-mac.sha256

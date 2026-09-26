@@ -29,12 +29,15 @@ trap cleanup EXIT
 "$repo/bin/vyre" capsule build --app
 [ -d "$app" ] || { echo "build-mac-zip: no $app" >&2; exit 1; }
 
-# Helpers first, keeping the identities build.sh gave them, then the bundle around them.
-for h in hotkey local vyre-launcher; do
-  codesign --force -s - --identifier "run.vyre.$h" "$app/Contents/Resources/bin/$h"
-done
-codesign --force --deep -s - --identifier run.vyre.capsule "$app"
-codesign --force -s - --identifier run.vyre.capsule "$app"
+# `vyre capsule build --app` signs the bundle itself from capsule 9cefc71 on. For an older build,
+# sign it here: helpers first, keeping their identities, then the bundle around them.
+if ! codesign --verify --deep --strict "$app" 2>/dev/null; then
+  codesign --force -s - --identifier run.vyre.hotkey "$app/Contents/Resources/bin/hotkey"
+  codesign --force -s - --identifier run.vyre.launcher "$app/Contents/Resources/bin/vyre-launcher"
+  codesign --force -s - --identifier run.vyre.local "$app/Contents/Resources/bin/local"
+  codesign --force --deep -s - --identifier run.vyre.capsule "$app"
+  codesign --force -s - --identifier run.vyre.capsule "$app"
+fi
 codesign --verify --deep --strict "$app"
 
 rm -f "$out"
