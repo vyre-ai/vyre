@@ -69,6 +69,30 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `DOCKER_GID`, and adds it to an existing `.env` that lacks it. It needs `policy.js` from
   work/computers: until that merges, `main.js` stops at start with a clear error.
 
+#### `vyre link` points to the Deck
+
+- On a box, approving a pairing needs the owner's passkey, which only the Deck can give. So
+  `vyre link pair` and `vyre link` now say "approve it in your Deck" with the code. When
+  `vyre link approve` gets `presence_required`, it points there instead of printing an error.
+
+#### Pairing needs the owner's presence
+
+- Security's review found that the box's terminal is not proof of presence. Claude's processes
+  share the box's socket. Worse, a model on the Mac can read the pairing code the Mac shows and
+  run `ssh box vyre link approve <code>`. So `link.pair.approve` is on the floor's presence list
+  (ADR 0004): approving takes a passkey from the Deck, whoever calls. The link's own checks stay
+  as a second line: never approved from the requesting node, and the key goes only to that node.
+  The approval prompt names the Mac that asked ("Pair the Mac \"work laptop\" (node) with this
+  box") and never shows the code. Refusals for missing presence do not use up the request.
+- `link.find` reads a peer's certificate on a connection that skips verification. A test now
+  checks that nothing is ever written on that connection.
+
+#### Files: in step with Glass
+
+- The files guard also refuses a browser's `Cookies`, `Login Data` and `Web Data` files and any
+  folder named `secrets`, as Glass's guard does. On a Mac the default root is the home folder,
+  which holds every Chrome profile.
+
 #### Link and the real Tailscale
 
 - `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or

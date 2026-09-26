@@ -326,3 +326,22 @@ test("link: pairing through the real names listener binds to the Mac's node and 
   assert.equal((await send(PHONE_IP, "link.hello", { key: got.key })).data.paired, false);
   assert.equal((await box.registry.call("link.peers", {}, "cli")).data[0].node, "mac");
 });
+
+test("link: approving a pairing needs the owner's presence, whoever calls, and the prompt names the Mac, not the code", async t => {
+  const boxRoot = tempHome(t);
+  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", transcripts: [] }));
+  // The real presence check, not the stand-in the other tests use.
+  const box = await start({ root: boxRoot, log: () => {} });
+  t.after(() => box.stop());
+  if (!box.registry.deps.presence) return t.skip("this vyred has no presence check yet");
+  const MAC_PEER = { node: "test-mac", stableId: "nMAC", login: OWNER };
+  const p = (await box.registry.call("link.pair.request", { name: "work laptop" }, `tailnet:${OWNER}`, { peer: MAC_PEER })).data;
+  for (const [caller, meta] of [["cli", {}], ["local", {}], [`tailnet:${OWNER}`, { peer: PHONE }]]) {
+    const r = await box.registry.call("link.pair.approve", { code: p.code }, caller, meta);
+    assert.equal(r.error && r.error.code, "presence_required", `${caller} alone cannot approve`);
+  }
+  assert.equal((await box.registry.call("link.pending", {}, "cli")).data.length, 1, "refusals for presence do not cancel the request");
+  const summary = await box.registry.tools.get("link.pair.approve").presence.summary({ code: p.code });
+  assert.match(summary, /work laptop/);
+  assert.ok(!summary.includes(p.code) && !summary.includes(p.code.replace("-", "")), "the code is never in the prompt");
+});

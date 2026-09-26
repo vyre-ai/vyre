@@ -31,7 +31,10 @@ const DOT_OK = new Set([".github", ".gitignore", ".gitattributes", ".editorconfi
 
 /** Names that hold keys, passwords or tokens. Matched against every segment, case-insensitively. */
 const SECRET = [/^id_rsa/i, /^id_ed25519/i, /^id_ecdsa/i, /\.p12$/i, /\.pfx$/i, /\.kdbx$/i,
-  /\.keychain/i, /^\.npmrc$/i, /^\.pypirc$/i, /^\.git-credentials$/i, /^credentials\.json$/i, /^service-account.*\.json$/i];
+  /\.keychain/i, /^\.npmrc$/i, /^\.pypirc$/i, /^\.git-credentials$/i, /^credentials\.json$/i, /^service-account.*\.json$/i,
+  // A browser's saved sessions and passwords (Chrome and its kin), and any folder called secrets.
+  // Kept in step with glass's guard, so the two never disagree about what is a secret.
+  /^Cookies(-journal)?$/, /^Login Data(-journal| For Account)?$/, /^Web Data(-journal)?$/, /^secrets$/i];
 
 /**
  * Names refused only for a regular file. A Keynote document is a folder named *.key, and must stay

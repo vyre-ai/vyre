@@ -175,9 +175,9 @@ export function tailnetPeers() {
  * handshake is only read, then closed; the real connection verifies the certificate as usual.
  * @returns {Promise<string[]>}
  */
-export function certNames(ip, servername, timeout = 1500) {
+export function certNames(ip, servername, timeout = 1500, port = 443) {
   return new Promise(resolve => {
-    const s = tls.connect({ host: ip, port: 443, servername: servername || undefined, rejectUnauthorized: false, timeout }, () => {
+    const s = tls.connect({ host: ip, port, servername: servername || undefined, rejectUnauthorized: false, timeout }, () => {
       const alt = String((s.getPeerCertificate() || {}).subjectaltname || "");
       s.destroy();
       resolve(alt.split(/,\s*/).filter(x => x.startsWith("DNS:")).map(x => x.slice(4)).filter(n => !n.includes("*")));
