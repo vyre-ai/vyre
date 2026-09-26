@@ -41,7 +41,7 @@ export async function start(opts = {}) {
 
   const db = open(p.db);
   const events = new Events(db);
-  const registry = new Registry({ db, events, config: cfg, log, rules: opts.rules });
+  const registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on

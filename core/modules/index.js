@@ -150,10 +150,10 @@ export class Registry {
 
   /** What a module gets. It sees only what its manifest declared. */
   context(m) {
-    const { db, events, config, log } = this.deps;
+    const { db, events, config, log, paths } = this.deps;
     const declared = new Set((m.does && m.does.tools) || []);
     return {
-      name: m.name, config,
+      name: m.name, config, paths,
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.
@@ -168,6 +168,9 @@ export class Registry {
         on: (pattern, fn) => events.on(pattern, fn),
         since: (id, opts) => events.since(id, opts),
       },
+      // Another module's tool, through the same path as every caller: input checked, rules run.
+      // This is the only way one module uses another; never import its files.
+      call: (tool, input) => this.call(tool, input, `module:${m.name}`),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);

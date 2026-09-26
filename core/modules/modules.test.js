@@ -106,3 +106,15 @@ test("modules: ctx.store migrations are bound to the module's own name", async t
   assert.equal(other.state, "failed");
   assert.match(other.error, /must start with "other_"/);
 });
+
+test("modules: one module calls another's tool through ctx.call, and the rules see who asked", async t => {
+  const seen = [];
+  const caller = `export default { async start(ctx) {
+    ctx.tool("brief.make", { run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", good, echo], ["brief", { version: "0.1.0", requires: ["notes"], does: { tools: ["brief.make"] } }, caller]],
+    { rules: async c => { seen.push(`${c.caller}>${c.tool}`); return { allow: true }; } });
+  assert.deepEqual(await reg.call("brief.make", {}, "cli"), { data: { saved: "from brief" } });
+  assert.deepEqual(seen, ["cli>brief.make", "module:brief>notes.add"]);
+});

@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+### M1 · projects and memory
+
+#### Contracts (main)
+
+- Recall's tables are a published contract (`core/recall/schema.js`): a turn is identified by
+  `(session, seq)`, never by FTS rowid.
+- `ctx.call(tool, input)`: one module uses another's tool through the rules, as `module:<name>`.
+- `ctx.paths`: the `~/.vyre` paths, for modules that keep files.
+- CLI commands are one file each in `core/cli/commands/`, found at run time.
+- `test/fixtures/corpus.js`: the fictional corpus every M1 module tests against.
+
+#### Recall
+
+#### Memory
+
+#### Projects
+
 ### M0 · the skeleton (2026-09-26)
 
 - `vyred`: one daemon per machine on a private unix socket (`~/.vyre/vyred.sock`, mode 0600).
