@@ -359,7 +359,8 @@ async function pairOver(address, tool) {
   if (st.data && st.data.linked) return;
   const p = await tool("link.pair", { box: address });
   if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
-  out(`  Approve this Mac in your Deck: it names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(p.data.code)}`);
+  out(`\n  Approve this Mac on your phone at ${signal(address)}`);
+  out(`  The Deck there names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(p.data.code)}`);
   out(dim("  vyre link shows when it is done."));
 }
 

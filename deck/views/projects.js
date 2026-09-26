@@ -10,12 +10,18 @@
 // A thread is either a recorded session (recall.thread, read from its transcript) or a live
 // switchboard thread (threads.get, then thread.* and ask.raised events). Everything a thread says
 // is untrusted and goes in through h() as text only.
+//
+// On the box, the paired Mac's rows come in too (js/machine.js): its projects in the list, a Mac
+// session picked into a box project in the board, a Mac thread at /threads/:thread. Each carries
+// a machine chip and is read only: a Mac project has no board here, and a Mac thread opens from
+// recall.thread with no reply, keyboard or Take. Picking a Mac session into a box project is fine.
 
 import { h, put, link, go, head, empty } from "../js/dom.js";
 import { attempt, call } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, initials, plural } from "../js/fmt.js";
+import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 
 const enc = encodeURIComponent;
 const TABS = [["threads", "Threads"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
@@ -118,6 +124,7 @@ function parsePeople(s) {
 }
 
 function projectRow(p, pinned, redraw) {
+  if (isMac(p)) return macProjectRow(p);
   const pin = h("button", { type: "button", class: "ibtn pl-pin", "aria-pressed": String(pinned), "aria-label": `${pinned ? "Unpin" : "Pin"} ${p.name}`,
     title: pinned ? "Pinned to the rail" : "Pin to the rail", onclick: () => { setPin(p.slug, !pinned); redraw(); } }, icon("pin"));
   const ppl = peopleText(p.people);
@@ -131,15 +138,28 @@ function projectRow(p, pinned, redraw) {
     h("span", { class: "pl-chev", "aria-hidden": "true" }, icon("right")));
 }
 
+/** A paired Mac's project: listed with its machine, no board, no pin. */
+function macProjectRow(p) {
+  return h("div", { class: "pl-row" },
+    h("span", { class: "ibtn pl-pin", "aria-hidden": "true" }),
+    h("div", { class: "pl-main" },
+      h("div", { class: "pl-name" }, h("span", null, p.name), machineChip(p)),
+      h("div", { class: "readonly-note ellipsis" }, readOnlyNote(p))),
+    h("div", { class: "code pl-count" }, plural(p.threads || 0, "thread")),
+    h("div", { class: "code faint pl-last" }, p.last ? when(p.last) : "never"),
+    h("span", { class: "pl-chev", "aria-hidden": "true" }));
+}
+
 // ---- the board: /projects/:slug(/:thread) -----------------------------------------------
 
 async function board(ctx) {
   const slug = ctx.params.slug;
   const tab = TABS.some(t => t[0] === ctx.query.get("tab")) ? ctx.query.get("tab") : "threads";
   const [pl, pt, sw, cx] = await Promise.all([
-    attempt("projects.list"), attempt("projects.threads", { project: slug }), attempt("threads.list", { project: slug }), attempt("projects.context", { project: slug })]);
+    // The Switchboard's threads on this machine only: a Mac's threads name the Mac's own projects.
+    attempt("projects.list"), attempt("projects.threads", { project: slug }), attempt("threads.list", { project: slug, machines: "local" }), attempt("projects.context", { project: slug })]);
   if (!ctx.alive()) return;
-  const p = (pl.data?.projects || []).find(x => x.slug === slug);
+  const p = (pl.data?.projects || []).find(x => x.slug === slug && !isMac(x));
   if (!p) {
     put(ctx.root, h("div", { class: "pl" }, link("/projects", { class: "pj-back small" }, icon("right", 14), "Projects"),
       pl.error ? empty("Projects are not available.", pl.error) : h("div", { class: "empty" }, `There is no project called ${slug}.`)));
@@ -232,7 +252,7 @@ function threadItem(it, on, href, open) {
   const who = t ? (t.agent || "you") : (it.rec?.agents ? "you with an agent" : "you");
   const state = t ? (held ? null : t.state) : plural(it.rec?.turns || 0, "turn");
   return link(href, { class: "pj-t", "aria-current": on ? "true" : false },
-    h("span", { class: "pj-t-row" }, h("span", { class: "pj-t-name ellipsis" }, it.name), h("span", { class: "code faint pj-t-at" }, when(it.at))),
+    h("span", { class: "pj-t-row" }, h("span", { class: "pj-t-name ellipsis" }, it.name), machineChip(it.rec), h("span", { class: "code faint pj-t-at" }, when(it.at))),
     h("span", { class: "pj-t-row pj-t-sub" }, h("span", { class: "ellipsis" }, who, state ? ` · ${state}` : ""),
       held ? h("span", { class: "pj-held" }, h("span", { class: "dot beacon", "aria-hidden": "true" }), "held") : null));
 }
@@ -349,11 +369,15 @@ async function loose(ctx) {
   const [sw, cx, pl, rt] = await Promise.all([attempt("threads.list", {}), attempt("projects.context", { session: id }), attempt("projects.list"),
     attempt("recall.thread", { session: id, limit: 1 })]);
   const known = (sw.data || []).find(t => t.id === id);
-  const cwd = known?.cwd || rt.data?.session?.cwd;
-  const of = !known?.project && !cx.data?.project && cwd ? await attempt("projects.of", { cwd }) : null;
+  // A Mac thread (the box read it from the Mac): its project and folder are the Mac's, so only a
+  // pick into one of this machine's projects (projects.context) says where it is here.
+  const mac = isMac(known) || isMac(rt.data);
+  const cwd = mac ? null : known?.cwd || rt.data?.session?.cwd;
+  const of = !mac && !known?.project && !cx.data?.project && cwd ? await attempt("projects.of", { cwd }) : null;
   if (!ctx.alive()) return;
-  const inProject = known?.project || cx.data?.project || of?.data?.slug || null;
-  const projectsAll = pl.data?.projects || [];
+  const inProject = (mac ? null : known?.project) || cx.data?.project || of?.data?.slug || null;
+  // Picking goes into this machine's projects only.
+  const projectsAll = (pl.data?.projects || []).filter(x => !isMac(x));
   const owner = projectsAll.find(x => x.slug === inProject);
 
   const add = h("div", { class: "lt-add" });
@@ -385,10 +409,11 @@ async function loose(ctx) {
   const files = h("aside", { class: "pj-files", "aria-label": "Files this thread touched" });
   put(ctx.root, h("div", { class: "pj has-thread lt" },
     h("div", { class: "pj-head" },
-      h("div", { class: "pj-id" }, link("/now", { class: "pj-back pj-phone" }, icon("right", 14), "Now"), h("span", { class: "lbl" }, "Thread")),
+      h("div", { class: "pj-id" }, link("/now", { class: "pj-back pj-phone" }, icon("right", 14), "Now"), h("span", { class: "lbl" }, "Thread"),
+        machineChip(mac ? { source: "mac", machine: known?.machine || rt.data?.machine } : null)),
       h("div", { class: "pj-grow" }), add),
     h("div", { class: "pj-body" }, centre, files)));
-  await threadPane(ctx, id, { centre, files, known: known ? { live: known } : null, project: owner || null, switchboard: sw, back: owner ? `/projects/${enc(owner.slug)}` : "/now" });
+  await threadPane(ctx, id, { centre, files, known: known ? { live: known } : mac ? { rec: rt.data } : null, project: owner || null, switchboard: sw, back: owner ? `/projects/${enc(owner.slug)}` : "/now" });
 }
 
 // ---- one thread -----------------------------------------------------------------------------
@@ -411,16 +436,19 @@ async function threadPane(ctx, id, o) {
       title, meta),
     body, compose);
 
-  // Which kind of thread is this: live on the switchboard, or a recorded session?
-  const isLive = !!o.known?.live;
+  // Which kind of thread is this: live on the switchboard, or a recorded session? A Mac's is only
+  // ever read from its transcript, through the box, and never offered a reply.
+  let fromMac = isMac(o.known?.live) || isMac(o.known?.rec);
+  const isLive = !!o.known?.live && !fromMac;
   let thread = null, events = [], recorded = null, loadErr = null;
   if (isLive) {
     const r = await attempt("threads.get", { thread: id });
     if (r.data) ({ thread, events } = { thread: r.data.thread, events: r.data.events || [] }); else loadErr = r.error;
   }
   if (!thread) {
-    const r = await attempt("recall.thread", { session: id, limit: 400 });
-    if (r.data) recorded = r.data;
+    const r = await attempt("recall.thread", { session: id, limit: 400, ...(fromMac ? { source: "mac" } : {}) });
+    if (r.data) { recorded = r.data; fromMac = fromMac || isMac(r.data); }
+    else if (fromMac) loadErr = r.error;
     else {
       const g = await attempt("threads.get", { thread: id });
       if (g.data?.thread) ({ thread, events } = { thread: g.data.thread, events: g.data.events || [] }); else loadErr = loadErr || r.error;
@@ -432,12 +460,13 @@ async function threadPane(ctx, id, o) {
   const agent = thread?.agent || o.known?.live?.agent || null;
   const cwd = thread?.cwd || recorded?.session?.cwd || "";
   put(title, thread?.name || o.known?.name || o.known?.live?.name || recorded?.session?.name || recorded?.session?.title || (thread ? "New thread" : id));
-  put(meta, `session ${/^[0-9a-f]{8}-/i.test(id) ? id.slice(0, 4) : id}`, agent ? ` · ${agent}` : cwd ? ` · in ${base(cwd)}` : "");
+  const machine = fromMac ? String(recorded?.machine || o.known?.live?.machine || o.known?.rec?.machine || "your Mac") : null;
+  put(meta, `session ${/^[0-9a-f]{8}-/i.test(id) ? id.slice(0, 4) : id}`, agent ? ` · ${agent}` : cwd ? ` · in ${base(cwd)}` : "", machine ? ` · on ${machine}` : "");
 
   if (!thread && !recorded) {
     put(body, empty("This thread could not be opened.", loadErr));
     drawFiles(ctx, files, id, []);
-    drawComposer(ctx, compose, { id, agent, lease: null, swMissing: true, append: () => {} });
+    drawComposer(ctx, compose, { id, agent, lease: null, swMissing: true, machine, append: () => {} });
     return;
   }
 
@@ -537,7 +566,7 @@ async function threadPane(ctx, id, o) {
   ctx.on("file.touched", e => { if (e.payload?.session === id) drawFilesFromEvents(); });
 
   drawComposer(ctx, compose, {
-    id, agent, lease: thread?.holder || null, swMissing: swMissing && !thread, recorded: !!recorded,
+    id, agent, lease: thread?.holder || null, swMissing: swMissing && !thread, recorded: !!recorded, machine,
     append: text => {
       pendingEcho.add(text);
       toolGroup = null;
@@ -669,9 +698,12 @@ async function drawFiles(ctx, box, id, toolEvents) {
 
 /**
  * @param {any} ctx @param {HTMLElement} box
- * @param {{ id: string, agent: string|null, lease: string|null, swMissing: boolean, recorded?: boolean, append: (t: string) => void }} o
+ * @param {{ id: string, agent: string|null, lease: string|null, swMissing: boolean, recorded?: boolean, machine?: string|null, append: (t: string) => void }} o
+ *   machine: the thread is that Mac's, so the reply, the keyboard and Take are off, and it says where to continue it.
  */
 function drawComposer(ctx, box, o) {
+  const mac = o.machine ? { source: "mac", machine: o.machine } : null;
+  if (mac) { put(box, h("div", { class: "th-note-row" }, h("div", { class: "readonly-note th-note", role: "status" }, readOnlyNote(mac)))); return; }
   let holder = o.lease;
   const input = /** @type {HTMLInputElement} */ (h("input", { type: "text", class: "th-in", id: "reply-" + o.id, autocomplete: "off" }));
   const send = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "ibtn", "aria-label": "Send" }, icon("send")));

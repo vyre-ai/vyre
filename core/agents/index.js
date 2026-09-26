@@ -227,15 +227,20 @@ export default {
     });
 
     ctx.tool("agents.update", {
-      description: "Change an agent: its projects, credentials, instructions, skills or model. Takes effect on its next thread.",
-      input: { type: "object", required: ["name"], properties: { name: { type: "string" }, ...fields } },
+      description: "Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer or model. Takes effect on its next thread.",
+      // Every other agents.* tool names its agent `agent`, so update takes that too; the Deck's
+      // "Give a computer" sent it and got "input.name is required".
+      input: { type: "object", properties: { name: { type: "string" }, agent: { type: "string" }, ...fields } },
       run: async (i, { caller }) => {
         guard(caller, "change agents");
-        const a = must(i.name);
+        if (i.name !== undefined && i.agent !== undefined && i.name !== i.agent) throw new Error("name and agent say different agents; give one");
+        const who = i.name ?? i.agent;
+        if (who === undefined) throw new Error("say which agent: name is required");
+        const a = must(who);
         checkProjects(i.projects);
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
-        const next = { ...a, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "name")) };
+        const next = { ...a, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "name" && k !== "agent")) };
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.instructions || null, JSON.stringify(next.skills || []),
             next.computer ? 1 : 0, next.model || null, Date.now(), a.name);

@@ -51,7 +51,12 @@ mkdir -p "${lib}"
 echo '{"name":"${PACKAGE}","version":"4.3.0","main":"index.cjs"}' > "${lib}/package.json"
 cat > "${lib}/index.cjs" <<'EOF'
 exports.env = {};
-exports.pipeline = async () => async () => { const d = new Float32Array(${DIM}); d[0] = 1; return { data: d }; };
+exports.pipeline = async () => async () => {
+  // FAKE_EMBED_SPIN_MS: burn that much CPU per call, standing in for the model's work.
+  const until = Date.now() + Number(process.env.FAKE_EMBED_SPIN_MS || 0);
+  while (Date.now() < until) {}
+  const d = new Float32Array(${DIM}); d[0] = 1; return { data: d };
+};
 EOF
 here=node_modules/onnxruntime-node/bin/napi-v6/${process.platform}/${process.arch}
 mkdir -p node_modules/onnxruntime-node/bin/napi-v6/other-os/x64 "$here" node_modules/onnxruntime-node/bin/napi-v6/${process.platform}/not-this-arch node_modules/onnxruntime-web/dist

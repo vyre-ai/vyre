@@ -2,6 +2,10 @@
 // @ts-check
 // perf-check — holds vyred to docs/SPEC.md section 2, principle 8 ("Light by default"):
 //
+//   scripts/perf-check                     vyred idle (below)
+//   scripts/perf-check --first-run [--real-model] [--seconds N]
+//                                          the first index of a whole history (lib/first-run.mjs)
+//
 //   vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
 //   once a minute when nothing is happening; work is driven by events and file-system notice.
 //
@@ -49,6 +53,13 @@ const BUDGET = { cpuPct: 0.5, rssMB: 150, minTimerMs: 60_000, cpuSustainedPct: 1
 function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
 
 async function main() {
+  // --first-run: what the first index of a whole history costs (scripts/lib/first-run.mjs).
+  if (process.argv.includes("--first-run")) {
+    const { firstRun } = await import(path.join(HERE, "lib", "first-run.mjs"));
+    process.exitCode = await firstRun({ repo: REPO, log, real: process.argv.includes("--real-model"),
+      seconds: Number(process.argv[process.argv.indexOf("--seconds") + 1]) || 60 });
+    return;
+  }
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-perf-"));
   const transcriptsDir = path.join(home, "transcripts");
   fs.mkdirSync(transcriptsDir, { recursive: true });
