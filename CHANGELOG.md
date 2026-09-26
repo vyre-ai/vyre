@@ -109,6 +109,46 @@ Newest first. Every change to code lands here in the same commit. A new dependen
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
 
+#### Watchers
+
+- `core/watchers`: the watcher runtime (spec 7.6). Claude writes a folder in
+  `~/.vyre/watchers/<name>/` through the write-a-watcher skill; the runtime runs it. Tools:
+  `watchers.list`, `watchers.test`, `watchers.create`, `watchers.pause`, `watchers.resume`,
+  `watchers.logs`, `watchers.items`. Events: `watcher.created`, `watcher.fired`, `watcher.failed`,
+  `watcher.paused`, `watcher.resumed`. No Gmail, Slack or other integration ships with it; that is
+  the point.
+- Every run is a child process with no inherited environment, a timeout (60s default, 300s at
+  most), and Node's permission model: read access to its own folder only, no writes, no child
+  processes. Measured: reading another file, writing, spawning and reading the parent's env all
+  fail inside a watcher.
+- Vault items reach a watcher only through `vault.fetch` for names in its own `needs`, checked by
+  the runtime, which declares `needs.vault: ["per-watcher"]`. A released value is scrubbed from
+  logs and errors, and an item that carries one fails the run, because items are filed and taught.
+- `watchers.create` turns on exactly what the last successful dry run ran (a hash of both files).
+  An edit afterwards pauses the watcher until it is dry-run and created again, so a watcher cannot
+  widen its `needs` or change what it does without the user seeing it.
+- Items are deduped by `id`, filed as `watcher.item` rows in the project, and taught to Memory
+  with `project_cwds` set to the project's folders, so they appear in that project's
+  `memory.facts` and no other. Without the project's folders they are filed but not taught, so a
+  client's items never become a fact for everywhere.
+- Cursor: `since` is what `watch` returned, or the start of the last successful run. Failures
+  retry after 30s and 2m; the third in a row pauses the watcher and says why.
+- A small cron parser (five fields, steps, ranges, lists, `@hourly` style shorthands), which
+  refuses a step past the end of its field: `*/120` in minutes means minute 0, which is never what
+  was meant. Claude wrote exactly that in a real session.
+- Webhooks: a watcher with schedule `webhook` gets `POST /v1/watchers/<name>/hook` with a token
+  made at create, checked in constant time; the JSON body reaches `watch` as `hook`. Calls that
+  arrive mid-run are queued, not dropped.
+- `vyre watchers [test|create|pause|resume|logs|items] [name]`.
+- Shared core, kept minimal: the registry gains `hook: true` tools (reachable only as caller
+  `hook` through vyred's new `POST /v1/<module>/<name>/hook` route, never listed or offered to
+  Claude). Nothing else outside `core/watchers/` changed.
+- The write-a-watcher skill, rewritten from five real Claude Code sessions (Haiku, Harness loaded):
+  it now loads before Claude asks questions, beats `/loop`, calls `watchers_list` for the folder
+  instead of guessing `~/.vyre` (one session wrote there), calls the MCP tools directly rather
+  than from a shell, never runs `watch.js` with plain `node`, fetches in parallel, logs what it
+  read, and does not widen a filter to manufacture items.
+
 ### Shared core for the parallel workstreams (2026-09-26)
 
 - `ctx.vault.fetch(name)`: a module gets only the vault items its manifest declares, through the

@@ -42,3 +42,53 @@ that registers internal `vault.release`.
 A real Claude Code session with the Harness, asked "watch the Hacker News front page for posts
 about SQLite and file them into a project", writes a watcher through the skill, dry-runs it, and
 it runs on schedule under vyred (a public source, so no credentials are needed for the demo).
+
+## Done
+- Runtime, module, CLI and skill on `work/watchers` (commits listed in the branch log).
+- Tests: `core/watchers/cron.test.js`, `runtime.test.js` (real children, stubbed clock, vault,
+  projects, Memory), `module.test.js` (a real vyred with a stub vault module registering internal
+  `vault.release`, real projects and Memory, the webhook route over the socket).
+- Real, with a temp `VYRE_HOME` under `/tmp/vy-w-demo`: `claude -p --model haiku --plugin-dir
+  harness`, asked "Watch the Hacker News front page for posts about SQLite and file them into this
+  project", loaded the skill, called `watchers_list` and `projects_of`, wrote the folder, dry-ran
+  it (0 items: no SQLite post on the front page today), and on "yes, every 5 minutes" edited,
+  re-tested and created it. A second session wrote a Show HN watcher that filed a real post,
+  which `memory.facts {project_cwds: [the project folder]}` returned as `taught by watchers`.
+  Both ran on schedule under vyred (`watcher.fired` with trigger `schedule`).
+- Five real sessions shaped the skill; see the changelog.
+
+## Doing
+
+## Next
+- A Deck panel (`panel:watchers` is declared) once the deck stream wants it.
+- Webhooks from outside the machine arrive once networking (box stream) serves vyred on the
+  tailnet; today the route is on the local socket only.
+
+## Needs from others
+- vault: `vault.release` as specified (internal, `caller` passed). The runtime already goes
+  through `ctx.vault.fetch`; a grant for module `watchers` covers every watcher, and the runtime
+  narrows it to each watcher's own `needs`. Offboarding may want to list which watchers need an
+  item: `watchers.list` returns nothing about needs today; say if you want it.
+- projects: nothing adds a watcher to a project's `project.json` `watchers` list yet (spec 7.2).
+  The runtime files by `watcher.json`'s `project`, so nothing depends on it; a
+  `projects.add-watchers` tool would let the brief mention them.
+- harness: the brief could say this machine runs watchers, so a model reaches for the skill
+  before `/loop`. Haiku picked `/loop` once when the description was weaker.
+
+## Changed contracts
+- Registry (`core/modules/index.js`): a tool registered with `hook: true` is callable only by
+  caller `"hook"` and is left out of `listTools`. Every other tool refuses caller `"hook"`.
+- vyred (`core/daemon/index.js`): `POST /v1/<module>/<name>/hook` calls `<module>.hook` with
+  `{ name, token, body }` (token from `x-vyre-token` or `?token=`), as caller `"hook"`; 202 on
+  success, 403 when the tool refuses, 404 when there is no hook tool.
+- `watch({ vault, since, emit, log, hook })`: `hook` is new (the webhook body, else null), and
+  `watch` may return the next cursor.
+- Items: `{ id, title?, url?, at?, about? , ... }` under 4 KB. `about` names what an item concerns;
+  it becomes the taught fact's subject (default: the watcher's name).
+- `watcher.json` accepts `timeout` (seconds, at most 300) and `description`; any other extra key
+  is refused, so a credential cannot be parked there.
+- Taught fact per item: `{ subject: { name: about || watcher }, text: "title · url", at, key:
+  "<watcher>/<id>", project_cwds: <project folders> }`, kind `watcher.item`.
+- Events: `watcher.created {name, project, schedule}`, `watcher.fired {name, items, seen,
+  trigger}` (items = newly filed), `watcher.failed {name, error, failures, paused}`,
+  `watcher.paused {name, why}`, `watcher.resumed {name}`. Each carries the project.
