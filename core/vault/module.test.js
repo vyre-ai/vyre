@@ -366,3 +366,24 @@ test("vault: behind tailscale serve, a relayed pass answers only its holder's Ta
   const trail = (await o("vault.audit", { name: "api-token" })).data.entries;
   assert.ok(trail.some(e => e.action === "relay" && e.ok && /as mate@example\.com/.test(e.why)));
 });
+
+test("vault: on the box (identity whois), a relay ignores the identity header and refuses non-tailnet peers", async t => {
+  const token = fake("token");
+  const free = await new Promise(r => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => r(p)); }); });
+  // The relay is on loopback here, so every peer is off the tailnet and whois is never asked.
+  const owner = await boot(t, { keystore: "file", relay: { host: "127.0.0.1", port: free, identity: "whois" } });
+  t.after(() => owner.d.stop());
+  const mate = await boot(t, { keystore: "file", login: "mate@example.com" });
+  t.after(() => mate.d.stop());
+  const o = owner.as("cli"), m = mate.as("cli");
+  await o("vault.put", { name: "api-token", kind: "api-key", value: token, hosts: ["https://api.example.com"] });
+  const card = (await m("vault.identity")).data.card;
+  const { ticket } = (await o("vault.pass.create", { holder: "teammate", card, items: ["api-token"] })).data;
+  await m("vault.pass.accept", { ticket });
+  // A forged header, as any local process could send it, counts for nothing.
+  const res = await fetch(`http://127.0.0.1:${free}/v1/relay`, { method: "POST", headers: { "content-type": "application/json", "tailscale-user-login": "mate@example.com" },
+    body: JSON.stringify({ pass: "none" }) });
+  assert.equal(res.status, 403);
+  const use = await m("vault.relay", { item: "api-token", request: { url: "https://api.example.com/", headers: { authorization: "Bearer {{vault}}" } } });
+  assert.match(JSON.stringify(use), /only people on the tailnet/);
+});
