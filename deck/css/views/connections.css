@@ -1,0 +1,47 @@
+/* Settings, Connections (deck/views/connections.js). Built from settings.css's rows and
+   TOKENS.md; no colour of its own. Loaded by the section itself, since Settings' sheet belongs to
+   the deck workstream. */
+
+.cn-group { margin-top: 8px; }
+.cn-group + .cn-group { margin-top: 28px; }
+.cn-empty { padding-top: 16px; }
+
+.cn-row { padding: 14px 0; display: flex; flex-direction: column; gap: 8px; }
+.cn-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.cn-name { font-size: 14px; line-height: 20px; color: var(--text); }
+.cn-state { display: inline-flex; align-items: center; gap: 6px; }
+.cn-err { color: var(--text); max-width: 620px; overflow-wrap: anywhere; }
+
+.cn-meta { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 4px 16px; margin: 0; }
+.cn-meta-row { display: contents; }
+.cn-k { font-size: 13px; line-height: 20px; color: var(--label); margin: 0; }
+.cn-v { font-size: 13px; line-height: 20px; color: var(--text-2); margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.cn-v .set-mono { font-size: 12px; color: var(--text-2); }
+
+.cn-acts, .cn-confirm { padding-top: 4px; }
+
+.cn-test { border-left: 1px solid var(--rule-strong); padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 8px; }
+.cn-tools { max-width: 620px; }
+.cn-tool { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+.cn-tool-n { flex-grow: 1; font-size: 13px; line-height: 20px; color: var(--text); }
+.cn-tool .seg { flex-shrink: 0; }
+.cn-stderr { white-space: pre-wrap; margin: 0; max-height: 160px; overflow: auto; }
+
+.cn-scope.refused { color: var(--text); border-color: var(--text-2); }
+
+.cn-form { margin-top: 28px; }
+.cn-env { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.cn-env-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cn-env-var { max-width: 200px; height: 32px; font-size: 13px; font-family: var(--mono); }
+.cn-scope-pick { display: flex; flex-direction: column; gap: 4px; }
+.cn-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; }
+
+.cn-grant { margin-top: 20px; display: flex; flex-direction: column; gap: 6px; }
+.cn-cmd { display: block; }
+
+@media (max-width: 760px) {
+  .cn-meta { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .cn-k { margin-top: 6px; }
+  .cn-tool { flex-wrap: wrap; }
+  .cn-env-var { max-width: none; }
+}

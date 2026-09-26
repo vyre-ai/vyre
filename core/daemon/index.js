@@ -15,6 +15,8 @@ import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
+import { build } from "./build.js";
+import { acquire } from "./lock.js";
 import { Presence, parse as parsePresence } from "../presence/index.js";
 import { allowedTools } from "../names/guests.js";
 
@@ -38,6 +40,17 @@ export async function start(opts = {}) {
   // VYRE_ALLOW_DIALOGS=1 is a person's deliberate custom home (core/config/dialogs.js).
   if (!isRealHome(root) && !process.env.NODE_TEST_CONTEXT && process.env.VYRE_ALLOW_DIALOGS !== "1") process.env.VYRE_NO_DIALOGS = "1";
   const p = config.ensure(root);
+  // One vyred per home, whatever path reached it; before the store or any module opens.
+  const release = acquire(root);
+  try { return await startLocked(opts, root, p, release); }
+  catch (e) { release(); throw e; }
+}
+
+/**
+ * The rest of start(), with the home's lock held.
+ * @param {Parameters<typeof start>[0] & {}} opts @param {string} root @param {any} p @param {() => void} release
+ */
+async function startLocked(opts, root, p, release) {
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");
   const log = opts.log || ((msg, extra) => {
@@ -107,6 +120,7 @@ export async function start(opts = {}) {
     db.close();
     fs.rmSync(p.socket, { force: true });
     try { if (fs.readFileSync(p.pid, "utf8") === String(process.pid)) fs.rmSync(p.pid, { force: true }); } catch {}
+    release();
     log("vyred down");
   };
   return { registry, events, config: cfg, paths: p, stop };
@@ -215,7 +229,8 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
     // last_event lets a surface follow the stream from now: `since=0` would replay the whole
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
-    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    const b = build();
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });

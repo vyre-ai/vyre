@@ -21,6 +21,7 @@ import { call } from "../../daemon/client.js";
 import { VERSION } from "../../daemon/index.js";
 import { printEnding } from "../ending.js";
 import { out, dim, signal, beacon } from "../style.js";
+import { json, emit, usage as usageError } from "../kit.js";
 
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
 const VOLUMES = ["vyre-home", "vyre-work", "tailscale-state"];
@@ -440,6 +441,14 @@ async function withBox(target, fn, stopped = () => out("\n  Stopped.")) {
 }
 
 async function status() {
+  if (json()) {
+    const c = /** @type {any} */ (config.load());
+    const target = (c.box && c.box.ssh) || null;
+    const address = target ? c.network.box || null : null;
+    const h = address ? await tailnet.probe(address) : null;
+    emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null });
+    return target && !h ? 1 : 0;
+  }
   const target = saved();
   if (!target) return 0;
   const address = config.load().network.box;
@@ -660,11 +669,11 @@ async function run(args) {
     case "backup": return backup(arg, flags);
     case "move": return move(arg, flags);
     case "remove": return remove(flags);
-    default: out(`  ${USAGE}`); return 1;
+    default: return usageError(`vyre box ${sub}: not a subcommand`, USAGE);
   }
 }
 
-const usage = "vyre box [add|update|backup|move|remove]";
+const usage = "vyre box [status|add|update|backup|move|remove] [--json]";
 const USAGE = "vyre box add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
 
 export default [{ name: "box", order: 12, usage, summary: "put Vyre on a server from this Mac, and look after it", run }];

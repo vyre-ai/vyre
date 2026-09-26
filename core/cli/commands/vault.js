@@ -1169,6 +1169,8 @@ const SUBS = {
 
 export default {
   name: "vault", order: 40, usage: "vyre vault <command>", summary: "credentials, sealed; shared by pass; used without being seen",
+  // `vyre help vault` and `vyre vault <sub> --help` show the vault's own list of commands.
+  help: () => help(),
   /** @param {string[]} argv */
   async run(argv) {
     // --json anywhere before a `--` (after it, the flag belongs to run's child).

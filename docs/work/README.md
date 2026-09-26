@@ -35,7 +35,14 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
   merges, so dependents see it.
 - Merge to `main` only with the full suite green: `npm test`.
 
-## ADR numbers claimed
+## ADR numbers
 
-- 0013 box sessions, 0014 tailnet (lead)
-- 0018 mobile: the phone apps (work/mobile)
+Claim the next number here before writing the ADR, so two workstreams never take the same one.
+
+| ADR | Workstream | Title |
+|---|---|---|
+| 0013 | box | box sessions |
+| 0014 | tailnet | tailnet |
+| 0016 | connectors | Connectors: the MCP hub and native accounts |
+| 0020 | cc-plugin | Vyre as an installable Claude Code plugin, and the status line |
+| 0018 | mobile | The phone apps: native iOS and Android on the box's API |
