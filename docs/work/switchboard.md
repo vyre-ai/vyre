@@ -81,9 +81,10 @@ with real Claude Code, not only a fake.
 4. When the vault merges, switch `vault.release` calls to its real contract, and have onboarding create the assistant.
 
 ## Needs from others
-- vault: `vault.release {name}` -> `{value}`, internal, and callable by the `agents` module for items named in an
-  agent's `auth` (the manifest declares `needs.vault: ["per-agent"]`; the loader only special-cases `per-watcher`,
-  so agents calls `ctx.call("vault.release")` directly).
+- vault (contract final on work/vault): grants are per item and per module, via `vyre vault grant <item> agents`.
+  Asked vault to let `needs.vault: ["per-agent"]` pass the loader the way `per-watcher` does. Until then agents calls
+  `ctx.call("vault.release")` directly as module:agents; after that, switch to `ctx.vault.fetch` (a one-line change).
+  Onboarding must grant the assistant's items to `agents` as the cli/local caller.
 - recall/memory: honour an agent's scope on the tools the MCP server does not rewrite yet (`recall.thread`,
   `memory.facts`). The caller is `mcp:agent:<name>`, and `VYRE_PROJECTS`/`VYRE_SCOPE_CWDS` are in the thread's env.
 - onboarding (deck): call `agents.create {name, kind:"assistant"}`. There can be only one assistant.
