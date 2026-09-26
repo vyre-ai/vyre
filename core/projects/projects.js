@@ -178,6 +178,7 @@ export class Projects {
    */
   sessions() {
     if (!this.hasIndex()) return [];
+    const list = this.valid();
     const agents = new Map();
     for (const r of this.db.prepare("SELECT parent, COUNT(*) n, MAX(ended) last FROM recall_sessions WHERE parent IS NOT NULL GROUP BY parent").all()) {
       agents.set(String(r.parent), { n: Number(r.n), last: Number(r.last) || 0 });
@@ -192,7 +193,8 @@ export class Projects {
           agents: a ? a.n : 0,
         };
       })
-      .map(r => ({ ...r, label: label(r) }));
+      // The project whose folders it ran in, worked out once here for every caller.
+      .map(r => ({ ...r, label: label(r), folder: M.projectOf(r.cwd, list, { resolved: true })?.slug || null }));
   }
 
   /** For each session id, the projects it is in and how. */
@@ -207,20 +209,19 @@ export class Projects {
       /** @type {Set<string>} */ (bySlug.get(slug)).add(how);
     };
     for (const p of list) for (const id of p.threads) put(id, p.slug, "picked");
-    for (const s of this.sessions()) { const p = M.projectOf(s.cwd, list); if (p) put(s.id, p.slug, "folder"); }
+    for (const s of this.sessions()) if (s.folder) put(s.id, s.folder, "folder");
     return m;
   }
 
   /** The threads of one project, newest first, each saying how it belongs. */
   threadsOf(p, { exclude = null } = {}) {
-    const list = this.valid();
     const picked = new Set(p.threads);
     const out = [];
     const seen = new Set();
     for (const s of this.sessions()) {
       const how = [];
       if (picked.has(s.id)) how.push("picked");
-      if (M.projectOf(s.cwd, list)?.slug === p.slug) how.push("folder");
+      if (s.folder === p.slug) how.push("folder");
       if (how.length && s.id !== exclude) out.push({ ...s, how });
       seen.add(s.id);
     }
@@ -257,7 +258,8 @@ export class Projects {
     const said = new Map();
     let search = "said";
     let why;
-    const r = await this.call("recall.search", { q: words.join(" "), limit: 500 });
+    // One call per search, whatever the size of the index: Recall caps a search at 100 turns.
+    const r = await this.call("recall.search", { q: words.join(" "), limit: 100 });
     if (r.error) {
       search = "titles";
       why = r.error.code === "no_such_tool"

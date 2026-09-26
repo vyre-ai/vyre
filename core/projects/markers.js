@@ -135,12 +135,18 @@ export function flagClashes(list) {
 /**
  * The project that owns a folder: the one with the deepest workspace containing it. Compared on
  * a path boundary, so "/w/harlow-site-old" is not inside "/w/harlow-site".
+ *
+ * A folder a person typed is resolved through symlinks first. A session's folder is not: Claude
+ * Code records the real path already, and resolving every session's folder cost 2.6 seconds per
+ * catalogue call on a 600-session index, since most of those folders no longer exist and each
+ * one walked up its parents with a failing realpath at every step.
  * @param {string|null|undefined} cwd
  * @param {Project[]} list
+ * @param {{ resolved?: boolean }} [opts] resolved: cwd is already a real path
  */
-export function projectOf(cwd, list) {
+export function projectOf(cwd, list, { resolved = false } = {}) {
   if (!cwd) return null;
-  const c = real(cwd);
+  const c = resolved ? path.resolve(String(cwd)) : real(cwd);
   let best = null, len = -1;
   for (const p of list) {
     if (p.error) continue;

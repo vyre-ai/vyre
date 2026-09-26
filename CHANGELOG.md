@@ -162,6 +162,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Every thread Vyre launches loads the Harness with `--plugin-dir` when this install has one,
   and then leaves the brief to its SessionStart hook, so Claude never reads it twice.
 - `projects.of` returns `{slug, name, home, folders}`, the shape the Harness calls it with.
+- The catalogue was taking 2.6 seconds per call on a real 614-session index, with or without a
+  search, because it resolved every session's folder through realpath. Most of those folders no
+  longer exist, so each lookup walked up the parents failing at every step. Session folders are
+  now used as recorded, since Claude Code already writes real paths. A search takes 17 to 30 ms,
+  with one `recall.search` call (limit 100, Recall's cap), and a test bounds both the Recall
+  calls and the path lookups.
 
 ### M0 · the skeleton (2026-09-26)
 
