@@ -1,12 +1,13 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { distill, atStop, atTool, weakens, invalid, CODE } from "./checks.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, writeModule } from "../../test/helpers.js";
 
 const DASH = "\u2014";
 
@@ -103,8 +104,7 @@ test("weakens: retiring lessons, reaching the store and stopping vyred ask first
 
 // The module, run through a Registry with the real Harness, as the hooks reach it.
 
-async function learning(t) {
-  const home = tempHome(t);
+async function learning(t, home = tempHome(t)) {
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
@@ -114,7 +114,7 @@ async function learning(t) {
   const lesson = async id => (await reg.call("learn.lessons", { status: "all" })).data.find(l => l.id === id);
   const add = async text => (await reg.call("learn.add", { text })).data;
   const of = type => events.since(0, { limit: 1000 }).filter(e => e.type === type);
-  return { reg, events, lesson, add, of };
+  return { reg, db, events, lesson, add, of, home };
 }
 
 const tick = () => new Promise(r => setTimeout(r, 5));
@@ -259,4 +259,79 @@ test("learn: brief lists every active lesson, marking the checked ones", async t
   const b = (await reg.call("harness.brief", { cwd: CWD, session: "s1" })).data.text;
   assert.match(b, /- Never use em dashes\. \(checked\)/);
   assert.match(b, /- From now on sign emails as Harlow Legal\.$/m);
+});
+
+// The snapshot the hooks use when vyred is down (offline.js), and what they logged meanwhile.
+
+const snapshot = home => JSON.parse(fs.readFileSync(path.join(home, "lessons.json"), "utf8")).lessons;
+
+test("learn: add, retire and escalation rewrite the offline snapshot", async t => {
+  const { reg, add, home } = await learning(t);
+  assert.deepEqual(snapshot(home), [], "written at start");
+  await add("never use em dashes");
+  await reg.call("learn.add", { text: "never use en dashes", level: "remind" });
+  assert.deepEqual(snapshot(home).map(l => [l.id, l.level]), [[1, "block"], [2, "remind"]]);
+  assert.equal(fs.statSync(path.join(home, "lessons.json")).mode & 0o777, 0o600);
+  await reg.call("learn.retire", { id: 1 });
+  assert.deepEqual(snapshot(home).map(l => l.id), [2]);
+  for (const p of ["p1", "p2"]) {
+    await reg.call("harness.enrich", { prompt: "write it", cwd: CWD, session: "s1", prompt_id: p });
+    await reg.call("harness.stop", { session: "s1", prompt_id: p, text: "a \u2013 b", stop_hook_active: false });
+  }
+  assert.deepEqual(snapshot(home).map(l => [l.id, l.level]), [[2, "ask"]], "escalated in the snapshot too");
+});
+
+test("learn: what the hooks logged while vyred was down is counted at start, escalation included", async t => {
+  const first = await learning(t);
+  await first.add("never use em dashes");
+  await first.reg.call("learn.add", { text: "never use en dashes", level: "remind" });
+  await first.reg.stop();
+  const dir = path.join(first.home, "learn-offline");
+  fs.mkdirSync(dir, { recursive: true });
+  const entries = [{ lesson: 1, kind: "caught" }, { lesson: 1, kind: "caught" }, { lesson: 1, kind: "broken" },
+    { lesson: 2, kind: "broken" }, { lesson: 2, kind: "broken" }, { lesson: 99, kind: "broken" }];
+  fs.writeFileSync(path.join(dir, "log.jsonl"), entries.map(e => JSON.stringify({ ...e, session: "s1", at: 1 })).join("\n") + "\nnot json\n");
+  const second = await learning(t, first.home);
+  const a = await second.lesson(1), b = await second.lesson(2);
+  assert.deepEqual([a.caught, a.broken, a.level], [2, 1, "block"]);
+  assert.deepEqual([b.broken, b.level], [2, "ask"], "a remind lesson broken twice offline moves up");
+  assert.deepEqual(second.of("lesson.escalated").map(e => [e.payload.lesson, e.payload.from, e.payload.to]), [[2, "remind", "ask"]]);
+  assert.deepEqual(snapshot(first.home).map(l => [l.id, l.level]), [[1, "block"], [2, "ask"]]);
+  assert.equal(fs.existsSync(path.join(dir, "log.jsonl")), false, "the log is emptied");
+});
+
+test("learn: a draft the user edited to take out every em dash proposes a remind lesson, told once in that thread", async t => {
+  const home = tempHome(t);
+  const gate = `export default { async start(ctx) {
+    const drafts = { 7: { draft: "Dana, the brief is ready \\u2014 sending Friday.", final: "Dana, the brief is ready. Sending Friday.", diff: { removed: ["\\u2014 sending"], added: [". Sending"] } },
+                     8: { draft: "Thanks, Dana.", final: "Thanks Dana!", diff: { removed: [","], added: ["!"] } } };
+    ctx.tool("gate.get", { run: async ({ id }) => drafts[id] });
+    ctx.tool("gate.fire", { run: async ({ id }) => { ctx.events.emit("gate.released", { id, kind: "mail", via: "mail", to: "dana@harlowlegal.com", edited: true, agent: null, thread: "s1", project: null }); return {}; } });
+    return {};
+  } };`;
+  writeModule(path.join(home, "mods"), "gate", { does: { tools: ["gate.get", "gate.fire"] }, watches: { emits: ["gate.released"] } }, gate);
+  const db = open(path.join(home, "vyre.db"));
+  const events = new Events(db);
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
+  const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
+  await reg.start([...core, ...discover([path.join(home, "mods")])], { role: "local" });
+  t.after(() => db.close());
+
+  await reg.call("gate.fire", { id: 8 });
+  await reg.call("gate.fire", { id: 7 });
+  await new Promise(r => setTimeout(r, 20));
+  const lessons = (await reg.call("learn.lessons", { status: "all" })).data;
+  assert.equal(lessons.length, 1, "only the character taken out everywhere becomes a lesson");
+  assert.deepEqual([lessons[0].status, lessons[0].level, lessons[0].check.pattern, lessons[0].source.kind], ["proposed", "remind", "—", "edited"]);
+  const kept = db.prepare("SELECT text FROM learn_signals WHERE kind = 'edited'").all().map(r => r.text);
+  assert.equal(kept.length, 2);
+  assert.ok(kept.every(x => !/Dana|brief/.test(x)), "the message itself is never kept");
+
+  const first = await reg.call("harness.enrich", { prompt: "what next?", cwd: "/w/harlow-site", session: "s1" });
+  assert.match(first.data.text, /edited a draft.*lesson 1/);
+  const again = await reg.call("harness.enrich", { prompt: "and then?", cwd: "/w/harlow-site", session: "s1" });
+  assert.doesNotMatch(again.data.text, /edited a draft/, "told once");
+  await reg.call("gate.fire", { id: 7 });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal((await reg.call("learn.lessons", { status: "all" })).data.length, 1, "the same edit again proposes nothing new");
 });

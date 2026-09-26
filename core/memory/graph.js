@@ -6,6 +6,7 @@
 // Harness marks memory as memory and the security floor says anything Vyre tells the user it
 // can show the source of. A fact whose turns are gone is not shown; the curator deletes it.
 
+import path from "node:path";
 import { registrable } from "./lexicon.js";
 import { T } from "./curator.js";
 import { within } from "./teach.js";
@@ -60,8 +61,25 @@ export class Graph {
 
   node(id) { return this.db.prepare("SELECT * FROM memory_nodes WHERE id = ?").get(id) || null; }
 
-  summary(n) {
+  /**
+   * A node for display. In a project's view its counts and times come from that project's
+   * sessions and lessons only, so a summary never says how busy something is elsewhere.
+   */
+  summary(n, sc = null) {
     if (!n) return null;
+    if (sc) {
+      const ms = this.mentionEdges(String(n.id), 10_000, sc);
+      const times = this.db.prepare("SELECT started, ended FROM recall_sessions WHERE id = ?");
+      let first = 0, last = 0;
+      for (const e of ms) {
+        const r = this.curator.hasRecall() ? times.get(String(e.dst).slice(8)) : null;
+        const a = Number(r?.started) || 0, b = Number(r?.ended) || a;
+        if (a && (!first || a < first)) first = a;
+        if (b > last) last = b;
+      }
+      return { id: n.id, label: n.label, kind: n.kind, role: n.role ?? null, sessions: ms.length, mentions: ms.reduce((x, e) => x + Number(e.weight), 0),
+        first: first || null, last: last || null, age: ago(last, this.now()) };
+    }
     return { id: n.id, label: n.label, kind: n.kind, role: n.role ?? null, sessions: n.sessions, mentions: n.mentions,
       first: n.first_seen ?? null, last: n.last_seen ?? null, age: ago(Number(n.last_seen), this.now()) };
   }
@@ -70,17 +88,32 @@ export class Graph {
    * Find the node a person means: an id, an exact name, address or domain, a learned short form,
    * then a partial match, most-seen first.
    */
-  resolve(ref) {
+  resolve(ref, sc = null) {
     const r = String(ref || "").trim();
     if (!r) return null;
     const db = this.db;
-    return this.node(r)
-      || db.prepare("SELECT * FROM memory_nodes WHERE lower(label) = lower(?) ORDER BY sessions DESC LIMIT 1").get(r)
-      || db.prepare(`SELECT n.* FROM memory_shortforms f JOIN memory_nodes n ON n.id = f.node
-                     WHERE f.form = lower(?) AND f.precision >= ? AND f.sessions >= ? ORDER BY f.precision DESC, n.sessions DESC LIMIT 1`).get(r, T.shortPrecision, T.shortMinSessions)
-      || db.prepare(`SELECT * FROM memory_nodes WHERE lower(label) LIKE lower(?) ESCAPE '\\'
-                     ORDER BY (role IS NULL) DESC, sessions DESC, label LIMIT 1`).get("%" + r.replace(/[\\%_]/g, "\\$&") + "%")
-      || null;
+    // In a project's view only nodes that view contains can be found: resolving over the whole
+    // graph would say that someone only another client's sessions know exists, and when.
+    const ok = sc ? (n => n && this.nodeIn(String(n.id), sc)) : (n => Boolean(n));
+    const lim = sc ? 50 : 1;
+    const steps = [
+      () => [this.node(r)],
+      () => db.prepare(`SELECT * FROM memory_nodes WHERE lower(label) = lower(?) ORDER BY sessions DESC LIMIT ${lim}`).all(r),
+      () => db.prepare(`SELECT n.* FROM memory_shortforms f JOIN memory_nodes n ON n.id = f.node
+                     WHERE f.form = lower(?) AND f.precision >= ? AND f.sessions >= ? ORDER BY f.precision DESC, n.sessions DESC LIMIT ${lim}`).all(r, T.shortPrecision, T.shortMinSessions),
+      () => db.prepare(`SELECT * FROM memory_nodes WHERE lower(label) LIKE lower(?) ESCAPE '\\'
+                     ORDER BY (role IS NULL) DESC, sessions DESC, label LIMIT ${lim}`).all("%" + r.replace(/[\\%_]/g, "\\$&") + "%"),
+    ];
+    for (const step of steps) { const hit = step().find(ok); if (hit) return hit; }
+    return null;
+  }
+
+  /** Is this node part of the view: named in its sessions, or at one end of an edge in it? */
+  nodeIn(id, sc) {
+    if (!sc) return true;
+    if (this.mentionEdges(id, 1, sc).length) return true;
+    const scopes = this.lessonScopes();
+    return this.db.prepare("SELECT * FROM memory_edges WHERE (src = ? OR dst = ?) AND rel != 'mentioned_in'").all(id, id).some(e => this.edgeIn(e, sc, scopes));
   }
 
   // ------------------------------------------------------------------ facts
@@ -94,10 +127,15 @@ export class Graph {
     return out;
   }
 
-  /** One edge as a fact: what it says, where it came from, how old and how sure. */
-  fact(e) {
+  /**
+   * One edge as a fact: what it says, where it came from, how old and how sure. In a project's
+   * view only that project's turns and lessons count as its support, so a fact never cites
+   * another project's thread as its source.
+   */
+  fact(e, sc = null) {
     const db = this.db;
-    const ev = db.prepare("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY session, seq").all(e.id);
+    const ev = db.prepare("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY session, seq").all(e.id)
+      .filter(v => !sc || sc.sessions.has(String(v.session)));
     const src = this.node(e.src), dst = String(e.dst).startsWith("session:") ? null : this.node(e.dst);
     const sessionId = String(e.dst).startsWith("session:") ? String(e.dst).slice(8) : null;
     // The most recent supporting turn is the one worth pointing at. Its time comes from the
@@ -110,7 +148,7 @@ export class Graph {
     // the source.
     const taught = db.prepare(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
       LEFT JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key
-      WHERE l.edge = ? ORDER BY t.at DESC, l.module, l.kind, l.key`).all(e.id);
+      WHERE l.edge = ? ORDER BY t.at DESC, l.module, l.kind, l.key`).all(e.id).filter(t => this.lessonIn(t.fact, sc));
     if (!best && taught.length) seen = Math.max(...taught.map(t => Number(t.at) || 0));
     const note = String(e.dst).startsWith("note:");
     const noteText = note ? (() => { try { return JSON.parse(String(taught[0]?.fact)).text; } catch { return null; } })() : null;
@@ -119,14 +157,25 @@ export class Graph {
       : { id: e.dst, label: sessionId ? names.get(sessionId)?.name || sessionId : e.dst, kind: "session", role: null };
     const text = note ? `${src?.label ?? e.src}: ${noteText || "a note"}`
       : (PHRASE[e.rel] || ((a, b) => `${a} ${words(String(e.rel))} ${b}`))(src?.label ?? e.src, object.label);
+    // In a project's view, when a fact held comes from that project's own turns; and it reads as
+    // closed only if what replaced it is in the view too. Otherwise another client's sessions
+    // would show through as a date.
+    let since = Number(e.valid_from) || null, until = e.valid_to == null ? null : Number(e.valid_to);
+    if (sc) {
+      if (since && ev.length) since = Math.min(...ev.map(v => Number(tsq.get(v.session, v.seq)?.ts || 0)).filter(Boolean)) || since;
+      if (until !== null) {
+        const scopes = this.lessonScopes();
+        const next = db.prepare("SELECT * FROM memory_edges WHERE src = ? AND rel = ? AND dst != ? AND valid_to IS NULL").all(e.src, e.rel, e.dst);
+        if (!next.some(x => this.edgeIn(x, sc, scopes))) until = null;
+      }
+    }
     return {
       id: `${e.src}|${e.rel}|${e.dst}`,
       text,
       subject: src ? { id: src.id, label: src.label, kind: src.kind, role: src.role ?? null } : { id: e.src, label: e.src, kind: null, role: null },
       rel: e.rel, object,
       confidence: Number(e.confidence),
-      since: Number(e.valid_from) || null,
-      until: e.valid_to == null ? null : Number(e.valid_to),
+      since, until,
       seen: seen || null, age: ago(seen, this.now()),
       // source is what a person reads: the thread's /rename name or its first message. ref is
       // the exact turn, for memory.why and anything that wants to open it.
@@ -147,11 +196,13 @@ export class Graph {
   /** Sessions that ran in these folders or under them, subagents included. */
   scoped(cwds) {
     if (!cwds.length || !this.curator.hasRecall()) return new Set();
-    const q = this.db.prepare("SELECT id FROM recall_sessions WHERE cwd = ? OR cwd LIKE ? ESCAPE '\\'");
+    // A plain prefix compare: LIKE ignores case, and on a case-sensitive disk /w/acme and
+    // /w/ACME are two different clients.
+    const q = this.db.prepare("SELECT id FROM recall_sessions WHERE cwd = ? OR substr(cwd, 1, length(?) + 1) = ? || '/'");
     const out = new Set();
     for (const c of cwds) {
-      const base = String(c).replace(/\/+$/, "");
-      for (const r of q.all(base, base.replace(/[\\%_]/g, "\\$&") + "/%")) out.add(String(r.id));
+      const base = String(c).replace(/\/+$/, "") || "/";
+      for (const r of base === "/" ? this.db.prepare("SELECT id FROM recall_sessions WHERE substr(cwd, 1, 1) = '/'").all() : q.all(base, base, base)) out.add(String(r.id));
     }
     return out;
   }
@@ -161,8 +212,10 @@ export class Graph {
       ${closed ? "" : "AND valid_to IS NULL"} ORDER BY valid_to IS NOT NULL, confidence DESC, id`).all(id, id, WHERE);
   }
 
-  mentionEdges(id, limit = 5) {
-    return this.db.prepare(`SELECT * FROM memory_edges WHERE src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC, id DESC LIMIT ?`).all(id, limit);
+  mentionEdges(id, limit = 5, sc = null) {
+    const rows = this.db.prepare(`SELECT * FROM memory_edges WHERE src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC, id DESC ${sc ? "" : "LIMIT ?"}`)
+      .all(...(sc ? [id] : [id, limit]));
+    return sc ? rows.filter(e => sc.sessions.has(String(e.dst).slice(8))).slice(0, limit) : rows;
   }
 
   /**
@@ -189,15 +242,35 @@ export class Graph {
   }
 
   /**
-   * Does this edge belong in a view of these project folders? Anything a transcript supports,
-   * or a lesson for everywhere, does. A fact taught only for other projects does not.
+   * A view of the graph: null is the main graph, everything; otherwise a project's graph, its
+   * folders and the sessions that ran in them (docs/SPEC.md, section 7.4).
+   * @returns {{ cwds: string[], sessions: Set<string> } | null}
    */
-  visibleIn(e, cwds, scopes) {
-    if (!cwds.length) return true;
+  view(cwds) {
+    const clean = [...new Set((cwds || []).filter(c => typeof c === "string" && c.trim()).map(c => path.resolve(c).replace(/\/+$/, "") || "/"))];
+    if (!clean.length) return null;
+    return { cwds: clean, sessions: this.scoped(clean) };
+  }
+
+  /** Does a lesson (its stored fact) belong in this view? One for everywhere belongs in all. */
+  lessonIn(stored, sc) {
+    if (!sc) return true;
+    let cwds = null;
+    try { cwds = JSON.parse(String(stored)).project_cwds || null; } catch {}
+    return !cwds || cwds.some(c => within(c, sc.cwds));
+  }
+
+  /**
+   * Is this edge part of the view? In a project's graph an edge counts only through that
+   * project's own sessions or the lessons taught for it (or for everywhere): a fact another
+   * client's sessions established never reaches this project, even about someone both name.
+   */
+  edgeIn(e, sc, scopes) {
+    if (!sc) return true;
+    if (e.rel === WHERE) return sc.sessions.has(String(e.dst).slice(8));
+    for (const r of this.db.prepare("SELECT DISTINCT session FROM memory_evidence WHERE edge = ?").all(e.id)) if (sc.sessions.has(String(r.session))) return true;
     const s = scopes.get(Number(e.id));
-    if (!s || s.open) return true;
-    if (this.db.prepare("SELECT 1 FROM memory_evidence WHERE edge = ? LIMIT 1").get(e.id)) return true;
-    return s.cwds.some(c => within(c, cwds));
+    return Boolean(s && (s.open || s.cwds.some(c => within(c, sc.cwds))));
   }
 
   /**
@@ -208,20 +281,20 @@ export class Graph {
   facts({ about, project_cwds = [], limit = 20 } = {}) {
     const f = this.focus(project_cwds);
     const scopes = this.lessonScopes();
+    const sc = this.view(project_cwds);
     if (about) {
-      const n = this.resolve(about);
+      const n = this.resolve(about, sc);
       if (!n) return { about: null, facts: [] };
-      const facts = [...this.identityEdges(String(n.id), { closed: true }), ...this.mentionEdges(String(n.id))]
-        .filter(e => this.visibleIn(e, project_cwds, scopes)).map(e => this.fact(e));
-      return { about: { ...this.summary(n), pinned: f.pin.has(String(n.id)), muted: f.mute.has(String(n.id)) }, facts: facts.slice(0, limit) };
+      const facts = [...this.identityEdges(String(n.id), { closed: true }), ...this.mentionEdges(String(n.id), 5, sc)]
+        .filter(e => this.edgeIn(e, sc, scopes)).map(e => this.fact(e, sc));
+      return { about: { ...this.summary(n, sc), pinned: f.pin.has(String(n.id)), muted: f.mute.has(String(n.id)) }, facts: facts.slice(0, limit) };
     }
     let ranked;
-    if (project_cwds.length) {
-      const scope = this.scoped(project_cwds);
+    if (sc) {
       const score = new Map();
-      if (scope.size) {
+      if (sc.sessions.size) {
         const q = this.db.prepare("SELECT src, weight FROM memory_edges WHERE dst = ? AND rel = 'mentioned_in'");
-        for (const s of scope) for (const r of q.all("session:" + s)) score.set(String(r.src), (score.get(String(r.src)) || 0) + Number(r.weight));
+        for (const s of sc.sessions) for (const r of q.all("session:" + s)) score.set(String(r.src), (score.get(String(r.src)) || 0) + Number(r.weight));
       }
       // Facts a module taught for this project (a watcher's items, say) bring their subject in,
       // whether or not any of the project's sessions name it.
@@ -242,14 +315,15 @@ export class Graph {
     for (const { n } of ranked) {
       if (out.length >= limit) break;
       const edges = this.identityEdges(String(n.id));
-      const list = edges.length ? edges : this.mentionEdges(String(n.id), 1);
+      const inView = edges.filter(e => this.edgeIn(e, sc, scopes));
+      const list = inView.length ? inView : this.mentionEdges(String(n.id), 1, sc);
       for (const e of list) {
         const k = `${e.src}|${e.rel}|${e.dst}`;
         if (seen.has(k) || out.length >= limit) continue;
         seen.add(k);
         const other = e.src === n.id ? e.dst : e.src;
-        if (f.mute.has(String(other)) || !this.visibleIn(e, project_cwds, scopes)) continue;
-        out.push(this.fact(e));
+        if (f.mute.has(String(other))) continue;
+        out.push(this.fact(e, sc));
       }
     }
     return { about: null, facts: out };
@@ -323,21 +397,18 @@ export class Graph {
     if (!hits.size) return [];
 
     const f = this.focus(project_cwds);
-    const scope = project_cwds.length ? this.scoped(project_cwds) : null;
-    const inScope = id => {
-      if (!scope || !scope.size) return false;
-      return this.db.prepare("SELECT dst FROM memory_edges WHERE src = ? AND rel = 'mentioned_in'").all(id).some(r => scope.has(String(r.dst).slice(8)));
-    };
+    // A session in a project draws only on that project's graph (docs/SPEC.md, section 7.4).
+    const sc = this.view(project_cwds);
     const scored = new Map();
     const scopes = this.lessonScopes();
     for (const [id, h] of hits) {
       if (f.mute.has(id)) continue;
-      const boost = (f.pin.has(id) ? 1.5 : 1) * (inScope(id) ? 1.2 : 1);
-      const edges = this.identityEdges(id);
-      const list = edges.length ? edges : this.mentionEdges(id, 1);
+      const boost = f.pin.has(id) ? 1.5 : 1;
+      const edges = this.identityEdges(id).filter(e => this.edgeIn(e, sc, scopes));
+      const list = edges.length ? edges : this.mentionEdges(id, 1, sc);
       for (const e of list) {
         const other = e.src === id ? e.dst : e.src;
-        if (f.mute.has(String(other)) || !this.visibleIn(e, project_cwds, scopes)) continue;
+        if (f.mute.has(String(other))) continue;
         const k = `${e.src}|${e.rel}|${e.dst}`;
         // A fact where the named thing is the subject answers "who is this"; one where it is the
         // object ("Dana works at Harlow" for a prompt naming Harlow) is context, slightly less.
@@ -346,7 +417,7 @@ export class Graph {
       }
     }
     return [...scored.values()].sort((a, b) => b.s - a.s || a.e.id - b.e.id).slice(0, limit).map(({ e, matched, s }) => {
-      const x = this.fact(e);
+      const x = this.fact(e, sc);
       return { id: x.id, text: x.text, matched, confidence: x.confidence, age: x.age, seen: x.seen, source: x.source, ref: x.ref, score: Number(s.toFixed(3)) };
     });
   }
@@ -358,23 +429,28 @@ export class Graph {
    * A turn that no longer exists is counted as gone, never an error: Recall re-indexes
    * rewritten transcripts, and seq values restart when it does.
    */
-  why({ fact, limit = 10 }) {
+  why({ fact, limit = 10, project_cwds = [] }) {
     const db = this.db;
+    const sc = this.view(project_cwds);
+    const scopes = this.lessonScopes();
     let edges = [], head = null;
     const parts = String(fact).split("|");
     if (parts.length === 3) {
-      edges = db.prepare("SELECT * FROM memory_edges WHERE src = ? AND rel = ? AND dst = ? ORDER BY valid_to IS NOT NULL, valid_from DESC").all(...parts);
-      if (edges.length) head = this.fact(edges[0]);
+      edges = db.prepare("SELECT * FROM memory_edges WHERE src = ? AND rel = ? AND dst = ? ORDER BY valid_to IS NOT NULL, valid_from DESC").all(...parts)
+        .filter(e => this.edgeIn(e, sc, scopes));
+      if (edges.length) head = this.fact(edges[0], sc);
     }
     if (!edges.length) {
-      const n = this.resolve(fact);
+      const n = this.resolve(fact, sc);
       if (!n) return { fact: null, turns: [], taught: [], gone: 0 };
-      head = this.summary(n);
-      edges = db.prepare("SELECT * FROM memory_edges WHERE src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC").all(n.id);
+      head = this.summary(n, sc);
+      edges = db.prepare("SELECT * FROM memory_edges WHERE src = ? AND rel = 'mentioned_in' ORDER BY valid_from DESC").all(n.id)
+        .filter(e => this.edgeIn(e, sc, scopes));
     }
     const lessons = [];
     for (const e of edges) for (const r of db.prepare(`SELECT l.module, l.kind, l.key, t.fact, t.at FROM memory_lessons l
         LEFT JOIN memory_taught t ON t.module = l.module AND t.kind = l.kind AND t.key = l.key WHERE l.edge = ?`).all(e.id)) {
+      if (!this.lessonIn(r.fact, sc)) continue;
       if (lessons.some(x => x.module === r.module && x.kind === r.kind && x.key === r.key)) continue;
       let text = null;
       try { text = JSON.parse(String(r.fact)).text ?? null; } catch {}
@@ -382,6 +458,7 @@ export class Graph {
     }
     const refs = [];
     for (const e of edges) for (const r of db.prepare("SELECT session, seq FROM memory_evidence WHERE edge = ? ORDER BY seq").all(e.id)) {
+      if (sc && !sc.sessions.has(String(r.session))) continue;
       if (!refs.some(x => x.session === r.session && x.seq === r.seq)) refs.push({ session: String(r.session), seq: Number(r.seq) });
     }
     const wanted = refs.slice(0, limit);
@@ -406,12 +483,13 @@ export class Graph {
   // ------------------------------------------------------------------ steering
 
   /** Pin or mute a node, or clear it with off. The one write a person makes directly. */
-  steer({ node, scope = "*", mode, off = false, who = null }) {
-    const n = this.resolve(node);
+  steer({ node, scope = "*", mode, off = false, who = null, project_cwds = [] }) {
+    const n = this.resolve(node, this.view(project_cwds));
     if (!n) throw new Error(`nothing in memory matches "${node}"`);
     if (off) this.db.prepare("DELETE FROM memory_focus WHERE node = ? AND scope = ? AND mode = ?").run(n.id, scope, mode);
     else this.db.prepare(`INSERT INTO memory_focus (node, scope, mode, at, who) VALUES (?,?,?,?,?)
       ON CONFLICT(node, scope) DO UPDATE SET mode = excluded.mode, at = excluded.at, who = excluded.who`).run(n.id, scope, mode, this.now(), who);
+    this.curator.bump();
     return { node: n.id, label: n.label, scope, mode: off ? null : mode };
   }
 
