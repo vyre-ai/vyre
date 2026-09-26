@@ -268,11 +268,26 @@ function unbase32(s, bytes) {
 /** A new account id: six base32 characters. */
 export const newAccountId = () => base32(crypto.randomBytes(4)).slice(0, 6);
 
-const skCheck = (acct, bytes) => base32(crypto.createHash("sha256").update(`vyre sk v2:${acct}:`).update(bytes).digest()).slice(0, 2);
+/** Luhn mod 32 over base32 characters: catches every single-character typo and most swaps. */
+function luhn32(chars) {
+  let sum = 0, factor = 2;
+  for (let i = chars.length - 1; i >= 0; i--) {
+    const v = B32.indexOf(chars[i]) * factor;
+    sum += Math.floor(v / 32) + (v % 32);
+    factor = factor === 2 ? 1 : 2;
+  }
+  return B32[(32 - (sum % 32)) % 32];
+}
+
+/** Two check characters: a Luhn mod 32 character (no single typo slips past) and a hash character. */
+const skCheck = (acct, bytes) => {
+  const body = base32(bytes);
+  return luhn32(acct + body) + base32(crypto.createHash("sha256").update(`vyre sk v2:${acct}:`).update(bytes).digest()).slice(0, 1);
+};
 
 /**
  * A Secret Key as people write it: `V2-<acct>-<26 base32>-<2 check>`. The 26 characters carry
- * 128 random bits; the two check characters (10 bits of a hash) catch a mistyped kit.
+ * 128 random bits; the two check characters catch a mistyped kit.
  * @param {string} acct @param {Buffer} bytes 16 bytes
  */
 export function formatSecretKey(acct, bytes) {

@@ -158,10 +158,15 @@ test("Secret Key: format, checksum and parsing", () => {
   const back = parseSecretKey(` ${sk.toLowerCase().replace(/-/g, " - ")} `);
   assert.equal(back.acct, "ABCDEF");
   assert.ok(back.bytes.equals(bytes));
-  // One changed character in the key is caught by the check characters.
-  const body = sk.split("-")[2];
-  const typo = sk.replace(body, (body[0] === "A" ? "B" : "A") + body.slice(1));
-  assert.throws(() => parseSecretKey(typo), /typo/);
+  // Every single changed character in the account or the key is caught, not just most of them.
+  const [, acct, body, check] = sk.split("-");
+  const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const whole = acct + body;
+  for (let i = 0; i < whole.length; i++) for (const c of B32) {
+    if (c === whole[i]) continue;
+    const t = whole.slice(0, i) + c + whole.slice(i + 1);
+    assert.throws(() => parseSecretKey(`V2-${t.slice(0, 6)}-${t.slice(6)}-${check}`), /typo/);
+  }
   assert.throws(() => parseSecretKey("V2-ABCDEF-SHORT"), /not a Vyre Secret Key/);
   assert.throws(() => parseSecretKey(sk.replace("ABCDEF", "ABCDEG")), /typo/);
 });
