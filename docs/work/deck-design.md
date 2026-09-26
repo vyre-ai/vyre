@@ -24,26 +24,44 @@ and docs share. The user found the Deck rudimentary: the new-agent form reads as
 
 ## Doing
 
-- Waiting for the user to pick A or B (or a mix).
-- Coral ban (lead, 27 Sep): attention options (violet recommended, honey, teal) on the canvas board
-  "Attention colour: pick one". Waiting for the pick. Ready: core/config/palette.js (roles, AA pair
-  list, contrast()), core/config/palette.test.js (AA for every pair, deck.css in sync), and the
-  hygiene test banning every coral variant repo-wide. Both fail until the propagation lands.
-- Propagation after the pick (one commit): ATTENTION in palette.js, deck.css (:root and paper),
-  TOKENS.md (table, menu-bar dot, voice), site/styles.css, site/start/start.css, site/index.html,
-  core/cli/style.js, core/vault/kit.js, local/capsule/app (main.js, capsule.js, capsule.css), the
-  old boards and deck-directions. Send values to capsule-pro (Theme.swift), mobile, phone-design.
-- Mockup bug found: `.vy button { color: inherit }` beat `.btn-p`, so primary labels were bone on
-  lime (1.1:1). Fixed with :where() resets.
+- The user picked Direction B (Studio): "direction is very right, not quite there yet". Hard
+  constraint: only a few fonts and a few colours. The second pass has NOT started; the canvas
+  still shows A and B with the full palette (last publish: canvas v10, commit a7e8cc6).
+- Reduced system for the second pass (first job after restart):
+  - Fonts: 2 families. Instrument Sans for all UI and text; JetBrains Mono only for commands, code
+    and IDs. No display sizes. Scale of 5: 12/16, 13/18, 15/22, 20/26, 28/34. Weights 400 and 600.
+    Buttons sentence-case sans (B), no mono caps labels except code.
+  - Colours: neutrals only (bg, panel, hover, rule, rule-strong, text, text-2, label) in dark and
+    paper; ONE accent lime (primary actions, focus, running); ONE attention (violet #B8A4FF dark,
+    #5B3FC4 paper, pending the user's pick). Drop recall gold, del-wash hue and every other hue.
+    Memory, success and info = neutrals plus an icon. No red anywhere.
+  - Meta text on any tint uses text-2 (label is 4.48:1 on paper washes, per phone-design).
+  - Add --beacon-badge-ink (#0E0D0C dark, #F4F1EA paper; phone-design found paper ink fails on
+    violet) or keep badges as primary-ink on the dot per theme.
 
 ## Next
 
-1. Write docs/design/deck.md (tokens, components, patterns, motion) for the chosen direction.
-2. Hand it to pwa (implements the Deck) and chat. chat asked for visuals for: New session sheet
-   (project / box folder / no folder; Vyre or an agent; first message), box folder browser, browser
-   terminal frame (xterm), beautified session view (tool cards, diffs, file previews, todos,
-   collapsed thinking, cost and time footer per turn, raw-view toggle), question card (multi-select,
-   Other, side-by-side previews) and permission card. Draw these in the chosen direction.
+1. Cut vyre.css and core/config/palette.js (+ palette.test.js PAIRS) to the reduced set above.
+2. Second pass on B only: stronger hierarchy and spacing, calmer cards (no box in box), command
+   bar, Chat side panel, describe-to-create agent flow, empty states with inline actions,
+   inline-editable drafts (Send and Discard only). Drop the A boards from the canvas.
+3. Add chat's 5 views in B: New session sheet (project / box folder / no folder; Vyre or an
+   agent; first message), box folder browser (recent, search, New session here, Open in
+   terminal), xterm frame, beautified session view (tool cards, diffs, file previews, todos,
+   collapsed thinking, cost and time footer per turn, raw-view toggle), question card
+   (multi-select, Other, side-by-side previews) and permission card.
+4. Verify: docs/design/deck-directions/render/render.sh (testbox headless Chrome, contrast pass,
+   clipping); look at every PNG. Publish from the scratch canvas folder (files under project/),
+   never with root = the repo folder (that published a stray root file once).
+   Canvas: https://claude.ai/artifact/7UkxdntcvSnwG9DB712CCj
+5. Write docs/design/deck.md for B; hand to pwa and chat.
+6. Answer phone-design: (a) "from memory" blocks become neutral (hover fill, text-2, a memory
+   icon); (b) --match lime wash survives as the accent's wash; (c) map phone sizes onto the 5-step
+   scale (22/26 -> 20 or 28, 17/16 -> 15, 13 -> 13, 12 -> 12) or agree a phone offset. Send them
+   the commit, role names, values and sizes.
+7. After the user picks the attention colour: repo-wide coral swap in one commit (list under
+   Doing in the previous revision: deck.css, TOKENS.md, site, core/cli/style.js,
+   core/vault/kit.js, local/capsule/app, old boards), then capsule-pro (Theme.swift), mobile.
 
 ## Needs from others
 
