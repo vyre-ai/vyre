@@ -18,7 +18,7 @@ The fastest path, in order:
 2. [Onboarding](get-started/onboarding.md): six screens in the browser. Your name, Claude sign-in, Tailscale, your address, your history, your devices.
 3. [Your first day](get-started/first-day.md): open the Capsule, start a thread in a project, launch an agent, store a secret, find something from last week.
 
-On a Mac with Tailscale signed in, the install starts here:
+On a Mac with Tailscale signed in, the install starts here (new to Tailscale? See [Tailscale, from zero](get-started/tailscale.md)):
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz

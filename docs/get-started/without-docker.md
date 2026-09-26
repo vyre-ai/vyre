@@ -20,7 +20,9 @@ else.
 - Claude Code: `npm install -g @anthropic-ai/claude-code`.
 - Tailscale on the machine itself, from <https://tailscale.com/download>. On Linux it must use
   its network interface (`tailscale0`); in userspace networking mode the onboarding stops at the
-  Tailscale step and says so.
+  Tailscale step and says so. New to Tailscale? See [Tailscale, from zero](tailscale.md); MagicDNS
+  and HTTPS certificates must be on ([step 4](tailscale.md#4-turn-on-magicdns) and
+  [step 5](tailscale.md#5-turn-on-https-certificates)).
 - On Linux: systemd.
 
 ## Install the package

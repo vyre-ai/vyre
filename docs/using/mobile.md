@@ -17,7 +17,8 @@ The phone reaches your box over Tailscale, like every other device (see
 ## Set up the phone
 
 1. Install the Tailscale app and sign in with the box owner's login. Onboarding's last step shows
-   a QR code for the Tailscale app and one for your box's `/now`.
+   a QR code for the Tailscale app and one for your box's `/now`. Step by step for iPhone and
+   Android: [Tailscale, from zero](../get-started/tailscale.md#2-install-tailscale-on-each-device).
 2. Open your box's address in Safari (iPhone) or Chrome (Android), for example
    `https://vyre.tail1234.ts.net/now`.
 3. Add it to the home screen. On an iPhone: the Share button, then Add to Home Screen. On Android:
@@ -121,7 +122,7 @@ approved until the box answers.
 ## What it will not do
 
 - It will not work off your tailnet. Without Tailscale connected on the phone, the address does
-  not load.
+  not load ([what to check](../get-started/tailscale.md#the-phone-cannot-open-the-address-but-the-mac-can)).
 - It will not show a draft's contents in a notification.
 
 Coming, from the mobile workstream (not on this branch): native iPhone and Android apps with Now,
@@ -132,4 +133,5 @@ on the phone for approvals.
 
 - [Deck](deck.md), every view in detail.
 - [Tailscale](tailscale.md), getting the phone onto your tailnet.
+- [Tailscale, from zero](../get-started/tailscale.md), if you have never used Tailscale.
 - [Security](../security/index.md), passkeys and what a phone may approve.

@@ -44,7 +44,7 @@ A failed module adds `· 1 failed (vyre modules)` to the second line.
 
 ### "Tailscale is not running"
 
-`vyre box add` (and `vyre up`, when it sets up a server) checks this Mac's Tailscale first and changes nothing on the server until it is up. Open Tailscale on the Mac, sign in, and run the command again. If Tailscale is not installed, the line is followed by its download link.
+`vyre box add` (and `vyre up`, when it sets up a server) checks this Mac's Tailscale first and changes nothing on the server until it is up. Open Tailscale on the Mac, sign in, and run the command again. If Tailscale is not installed, the line is followed by its download link. New to Tailscale? See [Tailscale, from zero](tailscale.md).
 
 ### "... is not Linux" or "this server has no /dev/net/tun"
 
@@ -74,7 +74,7 @@ This matters when you set up from the server itself (`curl ... | sh`). The page 
 
 ### "HTTPS certificates are off for your tailnet"
 
-Tailscale certificates are off for a new tailnet. On the **Your address** step, press **Turn on HTTPS**, flip the switch on the Tailscale page that opens, come back and press **Check again**.
+Tailscale certificates are off for a new tailnet. On the **Your address** step, press **Turn on HTTPS**, flip the switch on the Tailscale page that opens, come back and press **Check again**. Step by step: [Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates).
 
 ### "Tailscale runs in userspace networking mode"
 
@@ -103,7 +103,7 @@ Without Docker, the token goes in `~/.vyre/env`. To go back to the tailnet name,
 
 ### Your address does not open
 
-Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the box. Once the address works, the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel.
+Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the box. Once the address works, the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel. If the device is on the tailnet and the address still does not load, check MagicDNS: see [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
 
 ## The box
 
@@ -153,7 +153,7 @@ The reason follows on the same line:
 
 ### "the box serves ... and this Mac is signed in to Tailscale as ..."
 
-The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tailscale as the box's owner, then run `vyre up`.
+The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tailscale as the box's owner, then run `vyre up`. See [Sign every device into the same account](tailscale.md#3-sign-every-device-into-the-same-account).
 
 ### "more than one Vyre box answers on your tailnet"
 
@@ -168,7 +168,9 @@ The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pai
 You approved the pairing in the Deck on the Mac you are pairing. The box takes the approval only from another of your devices. Open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
 
 > [!GAP]
-> With only the Mac, a pairing cannot be approved yet. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
+> (or another device on your tailnet) with your passkey. See
+> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 ### "That code does not match. Check the code on the Mac and try again."
 
@@ -246,4 +248,5 @@ A thread that needs permission stops and asks. `vyre agents` shows it as waiting
 
 - [Install](install.md) and [Onboarding](onboarding.md), the steps in order
 - [Looking after the box](../using/box-care.md): updates, backups, logs
+- [Tailscale, from zero](tailscale.md#when-something-is-wrong): tailnet snags, device by device
 - [CLI reference](../reference/cli.md)

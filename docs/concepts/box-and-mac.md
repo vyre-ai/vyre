@@ -163,7 +163,9 @@ The `link` module turns the two machines into one system:
 - **The Mac's sessions on the box.** The box reads the paired Mac's sessions through the link. See the next section.
 
 > [!GAP]
-> The Deck open on the Mac being paired cannot approve that Mac. Approve it from your phone or another device. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
+> (or another device on your tailnet) with your passkey. See
+> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 ```
 vyre link                 # on the Mac: paired or not, and whether the box answers

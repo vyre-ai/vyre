@@ -91,7 +91,8 @@ your Claude subscription. The token is in the Vault." (or "Signed in with an API
 
 **Put this machine on your tailnet.** Press **Connect**. Tailscale's sign-in opens in a new tab:
 sign in with the same account as your Mac. No account? Signing in with Google, GitHub, Apple or
-Microsoft makes one. Vyre never sees your password.
+Microsoft makes one. Vyre never sees your password. New to Tailscale? See
+[Tailscale, from zero](tailscale.md).
 
 The three rows tick as you go: **Open Tailscale's sign-in**, **Sign in with your Tailscale
 account**, and **This machine joins your tailnet**, which then names the machine and its tailnet
@@ -133,14 +134,16 @@ in [Install, step 8](install.md#8-your-address).
 > [!SNAG] "HTTPS certificates are off for your tailnet"
 > Tailscale has HTTPS off for new tailnets. Press **Turn on HTTPS**: Tailscale's DNS settings
 > open. Under HTTPS Certificates, turn it on. Come back and press **Check again**. Turning it on
-> publishes the machine's name in public Certificate Transparency logs.
+> publishes the machine's name in public Certificate Transparency logs. Step by step:
+> [Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates).
 
 > [!SNAG] "Pick your name in step 1 first."
 > The address needs your name. Press **Go to step 1**, finish it, and come back.
 
 > [!SNAG] The new address does not open in your browser
 > The browser runs on your Mac, so your Mac must be on the tailnet: open the Tailscale menu and
-> check it is connected, as the same account you used in step 3.
+> check it is connected, as the same account you used in step 3. If it is, see
+> [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
 
 > [!SNAG] "This browser cannot create a passkey."
 > Open the link in Safari or Chrome, on a device on your tailnet. **Continue setting up** skips
@@ -201,7 +204,8 @@ Capsule." The Capsule itself is in [Install, step 14](install.md#14-open-the-cap
 > devices. Open Vyre on your phone (the card beside this one), and approve the request on Now.
 
 > [!GAP]
-> The step says to type the code here, but on the Mac being paired that is refused. See
+> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
+> (or another device on your tailnet) with your passkey. See
 > [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 **Open Vyre on your phone**:
@@ -209,7 +213,7 @@ Capsule." The Capsule itself is in [Install, step 14](install.md#14-open-the-cap
 1. **Install Tailscale**: a QR code for `tailscale.com/download`, and the account to sign in with.
    When Tailscale lists your phone, the step is ticked and says "Already on your tailnet:" and the
    phone's name. A phone that is offline in Tailscale is named, with "Open the Tailscale app and
-   turn it on, then scan."
+   turn it on, then scan." Phone steps: [Install Tailscale on each device](tailscale.md#2-install-tailscale-on-each-device).
 2. **Open** your address: a QR code for your address with `/now`. Before the address works it
    says "After Tailscale and your address".
 3. **Add to Home Screen**: "Share, then Add to Home Screen. It opens like an app."

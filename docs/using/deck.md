@@ -216,7 +216,7 @@ for up to a week. Nothing you can send or approve works offline.
 - It never shows a vault value. There is no API for one.
 - It never renders text from a thread as HTML. Model output is untrusted.
 - It is not reachable from the public internet. Without Tailscale on a device, that device cannot
-  open it.
+  open it. New to Tailscale? See [Tailscale, from zero](../get-started/tailscale.md).
 
 ## Next
 

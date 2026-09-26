@@ -13,7 +13,8 @@ makes between your own devices, and every device you use Vyre from joins that ta
 no Vyre password: when a device connects, vyred asks Tailscale who is on the other end
 (`tailscale whois` of the connection's source address) and serves only the box's owner, one
 Tailscale login. Why it works this way is in [ADR 0002](../adr/0002-network-and-identity.md);
-how the pieces fit is in [Tailnet](../concepts/tailnet.md).
+how the pieces fit is in [Tailnet](../concepts/tailnet.md). New to Tailscale? See
+[Tailscale, from zero](../get-started/tailscale.md).
 
 ## Know your box's address
 
@@ -36,13 +37,15 @@ vyre name
 Tailscale gives a ts.net name a certificate only when HTTPS certificates are on for your tailnet.
 If they are off, onboarding says so and offers "Turn on HTTPS", which opens
 `https://login.tailscale.com/admin/dns`. Turn on HTTPS Certificates there, then choose
-Check again. From a terminal, `vyre name ts.net` retries.
+Check again. From a terminal, `vyre name ts.net` retries. Step by step:
+[Turn on HTTPS certificates](../get-started/tailscale.md#5-turn-on-https-certificates).
 
 ## Connect a device
 
 On each device you want to use:
 
-1. Install Tailscale and sign in with the same login as the box's owner.
+1. Install Tailscale and sign in with the same login as the box's owner
+   ([per device](../get-started/tailscale.md#2-install-tailscale-on-each-device)).
 2. Open the box's address in a browser. The [Deck](deck.md) opens.
 
 A device signed in as anyone else gets `403 not_owner` and nothing more. So does a tagged device:
@@ -60,7 +63,7 @@ For the phone, see [Mobile](mobile.md).
 On the Mac, with Tailscale signed in as the owner:
 
 ```
-npm install -g vyre
+npm install -g https://vyre.run/box/vyre.tgz
 vyre up
 ```
 
@@ -87,10 +90,9 @@ Then the Mac pairs with the box:
    ```
 
 > [!GAP]
-> A Mac cannot approve its own pairing, and the Mac's browser is on the tailnet as that Mac, so
-> the Deck open on the Mac being paired cannot approve it. Open the Deck on your phone or another
-> computer on your tailnet. A passkey you made on the Mac works on an iPhone when iCloud Keychain
-> is on. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
+> (or another device on your tailnet) with your passkey. See
+> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 The first connection pins the box's Tailscale node, so a different machine answering at the same
 name later is refused. `vyre link unpair` forgets the box on the Mac, or a Mac on the box
@@ -119,18 +121,29 @@ what lets vyred name an owner.
 | a certificate error | HTTPS certificates are off for the tailnet | turn them on, then `vyre name ts.net` |
 | `vyre up` on the Mac says the box did not answer | the Mac is off the tailnet, or the box is offline | start Tailscale on the Mac, then `vyre up` again |
 
-More in [Troubleshooting](../get-started/troubleshooting.md).
+More in [Troubleshooting](../get-started/troubleshooting.md) and
+[When something is wrong](../get-started/tailscale.md#when-something-is-wrong).
 
 ## What it will not do
 
 - It never reads an identity header. `Tailscale-User-*` and `X-Forwarded-*` change nothing.
 - It never serves a process on the box as if it were you on a device: a connection from the box's
   own tailnet address is refused.
-- It does not use `tailscale serve` or Funnel. Nothing about your box is public.
+- It never changes your tailnet: no policy edit, no admin setting, and no `tailscale serve`,
+  `funnel` or `lock` command. Nothing about your box is public unless you publish a webhook route
+  with Funnel yourself.
+- It turns on none of the optional features below by itself.
 
-Coming, from the tailnet workstream (not on this branch): link health in the Deck and Capsule,
-sending files to the box with Taildrop, shares with Taildrive, Tailscale SSH for `vyre box add`,
-Tailnet Lock status, guest access, and agents' computers as their own tailnet nodes.
+## Optional Tailscale features
+
+Each is off until you turn it on, and Vyre works fully without them: Taildrive (the box's project
+folders on your Mac, read-only), Taildrop (`vyre send` a file to the box), Tailscale SSH for
+`vyre box add`, Tailnet Lock (Vyre reads it; you turn it on), Glass egress through your Mac as an
+exit node, vault passes that also need a policy grant, guests from another tailnet watching
+Glass, and signed webhooks through Funnel. A tailnet node for each agent's computer is not live
+yet. How to set up each one, with the policy entries it needs:
+[Optional: more of Tailscale in Vyre](../get-started/tailscale.md#optional-more-of-tailscale-in-vyre).
+The reasons behind them are in [ADR 0014](../adr/0014-tailnet.md).
 
 ## Next
 

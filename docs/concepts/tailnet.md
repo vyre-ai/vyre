@@ -16,7 +16,7 @@ The Deck is served at one HTTPS address on the tailnet:
 
 | Address | When | Certificate |
 |---|---|---|
-| `https://vyre.tail1234.ts.net` | the default; your box's Tailscale name | `tailscale cert`; needs HTTPS turned on for your tailnet in the Tailscale admin console |
+| `https://vyre.tail1234.ts.net` | the default; your box's Tailscale name | `tailscale cert`; needs HTTPS turned on for your tailnet in the Tailscale admin console ([how](../get-started/tailscale.md#5-turn-on-https-certificates)) |
 | `https://alex.vyre.run` | when you claim a `vyre.run` name | Let's Encrypt, by DNS challenge |
 
 A `vyre.run` name is an A record pointing at the box's tailnet IPv4 address (a `100.x` address). It resolves on the public internet, but nothing off your tailnet can reach it. Today the record is written with your own Cloudflare token for the zone (`CLOUDFLARE_VYRE_TOKEN` in `~/.vyre/env`, or the vault item `cloudflare-vyre-token`). The hosted name directory at `api.vyre.run` is not built yet.
@@ -86,5 +86,6 @@ These live under `network` in `~/.vyre/config.json`. See [config](../reference/c
 ## Next
 
 - [Tailscale](../using/tailscale.md): getting your devices onto the tailnet.
+- [Tailscale, from zero](../get-started/tailscale.md): an account, MagicDNS, HTTPS and the optional features, step by step.
 - [The box and the Mac](box-and-mac.md): how the Mac reaches the box.
 - [Presence](presence.md): proving a person is there.

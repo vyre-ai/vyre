@@ -25,7 +25,7 @@ one path, start to finish, in about fifteen minutes. Other ways to install are a
       server gets its own copy.
 - [ ] Tailscale on the Mac, signed in. Get it from <https://tailscale.com/download/mac>. No
       account? Signing in with Google, GitHub, Apple or Microsoft makes one; the free plan is
-      enough.
+      enough. New to Tailscale? See [Tailscale, from zero](tailscale.md).
 - [ ] A Linux server you can `ssh` into, with an account that can use `sudo`. Docker is
       installed for you if it is missing, after you say yes.
 - [ ] A Claude subscription (Pro or Max), or an Anthropic API key.
@@ -34,7 +34,8 @@ one path, start to finish, in about fifteen minutes. Other ways to install are a
 > [!WHY] Why Tailscale?
 > Your box never opens a port to the internet. Tailscale puts your server, Mac and phone on one
 > private network (your tailnet), and Vyre only answers devices on it. Vyre also uses your
-> Tailscale login to know it is you, so there is no Vyre password to steal.
+> Tailscale login to know it is you, so there is no Vyre password to steal. More in
+> [Tailscale, from zero](tailscale.md#what-tailscale-is).
 
 ## 1. Install Vyre on your Mac
 
@@ -85,7 +86,7 @@ vyre up
 > [!SNAG] Tailscale is not installed, or Tailscale is signed out
 > `vyre up` prints that line above the question. Install Tailscale from
 > <https://tailscale.com/download/mac>, open it, sign in, then run `vyre up` again. Vyre never
-> changes your Mac's Tailscale settings itself.
+> changes your Mac's Tailscale settings itself. Step by step: [Tailscale, from zero](tailscale.md#2-install-tailscale-on-each-device).
 
 ## 3. Choose your server
 
@@ -196,6 +197,7 @@ The screen then says "Signed in with your Claude subscription. The token is in t
 
 This puts the server on your tailnet. Press **Connect**. Tailscale's sign-in opens in a new tab:
 sign in with the **same account as your Mac**. The page waits, then shows the server joined.
+New to Tailscale? See [Tailscale, from zero](tailscale.md).
 
 ![The Tailscale screen with all three rows ticked: the server has joined the tailnet and shows its name and IP](shots/onboarding-tailscale.png)
 
@@ -243,11 +245,12 @@ The terminal is done. The rest happens in the browser. On the setup tab, press
 > Tailscale has HTTPS off for new tailnets. Press **Turn on HTTPS**: Tailscale's DNS settings
 > open. Under HTTPS Certificates, turn it on. Come back to the Vyre tab and press
 > **Check again**. Turning it on publishes the server's name in public Certificate Transparency
-> logs.
+> logs. Step by step: [Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates).
 
 > [!SNAG] The new address does not open in your browser
 > The browser runs on your Mac, so your Mac must be on the tailnet: open the Tailscale menu and
-> check it is connected, as the same account you used in step 7.
+> check it is connected, as the same account you used in step 7. If it is, see
+> [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
 
 ## 9. Your passkey
 
@@ -304,7 +307,8 @@ the Deck opens at your address.
 Your address only opens on your own devices on your tailnet, so the phone needs Tailscale too.
 
 1. Scan the **Install Tailscale** code from the **Your devices** screen, or get Tailscale from
-   your app store. Sign in with the same account as your Mac, and turn its VPN switch on.
+   your app store. Sign in with the same account as your Mac, and turn its VPN switch on
+   ([iPhone and Android steps](tailscale.md#2-install-tailscale-on-each-device)).
 2. Scan the second code, or open `https://vyre.tail1234.ts.net/now` in the phone's browser. On an
    iPhone, use Safari.
 3. On an iPhone, tap Share, then **Add to Home Screen**, then **Add**. On Android, use Chrome's
@@ -318,7 +322,8 @@ Now shows a **Set up this phone** card for notifications and a passkey. More in
 > [!SNAG] The phone says it cannot find the server, or the page never loads
 > Open the Tailscale app. Check three things: it is signed in as the same account as your Mac,
 > the connection switch (the VPN) is on, and your phone is listed on the Mac's Tailscale menu.
-> Then reload the page. On iPhone, allow the VPN configuration when iOS asks.
+> Then reload the page. On iPhone, allow the VPN configuration when iOS asks. More in
+> [Tailscale, from zero](tailscale.md#the-phone-cannot-open-the-address-but-the-mac-can).
 
 ## 13. Approve your Mac
 
@@ -340,9 +345,9 @@ vyre link
 Once you approve it, `vyre link` says `linked to` and names your box.
 
 > [!GAP]
-> The Deck open on the Mac being paired cannot approve it, and with only the Mac there is no
-> other way yet. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck). Everything else,
-> including the Deck and your phone, works without it.
+> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
+> (or another device on your tailnet) with your passkey. See
+> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 > [!SNAG] "That code does not match. Check the code on the Mac and try again."
 > Type the code exactly as `vyre up` or `vyre link` shows it on the Mac, such as `482-913`.
