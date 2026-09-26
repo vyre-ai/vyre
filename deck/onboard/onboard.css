@@ -106,7 +106,13 @@
 .made { display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px; color: var(--text-2); }
 .made b { font-weight: 500; color: var(--text); }
 
-.devices { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: var(--r-3); }
+.devices { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: var(--r-3); }
+.ob-collapse { margin-top: 20px; }
+.ob-collapse summary { cursor: pointer; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.ob-collapse p { margin-top: 10px; }
+.ob-end { max-width: 520px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.ob-end .brand { margin-bottom: 24px; }
+.ob-end-open { margin-top: 24px; }
 .devices > div { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .devices > div + div { border-left: 1px solid var(--rule); }
 .qr { width: 184px; height: 184px; padding: 12px; background: #F1EEE6; border-radius: var(--r-2); }
