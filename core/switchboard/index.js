@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { translate, cut } from "./translate.js";
+import { translate, cut, clip, CAPS } from "./translate.js";
 import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
@@ -59,6 +59,10 @@ export const MIGRATIONS = [
   `CREATE TABLE threads_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT NOT NULL, text TEXT NOT NULL, surface TEXT NOT NULL,
      at INTEGER NOT NULL, delivered_at INTEGER, via TEXT, replied_at INTEGER);
    CREATE INDEX threads_inbox_thread ON threads_inbox (thread, delivered_at);`,
+  // Questions (AskUserQuestion) as well as permissions, and what a card shows for each: the
+  // questions, or the command, file and change a permission is for (JSON, redacted and capped).
+  `ALTER TABLE threads_asks ADD COLUMN kind TEXT NOT NULL DEFAULT 'permission';
+   ALTER TABLE threads_asks ADD COLUMN detail TEXT;`,
 ];
 
 
@@ -113,15 +117,26 @@ export function pluginDir() {
 }
 
 /**
- * What a person approves when they answer an ask: the decision, the tool, where it goes, and the thread.
- * @param {Switchboard} sb @param {{ ask: string, decision: string }} i
+ * What a person approves when they answer an ask: the decision, the tool, where it goes, and the
+ * thread; for a question, the answers they are giving.
+ * @param {Switchboard} sb @param {{ ask: string, decision: string, answers?: Record<string, any> }} i
  */
 export function answerSummary(sb, i) {
   const a = /** @type {any} */ (sb.asks.get(i.ask));
   if (!a) return `${i.decision} permission question ${i.ask}`;
   const t = sb.record(a.thread);
+  const thread = `(thread ${t && t.name ? t.name : String(a.thread).slice(0, 8)})`;
+  if (a.kind === "question") {
+    if (i.decision === "deny") return `Decline the question${a.summary ? `: ${a.summary}` : ""} ${thread}`;
+    const said = Object.entries(i.answers || {}).map(([q, v]) => {
+      const shown = (a.questions || []).find(x => x.question === q);
+      return `Answer ${shown && shown.header ? shown.header : cut(q, 80)}: ${cut(clip(Array.isArray(v) ? v.join(", ") : String(v ?? ""), CAPS.answer), 120)}`;
+    });
+    return `${said.length ? said.join("; ") : "Answer the question"} ${thread}`;
+  }
   const where = a.destination ? ` to ${a.destination}` : "";
-  return `${i.decision === "allow" ? "Allow" : "Deny"} ${a.tool}${where}${a.summary ? `: ${a.summary}` : ""} (thread ${t && t.name ? t.name : String(a.thread).slice(0, 8)})`;
+  const verb = i.decision === "always" ? "Always allow" : i.decision === "allow" ? "Allow" : "Deny";
+  return `${verb} ${a.tool}${where}${a.summary ? `: ${a.summary}` : ""} ${thread}`;
 }
 
 /**
@@ -141,7 +156,9 @@ export class Switchboard {
     this.deps = deps;
     this.db = deps.db;
     this.leases = new Leases(deps.db);
-    this.asks = new Asks(deps.db);
+    /** @type {Map<string, any[]>} Claude Code's permission suggestions per open ask, in memory only (what "always" hands back) */
+    this.suggestions = new Map();
+    this.asks = new Asks(deps.db, id => this.suggestions.has(id));
     /** @type {Map<string, any>} live sessions: id -> { proc, launch, message, pending, timer, lastPrompt } */
     this.live = new Map();
     this.run = deps.run || defaultRun;
@@ -190,7 +207,8 @@ export class Switchboard {
     catch (e) {
       if (!/looks like a secret/.test(/** @type {Error} */ (e).message)) throw e;
       const safe = { thread };
-      for (const [k, v] of Object.entries(payload)) safe[k] = typeof v === "string" && k !== "tool" && k !== "id" && k !== "ask" ? "[withheld: looked like a credential]" : v;
+      for (const [k, v] of Object.entries(payload)) safe[k] = typeof v === "string" && k !== "tool" && k !== "id" && k !== "ask" && k !== "kind" ? "[withheld: looked like a credential]"
+        : k === "questions" || k === "answers" ? "[withheld: looked like a credential]" : v;   // an ask's words are nested
       return this.deps.emit(type, safe, where);
     }
   }
@@ -330,11 +348,16 @@ export class Switchboard {
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
     }
     if (t.ask) {
-      const a = this.asks.raise({ thread: id, request_id: t.ask.request_id, tool: t.ask.tool, summary: t.ask.summary, destination: t.ask.destination, reason: t.ask.reason ? cut(t.ask.reason) : null });
+      const a = this.asks.raise({ thread: id, request_id: t.ask.request_id, tool: t.ask.tool, summary: t.ask.summary, destination: t.ask.destination,
+        reason: t.ask.reason ? cut(clip(t.ask.reason, 2000)) : null, kind: t.ask.kind, questions: t.ask.questions, detail: t.ask.detail });
       st.inputs = st.inputs || new Map();
       st.inputs.set(a.id, t.ask.input);                                    // kept in memory only, to hand back on allow
+      if (t.ask.suggestions) this.suggestions.set(a.id, t.ask.suggestions);
       this.set(id, { status: "waiting" });
-      this.emit("ask.raised", { ask: a.id, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null }, id, project);
+      // Small: a question's options without their previews, and never a permission's detail.
+      // Surfaces read the whole card from threads.asks.
+      const questions = a.kind === "question" ? { questions: (a.questions || []).map(q => ({ ...q, options: q.options.map(({ preview, ...o }) => o) })) } : {};
+      this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null, ...questions }, id, project);
     }
     if (t.cancel) {
       const a = this.asks.byRequest(id, t.cancel);
@@ -443,10 +466,13 @@ export class Switchboard {
     this.emit("thread.stopped", { code: code ?? null, reason }, id, rec ? rec.project : null);
   }
 
-  closeAsk(a, decision, by) {
+  /** @param {any} a @param {string} decision @param {string|null} by @param {Record<string, string>|null} [answers] what was chosen, as shown */
+  closeAsk(a, decision, by, answers = null) {
+    this.suggestions.delete(a.id);
     if (!this.asks.close(a.id, decision, by)) return false;
     const rec = this.record(a.thread);
-    this.emit("ask.answered", { ask: a.id, decision, by: by || null, tool: a.tool, summary: a.summary || null }, a.thread, rec ? rec.project : null);
+    this.emit("ask.answered", { ask: a.id, decision, by: by || null, tool: a.tool, summary: a.summary || null, ...(answers ? { answers } : {}) },
+      a.thread, rec ? rec.project : null);
     return true;
   }
 
@@ -582,19 +608,57 @@ export class Switchboard {
     return { thread: id, ...r };
   }
 
-  /** Answer a permission question. The ask id is the capability; the decision reaches Claude Code first, then the row closes. */
-  answer(askId, decision, by, message) {
+  /**
+   * Answer a permission question or a question. The ask id is the capability; the decision reaches
+   * Claude Code first, then the row closes. A question is answered with `answers` (keyed by the
+   * question as shown) or declined with "deny"; "always" allows and hands back Claude Code's suggestions.
+   * @param {string} askId @param {"allow"|"deny"|"always"} decision @param {string} by @param {string} [message]
+   * @param {Record<string, string|string[]>} [answers]
+   */
+  answer(askId, decision, by, message, answers) {
     const a = this.asks.get(askId);
     if (!a) throw new Error(`no ask ${askId}`);
     if (a.state !== "open") return { ask: askId, answered: false, note: `already ${a.state}${a.decision ? " (" + a.decision + ")" : ""}` };
     const st = this.live.get(a.thread);
     if (!st) { this.closeAsk(a, "cancelled", "thread stopped"); return { ask: askId, answered: false, note: "the thread has stopped" }; }
     const input = st.inputs && st.inputs.get(askId);
-    st.proc.write(answerLine(a.request_id, decision, input, message));
+    let extra = {}, shown = null;
+    if (a.kind === "question" && decision !== "deny") {
+      if (decision === "always") throw new Error("a question is answered (allow with answers) or declined (deny); always is for permissions");
+      ({ sent: extra, shown } = this.questionAnswers(a, input, answers));
+    } else if (decision === "always") {
+      const permissions = this.suggestions.get(askId);
+      if (!permissions) throw new Error(`always allow is not on offer for ask ${askId}; allow or deny it`);
+      extra = { permissions };
+    }
+    st.proc.write(answerLine(a.request_id, decision, input, message, extra));
     st.inputs && st.inputs.delete(askId);
-    this.closeAsk(a, decision, by);
+    this.closeAsk(a, decision, by, shown);
     if (this.asks.open(a.thread).length === 0) this.set(a.thread, { status: "working" });
     return { ask: askId, answered: true, decision };
+  }
+
+  /**
+   * A question's answers, checked against its questions. Surfaces key them by the question as shown
+   * (redacted and capped); Claude Code expects its own text, so each is matched to its question by
+   * position. Returns what is sent, and what the ask.answered event may say (shown keys, capped).
+   * @param {any} a @param {any} input @param {Record<string, string|string[]>|undefined} answers
+   */
+  questionAnswers(a, input, answers) {
+    const shownQs = a.questions || [];
+    const realQs = input && Array.isArray(input.questions) ? input.questions : shownQs;
+    /** @type {Record<string, string>} */ const sent = {};
+    /** @type {Record<string, string>} */ const shown = {};
+    for (const [k, v] of Object.entries(answers || {})) {
+      let n = shownQs.findIndex(q => q.question === k);
+      if (n < 0) n = realQs.findIndex(q => q && q.question === k);
+      if (n < 0 || !realQs[n]) throw new Error(`ask ${a.id} has no question "${cut(k, 80)}"`);
+      const text = (Array.isArray(v) ? v.map(String).join(", ") : String(v ?? "")).slice(0, 4000);
+      sent[String(realQs[n].question)] = text;
+      shown[shownQs[n] ? shownQs[n].question : cut(k, CAPS.question)] = clip(text, CAPS.answer);
+    }
+    if (!Object.keys(sent).length) throw new Error("answer a question with answers: { [question]: answer }, or decline it with deny");
+    return { sent: { answers: sent }, shown };
   }
 
   async stop(id) {
@@ -772,13 +836,14 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
 
-    tool("threads.asks", "Permission questions waiting on the user, oldest first. A surface that reconnects reads these; events alone cannot say what is open now.",
+    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first, each with its kind and what a card shows (questions, or detail). A surface that reconnects reads these; events alone cannot say what is open now.",
       { type: "object", properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "read questions"); return sb.asks.open(i.thread).map(({ request_id, ...a }) => a); });
 
-    tool("threads.answer", "Answer a permission question: allow or deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
-      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny"] }, message: str, surface: str } },
-      async (i, { caller }) => sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message),
+    tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
+      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,
+        answers: { type: "object", additionalProperties: { type: "string" } } } },
+      async (i, { caller }) => sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers),
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
