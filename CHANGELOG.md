@@ -25,6 +25,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   created, updated in place and deleted (0 left), and a Let's Encrypt staging account was
   created. Staging refused the `_vyre-test` order with `rejectedIdentifier`, as expected for an
   underscore label, so issuance itself still needs a real name.
+- The `names` module (role box). vyred serves the Deck on the box's tailnet addresses with its
+  own certificate. It identifies each connection by `tailscale whois` of its source address and
+  serves only `network.owner`, from a node that is not the box itself and is not tagged. Headers
+  are never trusted (ADR 0002). Tools:
+  - `names.status`, `names.check`, `names.claim` (A record, then DNS-01 certificate, then serve,
+    in the background);
+  - `names.fallback` (ts.net with `tailscale cert`), `names.release`, `names.connect`
+    (`tailscale up`), `names.owner`;
+  - the internal `names.claim-code`, a one-time link for a tagged box.
+
+  Renewal runs daily at 30 days left. Under systemd the listener takes fd 3 from the socket unit.
+  Exercised on a Mac against real Tailscale (read-only): the listener bound only the two tailnet
+  addresses, loopback could not reach it, and a request from the box itself with forged
+  `Tailscale-User-Login` and `x-vyre-caller` headers got 403. Real `whois` passed the owner's
+  other devices and refused a node of another login.
 
 ### Shared core for the parallel workstreams (2026-09-26)
 
