@@ -21,6 +21,9 @@ The status is `draft` because several rules are only partly enforced.
 
 The module registry has a hook for a rules check on every tool call, but vyred does not wire one in today. Tool calls through vyred are checked for input shape, allowed callers and presence; the rules themselves run in Claude Code's hook.
 
+> [!GAP]
+> vyred does not run the Rules on tool calls yet. See [known gaps](../known-gaps.md#rules-do-not-run-on-calls-through-vyred).
+
 ## 1. Nothing goes out as you until you have seen the final words
 
 Enforced:

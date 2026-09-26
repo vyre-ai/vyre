@@ -12,6 +12,9 @@ Vyre runs Claude Code on a server you own and puts it on your Mac and your phone
 your Mac, Vyre sets up the server over SSH, and you finish in the browser. Setup takes about ten
 minutes. Why it works this way is in [ADR 0008](../adr/0008-install-journey.md).
 
+> [!GAP]
+> The start page on vyre.run is older than this page. Where they differ, follow this one. See [known gaps](../known-gaps.md#the-vyrerunstart-page-is-older-than-these-docs).
+
 ## What you need
 
 - A Mac with Node 22.5 or newer (`node --version`) and Claude Code.
@@ -121,6 +124,9 @@ Then the Mac asks the box to pair:
 Approve it in the Deck, check the code matches, and confirm with your passkey. A terminal on the
 box cannot approve a Mac on its own: `vyre link approve` there points you to the Deck. `vyre link`
 on the Mac says when it is paired.
+
+> [!GAP]
+> There is no Deck screen that approves a pairing yet, so this step may stall. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
 
 The terminal ends with:
 

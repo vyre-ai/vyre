@@ -84,6 +84,9 @@ command points you there. The first connection pins the box's Tailscale node, so
 machine answering at the same name later is refused. `vyre link unpair` forgets the box on the
 Mac, or a Mac on the box.
 
+> [!GAP]
+> There is no Deck screen that approves a pairing yet. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+
 Vyre never runs `tailscale up`, `set` or `logout` on your Mac. Your Mac's Tailscale stays yours.
 
 ## Sign a headless box in without a browser

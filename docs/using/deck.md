@@ -86,6 +86,9 @@ Settings starts with Setup: every onboarding step (you, Claude Code, Tailscale, 
 your history, your devices), whether it is done, and a way to finish one you skipped. `vyre index`
 does the history step from a terminal.
 
+> [!GAP]
+> The command shown beside each step (`vyre up --step ...`) does not exist in the CLI. Finish the step in the Deck or run `vyre up` again. See [known gaps](../known-gaps.md#the-decks-setup-commands-name-a-flag-the-cli-lacks).
+
 Other sections: the assistant's name and instructions, Claude Code, network, history and memory,
 lessons, notifications (see [Mobile](mobile.md#turn-on-notifications)), security (add a passkey),
 modules, appearance (dark or paper), and this machine. `/settings#security` or

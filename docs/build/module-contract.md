@@ -129,6 +129,9 @@ export default {
 
 The spec also names `ctx.projects`. It does not exist; call `ctx.call("projects.list", {})` instead.
 
+> [!GAP]
+> Spec Section 5.2 lists `ctx.projects`; the code has none. See [known gaps](../known-gaps.md#ctxprojects-does-not-exist).
+
 Never import another module's files. `ctx.call` is the only way one module uses another.
 
 ## A tool definition
@@ -181,6 +184,9 @@ Every call runs these checks, in order:
 Responses are `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 
 The spec says every call also passes through the Rules. The registry has the hook for it, but vyred does not wire one in today; the Rules run in Claude Code's `PreToolUse` hook instead. See [the security floor](../concepts/floor.md).
+
+> [!GAP]
+> vyred does not run the Rules on tool calls yet. See [known gaps](../known-gaps.md#rules-do-not-run-on-calls-through-vyred).
 
 ## Next
 

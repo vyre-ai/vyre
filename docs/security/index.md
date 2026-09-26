@@ -63,7 +63,7 @@ Chrome's debugging port inside a computer is never exposed without authenticatio
 
 If you find a security problem, report it privately to the maintainers. Do not open a public issue, and do not include a working exploit against someone else's box.
 
-The project has not published a security contact yet. Until it does, this section will carry it; the address will have the shape `security@example.com`. Include what you found, the commit or version (`vyre version`), and the steps to see it.
+Email security@vyre.run. Include what you found, the commit or version (`vyre version`), and the steps to see it.
 
 ## Where to go next
 

@@ -85,6 +85,9 @@ vyre vault totp harlow-portal
   code**. Fill types the login into the app in front through a helper; the value never returns
   to the Capsule (`vault.fill.native`).
 
+> [!GAP]
+> The `vault.caps` description says reveal is off by default; vyred has it on, behind presence. See [known gaps](../known-gaps.md#the-vault-says-reveal-is-off-by-default).
+
 ## Let an agent, module or watcher use an item
 
 A grant lets one module, or one watcher, fetch one item. Agents run as the `agents` module, so an

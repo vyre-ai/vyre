@@ -7,7 +7,8 @@
 //   blocks   ATX and setext headings (unique GitHub-style ids), paragraphs, fenced code with ``` or
 //            ~~~ (language class from the info string), bullet and ordered lists with nesting,
 //            multi-paragraph items, tight/loose and task items, blockquotes (and GFM alerts,
-//            `> [!NOTE]`), GFM tables with alignment, horizontal rules, link reference definitions
+//            `> [!NOTE]`, plus `> [!GAP]` for a known gap), GFM tables with alignment, horizontal
+//            rules, link reference definitions
 //   inline   emphasis and strong (CommonMark delimiter rules, so snake_case stays plain), ~~strike~~,
 //            code spans, links and images (inline and reference), autolinks <https://...>, hard
 //            breaks (two spaces or a backslash before the newline), backslash escapes, entities
@@ -46,7 +47,9 @@ const reSetext1 = /^ {0,3}=+[ \t]*$/;
 const reSetext2 = /^ {0,3}-+[ \t]*$/;
 const reDelimRow = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 const reRefDef = /^ {0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]+)>?(?:[ \t]+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?[ \t]*$/;
-const reAlert = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*$/i;
+const reAlert = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|GAP)\][ \t]*$/i;
+// `> [!GAP]` is Vyre's own: a place the code does not yet do what the docs or the spec say.
+const ALERT_LABEL = { gap: "Known gap" };
 
 /** @param {string} s */
 export function escapeHtml(s) {
@@ -388,7 +391,7 @@ function renderBlocks(blocks, ctx, tight) {
       case "quote": {
         const inner = renderBlocks(b.blocks, ctx, false);
         if (b.alert) {
-          const label = b.alert[0].toUpperCase() + b.alert.slice(1);
+          const label = ALERT_LABEL[b.alert] || b.alert[0].toUpperCase() + b.alert.slice(1);
           out.push(`<blockquote class="callout callout-${b.alert}">\n<p class="callout-title">${label}</p>\n${inner}\n</blockquote>`);
         } else out.push(`<blockquote>\n${inner}\n</blockquote>`);
         break;

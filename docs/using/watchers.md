@@ -112,6 +112,9 @@ reaches the watcher as `hook`.
 In the Deck, an agent's board (`/agents/<name>`) lists its watchers with a pause switch. Filed
 items appear in the project and in its memory room.
 
+> [!GAP]
+> The switch pauses but does not resume. Use `vyre watchers resume <name>`. See [known gaps](../known-gaps.md#the-decks-pause-switch-does-not-resume-a-watcher).
+
 ## Which surface does what
 
 | Task | Terminal | Deck | Claude |

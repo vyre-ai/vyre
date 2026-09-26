@@ -53,6 +53,9 @@ vyre box update
 That runs `vyre update` on the server, then compares versions. If the box is newer than your Mac,
 it tells you to upgrade the Mac too:
 
+> [!GAP]
+> ADR 0008 says `vyre box update` also upgrades the Mac. It does not: run the command it prints. See [known gaps](../known-gaps.md#vyre-box-update-does-not-upgrade-the-mac).
+
 ```
 npm install -g vyre@latest && vyre up
 ```

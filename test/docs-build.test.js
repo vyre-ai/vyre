@@ -109,6 +109,7 @@ test("blockquotes, lazy lines, nesting and alerts", () => {
   assert.equal(md("> quote *x*\nlazy"), "<blockquote>\n<p>quote <em>x</em>\nlazy</p>\n</blockquote>\n");
   assert.equal(md("> a\n>\n> > b"), "<blockquote>\n<p>a</p>\n<blockquote>\n<p>b</p>\n</blockquote>\n</blockquote>\n");
   assert.match(md("> [!WARNING]\n> Deletes 214 files."), /<blockquote class="callout callout-warning">\n<p class="callout-title">Warning<\/p>\n<p>Deletes 214 files.<\/p>/);
+  assert.match(md("> [!GAP]\n> Not wired yet."), /<blockquote class="callout callout-gap">\n<p class="callout-title">Known gap<\/p>\n<p>Not wired yet.<\/p>/);
 });
 
 test("tables: alignment, escaped pipes, pipes in code, ragged rows", () => {

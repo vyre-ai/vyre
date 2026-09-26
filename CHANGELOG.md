@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Known gaps are marked on the page (ADR 0019)
+
+- `docs/known-gaps.md` lists each place the code does not yet do what the spec, an ADR or a
+  screen says, with what is true now and the owning team. Pages carry a `> [!GAP]` callout,
+  rendered as "Known gap", that links to it. `CONTRIBUTING-DOCS.md` says how to add and close one.
+- The security page names security@vyre.run as the contact.
+
 #### Every page of docs.vyre.run is written (ADR 0019)
 
 - The 57 pages in `docs/nav.json` exist, each with front matter and an owner: get-started,

@@ -71,7 +71,7 @@
       "contributing/testing.md",
       "design/TOKENS.md"
     ]},
-    { "title": "Changelog", "pages": ["changelog.md"] }
+    { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
   ],
   "unpublished": ["work/", "proposals/", "design/boards/"]
 }

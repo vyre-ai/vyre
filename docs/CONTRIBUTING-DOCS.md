@@ -157,7 +157,7 @@ node scripts/build-docs --out DIR    # somewhere else
 - `_redirects` (a 301 for every stub) and `_headers` (Markdown and text content types, cache rules) for Cloudflare Pages;
 - one stylesheet and one script under `assets/`, named by content hash.
 
-The same tree builds the same bytes: nothing reads the clock or the network. The renderer (`scripts/lib/docs/markdown.js`) has no dependencies. It renders CommonMark plus GFM tables, task lists, strikethrough and alerts (`> [!NOTE]`). It does not render raw HTML: every `<` shows as text, so write `<you>.vyre.run` as it is. Indented code blocks are not supported; use fences.
+The same tree builds the same bytes: nothing reads the clock or the network. The renderer (`scripts/lib/docs/markdown.js`) has no dependencies. It renders CommonMark plus GFM tables, task lists, strikethrough and alerts (`> [!NOTE]`, and `> [!GAP]`, shown as Known gap). It does not render raw HTML: every `<` shows as text, so write `<you>.vyre.run` as it is. Indented code blocks are not supported; use fences.
 
 The site deploys to the Cloudflare Pages project `vyre-docs`:
 
@@ -174,6 +174,19 @@ npx wrangler pages deploy docs-site --project-name vyre-docs --branch main
 - A reader who is an agent should be able to act from the page alone.
 
 A user page has this shape: one paragraph of what it is and why; the common tasks, with headings that are tasks ("Share a secret with an agent"); what it will not do; where to go next.
+
+## Known gaps
+
+Document what the code does. When that differs from the spec, an ADR or a screen, say so on the
+page in a callout and give the gap its own section in [known gaps](known-gaps.md), with what is
+true now, what to do instead, and the owning team:
+
+```md
+> [!GAP]
+> The switch pauses but does not resume. See [known gaps](../known-gaps.md#the-decks-pause-switch-does-not-resume-a-watcher).
+```
+
+The change that closes a gap removes its callouts and its section.
 
 ## A page template
 

@@ -107,6 +107,9 @@ The reason follows on the same line:
 
 The code `vyre up` prints lasts a few minutes. Run `vyre up` again for a fresh one. `vyre link` on the Mac says when pairing is done. On the box, `vyre link approve <code>` needs your passkey; if it has none it says to approve in the Deck.
 
+> [!GAP]
+> There is no Deck screen that approves a pairing yet, which can also leave a Mac waiting here. See [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+
 ## The Capsule
 
 - **macOS says it cannot check the app for malicious software.** The app is not signed yet. Right-click `Vyre.app`, choose **Open**, then **Open** again. If the dialog offers only **Done**, open System Settings, then Privacy & Security, and choose **Open Anyway**.
