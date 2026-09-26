@@ -47,6 +47,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `claude --resume <id>` in the folder the thread ran in with the brief as
   `--append-system-prompt`; `vyre start` runs `claude -n <name>` in the project home. Every
   prompt has a flag, and prompts read piped stdin a line at a time.
+- Every thread Vyre launches loads the Harness with `--plugin-dir` when this install has one,
+  and then leaves the brief to its SessionStart hook, so Claude never reads it twice.
+- `projects.of` returns `{slug, name, home, folders}`, the shape the Harness calls it with.
 
 ### M0 · the skeleton (2026-09-26)
 
