@@ -313,10 +313,7 @@ final class SightExtension: CapsuleExtension {
     private func makeTalker(mic fromStatus: String?) -> Talker {
         let bin = MicPath.resolve(env: env, fromStatus: fromStatus, bundle: bundleURL)
         let mic = makeMic ?? { ProcessMic(bin: $0) }
-        let socket = vyredSocketPath(env)
-        let open: Talker.Opener = openStream ?? { onMessage, onClose in
-            ListenSocket.open(socket: socket, onMessage: onMessage, onClose: onClose).map { $0 as TalkStream }
-        }
+        let open: Talker.Opener = openStream ?? Listen.opener(host.vyred)
         return Talker(makeMic: { mic(bin) }, open: open) { [weak self] e in
             Task { @MainActor in self?.talkEvent(e) }
         }

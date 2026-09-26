@@ -1,6 +1,6 @@
 // The sight extension against a fake vyred and a fake host: no real mic, no window, no dialog.
-// The listen stream is tested over a real unix socket with a tiny WebSocket server in this file,
-// so the handshake, the masking and the framing are what is tested, not a mock of them.
+// The listen stream goes through the host's VyredLink.stream, whose socket and framing are
+// capsule-pro's and tested there; here a fake link hands back a fake stream.
 
 import AppKit
 import Foundation
@@ -21,6 +21,16 @@ private final class SightLink: VyredLink, @unchecked Sendable {
     }
     func on(_ pattern: String, _ handler: @escaping @MainActor (VyredEvent) -> Void) -> VyredSubscription { Sub() }
     func calls(_ tool: String) -> [[String: Any]] { lock.lock(); defer { lock.unlock() }; return log.filter { $0.0 == tool }.map(\.1) }
+    var streamResult: Result<VyredStream, VyredStreamFailure> = .failure(VyredStreamFailure(code: "refused", message: "no stream in this test"))
+    private var paths: [String] = []
+    var streamPaths: [String] { lock.lock(); defer { lock.unlock() }; return paths }
+    func stream(_ path: String, onMessage: @escaping @Sendable ([String: Any]) -> Void,
+                onClose: @escaping @Sendable () -> Void) async -> Result<VyredStream, VyredStreamFailure> {
+        opened(path)
+    }
+    private func opened(_ path: String) -> Result<VyredStream, VyredStreamFailure> {
+        lock.lock(); defer { lock.unlock() }; paths.append(path); return streamResult
+    }
     final class Sub: VyredSubscription { func cancel() {} }
 }
 
@@ -86,6 +96,13 @@ private final class Events: @unchecked Sendable {
     var all: [Talker.Event] = []
     func add(_ e: Talker.Event) { lock.lock(); all.append(e); lock.unlock() }
     var list: [Talker.Event] { lock.lock(); defer { lock.unlock() }; return all }
+}
+
+/// Block on a semaphore off the cooperative pool, so an async opener can be held open by a test.
+private func hold(_ gate: DispatchSemaphore) async {
+    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        DispatchQueue.global().async { gate.wait(); c.resume() }
+    }
 }
 
 /// Poll until cond holds (up to 3 s), from async test code that is off the main actor.
@@ -227,7 +244,7 @@ let sightSuite = Suite("sight") { t in
                 let ext = SightExtension(host: host)
                 ext.env = [:]
                 ext.makeMic = { bin in bins.value = bin; return mic }
-                ext.openStream = { onMessage, _ in box.value = onMessage; gate.wait(); return .success(stream) }
+                ext.openStream = { onMessage, _ in box.value = onMessage; await hold(gate); return .success(stream) }
                 ext.toggleTalk()
                 return (host, ext)
             }
@@ -286,106 +303,24 @@ let sightSuite = Suite("sight") { t in
         t.eq(MicPath.resolve(env: [:], fromStatus: nil, bundle: app), "/r/local/voice/bin/vyre-mic")
     }
 
-    t.test("frames: masked from the client, lengths past 125 and 65535, fragments joined") {
-        for n in [5, 300, 70_000] {
-            let payload = Data((0..<n).map { UInt8($0 & 0xff) })
-            var p = WSFrame.Parser()
-            let enc = WSFrame.encode(payload, opcode: 0x2, mask: true)
-            t.ok(enc[1] & 0x80 != 0, "client frames are masked")
-            // Fed a byte at a time for the small one, in two halves for the rest.
-            var got: [WSFrame.Message] = []
-            if n == 5 { for b in enc { got += p.feed(Data([b])) } }
-            else { got += p.feed(enc.prefix(enc.count / 2)); got += p.feed(enc.suffix(from: enc.count / 2)) }
-            t.eq(got, [.binary(payload)], "length \(n)")
+    t.test("listen: the opener goes through VyredLink.stream, and a 404 names the voice module") {
+        let link = SightLink()
+        let stream = FakeStream()
+        let open = Listen.opener(link)
+        let r = t.wait { () -> (Result<TalkStream, TalkFailure>, Result<TalkStream, TalkFailure>, Result<TalkStream, TalkFailure>) in
+            link.streamResult = .success(stream)
+            let ok = await open({ _ in }, {})
+            link.streamResult = .failure(VyredStreamFailure(code: "not_found", message: "vyred has no stream at /v1/streams/voice/listen"))
+            let missing = await open({ _ in }, {})
+            link.streamResult = .failure(VyredStreamFailure(code: "unreachable", message: "vyred is not running; vyre up to start it"))
+            return (ok, missing, await open({ _ in }, {}))
         }
-        var p = WSFrame.Parser()
-        var two = Data([0x01, 3]) + Data("two".utf8)
-        two += Data([0x80, 6]) + Data(" dozen".utf8)
-        t.eq(p.feed(two), [.text("two dozen")])
-        t.eq(WSFrame.acceptKey("dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+        guard let (ok, missing, down) = r else { t.ok(false, "the opener did not answer"); return }
+        if case .success(let s) = ok { t.ok(s === stream, "the link's stream is used as is") } else { t.ok(false, "open failed: \(ok)") }
+        t.eq(link.streamPaths, ["/v1/streams/voice/listen", "/v1/streams/voice/listen", "/v1/streams/voice/listen"])
+        if case .failure(let f) = missing {
+            t.eq(f, TalkFailure(code: "no_voice", message: "vyred has no voice module; it needs a vyred with local/voice"))
+        } else { t.ok(false, "a 404 must fail") }
+        if case .failure(let f) = down { t.eq(f.code, "unreachable") } else { t.ok(false, "a missing vyred must fail") }
     }
-
-    t.test("listen socket: a real handshake over a unix socket, audio and end out, words back") {
-        let dir = (NSTemporaryDirectory() as NSString).appendingPathComponent("vyre-sight-\(getpid())")
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let path = (dir as NSString).appendingPathComponent("l.sock")
-        let server = MiniWS(path: path)
-        t.ok(server.start(), "the test server listens")
-        defer { server.stop(); try? FileManager.default.removeItem(atPath: dir) }
-        let heard = Events()
-        let opened = ListenSocket.open(socket: path, onMessage: { m in
-            if m["type"] as? String == "done" { heard.add(.done(m["text"] as? String ?? "")) } else if let s = m["text"] as? String { heard.add(.heard(s)) }
-        }, onClose: {})
-        guard case .success(let s) = opened else { t.ok(false, "open failed: \(opened)"); return }
-        s.sendBinary(Data(count: 640))
-        s.sendJSON(["type": "end"])
-        t.ok(settle { heard.list.count == 2 })
-        t.eq(heard.list, [.heard("two dozen"), .done("two dozen rolls")])
-        t.eq(server.request.contains("x-vyre-caller: capsule"), true)
-        t.eq(server.got, [.binary(Data(count: 640)), .text("{\"type\":\"end\"}")])
-        s.close()
-
-        let refused = ListenSocket.open(socket: (dir as NSString).appendingPathComponent("none.sock"), onMessage: { _ in }, onClose: {})
-        if case .failure(let f) = refused { t.eq(f.code, "unreachable") } else { t.ok(false, "a missing vyred must fail") }
-    }
-}
-
-/// One WebSocket connection's worth of server, the way vyred's voice module answers: a partial
-/// line straight away, and the done line once {"type":"end"} arrives.
-private final class MiniWS: @unchecked Sendable {
-    let path: String
-    private var fd: Int32 = -1
-    private let lock = NSLock()
-    private var _request = "", _got: [WSFrame.Message] = []
-    var request: String { lock.lock(); defer { lock.unlock() }; return _request }
-    var got: [WSFrame.Message] { lock.lock(); defer { lock.unlock() }; return _got }
-
-    init(path: String) { self.path = path }
-
-    func start() -> Bool {
-        unlink(path)
-        fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        var addr = sockaddr_un()
-        guard VySock.fill(&addr, path) else { return false }
-        let ok = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } } == 0
-        guard ok, listen(fd, 1) == 0 else { return false }
-        let lfd = fd
-        Thread { [self] in serve(lfd) }.start()
-        return true
-    }
-
-    func stop() { shutdown(fd, SHUT_RDWR); close(fd); unlink(path) }
-
-    private func serve(_ lfd: Int32) {
-        let c = accept(lfd, nil, nil)
-        guard c >= 0 else { return }
-        defer { close(c) }
-        var buf = [UInt8](repeating: 0, count: 65536)
-        var got = Data()
-        let sep = Data("\r\n\r\n".utf8)
-        while got.range(of: sep) == nil { let n = read(c, &buf, buf.count); if n <= 0 { return }; got.append(contentsOf: buf[0..<n]) }
-        let r = got.range(of: sep)!
-        let head = String(decoding: got[..<r.lowerBound], as: UTF8.self)
-        lock.lock(); _request = head; lock.unlock()
-        let key = head.components(separatedBy: "\r\n").first { $0.lowercased().hasPrefix("sec-websocket-key:") }
-            .map { String($0.split(separator: ":", maxSplits: 1)[1]).trimmingCharacters(in: .whitespaces) } ?? ""
-        let reply = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(WSFrame.acceptKey(key))\r\n\r\n"
-        send(c, Data(reply.utf8) + WSFrame.encode(Data("{\"type\":\"partial\",\"text\":\"two dozen\"}".utf8), opcode: 1, mask: false))
-        var p = WSFrame.Parser()
-        var pending = Data(got[r.upperBound...])
-        while true {
-            for m in p.feed(pending) {
-                if case .close = m { return }
-                lock.lock(); _got.append(m); lock.unlock()
-                if m == .text("{\"type\":\"end\"}") {
-                    send(c, WSFrame.encode(Data("{\"type\":\"done\",\"text\":\"two dozen rolls\"}".utf8), opcode: 1, mask: false))
-                }
-            }
-            let n = read(c, &buf, buf.count)
-            if n <= 0 { return }
-            pending = Data(buf[0..<n])
-        }
-    }
-
-    private func send(_ c: Int32, _ d: Data) { _ = VySock.writeAll(c, d, deadline: Date().addingTimeInterval(2)) }
 }
