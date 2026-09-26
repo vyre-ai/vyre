@@ -73,12 +73,16 @@ never will. Every one of the following is hard-coded, not merely defaulted:
   the box's first real container is also the first real check of whether that list is complete.
 - `computers.capAdd` remains the one escape hatch, and stays config, not code: a box that finds
   a capability genuinely needed adds exactly that one, never a default list.
-- **Known gap (security, 26 Sep):** none of the above holds against a caller that reaches the
-  restricted proxy directly instead of through `DockerDriver.create()` — a Claude session's own
-  Bash shares vyred's container and network namespace, so a raw `curl` to `docker-api:2375` can
-  ask for `Privileged: true` and a host bind mount, and the proxy (which filters endpoints, not
-  bodies) forwards it: root on the host. A text filter in the harness floor denies the obvious
-  strings (`docker-api`, `:2375`, `:2376`) but is not the real fix. The real fix is a
-  body-checking proxy vyred itself owns in front of the Engine (accepting only exactly the shape
-  this file builds), or moving Claude's own sessions off the `docker-api` network entirely —
-  open, and bigger than this file, since it needs box and security too.
+- **Known gap (security, 26 Sep), being closed:** none of the above held against a caller that
+  reached the restricted proxy directly instead of through `DockerDriver.create()` — a Claude
+  session's own Bash shares vyred's container and network namespace, so a raw `curl` to
+  `docker-api:2375` could ask for `Privileged: true` and a host bind mount, and the proxy (which
+  filters endpoints, not bodies) would forward it: root on the host. A text filter in the harness
+  floor denies the obvious strings (`docker-api`, `:2375`, `:2376`), which helps but is not the
+  real fix. The real fix, per security and box: box replaces the endpoint-filtering proxy with a
+  small one it owns, holding `docker.sock` itself, that imports `driver/policy.js`'s
+  `allowCreate(body)` and `allowExec(labels, cmd)` and calls them on every request — the exact
+  shape this file builds, checked again at the one point that matters regardless of who is
+  asking. `policy.js` and `policy.test.js` are built from the same fixture as `docker.test.js`, so
+  the two can never quietly drift apart. With box's separate sessions container for Claude's own
+  work, Claude will not reach the proxy at all; `policy.js` holds even so.
