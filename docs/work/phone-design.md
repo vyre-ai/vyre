@@ -27,7 +27,8 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 3. Review pwa and mobile builds against phone.md as screenshots arrive.
 
 ## Needs from others
-- A diff summary (files, added and removed counts) for held pushes and edits: owner not yet named.
+- chat: the diff summary (detail.changes on Edit/Write asks; changes + totals on held pushes),
+  queued for their next session.
 - deck-design: shared chat items (gate card without a left rule, neutral deletions, author names).
 
 ## Changed contracts

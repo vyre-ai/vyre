@@ -500,7 +500,10 @@ Landed on work/chat (10604b9):
   `.claude/settings.local.json`. `ask.answered` carries `scope: "project"`, and the approval card
   then reads "Always allowed in <project>, 12:07".
 
-Still open:
+Queued with chat (next session; the sha follows when it lands):
 
-- **Diff summary** for a held push or edit: files with added and removed counts, when the tool
-  can say. Until then the Changes row shows what `detail` gives, or is left out.
+- **Diff summary.** Permission asks for Edit, MultiEdit and Write get `detail.changes: [{ file,
+  added, removed }]`. A held git push in `gate.held` gets `changes: [{ file, added, removed }]` and
+  `totals: { files, added, removed }` (from `git diff --numstat` of the pushed range). The sheet's
+  Changes row reads the totals ("6 files +412 -38", or sums `changes` when there are no totals)
+  and expands to the per-file list. With neither, the row is left out.
