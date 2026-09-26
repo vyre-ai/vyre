@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The suite passes on the test box (Linux, node 22) as it does on the Mac
+
+- Tests now run on the test box, not the Mac, and 14 failed there for reasons of the machine, not the
+  code. The vault tests' cheap KDF is Argon2id only where node has it (24.7+), else scrypt at its
+  test floor (`core/vault/testing.js` TEST_KDF). `vyre` drops node 22's "SQLite is an
+  experimental feature" line, which broke output read as JSON (`core/quiet.js`, loaded first by
+  `bin/vyre`; the box image already sets NODE_OPTIONS for it). The installer tests hide a real
+  Docker when a test takes it away, box add's rig answers `id -nG` without the docker group, the
+  presence challenge test pins `role: local` (Linux defaults to the box), the bypass test reads
+  the hook's stdout only, and the real Capsule helper tests skip off macOS.
+
 #### The vault writes nothing after it stops
 
 - 200 ms after start the vault pulls its shared vaults, and with none it still asked for this
