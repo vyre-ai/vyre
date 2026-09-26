@@ -299,6 +299,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- `vyre capsule` opens an installed Vyre.app (/Applications or ~/Applications) when there is no
+  dist build of this source, and leaves it on its own bundled helpers. Packaged apps declare
+  `NSContactsUsageDescription`, without which macOS refuses the Contacts ask silently.
 - A bare query in the Capsule finds things on this Mac first: `lib/launcher.js` ranks apps,
   settings, the calculator, contacts, definitions, files and Vyre's own agents, projects and
   threads as one list (`route.rank`, frecency from picks), and `route.intent` decides whether
