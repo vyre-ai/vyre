@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One vyred per home, whatever path reached it
+
+- Two vyreds could run on one store when the home was reached through a symlink: the socket
+  path was worked out from the home's spelling (a long spelling moves it to /tmp under a hash),
+  and the "already running" check came after every module had started. Now vyred takes
+  `vyred.lock` in the home's real folder before it opens the store; the socket path is worked out
+  from the real folder too. A lock whose process is gone, is not a vyre process, or is from before
+  this boot (a reboot or a container restart reusing its pid) is taken over.
+  `core/daemon/lock.js`, `core/daemon/index.js`, `core/config/index.js`.
+
 #### `vyre threads` never answers with a blank screen
 
 - With no sessions it printed nothing. Now it says why: indexing still running, no transcript

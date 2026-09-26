@@ -16,6 +16,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
 import { build } from "./build.js";
+import { acquire } from "./lock.js";
 import { Presence, parse as parsePresence } from "../presence/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +39,17 @@ export async function start(opts = {}) {
   // VYRE_ALLOW_DIALOGS=1 is a person's deliberate custom home (core/config/dialogs.js).
   if (!isRealHome(root) && !process.env.NODE_TEST_CONTEXT && process.env.VYRE_ALLOW_DIALOGS !== "1") process.env.VYRE_NO_DIALOGS = "1";
   const p = config.ensure(root);
+  // One vyred per home, whatever path reached it; before the store or any module opens.
+  const release = acquire(root);
+  try { return await startLocked(opts, root, p, release); }
+  catch (e) { release(); throw e; }
+}
+
+/**
+ * The rest of start(), with the home's lock held.
+ * @param {Parameters<typeof start>[0] & {}} opts @param {string} root @param {any} p @param {() => void} release
+ */
+async function startLocked(opts, root, p, release) {
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");
   const log = opts.log || ((msg, extra) => {
@@ -107,6 +119,7 @@ export async function start(opts = {}) {
     db.close();
     fs.rmSync(p.socket, { force: true });
     try { if (fs.readFileSync(p.pid, "utf8") === String(process.pid)) fs.rmSync(p.pid, { force: true }); } catch {}
+    release();
     log("vyred down");
   };
   return { registry, events, config: cfg, paths: p, stop };

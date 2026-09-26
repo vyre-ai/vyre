@@ -30,10 +30,15 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - Commit stamp (lead assigned it to me): build.json from build-site.sh; /v1/health, system.info,
   vyre status. Test core/daemon/build.test.js.
 
+## Done (3)
+
+- `vyre threads` empty states (6d1c4cf); `--help` crash was main-only, fixed by the kit branch.
+- One vyred per home: vyred.lock in the real folder, socket from the real folder. Tests
+  core/daemon/lock.test.js; checked with the real CLI on the test box through a symlink.
+
 ## Doing
 
-- `vyre threads` prints nothing; `vyre threads --help` crashes; two vyreds on a symlinked home
-  (realpath the home for the pid/lock). Then the interactive `vyre` screen.
+- The interactive `vyre` screen (core/cli/screen/): the rest of the brief.
 
 ## Next
 
@@ -47,6 +52,8 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - onboard (owner: onboarding team): `onboard.link` takes `{mint:false}` and then returns
   `{url:null, pending, expires, port}`; loopback keeps hashes in <VYRE_HOME>/onboard-link.json.
 - box/vyre: `update` ends with `cli up --keep-link`.
+- daemon (owner: core): start() takes <real home>/vyred.lock first; config.socketPath uses the
+  home's real path.
 - daemon/system: /v1/health and system.info gain `commit`, `dirty`; scripts/build-site.sh
   stamps build.json; package.json files gains build.json.
 
