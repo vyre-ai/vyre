@@ -212,12 +212,18 @@ end to end — worth a real device test before this ships.
   WebAuthn's own error (this environment has no real hostname or authenticator) rather than
   crashing. Not verified end to end (a real ts.net/vyre.run origin and an actual authenticator
   are needed for that) — worth a real device test before relying on it.
-- The first-passkey page (box, ADR 0004): `onboard.finish` gained `passkeyUrl` (or null); the
-  ending sends the person there instead of straight to `/now` when it's set, with a "Skip for
-  now" fallback. `deck/onboard/passkey/` is a standalone page (not the wizard, not the Deck's
-  router) at `https://<addr>/onboard/passkey#e=<code>` — the code rides in the hash, stripped at
-  once. Same enrollment shape as Settings → Security, reusing `callWithCode`. Same verification
-  caveat: the missing-code and enroll screens render correctly, the WebAuthn ceremony itself needs
+- The first-passkey page (box, ADR 0004): `onboard.finish` gained `passkeyUrl` (or null),
+  returned only to the loopback onboarding session (caller onboard/cli/local, never a tailnet
+  caller). That session lives in sessionStorage, which does not survive the redirect from loopback
+  to the https address — so the **"name" step calls finish itself**, one moment before that
+  redirect, and goes to `passkeyUrl` instead of `#history` when set (box clarified this after the
+  first pass called finish only at the very end, where the session was already gone and
+  `passkeyUrl` could never come back). `deck/onboard/passkey/` is a standalone page (not the
+  wizard, not the Deck's router) at `https://<addr>/onboard/passkey#e=<code>` — the code rides in
+  the hash, stripped at once — and always continues to `/onboard#history` after (enrolled or
+  skipped), since it's a detour mid-wizard, not the ending. Same enrollment shape as Settings →
+  Security, reusing `callWithCode`. Same verification caveat: the missing-code and enroll screens
+  render correctly, the WebAuthn ceremony itself needs
   a real device to exercise end to end.
 
 ## Done (continued)
