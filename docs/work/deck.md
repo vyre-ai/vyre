@@ -159,6 +159,25 @@ guessed at.
 - Re-check Web Push (below) once `core/push` merges into this worktree — built and verified
   against switchboard's shapes and a mocked response, not yet against the real module.
 
+## Changed invariant: the service worker now caches two reads (2026-09-27)
+
+deck/sw.js's rule was "API calls (/v1/) are never cached, so nothing a tool returned is ever kept
+on the device." gate-chat asked for offline read of recent sessions for Chat; the lead approved a
+narrow exception instead of dropping the rule: **only `threads.get` and `projects.list`** may be
+read back when the network is down, everything else — every write (approve/revise/reject/send/
+lease/answer among them), every `vault.*` or `gate.*` read, anything a model wrote as a secret —
+is still never cached, exactly as before. `threads.get` is only ever called for a thread someone
+actually opened (`deck/views/projects.js`, `deck/chat/session.js`), never a background poll, so
+this is already scoped to "sessions the user opened" without extra bookkeeping. The cache
+(`vyre-deck-offline-1`, separate from the shell's own `vyre-deck-1`) is capped at 20 distinct
+calls and a week old, oldest evicted first, and can be wiped with
+`postMessage({type: "vyre:clear-offline"})` — there is no sign-out in Vyre yet, so nothing calls
+that today, but it's ready for whatever that turns out to be. Verified: a live `projects.list`
+call while online lands in the offline cache under the tool's exact input, with the tool's real
+data shape; did not simulate a true offline network condition (the test harness has no clean way
+to force that against a live local vyred), so the read-back path is code-reviewed, not exercised
+end to end — worth a real device test before this ships.
+
 ## Done (Web Push, 2026-09-27)
 - Settings → Notifications: turn this device on/off (push.key + pushManager.subscribe +
   push.subscribe), other devices with delivery health and Remove (push.unsubscribe), quiet hours
