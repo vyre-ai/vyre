@@ -89,7 +89,9 @@ const deny1 = reason => ({ decision: /** @type {const} */ ("deny"), rule: 1, rea
 const ask1 = reason => ({ decision: /** @type {const} */ ("ask"), rule: 1, reason });
 
 /** `vyre <noun> <verb>` commands that only a person may run. `presence` is all of them. */
-const HUMAN_VERBS = { gate: ["approve", "revise", "reject"], threads: ["answer"], vault: ["put", "approve", "unlock", "offboard"], learn: ["accept", "retire"] };
+const HUMAN_VERBS = { gate: ["approve", "revise", "reject"], threads: ["answer"],
+  vault: ["put", "approve", "unlock", "offboard", "run", "inject", "backup", "restore", "pair", "export", "kit", "delete", "reveal", "copy", "totp"],
+  learn: ["accept", "retire", "relax", "skill"], computers: ["takeover", "giveback"], link: ["approve"] };
 const isVyre = w => path.basename(w) === "vyre" || /\/bin\/vyre(\.js)?$/.test(w);
 const isHumanPair = (a, b) => a === "presence" || (HUMAN_VERBS[a] || []).includes(b) || (a === "call" && HUMAN_ONLY.has(b));
 /** Vyre's files by name, wherever they are: the store, its journal, the socket, the pid file. */
@@ -122,6 +124,8 @@ function shellRoutes(command, { vyreHome, cwd, userHome }) {
   if (/\/v1\/presence\b/.test(flat)) return deny1(APPROVALS);
 
   // A human-only tool named anywhere in a command that reaches vyred.
+  // `vyre vault get|read --reveal` prints a value.
+  if (w.some(isVyre) && w.includes("vault") && w.some(x => /^(get|read)$/.test(x)) && w.includes("--reveal")) return deny1("Vault values stay off every screen. " + APPROVALS);
   const named = [...HUMAN_ONLY].some(t => flat.includes(t));
   if (named && (w.some(isVyre) || /\/v1\/tools\b/.test(flat) || SOCKET_CLIENT.test(flat))) return deny1(APPROVALS);
 
@@ -135,6 +139,22 @@ function shellRoutes(command, { vyreHome, cwd, userHome }) {
       if (a && (dynamic(a) || (b && dynamic(b) && (a === "call" || HUMAN_VERBS[a])))) return ask1("This vyre command is built when it runs, so Vyre cannot tell whether it approves something for you.");
     } else if (dynamic(w[i]) && a && isHumanPair(a, b) && a !== "call") return deny1(APPROVALS);
   }
+
+  // The clipboard may hold a value the Capsule or the Deck copied for the person.
+  if (w.some(x => /^(pbpaste|xclip|xsel|wl-paste)$/.test(path.basename(x))) || /\bthe clipboard\b|NSPasteboard|generalPasteboard/i.test(flat)) {
+    return { decision: "ask", rule: 8, reason: "The clipboard may hold a value you copied from the vault. Vyre asks before anything reads it." };
+  }
+
+  // Docker is root on the host. A container with the host's devices, namespaces, root folder or
+  // docker socket is a way out of every rule here; any other raw client on the socket is asked about.
+  const docker = w.findIndex(x => /^(docker|podman|nerdctl)$/.test(path.basename(x)));
+  if (docker >= 0 && w.slice(docker + 1).some(x => /^(run|create|exec|compose|container|service|update)$/.test(x))) {
+    const rootish = w.some(x => /^--(privileged|pid=host|ipc=host|uts=host|userns=host|cap-add|device|security-opt)\b/.test(x) || /^--(net|network)=host$/.test(x))
+      || w.some((x, i) => /^(-v|--volume|--mount)$/.test(w[i - 1] || "") && /^(\/:|\/(etc|root|var\/run|run|proc|sys|dev|home|Users)\b|.*docker\.sock|src=\/[,:]|.*source=\/(,|$))/.test(x))
+      || /(-v|--volume)[= ]?\/:|docker\.sock:/.test(flat);
+    if (rootish) return deny1("A container with the host's root, devices or docker socket is root on this machine. Ask the user to run it.");
+  }
+  if ((SOCKET_CLIENT.test(flat) || w.some(x => /^-[a-zA-Z]*U/.test(x))) && /docker\.sock|containerd\.sock|podman\.sock/.test(flat)) return ask1("The container engine's socket is root on this machine.");
 
   // Raw clients on a unix socket: vyred's is refused; one Vyre cannot read is asked about.
   const nc = w.some(x => /^(nc|ncat|netcat)$/.test(path.basename(x))) && w.some(x => /^-[a-zA-Z]*U/.test(x));

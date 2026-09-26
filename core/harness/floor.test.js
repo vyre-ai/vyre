@@ -75,7 +75,7 @@ test("floor: raw clients on vyred's socket are refused, and so is a forged calle
   ];
   for (const c of denied) assert.equal(bash(c), "deny", c);
   for (const c of [`curl --unix-socket "$S" http://x/v1/tools`, `nc -U $(ls /tmp/*/*.sock | head -1)`, `python3 -c "import socket; socket.socket(socket.AF_UNIX).connect(p)"`]) assert.equal(bash(c), "ask", c);
-  assert.equal(bash(`curl --unix-socket /var/run/docker.sock http://x/containers/json`), null, "another program's socket is not Vyre's business");
+  assert.equal(bash(`curl --unix-socket /tmp/app/other.sock http://x/status`), null, "another program's socket is not Vyre's business");
 });
 
 test("floor: Vyre's internals are out of reach, by path, by name and by glob", () => {
@@ -144,4 +144,14 @@ test("floor: VYRE_HOME is recognised by its real path too", t => {
   fs.symlinkSync(home, link);
   const r = rules({ tool: "Read", input: { file_path: path.join(fs.realpathSync(home), "config.json") }, home: link });
   assert.equal(r.decision, "deny");
+});
+
+test("floor: the vault's value-out commands, the clipboard, and a way out through docker", () => {
+  for (const c of [`vyre vault run API=api-key -- node x.js`, `vyre vault inject api-key`, `vyre vault backup /tmp/b`, `vyre vault export`,
+    `vyre vault get api-key --reveal`, `vyre vault copy api-key`, `vyre vault pair`, `vyre learn relax 2`, `vyre computers takeover scout`,
+    `vyre link approve 123-456`, `ssh box vyre gate approve g1`,
+    `docker run --privileged -it alpine sh`, `docker run -v /:/host alpine chroot /host`, `docker run -v /var/run/docker.sock:/var/run/docker.sock docker`,
+    `docker run --pid=host alpine nsenter -t 1 -m sh`, `docker run --net=host alpine`, `podman run --cap-add SYS_ADMIN alpine`]) assert.equal(bash(c), "deny", c);
+  for (const c of [`pbpaste`, `osascript -e 'the clipboard'`, `curl --unix-socket /var/run/docker.sock http://x/containers/create -d @c.json`]) assert.equal(bash(c), "ask", c);
+  for (const c of [`vyre vault list`, `vyre vault get api-key`, `docker run --rm -v ./src:/src node:22 npm test`, `docker ps`, `docker build .`]) assert.equal(bash(c), null, c);
 });
