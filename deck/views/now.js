@@ -12,7 +12,9 @@ import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { setupCard } from "../js/phone-setup.js";
+import { assistantCard } from "../js/assistant-setup.js";
 import { pairRequests } from "../js/pair.js";
+import { firstPasskeyCard } from "../js/first-passkey.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 
 /** @param {any} ctx */
@@ -29,12 +31,16 @@ export default async function now(ctx) {
   // A Mac asking to pair waits on the person, so it sits above everything else.
   const pairing = pairRequests();
   ctx.cleanup(pairing.stop);
+  // No passkey on the box at all: nothing above can be approved until there is one.
+  const firstKey = firstPasskeyCard();
+  ctx.cleanup(firstKey.stop);
 
   put(ctx.root, h("div", { class: "now" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
       // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
+      firstKey.el,
       pairing.el,
       setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
@@ -42,12 +48,17 @@ export default async function now(ctx) {
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.
+  // No assistant yet (onboarding's first step was skipped): the card to make one stands in its
+  // place, and the line is drawn from what agents.create hands back.
+  const drawAssistant = (/** @type {any} */ a) => {
+    assistant.classList.toggle("has-card", !a);
+    put(assistant, a ? h("span", null, h("b", null, a.name), " · ", a.doing || "idle")
+      : assistantCard({ onCreated: made => { if (ctx.alive()) drawAssistant(made); } }));
+  };
   (async () => {
     const r = await attempt("agents.list");
     if (!ctx.alive() || r.error) return;
-    const a = (Array.isArray(r.data) ? r.data : []).find(x => x.kind === "assistant");
-    if (!a) return;
-    put(assistant, h("span", null, h("b", null, a.name), " · ", a.doing || "idle"));
+    drawAssistant((Array.isArray(r.data) ? r.data : []).find(x => x.kind === "assistant") || null);
   })();
 
   let running = 0;

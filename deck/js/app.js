@@ -148,7 +148,9 @@ window.addEventListener("deck:pins", drawRail);
 async function drawFoot() {
   const r = await attempt("system.info");
   info.host = r.data?.host || location.hostname;
-  put(avatar, initials(info.host).slice(0, 2) || "V");
+  // The owner's own initials when onboarding saved a name, else the machine's.
+  put(avatar, initials(r.data?.owner?.name || info.host).slice(0, 2) || "V");
+  if (r.data?.owner?.name) avatar.setAttribute("title", r.data.owner.name);
   const onTailnet = /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
   put(foot,
     h("div", { class: "code", style: { color: "var(--text-2)" } }, info.host),
@@ -265,9 +267,15 @@ window.addEventListener("popstate", route);
 window.addEventListener("deck:navigate", route);
 
 // First visit before setup is finished goes to the onboarding.
+// onboard.status can be slow (it asks Tailscale and Claude Code on a cold cache), so the Deck waits
+// for it at most a moment and never leaves the phone on a blank screen: a late answer that says
+// there is no owner yet still sends the page to the onboarding.
 (async () => {
-  const st = await attempt("onboard.status");
-  if (st.data && st.data.owner === false && !fixturesOn) { location.replace("/onboard"); return; }
+  const status = attempt("onboard.status");
+  const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
+  const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;
+  if (toOnboard(first)) { location.replace("/onboard"); return; }
+  if (!first) status.then(st => { if (toOnboard(st)) location.replace("/onboard"); });
   drawFoot();
   pwa.start({ view, deck });
   route();

@@ -11,6 +11,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as config from "../config/index.js";
+import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -73,7 +74,7 @@ async function startLocked(opts, root, p, release) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   // Every call passes the floor's rules (SPEC 5.3), whoever makes it; a test may pass its own.
   const rules = opts.rules || registryRules({ home: root });
@@ -88,7 +89,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams }).catch(e => {
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
@@ -164,7 +165,7 @@ export function socketCaller(req) {
   return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -272,6 +273,11 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
   if (own) return own(req, res, { caller, url });
+  // The Deck's colours from config, read on every request so a changed theme needs no restart.
+  if (req.method === "GET" && url.pathname === "/theme.css") {
+    res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
+    return res.end(themeCss((config.load(root).theme || {}).colors));
+  }
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }

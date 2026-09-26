@@ -29,6 +29,9 @@ import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
 import { mountComposer } from "./composer.js";
 
+/** The Deck's own surface names: a lease or a message from these is this screen's, so it reads "you". */
+const OURS = new Set(["deck", "chat"]);
+
 /**
  * @param {HTMLElement} container
  * @param {{ thread: string, project: string|null, recorded?: boolean, onBack: () => void }} opts
@@ -106,10 +109,11 @@ export function mountSession(container, opts) {
     );
     put(leaseBar,
       icon("lock", 12),
-      rec?.holder ? h("span", null, h("span", { class: "who" }, rec.holder), " has the keyboard")
+      rec?.holder && OURS.has(rec.holder) ? h("span", null, "You have the keyboard here")
+        : rec?.holder ? h("span", null, h("span", { class: "who" }, rec.holder), " has the keyboard")
         : ses ? h("span", { class: "lease-note" }, "Sending resumes this session here.")
         : h("span", null, "No one is typing"),
-      rec?.holder && rec.holder !== "chat" ? h("button", { class: "btn btn-ghost btn-sm", onclick: take }, "Take") : null,
+      rec?.holder && !OURS.has(rec.holder) ? h("button", { class: "btn btn-ghost btn-sm", onclick: take }, "Take") : null,
     );
   }
 
@@ -172,6 +176,12 @@ export function mountSession(container, opts) {
 
   function applyEvent(e, live) {
     const p = e.payload || {};
+    // A message queued for a session busy in the terminal (capsule-now): the terminal session stays
+    // the user's own, and its transcript (read on session.indexed) already shows the message and
+    // the reply. So while it is read from the transcript, the queue's events are not drawn twice.
+    const queueFlow = e.type === "thread.queued" || p.queued != null || p.via === "stop" || p.via === "prompt" || p.via === "terminal"
+      || (typeof p.message === "string" && p.message.startsWith("inbox-"));
+    if (recorded.on && queueFlow) return;
     // The first live event for a recorded session: a send adopted it, so the Switchboard has it now.
     if (live && recorded.on && /^(thread|lease)\./.test(e.type)) {
       recorded.on = false;
@@ -180,7 +190,7 @@ export function mountSession(container, opts) {
     if (e.type === "thread.started") return;
     if (e.type === "thread.sent") {
       maybeDayRule(e.at);
-      timeline.append(personMsg(p.surface || "you", p.text, e.at));
+      timeline.append(personMsg(!p.surface || OURS.has(p.surface) ? "you" : p.surface, p.text, e.at));
       lastMessageEl = null; lastMessageId = null;
       return;
     }
@@ -189,7 +199,7 @@ export function mountSession(container, opts) {
       if (p.notice) { timeline.append(noticeMsg(p.text, e.at)); return; }
       if (p.message !== lastMessageId) {
         lastMessageId = p.message;
-        lastMessageEl = agentMsg(record.current?.agent || record.current?.name || "assistant", e.at);
+        lastMessageEl = agentMsg(record.current?.agent || "claude", e.at);
         timeline.append(lastMessageEl);
       }
       const body = /** @type {any} */ (lastMessageEl).querySelector(".msg-text");

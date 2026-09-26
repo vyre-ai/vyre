@@ -4,6 +4,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Colours from config, Find's commands, and the owner's phone reads memory by meaning
+
+- `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
+  only) is served as GET /theme.css, read on every request, and every Deck page links it after
+  deck.css. Anything but a colour is dropped, so config cannot add CSS.
+- Find understands the Capsule's commands: `@kit ...`, `tell <session> to ...` (types, then
+  watches), `watch <session>`, and `tell me when <session> is done|asks`. A line under the box says
+  what Enter will do, and a tap picks another matching session.
+- memory.relevant answers the owner's tailnet devices without a room, so Find on the phone searches
+  memory by meaning. system.info names the owner (owner.name), and the Deck's avatar uses it.
+- Now asks for a first passkey while the box has none, and names the commands that print its link.
+
+#### Pairing a Mac is approved in the Deck, and onboarding's last steps read right on a box
+
+- Now shows each Mac asking to pair: its name and node, a field for the code on the Mac's screen,
+  Approve with a passkey (link.pair.approve) and Deny. It follows link.pair-requested and
+  link.paired, and when the box refuses it says why (the asking Mac cannot approve itself).
+- Onboarding step 6 is two equal cards that stack on narrow screens: Pair this Mac (the npm
+  command, `vyre up`, then the approve card in place, then "Mac paired") and the phone (Tailscale,
+  the address, Add to Home Screen). An iPhone or Android phone offline in Tailscale is named in
+  plain words, here and in Settings > Devices. The button says Open Vyre, as JOURNEY.md does.
+- `onboard.status` adds `detail.devices.peers` (the owner's own tailnet devices: name, OS, online,
+  last seen), from `tailscale status --json`.
+- Step 5 on a box with no sessions says the Mac's sessions come once it is paired, and hides the
+  ranking line at 0 sessions.
+- With no assistant yet, Now and Agents offer Create your assistant (agents.create, as onboarding's
+  finish does).
+- Phone Chat queues a message for a session busy in the terminal (capsule-now's contract) and says
+  so until it is handed over. The watcher switch calls watchers.resume and watchers.pause, and
+  Settings no longer names `vyre up --step`, which does not exist.
+- `deck/test/world.js` runs with a fake tailscale (`deck/test/fake-tailscale.js`), so a world never
+  reads the real Tailscale of the machine it runs on.
+
 #### Every call from an agent passes the floor's rules, not only Claude Code's
 
 - SPEC 5.3 says every tool call passes the Rules, but vyred gave the Registry no `rules` hook, so

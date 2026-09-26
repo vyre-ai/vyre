@@ -15,13 +15,20 @@
 // streams in beside it through thread.text. The thread is the assistant's current one when
 // agents.list names it, else the one whose thread.sent carries this exact text from the deck.
 // Only the last message of the turn is kept, as ask.js does. Nothing polls.
+//
+// Commands (js/commands.js, the grammar the Mac Capsule and the native apps share): "@kit ..."
+// asks that agent (agents.ask, wait: false, then its thread opens); "tell <session> to ..." types
+// into a session (threads.send) and watches it; "watch <session>" and "tell me when <session> is
+// done" watch it (threads.watch, notify: "deck"). A line under the box says what Enter will do,
+// and the matching sessions are listed so a tap picks another one.
 
-import { h, put, link, empty } from "../js/dom.js";
+import { h, put, link, empty, go } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, base } from "../js/fmt.js";
 import { mergeSessions, title } from "../chat/lib/sessions.js";
 import { threadHref, projectHref } from "../chat/lib/routes.js";
+import { parseCommand, plan } from "../js/commands.js";
 
 const SHOW = 5;
 const MIN = 2;
@@ -58,7 +65,8 @@ export default async function find(ctx) {
   const form = h("form", { class: "fd-form", role: "search" }, h("span", { class: "fd-glass", "aria-hidden": "true" }, icon("search", 18)), input);
   const list = h("div", { id: "fd-list", class: "fd-list", role: "listbox", "aria-label": "Results" });
   const answer = h("section", { class: "fd-answer", "aria-live": "polite", hidden: true });
-  put(ctx.root, h("div", { class: "fd" }, h("div", { class: "fd-bar" }, form), list));
+  const planLine = h("div", { class: "fd-plan small", role: "status" });
+  put(ctx.root, h("div", { class: "fd" }, h("div", { class: "fd-bar" }, form, planLine), list));
   input.focus();
 
   // ---- what is loaded once --------------------------------------------------------------
@@ -148,6 +156,62 @@ export default async function find(ctx) {
     const ws = words(q);
     return base_.projects.filter(p => hasAll(`${p.name || ""} ${p.slug}`, ws)).map(p =>
       row({ href: projectHref(p.slug), glyph: icon("projects", 16) }, [line(p.name || p.slug)]));
+  }
+
+  // ---- commands ---------------------------------------------------------------------------
+  /** @type {import("../js/commands.js").Command} */ let cmd = { kind: "ask", text: "" };
+  /** The session a drive or watch goes to: the best match, or the one tapped. */
+  let chosen = /** @type {any} */ (null);
+  /** What the last command did, shown in place of the plan line until the box changes. */
+  let done_ = "";
+  function readCommand(text) {
+    cmd = parseCommand(text, { agents: base_.agents, sessions: base_.rows, titleOf: title });
+    const list_ = "candidates" in cmd ? cmd.candidates : [];
+    if (!chosen || !list_.some(r => r.id === chosen.id)) chosen = list_[0] || null;
+    drawPlan();
+  }
+  function drawPlan() {
+    const q = input.value.trim();
+    if (done_) { put(planLine, done_); return; }
+    const short = (/** @type {string} */ t) => t.length > 36 ? t.slice(0, 35).trimEnd() + "…" : t;
+    put(planLine, q && cmd.kind !== "ask" ? plan(cmd, chosen ? short(title(chosen)) : "", who()) : "");
+  }
+  /** The sessions a drive or watch could mean, first the chosen one; a tap picks. */
+  function commandSection() {
+    if (!("candidates" in cmd) || !cmd.candidates.length) return null;
+    return section("cmd", cmd.kind === "drive" ? "Type into" : "Watch", cmd.candidates.map(r => row({ onclick: () => { chosen = r; drawPlan(); draw(); }, glyph: icon(r.id === chosen?.id ? "check" : "chat", 16), cls: r.id === chosen?.id ? "fd-chosen" : "" },
+      [line(title(r)), line([r.project ? base_.names.get(r.project) || r.project : base(r.cwd), when(r.last)].filter(Boolean).join(" · "), "fd-sub")])));
+  }
+  async function runCommand() {
+    const c = cmd;
+    if (c.kind === "agent") {
+      put(planLine, `Asking ${c.agent}…`);
+      const r = await attempt("agents.ask", { agent: c.agent, text: c.text, surface: "deck", wait: false });
+      if (!ctx.alive()) return;
+      if (r.error) { done_ = why(r.error); drawPlan(); return; }
+      if (r.data?.thread) { go(threadHref({ id: r.data.thread, project: r.data.project || null })); return; }
+      done_ = `Sent to ${c.agent}.`; drawPlan(); return;
+    }
+    const s = chosen;
+    if (!s || c.kind === "ask") return askNow(input.value.trim());
+    const name = title(s);
+    if (c.kind === "drive") {
+      put(planLine, `Typing into ${name}…`);
+      const r = await attempt("threads.send", { thread: s.id, text: c.text, surface: "deck" });
+      if (!ctx.alive()) return;
+      if (r.error) { done_ = why(r.error); drawPlan(); return; }
+      // Another keyboard has it and nothing queued: say so, keep the words, watch nothing.
+      if (r.data?.sent === false && !r.data?.queued) { done_ = r.data.note || `${name} did not take it.`; drawPlan(); return; }
+    }
+    const w = await attempt("threads.watch", { thread: s.id, until: c.kind === "watch" ? c.until : "either", notify: "deck",
+      note: c.kind === "drive" ? `Tell ${name}: ${c.text}` : `Watch ${name}` });
+    if (!ctx.alive()) return;
+    done_ = w.error ? why(w.error)
+      : c.kind === "drive" ? `Sent to ${name}. You will hear when it finishes or asks.`
+      : `Watching ${name}. You will hear when it ${c.kind === "watch" && c.until === "asks" ? "asks" : c.kind === "watch" && c.until === "finished" ? "is done" : "finishes or asks"}.`;
+    if (!w.error) input.value = "";
+    drawPlan();
+    run(input.value.trim());
   }
 
   // ---- asking the assistant ---------------------------------------------------------------
@@ -261,7 +325,8 @@ export default async function find(ctx) {
       if (r?.error && !missing.has(r.error.module)) missing.set(r.error.module, empty(label, r.error));
     }
     const pending = long && [cur.recall, cur.files, cur.memory].some(r => !r);
-    put(list, ask,
+    const cmdRows = commandSection();
+    put(list, cmdRows || ask,
       sessions.length ? section("sessions", "Sessions", sessions) : null,
       long ? fileSection() : null,
       agents.length ? section("agents", "Agents", agents) : null,
@@ -287,6 +352,8 @@ export default async function find(ctx) {
 
   input.addEventListener("input", () => {
     clearTimeout(timer);
+    done_ = "";
+    readCommand(input.value);
     const q = input.value.trim();
     if (!q) { run(""); return; }
     timer = window.setTimeout(() => run(input.value.trim()), DEBOUNCE_MS);
@@ -316,6 +383,8 @@ export default async function find(ctx) {
     const q = input.value.trim();
     if (!q) return;
     if (q !== cur.q) run(q);
+    readCommand(q);
+    if (cmd.kind !== "ask") { runCommand(); return; }
     askNow(q);
   });
 
@@ -335,5 +404,6 @@ export default async function find(ctx) {
   // for the catalogue and the agents, the lists this screen leans on.
   base_.errs = [["Recent sessions are not available.", cat.error], ["Agents are not available.", al.error]].filter(([, e]) => e);
   base_.loaded = true;
+  readCommand(input.value);
   draw();
 }

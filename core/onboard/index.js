@@ -14,7 +14,7 @@ import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
-import { lockStatus } from "../names/tailscale.js";
+import { run as tailscale, lockStatus } from "../names/tailscale.js";
 
 export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -59,6 +59,30 @@ function claudeVersion() {
   known = { at: Date.now(), version: new Promise(resolve => execFile(process.env.VYRE_CLAUDE_BIN || "claude", ["--version"], { timeout: 10_000 },
     (e, out) => resolve(e ? null : String(out).trim().split("\n")[0] || "unknown"))) };
   return known.version;
+}
+
+/**
+ * The owner's other devices on the tailnet, from `tailscale status --json`: name, os and whether
+ * Tailscale says it is online. Tagged nodes (servers) and other people's shared nodes are left out.
+ * Remembered for 15 seconds: onboard.status is asked often while a step waits.
+ */
+let seen = { at: 0, peers: /** @type {Promise<any[]>|null} */ (null) };
+function tailnetPeers() {
+  if (seen.peers && Date.now() - seen.at < 15_000) return seen.peers;
+  seen = { at: Date.now(), peers: tailscale(["status", "--json"], { timeout: 5000 }).then(r => {
+    if (r.code !== 0) return [];
+    try { return parsePeers(JSON.parse(r.out)); } catch { return []; }
+  }) };
+  return seen.peers;
+}
+/** Pure, for tests. */
+export function parsePeers(s) {
+  const self = s && s.Self;
+  const mine = self && !(self.Tags || []).length ? String(self.UserID) : null;
+  return Object.values((s && s.Peer) || {})
+    .filter(p => !(p.Tags || []).length && (!mine || String(p.UserID) === mine))
+    .map(p => ({ name: String(p.HostName || "") || String(p.DNSName || "").split(".")[0], dns: String(p.DNSName || "").replace(/\.$/, ""),
+      os: String(p.OS || ""), online: Boolean(p.Online), lastSeen: p.LastSeen && !String(p.LastSeen).startsWith("0001") ? String(p.LastSeen) : null }));
 }
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -149,7 +173,9 @@ export default {
       // The Mac counts once link has paired one; the first paired is the one shown.
       const peers = await tryCall("link.peers");
       const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac };
+      // peers: the owner's other tailnet devices and whether each is online, for the phone's line.
+      const tailnet = t && t.running ? await tailnetPeers() : [];
+      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: tailnet };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.
