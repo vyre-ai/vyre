@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The planner in the Deck: a minimal panel at /planner
+
+- deck/views/planner.js: Agenda (planner.agenda, today), Alarms (the next five alarms and timers,
+  and an add box that sends planner.add { text }), Todos (open, a checkbox calls planner.done
+  { item }) and Notes (pinned first). planner.fired shows one banner per firing with Done and
+  Snooze (planner.done / planner.snooze { firing }); planner.acked removes it. /planner/<firing>,
+  where a push notification opens, shows that firing's item on top. No polling: planner.* events
+  redraw only while the page is visible. Routes added to deck/js/app.js. Tests in
+  deck/test/planner.test.js.
+
 #### The planner from the terminal: vyre alarm, timer, remind, todo, notes, agenda and snooze
 
 - `vyre alarm 7am`, `vyre alarm 6:30 weekdays`, `vyre alarm` (upcoming), `vyre alarm off <id>`;

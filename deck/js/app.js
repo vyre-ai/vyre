@@ -44,6 +44,9 @@ const ROUTES = [
   ["/settings", "settings"],
   ["/ask", "ask"],
   ["/find", "find"],
+  ["/planner", "planner"],
+  // A planner push notification opens /planner/<firing> (ADR 0025).
+  ["/planner/:firing", "planner"],
 ];
 const PLACES = [
   { href: "/now", label: "Now", icon: "now", view: "now" },
