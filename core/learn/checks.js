@@ -16,6 +16,9 @@
 // a lesson without a check, which Enrich repeats to Claude; a model may distill it later, off the
 // hot path, but never here.
 
+/** How many times one turn is sent back before it is allowed to end with the lesson broken. */
+export const MAX_BLOCKS = 2;
+
 /** Files that count as code for a "touched" check, unless the lesson says otherwise. */
 export const CODE = "\\.(js|mjs|cjs|ts|tsx|jsx|py|go|rs|rb|java|kt|swift|c|cc|cpp|h|hpp|cs|php|sh|css|scss|html|vue|svelte|sql)$";
 const TESTS = "\\b(npm (run )?test|npm t\\b|node --test|pnpm (run )?test|yarn test|pytest|go test|cargo test|make test|bun test)";
@@ -178,3 +181,14 @@ export function weakens(tool, input) {
   if (/\bvyre\s+down\b|\b(pkill|killall)\b[^|;&]*\bvyred?\b/.test(c)) return "Stopping vyred would stop the lessons the user taught from being checked.";
   return null;
 }
+
+/** What Stop tells Claude when it sends a turn back. The same words with vyred up or down. */
+export function sentBack(blocks, back) {
+  const one = back.length === 1;
+  return [`Vyre sent this turn back (${blocks} of ${MAX_BLOCKS}). ${one ? "A lesson" : "Lessons"} the user taught ${one ? "is" : "are"} broken:`,
+    ...back.map(({ l, problem }) => `- Lesson ${l.id}: ${l.rule} ${problem}`),
+    "Fix this now, then finish. Do not mention Vyre or this check unless the user asks."].join("\n");
+}
+
+/** What PreToolUse says when a lesson holds a call. */
+export const held = (l, problem) => `Vyre lesson ${l.id}, which the user taught: ${l.rule} ${problem}`;

@@ -56,19 +56,23 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   change code" accepted with `vyre learn accept`; a turn that wrote `src/add.js` only was sent
   back and then edited the changelog. `learn_retire` held (ask, denied headless) although
   `--allowedTools` allowed it.
+- Offline checks (`core/learn/offline.js`): accepted-lessons snapshot `<home>/lessons.json`
+  (0600), hook.js runs tool and Stop checks from it when vyred is unreachable, and the module
+  counts the offline log at start. Verified for real in `/tmp/vyre-lab` with vyred unable to
+  start: em dash reply 1 dash then 0; `src/add.js` turn sent back, then the changelog edited;
+  2 offline catches counted on restart.
 
 ## Doing
-- Nothing; waiting for review.
+- Waiting for gate-chat's edited-approval event shape (asked), to read draft edits as signals.
 
 ## Next
-1. Hooks with vyred down: Stop and the lesson tool checks skip, as every hook does. A snapshot
-   of active lessons that `hook.js` checks in-process, as it does the floor, would close that.
+1. Draft edits from the Gate as signals, once gate-chat sends the event shape.
 2. Turning free text into a check with a model, off the hot path, through the switchboard.
-3. Signals not read yet: reverted changes (`harness_files` plus git), `draft.edited` from the
-   Gate, and denials the user makes in Claude Code's own prompt (hooks do not see those).
-4. Deck panel: lessons with counts; accept, narrow, level, retire.
-5. Seq is Learning's own turn count per session, not the transcript seq; line them up once
+3. Signals not read yet: reverted changes (`harness_files` plus git), and denials the user makes
+   in Claude Code's own prompt (hooks do not see those).
+4. Seq is Learning's own turn count per session, not the transcript seq; line them up once
    Recall exposes it.
+5. Offline, project-scoped lessons do not apply; the snapshot could carry each project's folders.
 
 ## Needs from others
 - deck: a lessons panel over `learn.lessons`, `learn.accept`, `learn.edit`, `learn.retire`.
@@ -88,3 +92,6 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   `harness.stop` also takes `text` and `stop_hook_active`, and may return `{decision: "block",
   reason}`. `harness.brief` text now ends with the active lessons, in a project or not.
 - `tool.held` payload gains `lesson` (null for a floor hold); `rule` is null for a lesson hold.
+- Files in the home: `lessons.json` (accepted lessons, `{version, at, lessons: [{id, rule, level,
+  scope, check}]}`, 0600) and `learn-offline/` (per-session turn state and `log.jsonl`). Only
+  Learning and the hooks read them.
