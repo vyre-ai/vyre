@@ -75,8 +75,15 @@ export default {
       run: input => gate.get(input),
     });
 
+    ctx.tool("gate.revise", {
+      description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
+      input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
+      callers: ["cli", "local", "module"],
+      run: (input, { caller }) => { const c = person(caller); return gate.revise({ ...input, by: input.by || c }); },
+    });
+
     ctx.tool("gate.approve", {
-      description: "The user approves a held item, optionally with edits (the fields that changed, `to` included). It is sent now, with the credential added at the boundary.",
+      description: "The user approves a held item, optionally with edits (the whole content as it should go out, or the fields that changed; an empty string clears one; `to` included). It sends exactly that, never the original, with the credential added at the boundary.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule"],
       run: (input, { caller }) => { const c = person(caller); return gate.approve({ ...input, by: input.by || c }); },

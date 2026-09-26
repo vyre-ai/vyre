@@ -12,7 +12,8 @@
 //
 // config.json:
 //   "chat": { "url": "http://mattermost:8065", "team": "vyre", "owner": "alex",
-//             "listen": { "host": "0.0.0.0", "port": 8766 }, "callback": "http://vyred:8766", "poll_ms": 2000 }
+//             "listen": { "host": "0.0.0.0", "port": 8766 }, "callback": "http://vyred:8766", "poll_ms": 2000,
+//             "deck": "https://alex.vyre.run" }   (optional: held posts get an Edit in Deck link)
 // Vault: chat-bot-token (the bot's access token) and chat-slash-token (the /vyre command's
 // token), both granted to chat. See SETUP.md.
 
@@ -56,7 +57,7 @@ export default {
       s.listening = listener.url;
       const mm = client({ base: cfg.url, getToken: () => ctx.vault.fetch("chat-bot-token") });
       bridge = new Bridge({
-        db, mm, log: ctx.log, team: String(cfg.team), owner: String(cfg.owner), hook: String(cfg.callback || listener.url),
+        db, mm, log: ctx.log, team: String(cfg.team), owner: String(cfg.owner), hook: String(cfg.callback || listener.url), deck: cfg.deck ? String(cfg.deck) : undefined,
         call: (tool, input) => ctx.call(tool, input),
         slashToken: () => ctx.vault.fetch("chat-slash-token"),
       });

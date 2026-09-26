@@ -249,3 +249,41 @@ test("senders: a pass-based sender goes through the relay with placeholders unto
   await TYPES.http.send([], { method: "POST", url: "https://api.partner.example/v1/orders", headers: { "x-api-key": "{{vault}}" }, body: "{}" }, s, deps);
   assert.deepEqual(calls[0], { item: "partner-api", owner: "sam", request: { method: "POST", url: "https://api.partner.example/v1/orders", headers: { "x-api-key": "{{vault}}" }, body: "{}" } });
 });
+
+test("gate: revise keeps it held, stores the words, and Send then sends exactly the revision", async () => {
+  const { gate, events, sent, taught } = setup();
+  const { id } = ask(gate);
+  const body = "Hi Dana, the form is on staging. Thursday at 3? Alex";
+  const r = gate.revise({ id, edited: { body }, by: "chat" });
+  assert.equal(r.state, "held");
+  assert.equal(r.final.body, body);
+  assert.equal(r.draft.body, DRAFT.body, "the draft is kept for the diff");
+  assert.equal(sent.length, 0, "revising sends nothing");
+  const ev = events.find(e => e.type === "gate.revised");
+  assert.deepEqual(Object.keys(ev.payload).sort(), ["agent", "by", "id", "project", "thread", "to", "via"]);
+  assert.ok(!JSON.stringify(ev.payload).includes("staging"), "no content in the event");
+  const out = await gate.approve({ id });
+  assert.equal(out.state, "sent");
+  assert.equal(sent[0].c.body, body);
+  assert.equal(events.find(e => e.type === "gate.released").payload.edited, true);
+  assert.equal(taught.length, 1);
+});
+
+test("gate: approve takes the whole edited content; an empty field clears it; a changed to counts as an edit", async () => {
+  const { gate, sent, events } = setup();
+  const { id } = gate.request({ kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { ...DRAFT, cc: "ops@harlowlegal.com" } }, { agent: "juno" });
+  gate.revise({ id, edited: { to: "intake@harlowlegal.com" } });
+  await gate.approve({ id, edited: { to: "intake@harlowlegal.com", subject: "Intake form", body: "Hi team, it is live. Alex", cc: "" } });
+  assert.deepEqual(sent[0].to, ["intake@harlowlegal.com"]);
+  assert.deepEqual(sent[0].c, { subject: "Intake form", body: "Hi team, it is live. Alex" });
+  assert.equal(events.find(e => e.type === "gate.released").payload.edited, true);
+});
+
+test("gate: a revision the sender would refuse is refused, and a sent item cannot be revised", async () => {
+  const { gate } = setup();
+  const { id } = ask(gate);
+  assert.throws(() => gate.revise({ id, edited: { body: 42 } }), /needs a body/);
+  assert.throws(() => gate.revise({ id, edited: { to: "" } }), /say where it is going/);
+  await gate.approve({ id });
+  assert.throws(() => gate.revise({ id, edited: { body: "late" } }), /already sent/);
+});
