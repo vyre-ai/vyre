@@ -93,8 +93,16 @@ never will. Every one of the following is hard-coded, not merely defaulted:
     just by naming it — closed by requiring the exact derived name, though the proxy must still
     inspect an existing volume of that name itself before reusing it, which no pure function can
     do); `NetworkMode` accepted anything but `"host"`, including `container:<vyred>`; `CapAdd`
-    accepted any list; `Image` accepted any string. One is residual, not closed here: an exec
-    with an unrestricted `cmd` still reaches whichever agent's computer the caller names, and
-    labels cannot tell one agent's computer apart from another's, only from everything else on
-    the box — closing that needs the caller to be vyred and nothing else, true once Claude's
-    sessions have their own container.
+    accepted any list; `Image` accepted any string. One was left residual: an exec with an
+    unrestricted `cmd` still reaches whichever agent's computer the caller names, and labels
+    cannot tell one agent's computer apart from another's, only from everything else on the box.
+  - A second review (26 Sep) found `computerLabels` let the caller choose its own label prefix
+    (and with it, the volume `Source` derived from that prefix), and that two `*.managed`/
+    `*.computer` pairs in one body resolved ambiguously via `.find()`. `allowCreate` now requires
+    `computers.labelPrefix` in its config and refuses any label pair that isn't exactly that one,
+    body-wide. This surfaced the same class of residual on the create side that exec already
+    had: a caller naming a *different* agent still gets that agent's real, already-existing
+    computer and home volume back, since the check only asks "is this a computer" and "does the
+    claim match what is really there," never "is the caller allowed to act as this agent."
+    Closing both residuals needs the same thing: the caller is vyred and nothing else, true once
+    Claude's own sessions have their own container, off this network entirely.
