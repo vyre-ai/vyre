@@ -167,6 +167,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `threads.answer` declares `presence: { summary }` for security's presence proof (ADR 0004); the
   summary reads like "Allow Write to /work/notes.md: write notes.md (thread Intake)". The loader
   ignores the key until presence lands.
+- vyred refuses (403) a request that carries `x-vyre-agent-key` but names no agent, so a thread's
+  Bash forging "local" or "cli" with its own key is refused visibly, not taken as the user.
 - `callerKind` (and the vault's rules) drop the agent part: `mcp:agent:kit` is an `mcp` caller to
   every allowlist, so an agent's `vault.grant` waits as pending like any model's.
 - Tests: the vault's per-agent stub is module `roster`, not `agents`; Memory's graph test and the

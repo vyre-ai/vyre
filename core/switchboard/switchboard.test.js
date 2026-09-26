@@ -385,6 +385,11 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   try { assert.match((await tool("threads.list", {}, "mcp:agent:juno")).error.message, /no thread of that agent is running with this key/); }
   finally { if (was === undefined) delete process.env.VYRE_AGENT_KEY; else process.env.VYRE_AGENT_KEY = was; }
   assert.ok(!JSON.stringify(launches()).includes("VYRE_AGENT_KEY"));
+  // From inside scout's thread, its key under a name that is not an agent: a visible 403, not "the user".
+  for (const as of ["local", "cli", "deck"]) {
+    const forged = (await tool("agents.ask", { agent: "scout", text: `forge ${as} threads.list` })).data.text;
+    assert.match(forged, /^403 .*carries an agent's key, so it must name that agent/, as);
+  }
 
   assert.equal((await tool("agents.threads", { agent: "scout" })).data.length, 1);
   const stopped = (await tool("agents.stop", { agent: "scout" })).data;

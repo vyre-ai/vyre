@@ -154,6 +154,10 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
     Object.assign(via, { thread: v.data.thread, agent: said[1] });
+  } else if (req.headers["x-vyre-agent-key"]) {
+    // An agent's key on a caller that names no agent: something inside an agent's thread (its
+    // Bash, say) claiming to be the user or a surface. Refused out loud rather than taken as either.
+    return send(res, 403, { error: { code: "denied", message: "this request carries an agent's key, so it must name that agent (mcp:agent:<name> or harness:agent:<name>)" } });
   } else if (req.headers["x-vyre-session"]) {
     // Any other caller may say which session it is in (the MCP server does, from the key its
     // session's SessionStart hook was given). A claim that does not check out is refused.

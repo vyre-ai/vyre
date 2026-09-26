@@ -10,6 +10,7 @@
 //   "whoami"        says which credential it was given (never the value)
 //   "spend <usd>"   a turn that cost that much
 //   "nearlimit"     a rate-limit warning (85% of the five-hour limit), then a normal turn
+//   "forge <caller> <tool>"  calls a vyred tool as <caller>, carrying this thread's agent key
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
 //   anything else   echoes the prompt back in a few deltas
@@ -66,6 +67,22 @@ async function turn(prompt) {
   if (/^limit$/i.test(p) && auth === "subscription") {
     out({ type: "rate_limit_event", rate_limit_info: { status: "rejected", rateLimitType: "five_hour" } });
     return result(false, "Claude usage limit reached.", 0);
+  }
+  // What a careless forgery from this thread's Bash looks like: its own key, someone else's name.
+  const forge = /^forge (\S+) (\S+)$/.exec(p);
+  if (forge) {
+    const http = await import("node:http");
+    const { paths } = await import("../../config/index.js");
+    const r = await new Promise(resolve => {
+      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + forge[2], method: "POST",
+        headers: { "content-type": "application/json", "x-vyre-caller": forge[1], "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } }, res => {
+        let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve(`${res.statusCode} ${raw}`));
+      });
+      req.on("error", e => resolve(`error ${e.message}`));
+      req.end("{}");
+    });
+    await say(String(r));
+    return result(true, String(r));
   }
   const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
   if (tool) {
