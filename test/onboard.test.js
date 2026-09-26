@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, writeModule } from "./helpers.js";
 import { bindAddress } from "../core/onboard/loopback.js";
 import { execFileSync } from "node:child_process";
 import { ptyCommand } from "../core/onboard/setup-token.js";
@@ -303,4 +303,25 @@ test("onboard: once finished with an address, vyre up gets the address, not anot
   const after = (await call("onboard.link", {}, { root })).data;
   assert.equal(after.url, null);
   assert.equal(after.address, "https://alex.vyre.run");
+});
+
+test("onboard: finishing with an address hands over a one-time link to make the first passkey there", async t => {
+  const root = tempHome(t);
+  // A stand-in presence module: no keys yet, and a code on request.
+  writeModule(path.join(root, "modules"), "presence", { roles: ["box"], does: { tools: ["presence.keys", "presence.code"] } }, `let made = 0; export default { async start(ctx) {
+    ctx.tool("presence.keys", { input: { type: "object" }, run: async () => [] });
+    ctx.tool("presence.code", { input: { type: "object" }, run: async () => ({ code: "AB12CD34", expires: Date.now() + 600000, made: ++made }) });
+    return { async stop() {} };
+  } };`);
+  const cfg = path.join(root, "config.json");
+  const bins = fs.mkdtempSync(path.join(root, "bin-"));
+  const saved = process.env.VYRE_TAILSCALE_BIN;
+  process.env.VYRE_TAILSCALE_BIN = fakeBin(bins, "tailscale", "{}");
+  fs.writeFileSync(cfg, JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0, address: "https://alex.vyre.run" } }));
+  const { start: boot } = await import("../core/daemon/index.js");
+  const d = await boot({ root, log: () => {} });
+  t.after(async () => { await d.stop(); if (saved === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = saved; });
+  const r = await call("onboard.finish", {}, { root });
+  assert.ok(r.data, JSON.stringify(r.error));
+  assert.equal(r.data.passkeyUrl, "https://alex.vyre.run/onboard/passkey#e=AB12CD34");
 });

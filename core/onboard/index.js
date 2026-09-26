@@ -286,6 +286,20 @@ export default {
       }
     }
 
+    /**
+     * The first passkey is made at the box's own address (a passkey made on the loopback page
+     * would belong to 127.0.0.1). While none exists, presence mints a one-time code, which rides
+     * in the fragment to the page that enrolls it; the code proves presence.enroll and nothing else.
+     */
+    async function passkeyUrl(address) {
+      const keys = await tryCall("presence.keys");
+      if (keys.__error) return null;
+      const list = Array.isArray(keys) ? keys : keys.keys || [];
+      if (list.some(k => k.kind === "passkey")) return null;
+      const c = await tryCall("presence.code");
+      return c.__error || !c.code ? null : `${String(address).replace(/\/$/, "")}/onboard/passkey#e=${encodeURIComponent(c.code)}`;
+    }
+
     ctx.tool("onboard.finish", {
       description: "Finish the onboarding.",
       input: obj(),
@@ -295,7 +309,7 @@ export default {
         ctx.events.emit("onboard.finished", {});
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
-        return { ...s, url: s.address, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
+        return { ...s, url: s.address, passkeyUrl: (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
       },
     });
 
