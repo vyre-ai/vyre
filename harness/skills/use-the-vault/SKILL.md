@@ -25,10 +25,17 @@ modules and watchers get an item by name when their manifest declares it, and pe
 - **The user pasted a secret anyway:** don't repeat it. Tell them it is now in this session's
   transcript, suggest they put it in the Vault with `vyre vault put <name>`, and rotate it if the
   transcript could be seen by anyone else.
+- **The user has an .env file or a password-manager export:** `vault_import` with its path.
+  Vyre reads the file itself, so the values never pass through you. Then tell the user to
+  delete the file.
 - **Use an item in code:** a Vyre module declares it under `needs.vault` in `module.json` and
   calls `ctx.vault.fetch("<name>")`. A watcher lists it under `needs` and calls
   `vault.fetch("<name>")`. Scripts outside Vyre run through `vyre vault run <name> -- <command>`,
-  which injects the value into that one process's environment.
+  which injects the value into that one process's environment and hides it in the output.
+- **Give a module access:** `vault_grant`. From you it waits as pending; tell the user to run
+  `vyre vault approve <id>`. The same goes for passes you create.
+- **Use an item someone shared with you:** `vault_relay` with `{{vault}}` where the value goes
+  in a header or the body. Their Vyre adds it; it never reaches this machine.
 - **Share with someone:** `vault_pass_create`. Passes are **relayed** by default: the value
   never leaves this machine and the other person's calls go through it, so revoking ends access
   at once. Offer **sealed** only when they must work offline, and say that revoking a sealed pass
