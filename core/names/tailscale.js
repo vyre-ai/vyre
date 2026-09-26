@@ -71,6 +71,35 @@ export function parseStatus(s) {
 }
 
 /**
+ * The other nodes in this machine's netmap, from `tailscale status --json`: people's devices,
+ * tagged nodes and nodes of people the box is shared with. Empty when Tailscale is not running.
+ * @returns {Promise<Array<{ node: string, stableId: string, ips: string[], online: boolean, tagged: boolean, login: string|null, sharee: boolean }>>}
+ */
+export async function peers() {
+  const r = await run(["status", "--json"]);
+  if (r.code !== 0) return [];
+  try { return parsePeers(JSON.parse(r.out)); } catch { return []; }
+}
+
+/** Pure, for tests: each Peer of a status, with its login from the User map. */
+export function parsePeers(s) {
+  const users = (s && s.User) || {};
+  return Object.values((s && s.Peer) || {}).map(p => {
+    const tags = Array.isArray(p.Tags) ? p.Tags.map(String) : [];
+    const u = users[String(p.UserID)];
+    return {
+      node: String(p.DNSName || p.HostName || "").replace(/\.$/, ""),
+      stableId: String(p.ID || ""),
+      ips: (p.TailscaleIPs || []).map(String),
+      online: p.Online === true,
+      tagged: tags.length > 0,
+      login: tags.length ? null : (u && u.LoginName) || null,
+      sharee: p.ShareeNode === true,
+    };
+  });
+}
+
+/**
  * Who is at this tailnet address: login, node, stable ID, tags and the app capabilities the
  * policy grants it (link/transport.js parseWhois, the one parser).
  */

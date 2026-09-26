@@ -69,8 +69,10 @@ export function privateSocketDir() {
 }
 
 /** @typedef {{ tailscale: boolean, address?: string, owner?: string, domain?: string, via?: "vyre.run"|"ts.net",
- *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string }} Network
- * address is the https URL the Deck is served at; owner the one Tailscale login served there (ADR 0002). */
+ *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string,
+ *   guests?: { enabled: boolean, people: Record<string, { tools: string[] }> } }} Network
+ * address is the https URL the Deck is served at; owner the one Tailscale login served there (ADR 0002);
+ * guests the people from other tailnets it also serves, each limited to its tools (ADR 0014 part 8). */
 
 /** @typedef {{ name?: string, role: "box"|"local", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
@@ -86,7 +88,8 @@ function defaults() {
     me: { domains: [], emails: [] },
     transcripts: [path.join(os.homedir(), ".claude", "projects"), path.join(os.homedir(), ".claude", "projects-archive")],
     modules: { enable: [], disable: [] },
-    network: { tailscale: false },
+    // Guests from another tailnet: off, nobody listed (ADR 0014 part 8, core/names/guests.js).
+    network: { tailscale: false, guests: { enabled: false, people: {} } },
     // Off: no computer's Chrome goes out through the user's Mac until the owner lists sites
     // (core/computers/egress.js, box/compose.egress.yml).
     glass: { egress: { enabled: false, sites: [] } },
