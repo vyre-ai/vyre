@@ -15,6 +15,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   every workflow can also be run by hand (workflow_dispatch). Replaces `test.yml`, which ran the
   whole suite on two macOS runners without installing dependencies. `.github/workflows/`, README
   badges.
+- Docs and comments call the test server "the test box", the prototype's folder "the
+  prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
+  comments only).
 
 #### The suite passes on the test box (Linux, node 22) as it does on the Mac
 
