@@ -97,6 +97,8 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 - planner: the planner team drafts docs/using/planner.md from merged code (alarms, timers,
   reminders, todos, notes, calendar sync, delivery to whichever device is up, what agents may do);
   docs edits it, adds it to nav under Using Vyre, links it from claude-code.md's /vyre rows.
+  Agent rule (user): agents add notes, reminders and todos without asking; an item names the agent
+  only when it is not your own assistant or session; no visible limit, no "only you can edit".
 - capsule-pro 4c957a4: `vyre capsule` builds the native app locally; the download is retired.
 - main f3b5e36 (spec: no ctx.projects): close that gap in known-gaps.md and module-contract.md.
 

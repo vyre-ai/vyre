@@ -31,15 +31,17 @@ sessions and your assistant do.
 When Claude promises a reminder ("I'll remind you at 6"), it sets it with the planner in the same
 turn. If the planner isn't running, it tells you it can't set a reminder yet, instead of promising.
 
-## Under "What it will not do"
+## Agents and the planner (user's rule, replaces the old "20 an hour" line)
 
-Agents can add todos, reminders and notes, each labelled with the agent and limited to 20 an hour.
-Only you can edit, complete or delete them, or set an alarm that rings.
+Agents add notes, reminders and todos without asking. An item shows the agent's name only when it
+comes from someone other than your own assistant or your own session. (A silent runaway cap of
+about 200 an hour exists; the page does not mention it.)
 
 ## Also
 
 - using/cli.md and using/learning.md: `/vyre remember` becomes `/vyre lesson` wherever they mention it.
 - The planner's own user page (todos, reminders, agenda, alarms) belongs to the planner team (or
   docs writes it from their contract). When it exists, link it from the /vyre todo, remind and
-  agenda rows. It must state the agent rule: agents add items labelled with the agent, at most 20
-  an hour each; only a person edits, completes, deletes or sets a ringing alarm.
+  agenda rows. Agent rule (user, replaces the earlier one): agents add notes, reminders and todos
+  without asking; an item names the agent only when it is not your own assistant or session. No
+  visible limit; do not mention the silent cap.
