@@ -5,6 +5,7 @@ import { request, call } from "../../daemon/client.js";
 import { stop } from "../daemonctl.js";
 import { out, dim, signal, beacon } from "../style.js";
 import * as config from "../../config/index.js";
+import { confirm, HUMAN_TOOLS } from "../confirm.js";
 
 export default [
   {
@@ -58,6 +59,13 @@ export default [
       if (!name) { out("  vyre call <tool> [json]"); return 1; }
       let input = {};
       if (json) { try { input = JSON.parse(json); } catch { out("  the input must be JSON"); return 1; } }
+      // A human-only learn tool asks the person at the terminal first, as `vyre learn` does (a
+      // stopgap until ADR 0004's presence registry; see confirm.js).
+      if (HUMAN_TOOLS.includes(name)) {
+        const token = input && input.id != null ? input.id : name;
+        const c = confirm({ token, summary: `${name} ${JSON.stringify(input)}`, what: name });
+        if (!c.ok) { out(beacon("  ") + c.why); return 1; }
+      }
       const r = await call(name, input);
       if (r.error) { out(beacon(`  ${r.error.code}: `) + r.error.message); return 1; }
       out(JSON.stringify(r.data, null, 2));

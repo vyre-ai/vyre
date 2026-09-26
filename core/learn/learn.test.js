@@ -406,11 +406,12 @@ test("learn: a plain no declines; anything else leaves the proposal waiting; ano
   for (const s of ["No, I meant the other file. Try again.", "Yes, and also rename it.", "Sure thing, but only in docs. Go on."]) assert.equal(reply(s), null, s);
 });
 
-test("learn: accept, retire and relax refuse MCP, agents, hooks and unknown callers, and declare presence", async t => {
+test("learn: accept, retire and relax refuse local, MCP, agents, hooks and unknown callers, and declare presence", async t => {
   const { reg, add } = await learning(t);
   await add("never use em dashes");
   await reg.call("harness.enrich", { prompt: "always run the tests before you commit", cwd: CWD, session: "s1", prompt_id: "p1" });
-  for (const caller of ["mcp", "mcp:agent:kit", "harness", "unknown"]) {
+  // "local" is what any socket client gets by sending no header: `curl --unix-socket` from Claude's shell.
+  for (const caller of ["local", "mcp", "mcp:agent:kit", "harness", "unknown"]) {
     assert.equal((await reg.call("learn.accept", { id: 2 }, caller)).error.code, "denied", caller);
     assert.equal((await reg.call("learn.retire", { id: 1 }, caller)).error.code, "denied", caller);
     assert.equal((await reg.call("learn.relax", { id: 1, level: "remind" }, caller)).error.code, "denied", caller);
@@ -427,8 +428,9 @@ test("learn: accept, retire and relax refuse MCP, agents, hooks and unknown call
   await mod.start({ store: { db, migrate: steps => migrate(db, "learn", steps) }, events: new Events(db), call: async () => ({ error: { code: "no_such_tool" } }),
     log: () => {}, tool: (n, d) => { defs[n] = d; } });
   db.prepare("INSERT INTO learn_lessons (scope, when_text, rule, level, status, source, created, updated) VALUES ('\"all\"','always','Never use em dashes.','block','active','{}',1,1)").run();
+  for (const n of ["learn.accept", "learn.retire", "learn.relax", "learn.skill-install", "learn.skill-retire", "learn.skill-dismiss"]) assert.deepEqual(defs[n].callers, ["cli", "deck", "capsule"], n);
+  assert.deepEqual(defs["learn.signals"].callers, ["cli", "local", "deck", "capsule"], "reading stays open to local");
   for (const n of ["learn.accept", "learn.retire", "learn.relax"]) {
-    assert.deepEqual(defs[n].callers, ["cli", "local", "deck", "capsule"], n);
     assert.match(await defs[n].presence.summary({ id: 1, level: "remind" }), /lesson 1: "Never use em dashes\."/, n);
   }
   assert.match(defs["learn.relax"].presence.summary({ id: 1, level: "remind" }), /lowers the level from block to remind/);

@@ -479,7 +479,7 @@ test("skills: steps recorded at Stop, marked clean at the next prompt, proposed 
   assert.match(skills[0].body, /^---\nname: learned-/);
   assert.deepEqual(drift, []);
   assert.equal(of("skill.proposed").length, 1);
-  for (const caller of ["mcp", "mcp:agent:kit", "harness"]) assert.equal((await reg.call("learn.skill-install", { id: skills[0].id }, caller)).error.code, "denied", caller);
+  for (const caller of ["local", "mcp", "mcp:agent:kit", "harness"]) assert.equal((await reg.call("learn.skill-install", { id: skills[0].id }, caller)).error.code, "denied", caller);
   const inst = (await reg.call("learn.skill-install", { id: skills[0].id }, "cli")).data;
   assert.equal(inst.status, "installed");
   assert.equal(inst.path, path.join(home, "learned", "account", "skills", inst.name, "SKILL.md"), "where the Switchboard loads the account's skills");

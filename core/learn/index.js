@@ -98,8 +98,16 @@ const MIGRATIONS = [
 ];
 
 export { MAX_BLOCKS };
-/** The surfaces a person uses. Loosening tools refuse every other caller (MCP, agents, hooks). */
+/** The surfaces a person uses, for what only reads (learn.signals). */
 const OWNER = ["cli", "local", "deck", "capsule"];
+/**
+ * Who may call the human-only tools (accept, retire, relax, skill-install, skill-retire,
+ * skill-dismiss): only a surface that names itself. Not "local", which any socket client gets by
+ * sending no header, nor MCP, agents or hooks. STOPGAP until ADR 0004's registry enforces the
+ * `presence` these tools declare: a model can still claim "cli", so the CLI asks the person at a
+ * terminal (core/cli/confirm.js) and weakens() asks before a model's shell reaches these tools.
+ */
+const HUMAN = ["cli", "deck", "capsule"];
 const HOUR = 3600 * 1000, DAY = 24 * HOUR, WEEK = 7 * DAY;
 /** Per-turn rows (commands, calls, writes, turns) are kept this long. */
 const KEEP = WEEK;
@@ -544,7 +552,7 @@ export default {
 
     ctx.tool("learn.accept", {
       description: "Accept a proposed lesson. Only the user can: from the CLI, the Capsule or the Deck, with presence. In a thread the user accepts by replying yes; nothing needs calling.",
-      callers: OWNER,
+      callers: HUMAN,
       presence: { summary: ({ id }) => about("Accept", id) },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
       run: async ({ id }) => {
@@ -570,7 +578,7 @@ export default {
 
     ctx.tool("learn.relax", {
       description: "Loosen a lesson: lower its level, narrow or move its scope, narrow `when`, change or remove its check, lower its cap, pin it, or rewrite its rule. Only the user can, with presence.",
-      callers: OWNER,
+      callers: HUMAN,
       presence: { summary: ({ id, ...change }) => { const l = get(id); const what = l ? loosens(l, change) : []; return `${about("Relax", id)}${what.length ? `: ${what.join(", ")}` : ""}`; } },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" }, ...changeSchema } },
       run: async ({ id, ...change }) => {
@@ -583,7 +591,7 @@ export default {
 
     ctx.tool("learn.retire", {
       description: "Retire a lesson, or decline a proposed one. Only the user can, with presence.",
-      callers: OWNER,
+      callers: HUMAN,
       presence: { summary: ({ id }) => about("Retire", id) },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
       run: async ({ id }) => retire(must(id)),
@@ -720,7 +728,7 @@ export default {
     const skillOf = id => { const s = skills.list().find(x => x.id === id); if (!s) throw new Error(`no skill ${id}`); return s; };
     ctx.tool("learn.skill-install", {
       description: "Install a proposed skill: instructions every future session follows. Only the user can, with presence. scope: account, project (default for a project's procedure; private keeps it out of the project's folder) or agent.",
-      callers: OWNER,
+      callers: HUMAN,
       presence: { summary: ({ id, scope, agent }) => { const s = skills.list().find(x => x.id === id); return `Install Vyre skill ${id}${s ? ` (${s.name})` : ""} for ${scope === "agent" ? `agent ${agent}` : scope || "its scope"}: every future session there follows it`; } },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" }, scope: { type: "string", enum: ["account", "project", "agent"] }, private: { type: "boolean" }, agent: { type: "string" } } },
       run: async ({ id, scope, private: priv, agent }) => {
@@ -735,14 +743,14 @@ export default {
     });
     ctx.tool("learn.skill-retire", {
       description: "Retire an installed skill: its file is removed. Only the user can, with presence.",
-      callers: OWNER,
+      callers: HUMAN,
       presence: { summary: ({ id }) => { const s = skills.list().find(x => x.id === id); return `Retire Vyre skill ${id}${s ? ` (${s.name})` : ""}`; } },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
       run: async ({ id }) => skills.retire(id),
     });
     ctx.tool("learn.skill-dismiss", {
       description: "Say no to a proposed skill; its procedure is not proposed again.",
-      callers: OWNER,
+      callers: HUMAN,
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
       run: async ({ id }) => skills.dismiss(id),
     });
