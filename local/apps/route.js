@@ -28,8 +28,9 @@
 
 /**
  * @typedef {{ app: string, action: string, args: Record<string, any>, sends: boolean, said: string }} Route
- * @typedef {{ ambiguous: true, reason: string }} Ambiguous
- * @typedef {{ now: number, timeZone: string, app?: string }} RouteOptions
+ * @typedef {{ ambiguous: true, reason: string, needs: { app?: any[], recipient?: any[] }, ask: string, text: string, app?: string, action?: string, to?: string }} NeedsPrompt
+ * @typedef {{ ambiguous: true, reason: string } | NeedsPrompt} Ambiguous
+ * @typedef {{ now: number, timeZone: string, app?: string, planner?: "planner" | "apple" }} RouteOptions
  */
 
 /** Longer text than this is never a command; refusing it early also bounds every regex below. */
@@ -373,12 +374,35 @@ function recipient(/** @type {string} */ to) {
   return who;
 }
 
+/**
+ * A message whose recipient is unclear: not a plain "ambiguous" but a question with the words
+ * kept, so a surface can ask "Who should get this?" and send them on. `to` is the name as typed,
+ * for the tool to look up among the app's people; the rules never guess who that is.
+ * @returns {NeedsPrompt}
+ */
+function needRecipient(/** @type {string} */ app, /** @type {string} */ text, /** @type {string} */ to = "") {
+  return { ambiguous: true, reason: `who is the ${app} message for?`, needs: { recipient: [] }, ask: "Who should get this?",
+    text: text.trim(), app, action: "send", ...(to ? { to } : {}) };
+}
+
+/** A message whose app is unclear: "tell juno I'm running late". @returns {NeedsPrompt} */
+function needApp(/** @type {string} */ text, /** @type {string} */ to) {
+  return { ambiguous: true, reason: "which app should this go through?", needs: { app: [] }, ask: "Which app?", text: text.trim(), action: "send", to };
+}
+
+/** The words after "tell <name>", as one first-word name and the message, for asking about either. */
+const TELL = /^(?:tell|message|text|msg)\s+(\S+)\s+(?:that\s+)?([\s\S]+)$/i;
+
 /** @returns {Route | Ambiguous} */
-function message(/** @type {string} */ app, /** @type {string} */ to, /** @type {string} */ text) {
+function message(/** @type {string} */ app, /** @type {string} */ to, /** @type {string} */ text, /** @type {string} */ raw = "") {
   const who = recipient(to);
   // The words go exactly as typed, but for a leading "that" or "saying" joining them on.
   const what = String(text).replace(/^\s*(?:that|saying)\s+/i, "").replace(/^\s*:\s*/, "").trim();
-  if (!who) return unsure(`who is the ${app} message for? Say it as: ${app.toLowerCase()} juno: the message`);
+  if (!who) {
+    // "tell mom I'm on slack now": read it again as "tell <name> <message>" and ask who.
+    const m = TELL.exec(raw);
+    return m ? needRecipient(app, m[2], m[1]) : needRecipient(app, what || raw, "");
+  }
   if (!what) return unsure(`what should the ${app} message say?`);
   return { app, action: "send", args: { to: who, text: what }, sends: true, said: `${app} → ${who}: ${what}` };
 }
@@ -400,7 +424,7 @@ function messageRules(raw, only) {
     if (!m) continue;
     const app = MESSENGERS[m[2].toLowerCase()];
     if (only && app !== only) return unsure(`those words are for ${app}, not ${only}`);
-    return message(app, m[1], m[3]);
+    return message(app, m[1], m[3], raw);
   }
   // "whatsapp juno: text". The name must not end in a digit, so "at 10:30" is not a colon form.
   const m = new RegExp(`^${APP}\\s+([^:\\n]*[^:\\d\\s])\\s*:\\s*([\\s\\S]+)$`, "i").exec(raw);
@@ -409,11 +433,19 @@ function messageRules(raw, only) {
     if (only && app !== only) return unsure(`those words are for ${app}, not ${only}`);
     return message(app, m[2], m[3]);
   }
-  if (!only && new RegExp(`^${APP}\\b`, "i").test(raw)) return unsure("who is the message for? Say it as: whatsapp juno: the message");
+  // "whatsapp running late": the app is named and who is not. Everything after it is the message.
+  const bare = new RegExp(`^${APP}\\s+([\\s\\S]+)$`, "i").exec(raw);
+  if (bare && (!only || MESSENGERS[bare[1].toLowerCase()] === only)) {
+    return needRecipient(MESSENGERS[bare[1].toLowerCase()], bare[2], bare[2].trim().split(/\s+/)[0]);
+  }
+  if (only) return null;
   // Words that mention a messenger but match no form are left alone rather than guessed at.
-  if (!only && new RegExp(`^(?:tell|message|text|msg|send)\\b[\\s\\S]*\\bon\\s+${APP}\\b`, "i").test(raw)) {
+  if (new RegExp(`^(?:tell|message|text|msg|send)\\b[\\s\\S]*\\bon\\s+${APP}\\b`, "i").test(raw)) {
     return unsure("who is the message for, and what does it say? Say it as: whatsapp juno: the message");
   }
+  // "tell juno I'm running late": a message, to someone, through no app yet.
+  const t = TELL.exec(raw);
+  if (t && recipient(t[1])) return needApp(t[2], t[1]);
   return null;
 }
 
@@ -423,17 +455,54 @@ function scopedMessage(/** @type {string} */ raw, /** @type {string} */ app) {
   if (own) return own;
   let m = /^([^:\n]{0,59}[^:\d\s])\s*:\s*([\s\S]+)$/.exec(raw);
   if (m) return message(app, m[1], m[2]);
-  m = /^(?:tell|message|text|msg)\s+(\S+)\s+([\s\S]+)$/i.exec(raw);
-  if (m) return message(app, m[1], m[2]);
-  return unsure(`who is the ${app} message for? Say it as: juno: the message`);
+  m = TELL.exec(raw);
+  if (m) return message(app, m[1], m[2], raw);
+  return needRecipient(app, raw);
+}
+
+// ---- Todos -------------------------------------------------------------------------------
+
+/** "todo buy milk", "to do: call kit", "add buy milk to my todo list", "add call kit to my todos". */
+function todoText(/** @type {string} */ raw) {
+  const r = raw.trim();
+  let m = /^(?:todo|to-do|to\s+do)(?:\s*:\s*|\s+-\s+|\s+)([\s\S]+)$/i.exec(r);
+  if (m) return m[1].trim();
+  m = /^add\s+([\s\S]+?)\s+to\s+(?:my\s+|the\s+)?(?:todo|to-do|to\s+do)s?(?:\s+list)?[.!]?$/i.exec(r);
+  return m ? m[1].trim() : null;
+}
+
+// ---- Apple, and the Planner --------------------------------------------------------------
+
+/**
+ * Words that ask for the Mac's own app: "in Apple Notes", "in notes app", "on my Mac's Clock",
+ * "apple reminders". Returns that app and the words without the phrase, or null.
+ * @param {string} raw
+ */
+export function appleAsked(raw) {
+  const re = /(?:\s*\b(?:in|on|to|into|with|using)\s+(?:the\s+)?(?:my\s+)?)?\b(?:(?:mac'?s?|apple)\s+(notes|clock|reminders)(?:\s+app)?|(notes|clock|reminders)\s+app)\b/i;
+  const m = re.exec(raw);
+  if (!m) return null;
+  const app = SCOPES[(m[1] || m[2]).toLowerCase()];
+  // "apple reminders: remind me ..." leaves a colon at the front; it joined the phrase on.
+  const rest = (raw.slice(0, m.index) + " " + raw.slice(m.index + m[0].length)).replace(/[ \t]+/g, " ").trim().replace(/^[:,-]\s*/, "");
+  return { app, text: rest };
+}
+
+/** The same request, for the box's planner: the person's own words and the kind. @returns {Route} */
+function toPlanner(/** @type {Route} */ r, /** @type {string} */ kind, /** @type {string} */ raw) {
+  return { app: "Planner", action: "add", args: { text: raw, kind }, sends: false, said: r.said };
 }
 
 // ---- The router --------------------------------------------------------------------------
 
-const SCOPES = /** @type {Record<string, string>} */ ({ clock: "Clock", notes: "Notes", reminders: "Reminders", weather: "Weather", slack: "Slack", whatsapp: "WhatsApp" });
+const SCOPES = /** @type {Record<string, string>} */ ({ clock: "Clock", notes: "Notes", reminders: "Reminders", weather: "Weather",
+  slack: "Slack", whatsapp: "WhatsApp", planner: "Planner" });
 
 /**
- * Words to one route, or ambiguous with the reason.
+ * Words to one route, or ambiguous with the reason (and, for a message, what to ask).
+ *
+ * Timers, alarms, reminders, todos and notes go to the Planner (the box's own, ADR 0025) unless
+ * the words ask for the Mac's app, the scope is that app, or o.planner is "apple".
  * @param {string} text @param {RouteOptions} o
  * @returns {Route | Ambiguous}
  */
@@ -445,8 +514,12 @@ export function route(text, o) {
   if (o.app !== undefined && o.app !== null && o.app !== "") {
     const app = SCOPES[String(o.app).trim().toLowerCase()];
     if (!app) return unsure(`Vyre has no words for ${o.app} yet`);
+    if (app === "Planner") {
+      const r = route(raw, { ...o, app: undefined, planner: "planner" });
+      return "ambiguous" in r || r.app !== "Planner" ? { app: "Planner", action: "add", args: { text: raw }, sends: false, said: `Planner: ${t}` } : r;
+    }
     if (app === "Notes") return noteRules(raw) || note(raw);
-    if (app === "Reminders") return reminderRules(t, o) || reminder(t, o);
+    if (app === "Reminders") return reminderRules(t, o) || todoRoute(raw) || reminder(t, o);
     if (app === "Weather") return weatherRules(t, o) || weather(weatherArgs(t, o, true));
     if (app === "Clock") {
       const c = clockRules(t);
@@ -456,6 +529,22 @@ export function route(text, o) {
     }
     return scopedMessage(raw, app);
   }
-  return clockRules(t) || noteRules(raw) || reminderRules(t, o) || messageRules(raw, null) || weatherRules(t, o)
-    || unsure(`Vyre does not know what "${t.slice(0, 60)}" should do`);
+  const apple = appleAsked(raw);
+  if (apple) return route(apple.text, { ...o, app: apple.app });
+  /** @type {[string, Route | Ambiguous | null][]} */
+  const tries = [["clock", clockRules(t)], ["note", noteRules(raw)], ["todo", todoRoute(raw)], ["reminder", reminderRules(t, o)]];
+  const hit = tries.find(([, r]) => r);
+  if (hit) {
+    const r = /** @type {Route | Ambiguous} */ (hit[1]);
+    if ("ambiguous" in r || o.planner === "apple") return r;
+    return toPlanner(r, hit[0] === "clock" ? (r.action === "alarm" ? "alarm" : "timer") : hit[0], raw);
+  }
+  return messageRules(raw, null) || weatherRules(t, o) || unsure(`Vyre does not know what "${t.slice(0, 60)}" should do`);
+}
+
+/** A todo, on the Mac: a reminder with no time. @returns {Route | null} */
+function todoRoute(/** @type {string} */ raw) {
+  const text = todoText(raw);
+  if (text === null) return null;
+  return { app: "Reminders", action: "create", args: { text }, sends: false, said: `Todo: ${text}` };
 }

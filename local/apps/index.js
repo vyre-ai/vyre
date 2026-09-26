@@ -22,12 +22,16 @@ import { makeEnv, AppsError } from "./env.js";
 import { adapters } from "./adapters/index.js";
 import { installed, DEFAULT_DIRS } from "./installed.js";
 import { route } from "./route.js";
+import { rank as rankTargets, STRONG } from "./fuzzy.js";
 import { setupFor } from "./setup.js";
 import path from "node:path";
 import * as vyreConfig from "../../core/config/index.js";
 
 export const TARGETS_TTL_MS = 60 * 1000;
 export const LIST_MAX = 100;
+
+/** Messaging apps worth offering when they are installed, in this order. */
+export const MESSAGING = ["Messages", "WhatsApp", "Slack", "Telegram", "Signal", "Discord"];
 
 const str = { type: "string" };
 const actInput = {
@@ -48,6 +52,19 @@ export default {
     const apps = installed({ dirs: Array.isArray(opts.dirs) ? opts.dirs : DEFAULT_DIRS, now: env.now, exec: env.exec });
     /** @type {Map<string, { at: number, targets: any[] }>} */
     const targetCache = new Map();
+
+    /** An adapter's targets for a query, cached for a minute, expiring on read. */
+    const targetsOf = async (/** @type {any} */ a, /** @type {string} */ q) => {
+      const key = `${a.id}\u0000${q}`;
+      const hit = targetCache.get(key);
+      if (hit && env.now() - hit.at <= TARGETS_TTL_MS) return hit.targets;
+      const targets = await a.targets(q, env);
+      // Expired entries go on write, so a stream of different queries cannot grow the map.
+      const now = env.now();
+      for (const [k, v] of targetCache) if (now - v.at > TARGETS_TTL_MS) targetCache.delete(k);
+      targetCache.set(key, { at: now, targets });
+      return targets;
+    };
 
     /** The adapter and action a call names, or a coded refusal in words. */
     const resolve = (/** @type {string} */ app, /** @type {string} */ action) => {
@@ -90,18 +107,7 @@ export default {
       async run({ app, q = "", limit = 20 }) {
         const a = registry.find(app);
         if (!a || typeof a.targets !== "function") return { targets: [] };
-        const key = `${a.id}\u0000${q}`;
-        const hit = targetCache.get(key);
-        let targets;
-        if (hit && env.now() - hit.at <= TARGETS_TTL_MS) targets = hit.targets;
-        else {
-          targets = await a.targets(q, env);
-          // Expired entries go on write, so a stream of different queries cannot grow the map.
-          const now = env.now();
-          for (const [k, v] of targetCache) if (now - v.at > TARGETS_TTL_MS) targetCache.delete(k);
-          targetCache.set(key, { at: now, targets });
-        }
-        return { targets: targets.slice(0, Math.max(1, limit)) };
+        return { targets: (await targetsOf(a, q)).slice(0, Math.max(1, limit)) };
       },
     });
 
@@ -123,11 +129,74 @@ export default {
       return { app, action: m.action, args, sends, said, via: "model" };
     };
 
+    /**
+     * The messaging apps to offer when words do not say which: the ones Vyre can send through
+     * first, then the usual ones this Mac has installed.
+     */
+    const messagingApps = async () => {
+      /** @type {{ name: string, bundleId?: string, hint?: string }[]} */
+      const out = [];
+      const seen = new Set();
+      for (const a of registry.all) {
+        if (!Object.values(a.actions).some(x => x.sends)) continue;
+        seen.add(a.app.toLowerCase());
+        out.push({ name: a.app, ...(a.bundleIds[0] ? { bundleId: a.bundleIds[0] } : {}), hint: "Vyre sends through it" });
+      }
+      let rows = [];
+      try { rows = await apps.find({ limit: 100 }); } catch {}
+      for (const name of MESSAGING) {
+        const row = rows.find(r => r.name.toLowerCase() === name.toLowerCase());
+        if (!row || seen.has(name.toLowerCase())) continue;
+        seen.add(name.toLowerCase());
+        out.push({ name: row.name, ...(row.bundleId ? { bundleId: row.bundleId } : {}), hint: "installed; Vyre cannot send through it yet" });
+      }
+      return out;
+    };
+
+    /**
+     * The people in an app who match a typed name, best first, and a "Did you mean" line when one
+     * of them is the only strong match. None when the app has no people Vyre can list.
+     */
+    const recipients = async (/** @type {string} */ appName, /** @type {string} */ typed) => {
+      const a = registry.find(appName);
+      if (!a || typeof a.targets !== "function" || !typed) return { list: [], didYouMean: null };
+      let all = [];
+      try { all = await targetsOf(a, ""); } catch { return { list: [], didYouMean: null }; }
+      const list = rankTargets(typed, all).map(t => ({ id: t.id, title: t.title, app: a.app, score: t.score }));
+      const strong = list.filter(t => t.score >= STRONG);
+      return { list, didYouMean: strong.length === 1 ? `Did you mean ${strong[0].title} on ${a.app}?` : null };
+    };
+
+    /** A route that asks: fill in the candidates it asks between. */
+    const fillNeeds = async (/** @type {any} */ r) => {
+      if (r.needs.app) return { ...r, needs: { app: await messagingApps() } };
+      const { list, didYouMean } = await recipients(r.app, r.to || "");
+      return { ...r, needs: { recipient: list }, ...(didYouMean ? { didYouMean } : {}) };
+    };
+
+    /**
+     * A send to someone the app does not know by that name becomes a question, not a guess. An app
+     * with no people to list (no adapter yet) passes the name on as written.
+     */
+    const checkRecipient = async (/** @type {any} */ r) => {
+      const a = registry.find(r.app);
+      if (!a || typeof a.targets !== "function") return r;
+      let all;
+      try { all = await targetsOf(a, ""); } catch { return r; }
+      const to = String(r.args.to || "").toLowerCase();
+      if (all.some((/** @type {any} */ t) => t.id.toLowerCase() === to || t.title.toLowerCase() === to)) return r;
+      const { list, didYouMean } = await recipients(r.app, r.args.to);
+      return { ambiguous: true, reason: `${a.app} has no one called ${r.args.to}`, needs: { recipient: list }, ask: "Who should get this?",
+        text: r.args.text, app: r.app, action: r.action, to: r.args.to, ...(didYouMean ? { didYouMean } : {}) };
+    };
+
     ctx.tool("apps.route", {
-      description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
+      description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 2000 }, app: str, model: { type: "boolean" } } },
       async run({ text, app, model = false }) {
-        const r = route(text, { now: env.now(), timeZone: env.timeZone, ...(app ? { app } : {}) });
+        const r = /** @type {any} */ (route(text, { now: env.now(), timeZone: env.timeZone, planner: opts.planner === "apple" ? "apple" : "planner", ...(app ? { app } : {}) }));
+        if (r.needs) return fillNeeds(r);
+        if (!r.ambiguous && r.sends) return checkRecipient(r);
         if (!("ambiguous" in r) || !model || typeof opts.model !== "function") return r;
         // The seam for a lean model call (config apps.model): only for what the rules left
         // ambiguous, only when the caller asked. It gets the words and what each app can do.

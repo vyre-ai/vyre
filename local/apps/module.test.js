@@ -11,7 +11,7 @@ import { discover, Registry, validate } from "../../core/modules/index.js";
 import { Presence } from "../../core/presence/index.js";
 import { open } from "../../core/store/index.js";
 import { Events } from "../../core/events/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, writeModule } from "../../test/helpers.js";
 import { fakeExec, fakeApp } from "./fake.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -42,7 +42,7 @@ const chatApp = () => {
  * Start the module in a Registry with fakes, optionally with presence enforced.
  * @param {any} t @param {{ apps?: any, presence?: boolean }} [o]
  */
-async function start(t, { apps = {}, presence = false } = {}) {
+async function start(t, { apps = {}, presence = false, modules = /** @type {string[]} */ ([]) } = {}) {
   const home = tempHome(t);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
@@ -51,7 +51,8 @@ async function start(t, { apps = {}, presence = false } = {}) {
   const f = fakeExec(() => ({}));
   const reg = new Registry({ db, events, log: () => {}, presence: p,
     config: { role: "local", apps: { exec: f.exec, platform: "darwin", tmpdir: home, dirs: [path.join(home, "Applications")], fetch: async () => { throw new Error("no network in tests"); }, ...apps } } });
-  await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
+  const extra = modules.length ? discover(modules.map(d => path.dirname(d))).filter(m => modules.includes(m.dir)) : [];
+  await reg.start([...discover([path.dirname(HERE)]).filter(m => m.dir === HERE), ...extra], { role: "local" });
   t.after(() => reg.stop());
   return { reg, home, calls: f.calls, events: () => reg.deps.events.since(0) };
 }
@@ -212,7 +213,7 @@ test("module: a presence session proves apps.send; a session never proves a tool
 
 test("module: apps.route routes words by rules with the module's clock and zone, and runs nothing", async t => {
   const now = Date.UTC(2026, 8, 24, 10, 0);
-  const { reg, calls, events } = await start(t, { apps: { now: () => now, timeZone: "Asia/Karachi" } });
+  const { reg, calls, events } = await start(t, { apps: { now: () => now, timeZone: "Asia/Karachi", planner: "apple" } });
   const r = await reg.call("apps.route", { text: "remind me to call juno at 6" }, "capsule");
   assert.deepEqual(r.data.args, { text: "call juno", due: "2026-09-24T18:00" });
   assert.equal((await reg.call("apps.route", { text: "buy milk", app: "Notes" }, "capsule")).data.action, "create");
@@ -232,7 +233,7 @@ test("module: the model seam runs only for ambiguous words, only when asked, and
     return { app: "Clock", action: "timer", args: { seconds: 300 }, said: "Timer for 5 minutes" };
   };
   const { reg } = await start(t, { apps: { model, adapters: [chat.adapter] } });
-  assert.equal((await reg.call("apps.route", { text: "timer 10 min", model: true }, "capsule")).data.args.seconds, 600);
+  assert.deepEqual((await reg.call("apps.route", { text: "timer 10 min", model: true }, "capsule")).data.args, { text: "timer 10 min", kind: "timer" });
   assert.equal(asked.length, 0, "the model was asked about words the rules placed");
   assert.equal((await reg.call("apps.route", { text: "brew a tea for five minutes" }, "capsule")).data.ambiguous, true);
   assert.equal(asked.length, 0, "the model was asked without model: true");
@@ -267,4 +268,100 @@ test("module: apps.setup answers only the surfaces a person drives", async t => 
   assert.equal(f.calls.length, 0);
   assert.equal(reg.listTools("mcp").some(x => x.name === "apps.setup"), false);
   for (const caller of ["cli", "capsule", "deck", "tailnet:alex"]) assert.ok((await reg.call("apps.setup", { app: "clock" }, caller)).data, caller);
+});
+
+
+/** A stand-in for the box's planner module (ADR 0025): planner.add keeps what it is given. */
+function fakePlanner(/** @type {string} */ root, /** @type {string} */ answer = "{ id: 'itm_1', kind: i.kind || 'note', title: 'call juno' }") {
+  return writeModule(root, "planner", { roles: ["local"], does: { tools: ["planner.add"] } }, `
+export default { async start(ctx) {
+  globalThis.__plannerCalls = [];
+  ctx.tool("planner.add", { input: { type: "object" }, async run(i, meta) { globalThis.__plannerCalls.push({ i, caller: meta.caller }); return ${answer}; } });
+  return { async stop() {} };
+} };`);
+}
+
+test("module: Planner add hands the words and kind to planner.add, and says what the planner kept", async t => {
+  const dir = fakePlanner(path.join(tempHome(t), "mods"));
+  const { reg } = await start(t, { modules: [dir] });
+  const route = (await reg.call("apps.route", { text: "remind me to call juno at 6" }, "capsule")).data;
+  assert.equal(route.app, "Planner");
+  const r = await reg.call("apps.act", { app: route.app, action: route.action, args: route.args }, "capsule");
+  assert.equal(r.data.said, "Reminder: call juno");
+  assert.deepEqual(/** @type {any} */ (globalThis).__plannerCalls, [{ i: { text: "remind me to call juno at 6", kind: "reminder" }, caller: "module:apps" }]);
+});
+
+test("module: a planner answer with no words falls back to our own reading", async t => {
+  const dir = fakePlanner(path.join(tempHome(t), "mods"), "{ id: 'itm_2', kind: 'timer', title: '' }");
+  const now = Date.UTC(2026, 8, 24, 10, 0);
+  const { reg } = await start(t, { modules: [dir], apps: { now: () => now, timeZone: "Asia/Karachi" } });
+  assert.equal((await reg.call("apps.act", { app: "Planner", action: "add", args: { text: "timer 10 min", kind: "timer" } }, "cli")).data.said, "Timer for 10 minutes");
+});
+
+test("module: without a planner module, Planner add is code setup in words", async t => {
+  const { reg } = await start(t);
+  const r = await reg.call("apps.act", { app: "Planner", action: "add", args: { text: "todo buy milk", kind: "todo" } }, "cli");
+  assert.deepEqual(r.error, { code: "setup", message: "The planner is not on this Vyre yet" });
+});
+
+/** A made-up WhatsApp with people to pick from, for the recipient questions. */
+const whatsapp = (/** @type {any[]} */ sent = []) => ({
+  id: "whatsapp", app: "WhatsApp", bundleIds: ["net.whatsapp.WhatsApp"], tier: "ax",
+  actions: { send: { title: "Send", sends: true, input: { type: "object", required: ["to", "text"], properties: { to: { type: "string" }, text: { type: "string" } } },
+    preview: (/** @type {any} */ a) => `WhatsApp → ${a.to}: ${a.text}`, run: async (/** @type {any} */ a) => { sent.push(a); return { said: `Sent to ${a.to}` }; } } },
+  targets: async () => [
+    { id: "c1", title: "Juno Park", kind: "contact" }, { id: "c2", title: "Jules", kind: "contact" },
+    { id: "c3", title: "Ammi jee", kind: "contact" }, { id: "c4", title: "kit", kind: "contact" },
+  ],
+});
+
+test("module: a message with no app is asked about, offering the apps Vyre sends through, then the installed ones", async t => {
+  const { reg, home } = await start(t, { apps: { adapters: [whatsapp()] } });
+  const dir = path.join(home, "Applications");
+  fakeApp(dir, "Messages", "com.apple.MobileSMS");
+  fakeApp(dir, "Telegram", "ru.keepcoder.Telegram");
+  fakeApp(dir, "WhatsApp", "net.whatsapp.WhatsApp");
+  fakeApp(dir, "Northwind Bakery POS", "com.example.pos");
+  const r = (await reg.call("apps.route", { text: "tell juno I'm running late" }, "capsule")).data;
+  assert.equal(r.ask, "Which app?");
+  assert.equal(r.text, "I'm running late");
+  assert.deepEqual(r.needs.app, [
+    { name: "WhatsApp", bundleId: "net.whatsapp.WhatsApp", hint: "Vyre sends through it" },
+    { name: "Messages", bundleId: "com.apple.MobileSMS", hint: "installed; Vyre cannot send through it yet" },
+    { name: "Telegram", bundleId: "ru.keepcoder.Telegram", hint: "installed; Vyre cannot send through it yet" },
+  ]);
+});
+
+test("module: an unclear recipient is asked about with fuzzy candidates, a lone strong one as Did you mean", async t => {
+  const sent = /** @type {any[]} */ ([]);
+  const { reg } = await start(t, { apps: { adapters: [whatsapp(sent)] } });
+  const ask = async (/** @type {string} */ text) => (await reg.call("apps.route", { text }, "capsule")).data;
+
+  const two = await ask("whatsapp ju: hi there");
+  assert.deepEqual(two.needs.recipient.map((/** @type {any} */ c) => c.title), ["Jules", "Juno Park"]);
+  assert.deepEqual(Object.keys(two.needs.recipient[0]).sort(), ["app", "id", "score", "title"]);
+  assert.equal(two.didYouMean, undefined);
+  assert.equal(two.text, "hi there");
+
+  const one = await ask("whatsapp ammi: dinner at 8?");
+  assert.equal(one.didYouMean, "Did you mean Ammi jee on WhatsApp?");
+  assert.deepEqual(one.needs.recipient.map((/** @type {any} */ c) => c.id), ["c3"]);
+  assert.equal(one.text, "dinner at 8?");
+
+  const none = await ask("whatsapp zed: hi");
+  assert.deepEqual(none.needs, { recipient: [] });
+  assert.equal(none.ask, "Who should get this?");
+  assert.equal(none.text, "hi");
+
+  const exact = await ask("whatsapp kit: hi");
+  assert.equal(exact.sends, true);
+  assert.deepEqual(exact.args, { to: "kit", text: "hi" });
+  assert.equal(sent.length, 0, "routing sent something");
+});
+
+test("module: a refused recipient sentence asks who on that app, with the words kept, even with no people to list", async t => {
+  const { reg } = await start(t);
+  const r = (await reg.call("apps.route", { text: "tell mom I'm on slack now" }, "capsule")).data;
+  assert.deepEqual({ needs: r.needs, ask: r.ask, app: r.app, text: r.text, action: r.action },
+    { needs: { recipient: [] }, ask: "Who should get this?", app: "Slack", text: "I'm on slack now", action: "send" });
 });

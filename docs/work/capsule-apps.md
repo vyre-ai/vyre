@@ -86,10 +86,43 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   `apps.setup` (setup.js, Clock's shortcuts written, signed, opened) and `vyre apps`
   (core/cli/commands/apps.js). 150 targeted tests pass on the testbox, 5 opt-in skipped.
 
-## Doing
-- Nothing in flight. Slice 1 is built; it waits on the real-Mac check below.
+## Doing (saved 2026-09-27 at logout)
+- T4 WIP (uncommitted work saved as a wip commit, tests NOT run): planner by default and
+  structured re-prompts. Files: local/apps/adapters/planner.js, local/apps/fuzzy.js, edits in
+  route.js, route.test.js, adapters/index.js, index.js. Spec, as approved by the lead:
+  - timer, alarm, wake me, remind me, todo and note route to Planner add {text, kind}, which
+    calls ctx.call("planner.add"); if planner.add is missing, code setup, "The planner is not on
+    this Vyre yet". Apple Clock, Notes and Reminders are opt-in: "in Apple Notes", config
+    apps.planner = "apple", or an @Notes/@Clock/@Reminders scope.
+  - planner.parse becomes the single time parser (owned by the planner team, ADR 0025,
+    ../vyre-planner). They port our route.js rules (parseDuration, parseClock/fixed, wall, ahead,
+    reminderParts, the route.test.js table). Asked for: local answer on the Mac, no box round
+    trip. Switch apps.route to it when they send the hash.
+  - Never silently nothing: apps.route returns {needs:{app?, recipient?}, ask, text, app?, action?},
+    candidates first with didYouMean ("Did you mean Ammi jee on WhatsApp?"). The tool fills the
+    candidates (messaging apps; fuzzy apps.targets matches). CLI: prompt on a TTY, else exit 3
+    with the needs shape. Tests: ambiguous app, ambiguous recipient, unknown recipient, a refused
+    sentence ("tell mom I'm on slack now").
+- Slice 2 Kit (branch work/capsule-apps-native, worktree ../vyre-capsule-apps-native):
+  708b533 (nested + async mentions) and ff82b8f (all 11 review fixes; CI not rechecked after it).
+  Merging origin/work/capsule-pro c778f56 was aborted at logout: conflicts in CHANGELOG.md and
+  Sources/Host/{CapsuleModel,ExtensionHost,Panel}.swift. Redo the merge (never rebase, never
+  force-push), push, run capsule-mac CI, then send the hash to capsule-pro to merge.
 
 ## Next
+1. Finish T4 (run local/apps tests on the testbox, fix, commit, push), then review it.
+2. Kit: merge c778f56, CI, hand off to capsule-pro.
+3. AppsExtension (Sources/Extensions/apps on the native branch): installed apps as @ targets
+   with real icons (nests: true for apps with targets), refreshMentions/mentionPicked call
+   apps.targets, send() calls apps.route with the app scope; first Enter shows the preview,
+   second Enter sends. Sends: apps.send with presence (via capsule-pro's host.prove with
+   our summary line, and the session the host mints); Slack: apps.act returns {held} and the
+   Capsule calls gate.approve. Rows without @ come from providers (ImmediateResults) through apps.route.
+4. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
+   settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
+5. Rewrite the real-Mac check below for the planner default (Apple steps become opt-in).
+
+### Real-Mac check (after T4, Apple is the opt-in path: add "in Apple Notes" etc. to steps 4-10)
 - Real-Mac check (the lead with the user, on the Mac, in the user's own terminal):
   1. `cd <worktree> && VYRE_MAC_REAL=1 nice -n 15 node --test local/apps/mac.test.js`: the five
      scripts compile.
@@ -112,11 +145,20 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   10. `bin/vyre apps timer 1 min` starts a Clock timer; `bin/vyre apps alarm 7:05` adds a 07:05
       alarm with its label. Clock does not come to the front.
   11. Delete the check note, reminder and alarm.
-- Slice 2: the @App picker in the native Capsule.
 - Known limit: Notes' trash is skipped by its name ("Recently Deleted", or config
   apps.notes.trash); the dictionary gives that folder nothing else, so another language needs it.
 
+## Standing rule (user, 2026-09-27): Vyre must not nag
+The user runs on bypass permissions. No prompt or Touch ID for the person's own actions (notes,
+reminders, timers, todos, planner items). Touch ID only for pairing a new device, vault secrets,
+and sending, posting or paying to the outside world (WhatsApp and Slack sends), and one Touch ID
+covers about 30 minutes per device (the presence session). The preview plus Enter stays for
+outbound sends. So apps.act never asks; apps.send and gate.approve do, riding the session.
+
 ## Needs from others
+- capsule-pro: merge the Kit branch once handed over; add host.prove(tool:input:summary:) and
+  the host-minted presence session (secret in memory only, dropped on lock/sleep/restart).
+- planner: planner.parse with our time rules, answering locally on the Mac; the hash when ready.
 - capsule-pro: the native host must be on main before the Swift half runs in the app (slice 2).
 - capsule-sight: hands.observe/act/commit on main for the AX adapter (slice 4).
 - connectors: the MCP hub on main, and which server name the user's Slack uses (slice 3).

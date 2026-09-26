@@ -9,7 +9,10 @@ import { route, parseDuration } from "./route.js";
 const TZ = "Asia/Karachi";
 const NOW = Date.UTC(2026, 8, 24, 10, 0); // 15:00 in Karachi
 const at = (/** @type {number} */ h, /** @type {number} */ m = 0) => Date.UTC(2026, 8, 24, h - 5, m);
-const r = (/** @type {string} */ text, /** @type {any} */ o = {}) => route(text, { now: NOW, timeZone: TZ, ...o });
+// Most tests read the Mac's own apps (planner: "apple"); the Planner default is checked against the
+// same table below, and on its own further down.
+const r = (/** @type {string} */ text, /** @type {any} */ o = {}) => route(text, { now: NOW, timeZone: TZ, planner: "apple", ...o });
+const rp = (/** @type {string} */ text, /** @type {any} */ o = {}) => route(text, { now: NOW, timeZone: TZ, ...o });
 const pick = (/** @type {any} */ x) => (x.ambiguous ? { ambiguous: true } : { app: x.app, action: x.action, args: x.args, sends: x.sends });
 
 test("route: durations", () => {
@@ -131,6 +134,83 @@ const TABLE = /** @type {[string, any][]} */ ([
 for (const [text, want] of TABLE) {
   test(`route: ${JSON.stringify(text)}`, () => assert.deepEqual(pick(r(text)), want));
 }
+
+/** What the Planner default makes of a row the Mac's apps would take: the words as typed, and the kind. */
+function planned(/** @type {string} */ text, /** @type {any} */ want) {
+  if (want.ambiguous || !["Clock", "Notes", "Reminders"].includes(want.app)) return want;
+  const kind = want.app === "Clock" ? want.action : want.app === "Notes" ? "note" : /^\s*remind/i.test(text) ? "reminder" : "todo";
+  return { app: "Planner", action: "add", args: { text: text.trim(), kind }, sends: false };
+}
+
+test("route: by default every timer, alarm, reminder and note in the table goes to the Planner, with the words as typed", () => {
+  for (const [text, want] of TABLE) assert.deepEqual(pick(rp(text)), planned(text, want), text);
+});
+
+const TODOS = /** @type {[string, string][]} */ ([
+  ["todo buy milk", "buy milk"],
+  ["to do: call kit", "call kit"],
+  ["To-do - renew the Harlow Legal lease", "renew the Harlow Legal lease"],
+  ["add buy milk to my todo list", "buy milk"],
+  ["add call kit to my todos", "call kit"],
+]);
+
+test("route: todos go to the Planner by default and to Reminders on the Mac", () => {
+  for (const [text, item] of TODOS) {
+    assert.deepEqual(pick(rp(text)), { app: "Planner", action: "add", args: { text, kind: "todo" }, sends: false }, text);
+    assert.deepEqual(pick(r(text)), REM(item, ""), text);
+    assert.equal(r(text).said, `Todo: ${item}`);
+  }
+  assert.equal(rp("todo").ambiguous, true);
+});
+
+test("route: the Planner keeps our reading as its preview", () => {
+  assert.equal(rp("timer 10 min").said, "Timer for 10 minutes");
+  assert.equal(rp("remind me to call juno at 6").said, "Reminder: call juno, today at 18:00");
+  assert.equal(rp("remind me at 6").ambiguous, true, "our reading refused it, so the Planner is not asked");
+});
+
+test("route: asking for the Mac's own app, a Mac scope, or planner apple keeps the Mac's apps", () => {
+  assert.deepEqual(pick(rp("note buy milk in Apple Notes")), NOTE("buy milk"));
+  assert.deepEqual(pick(rp("note: call kit in notes app")), NOTE("call kit"));
+  assert.deepEqual(pick(rp("timer 10 min on my Mac's Clock")), TIMER(600));
+  assert.deepEqual(pick(rp("remind me to call juno at 6 in apple reminders")), REM("call juno", "2026-09-24T18:00"));
+  assert.deepEqual(pick(rp("apple reminders: remind me to pay rent")), REM("pay rent", ""));
+  assert.deepEqual(pick(rp("buy milk", { app: "Notes" })), NOTE("buy milk"));
+  assert.deepEqual(pick(rp("10 min", { app: "Clock" })), TIMER(600));
+  assert.deepEqual(pick(rp("call juno at 6", { app: "Reminders" })), REM("call juno", "2026-09-24T18:00"));
+  assert.deepEqual(pick(rp("todo buy milk", { app: "Reminders" })), REM("buy milk", ""));
+  assert.deepEqual(pick(rp("add to notes: call kit")), { app: "Planner", action: "add", args: { text: "add to notes: call kit", kind: "note" }, sends: false },
+    "\"add to notes\" names no Apple app");
+});
+
+test("route: an @Planner scope sends the words to the Planner, with a kind when the rules see one", () => {
+  assert.deepEqual(pick(rp("timer 10 min", { app: "Planner" })), { app: "Planner", action: "add", args: { text: "timer 10 min", kind: "timer" }, sends: false });
+  assert.deepEqual(pick(rp("dentist next week", { app: "planner" })), { app: "Planner", action: "add", args: { text: "dentist next week" }, sends: false });
+});
+
+test("route: a message with no app asks which app, with the words kept", () => {
+  const x = /** @type {any} */ (rp("tell juno I'm running late!"));
+  assert.deepEqual({ needs: x.needs, ask: x.ask, text: x.text, to: x.to, action: x.action, app: x.app },
+    { needs: { app: [] }, ask: "Which app?", text: "I'm running late!", to: "juno", action: "send", app: undefined });
+  assert.equal(x.ambiguous, true);
+  assert.equal(/** @type {any} */ (rp("tell me a joke")).needs, undefined, "\"me\" is not someone to message");
+});
+
+test("route: a message with an unclear recipient asks who, with the app and the words kept", () => {
+  const cases = /** @type {[string, any, any][]} */ ([
+    ["tell mom I'm on slack now", {}, { app: "Slack", text: "I'm on slack now", to: "mom" }],
+    ["text juno that I'm on whatsapp tonight", {}, { app: "WhatsApp", text: "I'm on whatsapp tonight", to: "juno" }],
+    ["whatsapp running late", {}, { app: "WhatsApp", text: "running late", to: "running" }],
+    ["running late", { app: "WhatsApp" }, { app: "WhatsApp", text: "running late", to: undefined }],
+    ["standup moved to 10:30", { app: "Slack" }, { app: "Slack", text: "standup moved to 10:30", to: undefined }],
+  ]);
+  for (const [text, o, want] of cases) {
+    const x = /** @type {any} */ (rp(text, o));
+    assert.deepEqual(x.needs, { recipient: [] }, text);
+    assert.equal(x.ask, "Who should get this?", text);
+    assert.deepEqual({ app: x.app, text: x.text, to: x.to }, want, text);
+  }
+});
 
 test("route: every route says one line, sends name the preview, ambiguous gives a reason", () => {
   assert.equal(r("timer 10 min").said, "Timer for 10 minutes");

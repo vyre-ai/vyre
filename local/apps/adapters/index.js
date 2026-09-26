@@ -12,6 +12,7 @@ import clock from "./clock.js";
 import notes from "./notes.js";
 import reminders from "./reminders.js";
 import weather from "./weather.js";
+import planner from "./planner.js";
 
 /**
  * @typedef {import("../env.js").Env} Env
@@ -24,7 +25,7 @@ import weather from "./weather.js";
  */
 
 /** @type {Adapter[]} */
-export const BUILTIN = [clock, notes, reminders, weather];
+export const BUILTIN = [planner, clock, notes, reminders, weather];
 
 /**
  * The adapters in force: config's own first (so a person or a test can stand in for a built-in),
