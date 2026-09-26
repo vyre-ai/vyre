@@ -1,0 +1,32 @@
+# The Node suite: core, deck, modules, the box and the tests that run anywhere, plus the perf
+# budget gate (SPEC principle 8: vyred idle under 0.5% CPU / 150 MB, nothing polling faster than
+# once a minute). The Mac-only tests run in capsule-mac.yml.
+name: node
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: node-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run perf-check

@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI on GitHub's free runners
+
+- Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the
+  apps on their own Mac. `node.yml`: the suite and the perf gate on Node 22 and 24 (ubuntu).
+  `capsule-mac.yml`: the Swift helpers, the native Capsule's tests and app once they land, and the
+  Mac-only Node tests (macos). `ios.yml`: xcodegen, then build and unit tests on a simulator.
+  `android.yml`: gradle build and unit tests on JDK 17. The app workflows skip while their folder
+  is absent. Each uploads what it built (Capsule zips, the iOS simulator app, the debug APK), and
+  every workflow can also be run by hand (workflow_dispatch). Replaces `test.yml`, which ran the
+  whole suite on two macOS runners without installing dependencies. `.github/workflows/`, README
+  badges.
+
 #### The Capsule is Spotlight's size
 
 - The panel is 680 px wide with a 56 px bar (was 560 and 52), the size of Spotlight, which it

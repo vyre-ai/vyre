@@ -1,0 +1,41 @@
+# The Android app: gradle build and unit tests on JDK 17. Skips while apps/android is absent.
+name: android
+on:
+  push:
+    paths: ["apps/android/**", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["apps/android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -x apps/android/gradlew ]; then echo present=true >> "$GITHUB_OUTPUT"; else echo "apps/android is absent: skipping"; echo present=false >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-java@v4
+        if: steps.check.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.check.outputs.present == 'true'
+      - name: Build and unit tests
+        if: steps.check.outputs.present == 'true'
+        working-directory: apps/android
+        run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.present == 'true' && always()
+        with:
+          name: android-${{ github.sha }}
+          path: |
+            apps/android/app/build/outputs/apk/debug/*.apk
+            apps/android/app/build/reports/tests/
+          retention-days: 14
