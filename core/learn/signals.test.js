@@ -366,7 +366,7 @@ test("preference: an accepted 'use pnpm not npm' teaches Memory the user prefers
   assert.equal(taught.length, 1);
   assert.equal(taught[0].kind, "preference");
   assert.equal(taught[0].from, "learn");
-  assert.deepEqual({ ...taught[0].fact }, { subject: "the user", rel: "prefers", object: { name: "pnpm" }, text: "The user prefers pnpm over npm.", key: "lesson:1" });
+  assert.deepEqual({ ...taught[0].fact }, { subject: { kind: "me" }, rel: "prefers", object: { name: "pnpm" }, text: "The user prefers pnpm over npm.", key: "lesson:1" });
   await reg.call("learn.retire", { id: 1 }, "cli");
   assert.equal(taught.length, 2);
   assert.equal(taught[1].fact.forget, true);

@@ -118,6 +118,9 @@ const HOUR = 3600 * 1000, DAY = 24 * HOUR, WEEK = 7 * DAY;
 const KEEP = WEEK;
 const sha256 = text => crypto.createHash("sha256").update(text).digest("hex");
 
+/** The user themself, as Memory names them in a taught fact (its node `me:you`). */
+export const ME = Object.freeze({ kind: "me" });
+
 const scopeSchema = { anyOf: [{ type: "string" }, { type: "object" }] };
 const checkSchema = { type: "object" };
 
@@ -509,6 +512,10 @@ export default {
     /**
      * An accepted "use pnpm not npm" teaches Memory that the user prefers pnpm (teaches.memory
      * "preference"), keyed by the lesson, and retiring the lesson forgets it. Without Memory, nothing.
+     * The subject is the user themself: Memory's own node for them is `me:you` (curator ME, kind
+     * "me"), so it is named by kind, `{ kind: "me" }`, never by a name, which would make a person
+     * called "the user". Memory's teach() does not map kind "me" yet (docs/work/learning.md, Needs):
+     * until it does, it refuses the fact and the preference is logged as not taught.
      */
     const prefer = async (l, forget) => {
       const p = l.source && l.source.prefers;
@@ -516,7 +523,7 @@ export default {
       try {
         const proj = l.scope && l.scope.project ? await projectBySlug(l.scope.project) : null;
         const cwds = proj ? (Array.isArray(proj.workspaces) && proj.workspaces.length ? proj.workspaces : [proj.home]).map(String) : null;
-        await ctx.memory.teach("preference", { subject: "the user", rel: "prefers", object: { name: String(p.use) }, text: `The user prefers ${p.use} over ${p.over}.`,
+        await ctx.memory.teach("preference", { subject: ME, rel: "prefers", object: { name: String(p.use) }, text: `The user prefers ${p.use} over ${p.over}.`,
           key: `lesson:${l.id}`, ...(cwds ? { project_cwds: cwds } : {}), ...(forget ? { forget: true } : {}) });
       } catch (e) { ctx.log("preference not taught: " + /** @type {Error} */ (e).message); }
     };
