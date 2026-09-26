@@ -3,6 +3,9 @@
 .now { min-height: 100%; }
 .now-col { width: 880px; max-width: 100%; margin: 0 auto; padding: 28px 24px 48px; }
 .now-head { display: flex; flex-direction: column; gap: 10px; padding-left: 64px; padding-bottom: 22px; }
+.now-assistant { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.now-assistant:empty { display: none; }
+.now-assistant b { color: var(--text); font-weight: 500; }
 .now-needs { display: flex; flex-direction: column; gap: 12px; }
 .now-label { display: flex; align-items: center; gap: 10px; padding-left: 64px; }
 .now-sec { margin-top: 26px; padding-left: 64px; }

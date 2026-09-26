@@ -11,7 +11,7 @@ import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
-import { since, initial, count } from "../js/fmt.js";
+import { since, initial, count, plural, clock } from "../js/fmt.js";
 
 const MODELS = [
   { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
@@ -48,7 +48,7 @@ const nameOf = (names, slug) => names.get(slug) || slug;
 
 /** "Working in Launch site · Hero copy pass" pieces for an agent. */
 function doing(a, w) {
-  if (a.state !== "working" || !a.thread) return null;
+  if (a.status !== "working" || !a.thread) return null;
   const t = w.threads.get(a.thread);
   const project = t?.project || null;
   const label = [project ? nameOf(w.names, project) : null, t?.name || a.thread].filter(Boolean).join(" · ");
@@ -77,7 +77,7 @@ async function list(ctx) {
   let listErr = null;
 
   const draw = () => {
-    const headRow = head("Every agent", h("span", { class: "lbl" }, listErr ? "" : `${all.filter(a => a.state === "working").length} working`));
+    const headRow = head("Every agent", h("span", { class: "lbl" }, listErr ? "" : `${all.filter(a => a.status === "working").length} working`));
     /** @type {HTMLElement} */ (headRow.firstChild).id = "ag-list-h";
     if (listErr) {
       put(sub, "Agents are kept by the switchboard.");
@@ -231,10 +231,11 @@ async function board(ctx, agentName) {
   const job = h("section", { class: "ab-sec", "aria-labelledby": "ab-job" });
   const talk = h("section", { class: "ab-sec ab-talk", "aria-labelledby": "ab-talk" });
   const wakes = h("section", { class: "ab-sec", "aria-labelledby": "ab-wakes" });
+  const usage = h("section", { class: "ab-sec", "aria-labelledby": "ab-usage" });
   const model = h("section", { class: "ab-sec", "aria-labelledby": "ab-model" });
   const comp = h("aside", { class: "ab-aside", "aria-labelledby": "ab-comp" });
   put(ctx.root, h("div", { class: "ab" }, headEl,
-    h("div", { class: "ab-body" }, h("div", { class: "ab-main" }, job, talk, wakes, model), comp)));
+    h("div", { class: "ab-body" }, h("div", { class: "ab-main" }, job, talk, wakes, usage, model), comp)));
 
   // Computers: fetched first so the header knows whether Glass can open.
   /** @type {{ data?: any, error?: any }} */ let cr = { data: null };
@@ -253,14 +254,14 @@ async function board(ctx, agentName) {
       : d ? h("div", { class: "ab-status" }, h("span", { class: "ag-dot on", "aria-hidden": "true" }), "Working in ", link(d.href, { class: "link" }, d.label),
         h("span", { class: "faint" }, `${d.started ? ` for ${since(d.started)}.` : "."}${heldText}`))
       : h("div", { class: "ab-status" }, h("span", { class: "ag-dot", "aria-hidden": "true" }), h("span", { class: "faint" }, `Idle. Nothing is running.${heldText}`));
-    const pause = h("button", { type: "button", class: "btn", disabled: stub || a.state !== "working",
-      title: stub ? why(listErr) : a.state !== "working" ? `${nm} is not running anything.` : false,
+    const pause = h("button", { type: "button", class: "btn", disabled: stub || a.status !== "working",
+      title: stub ? why(listErr) : a.status !== "working" ? `${nm} is not running anything.` : false,
       onclick: async () => {
         /** @type {HTMLButtonElement} */ (pause).disabled = true;
         const s = await attempt("agents.stop", { agent: nm });
         if (!ctx.alive()) return;
         if (s.error) { put(pauseStatus, why(s.error)); /** @type {HTMLButtonElement} */ (pause).disabled = false; return; }
-        a.state = "idle";
+        a.status = "idle";
         drawHead();
         put(pauseStatus, `Paused. ${nm} stopped its thread.`);
       } }, `Pause ${nm}`);
@@ -284,7 +285,7 @@ async function board(ctx, agentName) {
     const [r2, w2] = await Promise.all([attempt("agents.list"), world()]);
     if (!ctx.alive()) return;
     const fresh = (Array.isArray(r2.data) ? r2.data : r2.data?.agents || []).find(x => x.name === nm);
-    if (fresh) a.state = fresh.state, a.thread = fresh.thread;
+    if (fresh) a.status = fresh.status, a.thread = fresh.thread;
     w.threads = w2.threads;
     drawHead();
   }, 300); };
@@ -294,6 +295,7 @@ async function board(ctx, agentName) {
   drawJob(job, a, w, stub, listErr);
   drawTalk(talk, a, ctx);
   drawWakes(wakes, a, w, ctx);
+  drawUsage(usage, a, stub, listErr, ctx);
   drawModel(model, a, stub, listErr);
   const drawComp = () => drawComputer(comp, a, cr, stub, listErr, async () => { await loadComputer(); if (ctx.alive()) { drawComp(); drawHead(); } });
   drawComp();
@@ -397,6 +399,50 @@ function watcherRow(x, w) {
     h("span", { class: "ab-w-files small" }, files),
     sw);
   return row;
+}
+
+// ---- usage -------------------------------------------------------------------------------
+
+/**
+ * What this agent has used: money only on the API key (cost_usd elsewhere is Claude Code's
+ * notional figure, not money spent), turns and time otherwise, tokens, and the last rate-limit
+ * report if there is one.
+ */
+function drawUsage(sec, a, stub, listErr, ctx) {
+  if (stub) { put(sec, sectionHead("ab-usage", "Usage"), empty(`${a.name}'s usage is kept by the switchboard.`, listErr)); return; }
+  const body = h("div");
+  put(sec, sectionHead("ab-usage", "Usage"), body);
+  const draw = async () => {
+    const r = await attempt("agents.usage", { agent: a.name });
+    if (!ctx.alive()) return;
+    if (r.error) { put(body, empty(`${a.name}'s usage is kept by the switchboard.`, r.error)); return; }
+    const list = Array.isArray(r.data) ? r.data : [];
+    const u = list.find(x => x.agent === a.name) || list[0];
+    if (!u || (!u.turns && !u.last_at)) { put(body, h("div", { class: "empty" }, `${a.name} has not run yet.`)); return; }
+    const money = u.auth === "api-key";
+    const t = u.tokens || {};
+    const tokTotal = (t.input || 0) + (t.output || 0) + (t.cache_read || 0) + (t.cache_write || 0);
+    const limit = u.limit;
+    put(body,
+      h("div", { class: "ab-usage-top" }, money
+        ? [h("span", { class: "ab-usage-big" }, `$${(u.spent_usd || 0).toFixed(2)}`),
+          u.budget_usd != null ? h("span", { class: "small faint" }, ` of $${u.budget_usd.toFixed(2)}`) : h("span", { class: "small faint" }, " spent · no budget set"),
+          u.left_usd != null ? h("span", { class: "small muted" }, ` · $${u.left_usd.toFixed(2)} left`) : null]
+        : [h("span", { class: "ab-usage-big" }, plural(u.turns || 0, "turn")),
+          h("span", { class: "small faint" }, ` over ${plural(u.threads || 0, "thread")}`)]),
+      h("div", { class: "small faint" },
+        [u.duration_ms ? `${Math.max(1, Math.round(u.duration_ms / 60_000))} min of work` : null,
+          tokTotal ? `${tokTotal.toLocaleString()} tokens` : null,
+          u.last_at ? `last used ${since(u.last_at)} ago` : null].filter(Boolean).join("  ·  ")),
+      limit && limit.status !== "allowed"
+        ? h("p", { class: "ab-note small" + (limit.status === "rejected" ? " ab-note-warn" : "") },
+          limit.status === "rejected"
+            ? `Stopped by a limit${limit.kind ? ` (${limit.kind})` : ""}. Resets around ${clock(limit.resets_at * 1000)}.`
+            : `Near a limit${limit.kind ? ` (${limit.kind})` : ""}${limit.utilization != null ? `, ${Math.round(limit.utilization * 100)}% used` : ""}. Resets around ${clock(limit.resets_at * 1000)}.`)
+        : null);
+  };
+  draw();
+  for (const t of ["thread.finished", "thread.stopped", "thread.limit"]) ctx.on(t, () => draw());
 }
 
 function drawModel(sec, a, stub, listErr) {

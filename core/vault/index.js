@@ -14,6 +14,8 @@ import { Vault, MIGRATIONS, KINDS, parseExpiry } from "./vault.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
+import { whois } from "../names/tailscale.js";
+import { isTailnet, normalize } from "../names/identity.js";
 import { Fill, FILL_TOOLS, serveFill } from "./fill.js";
 import { backup, restore, inspect } from "./backup.js";
 import { envName } from "./cli-io.js";
@@ -49,7 +51,12 @@ export default {
     }
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
-      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity, onRelay: (env, meta) => vault.onRelay(env, meta) });
+      // With identity "whois" no header counts: the login is the one Tailscale gives the peer address.
+      const byWhois = opts.relay.identity === "whois"
+        ? async ip => { if (!isTailnet(ip)) return null; const w = await whois(normalize(ip)); return w && !w.tagged ? w.login : null; }
+        : null;
+      listener = await serve({ host: opts.relay.host || "127.0.0.1", port: Number(opts.relay.port || 0), identity: vault.relayIdentity,
+        onRelay: async (env, meta) => vault.onRelay(env, byWhois ? { ...meta, login: await byWhois(meta.remoteAddress) } : meta) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }

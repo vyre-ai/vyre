@@ -152,3 +152,74 @@ test("mcp: initialize, list and call over stdio; harness tools are not offered",
   assert.equal(replies.get(4).result.isError, true);
   assert.equal(replies.get(5).error.code, -32601);
 });
+
+/**
+ * A stand-in for `claude` that runs the Vyre SessionStart hook and then the MCP server as its own
+ * children, the way Claude Code 2.1.283 does (both are direct children of the claude process).
+ * It is node started through a link named `claude`, which is the name `ps` shows.
+ */
+const STANDIN = `
+import { spawn } from "node:child_process";
+const [hookJs, serverJs, session, calls] = process.argv.slice(2);
+const child = (args, input) => new Promise(resolve => {
+  const p = spawn(process.execPath, args, { stdio: ["pipe", "pipe", "inherit"] });
+  let out = ""; p.stdout.on("data", c => { out += c; });
+  if (input === undefined) return resolve(p);
+  p.on("close", () => resolve(out)); p.stdin.end(input);
+});
+await child([hookJs, "brief"], JSON.stringify({ session_id: session, cwd: process.cwd(), source: "startup", hook_event_name: "SessionStart" }));
+const mcp = await child([serverJs]);
+const replies = new Map();
+let buf = "";
+mcp.stdout.on("data", c => { buf += c; let i; while ((i = buf.indexOf("\\n")) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.get(m.id)?.(m); } });
+const rpc = (id, method, params) => new Promise(r => { replies.set(id, r); mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\\n"); });
+await rpc(1, "initialize", { protocolVersion: "2025-06-18" });
+const out = [];
+for (const [i, c] of JSON.parse(calls).entries()) out.push((await rpc(i + 2, "tools/call", c)).result);
+mcp.kill();
+process.stdout.write(JSON.stringify(out));
+`;
+
+test("sessions: an MCP call says which session it is in, and gate.request files the draft there", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
+    gate: { senders: { mail: { type: "gmail", vault: "work-mail-token", from: "alex@example.com" } } } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin);
+  fs.symlinkSync(process.execPath, path.join(bin, "claude"));
+  fs.writeFileSync(path.join(root, "standin.mjs"), STANDIN);
+  const session = "5f0c2a61-7d7e-4c43-9a57-0b6f3d0e9a11";
+  const draft = { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Friday", body: "Hi Dana" } };
+  const calls = [
+    { name: "gate_request", arguments: draft },
+    { name: "gate_request", arguments: { ...draft, thread: "0b1d9c7e-0000-4000-8000-000000000000" } },
+  ];
+  const out = await new Promise(resolve => {
+    const p = spawn(path.join(bin, "claude"), [path.join(root, "standin.mjs"), path.join(PLUGIN, "hooks", "hook.js"), path.join(PLUGIN, "mcp", "server.js"), session, JSON.stringify(calls)],
+      { env: { ...process.env, VYRE_HOME: root, VYRE_AGENT: "", VYRE_AGENT_KEY: "" } });
+    let s = ""; p.stdout.on("data", c => { s += c; });
+    p.on("close", () => resolve(JSON.parse(s)));
+  });
+  assert.equal(out[0].structuredContent.state, "held", JSON.stringify(out[0]));
+  const held = (await d.registry.call("gate.held", {}, "local")).data;
+  assert.equal(held.length, 1);
+  assert.equal(held[0].thread, session, "filed under the session the call came from, which the model never named");
+  assert.equal(out[1].isError, true);
+  assert.match(out[1].content[0].text, new RegExp(`comes from thread ${session}; it cannot file under 0b1d9c7e`));
+
+  // The key file is this user's alone, and the process it names is gone now: its claim is refused.
+  const files = fs.readdirSync(path.join(root, "sessions"));
+  assert.equal(files.length, 1);
+  assert.equal(fs.statSync(path.join(root, "sessions", files[0])).mode & 0o777, 0o600);
+  const { key } = JSON.parse(fs.readFileSync(path.join(root, "sessions", files[0]), "utf8"));
+  const { call } = await import("../core/daemon/client.js");
+  const late = await call("gate.held", {}, { root, caller: "mcp", session: { id: session, key } });
+  assert.equal(late.error.code, "denied");
+  assert.match(late.error.message, /no running session bound with this key/);
+  assert.equal((await call("gate.held", {}, { root, caller: "mcp", session: { id: session, key: "a-guess" } })).error.code, "denied");
+  // Binding needs a running claude: the test process is node, and it cannot bind for itself.
+  assert.match((await call("threads.bind", { session, pid: process.pid }, { root, caller: "harness" })).error.message, /not a running claude/);
+  assert.equal((await call("threads.bind", { session, pid: process.pid }, { root, caller: "mcp" })).error.code, "denied");
+});

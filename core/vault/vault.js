@@ -161,7 +161,9 @@ export class Vault {
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
-    this.relayIdentity = opts.relay && opts.relay.identity === "tailscale" ? "tailscale" : null;
+    // "tailscale": the login comes from `tailscale serve`'s header. "whois": the listener binds the
+    // tailnet itself (the box, ADR 0002) and the login comes from `tailscale whois` of the peer.
+    this.relayIdentity = opts.relay && ["tailscale", "whois"].includes(opts.relay.identity) ? opts.relay.identity : null;
     /** This person's Tailscale login, put on the card so passes to them can be bound to it. */
     this.login = opts.login ? String(opts.login) : null;
     ensureDir(dir);
@@ -979,8 +981,8 @@ export class Vault {
     const refuse = why => { this.audit("relay", env && typeof env.item === "string" ? env.item : null, who, false, why); return deny(403, why); };
     const why = relay.checkEnvelope(env, { holderKey: p.holder_sign, audience: this.relayUrl || "", seen: this.share.nonces });
     if (why) return refuse(why);
-    if (this.relayIdentity === "tailscale") {
-      if (!meta.login) return refuse("this relay answers only through tailscale serve");
+    if (this.relayIdentity) {
+      if (!meta.login) return refuse(this.relayIdentity === "whois" ? "this relay answers only people on the tailnet" : "this relay answers only through tailscale serve");
       if (p.holder_login && meta.login !== p.holder_login) return refuse("this pass belongs to another Tailscale user");
     }
     if (p.revoked) return refuse("this pass was revoked");

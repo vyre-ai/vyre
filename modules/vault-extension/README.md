@@ -2,7 +2,7 @@
 
 A small Chrome (MV3) extension that fills logins from your own Vyre Vault. It talks to one
 address only, the vyred fill listener you configure, and it never reads or sends page content.
-The design and threat model are in `docs/adr/0001-autofill.md`.
+The design and threat model are in `docs/adr/0010-vault-autofill.md`.
 
 ## Install
 

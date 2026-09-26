@@ -30,7 +30,8 @@ Claude Code itself:
   Vyre steps aside and uses theirs.
 - **Not a hosted service.** Vyre AI runs one thing: the name directory for `<you>.vyre.run`. It
   holds no user data.
-- **Not an IDE or a chat app.** It uses Claude Code for coding and Mattermost for chat.
+- **Not an IDE.** It uses Claude Code for coding; Chat is part of the Deck, a window onto real
+  Claude Code sessions, not a separate assistant.
 
 ### Install and onboarding
 
@@ -125,6 +126,8 @@ vyre/
     ship/                  preview, repo, live                     (later)
     computers/             agents' containers and the screen pool  (workstream: computers)
     names/                 <you>.vyre.run, Tailscale, certificates (workstream: box)
+    link/                  the Mac and the box as one system: pairing, ctx.remote, box events (workstream: link)
+    files/                 search, preview and fetch files on both machines, inside their roots (workstream: link)
     cli/                   every `vyre` command
   harness/                 a Claude Code plugin
     .claude-plugin/plugin.json
@@ -137,7 +140,7 @@ vyre/
     capsule/               the Capsule                             (workstream: capsule)
     hands-mac/             computer use on macOS                   (workstream: capsule)
   deck/                    the web app, served by vyred             (workstream: deck)
-  modules/                 first-party optional modules (hands-desktop, hands-chrome, chat)
+  modules/                 first-party optional modules (hands-desktop, hands-chrome)
   docs/                    this spec, the module guide, ADRs, workstream notes
   test/                    cross-module tests; unit tests sit beside their code
   CHANGELOG.md
@@ -153,7 +156,10 @@ Runtime data never lives in the repo. It lives in `~/.vyre/` (override with `VYR
   vault/                   sealed vault items
   modules/                 third-party modules the user installed
   watchers/                watchers Claude wrote, one folder each
+  certs/                   ACME account key and each name's certificate and key
+  models/                  the embedding weights, a cache
   logs/                    vyred logs, one file per day
+  env                      optional environment for the systemd unit
   vyred.sock               the local API socket
 ```
 
@@ -225,7 +231,8 @@ export default {
     // ctx.memory     teach(kind, fact) — goes to the curator's queue
     // ctx.projects   read projects and threads
     // ctx.log        structured logging
-    // ctx.tool(name, { input, run })   register a tool declared in `does`
+    // ctx.tool(name, { input, run })   register a tool declared in `does`; run(input, { caller,
+    //                thread?, agent? }): thread and agent only when vyred verified them
     return { async stop() {} };
   },
 };
@@ -241,6 +248,11 @@ it as:
 - a **CLI command** `vyre <module> <tool>` when the manifest lists it under `shows.cli`.
 
 Every call passes through the Rules (section 11) before `run` executes.
+
+A tool learns where a call came from only from what vyred checked. `caller` is a claim. `agent`
+and `thread` are set when the caller proved them: an agent's thread by the key the Switchboard
+gave it, any other session by the key its SessionStart hook was given for its `claude` process.
+A thread named in the input is a claim like any other.
 
 ---
 
@@ -276,7 +288,8 @@ The plumbing every module uses. The store opens SQLite with WAL and a 10-second 
 every connection; migrations are numbered SQL files per module.
 
 `vyred` listens on `~/.vyre/vyred.sock` for local clients and, when networking is on, on the
-tailnet address through `tailscale serve`. HTTP API: `/v1/...`, JSON, responses are
+box's tailnet addresses with its own TLS certificate, identifying each connection by its source
+address (ADR 0002). HTTP API: `/v1/...`, JSON, responses are
 `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 
 ### 7.2 Projects
@@ -398,9 +411,11 @@ frozen. Glass streams a screen to the Deck and supports take-over.
 ### 7.10 Names and network · workstream
 
 `<you>.vyre.run` points at your box's Tailscale address, so only your devices can reach it.
-Certificates are issued by DNS challenge, which works for a private address. The Deck is served
-with `tailscale serve`, and the user is identified by Tailscale's identity headers, so there is
-no separate login. The name directory at vyre.run holds only the DNS record.
+Certificates are issued by DNS challenge, which works for a private address. vyred serves the
+Deck itself on the tailnet interface and identifies the person by `tailscale whois` of the
+connection's source address, never by a header, so there is no separate login and no local
+process can pose as the owner (`docs/adr/0002-network-and-identity.md`; `tailscale serve` cannot
+present a vyre.run certificate). The name directory at vyre.run holds only the DNS record.
 
 ### 7.11 Learning · workstream
 
@@ -460,7 +475,7 @@ The Harness also ships:
 | Capsule | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
 | Deck | The web app at `<you>.vyre.run`: Now, Projects, Memory, Agents, Vault, Settings | `deck/` |
 | Glass | An agent's screen, live, with take-over | `deck/` + `core/computers` |
-| Chat | A better interface over real sessions: Mattermost on your box, a thread per session, driving the same Claude Code sessions as the terminal | `modules/chat` |
+| Chat | Vyre's own chat layer: projects, then sessions, each session the terminal mirrored as a readable conversation (tool calls folded, diffs, asks and held items inline), on phone and computer, driving the same Claude Code sessions as the terminal. No third-party chat server. | `deck/chat` |
 | Phone | Now, approvals, drafts, Glass, Ask | later; a Deck view first |
 
 Every surface talks to vyred's API. None reads the store directly.
@@ -518,7 +533,9 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 5. Every file change is visible, including changes a command made without saying so.
 6. Only an explicit question from an agent asks for the user's attention.
 7. Anything Vyre tells the user, it can show the source of.
-8. No value from the Vault appears on any screen, log or event.
+8. No value from the Vault appears on any screen, log or event, except to a person who has just
+   proved presence on their own device, for that one value (ADR 0004, ADR 0006). Never to a model,
+   an agent, a log or an event.
 9. The Capsule works offline for the user's own Mac.
 
 ---
@@ -536,7 +553,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M6** | Switchboard and Deck | Headless threads streamed to the Deck; Now and Projects working. |
 | **M7** | Capsule | Ported from the current Mac app onto vyred's API. |
 | **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
-| **M9** | Chat, Gate, phone | Mattermost wired to threads; the Gate holding sends; the phone view. |
+| **M9** | Chat, Gate, phone | Vyre Chat (projects, sessions, the terminal mirrored) on phone and computer; the Gate holding sends. |
 
 ---
 
@@ -557,7 +574,7 @@ through `ctx` or the API, never by importing its files.
 | deck | `deck/` | the API only | M6 |
 | capsule | `local/capsule/`, `local/hands-mac/` | the API only | M7 |
 | computers | `core/computers/`, `modules/hands-desktop/`, `modules/hands-chrome/` | switchboard | M8 |
-| gate + chat | `core/gate/`, `modules/chat/` | switchboard, vault | M9 |
+| gate + chat | `core/gate/`, `deck/chat/` | switchboard, vault, deck | M9 |
 
 How to start them, and the order (wave 1 now, wave 2 after the switchboard and vault merge), is
 in `docs/work/LAUNCH.md`.

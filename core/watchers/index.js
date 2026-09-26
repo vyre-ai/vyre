@@ -9,8 +9,12 @@
 
 import { Runtime, MIGRATIONS } from "./runtime.js";
 
-/** How often vyred looks for due watchers. Cron is minute-grained, so this is plenty. */
-const TICK_MS = 15_000;
+/**
+ * How often vyred looks for due watchers. Cron is minute-grained, so a tick faster than that
+ * finds nothing new; docs/SPEC.md section 2, principle 8 caps idle polling at once a minute, so
+ * this sits right at that floor rather than four times past it.
+ */
+const TICK_MS = 60_000;
 
 const str = { type: "string" };
 const named = { type: "object", required: ["name"], properties: { name: str } };

@@ -7,13 +7,17 @@
 // is one copy of what is true (the waiting list, the reply streaming in) that any window, shown
 // or re-shown, is handed whole.
 //
-// The switchboard (agents.*, threads.*) and the Gate (gate.*) are being built alongside this.
-// Which of their tools exist is read from GET /v1/tools, and every feature that needs a missing
-// one says so in words, rather than failing a call and showing nothing.
+// The switchboard (core/switchboard, module `threads`, and core/agents) and the Gate (gate.*) are
+// optional modules. Which of their tools exist is read from GET /v1/tools, and every feature that
+// needs a missing one says so in words, rather than failing a call and showing nothing.
 
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import * as route from "./route.js";
 import * as st from "./state.js";
+import * as glass from "./glass.js";
 
 /** @typedef {{ call: (tool: string, input?: any, opts?: any) => Promise<any>, get: (route: string, opts?: any) => Promise<any> }} Client */
 
@@ -34,18 +38,37 @@ export function explain(err) {
     return (mod && MISSING[mod[1]]) || err.message;
   }
   if (err.code === "denied") return `The rules stopped it: ${err.message}`;
+  // threads.send knows only the sessions the switchboard runs; a terminal's own session is not one.
+  if (/^no thread /.test(err.message || "")) return "That session is not one vyred runs, so it cannot be typed into from here. Open it where it runs, or start a new thread.";
   return err.message || err.code;
 }
 
 export class Bridge extends EventEmitter {
-  /** @param {Client} client */
-  constructor(client, { now = () => Date.now() } = {}) {
+  /**
+   * `home` is vyred's home, where quick questions get a folder to run in. By default it is the
+   * folder holding vyred's socket, else VYRE_HOME, else ~/.vyre: the same place main.js uses.
+   * @param {Client & { socket?: string }} client @param {{ now?: () => number, home?: string }} [opts]
+   */
+  constructor(client, { now = () => Date.now(), home } = {}) {
     super();
     this.client = client;
     this.now = now;
+    this.home = home || homeOf(client.socket) || process.env.VYRE_HOME || path.join(os.homedir(), ".vyre");
+    /** @type {Map<string, string>} quick threads this Capsule started, and the model each runs */
+    this.quick = new Map();
+    /** @type {Set<string>} quick threads with a process that may still be running */
+    this.running = new Set();
+    /** @type {Set<string>} threads this Capsule stopped: their thread.stopped is not the reply failing */
+    this.stopping = new Set();
+    /** The Capsule was closed: a quick thread still answering is stopped once its turn ends. */
+    this.reap = false;
+    /** Stop was pressed before the reply's thread was known. */
+    this.cancelWanted = false;
+    /** @type {{ text: string, answer: string|null, sources: any[] }|null} the last memory answer, for the reply beside it */
+    this.lastRecall = null;
     /** @type {Set<string>} */
     this.tools = new Set();
-    /** @type {route.Catalog} */
+    /** @type {glass.Catalog} route's catalog, plus the paired box's address */
     this.catalog = { agents: null, projects: [], threads: [] };
     /** @type {st.Waiting[]} */
     this.waiting = [];
@@ -53,8 +76,21 @@ export class Bridge extends EventEmitter {
     this.reply = null;
     this.up = false;
     this.lease = /** @type {string|null} */ (null);
-    /** The agent a reply is expected from while its thread id is not known yet. */
-    this.pendingAgent = /** @type {string|null} */ (null);
+    /**
+     * A reply whose thread id is not known yet (agents.ask, threads.start): the first thread.sent
+     * from this surface names it. The switchboard emits thread.sent right after the words reach
+     * the child, before any of its output, so nothing of the reply comes before it.
+     */
+    this.pending = false;
+    /** @type {st.Dm|null} the open DM, if any: nothing is fetched or folded for a DM that is not open */
+    this.chat = null;
+    /** @type {any[]|null} events heard while the open DM's history loads, folded in after it */
+    this.dmBuffer = null;
+    /** Bumped on every open and close, so a slow history never lands in a DM that has moved on. */
+    this.dmSeq = 0;
+    this.pendingSeq = 0;
+    /** The newest event id heard on the stream. */
+    this.lastEvent = 0;
   }
 
   /** Who is asking, for a waiting row: the agent whose thread it is, else the thread's name. */
@@ -77,12 +113,14 @@ export class Bridge extends EventEmitter {
     if (t.error) { this.up = false; this.catalog = { agents: null, projects: [], threads: [] }; this.waiting = []; this.emit("change"); return { up: false, why: explain(t.error) }; }
     this.up = true;
     this.tools = new Set(t.data.map(x => x.name));
-    const [agents, projects, recent] = await Promise.all([
+    const [agents, projects, recent, headless] = await Promise.all([
       this.has("agents.list") ? this.client.call("agents.list") : null,
       this.client.call("projects.list"),
       this.client.call("projects.catalog", { limit: 30, human: true }),
+      this.has("threads.list") ? this.client.call("threads.list") : null,
     ]);
     const list = (projects && projects.data && projects.data.projects) || [];
+    const nameOf = slug => ((list.find(p => p.slug === slug) || {}).name) || slug;
     /** @type {route.Thread[]} */
     const threads = [];
     const seen = new Set();
@@ -95,6 +133,14 @@ export class Bridge extends EventEmitter {
         threads.push({ id: x.id, label: x.label || x.name || x.title || x.id.slice(0, 8), cwd: x.cwd, last: x.last, project: p.slug, projectName: p.name });
       }
     });
+    // The switchboard's own threads (running, or active in the last day): the ones threads.send
+    // can type into. threads.list rows are {id, name, cwd, project, agent, status, last, holder}.
+    for (const x of (headless && Array.isArray(headless.data) ? headless.data : [])) {
+      if (seen.has(x.id)) continue;
+      seen.add(x.id);
+      threads.push({ id: x.id, label: x.name || folderOf(x.cwd) || x.id.slice(0, 8), cwd: x.cwd, last: x.last, project: x.project || null,
+        projectName: x.project ? nameOf(x.project) : null, agent: x.agent || null });
+    }
     for (const x of (recent && recent.data && recent.data.sessions) || []) {
       if (seen.has(x.id)) continue;
       seen.add(x.id);
@@ -102,9 +148,12 @@ export class Bridge extends EventEmitter {
     }
     const agentRows = agents && agents.data ? (Array.isArray(agents.data) ? agents.data : agents.data.agents || []) : null;
     this.catalog = {
-      agents: agentRows ? agentRows.map(a => ({ name: String(a.name), kind: a.kind, doing: a.doing || a.status || null, thread: a.thread || null })) : null,
-      projects: list.map(p => ({ slug: p.slug, name: p.name, org: p.org, home: p.home, threads: p.threads, last: p.last })),
+      agents: agentRows ? agentRows.map(a => ({ name: String(a.name), kind: a.kind, doing: a.doing || a.status || null, thread: a.thread || null, computer: Boolean(a.computer) })) : null,
+      projects: list.map(p => ({ slug: p.slug, name: p.name, org: p.org, home: p.home, threads: p.threads, last: p.last,
+        people: Array.isArray(p.people) ? p.people.filter(x => x && x.name).map(x => ({ name: String(x.name) })) : [] })),
       threads,
+      // The paired box's address, for Glass (glass.js); null when there is none, never a guess.
+      box: await glass.address(this.client, this.has("link.status")),
     };
     await this.loadWaiting();
     this.emit("change");
@@ -136,7 +185,7 @@ export class Bridge extends EventEmitter {
       agentThreads = rows.map(x => ({ id: x.id || x.thread, label: x.name || x.label || x.title || String(x.id || x.thread).slice(0, 8),
         last: x.last || x.started, project: x.project || null, projectName: x.project ? this.projectName(x.project) : null, agent: target.id }));
     }
-    const r = route.destinations(target, text, this.catalog, { agentThreads, now: this.now() });
+    const r = route.destinations(target, text, this.catalog, { agentThreads, now: this.now(), quick: this.has("threads.start") });
     // Each option carries how it reads, so the page draws it without a copy of the rules.
     const d = { ...r, options: r.options.map(o => ({ ...o, show: route.describe(o) })) };
     // Say up front when the chosen destination cannot be reached from this vyred, not after Enter.
@@ -163,7 +212,7 @@ export class Bridge extends EventEmitter {
       .map(x => ({ x, s: (x.score ?? x.confidence ?? 0) + 0.5 * route.words(x.text).filter(w => asked.includes(w) && !route.words(x.matched).includes(w)).length }))
       .sort((a, b) => b.s - a.s).map(({ x }) => x);
     const h = hits.data || [];
-    return {
+    const out = {
       ms: Math.max(1, this.now() - t0),
       answer: f[0] ? f[0].text : null,
       more: f.slice(1).map(x => x.text),
@@ -173,6 +222,24 @@ export class Bridge extends EventEmitter {
       ].filter((x, i, all) => all.findIndex(y => y.session === x.session) === i).slice(0, 3),
       error: facts.error && hits.error ? explain(hits.error) : null,
     };
+    // Kept for the reply to the same words, which the page shows beside what memory said. None of
+    // it is sent to a model: only the assistant, which reads memory itself, sees the user's past.
+    this.lastRecall = { text: String(text).trim(), answer: out.answer, sources: out.sources };
+    return out;
+  }
+
+  /** A new reply, carrying the model it runs on and what memory said about the same words. */
+  fresh(thread, text, model = null) {
+    const m = this.lastRecall && this.lastRecall.text === String(text).trim() && (this.lastRecall.answer || this.lastRecall.sources.length)
+      ? { answer: this.lastRecall.answer, sources: this.lastRecall.sources } : null;
+    return { ...st.reply(thread), model, memory: m };
+  }
+
+  /** The folder quick questions run in, made on first use. It holds nothing of the user's. */
+  scratch() {
+    const dir = path.join(this.home, "capsule", "ask");
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
   }
 
   /**
@@ -193,58 +260,175 @@ export class Bridge extends EventEmitter {
    * stream from, or an error in words. `take` takes the keyboard from whoever holds it, and is only ever the user's choice.
    * @param {route.Destination} d @param {string} text @param {{ take?: boolean }} [opts]
    */
-  async send(d, text, { take = false } = {}) {
+  async send(d, text, opts = {}) {
+    // Words sent into the open DM show in it at once, pending until thread.sent says they arrived.
+    const key = this.dmPend(d, text);
+    const r = await this.sendTo(d, text, opts);
+    if (key && this.chat) {
+      if (r.error) this.chat = st.dmDrop(this.chat, key);
+      else if (r.thread && !this.chat.thread && !this.dmBuffer) this.chat = { ...this.chat, thread: String(r.thread) };
+      this.emit("change");
+    }
+    return r;
+  }
+
+  /** @param {route.Destination} d @param {string} text @param {{ take?: boolean }} [opts] */
+  async sendTo(d, text, { take = false } = {}) {
+    this.reap = false;
+    this.cancelWanted = false;
+    if (d.kind === "quick") return this.ask(d, text);
     if (d.kind === "recall") return { error: "Nothing to send to: there is no assistant on this vyred yet. Memory has answered what it can." };
     if (d.kind === "assistant" || d.kind === "agent") {
       // wait:false returns once the words are in the agent's thread, and the reply follows on the
       // stream. Waiting for the answer would hold the call for up to ten minutes. The first
       // thread.sent from this surface names the thread if the stream beats the call's answer.
-      this.reply = st.reply("");
-      this.pendingAgent = d.agent || null;
+      // agents.ask has no take: the keyboard of the agent's current thread is taken first, and
+      // only when the user chose to.
+      const current = ((this.catalog.agents || []).find(a => a.name === d.agent) || {}).thread;
+      if (take && current) {
+        const l = await this.client.call("threads.lease", { thread: current, surface: "capsule" });
+        if (l.error) return { error: explain(l.error) };
+      }
+      this.reply = this.fresh("", text);
+      this.pending = true;
       this.emit("change");
       const r = await this.client.call("agents.ask", { agent: d.agent, text, surface: "capsule", wait: false });
-      this.pendingAgent = null;
+      this.pending = false;
       const x = (r && r.data) || {};
       if (r.error || x.ok === false) {
         this.reply = null;
         this.emit("change");
-        return { error: r.error ? explain(r.error) : x.note || `${d.agent} did not get it.` };
+        if (r.error) return { error: explain(r.error) };
+        // Refused by the lease: agents.ask says so in a note, and threads.get says who holds it.
+        const holder = x.thread ? await this.holder(String(x.thread)) : null;
+        if (holder && holder !== "capsule") return { error: `${holder} has the keyboard in ${d.agent}'s thread.`, holder };
+        return { error: x.note || `${d.agent} did not get it.` };
       }
       const thread = String(x.thread || (this.reply && this.reply.thread) || "");
       if (this.reply && !this.reply.thread) this.reply = { ...this.reply, thread };
       // agents.ask with wait:false keeps the keyboard; it goes back when the Capsule closes.
       if (thread) this.lease = thread;
       this.emit("change");
+      if (this.cancelWanted && thread) await this.stopThread(thread);
       return { thread };
     }
     let r;
-    if (d.kind === "new-thread") r = await this.client.call("threads.start", { project: d.project || undefined, cwd: d.cwd || undefined, prompt: text, surface: "capsule" });
-    else {
+    if (d.kind === "new-thread") {
+      // threads.start answers after the first words are typed, so the reply may already be
+      // streaming: its thread.sent names the thread.
+      this.reply = this.fresh("", text);
+      this.pending = true;
+      this.emit("change");
+      r = await this.client.call("threads.start", { project: d.project || undefined, cwd: d.cwd || undefined, prompt: text, surface: "capsule" });
+      this.pending = false;
+      if (r.error) { this.reply = null; this.emit("change"); return { error: explain(r.error) }; }
+      const thread = String(r.data.id);
+      // The surface that starts a thread holds its keyboard; it goes back when the Capsule closes.
+      this.lease = thread;
+      if (this.reply && !this.reply.thread) this.reply = { ...this.reply, thread };
+      this.emit("change");
+      return { thread };
+    } else {
       // One keyboard per thread (floor rule 4). A free thread is taken by typing into it; one
       // someone else holds is theirs until the user chooses to take it.
       if (take) {
         const l = await this.client.call("threads.lease", { thread: d.thread, surface: "capsule" });
         if (l.error) return { error: explain(l.error) };
       }
+      // The reply is listened for before the words go: the child can answer before the call does.
+      const before = this.reply;
+      this.reply = this.fresh(String(d.thread), text, this.quick.get(String(d.thread)) || null);
       r = await this.client.call("threads.send", { thread: d.thread, text, surface: "capsule" });
+      if (r.error || (r.data && r.data.sent === false)) this.reply = before;
       if (!r.error && r.data && r.data.sent === false) {
+        // {sent:false, holder, note}; the note names a tool, so the Capsule says it in words.
         const holder = r.data.holder || null;
-        return { error: r.data.note || `${holder || "Another screen"} has the keyboard in this thread.`, holder };
+        return { error: holder ? `${holder} has the keyboard in this thread.` : r.data.note || "This thread could not be typed into.", holder };
       }
       if (!r.error) this.lease = String(d.thread);
+      if (!r.error && this.quick.has(String(d.thread))) this.running.add(String(d.thread));
     }
     if (r.error) return { error: explain(r.error) };
-    const thread = String((r.data && (r.data.thread || r.data.id)) || d.thread || "");
-    this.reply = thread ? st.reply(thread) : null;
+    const thread = String((r.data && r.data.thread) || d.thread);
     this.emit("change");
     return { thread };
   }
 
-  /** Hand the keyboard back when the Capsule closes. */
+  /**
+   * A question straight to a model, in a thread of its own: Claude Code on `d.model`, in the
+   * Capsule's scratch folder, so it starts with no project and none of the user's files around it.
+   * The reply streams like any thread's; a follow-up is a {kind: "thread"} send to the same thread.
+   * @param {route.Destination} d @param {string} text
+   */
+  async ask(d, text) {
+    const model = d.model || "haiku";
+    let cwd;
+    try { cwd = this.scratch(); } catch (e) { return { error: `Could not make the Capsule's folder: ${/** @type {Error} */ (e).message}` }; }
+    this.reply = this.fresh("", text, model);
+    this.pending = true;
+    this.emit("change");
+    const r = await this.client.call("threads.start", { prompt: quickPrompt(text), model, cwd, surface: "capsule",
+      name: "Capsule: " + String(text).trim().replace(/\s+/g, " ").slice(0, 40) });
+    this.pending = false;
+    if (r.error) { this.reply = null; this.emit("change"); return { error: explain(r.error) }; }
+    const thread = String(r.data.id);
+    this.quick.set(thread, model);
+    this.running.add(thread);
+    this.lease = thread;
+    if (this.reply && !this.reply.thread) this.reply = { ...this.reply, thread };
+    this.emit("change");
+    if (this.cancelWanted) await this.stopThread(thread);
+    return { thread };
+  }
+
+  /**
+   * Stop the reply streaming now. A thread is stopped with threads.stop (its transcript stays, and
+   * the next send resumes it); for the assistant or an agent that stops their thread's process
+   * too, which is the only interrupt the switchboard offers. Without threads.stop the Capsule only
+   * stops following, and says so. Either way the reply is finished with the error "stopped".
+   */
+  async cancel() {
+    const r = this.reply;
+    if (!r || r.finished) return { ok: false, note: "Nothing is answering now." };
+    this.reply = st.cancel(r);
+    this.emit("change");
+    if (!r.thread) { this.cancelWanted = true; return { ok: true, stopped: false, note: "Stopped. The thread is stopped as soon as it is known." }; }
+    return this.stopThread(r.thread);
+  }
+
+  /** threads.stop, marking the stop as ours so its thread.stopped is not read as a failure. */
+  async stopThread(thread) {
+    this.cancelWanted = false;
+    if (!this.has("threads.stop")) return { ok: true, stopped: false, note: "Stopped following. The reply carries on in its thread; this vyred cannot stop it from here." };
+    this.stopping.add(thread);
+    const s = await this.client.call("threads.stop", { thread });
+    this.running.delete(thread);
+    if (s.error) { this.stopping.delete(thread); return { ok: true, stopped: false, note: `Stopped following. ${explain(s.error)}` }; }
+    const stopped = Boolean(s.data && s.data.stopped);
+    if (!stopped) this.stopping.delete(thread);                          // it was not running: no thread.stopped will come
+    return { ok: true, stopped };
+  }
+
+  /** Who holds a thread's keyboard now, or null. */
+  async holder(thread) {
+    if (!this.has("threads.get")) return null;
+    const r = await this.client.call("threads.get", { thread, limit: 1 });
+    return (r.data && r.data.thread && r.data.thread.holder) || null;
+  }
+
+  /**
+   * The Capsule closed: hand the keyboard back, and stop the quick threads it started, so no
+   * Claude Code process idles while it is hidden. One still answering finishes its turn first
+   * (onEvent stops it then). A follow-up later resumes the thread from its transcript.
+   */
   async releaseLease() {
-    if (!this.lease || !this.has("threads.release")) return;
-    const thread = this.lease; this.lease = null;
-    await this.client.call("threads.release", { thread, surface: "capsule" });
+    if (this.lease && this.has("threads.release")) {
+      const thread = this.lease; this.lease = null;
+      await this.client.call("threads.release", { thread, surface: "capsule" });
+    }
+    this.reap = true;
+    const busy = this.reply && !this.reply.finished ? this.reply.thread : null;
+    await Promise.all([...this.running].filter(t => t !== busy).map(t => this.stopThread(t)));
   }
 
   /**
@@ -264,7 +448,11 @@ export class Bridge extends EventEmitter {
       for (const x of a.data ? (Array.isArray(a.data) ? a.data : a.data.asks || []) : []) {
         // Only questions still open; an answered one stays in the table with its decision.
         if (x.decision || (x.state && !["open", "pending", "waiting"].includes(x.state))) continue;
-        rows.push(st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: x.project, payload: { ...x, agent: x.agent || this.who(x.thread) } }, s => this.projectName(s)));
+        // threads.asks rows are {id, thread, tool, summary, destination, reason, at, state}: no
+        // project and no agent, so both come from the thread as the catalog knows it.
+        const t = (this.catalog.threads || []).find(y => y.id === x.thread);
+        rows.push(st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: x.project || (t && t.project) || null,
+          payload: { ...x, agent: x.agent || this.who(x.thread) } }, s => this.projectName(s)));
       }
     } else {
       const raised = await this.client.get("/v1/events?type=ask.raised&limit=1000");
@@ -320,26 +508,125 @@ export class Bridge extends EventEmitter {
     return { ok: true };
   }
 
+  /** A pending message in the open DM when these words go to it; its key, or null. */
+  dmPend(d, text) {
+    const c = this.chat;
+    if (!c || !d) return null;
+    const mine = ((d.kind === "assistant" || d.kind === "agent") && d.agent === c.agent) || (d.kind === "thread" && c.thread && d.thread === c.thread);
+    if (!mine) return null;
+    const key = `p${++this.pendingSeq}`;
+    this.chat = st.dmPending(c, key, text, this.now());
+    this.emit("change");
+    return key;
+  }
+
+  /** An agent's name from what the user typed: "assistant" is whichever agent is the assistant. */
+  agentRow(rows, agent) {
+    return rows.find(x => x.name === agent) || (agent === "assistant" ? rows.find(x => x.kind === "assistant") : null) || null;
+  }
+
+  /** An open ask from the table as a waiting row, named like the global list's. */
+  askRow(x, agent, project) {
+    return st.fromAsk({ type: "ask.raised", at: x.at, thread: x.thread, project: project || null, payload: { ...x, agent } }, s => this.projectName(s));
+  }
+
+  /** The DM's state from vyred: the agent's current thread (agents.list), then its events (threads.get). */
+  async loadDm(agent, limit) {
+    if (!this.has("agents.list")) return { error: explain({ code: "no_such_tool", message: "no tool agents.list" }) };
+    const list = await this.client.call("agents.list");
+    if (list.error) return { error: explain(list.error) };
+    const rows = Array.isArray(list.data) ? list.data : (list.data && list.data.agents) || [];
+    const a = this.agentRow(rows, agent);
+    if (!a) return { error: agent === "assistant" ? "There is no assistant on this vyred yet." : `There is no agent called ${agent}.` };
+    const d = st.dm(a.name, a.thread || null, limit);
+    if (!a.thread) return { dm: d };
+    const r = await this.client.call("threads.get", { thread: a.thread, limit: 1000 });
+    if (r.error) return { error: explain(r.error) };
+    const project = r.data && r.data.thread ? r.data.thread.project : null;
+    return { dm: st.dmHistory(d, r.data, x => this.askRow(x, a.name, project), s => this.projectName(s)) };
+  }
+
+  /**
+   * A DM with an agent, read once: `{agent, thread, messages, asks, busy, holder}`, or `{error}`.
+   * `agent` is a name, or "assistant". Nothing stays open; openDm is the live one.
+   * @param {string} agent @param {{ limit?: number }} [opts]
+   */
+  async dm(agent, { limit = 30 } = {}) {
+    const r = await this.loadDm(String(agent || ""), limit);
+    return r.error ? { error: r.error } : st.dmView(/** @type {st.Dm} */ (r.dm));
+  }
+
+  /**
+   * Open a DM: its history now, then every event of its thread folded in until closeDm. The
+   * snapshot carries it as `dm`. Opening another DM replaces this one.
+   * @param {string} agent @param {{ limit?: number }} [opts]
+   */
+  async openDm(agent, { limit = 30 } = {}) {
+    const seq = ++this.dmSeq;
+    const name = String(agent || "");
+    const known = this.agentRow(this.catalog.agents || [], name);
+    const after = this.lastEvent;
+    this.chat = { ...st.dm(known ? known.name : name, known ? known.thread : null, limit), loading: true };
+    this.dmBuffer = [];
+    this.emit("change");
+    const r = await this.loadDm(name, limit);
+    if (seq !== this.dmSeq) return { error: "closed" };
+    const heard = this.dmBuffer || [];
+    const pending = (this.chat ? this.chat.messages : []).filter(m => m.pending);
+    this.dmBuffer = null;
+    if (r.error) { this.chat = null; this.emit("change"); return { error: r.error }; }
+    let d = st.dmCarry(/** @type {st.Dm} */ (r.dm), pending, after);
+    for (const e of heard) d = /** @type {st.Dm} */ (st.applyDm(d, e.type === "ask.raised" ? this.named(e) : e, s => this.projectName(s)));
+    this.chat = d;
+    this.emit("change");
+    return st.dmView(d);
+  }
+
+  /** Close the DM: it is forgotten, and nothing more is folded or fetched for it. */
+  closeDm() {
+    this.dmSeq++;
+    const was = this.chat;
+    this.chat = null;
+    this.dmBuffer = null;
+    if (was) this.emit("change");
+    return { ok: true };
+  }
+
   /** An ask.raised event with who is asking filled in. */
   named(e) {
     const p = e.payload || {};
-    return p.agent ? e : { ...e, payload: { ...p, agent: this.who(e.thread || p.thread) } };
+    if (p.agent) return e;
+    const thread = e.thread || p.thread;
+    // A thread started since the catalog was read: the open DM knows whose it is.
+    const agent = this.who(thread) || (this.chat && thread && this.chat.thread === String(thread) ? this.chat.agent : null);
+    return { ...e, payload: { ...p, agent } };
   }
 
   /** One event from the stream. */
   onEvent(e) {
+    if (typeof e.id === "number" && e.id > this.lastEvent) this.lastEvent = e.id;
+    // The open DM: held back while its history loads, folded in after.
+    let dmChanged = false;
+    if (this.chat && this.dmBuffer) this.dmBuffer.push(e);
+    else if (this.chat) {
+      const next = st.applyDm(this.chat, e.type === "ask.raised" ? this.named(e) : e, s => this.projectName(s));
+      dmChanged = next !== this.chat && dmVisible(this.chat, next);
+      this.chat = next;
+    }
     // An agent's reply whose thread was not known when it was sent: the first sign of it on the
     // stream names it. A thread this Capsule typed into, or one started for that agent.
-    if (this.reply && !this.reply.thread && e.thread) {
-      const p = e.payload || {};
-      if (this.pendingAgent && ((e.type === "thread.sent" && p.surface === "capsule") || (e.type === "thread.started" && p.agent === this.pendingAgent))) {
-        this.reply = { ...this.reply, thread: String(e.thread) };
-        this.pendingAgent = null;
-      }
+    if (this.pending && this.reply && !this.reply.thread && e.thread && e.type === "thread.sent" && (e.payload || {}).surface === "capsule") {
+      this.reply = { ...this.reply, thread: String(e.thread) };
+      this.pending = false;
     }
     const w = st.applyWaiting(this.waiting, e.type === "ask.raised" ? this.named(e) : e, s => this.projectName(s));
-    const r = this.reply ? st.applyReply(this.reply, e) : null;
-    const changed = w !== this.waiting || r !== this.reply;
+    // A thread this Capsule stopped (Stop, or closing) has not failed; its reply stands as it was.
+    const ours = e.type === "thread.stopped" && this.stopping.delete(String(e.thread));
+    if (e.type === "thread.stopped") this.running.delete(String(e.thread));
+    const r = this.reply && !ours ? st.applyReply(this.reply, e) : this.reply;
+    // Closed while it answered: now that the turn is done, nothing of it runs while hidden.
+    if (e.type === "thread.finished" && this.reap && this.running.has(String(e.thread))) this.stopThread(String(e.thread)).catch(() => {});
+    const changed = w !== this.waiting || r !== this.reply || dmChanged;
     this.waiting = w;
     this.reply = r;
     if (changed) this.emit("change");
@@ -351,21 +638,36 @@ export class Bridge extends EventEmitter {
   snapshot() {
     return {
       up: this.up,
-      has: { agents: this.has("agents.list"), threads: this.has("threads.send"), gate: this.has("gate.held"), recall: this.has("recall.search") },
+      has: { agents: this.has("agents.list"), threads: this.has("threads.send"), gate: this.has("gate.held"), recall: this.has("recall.search"),
+        quick: this.has("threads.start"), stop: this.has("threads.stop") },
       assistant: ((this.catalog.agents || []).find(a => a.kind === "assistant") || {}).name || null,
       waiting: this.waiting.map(w => ({ ...w, age: route.age(w.at, this.now()) })),
-      reply: this.reply ? { thread: this.reply.thread, text: st.replyText(this.reply), tools: this.reply.tools, finished: this.reply.finished, ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease } : null,
+      reply: this.reply ? { thread: this.reply.thread, text: st.replyText(this.reply), tools: this.reply.tools, finished: this.reply.finished,
+        ok: this.reply.ok, error: this.reply.error, lease: this.reply.lease, model: this.reply.model || null,
+        cost: this.reply.cost, ms: this.reply.ms, memory: this.reply.memory || null } : null,
+      dm: this.chat ? st.dmView(this.chat) : null,
     };
   }
 }
 
+/** Whether a fold changed anything the page draws (not only the event cursor). */
+const dmVisible = (a, b) => a.messages !== b.messages || a.asks !== b.asks || a.busy !== b.busy || a.holder !== b.holder || a.thread !== b.thread;
+
 /** The tool a destination needs. */
 function needs(d) {
   if (d.kind === "assistant" || d.kind === "agent") return "agents.ask";
-  if (d.kind === "new-thread") return "threads.start";
+  if (d.kind === "new-thread" || d.kind === "quick") return "threads.start";
   if (d.kind === "thread") return "threads.send";
   return null;
 }
+
+/** The words a quick question is sent as: the user's own, then how to answer. */
+export const quickPrompt = text => `${String(text).trim()}\n\n(Answer briefly, in markdown. Use no tools unless the question needs them.)`;
+
+/** vyred's home from its socket, when the socket sits in it (config/socketPath: <home>/vyred.sock). */
+const homeOf = socket => (socket && path.basename(socket) === "vyred.sock" ? path.dirname(socket) : null);
+
+const folderOf = cwd => (cwd ? String(cwd).split("/").filter(Boolean).pop() || null : null);
 
 /** Recall marks matches «like this»; the Capsule shows plain words. */
 const plain = s => String(s || "").replace(/[«»]/g, "");

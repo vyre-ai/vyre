@@ -1,7 +1,7 @@
 // @ts-check
 // fill: the autofill door. A browser extension a person paired asks for the logins that match
 // the page in front of them and, once unlocked, for one login's username and password
-// (docs/adr/0001-autofill.md, the addendum to ADR 0001).
+// (docs/adr/0010-vault-autofill.md, the addendum to ADR 0001).
 //
 // This is the only path by which a login's value leaves the vault for a screen, so it is built
 // as a separate listener with its own credentials rather than as a registry tool:
