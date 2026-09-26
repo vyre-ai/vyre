@@ -33,11 +33,12 @@ let agentDirectSuite = Suite("agent direct") { t in
             let m = await MainActor.run { () -> CapsuleModel in let m = directModel(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.catalog.assistant != nil && m.vyred.follower.isStreaming }
             await MainActor.run { m.target = VyreCandidate(kind: .agent, id: "juno", label: "juno") }
-            _ = await until { m.direct.dm?.loading == false }
+            let loaded = await until { m.direct.dm?.loading == false }
+            if !loaded { let st = await MainActor.run { "dm=\(String(describing: m.direct.dm)) error=\(m.direct.error ?? "-") line=\(m.line ?? "-")" }; FileHandle.standardError.write(("direct: not loaded: " + st + "\n").data(using: .utf8)!) }
             let history = await MainActor.run { said(m) }
             let asks = await MainActor.run { m.direct.dm?.asks.map(\.title) ?? [] }
             await MainActor.run { m.text = "what is first?" }
-            _ = await until { m.flat.first?.kind == "ask" }
+            if !(await until { m.flat.first?.kind == "ask" }) { let f = await MainActor.run { m.flat.map(\.title) }; FileHandle.standardError.write("direct: rows \(f)\n".data(using: .utf8)!) }
             await MainActor.run { m.selected = 0; m.run() }
             _ = await until { !v.callsOf("agents.ask").isEmpty }
             let pending = await MainActor.run { said(m) }
