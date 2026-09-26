@@ -19,6 +19,10 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 
 ## Done
 
+- The MCP hub: `core/mcp/hub.js` (the Hub class, injected deps), `core/mcp/index.js` (tools and
+  callers), `core/mcp/module.json`. Tests: `core/mcp/hub.test.js` (12), `core/mcp/module.test.js`
+  (5, real vyred). Idle cost is zero: no timer or child exists until a server is first used.
+
 ## Doing
 
 - ADR 0015 and the plan.
@@ -28,3 +32,6 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 ## Needs from others
 
 ## Changed contracts
+
+- `gate.request` accepts `agent` in its input from a module caller only (core/gate/index.js), so
+  the MCP hub can file a held call under the agent vyred verified for it.

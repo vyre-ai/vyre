@@ -85,9 +85,12 @@ export default {
 
     ctx.tool("gate.request", {
       description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here. See gate.senders for the `via` values and what each takes.",
-      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str },
+      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str },
         ["kind", "via", "to", "content"]),
-      run: async (input, { caller, thread, agent }) => gate.request({ ...input, ...(await filed(input, caller, thread)) }, { agent: agent || agentOf(caller) }),
+      // `agent` in the input is heard only from a module, which files a request for the agent it
+      // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
+      run: async (input, { caller, thread, agent }) => gate.request({ ...input, ...(await filed(input, caller, thread)) },
+        { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) }),
     });
 
     ctx.tool("gate.senders", {

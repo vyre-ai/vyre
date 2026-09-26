@@ -6,6 +6,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Connectors (ADR 0015)
 
+- The MCP hub (`core/mcp/`, module `mcp`) puts any number of MCP servers behind one tool list,
+  so a person can plug in a tracker, a CRM and a docs tool without a token in any config file. A
+  server row names vault items, never values: `mcp.add` refuses a header, env value, argument or
+  url that looks like a credential, and plain http is allowed only to this machine, the tailnet
+  (100.64.0.0/10) or an origin listed under `mcp.httpHosts`. Tokens are fetched under the `mcp`
+  grant at call time, and every result and error is scrubbed of them. Nothing starts at boot;
+  a server starts on its first call, its tools are cached so `mcp.tools` never spawns anything,
+  it stops after `idle` (10 minutes by default) on one timer, and a server that crashes stops
+  restarting after three tries in five minutes until `mcp.restart`. Scope follows what vyred
+  verified (the agent, its projects, the thread's project) and `mcp.call` checks it again. A
+  tool that is not plainly a read is held at the Gate as `mcp:<server>` and reaches the server
+  only with the arguments the person approved. Managing servers is for people and modules,
+  never a model.
+- `gate.request` now takes `agent` from a module caller (never from a model), so a request the
+  hub files for an agent still shows which agent asked: the hub's `ctx.call` runs as
+  `module:mcp`, which would otherwise lose it.
 - `core/google/` is native Google Calendar and Gmail, so the assistant and the Capsule can read
   the person's day and mail without an MCP server holding a token in its env. Accounts
   (`google.add`, people only, never a model) name a vault item, an OAuth env-set or a
