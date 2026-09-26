@@ -17,7 +17,7 @@ import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
 import { open } from "../store/index.js";
-import { MIGRATIONS } from "./index.js";
+import { MIGRATIONS, answerSummary } from "./index.js";
 import { migrate } from "../store/index.js";
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
@@ -382,4 +382,12 @@ test("agents: an API-key agent stops at its budget", async t => {
   await until(async () => (await tool("agents.list", {})).data[0].status === "stopped", "ledger stopping");
   const again = await tool("agents.ask", { agent: "ledger", text: "whoami" });
   assert.match(again.error.message, /spent its \$0.2 budget/);
+});
+
+test("switchboard: the presence summary of an answer says what is allowed, where, and in which thread", () => {
+  const asks = { a1: { thread: "0f3c9a2e-1111", tool: "Write", summary: "write notes.md", destination: "/work/notes.md" } };
+  const sb = /** @type {any} */ ({ asks: { get: id => asks[id] || null }, record: () => ({ name: "Intake" }) });
+  assert.equal(answerSummary(sb, { ask: "a1", decision: "allow" }), "Allow Write to /work/notes.md: write notes.md (thread Intake)");
+  assert.equal(answerSummary({ ...sb, record: () => null }, { ask: "a1", decision: "deny" }), "Deny Write to /work/notes.md: write notes.md (thread 0f3c9a2e)");
+  assert.equal(answerSummary(sb, { ask: "zz", decision: "deny" }), "deny permission question zz");
 });

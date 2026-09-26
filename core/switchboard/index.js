@@ -61,6 +61,18 @@ export function pluginDir() {
 }
 
 /**
+ * What a person approves when they answer an ask: the decision, the tool, where it goes, and the thread.
+ * @param {Switchboard} sb @param {{ ask: string, decision: string }} i
+ */
+export function answerSummary(sb, i) {
+  const a = /** @type {any} */ (sb.asks.get(i.ask));
+  if (!a) return `${i.decision} permission question ${i.ask}`;
+  const t = sb.record(a.thread);
+  const where = a.destination ? ` to ${a.destination}` : "";
+  return `${i.decision === "allow" ? "Allow" : "Deny"} ${a.tool}${where}${a.summary ? `: ${a.summary}` : ""} (thread ${t && t.name ? t.name : String(a.thread).slice(0, 8)})`;
+}
+
+/**
  * Who a caller is, for the checks below. The MCP server calls as "mcp", or "mcp:agent:<name>"
  * inside an agent's own thread.
  */
@@ -427,7 +439,7 @@ export default {
       if (agent && sb.kindOf(agent) !== "assistant") throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
     const surfaceOf = (input, caller) => String(input.surface || caller || "vyre");
-    const tool = (name, description, input, run, callers) => ctx.tool(name, { description, input, run, callers });
+    const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str } },
@@ -463,7 +475,10 @@ export default {
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
-      ["cli", "local", "module", "deck", "capsule"]);
+      ["cli", "local", "module", "deck", "capsule"],
+      // And a person must be there right now (presence proof, ADR 0004): the summary is what they
+      // read in the Touch ID dialog or at the terminal before the answer goes through.
+      { presence: { summary: i => answerSummary(sb, i) } });
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },

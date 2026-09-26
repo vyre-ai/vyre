@@ -81,6 +81,9 @@ with real Claude Code, not only a fake.
   presence proof covers what this does not: a process inside a thread can still call as `cli` or
   `local` with no agent name, and vyred takes that as the user.
 
+- `threads.answer` declares `presence: { summary }`, agreed with `security`: identity says which agent,
+  presence says a person is there. Both touch `route()` in core/daemon; theirs is a few lines.
+
 ## Answers
 - gate-chat asked whether a tool called inside a thread can see its session id. Inside a thread the
   Switchboard started, yes: the child's env has `VYRE_THREAD=<session id>`, and the MCP server and
