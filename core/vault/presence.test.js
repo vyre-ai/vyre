@@ -18,7 +18,7 @@ import { newIdentity } from "./crypto.js";
 export const NEEDS_PRESENCE = [
   "vault.put", "vault.delete", "vault.import", "vault.grant", "vault.approve", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.pass.create", "vault.pass.accept", "vault.offboard", "vault.unlock",
-  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert",
+  "vault.unlock-passphrase", "vault.device.code", "vault.device.unlock", "vault.account.create", "vault.account.unlock", "vault.account.enroll-touchid", "vault.revert", "vault.migrate-key",
   "vault.resolve", "vault.render", "vault.edit", "vault.git", "vault.ssh.add", "vault.ssh.approve",
   "vault.session.open", "vault.reveal", "vault.copy", "vault.fill.native", "vault.breach.check", "vault.update",
   "vault.members.invite", "vault.members.accept", "vault.members.role", "vault.members.remove", "vault.vaults.rotate", "vault.move",

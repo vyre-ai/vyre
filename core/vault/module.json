@@ -85,7 +85,8 @@
       "vault.account.enroll-touchid",
       "vault.account.status",
       "vault.history",
-      "vault.revert"
+      "vault.revert",
+      "vault.migrate-key"
     ]
   },
   "watches": {

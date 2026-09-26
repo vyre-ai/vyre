@@ -1088,6 +1088,13 @@ async function account(args) {
   return oops("vyre vault account create | unlock [--touchid] | lock | enroll-touchid | status");
 }
 
+async function migrateKey() {
+  const r = await tool("vault.migrate-key");
+  if (r.error) return fail(r);
+  say(`  ${signal("done")} ${dim(`· vault key ${r.data.key ? "moved to this build" : "already fine"}, Secret Key ${r.data.secretKey ? "moved" : "already fine"}`)}`);
+  return 0;
+}
+
 // ------------------------------------------------------------ dispatch
 
 const HELP = [
@@ -1128,6 +1135,7 @@ const HELP = [
   ["offboard <person>", "revoke everything they hold, list what to rotate"],
   ["account create | unlock [--touchid] | lock | enroll-touchid | status", "the password (and Touch ID) for your personal vault"],
   ["unlock | lock", "for the passphrase keystore"],
+  ["migrate-key", "after an update: move the keychain key to this build (macOS may ask you to allow it)"],
   ["pair [--name n] | devices [revoke|unlock <id>]", "browser extensions that autofill logins"],
   ["unlock-passphrase", "what an extension asks for before it fills"],
   ["backup <file> | restore <file> [--replace]", "the whole vault, sealed to a passphrase of its own"],
@@ -1155,7 +1163,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {

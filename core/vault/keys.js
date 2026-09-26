@@ -126,53 +126,72 @@ function legacyStore(account, keychain, decode) {
  *
  * With `helper` (mac/keychain.swift), items are written through that hash-checked helper with an
  * access list naming only it, so `security find-generic-password -w` run by anything else gets a
- * system prompt, not the key (ADR 0006 finding 1). An item the old path wrote is read once
- * through `security`, written again through the helper, and the old one deleted. If the helper
- * was rebuilt (its source changed), the item trusts the old binary, so older helper binaries in
- * the same private folder are tried, and the item is moved to the new one the same way.
+ * system prompt, not the key (ADR 0006 finding 1). Every call sends `noUI: true`: nothing here
+ * can raise a dialog. Each item's comment names the helper build that wrote it
+ * (`vyre-helper:<binary hash>`), read with `info`, which never touches the secret:
+ *   - this build: read it.
+ *   - no comment: `security -i` wrote it and is on its access list, so `security` reads it
+ *     without a prompt; it is then written again through the helper and the old one deleted.
+ *   - another build still in the helpers folder (checked by its hash): that binary reads it, and
+ *     it is moved to this build the same way.
+ *   - another build that is gone: refuse, and name `vyre vault migrate-key`, the one path a
+ *     person runs on purpose, which may ask them to allow access.
  * @param {string} dir @param {string} [keychain] @param {string} [suffix]
  * @param {(text: string) => Buffer} [decode] @param {import("./mac/helper.js").Helper|null} [helper]
  */
 function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain entry for this vault is not a vault key"), helper = null) {
   const account = accountFor(dir) + suffix;
   const legacy = legacyStore(account, keychain, decode);
-  if (!helper || !helper.usable()) return { ...legacy, exists: async () => (await legacy.read()) !== null };
+  if (!helper || !helper.usable()) return { ...legacy, exists: async () => (await legacy.read()) !== null, migrate: async () => ({ moved: false }) };
   const q = { service: SERVICE, account, ...(keychain ? { keychain } : {}) };
-  const call = async req => helperCall(helper, { ...q, ...req });
-  /** Older builds of the helper, which an item written before a rebuild still trusts. */
-  const olderBinaries = async () => {
-    const now = (await helper.ensure()).path;
-    const d = path.dirname(now);
-    return fs.readdirSync(d).filter(n => /^vyre-vault-keychain-[0-9a-f]{16}$/.test(n)).map(n => path.join(d, n)).filter(p => p !== now);
+  const me = async () => helper.ensure();
+  const call = async (req, noUI = true) => helperCall(helper, { ...q, ...req, noUI, ...(req.op === "write" ? { helper: (await me()).hash } : {}) });
+  /** A build of the helper named by its binary hash, if it is still in the private folder. */
+  const buildFor = async hash => {
+    const d = path.dirname((await me()).path);
+    for (const n of fs.readdirSync(d)) {
+      if (!/^vyre-vault-keychain-[0-9a-f]{16}$/.test(n)) continue;
+      const p = path.join(d, n);
+      const st = fs.lstatSync(p);
+      if (!st.isFile() || (st.mode & 0o022)) continue;
+      if (crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex") === hash) return p;
+    }
+    return null;
   };
-  const oldCall = (bin, req) => helperCall({ spawn: async () => spawn(bin, [], { stdio: "pipe" }) }, { ...q, ...req });
+  const byBinary = (bin, req) => helperCall({ spawn: async () => spawn(bin, [], { stdio: "pipe" }) }, { ...q, ...req, noUI: true });
   const move = async text => {
     const w = await call({ op: "write", secret: text });
     if (!w.ok) throw new Error(`could not write the vault key through the keychain helper (${w.status || w.code})`);
     const back = await call({ op: "read" });
     if (!back.ok || back.secret !== text) throw new Error("the vault key did not read back through the keychain helper");
   };
+  const textOf = buf => (suffix ? buf.toString("utf8") : buf.toString("hex"));
   const read = async () => {
-    const r = await call({ op: "read" });
-    if (r.ok) return r.secret == null ? null : decode(String(r.secret));
-    // Not ours to read: an item the old path wrote, or one an older helper build wrote.
-    const old = await legacy.read().catch(() => null);
-    if (old) {
-      // The device key is kept as hex, the Secret Key as its text.
-      const text = suffix ? old.toString("utf8") : old.toString("hex");
+    const info = await call({ op: "info" });
+    if (!info.ok) throw new Error(`could not look up the vault key in the keychain (${info.status || info.code})`);
+    if (!info.found) return null;
+    const comment = typeof info.comment === "string" ? info.comment : "";
+    const mine = `vyre-helper:${(await me()).hash}`;
+    if (comment === mine) {
+      const r = await call({ op: "read" });
+      if (!r.ok) throw new Error(`could not read the vault key from the keychain (${r.status || r.code})`);
+      return r.secret == null ? null : decode(String(r.secret));
+    }
+    if (!comment.startsWith("vyre-helper:")) {
+      const old = await legacy.read();
+      if (!old) return null;
       await legacy.remove();
-      await move(text);
+      await move(textOf(old));
       return old;
     }
-    for (const bin of await olderBinaries()) {
-      const o = await oldCall(bin, { op: "read" }).catch(() => null);
-      if (!o || !o.ok || o.secret == null) continue;
-      const text = String(o.secret);
-      await oldCall(bin, { op: "delete" }).catch(() => null);
-      await move(text);
-      return decode(text);
-    }
-    throw new Error(`could not read the vault key from the keychain (${r.status || r.code})`);
+    const bin = await buildFor(comment.slice("vyre-helper:".length));
+    if (!bin) throw new Error("the keychain item was written by a helper build that is gone; run vyre vault migrate-key");
+    const o = await byBinary(bin, { op: "read" });
+    if (!o.ok || o.secret == null) throw new Error(`the older keychain helper could not read the vault key (${o.status || o.code}); run vyre vault migrate-key`);
+    const text = String(o.secret);
+    await byBinary(bin, { op: "delete" });
+    await move(text);
+    return decode(text);
   };
   return {
     exists: async () => (await read()) !== null,
@@ -184,8 +203,18 @@ function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain
     read,
     remove: async () => {
       const r = await call({ op: "delete" });
-      await legacy.remove().catch(() => {});
       if (!r.ok) throw new Error(`could not remove the vault key from the keychain (${r.status || r.code})`);
+    },
+    /**
+     * The person-run path (`vyre vault migrate-key`): read through this build with interaction
+     * on, so macOS may ask the person to allow it, then write it again under this build.
+     */
+    migrate: async () => {
+      const r = await call({ op: "read" }, false);
+      if (!r.ok) throw new Error(`the keychain item could not be read (${r.status || r.code}); allow access when macOS asks, or restore from a backup`);
+      if (r.secret == null) return { moved: false };
+      await move(String(r.secret));
+      return { moved: true };
     },
   };
 }
@@ -235,6 +264,7 @@ export function keystore({ dir, kind, keychain, helper = null }) {
       },
       async load(_ = {}) { return kc.read(); },
       destroy: kc.remove,
+      migrate: kc.migrate,
     };
   }
   if (kind === "file") {
@@ -297,6 +327,7 @@ export function secretKeyStore({ dir, kind, keychain, helper = null }) {
       /** @returns {Promise<string|null>} */
       async read() { const b = await kc.read(); if (!b) return null; const s = b.toString("utf8"); b.fill(0); return s; },
       remove: kc.remove,
+      migrate: kc.migrate,
     };
   }
   const file = path.join(dir, "secret-key");

@@ -21,7 +21,7 @@ const TIMEOUT_MS = 90_000;
  * @returns {Promise<any>}
  */
 export async function enclaveCall(helper, req) {
-  const child = await helper.spawn([]);
+  const child = await helper.spawn([], { request: req });
   return new Promise((resolve, reject) => {
     let done = false;
     const finish = (/** @type {any} */ v, /** @type {Error|null} */ e) => {

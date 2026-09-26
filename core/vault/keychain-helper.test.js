@@ -43,7 +43,11 @@ test("keychain helper: the key is on an access list naming only the helper", { s
   assert.equal(await ks.load(), null);
   const mk = await ks.create();
   assert.ok((await ks.load()).equals(mk));
-  const bin = (await helper.ensure()).path;
+  const built = await helper.ensure();
+  const bin = built.path;
+  const { enclaveCall: call } = await import("./touchid.js");
+  const info = await call(helper, { op: "info", service: SERVICE, account: accountFor(vaultDir), keychain, noUI: true });
+  assert.deepEqual(info, { ok: true, found: true, comment: `vyre-helper:${built.hash}` }, "the item names the build that wrote it, and info returns no secret");
   const apps = await decryptApps(keychain);
   assert.equal(apps.length, 1);
   assert.deepEqual(apps[0].map(p => fs.realpathSync(p)), [fs.realpathSync(bin)], "only the helper may decrypt; /usr/bin/security is not on the list");
@@ -71,4 +75,14 @@ test("keychain helper: an item the old security path wrote is moved to the helpe
   assert.ok(!apps[0].some(p => p.endsWith("/security")));
   assert.equal((await ks.load()).toString("hex"), hex, "and it reads through the helper from now on");
   void SERVICE;
+});
+
+test("keychain helper: an item a gone build wrote is refused with the migrate-key path, and nothing tries to read it", { skip: !mac && "macOS with swiftc only" }, async t => {
+  const { keychain, helper, vaultDir } = await setup(t);
+  const { enclaveCall: call } = await import("./touchid.js");
+  // Written by this build but labelled as another, as a build that has since been deleted would have.
+  const w = await call(helper, { op: "write", service: SERVICE, account: accountFor(vaultDir), keychain, noUI: true, secret: crypto.randomBytes(32).toString("hex"), helper: "0".repeat(64) });
+  assert.equal(w.ok, true);
+  const ks = keystore({ dir: vaultDir, kind: "keychain", keychain, helper });
+  await assert.rejects(ks.load(), /written by a helper build that is gone; run vyre vault migrate-key/);
 });

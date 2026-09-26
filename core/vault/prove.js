@@ -70,7 +70,8 @@ async function defaultProve({ tool, input, caller, summary, env }) {
   const run = env.state.chain.then(() => enclaveCall(env.enclave, { op: "auth", reason: String(summary).slice(0, 200) }));
   env.state.chain = run.catch(() => {});
   let r;
-  try { r = await run; } catch { throw presenceRequired("the presence helper did not answer"); }
+  try { r = await run; }
+  catch (e) { throw /** @type {any} */ (e).code === "presence_required" ? e : presenceRequired("the presence helper did not answer"); }
   if (!r || !r.ok) {
     env.state.cooldownUntil = env.now() + COOLDOWN_MS;
     throw presenceRequired("presence was not confirmed");

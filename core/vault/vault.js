@@ -553,6 +553,18 @@ export class Vault {
     catch { this.audit("account-unlock", null, who, false, "touch id wrap did not open"); throw new Error("the Touch ID wrap does not open · unlock with your password and enroll again"); }
   }
 
+  /**
+   * `vyre vault migrate-key`: move keychain items a gone helper build wrote to this build. The
+   * one keychain path that may ask the person to allow access, so only a person starts it.
+   */
+  async migrateKey(who = "cli") {
+    const out = { key: false, secretKey: false };
+    if (typeof this.keys.migrate === "function") out.key = (await this.keys.migrate()).moved;
+    if (typeof this.secretKeys.migrate === "function") out.secretKey = (await this.secretKeys.migrate()).moved;
+    this.audit("migrate-key", null, who, true, `key ${out.key ? "moved" : "unchanged"}, secret key ${out.secretKey ? "moved" : "unchanged"}`);
+    return out;
+  }
+
   /** Whether there is an account, whether it is unlocked, and whether Touch ID is set up here. */
   accountStatus() {
     const rec = readJsonFile(this.dir, ACCOUNT);

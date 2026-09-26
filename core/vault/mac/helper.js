@@ -11,6 +11,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { checkDialog } from "./dialogs.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const SWIFTC = "/usr/bin/swiftc";
@@ -89,11 +90,14 @@ export class Helper {
    * Start the helper with its stdin, stdout and stderr as pipes, after checking it is the binary
    * that was built. A changed binary is thrown away and built again before it runs.
    * @param {string[]} [args] never a value
-   * @param {{ env?: NodeJS.ProcessEnv }} [o]
+   * @param {{ env?: NodeJS.ProcessEnv, request?: any }} [o] request: what will be sent on stdin,
+   *   so the dialog check can tell a harmless op from one that asks a person
    * @returns {Promise<import("node:child_process").ChildProcessWithoutNullStreams>}
    */
-  async spawn(args = [], { env } = {}) {
+  async spawn(args = [], { env, request } = {}) {
     if (this.command) return spawn(this.command[0], [...this.command.slice(1), ...args], { stdio: "pipe", env: env || process.env });
+    // A real helper that can raise a system dialog does not start when dialogs are off (dialogs.js).
+    checkDialog(this.name, request);
     let h = await this.ensure();
     let now = "";
     try { now = sha256(fs.readFileSync(h.path)); } catch { /* missing counts as changed */ }

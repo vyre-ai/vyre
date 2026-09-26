@@ -299,6 +299,10 @@ Where the build differs from the text above, and why:
   `security`, rewritten through the helper and deleted (tested). Open risk: a new build of the
   helper (any edit to keychain.swift) is a different binary the old items do not trust. The
   store then tries the older builds left in the same private folder and moves the item. That
-  path is written but not proved: its test made macOS show a keychain access dialog (a
-  SecurityAgent prompt, although the helper turns user interaction off), so the test was
-  removed. Until that is understood, keychain.swift should change as rarely as possible.
+  first version tried reads and made macOS show a keychain access dialog in a test, although
+  the helper had turned user interaction off: SecKeychainSetUserInteractionAllowed(false) does
+  not stop every prompt. So the store no longer tries anything. Each item's comment names the
+  helper build that wrote it (`vyre-helper:<binary hash>`), read with an attributes-only
+  `info` op. Only that build (or `security`, for an unlabelled item) ever reads it; an item
+  from a build that is gone is refused with `vyre vault migrate-key`, which a person runs and
+  which may prompt. `mac/dialogs.js` refuses any helper call that could prompt under tests.

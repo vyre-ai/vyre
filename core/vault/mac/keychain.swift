@@ -7,11 +7,17 @@
 //   {"op":"write","service":"..","account":"..","keychain":"<path>"?,"secret":".."} -> {"ok":true}
 //   {"op":"read","service":"..","account":"..","keychain":"<path>"?}  -> {"ok":true,"secret":".."|null}
 //   {"op":"delete","service":"..","account":"..","keychain":"<path>"?} -> {"ok":true,"deleted":B}
+//   {"op":"info",...}   -> {"ok":true,"found":B,"comment":"..."|null}  attributes only, never data
+//
+// Every request may carry "noUI": true, which turns user interaction off, so anything the
+// access list would ask a person about fails with an OSStatus instead. vyred sends it on every
+// call except `vyre vault migrate-key`, which a person runs on purpose. A write also takes
+// "helper": the hash of this binary, stored as the item's comment `vyre-helper:<hash>`, so a
+// later build knows exactly which binary the item trusts without trying to read it.
 //
 // `write` replaces an existing item (delete, then add), so the access list is always ours.
 // The file-based keychain APIs used here (SecAccess, SecTrustedApplication, SecKeychainOpen)
 // are deprecated but still work, and they are the only way to set a per-item app list.
-// No dialog is ever asked for: user interaction is turned off, so a refusal is an error code.
 
 import Foundation
 import Security
@@ -36,7 +42,7 @@ guard let line = String(data: input, encoding: .utf8)?.split(separator: "\n").fi
     fail("bad_request", "expected one JSON request with op, service and account on stdin")
 }
 
-SecKeychainSetUserInteractionAllowed(false)
+if (req["noUI"] as? Bool) == true { SecKeychainSetUserInteractionAllowed(false) }
 
 var keychainRef: SecKeychain? = nil
 if let path = req["keychain"] as? String, !path.isEmpty {
@@ -80,6 +86,7 @@ case "write":
                               kSecAttrLabel as String: service,
                               kSecValueData as String: Data(secret.utf8),
                               kSecAttrAccess as String: acc]
+    if let h = req["helper"] as? String, !h.isEmpty { add[kSecAttrComment as String] = "vyre-helper:\(h)" }
     if let kc = keychainRef { add[kSecUseKeychain as String] = kc }
     st = SecItemAdd(add as CFDictionary, nil)
     if st != errSecSuccess { fail("write", "could not write the keychain item", st) }
@@ -95,6 +102,17 @@ case "read":
     if st != errSecSuccess { fail("read", "could not read the keychain item", st) }
     guard let data = out as? Data, let s = String(data: data, encoding: .utf8) else { fail("read", "the keychain item is not text") }
     reply(["ok": true, "secret": s])
+
+case "info":
+    var q = base()
+    q[kSecReturnAttributes as String] = true
+    q[kSecMatchLimit as String] = kSecMatchLimitOne
+    var out: CFTypeRef? = nil
+    let st = SecItemCopyMatching(q as CFDictionary, &out)
+    if st == errSecItemNotFound { reply(["ok": true, "found": false, "comment": NSNull()]); break }
+    if st != errSecSuccess { fail("info", "could not read the keychain item's attributes", st) }
+    let attrs = out as? [String: Any] ?? [:]
+    reply(["ok": true, "found": true, "comment": (attrs[kSecAttrComment as String] as? String) ?? NSNull()])
 
 case "delete":
     reply(["ok": true, "deleted": remove()])
