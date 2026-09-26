@@ -119,9 +119,19 @@ public protocol SessionWindow: AnyObject {
     var frame: NSRect { get }
     /// Show `content` at `frame`. Replaces what it showed before.
     func show(_ content: AnyView, frame: NSRect)
-    /// Move or resize; animated over `duration` seconds when > 0 (0.25 is the Capsule's pace).
+    /// Move or resize; animated over `duration` seconds when > 0 (0.25 is the Capsule's pace),
+    /// easing in and out.
     func setFrame(_ frame: NSRect, duration: TimeInterval)
+    /// The same with a curve of your choosing (ease-out for a slide in, ease-in for one out).
+    func setFrame(_ frame: NSRect, duration: TimeInterval, curve: SessionWindowCurve)
     func close()
+}
+
+public enum SessionWindowCurve: Sendable { case easeInOut, easeOut, easeIn, linear }
+
+public extension SessionWindow {
+    /// A window that knows no curves (a test's fake) moves as it always does.
+    func setFrame(_ frame: NSRect, duration: TimeInterval, curve: SessionWindowCurve) { setFrame(frame, duration: duration) }
 }
 
 public enum VyredResult: @unchecked Sendable {
@@ -176,11 +186,15 @@ public protocol CapsuleHost: AnyObject {
     /// id; a second owner gets the same window and the first is told nothing, so take it only
     /// from a command the user ran.
     func sessionWindow(owner: String) -> SessionWindow
+    /// Your `commands` (or `providers`) changed while the Capsule is open, for example a session
+    /// started: the Capsule reads them again and redraws the list.
+    func commandsChanged()
 }
 
 public extension CapsuleHost {
     /// A host with no windows (a test's fake host) hands out one that shows nothing.
     func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+    func commandsChanged() {}
 }
 
 @MainActor

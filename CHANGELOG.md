@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The session window for sight's side view
+
+- The Capsule-owned session window becomes key when its field is clicked, draws nothing under
+  the extension's view (its vibrancy shows), and moves on a curve the extension picks
+  (`setFrame(_:duration:curve:)`, ease-out for a slide in). `host.commandsChanged()` lets an
+  extension say its commands changed while the Capsule is open.
+- capsule-sight is merged in: the side view, the session panel and push-to-talk run in the
+  native Capsule. The native Capsule's ADR is 0017 (0015 is capsule-sight's).
+- The typing check asserts its timings only on the optimised build.
+
 #### @ finds sessions by their whole name
 
 - After a leading `@` the whole text is the name ("@computer use settings"), matched without

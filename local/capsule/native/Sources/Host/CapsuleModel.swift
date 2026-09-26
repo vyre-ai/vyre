@@ -105,6 +105,9 @@ public final class CapsuleModel: ObservableObject {
 
     // MARK: searching
 
+    /// Search again for the same words (an extension's commands changed).
+    func refresh() { search() }
+
     func search() {
         token += 1
         let t = token

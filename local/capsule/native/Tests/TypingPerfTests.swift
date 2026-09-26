@@ -101,9 +101,12 @@ let typingSuite = Suite("typing") { t in
             return typeTwenty()
         }
         print("typing\(ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPT"] == "1" ? " (optimised)" : " (debug build)"): " + r.line)
-        t.ok(r.p95 < 16, "p95 \(r.p95) ms")
+        // Timings are checked on the optimised build (VYRE_CAPSULE_OPT=1), as the app is built; a
+        // debug build under a busy Mac only reports them. Jumps and flicker are checked always.
+        let timed = ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPT"] == "1"
+        if timed { t.ok(r.p95 < 16, "p95 \(r.p95) ms") }
         t.eq(r.jumpsWhileTyping, 0, "size changes while typing")
         t.eq(r.flickers, 0, "rows that vanished and came back")
-        t.ok(r.busy.filter { $0 > 16 }.count == 0, "main-thread passes over 16 ms: \(r.busy.filter { $0 > 16 }.map { String(format: "%.1f", $0) })")
+        if timed { t.ok(r.busy.filter { $0 > 16 }.count == 0, "main-thread passes over 16 ms: \(r.busy.filter { $0 > 16 }.map { String(format: "%.1f", $0) })") }
     }
 }
