@@ -205,3 +205,29 @@ test("deleting a shared item: a signed tombstone; a stale delete is refused; the
   const r = await a.v.shared.remove({ vault: "team", person: "sam" }, "cli");
   assert.deepEqual(r.rotate.sort(), ["team/busy", "team/old-key"]);
 });
+
+test("event-driven pull: the home pokes members after a write; only the home may poke; the timer is ten minutes", async t => {
+  const a = mk(t, "alex"), d = mk(t, "dana");
+  await know(a, d, "dana");
+  await a.v.shared.create({ name: "team" }, "cli");
+  await d.v.shared.accept({ invite: (await a.v.shared.invite({ vault: "team", person: "dana" }, "cli")).invite }, "cli");
+  const v = fake("poked");
+  await a.v.shared.put({ vault: "team", name: "poked", fields: { value: v } }, "cli");
+  const end = Date.now() + 5000;
+  while (!d.v.list().items.some(i => i.name === "team/poked") && Date.now() < end) await new Promise(r => setTimeout(r, 50));
+  assert.equal(await value(d, "team/poked"), v, "dana pulled without being asked");
+
+  // A poke signed by someone other than the home is refused.
+  const { syncEnvelope } = await import("./relay.js");
+  const di = await d.v.identity();
+  const id = d.v.shared.row("team").id;
+  const forged = syncEnvelope({ vault: id, op: "poke", body: {}, from: di.sign.public, privDer: di.sign.private, aud: d.v.relayUrl });
+  assert.equal((await d.v.shared.onSync(forged)).status, 403);
+
+  const seen = [];
+  const real = globalThis.setInterval;
+  globalThis.setInterval = /** @type {any} */ ((fn, ms) => { seen.push(ms); return real(fn, ms); });
+  try { d.v.devices.start(); } finally { globalThis.setInterval = real; }
+  d.v.devices.stop();
+  assert.ok(seen.length && seen.every(ms => ms >= 10 * 60_000), `timers: ${seen}`);
+});
