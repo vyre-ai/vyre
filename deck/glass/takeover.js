@@ -142,14 +142,14 @@ export function takeover(s, hooks) {
     const n = s.name;
     const rows = s.holder.private
       ? [["The page on " + n + "'s screen", "receives it", true], [`${n}'s hands and eyes`, "stopped"], [`${n}'s thread`, "never"], ["Memory", "never"], ["Other viewers", "no input"]]
-      : [["The page on " + n + "'s screen", "receives it", true], [`${n}'s hands`, "paused"], [`${n}'s eyes`, "can still read the page"], ["Other viewers", "no input"]];
+      : [["The page on " + n + "'s screen", "receives it", true], [`${n}'s hands`, "paused"], [`${n}'s Chrome link`, "stays open"], ["Other viewers", "no input"]];
     return h("div", { class: "gl-side-hold" },
       h("div", { class: "gl-side-top" },
         h("span", { class: "lbl" }, "While you type"),
         h("h2", { class: "h3" }, s.holder.private ? "What you type goes to the page. Nowhere else." : `${n} is paused while you drive.`),
         h("p", { class: "small muted" }, s.holder.private
           ? `Your keystrokes travel from this browser over your tailnet into ${n}'s screen. ${n} cannot read the page until you hand back.`
-          : `${n}'s hands stop until you hand back, but it can still read the page. For a password, hand back and use Sign in privately.`)),
+          : `${n}'s hands stop until you hand back. Its link to Chrome stays open, so for a password, hand back and use Sign in privately, which cuts it.`)),
       h("div", { class: "gl-side-rows" }, rows.map(([a, b, on]) => h("div", { class: "gl-side-row" },
         h("span", { class: on ? "" : "muted" }, a), h("span", { class: "code" + (on ? " gl-on" : "") }, b)))),
       h("div", { class: "gl-side-top" },

@@ -177,7 +177,13 @@ export function mountScreen(o) {
     }
   }
 
+  let lastLog = { text: "", at: 0 };
   function addLog(text) {
+    // A take-over arrives twice, as computer.taken-over and glass.taken (and a hand-back as
+    // computer.handed-back and glass.released): one line in the log, not two.
+    const now = Date.now();
+    if (text === lastLog.text && now - lastLog.at < 3000) return;
+    lastLog = { text, at: now };
     const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: phone ? undefined : "2-digit", hourCycle: "h23" });
     logRows.unshift(h("div", { class: "gl-log-row" }, h("span", { class: "code" }, t), h("span", null, text)));
     logRows.length = Math.min(logRows.length, 40);
