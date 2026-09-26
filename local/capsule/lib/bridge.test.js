@@ -126,6 +126,36 @@ test("bridge: with the switchboard, the assistant is the default and a reply str
   assert.ok(!fc.calls.some(x => x[0] === "threads.lease"));
 });
 
+test("bridge: a question names memory beside the model's answer, and people in projects make it the user's own", async t => {
+  const { c } = await vyred(t, { bare: true });
+  const root = fs.mkdtempSync(path.join(path.dirname(c.socket), "home-"));
+  const fc = withFakes(c, {
+    "agents.list": () => [{ name: "juno", kind: "assistant" }],
+    "memory.relevant": () => [{ text: "Paris is where the offsite is.", score: 0.9, ref: { session: "s1", seq: 2, name: "Offsite" } }],
+    "recall.search": () => [],
+    "threads.start": i => ({ id: "q1", ...i }),
+  });
+  const b = new Bridge(fc, { home: root });
+  await b.refresh();
+  const own = await b.destinations(null, "what is Dana's email?");
+  assert.deepEqual(own.options.map(o => o.kind), ["assistant", "quick", "quick"], "Dana is in Harlow Legal's people");
+  const gen = await b.destinations(null, "what is the capital of France?");
+  assert.deepEqual(gen.options.map(o => [o.kind, o.show.who]), [["quick", "Claude"], ["assistant", "juno"], ["quick", "Claude · deeper"]]);
+  await b.recall("what is the capital of France?");
+  assert.deepEqual(await b.send(gen.options[0], "what is the capital of France?"), { thread: "q1" });
+  const start = fc.calls.find(x => x[0] === "threads.start")?.[1];
+  assert.equal(start.model, "haiku");
+  assert.equal(start.cwd, path.join(root, "capsule", "ask"));
+  assert.ok(fs.statSync(start.cwd).isDirectory(), "made on demand");
+  assert.doesNotMatch(start.prompt, /Paris/, "nothing from memory reaches the quick model");
+  const snap = b.snapshot();
+  assert.deepEqual([snap.reply?.model, snap.reply?.memory?.answer, snap.reply?.memory?.sources[0].name], ["haiku", "Paris is where the offsite is.", "Offsite"]);
+  assert.equal(snap.has.stop, false);
+  const stop = await b.cancel();
+  assert.match(String(stop.note), /Stopped following/, "no threads.stop: it says so");
+  assert.deepEqual([b.snapshot().reply?.finished, b.snapshot().reply?.error], [true, "stopped"]);
+});
+
 test("bridge: another surface holding the keyboard stops the send and says who, and only the user takes it", async t => {
   const { c } = await vyred(t);
   let holder = "terminal";
@@ -317,7 +347,7 @@ test("real switchboard: every tool the Capsule calls is open to the capsule call
   const { c, b } = await live(t);
   await b.refresh();
   for (const tool of ["agents.list", "agents.ask", "agents.threads", "threads.list", "threads.start", "threads.send", "threads.lease",
-    "threads.release", "threads.asks", "threads.answer", "threads.get", "projects.list"]) assert.ok(b.has(tool), `${tool} is listed for capsule`);
+    "threads.release", "threads.asks", "threads.answer", "threads.get", "threads.stop", "projects.list"]) assert.ok(b.has(tool), `${tool} is listed for capsule`);
   const mf = JSON.parse(fs.readFileSync(path.resolve(path.dirname(FAKE), "..", "module.json"), "utf8"));
   assert.ok(mf.does.tools.includes("threads.asks"));
   assert.equal((await c.call("threads.asks")).error, undefined);
@@ -470,4 +500,51 @@ test("real switchboard: a session the switchboard never started cannot be typed 
   const r = await b.send({ kind: "thread", thread: "11111111-aaaa-4000-8000-000000000001", meta: "" }, "hello");
   assert.ok(r.error);
   assert.doesNotMatch(String(r.error), /^no thread/);
+});
+
+test("real switchboard: a question goes to a fast model in the Capsule's folder, follows up in its thread, and Stop stops it", async t => {
+  const { root, b, cli } = await live(t);
+  const log = path.join(root, "fake-claude.log");
+  process.env.FAKE_CLAUDE_LOG = log;
+  t.after(() => { delete process.env.FAKE_CLAUDE_LOG; });
+  await b.refresh();
+  const d = await b.destinations(null, "What is 2+2?");
+  assert.deepEqual(d.options.map(o => [o.kind, o.model]), [["quick", "haiku"], ["quick", "sonnet"]], "no assistant: the model only");
+  assert.equal(d.unavailable, null);
+  const sent = await b.send(d.options[0], "What is 2+2?");
+  assert.equal(sent.error, undefined, sent.error);
+  await until(() => b.snapshot().reply?.finished, "the quick reply");
+  const snap = b.snapshot().reply;
+  assert.equal(snap?.thread, sent.thread);
+  assert.match(String(snap?.text), /^echo: What is 2\+2\?/);
+  assert.deepEqual([snap?.ok, snap?.model, snap?.cost, snap?.ms], [true, "haiku", 0.001, 5]);
+  const launch = JSON.parse(fs.readFileSync(log, "utf8").trim().split("\n")[0]);
+  assert.equal(launch.argv[launch.argv.indexOf("--model") + 1], "haiku");
+  assert.equal(fs.realpathSync(launch.cwd), fs.realpathSync(path.join(root, "capsule", "ask")));
+  const rec = (await cli("threads.get", { thread: sent.thread, limit: 1 })).data.thread;
+  assert.deepEqual([rec.name, rec.model, rec.holder], ["Capsule: What is 2+2?", "haiku", "capsule"]);
+
+  // A follow-up is a thread send, and lands in the same thread.
+  const again = await b.send({ kind: "thread", thread: sent.thread, meta: "" }, "and 3+3?");
+  assert.deepEqual(again, { thread: sent.thread });
+  await until(() => b.snapshot().reply?.finished && b.snapshot().reply?.text === "echo: and 3+3?", "the follow-up");
+  assert.equal(b.snapshot().reply?.model, "haiku");
+
+  // Closing the Capsule stops the idle process, and the answer on screen stays an answer.
+  await b.releaseLease();
+  await until(async () => (await cli("threads.get", { thread: sent.thread, limit: 1 })).data.thread.status === "stopped", "the quick thread to stop");
+  await until(() => b.stopping.size === 0, "thread.stopped to arrive");
+  assert.deepEqual([b.snapshot().reply?.ok, b.snapshot().reply?.error], [true, null]);
+
+  // Stop, mid-reply: the thread is resumed by the send, then stopped.
+  const long = "x".repeat(3000);
+  assert.deepEqual(await b.send({ kind: "thread", thread: sent.thread, meta: "" }, long), { thread: sent.thread });
+  await until(() => (b.snapshot().reply?.text || "").length > 0, "the long reply to start");
+  const stop = await b.cancel();
+  assert.deepEqual([stop.ok, stop.stopped], [true, true]);
+  await until(async () => (await cli("threads.get", { thread: sent.thread, limit: 1 })).data.thread.status === "stopped", "Stop to stop it");
+  await until(() => b.stopping.size === 0, "thread.stopped to arrive");
+  const after = b.snapshot().reply;
+  assert.deepEqual([after?.finished, after?.ok, after?.error], [true, false, "stopped"]);
+  assert.ok(String(after?.text).length < 3006, "it did not run to the end");
 });
