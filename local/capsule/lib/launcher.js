@@ -20,6 +20,7 @@ import * as route from "./route.js";
 import { evaluate } from "./calc.js";
 import { toResults, toDefineResult } from "./helper.js";
 import { watchWords } from "./watch.js";
+import * as glass from "./glass.js";
 
 /** @typedef {route.Result} Result */
 
@@ -60,6 +61,8 @@ export class Launcher {
     this.contactsStatus = null;
     /** @type {AbortController|null} */
     this.pending = null;
+    /** @type {string|null} the paired box, as the last catalog said; Glass opens only there */
+    this.box = null;
   }
 
   /** Warm what the first keystroke needs: the app list, and whether contacts may be read. */
@@ -111,6 +114,8 @@ export class Launcher {
     }
     const d = def && !def.error ? toDefineResult(def) : null;
     if (d) extra.push({ ...d, last: 0, score: 1.5 });
+    this.box = cat ? glass.origin(/** @type {glass.Catalog} */ (cat).box) : null;
+    extra.push(...glass.results(q, cat));
     const local_ = [...this.apps.search(q, 6, this.boost), ...local.settings(q, 4, this.boost)];
     let results = route.rank(q, { local: local_, extra, cat, boost: this.boost });
     // The contacts offer is for a query that found nothing better; "wifi" does not need it.
@@ -172,6 +177,7 @@ export class Launcher {
       const o = await this.openFn(/** @type {any} */ (r));
       return "error" in o ? { error: o.error } : { ok: true, close: true };
     }
+    if (r.kind === "glass") return glass.open(this.box, String(/** @type {glass.Result} */ (r).glass || ""), this.run);
     if (r.kind === "contact" || r.kind === "define") {
       const url = String(r.target || "");
       // Only the two schemes this file makes, with nothing that could read as a flag.

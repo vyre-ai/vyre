@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import * as route from "./route.js";
 import * as st from "./state.js";
+import * as glass from "./glass.js";
 
 /** @typedef {{ call: (tool: string, input?: any, opts?: any) => Promise<any>, get: (route: string, opts?: any) => Promise<any> }} Client */
 
@@ -67,7 +68,7 @@ export class Bridge extends EventEmitter {
     this.lastRecall = null;
     /** @type {Set<string>} */
     this.tools = new Set();
-    /** @type {route.Catalog} */
+    /** @type {glass.Catalog} route's catalog, plus the paired box's address */
     this.catalog = { agents: null, projects: [], threads: [] };
     /** @type {st.Waiting[]} */
     this.waiting = [];
@@ -147,10 +148,12 @@ export class Bridge extends EventEmitter {
     }
     const agentRows = agents && agents.data ? (Array.isArray(agents.data) ? agents.data : agents.data.agents || []) : null;
     this.catalog = {
-      agents: agentRows ? agentRows.map(a => ({ name: String(a.name), kind: a.kind, doing: a.doing || a.status || null, thread: a.thread || null })) : null,
+      agents: agentRows ? agentRows.map(a => ({ name: String(a.name), kind: a.kind, doing: a.doing || a.status || null, thread: a.thread || null, computer: Boolean(a.computer) })) : null,
       projects: list.map(p => ({ slug: p.slug, name: p.name, org: p.org, home: p.home, threads: p.threads, last: p.last,
         people: Array.isArray(p.people) ? p.people.filter(x => x && x.name).map(x => ({ name: String(x.name) })) : [] })),
       threads,
+      // The paired box's address, for Glass (glass.js); null when there is none, never a guess.
+      box: await glass.address(this.client, this.has("link.status")),
     };
     await this.loadWaiting();
     this.emit("change");

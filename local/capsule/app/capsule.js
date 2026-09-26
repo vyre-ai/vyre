@@ -583,7 +583,7 @@ function entryRows(E) {
   return out;
 }
 const KIND_LABEL = { calc: "", app: "App", setting: "Settings", file: "File", folder: "Folder", contact: "Contact", define: "Dictionary", grant: "Contacts",
-  agent: "Agent", project: "Project", thread: "Thread", memory: "Memory", vault: "Vault", boxfile: "Box", clip: "Clipboard", clipclear: "", watch: "Watch", drive: "Thread" };
+  agent: "Agent", project: "Project", thread: "Thread", memory: "Memory", vault: "Vault", boxfile: "Box", clip: "Clipboard", clipclear: "", watch: "Watch", drive: "Thread", glass: "Glass" };
 
 // ------------------------------------------------------------------ pictures
 
@@ -634,6 +634,7 @@ const GLYPHS = {
   vault: `<rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>`,
   boxfile: `<rect x="2.5" y="3" width="11" height="4" rx="1"/><rect x="2.5" y="9" width="11" height="4" rx="1"/><path d="M5 5h.01M5 11h.01"/>`,
   held: `<circle cx="8" cy="8" r="3" fill="#FF7A59" stroke="none"/>`,
+  glass: `<rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M6 14h4M8 11v3"/>`,
   quick: `<path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.8M10.2 10.2L12 12M12 4l-1.8 1.8M5.8 10.2L4 12"/>`,
   define: `<path d="M3 13V3.5A1.5 1.5 0 0 1 4.5 2H13v9H4.5A1.5 1.5 0 0 0 3 12.5 1.5 1.5 0 0 0 4.5 14H13"/>`,
   grant: `<circle cx="6" cy="6" r="2.2"/><path d="M2.5 13c.4-2 1.8-3.2 3.5-3.2S9.1 11 9.5 13"/><path d="M12 6v4M10 8h4"/>`,
