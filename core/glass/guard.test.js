@@ -16,12 +16,14 @@ import { LocalTree } from "./providers/box.js";
  */
 export const DENIED_EXAMPLES = {
   ".vyre": ".vyre", ".claude": ".claude", ".claude.json": ".claude.json", ".ssh": ".ssh", ".gnupg": ".gnupg", ".aws": ".aws",
-  ".docker/config.json": ".docker/config.json", ".git-credentials": ".git-credentials", ".netrc": ".netrc", ".env": ".env",
-  ".env.*": ".env.local", "*.pem": "server.pem", "*.key": "tls.key", "id_*": "id_ed25519", Cookies: "Cookies",
+  ".docker": ".docker", ".kube": ".kube", ".config/gcloud": ".config/gcloud", ".git-credentials": ".git-credentials",
+  ".netrc": ".netrc", ".npmrc": ".npmrc", ".pypirc": ".pypirc", ".env": ".env", ".env.*": ".env.local", "*.pem": "server.pem",
+  "*.key": "tls.key", "*.p12": "cert.p12", "*.pfx": "cert.pfx", "*.kdbx": "vault.kdbx", "*.keychain*": "login.keychain-db",
+  "id_*": "id_ed25519", "credentials.json": "credentials.json", "service-account*.json": "service-account-prod.json", Cookies: "Cookies",
   "Login Data": "Login Data", "Login Data For Account": "Login Data For Account", "Web Data": "Web Data", secrets: "secrets",
 };
 
-const ALLOWED = ["notes.txt", "config.json", ".docker/daemon.json", "environment.md", "keys.txt", "tls.key.txt", "my-secrets-plan.md", ".envrc.example"];
+const ALLOWED = ["notes.txt", "config.json", ".config/app.json", "environment.md", "keys.txt", "tls.key.txt", "my-secrets-plan.md", ".envrc.example"];
 
 function temp(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-guard-"));
@@ -93,8 +95,8 @@ test("guard: a listing hides denied names and Glass's own files, and shows links
   const tree = new LocalTree(root);
   const { entries } = await tree.list("");
   const names = entries.map(e => e.name).sort();
-  assert.deepEqual(names, [".docker", "away", "here", "notes.txt", "sub", "tls.key.txt"]);
-  assert.deepEqual((await tree.list(".docker")).entries, [], ".docker/config.json is hidden inside .docker");
+  assert.deepEqual(names, [".config", "away", "here", "notes.txt", "sub", "tls.key.txt"]);
+  assert.deepEqual((await tree.list(".config")).entries, [], ".config/gcloud is hidden inside .config");
   const away = entries.find(e => e.name === "away"), here = entries.find(e => e.name === "here");
   assert.deepEqual([away?.kind, away?.to], ["link", null]);
   assert.deepEqual([here?.kind, here?.to], ["link", "dir"]);

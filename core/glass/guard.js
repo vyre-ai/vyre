@@ -10,7 +10,8 @@
 //   - symlinks resolve inside the root or not at all: the result is realpath'd and must sit
 //     inside the realpath of the root, and must not land on a denied name either.
 //
-// Link's `files` module applies the same DENY list; the two are kept equal by a shared test list.
+// Link's `files` module (core/files/safety.js) denies the same places; this list covers every
+// name it refuses, and is stricter where Glass writes (any *.key, not only files).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -21,8 +22,9 @@ import path from "node:path";
  * name with a slash matches those segments in a row.
  */
 export const DENY = Object.freeze([
-  ".vyre", ".claude", ".claude.json", ".ssh", ".gnupg", ".aws", ".docker/config.json",
-  ".git-credentials", ".netrc", ".env", ".env.*", "*.pem", "*.key", "id_*",
+  ".vyre", ".claude", ".claude.json", ".ssh", ".gnupg", ".aws", ".docker", ".kube", ".config/gcloud",
+  ".git-credentials", ".netrc", ".npmrc", ".pypirc", ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx",
+  "*.kdbx", "*.keychain*", "id_*", "credentials.json", "service-account*.json",
   "Cookies", "Login Data", "Login Data For Account", "Web Data", "secrets",
 ]);
 
