@@ -17,6 +17,10 @@ const CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code";
 // Prefixes only; a real value never appears in code, logs or events.
 const PREFIX = { subscription: "sk-ant-oat", "api-key": "sk-ant-api" };
 const VAULT_ITEM = { subscription: "claude-setup-token", "api-key": "anthropic-api-key" };
+const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
+const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
+// The switchboard's agents module starts the headless sessions and hands them this credential.
+const CREDENTIAL_READERS = ["agents"];
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 
@@ -145,7 +149,7 @@ export default {
           if (!t.startsWith(PREFIX[kind]) || t.length < 40 || /\s/.test(t)) {
             throw new Error(kind === "subscription" ? "that does not look like a token from `claude setup-token`" : "that does not look like an Anthropic API key");
           }
-          await call("vault.put", { name: VAULT_ITEM[kind], value: t });
+          await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t, grants: CREDENTIAL_READERS });
           save({ onboard: { claude: kind } });
         }
         return stepOf("claude", caller);

@@ -19,7 +19,7 @@ function fakeBin(dir, name, out) {
   return p;
 }
 
-async function box(t) {
+async function box(t, extra = {}) {
   const root = tempHome(t);
   const bins = fs.mkdtempSync(path.join(root, "bin-"));
   const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -27,7 +27,7 @@ async function box(t) {
   process.env.VYRE_CLAUDE_BIN = fakeBin(bins, "claude", "2.1.0 (Claude Code)");
   delete process.env.CLOUDFLARE_VYRE_TOKEN;
   // Port 0: the first free port, so parallel test files never collide on 7300.
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 }, ...extra }));
   const d = await start({ root, log: () => {} });
   t.after(async () => {
     await d.stop();
@@ -97,8 +97,8 @@ test("onboard: the loopback listener refuses other hosts, forms and other origin
   assert.equal(cross.status, 403);
 });
 
-test("onboard: skipping, a missing vault and a missing token all say why", async t => {
-  const { root } = await box(t);
+test("onboard: skipping, a bad token and a missing Cloudflare token all say why; a good token goes to the vault", async t => {
+  const { root } = await box(t, { vault: { keystore: "file" } });
   const { url, port } = (await call("onboard.link", {}, { root })).data;
   const base = `http://127.0.0.1:${port}`;
   const { session: cookie } = await redeem(url);
@@ -108,9 +108,12 @@ test("onboard: skipping, a missing vault and a missing token all say why", async
   const bad = await (await tool(base, cookie, "onboard.claude", { kind: "api-key", token: "nope" })).json();
   assert.match(bad.error.message, /does not look like/);
   const fine = "sk-ant-api" + "0".repeat(40);
-  const noVault = await (await tool(base, cookie, "onboard.claude", { kind: "api-key", token: fine })).json();
-  assert.match(noVault.error.message, /vault is not running/);
-  assert.ok(!JSON.stringify(noVault).includes(fine), "the token never comes back");
+  const stored = await (await tool(base, cookie, "onboard.claude", { kind: "api-key", token: fine })).json();
+  assert.equal(stored.data.state, "done");
+  assert.ok(!JSON.stringify(stored).includes(fine), "the token never comes back");
+  const item = (await call("vault.list", {}, { root, caller: "cli" })).data.items.find(i => i.name === "anthropic-api-key");
+  assert.equal(item.origin, "module:onboard");
+  assert.ok(JSON.stringify(item.grants).includes("agents"), "the agents module may read it");
   const check = await (await tool(base, cookie, "onboard.name", { name: "alex" })).json();
   assert.equal(check.data.valid, true);
   assert.equal(check.data.available, false);
