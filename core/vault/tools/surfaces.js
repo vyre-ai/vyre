@@ -21,6 +21,7 @@ import { fillNative, appLabel } from "../native.js";
 import { callerKind } from "../../modules/index.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+const APP = { type: "object", properties: { bundle: { type: "string" }, pid: { type: "integer" } } };
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
@@ -110,6 +111,11 @@ export function register({ ctx, vault }) {
     return f[want];
   };
 
+  // The Capsule calls every action with `{ id, front }` (its result's id, and the app that was in
+  // front when it opened), so the tools it lists take those as names for `name` and `app`.
+  const asItem = i => ({ ...i, name: i.name ?? i.id, app: i.app ?? i.front });
+  const named = i => { const x = asItem(i); if (typeof x.name !== "string" || !x.name) throw new Error("name the item"); return x; };
+
   const surfaceFor = (session, caller) => sessions.surfaceOf(session) || callerKind(caller);
   const skip = ({ input }) => Boolean(input && sessions.ok(input.session, input.name));
   const kindOf = name => { try { return vault.row(name)?.kind || "item"; } catch { return "item"; } };
@@ -185,10 +191,11 @@ export function register({ ctx, vault }) {
 
   ctx.tool("vault.copy", {
     description: "Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Never returns the value.",
-    input: obj({ name: str, field: str, session: str }, ["name"]),
+    input: obj({ name: str, id: str, field: str, session: str }),
     callers: PEOPLE,
-    presence: { summary: async ({ name, field }) => `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}" to the clipboard`, skip },
-    run: async ({ name, field, session }, { caller }) => {
+    presence: { summary: async i => { const { name, field } = asItem(i); return `Copy the ${fieldFor(name, field)} of ${kindOf(name)} "${name}" to the clipboard`; }, skip: ({ input }) => skip({ input: asItem(input || {}) }) },
+    run: async (input, { caller }) => {
+      const { name, field, session } = named(input);
       const surface = surfaceFor(session, caller);
       if (guardedClipboard) throw new Error("under tests the clipboard needs vault.testHelpers (a private pasteboard or fake pbcopy)");
       let want = field || "value";
@@ -203,11 +210,30 @@ export function register({ ctx, vault }) {
         watch.ensure().catch(() => {});
         vault.audit("copy", name, caller, true, `field ${want} on ${surface} via ${out.via}`);
         ctx.events.emit("vault.copied", { name, field: want, surface, clearsAt: out.clearsAt });
-        return { copied: true, clearsAt: out.clearsAt, ...(out.warning ? { warning: out.warning } : {}) };
+        return { copied: true, clearsAt: out.clearsAt, said: `Copied the ${want === "totp" ? "one-time code" : want} of ${name} · clears in 90 s`, ...(out.warning ? { warning: out.warning } : {}) };
       } catch (e) {
         vault.audit("copy", name, caller, false, /** @type {any} */ (e).code === "locked" ? "locked" : `field ${want}`);
         throw e;
       }
+    },
+  });
+
+  // The Capsule's search provider: names and where each is used, never a value.
+  ctx.tool("vault.search", {
+    description: "Items whose name, description, kind or hosts match, for a launcher's results. Names only, never a value.",
+    input: obj({ q: str, limit: { type: "integer" } }),
+    callers: null,
+    run: async ({ q = "", limit = 8 }) => {
+      const words = String(q).toLowerCase().split(/\s+/).filter(Boolean);
+      const rows = [];
+      for (const it of vault.list({}).items) {
+        const hay = [it.name, it.description, it.kind, ...(it.hosts || [])].join(" ").toLowerCase();
+        if (!words.every(w => hay.includes(w))) continue;
+        const host = (it.hosts || [])[0];
+        rows.push({ id: it.name, name: it.name, kind: it.kind, sub: host ? `${it.kind} · ${host.replace(/^https?:\/\//, "")}` : it.kind });
+        if (rows.length >= Math.max(1, Math.min(50, Number(limit) || 8))) break;
+      }
+      return { rows };
     },
   });
 
@@ -227,17 +253,19 @@ export function register({ ctx, vault }) {
 
   ctx.tool("vault.fill.native", {
     description: "Fill a login's username and password into the app in front, by Accessibility. The value goes to a helper, never back to the caller.",
-    input: obj({ name: str, app: obj({ bundle: str, pid: { type: "integer" } }, ["bundle", "pid"]), session: str }, ["name", "app"]),
+    input: obj({ name: str, id: str, app: APP, front: APP, session: str }),
     callers: PEOPLE,
     // A fill is not one of the three things a session skips the proof for (ADR 0006, decision 3).
-    presence: { summary: async ({ name, app }) => `Fill ${name} into ${appLabel(app && app.bundle)}` },
-    run: async ({ name, app, session }, { caller }) => {
+    presence: { summary: async i => { const { name, app } = asItem(i); return `Fill ${name} into ${appLabel(app && app.bundle)}`; } },
+    run: async (input, { caller }) => {
+      const { name, app, session } = named(input);
+      if (!app || typeof app.bundle !== "string" || !Number.isInteger(app.pid)) throw new Error("say which app is in front: { bundle, pid }");
       const surface = surfaceFor(session, caller);
       try {
         const out = await fillNative({ vault, helper: typeHelper, name, app });
         vault.audit("fill-native", name, caller, true, `${app.bundle} on ${surface}`);
         ctx.events.emit("vault.filled", { name, app: app.bundle, surface });
-        return out;
+        return { ...out, said: `Filled ${name} in ${appLabel(app.bundle)}` };
       } catch (e) {
         const code = /** @type {any} */ (e).code;
         vault.audit("fill-native", name, caller, false, `${app && app.bundle}: ${typeof code === "string" ? code : "failed"}`);

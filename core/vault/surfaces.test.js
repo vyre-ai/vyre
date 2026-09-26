@@ -79,7 +79,10 @@ test("surfaces: only people reach reveal, copy, fill and sessions; Claude and mo
   assert.ok(offered.includes("vault.session.close"), "closing a session takes access away, so anyone may");
   const manifest = JSON.parse(fs.readFileSync(path.join(REPO, "core", "vault", "module.json"), "utf8"));
   for (const tool of [...PERSON_ONLY, "vault.session.close"]) assert.ok(manifest.does.tools.includes(tool), tool);
-  assert.deepEqual(manifest.shows.capsule, ["results:vault.list", "action:vault.fill.native", "action:vault.copy", "action:vault.totp", "action:vault.lock"]);
+  // An object in the order the Capsule lists them; "#..." names a second action on one tool.
+  assert.deepEqual(Object.keys(manifest.shows.capsule), ["results:vault.search", "action:vault.fill.native", "action:vault.copy",
+    "action:vault.copy#username", "action:vault.copy#totp", "action:vault.totp", "action:vault.lock"]);
+  for (const v of Object.values(manifest.shows.capsule)) assert.equal(typeof v.title, "string");
 });
 
 test("surfaces: a session opens, reports, and closes; its token is in no event", async t => {
@@ -127,7 +130,7 @@ test("surfaces: copy never returns the value; lock and screen lock clear it and 
   await cli("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw }, url: "https://mail.example.com" });
 
   const c = (await local("vault.copy", { name: "site-login" })).data;
-  assert.deepEqual(Object.keys(c).sort(), ["clearsAt", "copied"]);
+  assert.deepEqual(Object.keys(c).sort(), ["clearsAt", "copied", "said"]);
   assert.equal(c.copied, true);
   assert.ok(c.clearsAt > Date.now() + 80_000);
   await until(() => clip()?.hash === sha(pw));
@@ -157,7 +160,7 @@ test("surfaces: fill.native hands the login to the helper and reports only what 
   const pw = canary("pw");
   await cli("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw }, url: "https://mail.example.com" });
   const out = (await local("vault.fill.native", { name: "site-login", app: { bundle: "com.apple.Safari", pid: 4242 } })).data;
-  assert.deepEqual(out, { filled: ["username", "password"], via: "ax", app: "com.apple.Safari" });
+  assert.deepEqual(out, { filled: ["username", "password"], via: "ax", app: "com.apple.Safari", said: "Filled site-login in Safari" });
   const got = JSON.parse(fs.readFileSync(fakes.state.type, "utf8"));
   assert.equal(got.password, sha(pw));
   assert.deepEqual(got.hosts, ["https://mail.example.com"]);
@@ -236,6 +239,24 @@ test("surfaces: the Deck and the Capsule may not reveal unless the person turned
   }
   const cleared = await as("mcp")("vault.clipboard.clear");
   assert.deepEqual(cleared.data, { cleared: true }, "clearing takes nothing from anyone, so even Claude may");
+});
+
+test("surfaces: the Capsule's shape: search gives names only, and actions take { id, front }", async t => {
+  const { d, as, clip } = await boot(t);
+  t.after(() => d.stop());
+  const pw = canary("pw");
+  await as("cli")("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw, totp: "JBSWY3DPEHPK3PXP" }, url: "https://mail.example.com" });
+  const capsule = as("capsule");
+  const found = await capsule("vault.search", { q: "mail", limit: 5 });
+  assert.deepEqual(found.data.rows, [{ id: "site-login", name: "site-login", kind: "login", sub: "login · mail.example.com" }]);
+  assert.deepEqual((await capsule("vault.search", { q: "nothing-like-this" })).data.rows, []);
+  assert.match(String((await capsule("vault.totp", { id: "site-login" })).data.code), /^\d{6}$/);
+  const copied = await capsule("vault.copy", { id: "site-login", front: { bundle: "com.apple.Safari", pid: 1 } });
+  if (mac) assert.match(copied.data.said, /Copied the password of site-login/);
+  const filled = await capsule("vault.fill.native", { id: "site-login", front: { bundle: "com.apple.Safari", pid: 4242 } });
+  if (mac && filled.data) assert.match(filled.data.said, /^Filled site-login in /);
+  assert.match((await capsule("vault.fill.native", { id: "site-login" })).error.message, /which app is in front/);
+  assert.ok(!JSON.stringify([found, copied, filled]).includes(pw));
 });
 
 test("surfaces: under tests without fakes, copy refuses rather than touch the real clipboard", async t => {

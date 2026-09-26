@@ -76,7 +76,8 @@
       "vault.members.role",
       "vault.members.remove",
       "vault.vaults.rotate",
-      "vault.move"
+      "vault.move",
+      "vault.search"
     ]
   },
   "watches": {
@@ -120,13 +121,35 @@
     "cli": [
       "vault"
     ],
-    "capsule": [
-      "results:vault.list",
-      "action:vault.fill.native",
-      "action:vault.copy",
-      "action:vault.totp",
-      "action:vault.lock"
-    ]
+    "capsule": {
+      "results:vault.search": {
+        "title": "Vault"
+      },
+      "action:vault.fill.native": {
+        "title": "Fill in the front app"
+      },
+      "action:vault.copy": {
+        "title": "Copy the password or key"
+      },
+      "action:vault.copy#username": {
+        "title": "Copy username",
+        "input": {
+          "field": "username"
+        }
+      },
+      "action:vault.copy#totp": {
+        "title": "Copy one-time code",
+        "input": {
+          "field": "totp"
+        }
+      },
+      "action:vault.totp": {
+        "title": "Show the one-time code"
+      },
+      "action:vault.lock": {
+        "title": "Lock the vault"
+      }
+    }
   },
   "needs": {},
   "teaches": {}

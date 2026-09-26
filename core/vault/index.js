@@ -180,10 +180,16 @@ export default {
 
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
     tool("vault.totp", [...SURFACES, "module"], "The current one-time code for a login with a TOTP seed.",
-      obj({ name: str, session: str }, ["name"]),
-      async ({ name }, { caller }) => { const r = await vault.code({ name }, caller); return { code: r.code, period: r.period ?? 30, remaining: r.remaining }; },
-      presence("Show a one-time code", ({ name }) => `Show the one-time code for ${quoted(name)}`,
-        { skip: ({ input }) => Boolean(input && /** @type {any} */ (vault).sessions?.ok(input.session, input.name)) }));
+      // `id` is the Capsule's name for the item (its actions get `{ id, front }`).
+      obj({ name: str, id: str, session: str }),
+      async ({ name, id }, { caller }) => {
+        const n = name ?? id;
+        if (typeof n !== "string" || !n) throw new Error("name the item");
+        const r = await vault.code({ name: n }, caller);
+        return { code: r.code, period: r.period ?? 30, remaining: r.remaining };
+      },
+      presence("Show a one-time code", ({ name, id }) => `Show the one-time code for ${quoted(name ?? id)}`,
+        { skip: ({ input }) => Boolean(input && /** @type {any} */ (vault).sessions?.ok(input.session, input.name ?? input.id)) }));
 
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),
