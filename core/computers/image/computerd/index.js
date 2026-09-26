@@ -41,6 +41,11 @@ if (!TOKEN) {
 
 const ATSPI = new URL("./atspi.py", import.meta.url).pathname;
 
+// Set by vyred's computers.shield, best-effort, over POST /shield. vyred's own may-act refusal
+// is the real gate (checked in memory, no network hop); this is defense in depth in case
+// anything ever reaches computerd directly while a person is signing in.
+let shielded = false;
+
 /** Run a subprocess, collect stdout/stderr, resolve/reject on exit. Never throws synchronously. */
 function run(cmd, args, { input, timeout = 15_000, binary = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -189,6 +194,9 @@ function proxyCdpUpgrade(req, socket, head) {
   const token = url.searchParams.get("token") || "";
   if (token !== TOKEN) { socket.end("HTTP/1.1 401 Unauthorized\r\nconnection: close\r\n\r\n"); return; }
   if (!url.pathname.startsWith("/cdp/")) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
+  // Chrome's own tree is exactly the kind of read shielding is for: no new CDP connection while
+  // a person is signing in, same as the plain-HTTP routes above.
+  if (shielded) { socket.end("HTTP/1.1 423 Locked\r\nconnection: close\r\n\r\n"); return; }
   const targetPath = url.pathname.slice("/cdp".length);
 
   const upstream = connect(CHROME.port, CHROME.host);
@@ -231,6 +239,17 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && pathname === "/health") {
       return send(200, await health());
+    }
+    if (req.method === "POST" && pathname === "/shield") {
+      const body = await readBody(req);
+      shielded = Boolean(body && body.on);
+      return send(200, { shielded });
+    }
+    // The four routes that can see or touch the display are locked while a person signs in.
+    // /health, /cdp/json/version and /shield itself stay open: none of them shows page content.
+    const LOCKED = new Set(["/apps", "/tree", "/screenshot", "/act", "/input"]);
+    if (shielded && LOCKED.has(pathname)) {
+      return send(423, { error: { message: "shielded while a person signs in" } });
     }
     if (req.method === "GET" && pathname === "/apps") {
       return send(200, await atspi(["apps"]));

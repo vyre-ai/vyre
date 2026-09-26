@@ -85,6 +85,8 @@ export class Pool {
     /** The surface holding a take-over of this agent's computer, or null. The keyboard sets it. */
     /** @type {(agent: string) => string|null} */
     this.heldBy = () => null;
+    /** Agents whose hands are shielded: no read or action, while a person signs in (computers.shield). */
+    this.shields = new Set();
   }
 
   // ---- the table -------------------------------------------------------------------------
@@ -169,6 +171,23 @@ export class Pool {
       this.emit("computer.checked-out", { agent, thread: co.thread, screen: co.screen }, co.thread ? { thread: co.thread } : {});
       this.log(`${agent} checked out screen ${co.screen}${o.why ? ` (${o.why})` : ""}`);
       return { agent, screen: co.screen, thread: co.thread };
+    });
+  }
+
+  /**
+   * Make sure the agent's computer exists and is running, without taking a screen: for callers
+   * that only need computerd (a sign-in, a file browse) and would otherwise starve the pool of
+   * a slot no hands or Glass viewer is actually using. Unlike checkout(), a thaw holds nothing:
+   * if there is no existing checkout, the freeze clock starts right away, same as a computer
+   * reconcile() finds already running with nobody watching it.
+   * @param {string} agent
+   */
+  async thaw(agent) {
+    if (!this.driver) throw new Error(NO_DRIVER);
+    return this.serial(agent, async () => {
+      await this.allowed(agent);
+      await this.ensure(agent);
+      if (!this.checkouts.has(agent)) this.idle.set(agent, this.now());
     });
   }
 
@@ -352,6 +371,22 @@ export class Pool {
       this.emit(on ? "computer.paused" : "computer.resumed", { agent });
     }
     return { paused: on };
+  }
+
+  isShielded(agent) { return this.shields.has(agent); }
+
+  /**
+   * Shield or unshield the agent's hands: while on, may-act refuses reads as well as actions,
+   * whatever pause/take-over say, because a person is signing in and their password must never
+   * reach a screenshot, the accessibility tree or the agent's own CDP capture. In-memory only,
+   * like a checkout or a take-over: a restart already ends both, so it ends a shield too, and a
+   * shield that outlived its own vyred would strand the agent's hands for no reason.
+   */
+  shield(agent, on) {
+    const was = this.shields.has(agent);
+    if (on) this.shields.add(agent); else this.shields.delete(agent);
+    if (was !== on) this.emit(on ? "computer.shielded" : "computer.unshielded", { agent });
+    return { agent, shielded: on };
   }
 
   // ---- time ------------------------------------------------------------------------------

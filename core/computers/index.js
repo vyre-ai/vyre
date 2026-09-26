@@ -101,7 +101,7 @@ export default {
     };
 
     const surfaceOf = input => {
-      if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device> or phone:<device>`);
+      if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
       return String(input.surface);
     };
 
@@ -197,8 +197,32 @@ export default {
         return pool.endpoint(agent);
       }, { internal: true });
 
-    tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard.",
+    tool("computers.may-act", "May the agent's hands act now? Refused while paused, taken over or shielded, with who has the keyboard.",
       obj({ agent: str, tool: str }), async (i, { caller }) => keyboard.mayAct(await resolve(i, caller), i.tool), { internal: true });
+
+    tool("computers.helper", "computerd's URL and token for the agent's computer, without taking a screen: for a sign-in or a file browse that only needs computerd, not the hands' own slot. Thaws a frozen computer.",
+      obj({ agent: str }), async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        await pool.thaw(agent);
+        return pool.endpoint(agent).helper;
+      }, { internal: true });
+
+    tool("computers.shield", "Shield or unshield the agent's hands for a person signing in: while on, every read and action is refused, not just consequential ones, whatever pause or take-over say. Best-effort tells computerd too, as defense in depth.",
+      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        const r = pool.shield(agent, Boolean(i.on));
+        // Best-effort: computerd's own 423s are defense in depth, not the source of truth (that
+        // is pool.isShielded, checked by every may-act call). A container that is not running,
+        // or a computerd that does not answer, never blocks the shield taking effect in vyred.
+        try {
+          const h = pool.endpoint(agent).helper;
+          await fetch(`${h.url}/shield`, {
+            method: "POST", headers: { authorization: `Bearer ${h.token}`, "content-type": "application/json" },
+            body: JSON.stringify({ on: Boolean(i.on) }), signal: AbortSignal.timeout(3000),
+          });
+        } catch (e) { ctx.log(`could not tell ${agent}'s computerd about the shield: ${/** @type {Error} */ (e).message}`); }
+        return r;
+      }, { internal: true });
 
     return {
       pool, keyboard, driver, sweep,

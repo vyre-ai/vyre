@@ -82,9 +82,11 @@ in `computers.list` (`driver: "none"`).
 | `computers.giveback` | `{agent, surface}` | `{agent, handed_back}` |
 | `computers.watch` | `{agent, surface}` | `{ticket, path: "/v1/streams/computers/glass?ticket=...", width, height}` |
 | `computers.endpoint` (internal) | `{agent}` | `{helper: {url, token}}`; checks out, thaws. Chrome is reached only through `helper`'s own `/cdp` proxy (ADR 0005), never a raw address |
-| `computers.may-act` (internal) | `{agent, tool}` | `{ok: true}` or `{ok: false, why, holder?}`; touches the checkout |
+| `computers.may-act` (internal) | `{agent, tool}` | `{ok: true}` or `{ok: false, why, holder?, shielded?}`; touches the checkout |
+| `computers.helper` (internal) | `{agent}` | `{url, token}`; thaws a frozen computer but takes no screen — for a sign-in or a file browse that only needs computerd |
+| `computers.shield` | `{agent, on}` | `{agent, shielded}`; while on, `may-act` refuses every read and action regardless of pause/take-over, and computerd is best-effort told to 423 its own routes too (defense in depth, not the source of truth) |
 
-`surface` names a person's screen: `glass:<device>`, `deck:<device>`, `phone:<device>`.
+`surface` names a person's screen: `glass:<device>`, `deck:<device>`, `phone:<device>`, `capsule:<device>`.
 An agent's own hands resolve the agent from the caller `mcp:agent:<name>`; a non-assistant agent
 can only act on its own computer. The assistant, the CLI and the Deck pass `agent` explicitly.
 
@@ -92,7 +94,8 @@ can only act on its own computer. The assistant, the CLI and the Deck pass `agen
 
 `computer.created`, `computer.checked-out {agent, thread, screen}`, `computer.released {agent, why}`,
 `computer.frozen`, `computer.thawed`, `computer.stopped`, `computer.paused`, `computer.resumed`,
-`computer.taken-over {agent, surface, thread}`, `computer.handed-back {agent, surface, why}`.
+`computer.taken-over {agent, surface, thread}`, `computer.handed-back {agent, surface, why}`,
+`computer.shielded {agent}`, `computer.unshielded {agent}`.
 `chrome.acted` and `desktop.acted` `{agent, action, summary, ok, why?}` feed Glass's action log.
 No payload ever carries the VNC password, the helper token or page content beyond a short summary.
 
@@ -108,6 +111,7 @@ No payload ever carries the VNC password, the helper token or page content beyon
 | `GET /screenshot` | `image/png` of the whole display |
 | `GET /cdp/json/version` | Chrome's own answer, `webSocketDebuggerUrl` rewritten to `ws://<host>/cdp/...` |
 | WS upgrade `/cdp/...` | an authenticated raw pipe to Chrome's loopback debugging port (token in `?token=`, a plain WebSocket cannot send a header; ADR 0005) |
+| `POST /shield` | `{on}`; while on, `/tree`, `/screenshot`, `/act` and `/input` answer 423 instead of doing anything. Set by `computers.shield`, best-effort — vyred's own `may-act` refusal is the real gate, this is defense in depth in case anything reaches computerd directly |
 
 Ports inside the container: `5900` Xvnc (VNC auth, password from `VNC_PASSWORD`), `7000`
 computerd (`COMPUTERD_TOKEN`). None is published on the host; vyred reaches them over the internal

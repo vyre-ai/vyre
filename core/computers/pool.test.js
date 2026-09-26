@@ -113,6 +113,21 @@ test("pool: a first viewer checks out and thaws", async t => {
   assert.equal(pool.view("kit").viewers, 1);
 });
 
+test("pool: thaw runs the computer without taking a screen, and it freezes on schedule", async t => {
+  const { pool, clock, types } = setup(t);
+  await pool.thaw("kit");
+  assert.equal(pool.view("kit").state, "running");
+  assert.equal(pool.view("kit").screen, null, "thaw takes no screen");
+  clock.t += 15_000; await pool.sweep();
+  assert.equal(pool.view("kit").state, "frozen");
+  assert.deepEqual(types(), ["computer.created", "computer.frozen"], "no checked-out/released pair, unlike checkout()");
+});
+
+test("pool: thaw still respects allowed(): no computer for an agent whose record says computer: false", async t => {
+  const { pool } = setup(t);
+  await assert.rejects(pool.thaw("rio"), /no computer/);
+});
+
 test("pool: a full pool evicts the least recently touched unwatched checkout", async t => {
   const { pool, clock, events } = setup(t);
   await pool.checkout("kit");
@@ -246,4 +261,15 @@ test("pool: pause and resume are recorded and emitted once each", async t => {
   assert.equal(pool.isPaused("kit"), true);
   pool.pause("kit", false);
   assert.deepEqual(types(), ["computer.paused", "computer.resumed"]);
+});
+
+test("pool: shield is recorded and emitted once each, independent of pause", async t => {
+  const { pool, types } = setup(t);
+  assert.equal(pool.isShielded("kit"), false);
+  assert.deepEqual(pool.shield("kit", true), { agent: "kit", shielded: true });
+  pool.shield("kit", true);
+  assert.equal(pool.isShielded("kit"), true);
+  assert.equal(pool.isShielded("pax"), false, "shielding one agent never touches another's");
+  pool.shield("kit", false);
+  assert.deepEqual(types(), ["computer.shielded", "computer.unshielded"]);
 });

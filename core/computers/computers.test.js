@@ -147,6 +147,36 @@ test("computers: pause refuses the hands, resume lets them act", async t => {
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit", tool: "chrome.type" })).data, { ok: true });
 });
 
+test("computers: helper thaws without a screen; internal to both", async t => {
+  const s = await boot(t);
+  assert.equal((await s.cli("computers.helper", { agent: "kit" })).error.code, "no_such_tool", "computers.helper is internal");
+  const h = (await s.module("computers.helper", { agent: "kit" })).data;
+  assert.equal(h.url, "http://fake-kit:7000");
+  assert.equal(typeof h.token, "string");
+  assert.equal(h.cdp, undefined);
+  assert.equal((await s.cli("computers.get", { agent: "kit" })).data.state, "running");
+  assert.equal((await s.cli("computers.get", { agent: "kit" })).data.screen, null, "helper took no screen");
+  // Unlike a checkout, nothing holds it: it is eligible to freeze right away.
+  s.clock.t += 15_000; await s.h.sweep();
+  assert.equal((await s.cli("computers.get", { agent: "kit" })).data.state, "frozen");
+});
+
+test("computers: shield refuses every read and action, over pause and take-over both", async t => {
+  const s = await boot(t);
+  assert.equal((await s.cli("computers.shield", { agent: "kit", on: true })).error.code, "no_such_tool", "computers.shield is internal");
+  const on = await s.module("computers.shield", { agent: "kit", on: true });
+  assert.deepEqual(on.data, { agent: "kit", shielded: true });
+  const no = (await s.module("computers.may-act", { agent: "kit", tool: "hands-desktop.read" })).data;
+  assert.equal(no.ok, false);
+  assert.equal(no.shielded, true);
+  assert.match(no.why, /shielded while a person signs in/);
+  assert.ok(s.events().some(e => e.type === "computer.shielded" && e.payload.agent === "kit"));
+  const off = await s.module("computers.shield", { agent: "kit", on: false });
+  assert.deepEqual(off.data, { agent: "kit", shielded: false });
+  assert.deepEqual((await s.module("computers.may-act", { agent: "kit", tool: "hands-desktop.read" })).data, { ok: true });
+  assert.ok(s.events().some(e => e.type === "computer.unshielded" && e.payload.agent === "kit"));
+});
+
 test("computers: take-over through the lease, chatting that does not pause, and the lease ending it", async t => {
   const s = await boot(t);
   // The user chats with kit from the Deck: the lease moves, kit keeps working.
