@@ -1,6 +1,6 @@
 ---
-description: Vyre status, ask an agent, type into a session, search past sessions, the current project, or a lesson to remember
-argument-hint: "[status | ask <agent> <text> | send <session> <text> | recall <query> | project | remember <text> | lessons | statusline]"
+description: Vyre status, todos and reminders, your agenda, what to remember, ask an agent, type into a session, search past sessions, or the current project
+argument-hint: "[status | todo <text> | remind <when> <text> | agenda | remember <fact> | ask <agent> <text> | send <session> <text> | recall <query> | project | lesson <rule> | lessons | statusline]"
 ---
 
 The user ran `/vyre $ARGUMENTS`.
@@ -23,7 +23,19 @@ The user ran `/vyre $ARGUMENTS`.
   the thread's name, how long ago, and the matching words. Offer to open a thread with `recall_thread`.
 - `project`: call `projects_context` for the current folder's project and show it as is. If the
   folder is in no project, say so and mention `vyre new`.
-- `remember <text>`: call `learn_add` with `{"text": "<text>"}`. Say in one line the lesson it
+- `todo <text>`: call `planner_add` with `{"text": "<text>", "kind": "todo"}`. With no text, call
+  `planner_agenda` and show only the open todos. Say in one line what was added.
+- `remind <when> <text>`: `<when>` is the leading time words ("6pm", "at 6", "tomorrow 9am",
+  "in 20 minutes"). Call `planner_add` with `{"text": "<text>", "kind": "reminder", "at": "<when>"}`
+  and say in one line when it will fire, using the `at` it returned, in the user's local time. If
+  there is no time, ask for one. Never say a reminder is set unless `planner_add` returned it.
+- `agenda`: call `planner_agenda` (today). Timed items first, one line each with the time, then
+  open todos. Nothing today: say so in one line. `agenda tomorrow` passes tomorrow's date.
+- `remember <fact>`: a fact about the user or their work, for every future session. Call
+  `memory_remember` with `{"text": "<fact>"}` and say in one line that it is remembered. If
+  `memory_remember` is not offered, say memory cannot take facts by hand yet, and offer to make
+  it a lesson with `/vyre lesson` instead.
+- `lesson <rule>`: call `learn_add` with `{"text": "<rule>"}`. Say in one line the lesson it
   made and whether it is checked (a check means hooks enforce it) or a reminder.
 - `lessons`: call `learn_lessons` and show each lesson on one line: its id, rule, level and its
   applied, caught and broken counts. Accepting, retiring or loosening one is the user's call, and
@@ -34,6 +46,9 @@ The user ran `/vyre $ARGUMENTS`.
   `vyre statusline install` in their own terminal. It asks first, and if they already have a
   status line it changes nothing unless they add `--chain`, which keeps theirs and adds Vyre's
   line under it. Do not run it for them and do not edit their settings.json.
+
+If `planner_add` or `planner_agenda` is not offered, the planner is not running on this machine
+yet: say so in one line and do not pretend to set anything.
 
 If the `vyre` MCP server has no tools at all, Vyre is not running here: its instructions say
 whether it is not installed (https://vyre.run/start) or only stopped (`vyre up` starts

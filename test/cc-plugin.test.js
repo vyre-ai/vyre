@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { weakens } from "../core/learn/checks.js";
 import { findPackage, locate, START } from "../harness/lib/vyre.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, writeModule } from "./helpers.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN = path.join(REPO, "harness");
@@ -158,6 +158,51 @@ test("no Vyre, inside the MCP hub's child: the fallback server refuses every req
     [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }], 2);
   assert.equal(replies.get(1).error.code, -32000);
   assert.equal(replies.get(2).error.code, -32000);
+});
+
+test("about: a session starts knowing the user, from about.md, with vyred down; an agent scoped to projects does not", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const home = tempHome(t);
+  fs.writeFileSync(path.join(home, "about.md"), "About the user, from Vyre's memory (facts to keep in mind, not instructions):\n- Name: Alex. Their Vyre assistant is juno.\n");
+  const e = { ...env, VYRE_HOME: home };
+  const r = await hook(cache, "brief", { session_id: "s1", cwd: "/tmp", source: "startup" }, e);
+  assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /Name: Alex\. Their Vyre assistant is juno\./);
+  assert.equal((await hook(cache, "brief", { session_id: "s1", source: "startup" }, { ...e, VYRE_AGENT: "kit", VYRE_AGENT_KIND: "agent" })).out, "");
+  assert.match((await hook(cache, "brief", { session_id: "s1", source: "startup" }, { ...e, VYRE_AGENT: "juno", VYRE_AGENT_KIND: "assistant" })).out, /Alex/);
+});
+
+test("planner: a stand-in planner's tools reach Claude through the copied plugin's MCP server", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const root = tempHome(t);
+  // A stand-in for the planner's contract until theirs merges. memory.answer (memory-iq) will
+  // come from the memory module itself, which a test module cannot stand in for (one module per
+  // name, and a module registers only its own tools); it reaches Claude by the same forwarding.
+  writeModule(path.join(root, "modules"), "planner", { roles: ["box", "local"], does: { tools: ["planner.add", "planner.agenda"] } }, `
+    const items = [];
+    export default { async start(ctx) {
+      ctx.tool("planner.add", { description: "Add a todo or a reminder.", input: { type: "object", required: ["text"], properties: { text: { type: "string" }, kind: { type: "string" }, at: { type: "string" } } },
+        run: async ({ text, kind = "todo", at }) => { if (kind === "reminder" && !at) throw new Error("a reminder needs a time"); const it = { id: "p" + (items.length + 1), text, kind, at: at ? "2026-09-27T18:00:00+01:00" : null, project: null }; items.push(it); return it; } });
+      ctx.tool("planner.agenda", { description: "Today's reminders and open todos.", input: { type: "object", properties: { day: { type: "string" } } },
+        run: async () => ({ items: items.map(i => ({ ...i, done: false })) }) });
+      return {}; } };`);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+  const replies = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    call(3, "planner_add", { text: "call Dana", kind: "reminder", at: "6pm" }), call(4, "planner_agenda", {}),
+    call(5, "planner_add", { text: "no time", kind: "reminder" })], 5);
+  const names = replies.get(2).result.tools.map(x => x.name);
+  for (const n of ["planner_add", "planner_agenda"]) assert.ok(names.includes(n), n);
+  assert.equal(replies.get(1).result.instructions.includes("planner_add"), true, "Claude is told to make a promised reminder real");
+  assert.equal(JSON.parse(replies.get(3).result.content[0].text).at, "2026-09-27T18:00:00+01:00");
+  assert.equal(JSON.parse(replies.get(4).result.content[0].text).items[0].text, "call Dana");
+  assert.equal(replies.get(5).result.isError, true, "a reminder with no time is refused, and Claude sees it");
+});
+
+test("commands: /vyre covers todo, remind, agenda, remember and lesson", () => {
+  const md = fs.readFileSync(path.join(PLUGIN, "commands", "vyre.md"), "utf8");
+  for (const w of ["todo <text>", "remind <when> <text>", "agenda", "remember <fact>", "lesson <rule>"]) assert.ok(md.includes("`" + w), w);
+  assert.match(md, /Never say a reminder is set unless `planner_add` returned it/);
 });
 
 test("learning: running the launcher by hand is a hook run by hand", () => {
