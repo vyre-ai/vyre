@@ -141,6 +141,12 @@ guessed at.
   builds something from `threads.list` per agent — worth deciding whether switchboard adds the
   tool or deck reconstructs it.
 - Settings: confirm the per-step `vyre` commands it shows once box's core is in.
+- A per-agent usage view (Agents detail page): switchboard sent the shape (`agents.usage`, work/
+  switchboard 44367ce) — `{agent,kind,auth,turns,threads,duration_ms,cost_usd,api_cost_usd,tokens,
+  by_auth,budget_usd,spent_usd,left_usd,limit,last_at}`, money shown only for `auth:"api-key"`
+  (`spent_usd` of `budget_usd`; subscription/ambient show turns and time, `cost_usd` there is
+  notional, not spent), `thread.limit`/`thread.finished{tokens}`/`thread.stopped{reason:"budget"}`
+  events. Not started; not asked for by anyone yet, so waiting on priority before building it.
 
 ## Needs from others
 - box: whether `detail.devices.phoneUrl`/`macDownload`/`mac.connected` (Devices step) are the
