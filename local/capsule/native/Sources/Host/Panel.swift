@@ -195,6 +195,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             if !model.text.isEmpty { model.text = ""; return true }
             hide(); return true
+        case 51 where e.modifierFlags.contains(.command) && !model.attachments.isEmpty: // ⌘⌫ takes the last attachment off
+            model.removeAttachment(); return true
         case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip
             model.target = nil; return true
         case 48 where model.current?.kind == "mention": // tab picks the @ row

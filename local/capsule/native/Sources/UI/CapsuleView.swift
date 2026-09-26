@@ -91,7 +91,22 @@ struct CapsuleView: View {
                 .font(Theme.query)
                 .foregroundColor(Theme.bone)
                 .focused($boxFocused)
-            if let item = model.current, let s = item.sendsTo {
+            ForEach(model.attachments, id: \.id) { a in
+                HStack(spacing: 5) {
+                    Image(systemName: "rectangle.dashed.and.paperclip").font(.system(size: 10, weight: .semibold))
+                    Text(a.chip).lineLimit(1).truncationMode(.middle)
+                    Button { model.removeAttachment(a.id) } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
+                        .buttonStyle(.plain).help("Leave it off (⌘⌫)")
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Theme.bone)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Theme.signal.opacity(0.12)))
+                .overlay(Capsule().strokeBorder(Theme.signal.opacity(0.4), lineWidth: 1))
+                .frame(maxWidth: 230)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            if model.attachments.isEmpty, let item = model.current, let s = item.sendsTo {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .semibold))
                     Text(s).lineLimit(1)

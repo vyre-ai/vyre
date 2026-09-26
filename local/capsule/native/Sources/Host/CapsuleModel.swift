@@ -54,6 +54,12 @@ public final class CapsuleModel: ObservableObject {
     var extensionMentions: ((String) -> [(VyreCandidate, MentionTarget)])?
     var sendToExtension: ((String, VyreCandidate, Query) async -> ActionOutcome)?
     private var appTargets: [String: MentionTarget] = [:]
+    /// Chips for what extensions attach to this send ("with your screen"), and the ones the user
+    /// removed for it.
+    @Published var attachments: [SendAttachment] = []
+    private var removedAttachments = Set<String>()
+    var attachers: [SendAttaching] = []
+    private var attachTask: Task<Void, Never>?
     /// A human-only call waiting for the person to prove they are here (Presence.swift).
     @Published var presenceAsk: PresenceAsk?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
@@ -110,6 +116,7 @@ public final class CapsuleModel: ObservableObject {
         icons.cool()
         frecency.flush()
         vyred.follower.setShown(false)
+        attachTask?.cancel(); attachments = []; removedAttachments = []
         token += 1
         confirming = nil
     }
@@ -122,6 +129,35 @@ public final class CapsuleModel: ObservableObject {
     }
 
     // MARK: searching
+
+    // MARK: attachments
+
+    func refreshAttachments(_ words: String, to kind: SendTargetKind) {
+        attachTask?.cancel()
+        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !attachers.isEmpty, !w.isEmpty else { if !attachments.isEmpty { attachments = [] }; return }
+        let t = token
+        attachTask = Task { @MainActor in
+            var got: [SendAttachment] = []
+            for a in self.attachers {
+                if let x = await a.attachment(for: w, to: kind), !self.removedAttachments.contains(x.id) { got.append(x) }
+            }
+            guard !Task.isCancelled, t == self.token else { return }
+            if got != self.attachments { self.attachments = got }
+        }
+    }
+
+    /// Take a chip off this send (its x, or ⌘⌫). It stays off until the Capsule closes.
+    func removeAttachment(_ id: String? = nil) {
+        guard let x = id.flatMap({ i in attachments.first { $0.id == i } }) ?? attachments.last else { return }
+        removedAttachments.insert(x.id)
+        attachments.removeAll { $0.id == x.id }
+    }
+
+    /// The words with every chip still on screen appended, as they go.
+    func withAttachments(_ words: String) -> String {
+        attachments.isEmpty ? words : ([words] + attachments.map(\.body)).joined(separator: "\n\n")
+    }
 
     /// Show "Confirm it's you" and wait for Touch ID (or the Mac's password), or a cancel.
     func askPresence(_ a: PresenceAsk) async -> Bool {
@@ -168,12 +204,14 @@ public final class CapsuleModel: ObservableObject {
             searchSessions(m, token: t)
             return
         }
-        if target != nil {
+        if let c = target {
             recallTask?.cancel(); memory = nil
             groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: [askItem(q)])]
             selected = 0
+            if c.kind == .app { attachments = [] } else { refreshAttachments(q.text, to: c.kind == .agent ? .agent : c.kind == .project ? .project : .thread) }
             return
         }
+        refreshAttachments(q.text, to: .ask)
         recall(q.text, token: t)
         if q.normalized.isEmpty { partial = [:]; groups = []; selected = 0; return }
         if var c = calcResult(q) {
@@ -481,7 +519,9 @@ public final class CapsuleModel: ObservableObject {
         asked = words
         // What memory showed for these same words goes with the question, and only that.
         askedMemory = memory?.text == words && !(memory?.isEmpty ?? true) ? memory : nil
-        let append = Memo.append(askedMemory)
+        // The prompt stays the user's words (capsule-now rule 1); what a chip attaches goes with
+        // the instructions, after memory.
+        let append = ([Memo.append(askedMemory)] + attachments.map(\.body)).joined(separator: "\n\n")
         pending = true
         reply = nil
         replySub?.cancel()
@@ -536,7 +576,7 @@ public final class CapsuleModel: ObservableObject {
         case .thread:
             reply = VyState.reply(c.id)
             follow { c.id }
-            let r = await vyred.call("threads.send", ["thread": c.id, "text": words, "surface": "capsule"], presence: false)
+            let r = await vyred.call("threads.send", ["thread": c.id, "text": withAttachments(words), "surface": "capsule"], presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             let d = (r.data as? [String: Any]) ?? [:]
@@ -556,7 +596,7 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("agents.ask", ["agent": c.id, "text": words, "surface": "capsule", "wait": false], presence: false)
+            let r = await vyred.call("agents.ask", ["agent": c.id, "text": withAttachments(words), "surface": "capsule", "wait": false], presence: false)
             pending = false
             let d = (r.data as? [String: Any]) ?? [:]
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
@@ -568,7 +608,7 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("threads.start", ["project": c.id, "prompt": words, "surface": "capsule"], presence: false)
+            let r = await vyred.call("threads.start", ["project": c.id, "prompt": withAttachments(words), "surface": "capsule"], presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             thread = (r.data as? [String: Any]).flatMap { VJ.nonEmpty($0["id"]) }

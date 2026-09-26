@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Attachments on a send, for "with your screen"
+
+- Kit: `SendAttaching`, `SendAttachment` and `SendTargetKind`. An extension may offer something
+  to go with words headed to an agent, a session, a project or a quick Ask; the Capsule shows it
+  as a chip in the bar, ⌘⌫ or its x leaves it off for this send, and what is still on screen is
+  appended to the words (to a quick Ask's instructions, so the prompt stays the user's words).
+  For capsule-sight's screen context.
+
 #### Send a file to the box from the native Capsule
 
 - A file row has "Send to box" (⌘S, shown in the footer) when vyred has `files.send`: Taildrop

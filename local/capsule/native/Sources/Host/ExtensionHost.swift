@@ -28,6 +28,7 @@ final class ExtensionHost: CapsuleHost {
             if let why = e.runsHidden { log("\(t.id) runs while hidden: \(why)") }
         }
         reread()
+        model.attachers = extensions.compactMap { $0 as? SendAttaching }
         model.extensionMentions = { [weak self] q in self?.mentions(q) ?? [] }
         model.sendToExtension = { [weak self] text, c, query in
             guard let self, let (e, t) = self.targets[c.id] else { return .failed("\(c.label) is not there any more.") }
