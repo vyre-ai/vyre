@@ -68,6 +68,58 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   assert.deepEqual(await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env), { code: 0, out: "" }, "outside a project the brief is empty");
 });
 
+test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top-level shape", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const env = { VYRE_HOME: root };
+  assert.ok((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id);
+  // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
+  const payload = {
+    session_id: "s1", transcript_path: path.join(root, "s1.jsonl"), cwd: "/w/harlow-site", prompt_id: "p1",
+    permission_mode: "default", hook_event_name: "Stop", stop_hook_active: false,
+    last_assistant_message: "Sure \u2014 here it is", background_tasks: [], session_crons: [],
+  };
+  const held = await hook("stop", payload, env);
+  assert.equal(held.code, 0);
+  const out = JSON.parse(held.out);
+  assert.equal(out.decision, "block");
+  assert.match(out.reason, /Lesson 1/);
+  assert.equal(out.hookSpecificOutput, undefined, "Stop answers at the top level");
+  const fixed = await hook("stop", { ...payload, stop_hook_active: true, last_assistant_message: "Sure, here it is" }, env);
+  assert.deepEqual(fixed, { code: 0, out: "" });
+});
+
+test("hooks: with vyred down, the accepted lessons still hold, from the snapshot in the home", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id, 1);
+  assert.equal((await d.registry.call("learn.add", { text: "update CHANGELOG.md whenever you change code" })).data.id, 2);
+  await d.stop();
+  const env = { VYRE_HOME: root };
+  // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
+  const payload = {
+    session_id: "s1", transcript_path: path.join(root, "s1.jsonl"), cwd: "/w/harlow-site", prompt_id: "p1",
+    permission_mode: "default", hook_event_name: "Stop", stop_hook_active: false,
+    last_assistant_message: "Sure \u2014 here it is", background_tasks: [], session_crons: [],
+  };
+  const held = await hook("stop", payload, env);
+  assert.equal(held.code, 0);
+  const out = JSON.parse(held.out);
+  assert.equal(out.decision, "block");
+  assert.match(out.reason, /Lesson 1/);
+
+  const w = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", tool_name: "Write",
+    tool_input: { file_path: "/w/harlow-site/a.md", content: "Harlow \u2014 Legal" } }, env);
+  assert.equal(JSON.parse(w.out).hookSpecificOutput.permissionDecision, "deny");
+
+  const turn = { session_id: "s2", prompt_id: "p1", cwd: "/w/harlow-site" };
+  assert.deepEqual(await hook("learn", { ...turn, tool_name: "Edit", tool_input: { file_path: "src/a.js", new_string: "x" } }, env), { code: 0, out: "" });
+  const back = JSON.parse((await hook("stop", { ...turn, hook_event_name: "Stop", stop_hook_active: false, last_assistant_message: "Done." }, env)).out);
+  assert.equal(back.decision, "block");
+  assert.match(back.reason, /Lesson 2: .*src\/a\.js but not CHANGELOG\.md/);
+});
+
 test("mcp: initialize, list and call over stdio; harness tools are not offered", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });

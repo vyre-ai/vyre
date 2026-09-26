@@ -41,3 +41,30 @@ switch to live tools as they merge.
 
 Now and Projects work live against a running vyred with M1 merged, on desktop and phone widths,
 checked by screenshot against the boards.
+
+## Done
+- Onboarding (`deck/onboard/`), all six steps, against `onboard.*` fixtures; history step live on
+  Recall and Projects. Board: `docs/design/boards/Onboard.dc.html`.
+- Foundation: `deck/css/deck.css` (tokens, dark and paper), `deck/js/dom.js`, `deck/js/api.js`
+  (tools, fixtures fallback, one shared event stream), `deck/js/icons.js`, `deck/js/fmt.js`.
+- Test helpers: `deck/test/world.js` (temp home, real vyred, proxy on 127.0.0.1), `deck/test/shoot.js`.
+
+## Doing
+- The shell (header, rail, phone tab bar, search) and Now.
+
+## Next
+- Projects, Memory, Agents, Vault, Settings, then the phone views at 360 px. PWA manifest.
+
+## Needs from others
+- box: `onboard.*` as assumed in `deck/fixtures/onboard.json` (sent 2026-09-26): `onboard.status`,
+  `onboard.you {name, assistant}`, `onboard.name {name, action: check|reserve|status}`,
+  `onboard.claude {mode: detect|setup-token|api-key}`, `onboard.tailscale {action: detect|connect|poll}`,
+  `onboard.skip {step}`, `onboard.finish`. Token sent as header `x-vyre-onboard`.
+- switchboard: exact `threads.*`, `agents.*` and open-asks shapes (asked 2026-09-26).
+- main: `GET /v1/events/stream?since=latest` (or a way to read the newest event id), so a fresh
+  Deck does not page the whole log to find where to start. vyred serves `.mjs` as
+  octet-stream; `.js` works, so nothing is blocked.
+- main: `deck/**/*.test.js` is outside the `npm test` globs; if the Deck gets unit tests, add it.
+
+## Changed contracts
+- None.

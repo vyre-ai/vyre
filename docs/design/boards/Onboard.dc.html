@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Onboarding</title>
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <style>
+/* The Deck's one stylesheet. Values come verbatim from docs/design/TOKENS.md; no colour here is new.
+   Dark is the default. Paper is the light theme, chosen in Settings (data-theme="paper"). */
+
+:root {
+  --graphite: #0E0D0C; --carbon: #161513; --raised: #1E1C1A; --rule: #2B2926; --rule-strong: #3A3733;
+  --ash: #8C877D; --stone: #B3AEA4; --bone: #F1EEE6;
+  --signal: #C6F36B; --signal-hover: #D4F88A; --signal-ink: #0E0D0C; --signal-wash: rgba(198,243,107,0.12);
+  --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10);
+  --beacon: #FF7A59; --beacon-wash: rgba(255,122,89,0.12); --beacon-rule: rgba(255,122,89,0.28);
+
+  /* Roles the views use. Paper swaps these, never the views. */
+  --bg: var(--graphite); --panel: var(--carbon); --hover: var(--raised);
+  --text: var(--bone); --text-2: var(--stone); --label: var(--ash);
+  --primary-bg: var(--signal); --primary-hover: var(--signal-hover); --primary-ink: var(--signal-ink);
+  --focus: var(--signal); --recall-ink: var(--recall); --beacon-ink: var(--beacon); --beacon-dot: var(--beacon);
+  --code-bg: rgba(14,13,12,0.45);
+
+  --sans: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --r-1: 4px; --r-2: 6px; --r-3: 10px; --r-4: 14px;
+  --light-top: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
+  --popover: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);
+  color-scheme: dark;
+}
+:root[data-theme="paper"] {
+  --bg: #F4F1EA; --panel: #FBFAF6; --hover: #FBFAF6; --rule: #DCD7CC; --rule-strong: #C9C3B7;
+  --text: #141311; --text-2: #4A463F; --label: #6B665D;
+  --primary-bg: #141311; --primary-hover: #4A463F; --primary-ink: #F4F1EA;
+  --focus: #46700C; --signal-wash: rgba(70,112,12,0.10);
+  --recall-ink: #7E5B0C; --recall-wash: rgba(126,91,12,0.08); --recall: #7E5B0C;
+  --beacon-ink: #C2411F; --beacon-dot: #E5532F; --beacon-wash: rgba(229,83,47,0.10); --beacon-rule: rgba(229,83,47,0.28);
+  --code-bg: rgba(20,19,17,0.06);
+  --light-top: inset 0 1px 0 rgba(255,255,255,0.6), 0 24px 48px -24px rgba(20,19,17,0.25);
+  --popover: 0 12px 24px -12px rgba(20,19,17,0.3);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 22px;
+  -webkit-font-smoothing: antialiased; }
+button, input, textarea, select { font: inherit; color: inherit; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+[hidden] { display: none !important; }
+h1, h2, h3, p { margin: 0; }
+code, .mono { font-family: var(--mono); }
+
+/* Type roles */
+.display { font-size: 72px; line-height: 76px; font-weight: 600; letter-spacing: -0.035em; }
+.h1 { font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em; }
+.h2 { font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; }
+.h3 { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.small { font-size: 13px; line-height: 18px; }
+.muted { color: var(--text-2); }
+.faint { color: var(--label); }
+.lbl { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--label); margin: 0; }
+.lbl.beacon { color: var(--beacon-ink); }
+.lbl.recall { color: var(--recall-ink); }
+.code { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--text-2); }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* Controls */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px;
+  border-radius: var(--r-2); border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
+  font-family: var(--mono); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em;
+  text-transform: uppercase; text-decoration: none; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--hover); }
+.btn:disabled { opacity: 0.45; cursor: default; background: transparent; }
+.btn-primary { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
+.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-primary:disabled { background: var(--primary-bg); }
+.btn-ghost { border-color: transparent; color: var(--text-2); padding: 0 10px; }
+.btn-sm { height: 28px; }
+.ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--r-2);
+  border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; padding: 0; flex-shrink: 0; }
+.ibtn:hover { background: var(--hover); color: var(--text); }
+.ibtn[aria-pressed="true"] { color: var(--text); background: var(--hover); }
+.link { color: var(--text); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; cursor: pointer; }
+.link:hover { text-decoration-color: currentColor; }
+.link.quiet { text-decoration-color: transparent; }
+.link.quiet:hover { text-decoration-color: var(--rule-strong); }
+.kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--rule-strong);
+  border-radius: var(--r-1); font-family: var(--mono); font-size: 11px; color: var(--label); }
+.input { height: 40px; width: 100%; padding: 0 12px; border-radius: var(--r-2); border: 1px solid var(--rule-strong);
+  background: var(--panel); color: var(--text); font-size: 15px; outline: none; }
+.input:focus { border-color: var(--focus); }
+.input::placeholder { color: var(--label); }
+textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height: 22px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--rule-strong);
+  border-radius: var(--r-1); font-size: 13px; line-height: 18px; color: var(--text); }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--rule-strong);
+  border-radius: var(--r-1); font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+.initial { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-1); background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text);
+  font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.sw { position: relative; width: 34px; height: 20px; border-radius: 10px; border: none; padding: 0; cursor: pointer; flex-shrink: 0;
+  background: var(--rule-strong); }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 7px; background: var(--label); }
+.sw[aria-checked="true"] { background: var(--text); }
+.sw[aria-checked="true"]::after { left: 17px; background: var(--bg); }
+.dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; display: inline-block; }
+.dot.recall { background: var(--recall); }
+.dot.beacon { background: var(--beacon-dot); width: 7px; height: 7px; }
+.dot.signal { background: var(--signal); }
+.bar { height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--text); transition: width 200ms linear; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--r-2); padding: 2px; gap: 2px; }
+.seg button { height: 26px; padding: 0 12px; border: none; border-radius: 4px; background: transparent; color: var(--text-2);
+  font-size: 13px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--hover); color: var(--text); }
+
+/* Blocks */
+.rows > * { border-bottom: 1px solid var(--rule); }
+.rows > *:last-child { border-bottom: none; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule); }
+.recalled { background: var(--recall-wash); border-radius: var(--r-3); padding: 12px 14px; }
+.held { background: var(--beacon-wash); border-radius: var(--r-3); }
+.empty { padding: 20px 0; color: var(--text-2); font-size: 14px; line-height: 20px; }
+.empty .code { display: block; margin-top: 6px; }
+.fixture-note { font-family: var(--mono); font-size: 11px; color: var(--label); }
+
+/* Shell */
+.shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+.top { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid var(--rule); }
+.brand { width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; }
+.address { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid var(--rule);
+  border-radius: var(--r-2); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 0; max-width: 460px; }
+.address b { font-weight: 400; color: var(--text); }
+.search { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; min-width: 160px;
+  padding: 0 8px 0 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-2); color: var(--label); flex-shrink: 1; }
+.search input { flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; }
+.search input::placeholder { color: var(--label); }
+.search-pop { position: absolute; top: 38px; left: -1px; right: -1px; background: var(--panel); border: 1px solid var(--rule-strong);
+  border-radius: var(--r-3); box-shadow: var(--popover); max-height: 420px; overflow: auto; z-index: 20; padding: 6px; }
+.search-pop a { display: block; padding: 8px 10px; border-radius: var(--r-2); text-decoration: none; }
+.search-pop a:hover, .search-pop a.on { background: var(--hover); }
+.needs-pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--beacon-wash);
+  color: var(--beacon-ink); text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
+.avatar { width: 28px; height: 28px; border-radius: 14px; border: 1px solid var(--rule-strong); background: var(--hover); color: var(--text);
+  padding: 0; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.04em; flex-shrink: 0; text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; }
+.body { flex-grow: 1; min-height: 0; display: flex; }
+.rail { width: 216px; flex-shrink: 0; display: flex; flex-direction: column; padding: 16px 12px; border-right: 1px solid var(--rule); overflow: auto; }
+.rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
+  text-decoration: none; font-size: 14px; line-height: 20px; }
+.rail-a:hover, .rail-a[aria-current="page"] { background: var(--hover); color: var(--text); }
+.rail-a .count { margin-left: auto; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--beacon-ink); }
+.rail-pins { display: flex; flex-direction: column; gap: 2px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
+  text-decoration: none; font-size: 13px; line-height: 18px; }
+.pin-a:hover, .pin-a[aria-current="page"] { background: var(--hover); color: var(--text); }
+.pin-a .sq { width: 6px; height: 6px; border: 1px solid var(--label); border-radius: 1px; flex-shrink: 0; }
+.rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding: 12px 10px 0; border-top: 1px solid var(--rule); }
+.view { flex-grow: 1; min-width: 0; min-height: 0; overflow: auto; }
+.tabbar { display: none; }
+
+/* Phone: the Deck at 360px and up. The rail becomes a bottom tab bar (PhoneNow). */
+@media (max-width: 760px) {
+  .top { display: none; }
+  .rail { display: none; }
+  .view { padding-bottom: 84px; }
+  .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 76px; padding: 8px 8px 18px; background: var(--bg);
+    border-top: 1px solid var(--rule); z-index: 30; }
+  .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; text-decoration: none; color: var(--label);
+    font-family: var(--mono); font-size: 10px; line-height: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; position: relative; }
+  .tabbar a[aria-current="page"] { color: var(--text); }
+  .tabbar .badge { position: absolute; top: -6px; left: calc(50% + 4px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+    background: var(--beacon-dot); color: var(--graphite); font-size: 10px; line-height: 16px; letter-spacing: 0; text-align: center; }
+  .phone-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 0; }
+}
+@media (min-width: 761px) { .phone-head { display: none; } }
+@media (max-width: 1100px) { .address { display: none; } }
+
+/* The onboarding: one step a screen. Board: docs/design/boards/Onboard.dc.html. */
+
+.ob { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.ob-top { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 24px; border-bottom: 1px solid var(--rule); }
+.ob-top .brand { width: auto; padding-left: 0; height: 56px; }
+.ob-top .where { margin-left: auto; font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); }
+.ob-top .where b { font-weight: 400; color: var(--text-2); }
+.ob-body { flex-grow: 1; display: flex; min-height: 0; }
+
+.ob-steps { width: 280px; flex-shrink: 0; border-right: 1px solid var(--rule); padding: 40px 24px 24px; display: flex; flex-direction: column; }
+.ob-steps ol { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ob-step { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
+  text-decoration: none; cursor: pointer; }
+.ob-step:hover { background: var(--hover); color: var(--text); }
+.ob-step[aria-current="step"] { background: var(--hover); color: var(--text); }
+.ob-step .n { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-1); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
+.ob-step[aria-current="step"] .n { border-color: var(--text); color: var(--text); }
+.ob-step.done .n { background: var(--hover); color: var(--text-2); }
+.ob-step .t { display: flex; flex-direction: column; min-width: 0; }
+.ob-step .t span:first-child { font-size: 14px; line-height: 20px; }
+.ob-step .t span + span { font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--label); }
+.ob-steps .foot { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 18px; color: var(--label); }
+
+.ob-main { flex-grow: 1; min-width: 0; overflow: auto; display: flex; justify-content: center; }
+.ob-col { width: 100%; max-width: 640px; padding: 72px 32px 48px; display: flex; flex-direction: column; }
+.ob-col > .lbl { margin-bottom: 14px; }
+.ob-col > .h1 { margin-bottom: 12px; }
+.ob-col > .lead { color: var(--text-2); max-width: 540px; }
+.ob-panel { margin-top: 32px; display: flex; flex-direction: column; gap: 20px; }
+.ob-foot { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--rule); display: flex; align-items: center; gap: 8px; }
+.ob-foot .grow { flex-grow: 1; }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field > label { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.field .hint { font-size: 13px; line-height: 18px; color: var(--label); }
+.affix { display: flex; align-items: stretch; height: 48px; border: 1px solid var(--rule-strong); border-radius: var(--r-2); background: var(--panel); }
+.affix:focus-within { border-color: var(--focus); }
+.affix input { flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; padding: 0 14px; font-family: var(--mono);
+  font-size: 18px; color: var(--text); }
+.affix span { display: flex; align-items: center; padding: 0 14px; font-family: var(--mono); font-size: 18px; color: var(--label);
+  border-left: 1px solid var(--rule); }
+.check-line { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-2); min-height: 18px; }
+
+.found { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3); }
+.found .what { flex-grow: 1; min-width: 0; font-size: 14px; line-height: 20px; }
+.found .what .code { display: block; margin-top: 2px; }
+
+.choice { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+.choice label { display: flex; gap: 14px; padding: 16px; cursor: pointer; border-bottom: 1px solid var(--rule); }
+.choice label:last-child { border-bottom: none; }
+.choice label:hover { background: var(--hover); }
+.choice label.on { background: var(--hover); }
+.choice input[type=radio] { appearance: none; width: 16px; height: 16px; border-radius: 8px; border: 1px solid var(--rule-strong); margin: 3px 0 0; flex-shrink: 0; }
+.choice input[type=radio]:checked { border: 5px solid var(--text); }
+.choice .t { display: flex; flex-direction: column; gap: 2px; }
+.choice .t b { font-weight: 500; font-size: 15px; line-height: 22px; }
+.choice .t span { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.choice .more { padding: 0 16px 16px 46px; margin-top: -6px; display: flex; flex-direction: column; gap: 10px; }
+
+.cmd { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3);
+  font-family: var(--mono); font-size: 15px; line-height: 20px; color: var(--text); }
+.cmd code { flex-grow: 1; min-width: 0; overflow-x: auto; white-space: nowrap; }
+
+.progress { display: flex; flex-direction: column; margin: 0; padding: 0; }
+.progress li { list-style: none; display: flex; align-items: center; gap: 14px; min-height: 48px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.progress li:last-child { border-bottom: none; }
+.progress ol { margin: 0; padding: 0; }
+.progress .st { width: 20px; flex-shrink: 0; display: flex; justify-content: center; color: var(--text-2); }
+.progress .st .ring { width: 10px; height: 10px; border-radius: 5px; border: 1px solid var(--rule-strong); }
+.progress .st .busy { width: 10px; height: 10px; border-radius: 5px; border: 1.5px solid var(--rule-strong); border-top-color: var(--text); animation: spin 900ms linear infinite; }
+.progress .x { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.progress .x span:first-child { font-size: 14px; line-height: 20px; }
+.progress .x span + span { font-size: 13px; line-height: 18px; color: var(--label); }
+.progress .todo .x span:first-child { color: var(--text-2); }
+.progress .state { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--label); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .progress .st .busy { animation: none; border-color: var(--text); } }
+
+.address-big { font-family: var(--mono); font-size: 36px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em; word-break: break-all; }
+.address-big i { font-style: normal; color: var(--label); }
+
+.meter { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3); }
+.meter .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.meter .row .code { white-space: nowrap; }
+.meter .big { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.bar.live > span { background: var(--text); }
+.bar.moving > span { width: 30% !important; animation: slide 1.4s ease-in-out infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .bar.moving > span { animation: none; width: 100% !important; opacity: 0.4; } }
+
+.picker { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+.picker .bar-top { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--rule); }
+.picker .bar-top .input { height: 34px; font-size: 14px; }
+.picker .list { max-height: 320px; overflow: auto; }
+.pick { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 14px; border-bottom: 1px solid var(--rule); cursor: pointer; }
+.pick:last-child { border-bottom: none; }
+.pick:hover { background: var(--hover); }
+.pick input { appearance: none; width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--rule-strong); margin: 0; flex-shrink: 0; display: grid; place-content: center; }
+.pick input:checked { background: var(--text); border-color: var(--text); }
+.pick input:checked::after { content: ""; width: 8px; height: 4px; border-left: 2px solid var(--bg); border-bottom: 2px solid var(--bg); transform: translateY(-1px) rotate(-45deg); }
+.pick .x { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pick .x > span:first-child { font-size: 14px; line-height: 20px; }
+.pick .w { font-family: var(--mono); font-size: 12px; color: var(--label); white-space: nowrap; }
+.picker .bar-bottom { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--rule); }
+.made { display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px; color: var(--text-2); }
+.made b { font-weight: 500; color: var(--text); }
+
+.devices { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: var(--r-3); }
+.devices > div { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.devices > div + div { border-left: 1px solid var(--rule); }
+.qr { width: 184px; height: 184px; padding: 12px; background: #F1EEE6; border-radius: var(--r-2); }
+.qr svg { display: block; width: 100%; height: 100%; }
+
+.notice { font-size: 13px; line-height: 18px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; }
+.notice svg { flex-shrink: 0; margin-top: 1px; color: var(--label); }
+.need { background: var(--beacon-wash); border-radius: var(--r-3); padding: 14px 16px; font-size: 14px; line-height: 20px; }
+.need .lbl { margin-bottom: 6px; }
+
+.ob-dots { display: none; }
+
+@media (max-width: 760px) {
+  .ob-top { height: 52px; padding: 0 16px; }
+  .ob-top .where { display: none; }
+  .ob-steps { display: none; }
+  .ob-dots { display: flex; gap: 4px; padding: 16px 16px 0; }
+  .ob-dots span { flex: 1; height: 3px; border-radius: 2px; background: var(--rule); }
+  .ob-dots span.done { background: var(--text-2); }
+  .ob-dots span.now { background: var(--text); }
+  .ob-col { padding: 28px 16px 32px; }
+  .ob-col > .h1 { font-size: 32px; line-height: 36px; letter-spacing: -0.025em; }
+  .affix input, .affix span { font-size: 16px; padding: 0 10px; }
+  .address-big { font-size: 26px; line-height: 32px; }
+  .devices { grid-template-columns: 1fr; }
+  .devices > div + div { border-left: none; border-top: 1px solid var(--rule); }
+  .ob-foot { flex-wrap: wrap; }
+  .ob-foot .btn-primary { flex-grow: 1; }
+}
+
+.as-phone .ob-top { height: 52px; padding: 0 16px; }
+.as-phone .ob-top .where { display: none; }
+.as-phone .ob-steps { display: none; }
+.as-phone .ob-dots { display: flex; gap: 4px; padding: 16px 16px 0; }
+.as-phone .ob-dots span { flex: 1; height: 3px; border-radius: 2px; background: var(--rule); }
+.as-phone .ob-dots span.done { background: var(--text-2); }
+.as-phone .ob-dots span.now { background: var(--text); }
+.as-phone .ob-col { padding: 28px 16px 32px; }
+.as-phone .ob-col > .h1 { font-size: 32px; line-height: 36px; letter-spacing: -0.025em; }
+.as-phone .affix input, .as-phone .affix span { font-size: 16px; padding: 0 10px; }
+.as-phone .address-big { font-size: 26px; line-height: 32px; }
+.as-phone .devices { grid-template-columns: 1fr; }
+.as-phone .devices > div + div { border-left: none; border-top: 1px solid var(--rule); }
+.as-phone .ob-foot { flex-wrap: wrap; }
+.as-phone .ob-foot .btn-primary { flex-grow: 1; }
+
+.frame { position: relative; overflow: hidden; border: 1px solid #2B2926; border-radius: 14px; background: var(--bg); }
+.frame .ob { min-height: 100%; height: 100%; }
+.frame .ob-main { overflow: hidden; }
+.cap { display: flex; gap: 12px; align-items: baseline; margin: 0 0 12px; }
+
+  </style>
+</helmet>
+<div style="position: relative; width: 3558px; height: 3220px; overflow: hidden; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;">
+  <div style="position:absolute; left:72px; top:40px; display:flex; flex-direction:column; gap:8px;">
+    <div class="lbl">Deck · Onboarding · the first screen after vyre up</div>
+    <div class="h2">Six steps, one a screen. Each can be skipped and finished later from Settings.</div>
+  </div>
+  <div style="position:absolute; left:72px; top:120px;" class="cap"><span class="lbl">1 · You: name checked as you type</span></div><div class="frame" style="position:absolute; left:72px; top:160px; width:1440px; height:900px;"><div id="ob" class="ob"><header class="ob-top"><span class="brand" aria-label="vyre"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color: var(--text);"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--signal);"></circle></svg><svg xmlns="http://www.w3.org/2000/svg" width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre" style="color: var(--text);"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span class="where">Setting up <b>alex-box</b></span></header><div class="ob-dots" aria-hidden="true"><span class="now"></span><span class=""></span><span class=""></span><span class=""></span><span class=""></span><span class=""></span></div><div class="ob-body"><nav class="ob-steps" aria-label="Setup steps"><div class="lbl">Setup</div><ol><li><a class="ob-step" href="#you" aria-current="step"><span class="n">1</span><span class="t"><span>You</span></span></a></li><li><a class="ob-step" href="#claude"><span class="n">2</span><span class="t"><span>Claude Code</span></span></a></li><li><a class="ob-step" href="#tailscale"><span class="n">3</span><span class="t"><span>Tailscale</span></span></a></li><li><a class="ob-step" href="#name"><span class="n">4</span><span class="t"><span>Your address</span></span></a></li><li><a class="ob-step" href="#history"><span class="n">5</span><span class="t"><span>Your history</span></span></a></li><li><a class="ob-step" href="#devices"><span class="n">6</span><span class="t"><span>Your devices</span></span></a></li></ol><div class="foot">Every step can be finished later from Settings, or with a vyre command.</div></nav><main class="ob-main"><div class="ob-col"><div class="lbl">Step 1 of 6 · You</div><h1 class="h1">What should we call you?</h1><p class="lead">Your name becomes your address. Only your own devices will be able to open it.</p><div class="ob-panel"><div class="field"><label for="name">Your name</label><div class="affix"><input id="name" autocomplete="off" spellcheck="false" autocapitalize="none" aria-describedby="name-status" placeholder="alex" value="alex"><span>.vyre.run</span></div><div class="check-line" aria-live="polite" id="name-status"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg>alex.vyre.run is free.</div></div><div class="field"><label for="assistant">Your assistant's name</label><input class="input" id="assistant" autocomplete="off" placeholder="juno" value=""><span class="hint">The assistant can see every project and drive any session. You can rename it, and change its voice and instructions, later.</span></div></div><div class="ob-foot"><div class="grow"></div><button type="button" class="btn btn-ghost">Skip for now</button><button type="button" class="btn btn-primary" id="primary">Continue</button></div></div></main></div></div></div><div style="position:absolute; left:1584px; top:120px;" class="cap"><span class="lbl">2 · Claude Code: waiting for the sign-in tab</span></div><div class="frame" style="position:absolute; left:1584px; top:160px; width:1440px; height:900px;"><div id="ob" class="ob"><header class="ob-top"><span class="brand" aria-label="vyre"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color: var(--text);"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--signal);"></circle></svg><svg xmlns="http://www.w3.org/2000/svg" width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre" style="color: var(--text);"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span class="where">Setting up <b>alex-box</b></span></header><div class="ob-dots" aria-hidden="true"><span class="done"></span><span class="now"></span><span class=""></span><span class=""></span><span class=""></span><span class=""></span></div><div class="ob-body"><nav class="ob-steps" aria-label="Setup steps"><div class="lbl">Setup</div><ol><li><a class="ob-step done" href="#you"><span class="n"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="t"><span>You</span><span>Done</span></span></a></li><li><a class="ob-step" href="#claude" aria-current="step"><span class="n">2</span><span class="t"><span>Claude Code</span></span></a></li><li><a class="ob-step" href="#tailscale"><span class="n">3</span><span class="t"><span>Tailscale</span></span></a></li><li><a class="ob-step" href="#name"><span class="n">4</span><span class="t"><span>Your address</span></span></a></li><li><a class="ob-step" href="#history"><span class="n">5</span><span class="t"><span>Your history</span></span></a></li><li><a class="ob-step" href="#devices"><span class="n">6</span><span class="t"><span>Your devices</span></span></a></li></ol><div class="foot">Every step can be finished later from Settings, or with a vyre command.</div></nav><main class="ob-main"><div class="ob-col"><div class="lbl">Step 2 of 6 · Claude Code</div><h1 class="h1">Connect Claude Code.</h1><p class="lead">Vyre runs your sessions and agents on your own Claude subscription or an API key. Nothing is typed into a terminal.</p><div class="ob-panel"><div class="found"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.2"></rect><path d="M4.5 6.5l2 1.5-2 1.5M8 10h3.5"></path></svg><span class="what">Claude Code is installed.<span class="code">2.1.40 · /usr/local/bin/claude</span></span></div><div class="choice" role="radiogroup" aria-label="How Vyre signs in"><label class="on"><input type="radio" name="auth" value="setup-token" checked=""><span class="t"><b>Your Claude subscription</b><span>Opens Claude's sign-in in a new tab. Vyre keeps the token it gets in the Vault.</span></span></label><label class=""><input type="radio" name="auth" value="api-key"><span class="t"><b>An Anthropic API key</b><span>Billed to your Anthropic account. Stored in the Vault, and no screen shows it again, this one included.</span></span></label></div><div class="check-line" aria-live="polite"><span class="busy-inline faint">Waiting for you to finish signing in, in the other tab. </span><a class="link" href="https://claude.ai/oauth/authorize?example" target="_blank" rel="noopener">Open it again</a></div></div><div class="ob-foot"><button type="button" class="btn btn-ghost">Back</button><div class="grow"></div><button type="button" class="btn btn-ghost">Skip for now</button><button type="button" class="btn btn-primary" id="primary">Sign in with Claude</button></div></div></main></div></div></div><div style="position:absolute; left:72px; top:1140px;" class="cap"><span class="lbl">3 · Tailscale: live progress while you sign in</span></div><div class="frame" style="position:absolute; left:72px; top:1180px; width:1440px; height:900px;"><div id="ob" class="ob"><header class="ob-top"><span class="brand" aria-label="vyre"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color: var(--text);"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--signal);"></circle></svg><svg xmlns="http://www.w3.org/2000/svg" width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre" style="color: var(--text);"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span class="where">Setting up <b>alex-box</b></span></header><div class="ob-dots" aria-hidden="true"><span class="done"></span><span class=""></span><span class="now"></span><span class=""></span><span class=""></span><span class=""></span></div><div class="ob-body"><nav class="ob-steps" aria-label="Setup steps"><div class="lbl">Setup</div><ol><li><a class="ob-step done" href="#you"><span class="n"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="t"><span>You</span><span>Done</span></span></a></li><li><a class="ob-step" href="#claude"><span class="n">2</span><span class="t"><span>Claude Code</span></span></a></li><li><a class="ob-step" href="#tailscale" aria-current="step"><span class="n">3</span><span class="t"><span>Tailscale</span></span></a></li><li><a class="ob-step" href="#name"><span class="n">4</span><span class="t"><span>Your address</span></span></a></li><li><a class="ob-step" href="#history"><span class="n">5</span><span class="t"><span>Your history</span></span></a></li><li><a class="ob-step" href="#devices"><span class="n">6</span><span class="t"><span>Your devices</span></span></a></li></ol><div class="foot">Every step can be finished later from Settings, or with a vyre command.</div></nav><main class="ob-main"><div class="ob-col"><div class="lbl">Step 3 of 6 · Tailscale</div><h1 class="h1">Put this machine on your tailnet.</h1><p class="lead">Tailscale makes your Vyre reachable from your phone and laptop, and from nothing else. You sign in with Tailscale's own page; Vyre never sees your password.</p><div class="ob-panel"><ol class="progress"><li class="done"><span class="st"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="x"><span>Open Tailscale's sign-in</span></span></li><li class="doing"><span class="st"><span class="busy"></span></span><span class="x"><span>Sign in with your Tailscale account</span><span>Waiting for you, in the other tab.</span></span><span class="state">working</span></li><li class="todo"><span class="st"><span class="ring"></span></span><span class="x"><span>This machine joins your tailnet</span></span></li></ol><p class="notice">The sign-in page did not open? <a class="link" href="https://login.tailscale.com/a/example" target="_blank" rel="noopener">Open it here</a></p></div><div class="ob-foot"><button type="button" class="btn btn-ghost">Back</button><div class="grow"></div><button type="button" class="btn btn-ghost">Skip for now</button><button type="button" class="btn btn-primary" id="primary" disabled="">Waiting for Tailscale</button></div></div></main></div></div></div><div style="position:absolute; left:1584px; top:1140px;" class="cap"><span class="lbl">4 · Your address: reserved, pointed, certified</span></div><div class="frame" style="position:absolute; left:1584px; top:1180px; width:1440px; height:900px;"><div id="ob" class="ob"><header class="ob-top"><span class="brand" aria-label="vyre"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color: var(--text);"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--signal);"></circle></svg><svg xmlns="http://www.w3.org/2000/svg" width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre" style="color: var(--text);"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span class="where">Setting up <b>alex-box</b></span></header><div class="ob-dots" aria-hidden="true"><span class="done"></span><span class=""></span><span class=""></span><span class="now"></span><span class=""></span><span class=""></span></div><div class="ob-body"><nav class="ob-steps" aria-label="Setup steps"><div class="lbl">Setup</div><ol><li><a class="ob-step done" href="#you"><span class="n"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="t"><span>You</span><span>Done</span></span></a></li><li><a class="ob-step" href="#claude"><span class="n">2</span><span class="t"><span>Claude Code</span></span></a></li><li><a class="ob-step" href="#tailscale"><span class="n">3</span><span class="t"><span>Tailscale</span></span></a></li><li><a class="ob-step" href="#name" aria-current="step"><span class="n">4</span><span class="t"><span>Your address</span></span></a></li><li><a class="ob-step" href="#history"><span class="n">5</span><span class="t"><span>Your history</span></span></a></li><li><a class="ob-step" href="#devices"><span class="n">6</span><span class="t"><span>Your devices</span></span></a></li></ol><div class="foot">Every step can be finished later from Settings, or with a vyre command.</div></nav><main class="ob-main"><div class="ob-col"><div class="lbl">Step 4 of 6 · Your address</div><h1 class="h1">Your address.</h1><p class="lead">Vyre reserves the name, points it at this machine's tailnet address, and gets a certificate for it. Only your tailnet can open this address.</p><div class="ob-panel"><div class="address-big"><i>https://</i>alex<i>.vyre.run</i></div><ol class="progress"><li class="done"><span class="st"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="x"><span>Reserve alex.vyre.run</span></span></li><li class="done"><span class="st"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="x"><span>Point it at this machine on your tailnet</span><span>alex.vyre.run → 100.101.12.7</span></span></li><li class="done"><span class="st"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="x"><span>Get the certificate</span><span>Let's Encrypt, renews in 60 days</span></span></li></ol><div><p class="notice">From here the loopback link stops working. The rest of the setup continues at your address.</p></div></div><div class="ob-foot"><button type="button" class="btn btn-ghost">Back</button><div class="grow"></div><button type="button" class="btn btn-ghost">Skip for now</button><button type="button" class="btn btn-primary" id="primary">Switch to alex.vyre.run</button></div></div></main></div></div></div><div style="position:absolute; left:72px; top:2160px;" class="cap"><span class="lbl">5 · Your history: indexing meter and the project picker</span></div><div class="frame" style="position:absolute; left:72px; top:2200px; width:1440px; height:900px;"><div id="ob" class="ob"><header class="ob-top"><span class="brand" aria-label="vyre"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color: var(--text);"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--signal);"></circle></svg><svg xmlns="http://www.w3.org/2000/svg" width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre" style="color: var(--text);"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span class="where">Setting up <b>alex-box</b></span></header><div class="ob-dots" aria-hidden="true"><span class="done"></span><span class=""></span><span class=""></span><span class=""></span><span class="now"></span><span class=""></span></div><div class="ob-body"><nav class="ob-steps" aria-label="Setup steps"><div class="lbl">Setup</div><ol><li><a class="ob-step done" href="#you"><span class="n"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="t"><span>You</span><span>Done</span></span></a></li><li><a class="ob-step" href="#claude"><span class="n">2</span><span class="t"><span>Claude Code</span></span></a></li><li><a class="ob-step" href="#tailscale"><span class="n">3</span><span class="t"><span>Tailscale</span></span></a></li><li><a class="ob-step" href="#name"><span class="n">4</span><span class="t"><span>Your address</span></span></a></li><li><a class="ob-step" href="#history" aria-current="step"><span class="n">5</span><span class="t"><span>Your history</span></span></a></li><li><a class="ob-step" href="#devices"><span class="n">6</span><span class="t"><span>Your devices</span></span></a></li></ol><div class="foot">Every step can be finished later from Settings, or with a vyre command.</div></nav><main class="ob-main"><div class="ob-col"><div class="lbl">Step 5 of 6 · Your history</div><h1 class="h1">Your history.</h1><p class="lead">Vyre reads the Claude Code sessions already on this machine, so you can search every one and group them into projects. It keeps reading in the background; you do not have to wait.</p><div class="ob-panel"><div class="meter" aria-live="polite"><div class="row"><span class="big">6 sessions</span><span class="code">16 turns</span></div><div class="bar live" role="progressbar" aria-label="Reading your history" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span style="width: 100%;"></span></div><div class="row"><span class="small muted">Every session is searchable by what was said.</span><span class="code">full-text search</span></div></div><div class="lbl" style="margin-top: 8px;">Make your first projects</div><p class="small muted" style="margin-top: -12px;">A project is a client or a piece of work: pick the sessions that belong to it. A session can be in several.</p><div class="rows"><div class="made" style="padding: 10px 0px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"></path></svg><span><b>Northwind Bakery</b> · 2 threads</span></div><div class="made" style="padding: 10px 0px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"></path></svg><span><b>Harlow Legal</b> · 3 threads</span></div></div><div><div class="picker"><div class="bar-top"><input class="input" placeholder="Project name, e.g. Harlow Legal" aria-label="Project name" value="Planning"></div><div class="bar-top"><input class="input" type="search" placeholder="Search sessions by what was said" aria-label="Search sessions" value=""></div><div class="list"><label class="pick"><input type="checkbox" value="on"><span class="x"><span class="ellipsis">Summarise this week's Northwind Bakery invoices as one line.</span><span class="code ellipsis">northwind  ·  in Northwind Bakery</span></span><span class="w">1 Sep</span></label><label class="pick"><input type="checkbox" value="on" checked=""><span class="x"><span class="ellipsis">Weekly planning</span><span class="code ellipsis">Work  ·  in Harlow Legal</span></span><span class="w">1 Sep</span></label><label class="pick"><input type="checkbox" value="on"><span class="x"><span class="ellipsis">Northwind invoices</span><span class="code ellipsis">northwind  ·  in Northwind Bakery</span></span><span class="w">1 Sep</span></label><label class="pick"><input type="checkbox" value="on" checked=""><span class="x"><span class="ellipsis">Harlow intake: route new leads from the form into their CRM and email Dana a su…</span><span class="code ellipsis">harlow-intake  ·  in Harlow Legal</span></span><span class="w">1 Sep</span></label><label class="pick"><input type="checkbox" value="on"><span class="x"><span class="ellipsis">Harlow site rebuild</span><span class="code ellipsis">harlow-site  ·  in Harlow Legal</span></span><span class="w">1 Sep</span></label></div><div class="bar-bottom"><span class="small muted">2 sessions picked</span><div style="flex-grow: 1;"></div><button type="button" class="btn"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg>Make project</button></div></div></div></div><div class="ob-foot"><button type="button" class="btn btn-ghost">Back</button><div class="grow"></div><button type="button" class="btn btn-ghost">Skip for now</button><button type="button" class="btn btn-primary" id="primary">Continue</button></div></div></main></div></div></div><div style="position:absolute; left:1584px; top:2160px;" class="cap"><span class="lbl">6 · Your devices: phone QR and the Mac download</span></div><div class="frame" style="position:absolute; left:1584px; top:2200px; width:1440px; height:900px;"><div id="ob" class="ob"><header class="ob-top"><span class="brand" aria-label="vyre"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color: var(--text);"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--signal);"></circle></svg><svg xmlns="http://www.w3.org/2000/svg" width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre" style="color: var(--text);"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span class="where">Setting up <b>alex-box</b></span></header><div class="ob-dots" aria-hidden="true"><span class="done"></span><span class=""></span><span class=""></span><span class=""></span><span class=""></span><span class="now"></span></div><div class="ob-body"><nav class="ob-steps" aria-label="Setup steps"><div class="lbl">Setup</div><ol><li><a class="ob-step done" href="#you"><span class="n"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="t"><span>You</span><span>Done</span></span></a></li><li><a class="ob-step" href="#claude"><span class="n">2</span><span class="t"><span>Claude Code</span></span></a></li><li><a class="ob-step" href="#tailscale"><span class="n">3</span><span class="t"><span>Tailscale</span></span></a></li><li><a class="ob-step" href="#name"><span class="n">4</span><span class="t"><span>Your address</span></span></a></li><li><a class="ob-step" href="#history"><span class="n">5</span><span class="t"><span>Your history</span></span></a></li><li><a class="ob-step" href="#devices" aria-current="step"><span class="n">6</span><span class="t"><span>Your devices</span></span></a></li></ol><div class="foot">Every step can be finished later from Settings, or with a vyre command.</div></nav><main class="ob-main"><div class="ob-col"><div class="lbl">Step 6 of 6 · Your devices</div><h1 class="h1">Your devices.</h1><p class="lead">Open Vyre on your phone, and put the Capsule on your Mac. Both reach this machine over your tailnet.</p><div class="ob-panel"><div class="devices"><div><div class="lbl">Phone</div><div class="qr" role="img" aria-label="QR code for http://127.0.0.1:4747/now"><svg viewBox="0 0 25 25" shape-rendering="crispEdges"><path d="M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM9 0h1v1h-1zM13 0h1v1h-1zM16 0h1v1h-1zM18 0h1v1h-1zM19 0h1v1h-1zM20 0h1v1h-1zM21 0h1v1h-1zM22 0h1v1h-1zM23 0h1v1h-1zM24 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM10 1h1v1h-1zM12 1h1v1h-1zM14 1h1v1h-1zM18 1h1v1h-1zM24 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM8 2h1v1h-1zM11 2h1v1h-1zM18 2h1v1h-1zM20 2h1v1h-1zM21 2h1v1h-1zM22 2h1v1h-1zM24 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM11 3h1v1h-1zM13 3h1v1h-1zM14 3h1v1h-1zM15 3h1v1h-1zM18 3h1v1h-1zM20 3h1v1h-1zM21 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM9 4h1v1h-1zM14 4h1v1h-1zM18 4h1v1h-1zM20 4h1v1h-1zM21 4h1v1h-1zM22 4h1v1h-1zM24 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM10 5h1v1h-1zM13 5h1v1h-1zM14 5h1v1h-1zM16 5h1v1h-1zM18 5h1v1h-1zM24 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM19 6h1v1h-1zM20 6h1v1h-1zM21 6h1v1h-1zM22 6h1v1h-1zM23 6h1v1h-1zM24 6h1v1h-1zM8 7h1v1h-1zM10 7h1v1h-1zM12 7h1v1h-1zM14 7h1v1h-1zM0 8h1v1h-1zM6 8h1v1h-1zM8 8h1v1h-1zM9 8h1v1h-1zM10 8h1v1h-1zM11 8h1v1h-1zM12 8h1v1h-1zM13 8h1v1h-1zM15 8h1v1h-1zM16 8h1v1h-1zM17 8h1v1h-1zM18 8h1v1h-1zM21 8h1v1h-1zM22 8h1v1h-1zM23 8h1v1h-1zM0 9h1v1h-1zM1 9h1v1h-1zM2 9h1v1h-1zM3 9h1v1h-1zM7 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM15 9h1v1h-1zM16 9h1v1h-1zM17 9h1v1h-1zM20 9h1v1h-1zM21 9h1v1h-1zM22 9h1v1h-1zM23 9h1v1h-1zM0 10h1v1h-1zM1 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM10 10h1v1h-1zM11 10h1v1h-1zM12 10h1v1h-1zM14 10h1v1h-1zM15 10h1v1h-1zM17 10h1v1h-1zM18 10h1v1h-1zM20 10h1v1h-1zM21 10h1v1h-1zM23 10h1v1h-1zM24 10h1v1h-1zM0 11h1v1h-1zM2 11h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM5 11h1v1h-1zM7 11h1v1h-1zM9 11h1v1h-1zM12 11h1v1h-1zM15 11h1v1h-1zM16 11h1v1h-1zM17 11h1v1h-1zM21 11h1v1h-1zM24 11h1v1h-1zM2 12h1v1h-1zM4 12h1v1h-1zM5 12h1v1h-1zM6 12h1v1h-1zM7 12h1v1h-1zM10 12h1v1h-1zM11 12h1v1h-1zM12 12h1v1h-1zM14 12h1v1h-1zM16 12h1v1h-1zM17 12h1v1h-1zM18 12h1v1h-1zM24 12h1v1h-1zM0 13h1v1h-1zM1 13h1v1h-1zM3 13h1v1h-1zM5 13h1v1h-1zM7 13h1v1h-1zM8 13h1v1h-1zM10 13h1v1h-1zM14 13h1v1h-1zM15 13h1v1h-1zM23 13h1v1h-1zM0 14h1v1h-1zM3 14h1v1h-1zM6 14h1v1h-1zM7 14h1v1h-1zM11 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM14 14h1v1h-1zM15 14h1v1h-1zM17 14h1v1h-1zM19 14h1v1h-1zM21 14h1v1h-1zM23 14h1v1h-1zM24 14h1v1h-1zM0 15h1v1h-1zM3 15h1v1h-1zM8 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM16 15h1v1h-1zM20 15h1v1h-1zM22 15h1v1h-1zM24 15h1v1h-1zM0 16h1v1h-1zM2 16h1v1h-1zM3 16h1v1h-1zM5 16h1v1h-1zM6 16h1v1h-1zM7 16h1v1h-1zM8 16h1v1h-1zM9 16h1v1h-1zM11 16h1v1h-1zM12 16h1v1h-1zM13 16h1v1h-1zM15 16h1v1h-1zM16 16h1v1h-1zM17 16h1v1h-1zM18 16h1v1h-1zM19 16h1v1h-1zM20 16h1v1h-1zM22 16h1v1h-1zM8 17h1v1h-1zM9 17h1v1h-1zM10 17h1v1h-1zM12 17h1v1h-1zM13 17h1v1h-1zM15 17h1v1h-1zM16 17h1v1h-1zM20 17h1v1h-1zM22 17h1v1h-1zM0 18h1v1h-1zM1 18h1v1h-1zM2 18h1v1h-1zM3 18h1v1h-1zM4 18h1v1h-1zM5 18h1v1h-1zM6 18h1v1h-1zM9 18h1v1h-1zM10 18h1v1h-1zM11 18h1v1h-1zM16 18h1v1h-1zM18 18h1v1h-1zM20 18h1v1h-1zM21 18h1v1h-1zM24 18h1v1h-1zM0 19h1v1h-1zM6 19h1v1h-1zM9 19h1v1h-1zM10 19h1v1h-1zM11 19h1v1h-1zM14 19h1v1h-1zM16 19h1v1h-1zM20 19h1v1h-1zM23 19h1v1h-1zM24 19h1v1h-1zM0 20h1v1h-1zM2 20h1v1h-1zM3 20h1v1h-1zM4 20h1v1h-1zM6 20h1v1h-1zM9 20h1v1h-1zM13 20h1v1h-1zM14 20h1v1h-1zM15 20h1v1h-1zM16 20h1v1h-1zM17 20h1v1h-1zM18 20h1v1h-1zM19 20h1v1h-1zM20 20h1v1h-1zM21 20h1v1h-1zM22 20h1v1h-1zM0 21h1v1h-1zM2 21h1v1h-1zM3 21h1v1h-1zM4 21h1v1h-1zM6 21h1v1h-1zM11 21h1v1h-1zM13 21h1v1h-1zM14 21h1v1h-1zM18 21h1v1h-1zM19 21h1v1h-1zM21 21h1v1h-1zM23 21h1v1h-1zM24 21h1v1h-1zM0 22h1v1h-1zM2 22h1v1h-1zM3 22h1v1h-1zM4 22h1v1h-1zM6 22h1v1h-1zM10 22h1v1h-1zM13 22h1v1h-1zM14 22h1v1h-1zM16 22h1v1h-1zM17 22h1v1h-1zM22 22h1v1h-1zM24 22h1v1h-1zM0 23h1v1h-1zM6 23h1v1h-1zM9 23h1v1h-1zM11 23h1v1h-1zM16 23h1v1h-1zM18 23h1v1h-1zM19 23h1v1h-1zM20 23h1v1h-1zM24 23h1v1h-1zM0 24h1v1h-1zM1 24h1v1h-1zM2 24h1v1h-1zM3 24h1v1h-1zM4 24h1v1h-1zM5 24h1v1h-1zM6 24h1v1h-1zM8 24h1v1h-1zM9 24h1v1h-1zM10 24h1v1h-1zM12 24h1v1h-1zM15 24h1v1h-1zM16 24h1v1h-1zM17 24h1v1h-1zM18 24h1v1h-1zM21 24h1v1h-1zM24 24h1v1h-1z" fill="#0E0D0C"></path></svg></div><div class="code">127.0.0.1:4747/now</div><p class="small muted">Scan with the camera. The phone needs Tailscale, signed in to the same account. Add it to the home screen to use it like an app.</p></div><div><div class="lbl">Mac</div><p class="h3">The Capsule</p><p class="small muted">Press Control twice anywhere on your Mac to talk to your assistant, an agent or any session. Works offline for your own Mac.</p><div><a class="btn" href="https://github.com/vyre-ai/vyre/releases/latest" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="10" height="7" rx="1"></rect><path d="M1.5 12.5h13"></path></svg>Download for Mac</a></div></div></div></div><div class="ob-foot"><button type="button" class="btn btn-ghost">Back</button><div class="grow"></div><button type="button" class="btn btn-primary" id="primary">Open the Deck</button></div></div></main></div></div></div><div style="position:absolute; left:3096px; top:120px;" class="cap"><span class="lbl">Phone, 390 · Tailscale</span></div><div class="frame as-phone" style="position:absolute; left:3096px; top:160px; width:390px; height:844px;"><div id="ob" class="ob"><header class="ob-top"><span class="brand" aria-label="vyre"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="color: var(--text);"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--signal);"></circle></svg><svg xmlns="http://www.w3.org/2000/svg" width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre" style="color: var(--text);"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span><span class="where">Setting up <b>alex-box</b></span></header><div class="ob-dots" aria-hidden="true"><span class="done"></span><span class=""></span><span class="now"></span><span class=""></span><span class=""></span><span class=""></span></div><div class="ob-body"><nav class="ob-steps" aria-label="Setup steps"><div class="lbl">Setup</div><ol><li><a class="ob-step done" href="#you"><span class="n"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="t"><span>You</span><span>Done</span></span></a></li><li><a class="ob-step" href="#claude"><span class="n">2</span><span class="t"><span>Claude Code</span></span></a></li><li><a class="ob-step" href="#tailscale" aria-current="step"><span class="n">3</span><span class="t"><span>Tailscale</span></span></a></li><li><a class="ob-step" href="#name"><span class="n">4</span><span class="t"><span>Your address</span></span></a></li><li><a class="ob-step" href="#history"><span class="n">5</span><span class="t"><span>Your history</span></span></a></li><li><a class="ob-step" href="#devices"><span class="n">6</span><span class="t"><span>Your devices</span></span></a></li></ol><div class="foot">Every step can be finished later from Settings, or with a vyre command.</div></nav><main class="ob-main"><div class="ob-col"><div class="lbl">Step 3 of 6 · Tailscale</div><h1 class="h1">Put this machine on your tailnet.</h1><p class="lead">Tailscale makes your Vyre reachable from your phone and laptop, and from nothing else. You sign in with Tailscale's own page; Vyre never sees your password.</p><div class="ob-panel"><ol class="progress"><li class="done"><span class="st"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"></path></svg></span><span class="x"><span>Open Tailscale's sign-in</span></span></li><li class="doing"><span class="st"><span class="busy"></span></span><span class="x"><span>Sign in with your Tailscale account</span><span>Waiting for you, in the other tab.</span></span><span class="state">working</span></li><li class="todo"><span class="st"><span class="ring"></span></span><span class="x"><span>This machine joins your tailnet</span></span></li></ol><p class="notice">The sign-in page did not open? <a class="link" href="https://login.tailscale.com/a/example" target="_blank" rel="noopener">Open it here</a></p></div><div class="ob-foot"><button type="button" class="btn btn-ghost">Back</button><div class="grow"></div><button type="button" class="btn btn-ghost">Skip for now</button><button type="button" class="btn btn-primary" id="primary" disabled="">Waiting for Tailscale</button></div></div></main></div></div></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":3558,"height":3220}}'>class Component extends DCLogic { renderVals() { return {}; } }</script>
+</body>
+</html>

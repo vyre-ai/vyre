@@ -103,15 +103,16 @@ async function body(req) {
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
-const SOCKET_LABELS = new Set(["local", "cli", "harness", "hook", "mcp", "capsule"]);
+const FORBIDDEN_LABEL = /^(module:|tailnet:|onboard$|hook$)/;
 
 async function route(req, res, { registry, events, cfg, started, streams }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
-  // processes included), so only plain labels pass; "module:*", "tailnet:*" and "onboard" are
-  // identities that listeners and the registry establish, never a client (ADR 0002).
+  // processes included). "module:*" is what the registry uses between modules, "hook" is what the
+  // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes
+  // (ADR 0002). None of them may be claimed over the socket; such a claim becomes "local".
   const label = String(req.headers["x-vyre-caller"] || "local");
-  const caller = policy.caller || (SOCKET_LABELS.has(label) ? label : "local");
+  const caller = policy.caller || (FORBIDDEN_LABEL.test(label) ? "local" : label);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
   if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {
@@ -119,16 +120,29 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   }
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
-    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null,
+    // last_event lets a surface follow the stream from now: `since=0` would replay the whole
+    // log, and a guessed cursor past the end drops every live event.
+    const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
+    return send(res, 200, { data: { version: VERSION, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
-  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools().filter(t => !policy.tool || policy.tool(t.name)) });
+  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     const result = await registry.call(name, await body(req), caller);
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "denied" ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
+  }
+  // Webhooks: POST /v1/<module>/<name>/hook reaches that module's hook tool (watchers.hook) with
+  // the name, the token from x-vyre-token or ?token=, and the JSON body. The tool checks the token.
+  const hook = req.method === "POST" && /^\/v1\/([a-z][a-z0-9-]*)\/([^/]+)\/hook$/.exec(url.pathname);
+  if (hook) {
+    const token = String(req.headers["x-vyre-token"] || url.searchParams.get("token") || "");
+    let payload;
+    try { payload = await body(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
+    const result = await registry.call(`${hook[1]}.hook`, { name: decodeURIComponent(hook[2]), token, body: payload }, "hook");
+    return send(res, result.error ? (result.error.code === "no_such_tool" ? 404 : 403) : 202, result);
   }
   if (req.method === "GET" && url.pathname === "/v1/events") {
     return send(res, 200, { data: events.since(Number(url.searchParams.get("since") || 0), {
@@ -151,7 +165,11 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
  */
 function stream(req, res, url, events, streams) {
   const type = url.searchParams.get("type") || "*";
-  const lastId = Number(req.headers["last-event-id"] || url.searchParams.get("since") || 0);
+  // since=latest skips the backlog: a surface that renders current state from tools only needs
+  // what happens next, and replaying a long log to reach "now" is wasted work.
+  const sinceParam = url.searchParams.get("since");
+  const latest = !req.headers["last-event-id"] && sinceParam === "latest";
+  const lastId = latest ? events.latestId() : Number(req.headers["last-event-id"] || sinceParam || 0);
   const match = type === "*" ? () => true : type.endsWith(".*") ? e => e.type.startsWith(type.slice(0, -1)) : e => e.type === type;
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);

@@ -14,7 +14,9 @@ export function request(method, path, payload, { root = config.home(), caller = 
   const socketPath = config.paths(root).socket;
   return new Promise(resolve => {
     const data = payload === undefined ? undefined : JSON.stringify(payload);
-    const req = http.request({ socketPath, path, method, timeout,
+    // agent: false, so no connection is pooled. A pooled one outlives a vyred restart, and the
+    // first call after it fails as "unreachable" although the new vyred is up.
+    const req = http.request({ socketPath, path, method, timeout, agent: false,
       headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
       let raw = "";
       res.setEncoding("utf8");

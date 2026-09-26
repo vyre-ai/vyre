@@ -1,38 +1,61 @@
 ---
 name: write-a-watcher
-description: Use when the user wants something checked, polled or followed on a schedule and filed into a project, such as "watch this inbox", "check X every hour", "tell me when Y changes", "file every Z into the Harlow project". Turns the request into a Vyre watcher, dry-runs it, and only then turns it on.
+description: Use first, before asking the user anything, whenever they want something watched, checked, polled or followed over time and filed into a project, such as "watch this inbox", "check X every hour", "tell me when Y changes", "file every Z into the Harlow project". Use it instead of /loop, cron, scheduled agents or a hand-rolled poller: a Vyre watcher keeps running in vyred after this session ends. This skill says where items go, how often to check and what to capture, so those are not questions for the user. Writes the watcher, dry-runs it, and only then turns it on.
 ---
 
 # Write a watcher
 
 Vyre hosts watchers; you write them. A watcher is a small program the Vyre runtime runs on a
-schedule. It fetches what changed since last time and emits one item per new thing. The runtime
-handles everything else: the schedule, credentials, the `since` cursor, retries, filing items
-into the project, logs, pause and resume. Do not rebuild any of that inside a watcher.
+schedule. It fetches what is there now (or what changed since last time) and emits one item per
+thing. The runtime handles everything else: the schedule, credentials, the `since` cursor,
+dedupe, retries, filing items into the project and into its memory, logs, pause and resume. Do
+not rebuild any of that inside a watcher.
+
+## The steps, in order
+
+Each is a tool call. The Vyre tools are MCP tools (`mcp__plugin_vyre_vyre__<name>` in Claude
+Code; load them with ToolSearch when they are deferred). Call them directly, never from a shell.
+
+1. `watchers_list` → its `dir` is where watchers live on this machine.
+2. `projects_of` with `{ "cwd": "<the current folder>" }` → the project's `slug`.
+3. Write `<dir>/<name>/watcher.json` and `<dir>/<name>/watch.js` (section 3).
+4. `watchers_test` with `{ "name": "<name>" }` → fix and repeat until it returns `ok: true`.
+5. Show the user the items and the schedule; on their yes, `watchers_create` with `{ "name" }`.
+
+The sections below say how to decide each part.
 
 ## 1. Pin down four things before writing code
 
-Ask only for what you cannot find out:
+Each has a default. Ask the user only when the request leaves one truly open and no default
+fits; "watch X and file it into this project" leaves nothing open.
 
-1. **Source**: what is being watched (an inbox, an API, a page, a folder, a feed).
-2. **What counts as an item**: one email, one invoice, one changed row. Pick the natural unit.
-3. **Project**: which Vyre project items file into. `vyre projects` (or the `projects_list`
-   tool) lists them. Default to the project of the current folder.
-4. **Schedule**: cron syntax. Default `*/15 * * * *`. Use less often when the source is slow
-   or rate limited.
+1. **Source**: what is being watched (an inbox, an API, a page, a folder, a feed). Prefer a
+   JSON API or feed over scraping HTML when the source has one.
+2. **What counts as an item**: one email, one invoice, one post. Pick the natural unit.
+3. **Project**: which Vyre project items file into. The `projects_of` tool with the current
+   folder gives its project's `slug`; `projects_list` lists them all. Use the slug.
+4. **Schedule**: cron syntax (five fields, `*`, `*/n`, ranges, lists, or `@hourly`, `@daily`).
+   Default `*/15 * * * *`. Use less often when the source is slow or rate limited. A step
+   cannot exceed its field: every two hours is `0 */2 * * *`, never `*/120 * * * *`. For a source
+   that pushes (a form, a webhook), use `"webhook"`.
 
 ## 2. Credentials come from the Vault, by name
 
 Never put a key, token or password in the watcher, in `watcher.json`, in a command line or in
 your reply. List the Vault item names the watcher needs under `needs`. Check they exist with the
 `vault_list` tool (names only). If one is missing, tell the user the exact name to add with
-`vyre vault put <name>` and stop there. You never see or handle the value yourself.
+`vyre vault put <name>` and stop there. You never see or handle the value yourself. A public
+source needs nothing: leave `needs` out.
 
-## 3. Write two files in `~/.vyre/watchers/<name>/`
+## 3. Write two files in the watchers folder
 
-Name the watcher `<project>-<thing>`, kebab-case: `harlow-invoices`.
+Call the `watchers_list` tool first. It is an MCP tool, not a shell command: Claude Code names
+it `mcp__plugin_vyre_vyre__watchers_list` (load it with ToolSearch if it is deferred). Its `dir`
+is the watchers folder on this machine. Write into `<dir>/<name>/` and nowhere else; the folder
+moves with `VYRE_HOME`, so never guess it. Name the watcher `<project>-<thing>`, kebab-case:
+`harlow-invoices`.
 
-`watcher.json`
+`watcher.json`: exactly these keys, nothing else.
 
 ```json
 {
@@ -43,6 +66,9 @@ Name the watcher `<project>-<thing>`, kebab-case: `harlow-invoices`.
   "emits": "invoice.seen"
 }
 ```
+
+`name` must match the folder. `emits` names the kind of item (`noun.past-verb`). Optional:
+`timeout` in seconds (default 60, at most 300).
 
 `watch.js`
 
@@ -63,24 +89,43 @@ export default async function watch({ vault, since, emit, log }) {
 
 Rules for `watch.js`:
 
-- One default export, `async function watch({ vault, since, emit, log })`. Plain ES module; Node
-  built-ins and global `fetch` only, no npm installs.
-- `since` is the cursor the runtime saved last time (`null` on the first run). Fetch only newer
-  items. Every emitted item needs a stable `id` so a repeat is never filed twice.
-- `emit` takes small plain objects: `id`, `at`, `title`, and whatever the user will want to
-  see. Never secrets, never whole documents; link to them.
-- Throw on failure. Do not catch and hide errors, do not retry by hand, do not sleep.
+- One default export, `async function watch({ vault, since, emit, log, hook })`. Plain ES
+  module; Node built-ins and global `fetch` only, no npm installs. It runs in a sandbox with no
+  environment variables, read access to its own folder only, and no writes or child processes.
+- `since` is `null` on the first run. After each successful run it becomes whatever `watch`
+  returned, or, if it returned nothing, the time that run started (ms since the epoch). Return
+  the source's own cursor (a last id, a page token) when it has one.
+- Every item needs a stable `id` from the source, so a repeat is never filed twice. Emitting
+  everything currently visible each run is fine; the runtime files only ids it has not seen.
+- `emit` takes small plain objects (under 4 KB): `id`, `title`, `url`, `at` (a date string or
+  ms), and whatever the user will want to see. `about` (optional) names the person or
+  organisation an item concerns, so memory links it there. Never secrets, never whole
+  documents; link to them.
+- `hook` is the JSON body of the webhook call for a `"webhook"` watcher, and `null` otherwise.
+- `log(...)` one line of what each run read ("checked 30 stories, 2 match"), so a run with no
+  items still shows the source was reached. Throw on failure. Do not catch and hide errors, do
+  not retry by hand, do not sleep.
+- A run has 60 seconds by default. When one listing needs a request per entry, fetch them
+  together (`Promise.all`) rather than one after another.
 - Do not send, post or reply to anything. A watcher reads. Anything outbound goes through the
   user, and the Vyre rules will hold it.
 
 ## 4. Dry-run, show, then turn it on
 
-1. Run `watchers_test` with the watcher's name. It runs once with `since: null`, files nothing,
-   and returns the items it would have emitted.
-2. Show the user the first few items, one line each, and the schedule in words ("every 15
-   minutes").
-3. Only when they agree, call `watchers_create` to turn it on. Tell them `vyre watchers` lists
-   it, and `vyre watchers logs <name>` shows its runs.
+1. Run the `watchers_test` tool with the watcher's name. It runs once with `since: null`,
+   files nothing, and returns the items it would have emitted, with its logs. Do not run
+   `watch.js` yourself with `node`: only `watchers_test` runs it as it will really run,
+   sandboxed and with the vault. If it returns `problems` or an `error`, fix the files and run
+   it again. Zero items is a fine answer when nothing matches today; the logs show whether
+   the source was read. Never widen the filter past what the user asked for just to get items
+   (a SQLite watcher does not file Postgres posts); say nothing matches yet and carry on.
+2. Show the user the first few items, one line each, and the schedule in words (the result's
+   `every`, such as "every 15 minutes").
+3. Only when they agree, call `watchers_create` to turn it on, after `watchers_test` has
+   returned, never in the same batch of tool calls. It turns on exactly what was
+   dry-run: if you edit either file afterwards, dry-run again first. It runs once straight away,
+   then on the schedule. Tell them `vyre watchers` lists it, `vyre watchers items <name>` shows
+   what it filed, and `vyre watchers logs <name>` shows its runs.
 
 If the watcher tools are not available, the watcher runtime is not running on this machine.
-Write the two files anyway, say so plainly, and stop before any dry run.
+Say so plainly and show the two files in your reply. Do not write them to a guessed folder.
