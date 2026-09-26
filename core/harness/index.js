@@ -96,6 +96,8 @@ export default {
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent }) : null;
         const lessons = learned && typeof learned.text === "string" ? learned.text : "";
+        // A lesson broken last turn opens this one, ahead of memory.
+        const first = Boolean(learned && Array.isArray(learned.broke) && learned.broke.length);
         if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: lessons };
         const project = await projectOf(cwd);
         // An agent outside its projects gets no memory at all, not memory from elsewhere.
@@ -104,7 +106,7 @@ export default {
         const project_cwds = folders || (cwd ? [cwd] : undefined);
         const facts = await ask("memory.relevant", { text: prompt, project_cwds, limit: 5 });
         const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
-        return { text: [memory, lessons].filter(Boolean).join("\n\n") };
+        return { text: (first ? [lessons, memory] : [memory, lessons]).filter(Boolean).join("\n\n") };
       },
     });
 

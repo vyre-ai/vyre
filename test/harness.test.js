@@ -120,6 +120,24 @@ test("hooks: with vyred down, the accepted lessons still hold, from the snapshot
   assert.match(back.reason, /Lesson 2: .*src\/a\.js but not CHANGELOG\.md/);
 });
 
+test("hooks: with vyred down and lessons.json deleted, the lessons still hold, read from vyre.db", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" })).data.id, 1);
+  await d.stop();
+  fs.rmSync(path.join(root, "lessons.json"));
+  const env = { VYRE_HOME: root };
+  const w = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", tool_name: "Write",
+    tool_input: { file_path: "/w/harlow-site/a.md", content: "Harlow \u2014 Legal" } }, env);
+  assert.equal(JSON.parse(w.out).hookSpecificOutput.permissionDecision, "deny");
+  const g = await hook("rules", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", tool_name: "Bash",
+    tool_input: { command: `echo '{}' > ${root}/lessons.json` } }, env);
+  assert.equal(JSON.parse(g.out).hookSpecificOutput.permissionDecision, "ask", "rewriting the snapshot is asked, offline too");
+  const back = await hook("stop", { session_id: "s1", prompt_id: "p1", cwd: "/w/harlow-site", hook_event_name: "Stop", stop_hook_active: false,
+    last_assistant_message: "Sure \u2014 here it is" }, env);
+  assert.equal(JSON.parse(back.out).decision, "block");
+});
+
 test("mcp: initialize, list and call over stdio; harness tools are not offered", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });

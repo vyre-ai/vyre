@@ -5,14 +5,19 @@
 // So Learning keeps a snapshot of the accepted lessons in the home (lessons.json, mode 0600),
 // rewritten whenever one changes, and the hooks fall back to it when vyred does not answer.
 //
-// Offline is a smaller world: no Projects, so only lessons scoped to everyone (or to this
-// agent) apply; no store, so the thread's turn (its prompt_id, how often Stop sent it back, the
-// files it changed and the commands it ran) lives in a small file per session under
-// learn-offline/. What happened offline (caught, broken) is appended to learn-offline/log.jsonl,
-// and the learn module counts it the next time vyred starts, escalation included.
+// Offline is a smaller world, but a complete one: no Projects, so each project lesson carries its
+// project's folders in the snapshot and applies when cwd is in one (the longest match, as
+// projects.of decides); agent lessons match VYRE_AGENT. When lessons.json is missing or cannot be
+// read, the hook reads the active lessons from vyre.db instead, read-only, so deleting the file
+// does not switch the lessons off. No store to write, so the thread's turn (its prompt_id, how
+// often Stop sent it back, the files it changed and the commands it ran) lives in a small file
+// per session under learn-offline/. What happened offline (caught, broken) is appended to
+// learn-offline/log.jsonl, and the learn module counts it the next time vyred starts,
+// escalation included.
 
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { atStop, atTool, weakens, sentBack, held, MAX_BLOCKS } from "./checks.js";
 
 export const SNAPSHOT = "lessons.json";
@@ -32,30 +37,97 @@ function writePrivate(file, text) {
 }
 
 /**
- * Save the accepted lessons for the hooks to use when vyred is down. Only what a check needs.
+ * Save the accepted lessons for the hooks to use when vyred is down. Only what a check needs, and
+ * for a project lesson its project's slug and folders. Returns the text written, which vyred
+ * hashes to notice a change it did not make.
  * @param {string} root the Vyre home
  * @param {any[]} lessons active lessons, in the learn module's shape
+ * @param {Record<number, { project: string, folders: string[] }>} [projects] by lesson id
+ * @returns {string}
  */
-export function writeSnapshot(root, lessons) {
-  const keep = lessons.filter(l => l.status === "active").map(({ id, rule, level, scope, check }) => ({ id, rule, level, scope, check }));
-  writePrivate(path.join(root, SNAPSHOT), JSON.stringify({ version: 1, at: Date.now(), lessons: keep }, null, 2) + "\n");
+export function writeSnapshot(root, lessons, projects = {}) {
+  const keep = lessons.filter(l => l.status === "active").map(({ id, rule, level, scope, check }) => ({ id, rule, level, scope, check, ...(projects[id] || {}) }));
+  const text = JSON.stringify({ version: 2, at: Date.now(), lessons: keep }, null, 2) + "\n";
+  writePrivate(path.join(root, SNAPSHOT), text);
+  return text;
 }
 
-/** The snapshot's lessons that apply with no Projects to ask: everyone's, and this agent's. */
-export function readSnapshot(root, agent) {
+/**
+ * Every active lesson the hooks can know of with vyred down: the snapshot's, or when it is missing
+ * or unreadable, the store's. Never throws.
+ * @param {string} root
+ * @returns {any[]}
+ */
+export function allLessons(root) {
   try {
     const s = JSON.parse(fs.readFileSync(path.join(root, SNAPSHOT), "utf8"));
-    const all = Array.isArray(s.lessons) ? s.lessons : [];
-    return all.filter(l => l && l.check && (l.scope === "all" || (agent && l.scope && l.scope.agent === agent)));
-  } catch { return []; }
+    if (s && Array.isArray(s.lessons)) return s.lessons.filter(l => l && typeof l === "object");
+  } catch {}
+  return fromStore(root);
+}
+
+/**
+ * The active lessons from vyre.db, opened read-only with a short busy timeout, and project folders
+ * from Projects' own table when it has one. node:sqlite is loaded only here, so a hook with a
+ * snapshot never pays for it. [] when there is no store or it cannot be read.
+ * @param {string} root
+ */
+export function fromStore(root) {
+  const file = path.join(root, "vyre.db");
+  if (!fs.existsSync(file)) return [];
+  let db;
+  try {
+    const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
+    db = new DatabaseSync(file, { readOnly: true, timeout: 200 });
+    const rows = db.prepare("SELECT id, rule, level, scope, check_json FROM learn_lessons WHERE status = 'active' AND check_json IS NOT NULL ORDER BY id").all();
+    let projects = [];
+    try { projects = db.prepare("SELECT slug, name, home, spec FROM projects_projects").all(); } catch {}
+    return rows.map(r => {
+      const l = { id: Number(r.id), rule: String(r.rule), level: String(r.level), scope: JSON.parse(String(r.scope)), check: JSON.parse(String(r.check_json)) };
+      const v = l.scope && l.scope.project;
+      if (!v) return l;
+      for (const p of projects) {
+        let folders = [String(p.home)];
+        try { const spec = JSON.parse(String(p.spec)); if (Array.isArray(spec.workspaces) && spec.workspaces.length) folders = spec.workspaces.map(String); } catch {}
+        if (v === p.slug || v === p.name || v === p.home || folders.includes(v)) return { ...l, project: String(p.slug), folders };
+      }
+      return l;
+    });
+  } catch { return []; } finally { try { db && db.close(); } catch {} }
+}
+
+/** A folder as Projects stores it: real path when it exists. */
+const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+
+/**
+ * The lessons with a check that apply here, with no Projects to ask: everyone's, this agent's,
+ * and the project's whose folder holds cwd (the longest match wins, as projects.of decides).
+ * @param {string} root @param {string} [agent] @param {string} [cwd]
+ */
+export function readSnapshot(root, agent, cwd) {
+  return applicable(allLessons(root), agent, cwd);
+}
+
+/** @param {any[]} all @param {string} [agent] @param {string} [cwd] */
+function applicable(all, agent, cwd) {
+  let project = null, len = -1;
+  if (cwd) {
+    const here = real(cwd);
+    for (const l of all) if (l.project && Array.isArray(l.folders)) for (const f of l.folders) {
+      if ((here === f || here.startsWith(f + path.sep)) && f.length > len) { project = l.project; len = f.length; }
+    }
+  }
+  return all.filter(l => l.check && (l.scope === "all" || (agent && l.scope && l.scope.agent === agent) || (project && l.scope && l.scope.project && l.project === project)));
 }
 
 const dir = root => path.join(root, DIR);
 const stateFile = (root, session) => path.join(dir(root), String(session || "none").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100) + ".json");
 
 /**
- * This session's offline turn. A new prompt_id is a new turn: only the commands and when a file
- * last changed carry over. Order is `n`, a counter kept in this file, not the clock: an edit and
+ * This session's offline turn. A new prompt_id is a new turn: only the commands, when a file last
+ * changed and the block count carry over. The count starts over only at a Stop that Claude Code
+ * says is not a continuation (stop_hook_active false), so a turn at the cap cannot win more tries
+ * by showing another prompt_id. Order is `n`, a counter kept in this file, not the clock: an edit and
  * the next command often land in the same millisecond, and then a timestamp cannot say which came
  * first. `changed` is the `n` of the newest edit; commands with a higher `n` came after it.
  */
@@ -66,7 +138,7 @@ function load(root, session, prompt_id) {
     // A file written before the counter kept a timestamp in `changed`; it would outrank every `n`.
     s = Number.isInteger(saved.n) ? { ...s, ...saved } : { ...s, ...saved, n: 0, changed: 0 };
   } catch {}
-  if (prompt_id && s.prompt !== prompt_id) s = { ...s, prompt: prompt_id, blocks: 0, touched: [] };
+  if (prompt_id && s.prompt !== prompt_id) s = { ...s, prompt: prompt_id, touched: [] };
   return s;
 }
 function save(root, session, s) {
@@ -80,14 +152,17 @@ function log(root, entry) {
 
 /**
  * PreToolUse with vyred down: the lessons' verdict on a call, in the Harness rules' shape.
- * @param {{ root: string, session?: string, prompt_id?: string, agent?: string, tool: string, input: any }} call
+ * @param {{ root: string, session?: string, prompt_id?: string, agent?: string, cwd?: string, tool: string, input: any }} call
  * @returns {{ decision: "deny"|"ask"|null, reason?: string, lesson?: number }}
  */
-export function offlineTool({ root, session, prompt_id, agent, tool, input }) {
-  const lessons = readSnapshot(root, agent);
-  if (!lessons.length) return { decision: null };
-  const guard = weakens(tool, input || {});
+export function offlineTool({ root, session, prompt_id, agent, cwd, tool, input }) {
+  const all = allLessons(root);
+  if (!all.length) return { decision: null };
+  // The guards hold wherever any lesson is active, as online.
+  const guard = weakens(tool, input || {}, { home: root, cwd });
   if (guard) return { decision: "ask", reason: `${guard} Vyre asks the user first.` };
+  const lessons = applicable(all, agent, cwd);
+  if (!lessons.length) return { decision: null };
   const s = load(root, session, prompt_id);
   // An entry from before `n` existed has none, and so never counts: at worst the tests run again.
   const ran = s.ran.filter(r => Number.isInteger(r.n) && r.n > s.changed).map(r => r.command);
@@ -112,7 +187,7 @@ export function offlineTool({ root, session, prompt_id, agent, tool, input }) {
 export function offlineTouched({ root, session, prompt_id, agent, cwd, tool, input }) {
   const key = WRITERS[/** @type {keyof typeof WRITERS} */ (tool)];
   const raw = key && input ? input[key] : null;
-  if (!raw || typeof raw !== "string" || !readSnapshot(root, agent).length) return;
+  if (!raw || typeof raw !== "string" || !readSnapshot(root, agent, cwd).length) return;
   const s = load(root, session, prompt_id);
   const at = Date.now();
   s.touched.push({ path: path.resolve(cwd || process.cwd(), raw), at });
@@ -122,11 +197,11 @@ export function offlineTouched({ root, session, prompt_id, agent, cwd, tool, inp
 
 /**
  * Stop with vyred down: send the turn back when it breaks a lesson, at most MAX_BLOCKS times.
- * @param {{ root: string, session?: string, prompt_id?: string, agent?: string, text?: string, stop_hook_active?: boolean }} turn
+ * @param {{ root: string, session?: string, prompt_id?: string, agent?: string, cwd?: string, text?: string, stop_hook_active?: boolean }} turn
  * @returns {{ decision: "block", reason: string } | { decision: null }}
  */
-export function offlineStop({ root, session, prompt_id, agent, text, stop_hook_active }) {
-  const lessons = readSnapshot(root, agent);
+export function offlineStop({ root, session, prompt_id, agent, cwd, text, stop_hook_active }) {
+  const lessons = readSnapshot(root, agent, cwd);
   if (!lessons.length) return { decision: null };
   const s = load(root, session, prompt_id);
   if (!stop_hook_active) s.blocks = 0;

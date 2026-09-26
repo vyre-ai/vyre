@@ -1,6 +1,8 @@
 // @ts-check
 // `vyre learn`: the lessons Vyre learned from the user, and the ones it proposed. Adding,
 // accepting, retiring and re-levelling a lesson are the user's calls, so they live here too.
+// Raising a level is learn.edit, which anyone may do; lowering one is learn.relax, which needs
+// the user (the CLI proves presence when vyred asks for it).
 
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -63,7 +65,11 @@ export default {
       const id = idOf(rest, "vyre learn level <id> <remind|ask|block>");
       if (id === null) return 1;
       if (!LEVELS.includes(rest[1])) { out("  vyre learn level <id> <remind|ask|block>"); return 1; }
-      return one("learn.edit", { id, level: rest[1] }, "changed lesson");
+      const all = await call("learn.lessons", { status: "all" });
+      if (all.error) return fail(all);
+      const now = all.data.find(l => l.id === id);
+      const lower = now && LEVELS.indexOf(rest[1]) < LEVELS.indexOf(now.level);
+      return one(lower ? "learn.relax" : "learn.edit", { id, level: rest[1] }, "changed lesson");
     }
     out(`  vyre learn ${sub}: ${dim("add, accept, retire or level")}`);
     return 1;

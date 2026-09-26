@@ -6,8 +6,8 @@
 // When vyred is not running, every piece prints nothing and exits 0, so Claude Code behaves
 // exactly as without Vyre, with two exceptions: the security floor, and the lessons the user
 // accepted. Both are pure and local, so they still run in-process when vyred is down (the
-// lessons from the snapshot Learning keeps in the home). Neither is switched off by stopping a
-// daemon.
+// lessons from the snapshot Learning keeps in the home, or read-only from vyre.db when that file
+// is gone). Neither is switched off by stopping a daemon.
 
 import { call } from "../../core/daemon/client.js";
 import { rules } from "../../core/harness/rules.js";
@@ -38,7 +38,7 @@ async function main() {
   // key with it (VYRE_AGENT_KEY), so vyred can tell that claim from a made-up one.
   const opts = { caller: base.agent ? `harness:agent:${base.agent}` : "harness", timeout: 3000 };
   const down = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
-  const offline = { root: home(), session: h.session_id, prompt_id: h.prompt_id, agent: base.agent };
+  const offline = { root: home(), session: h.session_id, prompt_id: h.prompt_id, agent: base.agent, cwd: h.cwd };
 
   if (piece === "brief") {
     const project = process.env.VYRE_PROJECT || undefined;
@@ -66,7 +66,7 @@ async function main() {
     if (v && v.decision) answer(EVENT.rules, { permissionDecision: v.decision, permissionDecisionReason: v.reason || "Vyre security floor" });
   } else if (piece === "learn") {
     const r = await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {} }, opts);
-    if (down(r)) offlineTouched({ ...offline, cwd: h.cwd, tool: String(h.tool_name || ""), input: h.tool_input || {} });
+    if (down(r)) offlineTouched({ ...offline, tool: String(h.tool_name || ""), input: h.tool_input || {} });
   } else if (piece === "stop") {
     const text = typeof h.last_assistant_message === "string" ? h.last_assistant_message : undefined;
     const r = await call("harness.stop", { ...base, text, stop_hook_active: Boolean(h.stop_hook_active) }, opts);

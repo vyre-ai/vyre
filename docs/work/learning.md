@@ -69,6 +69,16 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
   test run in the same millisecond as the edit before it did not count. Now a counter per session
   file; a frozen-clock test covers it. Not suite interference: it failed alone too.
 
+- Enforcement that cannot be dodged (ADR 0007, decision 11): project scope fixed (it never
+  applied), accept by reply in `learn.signal`, `learn.accept|retire|relax` owner-only with a
+  presence declaration, `learn.edit` tightens only, `max_level` and `pinned`, guards against
+  every route in the ADR, offline project lessons and a read-only `vyre.db` fallback, the
+  snapshot hash and `lesson.tampered`, and a visible break after the cap (next prompt opens with
+  it, the brief counts the week, no reset by a new `prompt_id`). 15 new tests; `npm test` green.
+- `requires` stays empty: the loader treats a missing required module as fatal, and Harness
+  calls Learning, so requiring `harness` or `projects` would stop Learning with them. Each call
+  already degrades to less when the module is absent.
+
 ## Doing
 - Nothing; waiting for review.
 
@@ -80,9 +90,15 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
    Recall exposes it.
 4. Online, `learn.check` still orders commands against `harness.touched` by millisecond
    timestamps from two modules; a shared sequence (or Recall's seq) would remove the tie.
-5. Offline, project-scoped lessons do not apply; the snapshot could carry each project's folders.
+5. Offline, nested projects: the snapshot carries only the folders of projects that have lessons,
+   so in an inner project with none, the outer project's lessons apply offline (online they do
+   not). Carry every project's folders if this matters.
 
 ## Needs from others
+- security: accept by reply is a deliberate path around the `learn.accept` tool (ADR 0007); add
+  `learn.relax` to the presence floor list; make the Registry honour the `presence` declaration.
+  The guards here are asks; the floor's denies for `vyre learn accept|retire`, raw socket
+  clients and home internals are yours.
 - gate-chat: keep `gate.released {id, edited, thread, agent}` and `gate.get {id} -> {draft, final, diff}`
   stable (agreed); message Learning before a field changes.
 - deck: a lessons panel over `learn.lessons`, `learn.accept`, `learn.edit`, `learn.retire`.
@@ -105,3 +121,21 @@ change code") blocks a turn that edited code without it. Tested with a fake tran
 - Files in the home: `lessons.json` (accepted lessons, `{version, at, lessons: [{id, rule, level,
   scope, check}]}`, 0600) and `learn-offline/` (per-session turn state and `log.jsonl`). Only
   Learning and the hooks read them.
+- `lessons.json` is version 2: a project lesson adds `project` (slug) and `folders`. Version 1
+  still reads. With the file missing or unreadable the hook reads `learn_lessons` (and
+  `projects_projects` for folders) from `vyre.db`, read-only.
+- `scope.project` holds the project's slug; names, homes and folders are accepted and stored as
+  the slug when Projects knows them.
+- `learn.accept`, `learn.retire`: `callers: ["cli","local","deck","capsule"]` and `presence:
+  { summary }`. Claude is never told to call them; a thread accepts by a plain yes, declines by
+  a plain no.
+- New tool `learn.relax {id, rule?, level?, scope?, when?, check?, max_level?, pinned?}`, same
+  callers and presence. `learn.edit` takes the same fields and refuses any that loosen, naming
+  `learn.relax`.
+- A lesson gains `max_level` (null means block) and `pinned`. New tables and columns:
+  `learn_state`, `learn_turns.asked`. `learn_signals` kinds `broken` and `tampered`.
+- `lesson.broken` payload is `{lesson, session, level, stage}` (stage `tool`, `stop`, `prompt`,
+  `offline`). `lesson.retired` gains `declined: true` for a declined proposal. New event
+  `lesson.tampered {}`.
+- `learn.signal` returns `broke` (lesson ids); `harness.enrich` puts the lessons ahead of memory
+  when it is not empty. `weakens(tool, input, {home, cwd})` takes where it runs.

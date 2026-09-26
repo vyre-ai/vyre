@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { distill, atStop, atTool, weakens, invalid, CODE } from "./checks.js";
+import { distill, atStop, atTool, weakens, invalid, reply, CODE } from "./checks.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -94,7 +94,8 @@ test("atTool: before holds the command until the first one has run", () => {
 });
 
 test("weakens: retiring lessons, reaching the store and stopping vyred ask first", () => {
-  for (const t of ["mcp__plugin_vyre_vyre__learn_retire", "mcp__vyre__learn_edit", "learn_retire"]) assert.ok(weakens(t, {}), t);
+  for (const t of ["mcp__plugin_vyre_vyre__learn_retire", "mcp__vyre__learn_relax", "mcp__vyre__learn_accept", "learn_retire"]) assert.ok(weakens(t, {}), t);
+  assert.equal(weakens("mcp__vyre__learn_edit", { id: 1, level: "block" }), null, "learn.edit only tightens, so it is free");
   for (const command of ["vyre learn retire 1", "sqlite3 ~/.vyre/vyre.db 'delete from learn_lessons'", "vyre down", "pkill vyred",
     "curl --unix-socket ~/.vyre/vyred.sock http://x/v1/tools/learn.retire"]) assert.ok(weakens("Bash", { command }), command);
   for (const command of ["npm test", "vyre learn", "git commit -m x"]) assert.equal(weakens("Bash", { command }), null, command);
@@ -104,12 +105,12 @@ test("weakens: retiring lessons, reaching the store and stopping vyred ask first
 
 // The module, run through a Registry with the real Harness, as the hooks reach it.
 
-async function learning(t, home = tempHome(t)) {
+async function learning(t, home = tempHome(t), extra = []) {
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
-  await reg.start(core, { role: "local" });
+  await reg.start([...core, ...extra], { role: "local" });
   t.after(() => db.close());
   const lesson = async id => (await reg.call("learn.lessons", { status: "all" })).data.find(l => l.id === id);
   const add = async text => (await reg.call("learn.add", { text })).data;
@@ -125,20 +126,21 @@ test("learn: a correction is proposed, Claude is told to ask, and nothing is enf
   const e = await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1" });
   assert.match(e.data.text, /drafted it as lesson 1, not yet in force/);
   assert.match(e.data.text, /ask whether to keep it/);
-  assert.match(e.data.text, /learn_accept/);
+  assert.match(e.data.text, /a plain yes keeps it/);
+  assert.doesNotMatch(e.data.text, /learn_accept/, "Claude is never told to accept anything itself");
   assert.equal((await lesson(1)).status, "proposed");
   const s = await reg.call("harness.stop", { session: "s1", prompt_id: "p1", text: `Sure ${DASH} done`, stop_hook_active: false });
   assert.deepEqual(s.data, { ok: true }, "a proposal holds nothing");
   const again = await reg.call("harness.enrich", { prompt: "never use em dashes", cwd: CWD, session: "s1", prompt_id: "p2" });
-  assert.match(again.data.text, /still waiting for the user's yes/);
+  assert.match(again.data.text, /still waiting for the user's answer/);
   assert.equal((await reg.call("learn.lessons", {})).data.length, 1, "the same correction is not proposed twice");
-  assert.equal((await reg.call("learn.accept", { id: 1 })).data.status, "active");
+  assert.equal((await reg.call("learn.accept", { id: 1 }, "cli")).data.status, "active");
 });
 
 test("learn: a broken reply is sent back twice, then ends broken, and the next prompt hears about it", async t => {
   const { reg, lesson, of } = await learning(t);
   await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1" });
-  await reg.call("learn.accept", { id: 1 });
+  await reg.call("learn.accept", { id: 1 }, "cli");
   await reg.call("harness.enrich", { prompt: "write the intro for Dana", cwd: CWD, session: "s1", prompt_id: "p2" });
   const turn = { session: "s1", prompt_id: "p2", cwd: CWD, text: `Here is the intro ${DASH} short` };
   const b1 = await reg.call("harness.stop", { ...turn, stop_hook_active: false });
@@ -154,8 +156,8 @@ test("learn: a broken reply is sent back twice, then ends broken, and the next p
   assert.equal(of("lesson.broken").length, 1);
   assert.equal(of("lesson.broken")[0].payload.lesson, 1);
   const next = await reg.call("harness.enrich", { prompt: "now the footer", cwd: CWD, session: "s1", prompt_id: "p3" });
-  assert.match(next.data.text, /Last turn broke this lesson/);
-  assert.match(next.data.text, /- Never use em dashes\./);
+  assert.match(next.data.text, /^Vyre lessons\.\nLast turn broke this lesson/, "the next prompt opens with it");
+  assert.match(next.data.text, /- Lesson 1: Never use em dashes\./);
   const after = await reg.call("harness.enrich", { prompt: "and the header", cwd: CWD, session: "s1", prompt_id: "p4" });
   assert.doesNotMatch(after.data.text, /Last turn broke/, "only the turn after hears it");
 });
@@ -272,7 +274,7 @@ test("learn: add, retire and escalation rewrite the offline snapshot", async t =
   await reg.call("learn.add", { text: "never use en dashes", level: "remind" });
   assert.deepEqual(snapshot(home).map(l => [l.id, l.level]), [[1, "block"], [2, "remind"]]);
   assert.equal(fs.statSync(path.join(home, "lessons.json")).mode & 0o777, 0o600);
-  await reg.call("learn.retire", { id: 1 });
+  await reg.call("learn.retire", { id: 1 }, "cli");
   assert.deepEqual(snapshot(home).map(l => l.id), [2]);
   for (const p of ["p1", "p2"]) {
     await reg.call("harness.enrich", { prompt: "write it", cwd: CWD, session: "s1", prompt_id: p });
@@ -334,4 +336,250 @@ test("learn: a draft the user edited to take out every em dash proposes a remind
   await reg.call("gate.fire", { id: 7 });
   await new Promise(r => setTimeout(r, 20));
   assert.equal((await reg.call("learn.lessons", { status: "all" })).data.length, 1, "the same edit again proposes nothing new");
+});
+
+// Enforcement that cannot be dodged (ADR 0007, decision 11).
+
+/** A stand-in for Projects: one project, harlow-site, owning /w/harlow-site. */
+function fakeProjects(home) {
+  const src = `const P = { slug: "harlow-site", name: "Harlow Site", home: "/w/harlow-site", workspaces: ["/w/harlow-site"] };
+  export default { async start(ctx) {
+    ctx.tool("projects.of", { run: async ({ cwd }) => cwd === P.home || String(cwd).startsWith(P.home + "/") ? { slug: P.slug, name: P.name, home: P.home, folders: P.workspaces } : null });
+    ctx.tool("projects.list", { run: async () => ({ projects: [P], problems: [] }) });
+    return {};
+  } };`;
+  writeModule(path.join(home, "mods"), "projects", { does: { tools: ["projects.of", "projects.list"] } }, src);
+  return discover([path.join(home, "mods")]);
+}
+
+test("learn: a project lesson applies in that project's folders and nowhere else; its scope holds the slug", async t => {
+  const home = tempHome(t);
+  const { reg, db } = await learning(t, home, fakeProjects(home));
+  const l = (await reg.call("learn.add", { text: "never use em dashes", scope: { project: "Harlow Site" } })).data;
+  assert.deepEqual(l.scope, { project: "harlow-site" }, "a name given is stored as the slug");
+  const write = cwd => reg.call("harness.rules", { tool_name: "Write", tool_input: { file_path: "a.md", content: `a ${DASH} b` }, cwd, session: "s1" });
+  assert.equal((await write("/w/harlow-site/src")).data.decision, "deny", "in the project's folder");
+  assert.equal((await write("/w/other")).data.decision, null, "not elsewhere");
+  // A lesson written before the slug rule, holding the project's name, still applies.
+  db.prepare("UPDATE learn_lessons SET scope = ? WHERE id = ?").run(JSON.stringify({ project: "Harlow Site" }), l.id);
+  assert.equal((await write("/w/harlow-site")).data.decision, "deny", "a legacy value still applies");
+  const brief = await reg.call("learn.check", { stage: "brief", cwd: "/w/other" }, "module:harness");
+  assert.equal(brief.data.text, "", "the brief elsewhere leaves it out");
+});
+
+test("learn: accept by reply: a plain yes to what the thread was told accepts it, with no tool call", async t => {
+  const { reg, lesson, of } = await learning(t);
+  await reg.call("harness.enrich", { prompt: "never use em dashes in anything you write", cwd: CWD, session: "s1", prompt_id: "p1" });
+  const y = await reg.call("harness.enrich", { prompt: "Yes, keep it.", cwd: CWD, session: "s1", prompt_id: "p2" });
+  assert.match(y.data.text, /The user said yes: lesson 1 is in force now/);
+  const l = await lesson(1);
+  assert.equal(l.status, "active");
+  assert.equal(l.source.accepted, "reply");
+  assert.equal(of("lesson.learned").length, 1);
+  assert.equal((await reg.call("harness.stop", { session: "s1", prompt_id: "p2", text: `a ${DASH} b`, stop_hook_active: false })).data.decision, "block", "in force at once");
+});
+
+test("learn: a plain no declines; anything else leaves the proposal waiting; another thread's yes accepts nothing", async t => {
+  const { reg, lesson } = await learning(t);
+  const say = (prompt, session = "s1", prompt_id = prompt) => reg.call("harness.enrich", { prompt, cwd: CWD, session, prompt_id });
+  await say("never use em dashes in anything you write");
+  await say("yes", "s2");
+  assert.equal((await lesson(1)).status, "proposed", "s2 was never told about it");
+  await say("no, use semicolons instead");
+  assert.equal((await lesson(1)).status, "proposed", "not a plain no");
+  await say("yes");
+  assert.equal((await lesson(1)).status, "proposed", "the window was the next prompt only");
+  await say("sure, keep lesson 1");
+  assert.equal((await lesson(1)).status, "active", "a lesson named by number that this thread was told about");
+  await say("always run the tests before you commit");
+  const n = await say("No thanks");
+  assert.match(n.data.text, /The user said no: lesson 2/);
+  const two = await lesson(2);
+  assert.deepEqual([two.status, two.source.declined], ["retired", true]);
+  for (const s of ["yes", "y", "keep it", "yes keep lesson 7", "sure", "do it", "Yes!"]) assert.equal(reply(s)?.yes, true, s);
+  for (const s of ["no", "don't", "drop it", "no thanks"]) assert.equal(reply(s)?.yes, false, s);
+  for (const s of ["yes but use the other logo", "no idea", "what?", "keep going"]) assert.equal(reply(s), null, s);
+});
+
+test("learn: accept, retire and relax refuse MCP, agents, hooks and unknown callers, and declare presence", async t => {
+  const { reg, add } = await learning(t);
+  await add("never use em dashes");
+  await reg.call("harness.enrich", { prompt: "always run the tests before you commit", cwd: CWD, session: "s1", prompt_id: "p1" });
+  for (const caller of ["mcp", "mcp:agent:kit", "harness", "unknown"]) {
+    assert.equal((await reg.call("learn.accept", { id: 2 }, caller)).error.code, "denied", caller);
+    assert.equal((await reg.call("learn.retire", { id: 1 }, caller)).error.code, "denied", caller);
+    assert.equal((await reg.call("learn.relax", { id: 1, level: "remind" }, caller)).error.code, "denied", caller);
+  }
+  for (const caller of ["cli", "local", "deck", "capsule"]) assert.ok((await reg.call("learn.lessons", {}, caller)).data);
+  assert.equal((await reg.call("learn.relax", { id: 1, level: "remind" }, "deck")).data.level, "remind");
+
+  // Presence, as ADR 0004's registry will read it: the summary names the lesson.
+  const defs = {};
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  const { migrate } = await import("../store/index.js");
+  const mod = (await import("./index.js")).default;
+  await mod.start({ store: { db, migrate: steps => migrate(db, "learn", steps) }, events: new Events(db), call: async () => ({ error: { code: "no_such_tool" } }),
+    log: () => {}, tool: (n, d) => { defs[n] = d; } });
+  db.prepare("INSERT INTO learn_lessons (scope, when_text, rule, level, status, source, created, updated) VALUES ('\"all\"','always','Never use em dashes.','block','active','{}',1,1)").run();
+  for (const n of ["learn.accept", "learn.retire", "learn.relax"]) {
+    assert.deepEqual(defs[n].callers, ["cli", "local", "deck", "capsule"], n);
+    assert.match(await defs[n].presence.summary({ id: 1, level: "remind" }), /lesson 1: "Never use em dashes\."/, n);
+  }
+  assert.match(defs["learn.relax"].presence.summary({ id: 1, level: "remind" }), /lowers the level from block to remind/);
+  assert.equal(defs["learn.edit"].callers, undefined, "tightening is free for any caller");
+});
+
+test("learn: learn.edit refuses every weakening and names learn.relax; tightening is free", async t => {
+  const { reg, add, lesson } = await learning(t);
+  await add("never use em dashes");
+  await reg.call("learn.add", { text: "from now on sign emails as Harlow Legal", level: "ask", when: "email" });
+  const edit = (change, caller = "mcp") => reg.call("learn.edit", { id: 1, ...change }, caller);
+  for (const change of [{ level: "ask" }, { scope: { project: "harlow-site" } }, { scope: { agent: "kit" } }, { check: null },
+    { check: { kind: "text", pattern: "x", label: "x" } }, { when: "reply" }, { max_level: "ask" }, { pinned: true }, { rule: "Em dashes are fine." }]) {
+    const r = await edit(change);
+    assert.equal(r.error?.code, "failed", JSON.stringify(change));
+    assert.match(r.error.message, /learn\.relax/, JSON.stringify(change));
+  }
+  assert.deepEqual([(await lesson(1)).level, (await lesson(1)).check.kind], ["block", "text"], "nothing changed");
+  assert.equal((await edit({ level: "block", scope: "all", when: "always", max_level: "block", pinned: false })).data.level, "block", "the same or stricter");
+  const two = (change) => reg.call("learn.edit", { id: 2, ...change }, "mcp");
+  assert.equal((await two({ level: "block" })).data.level, "block", "raised");
+  assert.equal((await two({ when: "always" })).data.when, "always", "widened to always");
+  assert.ok((await two({ check: { kind: "text", pattern: "Regards", label: "Regards" } })).data.check, "a check added where there was none");
+  assert.equal((await reg.call("learn.edit", { id: 1, scope: { agent: "kit" } }, "mcp")).error.code, "failed");
+  assert.deepEqual((await reg.call("learn.relax", { id: 1, scope: { agent: "kit" }, pinned: true }, "cli")).data.scope, { agent: "kit" });
+  assert.deepEqual((await reg.call("learn.edit", { id: 1, scope: "all", pinned: false }, "mcp")).data.scope, "all", "widening back is free");
+});
+
+test("learn: escalation respects pinned and max_level", async t => {
+  const { reg, lesson } = await learning(t);
+  await reg.call("learn.add", { text: "never use em dashes", level: "remind" });
+  await reg.call("learn.add", { text: "never use en dashes", level: "remind" });
+  await reg.call("learn.relax", { id: 1, pinned: true }, "cli");
+  await reg.call("learn.relax", { id: 2, max_level: "ask" }, "cli");
+  for (let i = 0; i < 5; i++) {
+    await reg.call("harness.enrich", { prompt: "write it", cwd: CWD, session: "s1", prompt_id: `p${i}` });
+    await reg.call("harness.stop", { session: "s1", prompt_id: `p${i}`, text: `a ${DASH} – b`, stop_hook_active: false });
+  }
+  const one = await lesson(1), two = await lesson(2);
+  assert.ok(one.broken >= 2 && two.broken >= 2);
+  assert.equal(one.level, "remind", "pinned: no automatic change");
+  assert.equal(two.level, "ask", "capped at max_level");
+});
+
+test("learn: after the cap the break is visible: payload, next prompt, and the week's brief; a new prompt_id mid-turn wins nothing", async t => {
+  const { reg, add, of } = await learning(t);
+  await add("never use em dashes");
+  await reg.call("harness.enrich", { prompt: "write the intro", cwd: CWD, session: "s1", prompt_id: "p1" });
+  const turn = { session: "s1", cwd: CWD, text: `a ${DASH} b` };
+  assert.equal((await reg.call("harness.stop", { ...turn, prompt_id: "p1", stop_hook_active: false })).data.decision, "block");
+  assert.equal((await reg.call("harness.stop", { ...turn, prompt_id: "p1", stop_hook_active: true })).data.decision, "block");
+  const forged = await reg.call("harness.stop", { ...turn, prompt_id: "p1-forged", stop_hook_active: true });
+  assert.deepEqual(forged.data, { ok: true }, "a different prompt_id in the same turn does not reset the count");
+  const broken = of("lesson.broken");
+  assert.equal(broken.length, 1);
+  assert.deepEqual(Object.keys(broken[0].payload).sort(), ["lesson", "level", "session", "stage"]);
+  assert.deepEqual(broken[0].payload, { lesson: 1, session: "s1", level: "block", stage: "stop" });
+  const b = (await reg.call("harness.brief", { cwd: CWD, session: "s2" })).data.text;
+  assert.match(b, /Lesson 1 was broken 1 time this week: Never use em dashes\./);
+  const next = await reg.call("harness.enrich", { prompt: "now the footer", cwd: CWD, session: "s1", prompt_id: "p2" });
+  assert.match(next.data.text, /^Vyre lessons\.\nLast turn broke this lesson/);
+});
+
+test("learn: guards ask at every level, online, even for a lesson scoped elsewhere", async t => {
+  const home = tempHome(t);
+  const { reg } = await learning(t, home, fakeProjects(home));
+  await reg.call("learn.add", { text: "never use em dashes", level: "remind", scope: { project: "harlow-site" } });
+  const rules = (tool_name, tool_input) => reg.call("harness.rules", { tool_name, tool_input, cwd: "/w/other", session: "s1" });
+  assert.equal((await rules("Write", { file_path: path.join(home, "lessons.json"), content: "{}" })).data.decision, "ask");
+  assert.equal((await rules("Bash", { command: "vyre call learn.retire '{\"id\":1}'" })).data.decision, "ask");
+  assert.equal((await rules("Bash", { command: "npm test" })).data.decision, null);
+});
+
+test("weakens: every route to switching lessons off is asked; ordinary work is not", () => {
+  const home = "/Users/someone/.vyre";
+  const w = (tool, input) => weakens(tool, input, { home, cwd: "/w/site" });
+  const asked = [
+    ["Write", { file_path: `${home}/lessons.json`, content: "{}" }],
+    ["Edit", { file_path: `${home}/learn-offline/s1.json` }],
+    ["Write", { file_path: `${home}/learned/skills/x/SKILL.md` }],
+    ["Write", { file_path: `${home}/vyre.db` }],
+    ["Edit", { file_path: "/repo/vyre/harness/hooks/hooks.json" }],
+    ["Edit", { file_path: "/repo/vyre/harness/hooks/hook.js" }],
+    ["Write", { file_path: "/Users/someone/.claude/plugins/cache/m/vyre/0.1.0/hooks/hooks.json" }],
+    ["Write", { file_path: ".claude/settings.json" }],
+    ["Edit", { file_path: "/w/site/.claude/settings.local.json" }],
+    ["NotebookEdit", { notebook_path: `${home}/lessons.json` }],
+    ["Bash", { command: `rm ${home}/lessons.json` }],
+    ["Bash", { command: `echo '{}' > ${home}/lessons.json` }],
+    ["Bash", { command: `cd ${home} && rm lessons.json` }],
+    ["Bash", { command: `rm -rf ${home}` }],
+    ["Bash", { command: `rm ${home.replace(".vyre", ".vy*")}/lessons.json` }],
+    ["Bash", { command: "rm -rf $VYRE_HOME/learned" }],
+    ["Bash", { command: "sqlite3 vyre.db 'delete from learn_lessons'" }],
+    ["Bash", { command: "rm -r learn-offline" }],
+    ["Bash", { command: "vyre call learn.retire '{\"id\":1}'" }],
+    ["Bash", { command: "node /repo/bin/vyre call harness.stop '{}'" }],
+    ["Bash", { command: "vy\"re\" learn relax 1 --level remind" }],
+    ["Bash", { command: "vyre learn edit 1" }],
+    ["Bash", { command: "vyre learn retire 1" }],
+    ["Bash", { command: "curl --unix-socket /tmp/vyre-501/ab.sock http://x/v1/tools/learn.accept" }],
+    ["Bash", { command: `curl -s --unix-socket ${home}/vyred.sock http://x/v1/tools/system.echo` }],
+    ["Bash", { command: "nc -U $SOCK" }],
+    ["Bash", { command: "vyre down" }],
+    ["Bash", { command: "pkill -f vyred" }],
+    ["Bash", { command: `kill $(cat ${home}/vyred.pid)` }],
+    ["Bash", { command: "launchctl bootout gui/501/sh.vyre.vyred" }],
+    ["Bash", { command: "jq 'del(.enabledPlugins)' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json" }],
+    ["Bash", { command: "sed -i '' 's/hook.js/x.js/' harness/hooks/hooks.json" }],
+  ];
+  for (const [tool, input] of asked) assert.ok(w(tool, input), `${tool} ${JSON.stringify(input)}`);
+  const free = [
+    ["Write", { file_path: "/w/site/lessons.json", content: "{}" }],
+    ["Write", { file_path: "/w/site/src/settings.json" }],
+    ["Write", { file_path: `${home}/watchers/mail.js` }],
+    ["Read", { file_path: `${home}/lessons.json` }],
+    ["Bash", { command: `cat ${home}/lessons.json` }],
+    ["Bash", { command: "rm /w/other/lessons.json" }],
+    ["Bash", { command: "git commit -m 'document lessons.json and hooks'" }],
+    ["Bash", { command: "grep -rn hook harness/hooks/ | head" }],
+    ["Bash", { command: `cp mail.js ${home}/watchers/` }],
+    ["Bash", { command: "curl --unix-socket /var/run/docker.sock http://x/info" }],
+    ["Bash", { command: "npm test && git push" }],
+    ["Bash", { command: "vyre learn" }],
+    ["Bash", { command: "vyre threads stop 5f0c" }],
+  ];
+  for (const [tool, input] of free) assert.equal(w(tool, input), null, `${tool} ${JSON.stringify(input)}`);
+});
+
+test("learn: a snapshot changed or removed while vyred was down is recorded as tampered and rewritten", async t => {
+  const first = await learning(t);
+  await first.add("never use em dashes");
+  const file = path.join(first.home, "lessons.json");
+  const good = fs.readFileSync(file, "utf8");
+  await first.reg.stop();
+  fs.writeFileSync(file, JSON.stringify({ version: 2, lessons: [] }));
+  const second = await learning(t, first.home);
+  assert.equal(second.of("lesson.tampered").length, 1);
+  assert.deepEqual(second.of("lesson.tampered")[0].payload, {});
+  const sig = second.db.prepare("SELECT kind, text, session, lesson FROM learn_signals WHERE kind = 'tampered'").all();
+  assert.deepEqual(sig.map(r => ({ ...r })), [{ kind: "tampered", text: null, session: null, lesson: null }], "no content kept");
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).lessons, JSON.parse(good).lessons, "rewritten");
+  await second.reg.stop();
+  fs.rmSync(file);
+  const third = await learning(t, first.home);
+  assert.equal(third.of("lesson.tampered").length, 2, "removed counts too");
+  await third.reg.stop();
+  const fourth = await learning(t, first.home);
+  assert.equal(fourth.of("lesson.tampered").length, 2, "an untouched file is not tampered");
+});
+
+test("learn: the snapshot carries each project lesson's slug and folders", async t => {
+  const home = tempHome(t);
+  const { reg } = await learning(t, home, fakeProjects(home));
+  await reg.call("learn.add", { text: "never use em dashes", scope: { project: "harlow-site" } });
+  const s = JSON.parse(fs.readFileSync(path.join(home, "lessons.json"), "utf8"));
+  assert.equal(s.version, 2);
+  assert.deepEqual([s.lessons[0].project, s.lessons[0].folders], ["harlow-site", ["/w/harlow-site"]]);
 });

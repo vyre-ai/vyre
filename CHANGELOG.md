@@ -4,6 +4,42 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Learning: enforcement that cannot be dodged (ADR 0007, decisions 8, 9, 11 and 12)
+
+- Project lessons now apply. `inScope` read `projects.of().project`, which does not exist, so a
+  lesson scoped to a project never held anywhere. `scope.project` holds the slug; a name, home or
+  folder (older lessons, or what a person typed) still matches and is stored as the slug.
+- Accept by reply. A proposal told to a thread is answered by the user's next prompt, read in
+  `learn.signal`: a plain yes ("yes", "keep it", "yes keep lesson 7", "sure", "do it") accepts it
+  inside Learning, a plain no ("no", "don't", "drop it", "no thanks") declines it (retired,
+  `source.declined`). Anything else leaves it waiting. Claude is no longer told to call
+  `learn_accept`; it is told it cannot.
+- `learn.accept`, `learn.retire` and the new `learn.relax` declare `presence` with a summary
+  naming the lesson, and take only `cli`, `local`, `deck` and `capsule` callers, so MCP, agents
+  and hooks are refused before the presence registry lands.
+- `learn.edit` only tightens. Lowering the level, narrowing or moving the scope, changing or
+  removing the check, narrowing `when`, lowering `max_level`, pinning or rewriting the rule is
+  refused with an error naming `learn.relax`. New columns `max_level` and `pinned`; escalation
+  stops at `max_level` and never moves a pinned lesson. `vyre learn level` lowers through
+  `learn.relax`.
+- Guards (`weakens()`), asked wherever any lesson is active, online and offline: writes or shell
+  commands reaching `lessons.json`, `learn-offline/`, `vyre.db`, the socket, `vyred.pid` or
+  `learned/` in the Vyre home (by path, `~`, `$HOME`, `$VYRE_HOME` or a glob), the Harness's
+  `hooks/`, Claude Code settings files, `vyre call learn.*|harness.*`, `vyre learn
+  retire|relax|edit|level|accept`, raw socket clients, and stopping vyred (`vyre down`, `pkill`,
+  `kill` by pid file, `launchctl`, `systemctl`). Read-only commands and other folders pass.
+- Offline is complete. `lessons.json` is version 2 and carries each project lesson's slug and
+  folders; the hook matches `cwd` by prefix (longest folder wins) and still reads version 1.
+  When the file is missing or unreadable the hook reads active lessons from `vyre.db`, read-only
+  with a 200 ms busy timeout (about 5 ms more per hook process, measured). vyred keeps the
+  snapshot's sha256 in `learn_state`; a file changed or removed while it was down is a `tampered`
+  signal (no content) and a `lesson.tampered {}` event, then rewritten.
+- After the cap. A turn can no longer reset its block count by showing another `prompt_id`: only
+  a real prompt or a Stop with `stop_hook_active` false starts it over, online and offline. The
+  next prompt in that thread opens with the broken lesson, ahead of memory; the next brief in
+  scope says "Lesson N was broken M times this week"; `lesson.broken` carries `{lesson, session,
+  level, stage}`.
+
 #### Link and the real Tailscale
 
 - `core/link/transport.js` ignored `VYRE_TAILSCALE_BIN` and ran the Mac's Tailscale app (or
