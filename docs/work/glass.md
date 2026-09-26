@@ -24,6 +24,27 @@ On the box stack, an agent's computer runs Chrome; the Deck at 1440 and 390 show
 person takes over, types and hands back; the file browser lists, previews, uploads and downloads
 in the agent's home and a box folder; secret paths are refused; everything is torn down after.
 
+## Done
+
+- ADR 0005 and this design.
+- `core/glass`, `deck/glass`, the Capsule entry, `/glass/:name` in the Deck.
+- computers additions: `computers.helper`, `computers.shield`, computerd `/fs` (sent to computers
+  for review).
+- Live on the box (26 Sep): Chrome in an agent's computer watched in the Deck at 1440 and 390, a
+  take-over with typing that arrived and a non-holder's input dropped, the private shield through
+  the API, files on the agent's computer and a box folder with preview, a one-use download and
+  uploads, `.env` and `.ssh` hidden. Frozen and unwatched: vyred idle at 0 CPU ticks in 30 s,
+  81 MB RSS; one viewer: about 0.3% for vyred and 1 to 1.5% for the computer; it froze again
+  about 75 s after the viewer left. Everything created for the run was removed.
+
+## Next
+
+- Presence enforced once security merges; a passkey step in the Deck.
+- Idle hand-back after 5 minutes, the 4-viewer cap, relay backpressure, dropping SetDesktopSize
+  and xvp, clipboard to the holder only while shielded (computers).
+- Vault remote fill; the private sign-in from the Deck checked live.
+- Chrome's `--no-sandbox` bar and the restore-pages bubble in the image.
+
 ## Needs from others
 
 - computers: the relay and image fixes in ADR 0005 decision 1; `computers.shield`;

@@ -27,6 +27,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a phone layout with touch gestures, drag and drop upload, and drag-out download. noVNC 1.7.0 is
   vendored under `deck/glass/vendor/novnc` (MPL 2.0, as separate files); Glass needs an RFB client
   in the browser and noVNC is the maintained one.
+- `computers.helper` (thaws without a screen slot) and `computers.shield` (the hands refuse reads
+  as well as input, hands-chrome drops its CDP connection, computerd answers 423 on its eyes and
+  hands and cuts CDP pipes), both module-only. computerd serves `/fs` for Glass behind the same
+  deny list, with a parity test. `capsule:<device>` is a person's surface.
+- Fixed in the first live run on the box: an invalid `PidMode` failed every container create;
+  the image lacked `vncpasswd`; a take-over expired at 90 s while the person typed (the relay now
+  pings every 30 s and renews on the holder's input and pongs); `.vnc/passwd` was browsable. The
+  image no longer sends the clipboard to viewers, refuses resizes and caps at 24 fps.
+- Capsule: "Open Glass" for an agent with a computer or a thread of one, and `glass <agent>` /
+  `glass box`, opening the paired box's `/glass/<target>` in the default browser.
 
 #### Link heartbeat
 
