@@ -330,3 +330,19 @@ test("onboard: finishing with an address hands over a one-time link to make the 
   assert.equal(again.url, null);
   assert.match(again.passkeyUrl, link);
 });
+
+test("onboard: tailscale lock reads Tailnet Lock and hands back this box's key and the commands, running only lock status", async t => {
+  const { root } = await box(t);
+  const dir = fs.mkdtempSync(path.join(root, "ts-"));
+  const bin = path.join(dir, "tailscale"), log = path.join(dir, "args.log");
+  const key = "tlpub:" + "b0".repeat(32);
+  fs.writeFileSync(bin, `#!/bin/sh\necho "$*" >> ${JSON.stringify(log)}\nif [ "$1" = lock ]; then echo '${JSON.stringify({ Enabled: false, PublicKey: key, NodeKeySigned: false })}'; else echo '{"BackendState":"Running","TUN":true}'; fi\n`, { mode: 0o755 });
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  const r = await call("onboard.tailscale", { action: "lock" }, { root });
+  assert.ok(r.data, JSON.stringify(r.error));
+  assert.deepEqual({ ...r.data, commands: undefined }, { enabled: false, nodeKey: key, key, trusted: null, signed: null, why: null, commands: undefined });
+  assert.equal(r.data.commands.mac, "tailscale lock");
+  assert.equal(r.data.commands.init, `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${key}`);
+  const lockCalls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("lock"));
+  assert.deepEqual([...new Set(lockCalls)], ["lock status --json"], "Vyre never runs lock init or sign");
+});
