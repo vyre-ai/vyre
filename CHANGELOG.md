@@ -299,6 +299,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Capsule
 
+- Local results, all on this Mac and offline (proposal: the Capsule replaces Spotlight, milestones
+  1 and 2, without taking ⌘Space). `lib/calc.js`: a calculator and unit converter with its own
+  parser (no eval), which returns nothing rather than guess. `lib/local.js`: apps from the
+  Applications folders, files and folders through `mdfind` (the query escaped, no shell, killed on
+  timeout), 45 System Settings panes with verified `x-apple.systempreferences:` ids and synonyms,
+  a scored `match()`, and `Frecency`, which stores result ids and six-letter prefixes only.
+  `swift/local.swift` (built to `bin/local`) and `lib/helper.js`: Contacts and the Dictionary in
+  one long-lived child. Contacts asks for permission only on the first contacts lookup.
 - Runs against the real switchboard, proven in a temp home with the fake Claude: the assistant and
   `@agent` through `agents.ask`, `@thread` through `threads.send` with the lease (taken only on the
   user's ⌘⏎, released on close, including a thread the Capsule started), asks through
