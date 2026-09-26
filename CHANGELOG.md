@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### docs-check and the generated reference pages (ADR 0019)
+
+- `scripts/docs-check` (`npm run docs:check`, and `test/docs-check.test.js` under `npm test`)
+  holds `docs/` to its contract: front matter on every published page, every page in
+  `docs/nav.json` or a redirect stub, relative links, `#anchors` and docs.vyre.run paths that
+  resolve, no links into unpublished folders, no em dash or section sign (in included files
+  too), no real names, secrets, non-example email or IP addresses, and reference pages that match
+  the code. It prints `path:line: problem` and exits 1 on any.
+- `scripts/gen-docs-reference` (`npm run docs:ref`) writes `docs/reference/{cli,tools,events,config,modules}.md`
+  from the CLI's command list, every `module.json`, every `ctx.tool` definition, the `emit` calls
+  and `core/config`. Tools are read by starting each module in a child process with a throwaway
+  home and a context that only records: no child processes, no listeners, no fetch, no keychain.
+- The hygiene rules (forbidden names, the secret pattern) moved to `scripts/lib/hygiene.js`,
+  shared by `test/hygiene.test.js` (unchanged behaviour) and docs-check.
+
 #### No Touch ID prompt, or anything else on screen, under tests
 
 - A test run raised a real Touch ID dialog ("Relax Vyre lesson 1") on the user's screen: presence's
