@@ -1,0 +1,23 @@
+{
+  "name": "vault",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "tools": [
+      "vault.put", "vault.list", "vault.delete", "vault.grant", "vault.revoke", "vault.pending", "vault.approve",
+      "vault.release", "vault.inject", "vault.totp", "vault.generate", "vault.import", "vault.audit", "vault.match",
+      "vault.unlock", "vault.lock", "vault.identity",
+      "vault.pass.create", "vault.pass.list", "vault.pass.revoke", "vault.pass.accept", "vault.relay", "vault.offboard"
+    ]
+  },
+  "watches": {
+    "emits": [
+      "vault.item-added", "vault.item-changed", "vault.item-deleted", "vault.granted", "vault.revoked", "vault.released",
+      "grant.requested", "pass.requested", "pass.created", "pass.revoked", "pass.accepted", "person.offboarded"
+    ]
+  },
+  "shows": { "deck": ["panel:vault"], "cli": ["vault"] },
+  "needs": {},
+  "teaches": {}
+}

@@ -4,6 +4,47 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vault
+
+- `core/vault`: credentials sealed at rest, released one item at a time to a module holding a
+  grant, and shared with other people's Vyre by pass, so a teammate who leaves has nothing to
+  walk off with. How and why: `docs/adr/0001-vault-crypto.md`. No new dependencies: everything
+  is `node:crypto` (AES-256-GCM, HKDF, scrypt, Ed25519, X25519).
+- Sealing: a master key in the macOS keychain, a 0600 key file, or wrapped by a passphrase; a
+  key per item, bound to the item's id and name so a sealed file moved to another item's slot
+  fails to open. Values live in `vault/items/`; names, kinds, field names and hosts in vyre.db.
+- Items: `secret`, `api-key`, `login` (with TOTP), `card`, `note`, `env-set`. Tools: `vault.put`,
+  `list`, `delete`, `grant`, `revoke`, `pending`, `approve`, `inject`, `totp`, `generate`,
+  `import`, `audit`, `match`, `unlock`, `lock`, `identity`, `pass.create`, `pass.list`,
+  `pass.revoke`, `pass.accept`, `relay`, `offboard`, and the internal `vault.release`.
+- Who may call what: giving access needs a person, taking it away never does. `vault.put`,
+  `inject`, `approve` and `unlock` refuse Claude and are left out of its tool list; Claude's
+  grants and passes wait as pending until `vyre vault approve`. Every release, refusal and relay
+  is an audit row with names only.
+- Passes: relayed by default (the holder's signed request goes to the owner's relay listener,
+  which adds the value, only for the item's own hosts, with redirects off, and scrubs the value
+  from the reply); sealed on request (encrypted to the holder's device key; revoking marks the
+  items "rotate"). `vault.offboard` revokes everything a person holds and lists exactly what they
+  received sealed. Verified between two vyred processes in two temp homes.
+- Import from `.env`, 1Password CSV, Bitwarden CSV and JSON, Chrome and Safari CSV. vyred reads
+  the file itself, so values never pass through Claude; the file is left alone and the user is
+  told to delete it.
+- `vyre vault`: `put` prompts without echo (and refuses a value on the command line), `run <item>
+  -- <cmd>` puts values in one child's environment and scrubs them from its output, plus `list`,
+  `grant`, `pass create/accept/revoke`, `relay`, `offboard`, `totp`, `generate`, `import`,
+  `audit`, `card`, `unlock`.
+- Tests prove no value appears in events, logs, `vault.list`, the audit trail, the MCP server's
+  tool list, the HTTP API or any file under either home. Under `node --test` the keychain
+  keystore refuses the login keychain; its own test uses a temporary keychain.
+- Shared core, kept small:
+  - vyred no longer trusts a `module:` caller claimed over HTTP, which let anything on the socket
+    call internal tools such as `vault.release`.
+  - A tool may declare `callers`; other callers are refused and do not see it in `/v1/tools`.
+  - `ctx.vault.fetch(name, { field, watcher })`.
+  - The daemon client no longer pools connections: the first call after a vyred restart failed
+    as "unreachable".
+  - Rule 8 also denies shell commands that print the Vault's keychain item.
+
 ### Shared core for the parallel workstreams (2026-09-26)
 
 - `ctx.vault.fetch(name)`: a module gets only the vault items its manifest declares, through the
