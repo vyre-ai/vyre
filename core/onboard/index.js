@@ -63,6 +63,9 @@ export default {
     const signin = setupToken();
     /** @type {Record<string, string>} */
     let lastStates = {};
+    /** The box's last federated catalogue answer, held for 30 s: see the history step. */
+    let catalogHeld = /** @type {{ at: number, seen: string, cat: any } | null} */ (null);
+    const offLink = ["link.paired", "link.unpaired"].map(type => ctx.events.on(type, () => { catalogHeld = null; }));
 
     const call = async (tool, input = {}) => {
       const r = await ctx.call(tool, input);
@@ -122,7 +125,18 @@ export default {
         // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
         // sources says which machines answered.
         const box = ctx.config.role === "box";
-        const cat = await tryCall("projects.catalog", { limit: 1, ...(box ? { machines: "all" } : {}) });
+        // The page asks every couple of seconds, and each federated answer is a question to the
+        // Mac, so the box keeps it for 30 s, or until a Mac pairs, unpairs, comes or goes
+        // (link.macs is the box's own record, so reading it costs the Mac nothing). The box's own
+        // count still moves with the index through history.indexed below.
+        const linked = box ? await tryCall("link.macs") : [];
+        const seen = Array.isArray(linked) ? linked.map(m => `${m.mac}:${m.online}`).join(",") : "";
+        let cat;
+        if (box && catalogHeld && catalogHeld.seen === seen && Date.now() - catalogHeld.at <= 30_000) cat = catalogHeld.cat;
+        else {
+          cat = await tryCall("projects.catalog", { limit: 1, ...(box ? { machines: "all" } : {}) });
+          catalogHeld = box && !cat.__error ? { at: Date.now(), seen, cat } : null;
+        }
         const sources = !cat.__error && Array.isArray(cat.sources) ? cat.sources : null;
         const count = x => Number(x && x.total) || 0;
         // The box's own sessions are what its index has to catch up with; a Mac indexes its own.
@@ -132,8 +146,7 @@ export default {
         if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
         else if (history.sessions === 0) {
-          const peers = box ? await tryCall("link.macs") : [];
-          const off = Array.isArray(peers) ? peers.find(m => !m.online) : null;
+          const off = Array.isArray(linked) ? linked.find(m => !m.online) : null;
           Object.assign(history, { state: "done",
             why: !box ? "no Claude Code sessions on this machine yet"
               : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
@@ -367,6 +380,6 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); signin.stop(); await lb.close(); await indexing; } };
+    return { async stop() { if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close(); await indexing; } };
   },
 };

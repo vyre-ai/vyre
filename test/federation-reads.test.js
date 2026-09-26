@@ -165,10 +165,11 @@ test("federation reads: recall.thread opens a Mac session from the box and store
 
 test("federation reads: the Mac itself does not federate and never asks the box", async t => {
   const s = await world(t);
-  /** Every tool the box is asked for while the Mac answers its own reads. */
+  /** Every tool the Mac asks the box for (over the tailnet) while it answers its own reads. The
+   * box's own modules call through the registry too, in the background, so only tailnet callers count. */
   const asked = [];
   const real = s.box.registry.call.bind(s.box.registry);
-  s.box.registry.call = (tool, ...rest) => { asked.push(tool); return real(tool, ...rest); };
+  s.box.registry.call = (tool, input, caller, ...rest) => { if (String(caller).startsWith("tailnet:")) asked.push(tool); return real(tool, input, caller, ...rest); };
   t.after(() => { s.box.registry.call = real; });
   const own = (await s.macCall("projects.catalog", { limit: 100 })).data;
   const all = (await s.macCall("projects.catalog", { limit: 100, machines: "all" }, "module:x")).data;

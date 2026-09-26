@@ -91,6 +91,14 @@ box.
     100000 rows before). Done-ness compares the box's index with the box's own sessions only; the
     Mac indexes its own.
 
+- Onboarding holds the box's federated catalogue answer for 30 s, keyed on the Macs' online
+  state from `link.macs` (the box's own record), so the page's 2 s poll asks the Mac at most twice
+  a minute and still says "offline" at once. The federation-reads spy counts only tailnet callers:
+  it used to count the box's own background module calls, the likely cause of Task B's one
+  unexplained failure. Tests on the test box: onboard + federation-reads + core/onboard +
+  hygiene 18/18 three times at load 14.8; federation-reads + link-federation + link 21/21 three
+  times.
+
 ## Doing
 
 - (nothing; Task C is next)
