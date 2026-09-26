@@ -83,6 +83,25 @@ test("lease: one holder, take-over says who had it, quiet holders expire", t => 
   db.close();
 });
 
+test("lease: a terminal whose process exited holds nothing, so the next terminal can type", t => {
+  // `vyre threads start` took the lease as cli:<pid> and exited; every later `vyre threads send`
+  // (a new pid) was refused for the whole TTL. Found by scripts/stress-drive.
+  const root = tempHome(t);
+  const db = open(path.join(root, "l.db"));
+  migrate(db, "threads", MIGRATIONS);
+  const gone = new Set([4242]);
+  const L = new Leases(db, () => 1_000_000, pid => !gone.has(pid));
+  L.take("t", "cli:4242");
+  assert.equal(L.holder("t"), null, "a dead cli pid is not a holder");
+  const r = L.typing("t", "cli:5151");
+  assert.equal(r.ok, true);
+  assert.equal(r.ok && r.took && r.took.took && r.took.took.from, "cli:4242", "recorded as a take-over from the exited terminal");
+  assert.deepEqual(L.typing("t", "cli:6161"), { ok: false, holder: "cli:5151" }, "a live terminal still holds it");
+  L.take("t", "deck");
+  assert.equal(L.holder("t")?.surface, "deck", "surfaces that are not cli:<pid> are untouched");
+  db.close();
+});
+
 // ------------------------------------------------------------ end to end
 
 /** An SSE client on vyred's socket, collecting every event. */
