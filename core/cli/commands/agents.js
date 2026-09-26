@@ -14,6 +14,7 @@ const fail = (msg, next) => kitFail(msg, { next });
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
 const USAGE = "vyre agents [list|create|update|ask|threads|usage|stop|delete] … [--json]";
+const AGENT_FLAGS = { bool: ["assistant"], values: ["projects", "model", "vault", "fallback", "budget", "instructions"], cmd: "agents" };
 const SUBS = ["list", "ls", "create", "update", "ask", "threads", "usage", "stop", "delete", "rm", "remove"];
 const FLAGS = "--assistant --projects a,b|* --model m --vault item --fallback item --budget 20 --instructions text";
 
@@ -65,7 +66,7 @@ async function list() {
 }
 
 async function createOrUpdate(which, args) {
-  const { flags, pos } = parse(args, { bool: ["assistant"], values: ["projects", "model", "vault", "fallback", "budget", "instructions"], cmd: "agents" });
+  const { flags, pos } = parse(args, AGENT_FLAGS);
   const name = pos.join(" ").trim();
   if (!name) return usage(`vyre agents ${which} needs a name`, `vyre agents ${which} <name> [${FLAGS}]`);
   let fields;
@@ -158,6 +159,8 @@ export default {
   async run(args) {
     const [sub, ...rest] = args.filter(a => a !== "--json");
     if (sub && !SUBS.includes(sub)) return usage(`vyre agents ${sub}: not a subcommand`, USAGE);
+    // A mistyped flag is refused before vyred is started for it.
+    if (sub === "create" || sub === "update") parse(rest, AGENT_FLAGS);
     if (!(await up())) return 5;
     if (!sub || sub === "list" || sub === "ls") return list();
     if (sub === "create" || sub === "update") return createOrUpdate(sub, rest);

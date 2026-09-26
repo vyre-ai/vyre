@@ -24,6 +24,12 @@ const SURFACE = "cli:" + process.pid;
 const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop"];
 
 const id8 = s => String(s || "").slice(0, 8);
+/** The flags each subcommand takes; the rest take none. */
+const FLAGS = {
+  start: { values: ["project", "cwd", "name", "model"], cmd: "threads" },
+  list: { bool: ["all"], values: ["agent"], cmd: "threads" },
+  ls: { bool: ["all"], values: ["agent"], cmd: "threads" },
+};
 // --json: each subcommand prints one line of JSON (the tool's data, or { error }) and nothing
 // else, so a script can drive threads without parsing the words meant for a person (kit.js).
 const fail = (msg, next) => kitFail(msg, { next });
@@ -244,7 +250,7 @@ function row(t) {
 /** @type {Record<string, (args: string[]) => Promise<number>>} */
 const run = {
   async start(args) {
-    const { flags, pos } = parse(args, { values: ["project", "cwd", "name", "model"], cmd: "threads" });
+    const { flags, pos } = parse(args, FLAGS.start);
     const input = { surface: SURFACE };
     if (flags.project) input.project = flags.project;
     // The daemon resolves paths against its own folder, so the terminal's folder is sent absolute.
@@ -278,7 +284,7 @@ const run = {
   },
 
   async list(args) {
-    const { flags } = parse(args, { bool: ["all"], values: ["agent"], cmd: "threads" });
+    const { flags } = parse(args, FLAGS.list);
     const ts = await tool("threads.list", { ...(flags.agent ? { agent: flags.agent } : {}), ...(flags.all ? { all: true } : {}) });
     if (!ts) return 1;
     if (json()) { emit(ts); return 0; }
@@ -367,6 +373,9 @@ export default {
     const [sub, ...more] = args;
     if (!sub || !SUBS.includes(sub)) return catalogueCommand().run(args);
     const rest = more.filter(a => a !== "--json");
+    // A mistyped flag is refused before vyred is started for it. What is sent or answered is
+    // free text, so those take the words as they are.
+    if (sub !== "send" && sub !== "answer") parse(rest, FLAGS[sub] || { values: [], cmd: "threads" });
     if (!(await up())) return 5;
     return run[sub](rest);
   },
