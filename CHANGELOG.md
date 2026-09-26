@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Install (ADR 0008)
+
+- `core/cli/tailnet.js`: the Mac's own view of its tailnet, read-only (`tailscale status --json`
+  through PATH or the Mac app's CLI). `boxes()` finds this person's box among the peers: online,
+  untagged, the same Tailscale user, named `vyre` or `vyre-<n>`. `probe()` asks its `/v1/health`.
+- ADR 0008 and `docs/JOURNEY.md`: the install journey from one command to the assistant's hello.
+
 ### M5 · the box (2026-09-26)
 
 #### Box
