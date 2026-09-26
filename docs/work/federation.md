@@ -47,11 +47,18 @@ box.
 
 ## Done
 
-- (none yet)
+- Task A, the channel (design 1 to 3), ac9df2d. `link.serve`/`link.reply` on the box, the Mac's
+  serve loop, `link.macs.call` and `link.macs`, the allowlist at both ends. Tests on the test box:
+  test/link.test.js 8/8, test/link-federation.test.js 7/7 (twice), core/link/transport.test.js
+  3/3, test/hygiene.test.js 1/1. Choices beyond the design: a Mac working on a question counts as
+  online (it answers one at a time, so a slow search must not make it look gone); an unknown key
+  on `link.serve`/`link.reply` answers `{ paired: false }` like `link.hello`; the box's `allow` and
+  `hold` are test seams; `transport.open` takes an AbortSignal so stopping or unpairing the Mac
+  ends its held request at once.
 
 ## Doing
 
-- Task A: the channel (design 1 to 3) and its tests.
+- (nothing; Task B is next)
 
 ## Next
 
@@ -67,4 +74,29 @@ box.
 
 ## Changed contracts
 
-- (filled as tasks land)
+- New box tools: `link.serve { key }` (answers `{ id, tool, input }`, `null` after the hold, or
+  `{ paired: false }`), `link.reply { key, id, result }` (`{ ok }`, or `{ paired: false }`),
+  `link.macs.call { tool, input?, timeout? }` (internal: modules only; refuses a tool outside the
+  list with `denied`; answers `[{ mac, name, ok, data?, error? }]`, errors `mac_offline`,
+  `timeout`, `unpaired`, `stopped` or the Mac's own), `link.macs` (`[{ mac, name, node, online,
+  lastServe }]`, visible like `link.peers`).
+- The allowlist `ALLOW` in `core/link/allow.js`: `projects.catalog`, `projects.list`,
+  `recall.search`, `recall.sessions`, `recall.thread`, `threads.list`.
+- The Mac's `link.status` gains `serving`. `boxCall` takes `{ timeout, signal }`; the connector's
+  `open`/`json` take `signal`. The link seams gain `hold` (both sides) and `allow` (box).
+- Tests: `pair()`, `tailnet()`, `until()`, `wait` and the OWNER/MAC/PHONE/BOX constants moved to
+  `test/link-harness.js`. `pair()` takes `hold` (default 300 ms), `allow` and `macTranscripts`,
+  and returns `boxRoot` too.
+
+## Notes for Task B
+
+- The Mac runs the box's input as given, as `module:link`. Once the Mac's own tools federate
+  toward the box, a module caller without `machines: "all"` must stay local, or the Mac would
+  ask the box, which asks the Mac.
+- The Mac answers one question at a time. Fanning out catalog and search together from the box
+  queues the second behind the first; fine for reads this size, worth measuring with a large
+  corpus.
+- A Mac that drops off while holding a request keeps looking online on the box until the hold
+  runs out (60 s): a question in that window times out rather than answering `mac_offline`.
+- Pre-existing, not ours: core/cli/commands/box.test.js "box add: sudo with a password ..." fails
+  on the test box on this branch without these changes too.
