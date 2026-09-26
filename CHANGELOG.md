@@ -299,6 +299,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
     as "unreachable".
   - Rule 8 also denies shell commands that print the Vault's keychain item.
 
+- Sharing, hardened (ADR 0006, findings 4, 5 and 12): pass tickets are signed by the owner and
+  checked against the owner's pinned card, for this holder only, and a held pass can never be
+  taken over by another owner. Old unsigned tickets are refused, and passes held from them are
+  dropped: ask the owner to issue them again. Relayed values go in headers unless the item
+  allows the body, over https except to loopback, within optional method and path allowlists;
+  replay nonces survive a restart; envelopes are bound to the owner's relay; a 500 says nothing
+  about why. Cards v2 are signed and pinned on first use, with fingerprints and safety words; a
+  changed key blocks new passes until a person verifies it. `vyre vault people`, `fingerprint`
+  and `kit` (a one-time printable recovery page with a QR code, from a small encoder in plain
+  JS). The kit needs the account Secret Key, which lands with the key hierarchy.
+
 #### Watchers
 
 - `core/watchers`: the watcher runtime (spec 7.6). Claude writes a folder in
