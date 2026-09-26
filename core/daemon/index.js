@@ -49,7 +49,7 @@ export async function start(opts = {}) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, handler });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
@@ -126,12 +126,25 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   // Naming an agent ("mcp:agent:<name>", "harness:agent:<name>") is a claim Memory, the Gate and
   // the Switchboard act on, and naming the assistant reaches every project. So it must come with
   // the key the Switchboard put in that agent's thread (x-vyre-agent-key); without it, nothing.
+  // What vyred has checked about the caller, which tools get beside it: run(input, { caller, thread, agent, peer }).
+  // The tailnet peer a network listener established (node, stableId, login) rides here too.
+  /** @type {{ thread?: string, agent?: string, peer?: any }} */
+  const via = policy.peer ? { peer: policy.peer } : {};
   // A listener's own identity (policy.caller) is established by the listener, not claimed.
   const said = policy.caller ? null : AGENT_CLAIM.exec(caller);
   if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
+    Object.assign(via, { thread: v.data.thread, agent: said[1] });
+  } else if (req.headers["x-vyre-session"]) {
+    // Any other caller may say which session it is in (the MCP server does, from the key its
+    // session's SessionStart hook was given). A claim that does not check out is refused.
+    const session = String(req.headers["x-vyre-session"]);
+    const key = String(req.headers["x-vyre-session-key"] || "");
+    const v = key ? await registry.call("threads.vouch", { session, key }, "module:vyred") : null;
+    if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
+    via.thread = v.data.thread;
   }
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
@@ -145,7 +158,7 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const result = await registry.call(name, await body(req), caller);
+    const result = await registry.call(name, await body(req), caller, via);
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "denied" ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }
