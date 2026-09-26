@@ -129,14 +129,16 @@ const drop = (list, source, id) => {
  * to 20 a second by the switchboard), or `{message, text, done: true}`, the whole block, which
  * replaces the pieces: the whole block is what Claude Code said, the pieces are only how it
  * arrived. `message` is Claude Code's message id, shared by a block's pieces and its whole text.
- * A notice from vyred itself (the switch to the API key) is `{message: "vyre", text, done, notice}`.
+ * A notice from vyred itself (the switch to the API key, a usage limit) is `{message: "vyre", text,
+ * done, notice}`. It is Vyre talking, not the model: it is kept as `notice`, the newest one, for a
+ * faint status line, and never joins the answer's text.
  *
  * `cost` is what thread.finished reported (Claude Code's total_cost_usd, summed over the turns of
  * this reply), `ms` how long the last turn took. The switchboard reports no token counts.
  * `cancelled` is the user's Stop: nothing that arrives after it changes the reply.
  * @typedef {{ thread: string, order: string[], text: Record<string, string>, tools: { id: string, summary: string, done: boolean, error: boolean }[],
  *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null, cost: number|null, ms: number|null,
- *   cancelled?: boolean, model?: string|null, memory?: { answer: string|null, sources: any[], confidence?: number|null, answerAge?: string|null }|null }} Reply
+ *   cancelled?: boolean, notice?: string|null, model?: string|null, memory?: { answer: string|null, sources: any[], confidence?: number|null, answerAge?: string|null }|null }} Reply
  */
 export function reply(thread) {
   return /** @type {Reply} */ ({ thread, order: [], text: {}, tools: [], finished: false, ok: null, error: null, lease: null, cost: null, ms: null });
@@ -151,6 +153,7 @@ export function cancel(r) {
 export function applyReply(r, e) {
   if (!r || r.cancelled || e.thread !== r.thread) return r;
   const p = e.payload || {};
+  if (e.type === "thread.text" && p.notice) return { ...r, notice: s(p.text) };
   if (e.type === "thread.text") {
     const id = s(p.message || "m");
     const order = r.order.includes(id) ? r.order : [...r.order, id];
@@ -189,7 +192,7 @@ export const replyText = r => r.order.map(id => r.text[id]).filter(Boolean).join
  * @typedef {{ id: string, role: "user"|"agent", text: string, at: number, surface?: string, pending?: boolean,
  *   tools?: DmTool[], done?: boolean, error?: string|null, parts?: { order: string[], text: Record<string, string> } }} DmMessage
  * @typedef {{ agent: string, thread: string|null, messages: DmMessage[], asks: Waiting[], busy: boolean, holder: string|null,
- *   last: number, limit: number, loading?: boolean }} Dm
+ *   last: number, limit: number, loading?: boolean, notice?: string|null }} Dm
  */
 
 /** Tool lines kept per turn: the newest, since a long turn can run hundreds. */
@@ -273,6 +276,8 @@ export function applyDm(d, e, name = slug => slug) {
     const closed = msgs.map(x => (x.role === "agent" && !x.done ? { ...x, done: true } : x));
     return trim({ ...d, last, busy: true, messages: i >= 0 ? put(closed, i, m) : insertTurn(closed, m) });
   }
+  // Vyre's own words (a usage limit): a status line under the conversation, never a message in it.
+  if (e.type === "thread.text" && p.notice) return { ...d, last, notice: s(p.text) };
   if (e.type === "thread.text") {
     const id = s(p.message || "m");
     let i = openTurn(msgs, id);
@@ -363,7 +368,7 @@ export function dmCarry(d, pending, after) {
 /** What the page is handed: no bookkeeping. @param {Dm} d */
 export function dmView(d) {
   return {
-    agent: d.agent, thread: d.thread, busy: d.busy, holder: d.holder, asks: d.asks, ...(d.loading ? { loading: true } : {}),
+    agent: d.agent, thread: d.thread, busy: d.busy, holder: d.holder, asks: d.asks, ...(d.loading ? { loading: true } : {}), notice: d.notice || null,
     messages: d.messages.map(({ parts, ...m }) => m),
   };
 }

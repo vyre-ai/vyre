@@ -16,7 +16,7 @@ import { start } from "../../../core/daemon/index.js";
 import { paths } from "../../../core/config/index.js";
 import { call } from "../../../core/daemon/client.js";
 import { client, stream } from "./vyred.js";
-import { Bridge, explain } from "./bridge.js";
+import { Bridge, explain, QUICK_APPEND } from "./bridge.js";
 
 /** `bare` turns the core switchboard (`threads`) and `agents` off, for the tests about their absence. */
 async function vyred(t, { bare = false } = {}) {
@@ -171,13 +171,59 @@ test("bridge: a question names memory beside the model's answer, and people in p
   assert.equal(start.model, "haiku");
   assert.equal(start.cwd, path.join(root, "capsule", "ask"));
   assert.ok(fs.statSync(start.cwd).isDirectory(), "made on demand");
-  assert.doesNotMatch(start.prompt, /Paris/, "nothing from memory reaches the quick model");
+  assert.equal(start.prompt, "what is the capital of France?", "the prompt is the user's words alone");
+  assert.match(start.append, /What the user's own notes say:\n- Paris is where the offsite is\./, "what memory showed goes beside it");
   const snap = b.snapshot();
   assert.deepEqual([snap.reply?.model, snap.reply?.memory?.answer, snap.reply?.memory?.sources[0].name], ["haiku", "Paris is where the offsite is.", "Offsite"]);
   assert.equal(snap.has.stop, false);
   const stop = await b.cancel();
   assert.match(String(stop.note), /Stopped following/, "no threads.stop: it says so");
   assert.deepEqual([b.snapshot().reply?.finished, b.snapshot().reply?.error], [true, "stopped"]);
+});
+
+test("bridge: a quick question carries the memory on screen, with ages, and nothing more", async t => {
+  const { c } = await vyred(t, { bare: true });
+  const root = fs.mkdtempSync(path.join(path.dirname(c.socket), "home-"));
+  const twoWeeks = 14 * 86_400_000;
+  // The fake model: threads.start records what it was given and answers from it.
+  const fc = withFakes(c, {
+    "memory.relevant": () => [
+      { text: "Alex owns a Honda Civic Reborn.", matched: "car", confidence: 0.9, age: "2 weeks", score: 0.9, ref: { session: "s1", seq: 3, name: "Weekend errands" } },
+      { text: "Alex's bike is a Brompton.", matched: "own", confidence: 0.4, age: "5 weeks", score: 0.4 },
+    ],
+    "recall.search": () => [
+      { session: "s2", seq: 7, role: "user", name: "Insurance renewal", snippet: "my «car» is the Honda Civic Reborn, 2019", ts: Date.now() - twoWeeks },
+      { session: "s3", seq: 2, role: "assistant", name: "Parking", snippet: "The «car» park closes at 10.", ts: Date.now() - 3 * 86_400_000 },
+      { session: "s4", seq: 9, role: "user", name: "Old notes", snippet: "a fourth «car» line nobody sees", ts: Date.now() - 86_400_000 },
+    ],
+    "threads.start": i => ({ id: "q3", ...i }),
+  });
+  const b = new Bridge(fc, { home: root });
+  await b.refresh();
+  const shown = await b.recall("which car do I own");
+  assert.equal(shown.sources.length, 3, "three sources on screen");
+  assert.deepEqual(shown.sources.map(x => x.kind), ["fact", "quote", "quote"]);
+  const d = (await b.destinations(null, "which car do I own")).options.find(o => o.kind === "quick");
+  await b.send(/** @type {any} */ (d), "which car do I own");
+  const start = fc.calls.find(x => x[0] === "threads.start")?.[1];
+  assert.equal(start.prompt, "which car do I own");
+  const notes = start.append.split("What the user's own notes say:\n")[1];
+  assert.ok(notes, start.append);
+  assert.match(notes, /^- Alex owns a Honda Civic Reborn\. \(noted 2 weeks ago\)$/m);
+  assert.match(notes, /^- The user said, 2 weeks ago: "my car is the Honda Civic Reborn, 2019"$/m);
+  assert.match(notes, /^- Claude said, 3 days ago: "The car park closes at 10\."$/m);
+  assert.doesNotMatch(start.append, /Brompton/, "a fact under the bar is not on screen, so it is not sent");
+  assert.doesNotMatch(start.append, /fourth/, "only the three sources on screen");
+  assert.match(start.append, /you said so 2 weeks ago/);
+
+  // Words memory said nothing about: the plain instructions, and no empty notes heading.
+  const bare = withFakes(c, { "memory.relevant": () => [], "recall.search": () => [], "threads.start": i => ({ id: "q4", ...i }) });
+  const b2 = new Bridge(bare, { home: root });
+  await b2.refresh();
+  await b2.recall("what is 2+2");
+  const d2 = (await b2.destinations(null, "what is 2+2")).options.find(o => o.kind === "quick");
+  await b2.send(/** @type {any} */ (d2), "what is 2+2");
+  assert.equal(bare.calls.find(x => x[0] === "threads.start")?.[1].append, QUICK_APPEND);
 });
 
 test("bridge: another surface holding the keyboard stops the send and says who, and only the user takes it", async t => {
