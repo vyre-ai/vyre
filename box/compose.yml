@@ -74,7 +74,12 @@ services:
       vyre:
         aliases:
           - vyred
+        # The published onboarding port lands on this network, where vyred binds `vyred`.
+        gw_priority: 1
       docker-api: {}
+      # Agents' computers join this network, so vyred reaches their screens, computerd and
+      # browser ports by container name. It is made here because the proxy refuses NETWORKS.
+      computers: {}
 
   vyre:
     image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
@@ -151,6 +156,10 @@ volumes:
 networks:
   vyre:
     name: vyre
+    labels:
+      run.vyre: "1"
+  computers:
+    name: vyre-computers
     labels:
       run.vyre: "1"
   docker-api:
