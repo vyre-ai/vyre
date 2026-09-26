@@ -113,6 +113,8 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
       alarm with its label. Clock does not come to the front.
   11. Delete the check note, reminder and alarm.
 - Slice 2: the @App picker in the native Capsule.
+- Known limit: Notes' trash is skipped by its name ("Recently Deleted", or config
+  apps.notes.trash); the dictionary gives that folder nothing else, so another language needs it.
 
 ## Needs from others
 - capsule-pro: the native host must be on main before the Swift half runs in the app (slice 2).
