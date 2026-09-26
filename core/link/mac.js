@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
 import { createHealth, unknown } from "./health.js";
+import { realBoxAllowed } from "../config/dialogs.js";
 
 const MAX_BACKOFF = 30_000;
 
@@ -35,6 +36,16 @@ export function macSide(ctx, seam = {}) {
   const connect = (address, pin) => connector({ address, verify, pinned: () => pin, insecure: Boolean(seam.insecure), ...(seam.ttl !== undefined ? { ttl: seam.ttl } : {}) });
   let conn = saved ? connect(saved.box.address, saved.box.stableId) : null;
   const health = seam.health || createHealth();
+
+  // A temp home (a dev world, a demo, a stress run) never looks for or pairs with a real box: one
+  // found the user's live box and sent it a pairing request. Test seams, a fake tailscale
+  // (VYRE_TAILSCALE_BIN) and a box on this machine's loopback are not real boxes.
+  const seamed = Object.keys(seam).length > 0;
+  const REFUSED = `this home (${ctx.paths.root}) is not ~/.vyre, so it does not look for or pair with a real box. VYRE_ALLOW_REAL_BOX=1 allows it`;
+  const refuse = () => Object.assign(new Error(REFUSED), { code: "not_real_home" });
+  const loopback = a => { try { return ["127.0.0.1", "localhost", "[::1]", "::1"].includes(new URL(a).hostname); } catch { return false; } };
+  const mayFind = () => seamed || Boolean(process.env.VYRE_TAILSCALE_BIN) || realBoxAllowed(ctx.paths.root);
+  const mayPair = address => seamed || loopback(address) || realBoxAllowed(ctx.paths.root);
 
   const state = { reachable: false, lastSeen: /** @type {number|null} */ (null), error: /** @type {string|null} */ (null), failures: 0, nextTry: 0, announced: /** @type {boolean|null} */ (null) };
   /** @type {{ id: string, secret: string, code: string, expires: number, address: string, stableId: string, node?: string, timer?: any } | null} */
@@ -123,6 +134,7 @@ export function macSide(ctx, seam = {}) {
     run: async ({ box }) => {
       let address = String(box).trim();
       if (!/^[a-z]+:\/\//i.test(address)) address = "https://" + address;
+      if (!mayPair(address)) throw refuse();
       if (pairing && pairing.timer) clearTimeout(pairing.timer);
       pairing = null;
       // The first connection is unpinned: it is how the box's node is learned. Everything after is
@@ -145,6 +157,7 @@ export function macSide(ctx, seam = {}) {
     input: { type: "object", properties: {} },
     callers: ["cli", "local", "capsule"],
     run: async () => {
+      if (!mayFind()) throw refuse();
       const peers = await (seam.peers || tailnetPeers)();
       const names = seam.certNames || certNames;
       const found = await Promise.all(peers.map(async p => {

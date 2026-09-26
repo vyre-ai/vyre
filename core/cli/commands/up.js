@@ -269,6 +269,7 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
   if (!box) {
     // No address known: look for the box on the tailnet. Exactly one is taken.
     const f = await tool("link.find");
+    if (f.error && f.error.code === "not_real_home") say(dim(`  ${f.error.message}`));
     const found = (f.data && f.data.boxes) || [];
     if (found.length === 1) {
       box = found[0].address;

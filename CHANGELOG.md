@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A temp home never reaches a real box
+
+- A first-run check on the test box, in a temp home with the real Tailscale, found the user's
+  live box through `link.find` and sent it a real pairing request (denied on the box). Now
+  `link.find` and `link.pair` refuse with `not_real_home` unless the home is `~/.vyre`, or
+  `VYRE_ALLOW_DIALOGS=1` or `VYRE_ALLOW_REAL_BOX=1` is set; never under tests. A fake tailscale
+  (`VYRE_TAILSCALE_BIN`), a box on loopback and the link tests' seams are not real boxes and pass.
+  `vyre up` says why when it is refused. `core/config/dialogs.js` (`realBoxAllowed`),
+  `core/link/mac.js`, `test/link-guard.test.js`.
+
 #### A first `vyre up` that says what it is and what to do next
 
 - Root cause of a user's broken first run: `vyre` on their PATH was an old prototype
