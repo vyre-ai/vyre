@@ -1,0 +1,11 @@
+{
+  "name": "learn",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["learn.lessons", "learn.add", "learn.accept", "learn.edit", "learn.retire", "learn.signal", "learn.check"] },
+  "watches": { "emits": ["lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired"] },
+  "shows": { "deck": [], "capsule": [], "cli": ["learn"] },
+  "needs": {},
+  "teaches": {}
+}

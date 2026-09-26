@@ -39,3 +39,25 @@ test("cli: help lists commands found in the commands folder; unknown commands sa
   assert.equal(u.code, 1);
   assert.match(u.out, /not a command/);
 });
+
+test("cli: learn adds, lists, re-levels and retires lessons", async t => {
+  const env = { VYRE_HOME: tempHome(t) };
+  t.after(() => run(["down"], env));
+  assert.match((await run(["learn"], env)).out, /not running/);
+  await run(["up"], env);
+  assert.match((await run(["learn"], env)).out, /no lessons yet/);
+  const add = await run(["learn", "add", "never", "use", "em", "dashes"], env);
+  assert.equal(add.code, 0);
+  assert.match(add.out, /learned lesson 1/);
+  const list = await run(["learn"], env);
+  assert.match(list.out, /1 lesson/);
+  assert.match(list.out, /1 Never use em dashes\. \[block\]/);
+  assert.match(list.out, /checks an em dash .* applied 0 · caught 0 · broken 0/);
+  assert.match((await run(["learn", "level", "1", "remind"], env)).out, /\[remind\]/);
+  assert.equal((await run(["learn", "level", "1", "loud"], env)).code, 1);
+  assert.match((await run(["learn", "retire", "1"], env)).out, /retired lesson 1/);
+  assert.match((await run(["learn"], env)).out, /no lessons yet/);
+  const bad = await run(["learn", "accept", "9"], env);
+  assert.equal(bad.code, 1);
+  assert.match(bad.out, /no lesson 9/);
+});
