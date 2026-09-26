@@ -1,0 +1,199 @@
+# ADR 0004 · Presence: proving a person is there before a human-only action
+
+Status: accepted, 26 Sep 2026 · Workstream: security · Spec: principles 7, sections 5, 7.5, 7.7,
+7.11, 8 and 11 (floor rules 1, 2 and 8)
+
+## The problem
+
+Some actions are the user's alone: approving, revising or rejecting what the Gate holds
+(`gate.approve`, `gate.revise`, `gate.reject`), answering a permission question
+(`threads.answer`), putting, approving or unlocking vault items (`vault.put`, `vault.approve`,
+`vault.unlock`), offboarding (`vault.offboard`), and accepting or retiring a lesson
+(`learn.accept`, `learn.retire`).
+
+Until now vyred told people from models by the caller, and the caller is only a claim. A client
+names itself in the `x-vyre-caller` header on a unix socket the user owns, and Claude Code runs
+as that same user. A Bash command Claude runs can therefore:
+
+- `curl --unix-socket ~/.vyre/vyred.sock -H 'x-vyre-caller: cli' .../v1/tools/gate.approve`;
+- run `vyre call gate.approve '{"id":"..."}'`, which calls as `cli`;
+- claim `capsule`, `deck` or `local`, which the Gate also trusts.
+
+Any of these lets a model approve its own held email. That breaks floor rules 1 and 2: nothing
+goes out as the user until the user has seen the final words, and the user always sees where it
+is going.
+
+The defences so far were thin. vyred treats `module:*` and `hook` claims as `local`. Learning asks
+before commands that name `vyre.db` or the socket. The floor denies reading the vault folder.
+None of this stops the first two routes above.
+
+## What Claude Code gives a Bash command
+
+Checked on this machine (Claude Code in Terminal, 26 Sep 2026). The `claude` process has a
+controlling terminal (`ttys012`). The Bash tool's shell is started in a new session with none:
+`tty` says "not a tty", stdin and stdout are pipes, `ps` shows the shell's TTY as `??`, and opening
+`/dev/tty` fails with ENXIO ("device not configured").
+
+So "is stdin a terminal" already fails for the model's commands. It is still not a proof:
+
+- `script -q /dev/null vyre ...` (or Python's `pty`, or `expect`) gives the child a fresh
+  pseudo-terminal, and whoever holds its master can read the prompt and type the answer.
+- A terminal check that the CLI runs on itself is a claim too. The model can write its own
+  client that skips the check.
+
+A proof has to be checked by vyred, and it has to need something the model cannot do.
+
+## Decision
+
+Two independent layers. Either one on its own stops the routes above.
+
+### Layer 1 · Presence proof, checked by vyred
+
+A tool that only a person may run declares it:
+
+```js
+ctx.tool("gate.approve", { presence: true, ... })
+// or, with the words the person must see before proving it:
+ctx.tool("gate.approve", { presence: { summary: async input => "Send email to bob@example.com: \"Hi Bob…\"" }, ... })
+```
+
+The floor also keeps its own list, in `core/presence/index.js`, so these tools need presence even
+before their owners declare it, and a module cannot declare its way out:
+`gate.approve`, `gate.revise`, `gate.reject`, `threads.answer`, `vault.put`, `vault.approve`,
+`vault.unlock`, `vault.offboard`, `learn.accept`, `learn.retire`, and presence's own
+`presence.enroll`, `presence.remove` and `presence.code`. A module's declaration can only add to
+this list (principle 7).
+
+`Registry.call(tool, input, caller, { proof })` refuses a presence tool with
+`{ error: { code: "presence_required", methods } }` (HTTP 403) unless the proof checks out,
+**whatever the caller claims**. Two things are exempt:
+
+- **Module callers** (`module:<name>`). Only the loader can make these, and modules are code the
+  user installed. A module that turns an outside event into a presence call (the chat module
+  turning a Mattermost button into `gate.approve`) must prove the person itself, for example by
+  the Mattermost user id, and the Gate's `approvers` list still decides which modules may approve.
+- **A registry built without a presence verifier.** Only unit tests build one. vyred always
+  builds one, and a test checks that it does.
+
+A proof is bound to one tool and one input: the SHA-256 of the canonical JSON of the input (keys
+sorted, no spaces). It is used once and expires after 2 minutes. A proof for "approve item A"
+cannot approve item B.
+
+The proof travels in one header, `x-vyre-presence: <method> k=v k=v ...`, with values in base64url.
+
+| Method | Where | Proof | What the model cannot do |
+|---|---|---|---|
+| `touchid` | the Mac | vyred itself shows the macOS authentication dialog (Touch ID, Watch or password), with the summary as its reason | press the sensor or type into the system dialog, which takes no synthetic keystrokes |
+| `tty` | any terminal, the box over SSH | vyred writes a code and the summary straight to a **login terminal**, and the person types the code back | read what is written to a terminal it does not hold the master of; a `script` pty is not a login terminal |
+| `capsule` | the Capsule | an Ed25519 signature over the call by a per-install key that Electron's main process keeps in the keychain, made only after a click | read a keychain item whose ACL names only the Capsule |
+| `passkey` | the Deck, on the tailnet or locally | a WebAuthn assertion with user verification, over a challenge from vyred | make a platform passkey assertion; that needs the device's biometric |
+| `code` | enrolling a passkey | a one-time code from `presence.code`, which itself needs presence | (only accepted by `presence.enroll`) |
+
+**Challenges.** `POST /v1/presence/challenge { tool, input, method, ... }` starts a proof that
+needs one:
+
+- `tty`, with `tty: "/dev/ttys003"`. vyred checks that the path is a terminal device owned by this
+  user, and that `who` lists it as a login session. Terminal.app, iTerm, sshd and getty sessions
+  are listed; `script`, `expect`, Python `pty` and tmux panes are not. vyred then writes, straight
+  to that device: the summary and a 6-character code. It returns `{ challenge }`. The client asks
+  the person for the code and retries the call with `x-vyre-presence: tty id=<challenge> code=<code>`.
+  After three wrong codes the challenge is gone.
+- `passkey`. vyred returns `{ challenge, webauthn: { challenge, rpId, allowCredentials, userVerification: "required" } }`.
+  The Deck calls `navigator.credentials.get` and retries the call with
+  `x-vyre-presence: passkey id=<challenge> cred=<id> ad=<authenticatorData> cd=<clientDataJSON> sig=<signature>`.
+  vyred checks the type (`webauthn.get`), the challenge, the rpId hash, the UP and UV flags, and
+  the signature (ES256, EdDSA or RS256) against the key enrolled for that credential.
+
+`touchid` and `capsule` need no challenge:
+
+- `touchid`. The call carries `x-vyre-presence: touchid`, and vyred runs its authentication helper
+  (`core/presence/touchid/`, built from Swift with `swiftc` on first use, and hash-checked before
+  each run). vyred shows one dialog at a time. After a cancel it waits 30 seconds before it shows
+  another, so a model cannot wear the user down with repeated dialogs.
+- `capsule`. The call carries `x-vyre-presence: capsule key=<id> ts=<ms> nonce=<n> sig=<s>`. The
+  signed message is `vyre-presence-v1\n<tool>\n<input hash>\n<ts>\n<nonce>`. The timestamp must be
+  within 60 seconds and the nonce unused.
+
+**Enrollment.** Capsule keys and passkeys are rows in the `presence_keys` table in vyre.db, public
+keys only. `presence.enroll` and `presence.remove` need presence themselves. The first key on a Mac
+is enrolled with Touch ID. On the box it is enrolled with a `tty` proof over SSH, or with a
+`presence.code` minted at such a terminal and typed into the Deck.
+
+**What the person sees.** Every method shows the tool's summary before the person proves anything:
+in the dialog's reason, on the terminal, in the Capsule and in the Deck. A tool with no summary
+function is shown as its name and a short form of its input. That is legal but poor, and owners
+should supply a summary. For the Gate, the summary is the destination and the start of the final
+content (floor rules 1 and 2).
+
+### Layer 2 · The floor closes the model's routes
+
+The PreToolUse floor (`core/harness/rules.js`) also runs in-process when vyred is down (see
+`harness/hooks/hook.js`). It denies the model's ways around layer 1 before they run:
+
+- **Human-only `vyre` commands.** `vyre call <presence tool>`, `vyre gate approve|revise|reject`,
+  `vyre threads answer`, `vyre vault put|approve|unlock|offboard`, `vyre learn accept|retire` and
+  `vyre presence ...`, however the command is reached: a path to `bin/vyre`, `node .../bin/vyre`,
+  `npx vyre`, `env`, `sh -c`, `bash -c`, `eval`, `xargs`, quotes split inside words, backslashes,
+  or `$'...'`. A `vyre` command whose words come from variables, command substitution or globs is
+  asked about, not allowed.
+- **Raw socket clients.** `curl --unix-socket`, `nc -U`, `socat UNIX-*`, Python `AF_UNIX` and
+  Node `socketPath`, aimed at `vyred.sock`, the `/tmp/vyre-<uid>` folder or anything in VYRE_HOME,
+  are denied. So is any command that writes an `x-vyre-caller` or `x-vyre-presence` header. Unix
+  socket access whose target cannot be read from the command is asked about.
+- **Vyre's internals.** Reading, listing, copying or writing `vyre.db`, the socket, `config.json`,
+  keys, logs and the vault under VYRE_HOME is denied, by Read, Write, Edit, Grep, Glob and Bash,
+  including through `$HOME`, `${HOME}`, `~` and globs that could match `.vyre`. VYRE_HOME's
+  `watchers/` and `modules/` stay open, since the write-a-watcher skill works there. Writing into
+  `modules/` is asked about, because a module runs inside vyred.
+
+Layer 2 is a filter over shell text, and shell text can always be obfuscated further than a
+filter can read. That is why layer 1 exists. Layer 2 turns an easy bypass into a visible,
+refused attempt that Learning records.
+
+### Agent identity (the switchboard's work)
+
+A different question: which agent is calling. The Switchboard gives each agent's child process
+`VYRE_AGENT_KEY`, and vyred believes an `*agent:<name>` caller only with the key of a live thread
+of that agent (`threads.vouch`). It stops one agent posing as another, or as the assistant. It
+does not prove a person is there, and presence does not name agents. The two checks are
+independent, and a presence tool refuses an unproven agent whichever name it claims.
+
+### Tailnet identity is not presence
+
+The box identifies a Deck request by `tailscale whois` of its source address (ADR 0002). That
+proves which **device and login** sent it, not that a person is there. Claude Code on the user's
+Mac is on the same tailnet as the same login, and it can reach the box's listener with curl.
+So `tailnet:<login>` gets no exemption, and the Deck proves presence with a passkey like
+everything else.
+
+## What this does not defend
+
+Code running as the user can rewrite Vyre itself: edit `core/presence`, restart vyred, swap the
+helper binary or write a row into vyre.db. Layer 2 denies and asks about the direct forms of
+this, and the helper is hash-checked, but no user-space program can fully defend itself from
+its own user. The line we hold: a model that uses Vyre's interfaces, including the socket, the
+CLI and the MCP server, cannot complete a human-only action without a person proving presence
+after seeing the summary.
+
+Two residual risks in the terminal method, both of which still need a person:
+
+- A model can start `vyre` with its input and output pointed at the user's own login terminal
+  (the one running `claude`). vyred then writes the code and summary to that screen, and the
+  model's client waits for keystrokes. It completes only if the person types the code shown next
+  to the summary.
+- On a Mac, a model can open a new Terminal window with `osascript`. If the user has also given
+  that terminal Automation or Accessibility access, the model may be able to read the window
+  back. On a Mac with Touch ID, `vyre` uses `touchid` first for this reason.
+
+## Consequences
+
+- Owners of human-only tools add `presence: true` or a `presence.summary`, and their tests pass a
+  proof or call through a registry without a verifier.
+- The CLI (`core/cli/presence.js`) handles `presence_required` itself: `touchid` on a Mac that
+  has it, else `tty`. `vyre call` and every command that reaches a presence tool go through it.
+- The Capsule enrolls a key at first run (with Touch ID) and signs presence calls. The Deck
+  enrolls a passkey and sends assertions.
+- `GET /v1/tools` marks presence tools with `presence: true`, so a surface can prompt before it
+  calls.
+- New events: `presence.proved` and `presence.refused`, holding the tool, method and caller, and
+  never a code or key.
