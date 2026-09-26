@@ -30,38 +30,41 @@ Small changes outside the scope, each through the owner's contract and listed be
 5. Release steps written down for the user (`apps/RELEASE.md`).
 
 ## Done
-- ADR 0018, claimed in docs/work/README.md. `apps/CONTRACT.md` from the code at d1f7b75.
-- `device` presence method (f60991a): a phone's P-256 key, enrolled with `presence.enroll
+- ADR 0018, claimed in docs/work/README.md. `apps/CONTRACT.md` from the code on main before the mobile work.
+- `device` presence method (a168aa6): a phone's P-256 key, enrolled with `presence.enroll
   {kind:"device", name, public_key, alg:-7}`, signs the Capsule's message with ES256. One code
   path and one nonce set for capsule and device. Offered only once enrolled, allowed on the box,
   opens `presence.session.open`. A migration widens `presence_keys.kind`. ADR 0004 addendum.
-- `tailnet` callers entry (fd63f1c): `callerAllowed()` in the registry. Gate, `threads.answer`,
+- `tailnet` callers entry (fad6f0f): `callerAllowed()` in the registry. Gate, `threads.answer`,
   push and the vault's reveal/copy/totp/session tools list it. `test/mobile-tailnet.test.js`
   proves a phone gets `presence_required` on `gate.approve` without a proof and sends with a
   device proof, through the daemon's router as the names listener calls it.
-- `/onboard/device` (7884095): the sign-in page the app opens in the authentication browser.
+- `/onboard/device` (15c3a8a): the sign-in page the app opens in the authentication browser.
   Passkey first, the one-time code when the box has none; returns to `vyre://enrolled`.
-- `apps/test/world.js` (01f82c5): the Deck world on a box, every request as alex's phone on the
+- `apps/test/world.js` (fd0413c): the Deck world on a box, every request as alex's phone on the
   tailnet, fake Gate senders on 127.0.0.1 so approvals really send (to them), a fake claude,
   and `/__test/code|hold|ask|outbox`. `deck/test/world.js` now exports its pieces.
 
-- Android (8bcb6f1): builds (assembleDebug, 28/28 JVM tests). First run, five tabs, Capsule,
+- Android: builds (assembleDebug, 28/28 JVM tests). First run, five tabs, Capsule,
   Files, Agents, Memory, Vault, Settings. Runs in the emulator against apps/test/world.js and
-  enrolls with a one-time code (27 Sep 2026). Now's OPEN-label overlap fixed (fdfa1e4).
-- apps/RELEASE.md (bf56c7f): the owner's steps for real phones, TestFlight and Play.
+  enrolls with a one-time code (27 Sep 2026). Now's OPEN-label overlap fixed.
+- apps/RELEASE.md: the owner's steps for real phones, TestFlight and Play.
 
 ## Doing
-- iOS: screens written (20f6262), full xcodebuild waits on the iOS 26.5 simulator runtime
-  (downloaded once through the build lock). Then boot one simulator against the test world.
+- iOS: runs in the simulator against the test world (6dc0d1a); next, move it to the PWA's
+  structure as Android did (e76224b).
 - Priority (lead, 27 Sep): the PWA (team pwa) ships first; native follows on the same API and
   design. Tabs change to Now / Projects / Chat / Find / Agents with pull-down to Find, matching
   the PWA; tokens from docs/design/TOKENS.md. Asked pwa where Files, Memory, Vault, Settings live.
 - CI (team ci): heavy builds move to GitHub Actions once live. iOS: apps/ios/scripts/build.sh
   [test]; Android: ./apps/android/gradlew -p apps/android assembleDebug testDebugUnitTest.
-  Until then, compiles only through buildlock.sh; downloads never take the lock.
+  CI is live (27 Sep): push work/mobile or `gh workflow run ios.yml|android.yml --ref work/mobile`;
+  the Mac is for simulator screenshots only. In repo text the server is "testbox".
 
 How to run the phone against the test world (Mac, one emulator or simulator at a time):
 - `VYRE_NO_DIALOGS=1 node apps/test/world.js 4801`
+- iOS: simulator `vyre-mobile` (iPhone 17, iOS 26.5); install the build.sh app and launch with
+  `-VyreTestBox http://127.0.0.1:4800`.
 - Android: AVD `vyre-mobile` (android-34 google_apis arm64), headless
   (`emulator -avd vyre-mobile -no-window -no-audio -no-snapshot`). The device key needs a
   screen lock and a fingerprint: `adb shell locksettings set-pin 1111`, then the fingerprint

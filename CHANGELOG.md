@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Native iPhone and Android apps run against a test box
+
+- `apps/ios` (SwiftUI, XcodeGen, no packages) and `apps/android` (Compose) build and run on a
+  simulator and an emulator against `apps/test/world.js`, signing in with a one-time code. Both
+  follow the phone PWA's structure: Now, Projects, Chat, Find, Agents, a pull down for Find, and
+  Settings (with the Vault) from the avatar. Find reads `@agent ...`, `tell <session> to ...` and
+  `watch <session>` as the Mac Capsule does. Vault values need this phone's key, and the screen is
+  secured while one shows. Voice and the Mac's files are not in this build.
+- `apps/ios/scripts/build.sh [test]` and `./apps/android/gradlew -p apps/android` build without
+  prompts for CI. Simulator builds are ad-hoc signed and use a software key, because the
+  simulator refuses biometry-bound Enclave keys. `apps/RELEASE.md` has the owner's steps for real
+  phones, TestFlight and the Play Store.
+- `deck/test/world.js` exports `startVyred`, `seedVault` and `makeAgents` beside `buildHome`,
+  `makeProjects` and `heldItems`; `apps/test/world.js` sets `VYRE_NO_DIALOGS`.
+
 #### CI on GitHub's free runners
 
 - Four workflows build and test Vyre on GitHub Actions, so no one compiles the Capsule or the
