@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A public name only when the person chose it; slow steps say so
+
+- Step 1's live availability check (`onboard.name` check) saved every valid name it was asked
+  about, so a name typed and then skipped became `config.name`, and step 4 claimed
+  `<name>.vyre.run` on the public zone. A check now saves nothing. Step 4 claims a vyre.run name
+  only when step 1 was continued with it, or with `confirm: true`; otherwise the page asks
+  ("Use kit.vyre.run? Change it · Use my tailnet name"). Continue in step 1 with a new name
+  replaces an earlier candidate while no address serves.
+- The address step says up front that it can take about a minute, and the line in progress shows
+  its elapsed seconds. Starting Claude's and Tailscale's sign-in say they take a few seconds.
+
 #### The Claude sign-in code is submitted
 
 - Onboarding step 2 typed the pasted code and Enter into `claude setup-token` in one write.

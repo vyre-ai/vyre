@@ -133,12 +133,14 @@ function command(text) {
 }
 
 /** One row of a live checklist. state: todo | doing | done | failed */
-function progressRow(label, st, note) {
+function progressRow(label, st, note, since) {
   const glyph = st === "done" ? icon("check", 14) : st === "doing" ? h("span", { class: "busy" }) : h("span", { class: "ring" });
+  // A slow line says how long it has been going, so a minute of waiting never looks stuck.
+  const took = st === "doing" && since ? `working, ${Math.max(0, Math.round((Date.now() - since) / 1000))} s` : "working";
   return h("li", { class: st },
     h("span", { class: "st" }, glyph),
     h("span", { class: "x" }, h("span", null, label), note ? h("span", null, note) : null),
-    st === "failed" ? h("span", { class: "state" }, "failed") : st === "doing" ? h("span", { class: "state" }, "working") : null);
+    st === "failed" ? h("span", { class: "state" }, "failed") : st === "doing" ? h("span", { class: "state" }, took) : null);
 }
 
 const NAME_RE = /^[a-z][a-z0-9-]{1,30}[a-z0-9]$/;
@@ -249,6 +251,7 @@ const SCREENS = {
       // Claude's own sign-in page hands back a code, which this machine's `claude setup-token`
       // pty is waiting to read; there is nothing to poll for, so it is typed here and sent back.
       const signIn = async () => {
+        put(msg, h("span", { class: "busy-inline faint" }, "Starting Claude's sign-in. This takes a few seconds."));
         const r = await attempt("onboard.claude", { mode: "setup-token" });
         if (r.error) { put(msg, String(r.error.message)); return; }
         if (r.data.url) window.open(r.data.url, "_blank", "noopener");
@@ -323,6 +326,8 @@ const SCREENS = {
       if (r.data) { show(r.data); if (r.data.state === "connected") for (const f of cleanup.splice(0)) f(); }
     }, 2000);
     const connect = async () => {
+      s.foot({ label: "Starting Tailscale's sign-in", disabled: true, run: () => {} });
+      put(panel, h("p", { class: "small muted" }, h("span", { class: "busy-inline faint" }, "Starting Tailscale's sign-in. This takes up to ten seconds.")));
       const r = await attempt("onboard.tailscale", { action: "connect" });
       if (r.error) { put(panel, empty("Could not start Tailscale's sign-in.", r.error)); return; }
       if (r.data.loginUrl) window.open(r.data.loginUrl, "_blank", "noopener");
@@ -342,7 +347,8 @@ const SCREENS = {
       h("h1", { class: "h1" }, "Your address."),
       // ADR 0008 section 4: v0.1 defaults to a ts.net address (tailscale cert), not <you>.vyre.run;
       // "your own domain" is a collapsed, secondary choice, below.
-      h("p", { class: "lead" }, "Vyre gets a certificate for an address on your own tailnet. Only your tailnet can open it."));
+      h("p", { class: "lead" }, "Vyre gets a certificate for an address on your own tailnet. Only your tailnet can open it."),
+      h("p", { class: "small muted" }, "This can take about a minute: each line below shows how it is going."));
     const addr = h("div", { class: "address-big" }, h("span", { class: "faint" }, "Not reserved yet."));
     const list = h("ol", { class: "progress" });
     const note = h("div");
@@ -351,16 +357,14 @@ const SCREENS = {
       ? [h("i", null, "https://"), address.replace(/^https?:\/\//, "")]
       : h("span", { class: "faint" }, "Not reserved yet."));
     const LABELS = { reserve: "Reserve your address", dns: "Point it at this machine on your tailnet", cert: "Get the certificate" };
+    /** @type {Record<string, number>} when each line started working */
+    const since = {};
     const draw = (/** @type {any[]} */ steps) => put(list, ["reserve", "dns", "cert"].map(id => {
       const st = steps.find(x => x.id === id) || { state: "todo" };
-      return progressRow(LABELS[id], st.state, st.note);
+      if (st.state === "doing") since[id] ||= Date.now();
+      return progressRow(LABELS[id], st.state, st.note, since[id]);
     }));
     draw([]);
-    if (!state.name) {
-      put(note, h("p", { class: "notice" }, "Pick your name in step 1 first."));
-      s.foot({ label: "Go to step 1", run: () => goto(0) });
-      return;
-    }
     if (stepState("tailscale") !== "done") put(note, h("p", { class: "notice" }, icon("lock", 14),
       "This needs this machine on your tailnet. If you skipped Tailscale, the address waits until it is connected."));
     // HTTPS certificates are off for the tailnet by default (ADR 0008 section 4): one admin
@@ -369,7 +373,7 @@ const SCREENS = {
       if (!d || d.state !== "blocked" || d.code !== "https_off") return false;
       put(note, h("p", { class: "notice" }, d.why || "HTTPS certificates are off for your tailnet."),
         h("p", { class: "small muted" }, "Turning it on publishes this machine's name in public Certificate Transparency logs."));
-      s.foot({ label: "Check again", run: reserve },
+      s.foot({ label: "Check again", run: () => reserve() },
         { secondary: d.adminUrl ? h("a", { class: "btn", href: d.adminUrl, target: "_blank", rel: "noopener" }, "Turn on HTTPS") : null });
       return true;
     };
@@ -395,22 +399,36 @@ const SCREENS = {
         return true;
       }
       if (blocked({ state: r.phase, why: r.why, code: r.code, adminUrl: r.adminUrl })) return true;
-      if ((r.steps || []).some(x => x.state === "failed")) s.foot({ label: "Try again", run: reserve });
+      if ((r.steps || []).some(x => x.state === "failed")) s.foot({ label: "Try again", run: () => reserve() });
       return false;
     };
-    const reserve = async () => {
+    // A vyre.run name is public DNS: it is claimed only when the person typed it and pressed
+    // Continue in step 1, or says yes here. Otherwise this asks, or uses the tailnet's own name.
+    const ask = () => {
+      const n = state.name && NAME_RE.test(state.name) ? state.name : null;
+      put(note, h("p", { class: "notice" }, n
+        ? [`Use ${n}.vyre.run? `, "It is a public name: anyone can look it up, though only your tailnet can open it."]
+        : "You have not picked a name. Pick one in step 1, or use this machine's own tailnet name."));
+      s.foot(n ? { label: `Use ${n}.vyre.run`, run: () => reserve(true) } : { label: "Use my tailnet name", run: () => reserve(false, "ts.net") },
+        { secondary: h("span", null,
+          h("button", { type: "button", class: "btn btn-ghost", onclick: () => goto(0) }, n ? "Change it" : "Pick a name"),
+          n ? h("button", { type: "button", class: "btn btn-ghost", onclick: () => reserve(false, "ts.net") }, "Use my tailnet name") : null) });
+    };
+    const reserve = async (/** @type {boolean} */ confirm = false, action = "reserve") => {
       const st = await attempt("onboard.status");
       if (blocked(st.data?.detail?.name)) return;
+      if (action === "reserve" && st.data?.detail?.name?.via === "vyre.run" && stepState("you") !== "done" && !confirm) return ask();
+      put(note);
       s.foot({ label: "Reserving", disabled: true, run: () => {} });
-      const r = await attempt("onboard.name", { name: state.name, action: "reserve" });
-      if (r.error) { put(note, empty("Could not reserve the address.", r.error)); s.foot({ label: "Try again", run: reserve }); return; }
+      const r = await attempt("onboard.name", { ...(state.name ? { name: state.name } : {}), action, ...(confirm ? { confirm: true } : {}) });
+      if (r.error) { put(note, empty("Could not reserve the address.", r.error)); s.foot({ label: "Try again", run: () => reserve() }); return; }
       if (done(r.data)) return;
       every(async () => {
         const p = await attempt("onboard.name", { name: state.name, action: "status" });
         if (p.data && done(p.data)) for (const f of cleanup.splice(0)) f();
       }, 1500);
     };
-    s.foot({ label: "Get your address", run: reserve });
+    s.foot({ label: "Get your address", run: () => reserve() });
     col.append(h("details", { class: "ob-collapse" }, h("summary", null, "Your own domain"),
       h("p", { class: "small muted" }, "Point a domain you already own at this box instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the box's own configuration, then come back and reserve again.")));
   },

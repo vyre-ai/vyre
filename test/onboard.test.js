@@ -135,7 +135,7 @@ test("onboard: skipping and a bad token say why, a good token goes to the vault,
   assert.equal(check.data.valid, true);
   assert.equal(check.data.available, true);
   assert.equal(check.data.via, "ts.net");
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, "alex");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, undefined, "a check answers and saves nothing");
 });
 
 test("onboard: a new link voids the old unredeemed one; the owner arriving on the tailnet closes the door", async t => {
@@ -197,10 +197,10 @@ test("onboard: step 1 saves your name and the assistant's; a name that fits beco
   assert.equal(you.data.assistant, "juno");
   assert.equal(saved().onboard.person, "Alex");
   await tool(base, session, "onboard.you", { name: "Sam" });
-  assert.equal(saved().name, "alex", "a candidate already there stays");
+  assert.equal(saved().name, "sam", "Continue with a new name confirms it, while no address serves yet");
   const s = (await (await tool(base, session, "onboard.status")).json()).data;
   assert.equal(s.steps.you, "done");
-  assert.equal(s.name, "alex");
+  assert.equal(s.name, "sam");
   assert.equal(s.person, "Sam");
   assert.equal(s.assistant, "juno");
   assert.equal(s.current, "claude");
@@ -229,6 +229,17 @@ test("onboard: reserve goes to ts.net without a zone token and says so when the 
 
   await freeZone(t);
   assert.equal((await (await tool(base, session, "onboard.status")).json()).data.detail.name.via, "vyre.run");
+
+  // Step 1 skipped, though "kit" was typed (and checked) there first: a public name is never
+  // claimed until the person confirms it.
+  assert.equal((await (await tool(base, session, "onboard.name", { name: "kit", action: "check" })).json()).data.valid, true);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, undefined, "the check saved nothing");
+  const unasked = await (await tool(base, session, "onboard.name", { name: "kit", action: "reserve" })).json();
+  assert.match(unasked.error.message, /kit\.vyre\.run is a public name: confirm it first/);
+  assert.match((await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).error.message, /pick a name first/);
+  const yes = await (await tool(base, session, "onboard.name", { name: "kit", action: "reserve", confirm: true })).json();
+  assert.ok(!yes.error, JSON.stringify(yes.error));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, "kit", "confirmed, so it is the name");
 });
 
 /** Can this machine run claude under a pty the way onboard.claude does? */
