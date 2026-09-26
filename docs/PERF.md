@@ -67,8 +67,25 @@ Embedding-pipeline CPU/battery behavior needs a separate check later.
 - **switchboard**: no findings — audited, event-driven, nothing to fix.
 - **gate-chat**: chat poller numbers above; recommend raising the shipped default toward 30-60s
   and/or making it adaptive rather than a flat 2s.
-- **capsule**: hidden-state RSS ~300MB vs. 250MB budget, breakdown above; also no first-paint
-  instrumentation exists yet to verify the <100ms wake budget.
+- **capsule**: hidden-state RSS ~300MB vs. 250MB budget, breakdown above.
+
+## Capsule wake latency (measured)
+
+Added real gesture-to-paint instrumentation: `local/capsule/app/main.js` timestamps the top of
+`show()` (every wake trigger funnels through it — hotkey, menu, CLI, drive harness), and the
+renderer sends a `capsule:paintping` IPC from inside a double `requestAnimationFrame` after
+`onOpen()` repaints (rAF only fires once the frame is about to be presented, so this is a real
+paint signal, not a guess) — gated behind `VYRE_CAPSULE_TRACE_WAKE`. The old end-of-show()
+point (`bridge.refresh()` resolving) was a data fetch, not a paint.
+
+Triggered via the existing `VYRE_CAPSULE_DRIVE=1` stdin harness (`{"show":true}`/`{"hide":true}`
+JSON commands), which calls the exact same `show()`/`hide()` the hotkey handler calls — no
+synthesized OS-level input. Against a temp `VYRE_HOME`, 5 steady-state samples: **mean 38.0ms,
+min 34.5ms, max 39.6ms** — under the 100ms budget with about 2.6x margin. This measures the
+Electron-internal gesture-to-paint path; it doesn't include the Swift hotkey tap's own ~450ms
+double-tap gesture-recognition window (by design, not part of "wake") or window-server
+compositing beyond what rAF reports. Cold-start (first show after launch) is much higher
+(~721ms observed) and isn't representative of the steady-state wake the budget targets.
 - **deck**, **computers**: not yet audited in this pass.
 - **release**: `scripts/perf-check` exists, `npm run perf-check`, ~65s runtime, exit 0/1 — ready
   to wire into `scripts/release-check.sh`; CPU-max flakiness noted above.
