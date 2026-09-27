@@ -11,8 +11,11 @@ import { tempHome } from "../../test/helpers.js";
 const LOOP = path.join(path.dirname(fileURLToPath(import.meta.url)), "loop.sh");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/** A fake vyred: logs each start, exits with the next code in `codes`, or stays up until SIGTERM. */
-function fake(dir, codes) {
+/**
+ * A fake vyred: logs each start, exits with the next code in `codes`, or stays up until SIGTERM,
+ * then exits with `termCode` after `termMs` (its drain).
+ */
+function fake(dir, codes, { termMs = 200, termCode = 0 } = {}) {
   const js = path.join(dir, "fake-vyred.mjs");
   fs.writeFileSync(js, `import fs from "node:fs";
 const log = ${JSON.stringify(path.join(dir, "log"))};
@@ -20,14 +23,14 @@ const n = fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\\n").filter(
 fs.appendFileSync(log, "start\\n");
 const codes = ${JSON.stringify(codes)};
 if (n < codes.length) process.exit(codes[n]);
-process.on("SIGTERM", () => setTimeout(() => { fs.appendFileSync(${JSON.stringify(path.join(dir, "drained"))}, "yes"); process.exit(0); }, 200));
+process.on("SIGTERM", () => setTimeout(() => { fs.appendFileSync(${JSON.stringify(path.join(dir, "drained"))}, "yes"); process.exit(${termCode}); }, ${termMs}));
 setInterval(() => {}, 1000);
 `);
   return `${process.execPath} ${js}`;
 }
 
-function run(dir, codes) {
-  const p = spawn("/bin/sh", [LOOP], { env: { ...process.env, VYRE_DAEMON: fake(dir, codes), VYRE_LOOP_PAUSE: "0.1" }, stdio: ["ignore", "ignore", "pipe"] });
+function run(dir, codes, o) {
+  const p = spawn("/bin/sh", [LOOP], { env: { ...process.env, VYRE_DAEMON: fake(dir, codes, o), VYRE_LOOP_PAUSE: "0.1" }, stdio: ["ignore", "ignore", "pipe"] });
   let err = "";
   p.stderr.on("data", d => { err += d; });
   const exited = new Promise(r => p.on("exit", code => r(code)));
@@ -55,4 +58,16 @@ test("loop: five exits inside a minute leave vyred to Docker's restart policy", 
   assert.equal(await l.exited, 3);
   assert.equal(l.starts(), 5);
   assert.match(l.err(), /5 times in a minute/);
+});
+
+test("loop: a stop passes on vyred's own exit code, even when vyred is gone before the loop waits again", { timeout: 20_000 }, async t => {
+  // vyred drains at once and exits 7: the trapped wait returns 143, and the loop must not.
+  const dir = tempHome(t);
+  const l = run(dir, [], { termMs: 0, termCode: 7 });
+  t.after(() => { try { l.p.kill("SIGKILL"); } catch {} });
+  for (let i = 0; i < 100 && l.starts() < 1; i++) await sleep(50);
+  await sleep(200);
+  l.p.kill("SIGTERM");
+  assert.equal(await l.exited, 7);
+  assert.equal(l.starts(), 1);
 });

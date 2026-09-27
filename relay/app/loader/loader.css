@@ -1,0 +1,7 @@
+:root { --bg: #fbfaf8; --fg: #1d1b19; --muted: #6b6560; --warn: #a3401f; }
+@media (prefers-color-scheme: dark) { :root { --bg: #141312; --fg: #eeebe7; --muted: #9a938c; --warn: #f08a5d; } }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, sans-serif; }
+#vyre-loader { max-width: 34rem; margin: 20vh auto 0; padding: 0 16px; }
+#vyre-loader p { color: var(--muted); }
+#vyre-loader p.warn { color: var(--warn); }
+#vyre-loader[hidden] { display: none; }

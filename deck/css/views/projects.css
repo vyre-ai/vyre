@@ -160,7 +160,7 @@
 }
 
 /* Phone: the list, then the thread full-width with a back link. */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .pj-phone { display: inline-flex; }
   .pl { padding: 16px 16px 24px; }
   .pl-head { flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px; }
@@ -210,7 +210,7 @@
 }
 
 /* Late rules: desktop hides the phone back links; the whole project row opens the project. */
-@media (min-width: 761px) { .pj-back.pj-phone { display: none; } }
+@media (min-width: 761px) and (min-height: 501px), (min-width: 761px) and (pointer: fine), (min-width: 761px) and (pointer: none) { .pj-back.pj-phone { display: none; } }
 .th-box .ibtn:disabled { opacity: 0.4; cursor: default; background: transparent; }
 .pl-row { position: relative; }
 .pl-row .pl-open::after { content: ""; position: absolute; inset: 0; }

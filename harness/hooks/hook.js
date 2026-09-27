@@ -106,7 +106,7 @@ async function main() {
     // the vault (the path is in tool_input) is refused before harness.rules looks. The floor here
     // then decides, as it does when vyred is down.
     let v = r.data || (r.error && ["unreachable", "timeout", "no_such_tool", "denied"].includes(r.error.code)
-      ? rules({ tool: input.tool_name, input: input.tool_input, cwd: h.cwd }) : null);
+      ? rules({ tool: input.tool_name, input: input.tool_input, cwd: h.cwd, agent: process.env.VYRE_AGENT || null }) : null);
     if (down(r) && v && !v.decision) v = offlineTool({ ...offline, tool: input.tool_name, input: input.tool_input, pluginRoot: plugin_root });
     if (v && v.decision) answer(EVENT.rules, { permissionDecision: v.decision, permissionDecisionReason: v.reason || "Vyre security floor" });
   } else if (piece === "learn") {

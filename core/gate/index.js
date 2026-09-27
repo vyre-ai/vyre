@@ -31,7 +31,9 @@ const byModel = caller => /^mcp(?:$|[\s:])/.test(String(caller || ""));
 // discard blind. gate.get's own shape, not a made-up one: `to`, `draft`, `final`.
 const destOf = (edited, it) => [].concat((edited && edited.to) ?? it.to).filter(Boolean).join(", ") || "(no destination)";
 const mergedContent = (edited, it) => ({ ...(it.final || it.draft), ...(edited || {}) });
-const previewOf = c => String((c && (c.subject || c.body || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
+// An MCP call held by the hub keeps its words in `arguments` (a Slack post's text or payload).
+const wordsOf = a => (a && typeof a === "object" ? a.text || a.payload || a.message || a.body || a.content : "") || "";
+const previewOf = c => String((c && (c.subject || c.body || wordsOf(c.arguments) || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
 
 /**
  * The kinds that act as the user in the outside world: sending or posting, paying, and deleting
@@ -164,6 +166,19 @@ export default {
       input: obj({ id: str, reason: str, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule"],
       run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
+    });
+
+    ctx.tool("gate.settle", {
+      description: "An approved item whose send failed with its answer lost, found to have gone out after all (the app shows the words): mark it sent with the evidence, so it is never sent twice. Only outcome \"sent\", only for an item that was approved and failed. A person, or the module that offered the item's sender.",
+      input: obj({ id: str, outcome: { type: "string", enum: ["sent"] }, evidence: { type: "object" }, by: str }, ["id", "outcome"]),
+      callers: ["cli", "local", "module", "deck", "capsule"],
+      run: (input, { caller }) => {
+        const c = String(caller || "");
+        // The item's own surface: the module whose sender holds it (mcp for a hub call). Any other
+        // module, and every model or guest, goes through the same rule as approving.
+        const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : person(caller);
+        return gate.settle({ ...input, by: input.by || own });
+      },
     });
 
     ctx.tool("gate.offer", {

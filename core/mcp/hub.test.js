@@ -195,6 +195,26 @@ test("hub: an error from the server is scrubbed, and a result over the cap is cu
   await assert.rejects(hub.call({ server: "web", tool: "list_issues" }, person), e => e.code === "rpc" && !e.message.includes(token));
 });
 
+test("hub: an error says whether the call may have reached the server (detail.reached)", async () => {
+  let mode = "rpc";
+  const { hub } = fakeHub({ behave: {
+    call: () => { throw new McpError(mode, `${mode} happened`); },
+    initFail: n => (mode === "start" && n > 0 ? new McpError("spawn_failed", "could not start") : null),
+  } });
+  await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp" });
+  const reached = async () => { try { await hub.run("web", "list_issues", {}); return "ran"; } catch (e) { return /** @type {any} */ (e).detail?.reached; } };
+  assert.equal(await reached(), "no", "the server answered no itself");
+  mode = "closed";
+  assert.equal(await reached(), "maybe", "it closed mid-call: it may have run");
+  mode = "timeout";
+  assert.equal(await reached(), "maybe");
+  mode = "exited";
+  assert.equal(await reached(), "maybe");
+  mode = "start";
+  assert.equal(await reached(), "no", "it never started, so nothing was asked");
+  await hub.stop();
+});
+
 test("hub: a failed add stands, does not spend the restart budget, and a missing grant reads plainly", async () => {
   const { hub } = fakeHub();
   const r = await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp", auth: { type: "bearer", item: "tok" } });

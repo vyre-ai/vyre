@@ -366,7 +366,7 @@ final class SessionPanelModel: ObservableObject {
     nonisolated static func settleTools(_ m: [DmMessage]) -> [DmMessage] {
         m.map { x in
             guard let t = x.tools, t.contains(where: { !$0.done }) else { return x }
-            var y = x; y.tools = t.map { var u = $0; u.done = true; return u }; return y
+            var y = x; y.tools = t.map { var u = $0; if u.status == .running { u.status = .completed }; return u }; return y
         }
     }
 

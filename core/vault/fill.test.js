@@ -66,6 +66,8 @@ test("FILL_MIGRATION creates only vault_ tables and FILL_TOOLS name real methods
   for (const n of ["vault.device.code", "vault.device.unlock", "vault.unlock-passphrase"]) {
     assert.deepEqual(FILL_TOOLS.find(x => x.name === n)?.callers, ["cli", "local"]);
   }
+  // Listing and unpairing browsers are the person's surfaces, never a model or a guest.
+  for (const n of ["vault.devices", "vault.device.revoke"]) assert.deepEqual(FILL_TOOLS.find(x => x.name === n)?.callers, ["cli", "local", "deck", "capsule"]);
 });
 
 test("pairing: a code works once, a used, expired or unknown code fails", async t => {
@@ -109,8 +111,11 @@ test("a web page Origin is refused; the extension Origin gets CORS for itself on
   const ext = await call("GET status", null, { ...bearer(token), origin: EXT });
   assert.equal(ext.status, 200);
   assert.equal(ext.headers.get("access-control-allow-origin"), EXT);
-  const moz = await call("GET status", null, { ...bearer(token), origin: "moz-extension://0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" });
-  assert.equal(moz.status, 200);
+  // Another extension gets CORS for itself, and never this one's token: a paired Origin is kept.
+  const MOZ = "moz-extension://0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+  const moz = await call("GET status", null, { ...bearer(token), origin: MOZ });
+  assert.equal(moz.status, 401);
+  assert.equal(moz.headers.get("access-control-allow-origin"), MOZ);
 });
 
 test("OPTIONS preflight answers the extension and refuses a page", async t => {
@@ -433,4 +438,39 @@ test("a Host that is not loopback or a configured name is refused (DNS rebinding
   for (const h of [`127.0.0.1:${port}`, `localhost:${port}`, `vault.acme.test:${port}`, "LOCALHOST"]) {
     assert.equal((/** @type {any} */ (await get(h))).status, 200, h);
   }
+});
+
+test("a key-bound extension signs every request: a copied token, a replay or another extension is refused", async t => {
+  const { fill, call } = await setup(t);
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const { code } = fill.code({ name: "work chrome" });
+  const paired = await call("POST pair", { code, key: publicKey.export({ format: "jwk" }) });
+  assert.equal(paired.status, 200, JSON.stringify(paired.body));
+  const token = paired.body.data.token;
+  const sign = (method, name, body, { t = Date.now(), n = crypto.randomBytes(12).toString("base64url"), k = privateKey } = {}) => {
+    const raw = body ? JSON.stringify(body) : "";
+    const msg = `${method}\n/v1/fill/${name}\n${crypto.createHash("sha256").update(raw).digest("base64url")}\n${t}\n${n}`;
+    return { "x-vyre-proof": `t=${t} n=${n} sig=${crypto.sign("sha256", Buffer.from(msg), { key: k, dsaEncoding: "ieee-p1363" }).toString("base64url")}` };
+  };
+  const signedStatus = await call("GET status", undefined, { ...bearer(token), origin: EXT, ...sign("GET", "status") });
+  assert.equal(signedStatus.status, 200, JSON.stringify(signedStatus.body));
+  // The token alone, as a script that copied it would send it, with or without the right Origin.
+  assert.equal((await call("GET status", undefined, bearer(token))).status, 401);
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT })).status, 401);
+  const once = sign("GET", "status");
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT, ...once })).status, 200);
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT, ...once })).status, 401, "a replay");
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT, ...sign("GET", "status", null, { k: other }) })).status, 401);
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: "chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", ...sign("GET", "status") })).status, 401, "another extension");
+  assert.equal((await call("POST unlock", { passphrase: "x" }, { ...bearer(token), origin: EXT, ...sign("POST", "unlock", { passphrase: "y" }) })).status, 401, "signed for another body");
+});
+
+test("pairing takes only the listed extensions when vault.fill.extensions names them", async t => {
+  const { vault } = await setup(t);
+  const fill = new Fill({ vault, extensions: [EXT] });
+  const other = fill.pair({ code: fill.code({ name: "b" }).code }, { origin: "chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" });
+  assert.equal(other.status, 403);
+  const mine = fill.pair({ code: fill.code({ name: "b" }).code }, { origin: EXT });
+  assert.equal(mine.status, 200, JSON.stringify(mine.body));
 });

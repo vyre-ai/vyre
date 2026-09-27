@@ -11,3 +11,4 @@ __pycache__/
 docs-site/
 build.json
 modules/vault-extension/dist/
+app-out/

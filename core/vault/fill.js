@@ -135,10 +135,14 @@ const ok = data => ({ status: 200, body: { data } });
 
 export class Fill {
   /**
-   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number, config?: any }} deps
-   *   config: the whole config.json, for `vault.fill.window`.
+   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number, config?: any, extensions?: string[] }} deps
+   *   config: the whole config.json, for `vault.fill.window`. extensions: the extension origins
+   *   that may pair (vault.fill.extensions); empty means any.
    */
-  constructor({ vault, verifyVaultPassphrase, now = Date.now, config = null }) {
+  constructor({ vault, verifyVaultPassphrase, now = Date.now, config = null, extensions = [] }) {
+    this.extensions = new Set(extensions.map(String));
+    /** Signed-request nonces seen, with when each can be forgotten. @type {Map<string, number>} */
+    this.proofNonces = new Map();
     this.vault = vault;
     /** How long a session lasts from the proof that opened it. */
     this.windowMs = fillWindowMs(config);
@@ -252,16 +256,19 @@ export class Fill {
    * @param {string} route @param {any} body @param {Record<string, any>} [headers]
    * @returns {Promise<Reply>}
    */
-  async handle(route, body, headers = {}) {
+  async handle(route, body, headers = {}, { raw = "", path = "" } = {}) {
     /** @type {Record<string, string>} */
     const h = {};
     for (const [k, v] of Object.entries(headers || {})) h[k.toLowerCase()] = Array.isArray(v) ? v[0] : v;
+    // What a paired extension's key signed over (device()). Pseudo-headers: a client cannot send
+    // a header whose name starts with ":".
+    Object.assign(h, { ":method": route.split(" ")[0], ":path": path || `/v1/fill/${route.split(" ")[1]}`, ":raw": raw });
     const b = body && typeof body === "object" && !Array.isArray(body) ? body : {};
     // Device rows are MACed under the vault key (ADR 0006): load it if the keystore opens
     // unattended, so the checks below run. A locked passphrase vault stays locked.
     try { if (await this.vault.keys.exists()) await this.vault.key(); } catch {}
     switch (route) {
-      case "POST pair": return this.pair(b);
+      case "POST pair": return this.pair(b, h);
       case "POST unlock": return b && typeof b.signature === "string" ? this.unlockKey(b, h) : this.unlock(b, h);
       case "POST challenge": return this.challenge(h);
       case "POST lock": return this.lockRoute(h);
@@ -283,9 +290,28 @@ export class Fill {
     }
   }
 
-  /** @param {any} b @returns {Reply} */
-  pair(b) {
+  /**
+   * Pair an extension with a code. Its Origin is kept and must come with every later request, and
+   * an ES256 public key (`key`, a JWK) it sends is kept too: then every request must be signed
+   * with it (`x-vyre-proof`), so a token copied out of the browser is not enough. A script can
+   * send any Origin it likes; the key is what it cannot make up.
+   * @param {any} b @param {Record<string, string>} [h] @returns {Reply}
+   */
+  pair(b, h = {}) {
     const t = this.now();
+    const from = String(h.origin || "");
+    if (this.extensions.size && !this.extensions.has(from)) return fail(403, "origin_refused", "pairing is done from the Vyre extension");
+    // A browser's key is a JWK it signs requests with; a phone's is a base64url SPKI string it
+    // unlocks with (below, once the code says it was made for a phone).
+    let key = null;
+    if (b.key !== undefined && typeof b.key !== "string") {
+      const k = b.key;
+      try {
+        if (!k || k.kty !== "EC" || k.crv !== "P-256" || k.d) throw new Error("no");
+        crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, format: "jwk" });
+        key = { kty: "EC", crv: "P-256", x: String(k.x), y: String(k.y) };
+      } catch { return fail(400, "bad_input", "key must be the public JWK of an ES256 key"); }
+    }
     this.pairFails = this.pairFails.filter(x => x > t - FAIL_WINDOW_MS);
     if (this.pairFails.length >= MAX_PAIR_FAILS) {
       this.vault.audit("pair", null, "device:unknown", false, "locked out");
@@ -304,17 +330,19 @@ export class Fill {
     const token = newToken();
     const id = newId("d_");
     // A phone pairs with its device key; a browser has none and unlocks another way.
-    let key = null;
-    if (b.key !== undefined) {
+    let phoneKey = null;
+    if (typeof b.key === "string") {
       // A key unlocks with no passphrase and no Touch ID here, so only a code the person made for a phone takes one.
       if (!row.phone) return this.pairRefused(t, "that code is for a browser · vyre vault pair --phone makes one for a phone");
-      key = deviceKey(b.key);
-      if (!key) return fail(400, "bad_input", "the device key is not a P-256 public key");
+      phoneKey = deviceKey(b.key);
+      if (!phoneKey) return fail(400, "bad_input", "the device key is not a P-256 public key");
     }
     this.db.prepare("INSERT INTO vault_devices (id, name, token_hash, created, last_seen, revoked) VALUES (?,?,?,?,?,NULL)").run(id, name, sha(token), t, t);
     this.vault.sign("vault_devices", id);
-    if (key) { this.db.prepare("INSERT OR REPLACE INTO vault_device_keys (device, key, at) VALUES (?,?,?)").run(id, key, t); this.vault.sign("vault_device_keys", id); }
-    this.vault.audit("pair", null, `device:${id}:${name}`, true, null);
+    if (phoneKey) { this.db.prepare("INSERT OR REPLACE INTO vault_device_keys (device, key, at) VALUES (?,?,?)").run(id, phoneKey, t); this.vault.sign("vault_device_keys", id); }
+    if (from) this.db.prepare("INSERT OR REPLACE INTO vault_meta (key, value) VALUES (?, ?)").run(`device-origin:${id}`, from);
+    if (key) this.db.prepare("INSERT OR REPLACE INTO vault_meta (key, value) VALUES (?, ?)").run(`device-key:${id}`, JSON.stringify(key));
+    this.vault.audit("pair", null, `device:${id}:${name}`, true, key ? "key-bound" : phoneKey ? "phone-key" : null);
     this.vault.emit("vault.device-paired", { device: id, name });
     return ok({ device: id, name, token });
   }
@@ -508,8 +536,38 @@ export class Fill {
     const d = /** @type {Device|undefined} */ (this.db.prepare("SELECT * FROM vault_devices WHERE token_hash = ?").get(hash));
     if (!d || !same(d.token_hash, hash) || !this.vault.rowOk("vault_devices", d)) return fail(401, "unauthorized", "this browser is not paired · vyre vault pair");
     if (d.revoked) return fail(401, "revoked", "this browser was unpaired · vyre vault pair to pair it again");
+    const meta = k => /** @type {any} */ (this.db.prepare("SELECT value FROM vault_meta WHERE key = ?").get(k))?.value ?? null;
+    const pinned = meta(`device-origin:${d.id}`);
+    // Another extension never uses this one's token. A request with no Origin at all is not a
+    // browser's; only the key below tells that script from the extension.
+    if (pinned && h.origin && String(h.origin) !== pinned) return fail(401, "unauthorized", "this browser's token came from another extension");
+    const key = meta(`device-key:${d.id}`);
+    if (key) {
+      const why = this.checkProof(d.id, key, h);
+      if (why) return fail(401, "unauthorized", why);
+    }
     this.db.prepare("UPDATE vault_devices SET last_seen = ? WHERE id = ?").run(this.now(), d.id);
     return d;
+  }
+
+  /**
+   * A key-bound extension's signature over this request: ES256 (P1363) over
+   * `METHOD\npath\nsha256b64url(body)\nt\nn`, fresh within a minute, each nonce once.
+   * @returns {string|null} why it is refused
+   */
+  checkProof(id, keyJson, h) {
+    const m = /^t=(\d{1,16}) n=([A-Za-z0-9_-]{8,64}) sig=([A-Za-z0-9_-]+)$/.exec(String(h["x-vyre-proof"] || "").trim());
+    if (!m) return "this browser signs its requests; the signature is missing";
+    const now = this.now();
+    if (Math.abs(now - Number(m[1])) > 60_000) return "the request's signature is stale; check the clock";
+    for (const [k, until] of this.proofNonces) if (until <= now) this.proofNonces.delete(k);
+    if (this.proofNonces.has(`${id}:${m[2]}`)) return "that signed request was already used";
+    const msg = `${h[":method"]}\n${h[":path"]}\n${crypto.createHash("sha256").update(h[":raw"] || "").digest("base64url")}\n${m[1]}\n${m[2]}`;
+    let good = false;
+    try { good = crypto.verify("sha256", Buffer.from(msg), { key: crypto.createPublicKey({ key: JSON.parse(keyJson), format: "jwk" }), dsaEncoding: "ieee-p1363" }, Buffer.from(m[3], "base64url")); } catch {}
+    if (!good) return "the request's signature does not match this browser's key";
+    this.proofNonces.set(`${id}:${m[2]}`, now + 120_000);
+    return null;
   }
 
   /** @param {Device} d */
@@ -594,8 +652,9 @@ async function readJson(req) {
     if (size > MAX_BODY) throw new HttpError(413, "too_large", "request body is over 64 KB");
     chunks.push(chunk);
   }
-  if (!size) return {};
-  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  const raw = Buffer.concat(chunks).toString("utf8");
+  if (!size) return { json: {}, raw };
+  try { return { json: JSON.parse(raw), raw }; }
   catch { throw new HttpError(400, "bad_input", "request body is not JSON"); }
 }
 
@@ -637,7 +696,7 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill, names = []
         Object.assign(cors, {
           "access-control-allow-origin": String(o), vary: "Origin",
           "access-control-allow-methods": "GET, POST, OPTIONS",
-          "access-control-allow-headers": "authorization, content-type, x-vyre-session",
+          "access-control-allow-headers": "authorization, content-type, x-vyre-session, x-vyre-proof",
           "access-control-max-age": "600",
         });
         if (req.headers["access-control-request-private-network"]) cors["access-control-allow-private-network"] = "true";
@@ -650,11 +709,11 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill, names = []
       if (req.method !== ROUTES[name]) return reply(405, { error: { code: "method", message: `${name} takes ${ROUTES[name]}` } });
       // Pairing is the extension's first step and nothing else makes it. Without an Origin, the
       // caller is a script (an agent with curl), which would otherwise pair itself with a code.
-      const body = req.method === "POST" ? await readJson(req) : {};
+      const got = req.method === "POST" ? await readJson(req) : { json: {}, raw: "" };
       // A phone's autofill service is not a browser and sends no Origin; it pairs with a device
       // key and a phone code, which pair() checks.
-      if (name === "pair" && o === undefined && !(body && typeof body.key === "string")) return reply(403, { error: { code: "origin_required", message: "pairing is done from the Vyre extension" } });
-      const out = await fill.handle(`${req.method} ${name}`, body, /** @type {any} */ (req.headers));
+      if (name === "pair" && o === undefined && !(got.json && typeof got.json.key === "string")) return reply(403, { error: { code: "origin_required", message: "pairing is done from the Vyre extension" } });
+      const out = await fill.handle(`${req.method} ${name}`, got.json, /** @type {any} */ (req.headers), { raw: got.raw, path: `/v1/fill/${name}` });
       reply(out.status || 200, out.body ?? {});
     } catch (e) {
       if (e instanceof HttpError) return reply(e.status, { error: { code: e.code, message: e.message } });
@@ -690,9 +749,9 @@ export const FILL_TOOLS = [
       ? `Pair a phone${i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill: it will unlock with its own fingerprint or face`
       : `Pair a new browser${i && i.name ? ` (${f.deviceName(i.name)})` : ""} for autofill`),
     description: "A one-time code (8 characters, 5 minutes) to pair a browser extension, or with phone a phone's autofill service that unlocks with its device key." },
-  { name: "vault.devices", callers: null, method: "devices", input: obj({}),
+  { name: "vault.devices", callers: ["cli", "local", "deck", "capsule"], method: "devices", input: obj({}),
     description: "Browsers paired for autofill, when each was last seen and how many sessions it has open." },
-  { name: "vault.device.revoke", callers: null, method: "revokeDevice", input: obj({ id: str }, ["id"]),
+  { name: "vault.device.revoke", callers: ["cli", "local", "deck", "capsule"], method: "revokeDevice", input: obj({ id: str }, ["id"]),
     description: "Unpair a browser: its token and every session it holds stop working now." },
   { name: "vault.device.unlock", callers: ["cli", "local"], method: "unlockDevice", input: obj({ device: str }, ["device"]),
     presence: (f, i) => `Unlock autofill in ${f.deviceById(i && i.device)?.name || "a paired browser"} for 30 minutes`,

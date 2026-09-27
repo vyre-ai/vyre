@@ -79,7 +79,7 @@ async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle()
     name: "planner", config: { role: "box", planner: { timezone: tz } }, paths: { root },
     store: { db, migrate: steps => migrate(db, "planner", steps) },
     log: () => {},
-    events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn) },
+    events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
     tool: (name, def) => tools.set(name, def),
     call: async (tool, input) => google.call(tool, input),
     remote: async () => ({ error: { code: "no_link", message: "no link" } }),

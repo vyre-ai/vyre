@@ -12,6 +12,7 @@
 // vault-places.js.
 
 import { h, put, empty } from "../js/dom.js";
+import { action } from "../js/empty-actions.js";
 import { attempt, modules } from "../js/api.js";
 import { clock, startOfToday } from "../js/fmt.js";
 import * as vc from "../vault/client.js";
@@ -110,7 +111,7 @@ export default async function vault(ctx) {
   }
   let lt = 0;
   for (const t of EVENTS) ctx.on(t, () => { clearTimeout(lt); lt = window.setTimeout(load, 250); });
-  ctx.cleanup(vc.watch(() => { drawHead(); if (st.panel) drawPanel(); }));
+  ctx.cleanup(vc.watch(() => { drawHead(); if (st.panel && !formUp()) drawPanel(); }));
 
   // ---- navigation inside the view (no full re-render) ----
   function href(placeId = st.place, extra = "") {
@@ -141,7 +142,7 @@ export default async function vault(ctx) {
   const visible = () => search(inPlace(st.items, st.place, st.fav), st.query);
 
   // ---- drawing ----
-  function drawAll() { drawRail(); drawChips(); drawHead(); drawBody(); drawPanel(); }
+  function drawAll() { drawRail(); drawChips(); drawHead(); drawBody(); if (!formUp()) drawPanel(); }
 
   function counts() {
     const live = st.items.filter(i => i.state === "live");
@@ -246,9 +247,11 @@ export default async function vault(ctx) {
     if (st.cursor >= list.length) st.cursor = Math.max(0, list.length - 1);
     const sel = st.panel && "name" in st.panel ? st.panel.name : null;
     if (!list.length) {
+      // Empty because nothing is stored (not a filter, not favorites): the add editor, from here.
+      const addHere = !st.query && st.place !== "favorites" ? action("Add item", () => open({ mode: "add", kind: placeOf(st.place).kind })) : null;
       put(rowsBox, h("div", { class: "empty" }, st.query ? `Nothing here matches “${st.query}”. The filter reads names, sites and field names, never values.`
         : st.place === "favorites" ? "No favorites yet. Press f on an item to keep it here."
-        : st.items.length ? "Nothing of this kind yet." : "The Vault is empty. Add a login or a key and it is listed here by name."));
+        : st.items.length ? "Nothing of this kind yet." : "The Vault is empty. Add a login or a key and it is listed here by name.", addHere));
       return;
     }
     put(rowsBox,
@@ -270,8 +273,16 @@ export default async function vault(ctx) {
       }));
   }
 
+  // An open add or edit form is drawn once. Redrawing it on a vault event or a session change
+  // cleared what the person typed and the error a refused vault.update put under it, which read
+  // as the editor closing and saying nothing. It is drawn again only when its item first arrives.
+  /** @type {{ key: string, whole: boolean } | null} */ let form = null;
+  const formOf = p => p && p.mode !== "item" ? { key: `${p.mode}:${p.name || p.kind || ""}`, whole: p.mode !== "edit" || st.items.some(i => i.name === p.name) } : null;
+  const formUp = () => { const f = formOf(st.panel); return Boolean(f && form && f.key === form.key && (form.whole || !f.whole)); };
+
   function drawPanel(focus = false) {
     const p = st.panel;
+    form = formOf(p);
     wrap.classList.toggle("has-panel", !!p);
     // One primary action per view: while a form is open, Save is it.
     wrap.classList.toggle("editing", !!p && p.mode !== "item");
