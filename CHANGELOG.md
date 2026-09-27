@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings' phone layout uses the shared phone query
+
+- deck/css/views/settings-keys.css: the phone block is dom.js PHONE_QUERY, so a sideways phone stays
+  a phone (batch 4, ci).
+
 #### Three loosening paths closed before 0.1.0 (e2e review, MEDIUM)
 
 - core/modules firstParty: a module is Vyre's own only when its folder sits directly in the repo's
