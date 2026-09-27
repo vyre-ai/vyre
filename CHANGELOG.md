@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### needs.credentials in the loader and the schema; the Render type; statusline tips
+
+- The loader checks `needs.credentials` (ADR 0028, 9a: {id, kind, provider, purpose, item?, group?,
+  optional?, multiple?}), ctx.vault.fetch accepts the items it names (`item`, or `<module>-<id>`)
+  beside needs.vault, and status rows carry `credentials`, which the vault reads through
+  ctx.modules.status(). Taken from the vault team's diff so the loader is edited once.
+- packages/module-sdk: `needs.credentials` in the schema and types; `Render`, the one view type a
+  tool answers with render: true and `vyre <cmd> --view` frames carry (table, card, text, qr, checks,
+  prompt, error); "statusline" is a tip surface.
+- ADR 0033 section 3 points to ADR 0035 for the theme keys: `appearance.theme` is only the preset,
+  and `appearance.scheme` is system, dark or paper.
+
 #### Module API phase 1, the part that needs no settings (ADR 0033, cohesion's ADR 0036)
 
 - vyred passes a chat's tool call id to the tool as `meta.call`, from the X-Vyre-Call-Id header,

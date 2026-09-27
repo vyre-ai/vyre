@@ -46,9 +46,10 @@ const full = () => ({
     { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session", secret: false },
     { key: "bakery.look", label: "Look", type: "enum", levels: ["account", "device"], apply: "live", choicesFrom: { tool: "bakery.orders" }, check: { tool: "bakery.check" } },
   ],
-  needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"] },
+  needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"],
+    credentials: [{ id: "till", kind: "api-key", provider: "northwind-till", purpose: "read today's orders", optional: true, multiple: false }] },
   teaches: { memory: ["order.habit"], prompt: [{ level: "project", file: "prompt/bakery.md" }],
-    tips: [{ id: "orders-today", text: "Type vyre bakery orders to see today's orders.", surfaces: ["cli", "capsule"], level: "discovery",
+    tips: [{ id: "orders-today", text: "Type vyre bakery orders to see today's orders.", surfaces: ["cli", "capsule", "statusline"], level: "discovery",
       trigger: "never-used", since: "0.1.0", command: "vyre bakery orders", docs: "using/cli.md#orders", about: "cli" }] },
   "x-bakery": { anything: true },
 });
@@ -110,6 +111,8 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   assert.deepEqual(bad(m => { m.settings[2].levels = ["project", "session"]; }), []);
   has(bad(m => { m.settings[1].levels = ["account", "device"]; delete m.settings[1].store; }), /may not be set per device/);
   has(bad(m => { m.settings[0].levels = ["galaxy"]; }), /levels\[0\] must be one of account, project, device, session/);
+  has(bad(m => { m.needs.credentials[0].id = "Till"; }), /credentials\[0\]\.id must be a lowercase name/);
+  has(bad(m => { delete m.needs.credentials[0].purpose; }), /credentials\[0\]\.purpose is required/);
   has(bad(m => { m.does.connections = "bakery.gone"; }), /does\.connections names bakery\.gone, which is not under does\.tools/);
   has(bad(m => { m.does.suggest = "memory.answer"; }), /does\.suggest names memory\.answer/);
   has(bad(m => { m.shows.notices.push("Late!"); }), /notices\[1\] must be lowercase letters/);

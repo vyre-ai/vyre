@@ -125,7 +125,7 @@ the manifest; code runs only where a description can't do the job.
 | Gate senders | fixed `TYPES` map (gmail, http) | missing | `does.senders`: a tool that runs only after the Gate approved the item; the Gate still owns approval, presence and the log |
 | Capsule @App adapters | `BUILTIN` list, Swift extensions compiled in | missing at runtime | `does.apps`: adapter actions become tools; a `sends` action goes through the Gate like any outbound; Swift extensions stay compile-time |
 | Watchers | `<home>/watchers/` | works | unchanged; later, a module may ship watchers |
-| Themes and tokens | `config.theme.colors` (colours only) | partial | hub values: `appearance.theme` (a preset, including a module's `themes/`) and `appearance.tokens` (colours, fonts, radii, spacing), checked before they're stored; `/theme.css` for the Deck and `/v1/theme` for the Capsule (section 3) |
+| Themes and tokens | `config.theme.colors` (colours only) | partial | hub values: `appearance.theme` (a preset, including a module's `themes/`), `appearance.scheme` (system, dark or paper) and `appearance.tokens` (colours, fonts, radii, spacing), checked before they're stored; `/theme.css` for the Deck and `/v1/theme` for the Capsule (section 3) |
 | Prompt layers | per-agent instructions, project brief | partial | `teaches.prompt`: markdown files at account, project or agent level, ordered, capped in length, listed in the hub with their source and switched on or off there |
 | Settings | none per module | missing | `settings` in the manifest, joining native-core's hub (the one place for every setting), so each key gets a Deck row and `vyre config` with no UI work |
 | CLI verbs | a folder scan of `core/cli/commands` | missing | `does.commands`: `vyre <module> <verb>` mapped to a tool, with args from its input schema |
@@ -209,11 +209,17 @@ status line script).
   `checkManifest` says the same to authors. A module may write its own plain keys itself through
   the internal `settings.write`; never a key that asks for a confirm or loosens security.
 
-**The theme, as hub values.** Two keys, declared by the module that serves the theme:
+**The theme, as hub values.** Three keys, declared by the module that serves the theme, at account
+and device level. [ADR 0035](0035-settings-hub.md) section 3 is the authority for them; this is
+the summary (amended 27 Sep 2026: `appearance.theme` is only the preset, and the light or dark
+choice moved to its own key):
 
-- `appearance.theme`: which preset is in effect, `vyre` or `<module>/<name>`. A module may ship
-  presets as `themes/<name>.json`; they appear as choices of this key and nothing else. A module
-  never applies a preset or changes the tokens by itself.
+- `appearance.theme`: which preset is in effect, `vyre` or `<module>/<name>`. A preset carries
+  both schemes. A module may ship presets as `themes/<name>.json`; they appear as this key's
+  choices (`choicesFrom: { tool: "theme.presets" }`) and nothing else. A module never applies a
+  preset or changes the tokens by itself.
+- `appearance.scheme`: `system` (the default, following the OS), `dark` or `paper`. Usually set
+  per device.
 - `appearance.tokens`: the person's own changes, an object in the shape of a partial `tokens.json`,
   deep-merged over the preset (objects merge by key, arrays and plain values replace). It may set
   `color.dark` and `color.paper` (existing role names only), `font` (the two families and

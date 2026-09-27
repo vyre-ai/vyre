@@ -118,6 +118,8 @@ export interface Manifest {
     network?: string[];
     /** @planned UI slots it fills. */
     slots?: Slot[];
+    /** What it needs from the Vault, which the vault lists and fills (ADR 0028, 9a). */
+    credentials?: CredentialNeed[];
   };
   teaches?: {
     /** Fact kinds it hands the curator. */
@@ -130,7 +132,43 @@ export interface Manifest {
   [experimental: `x-${string}`]: unknown;
 }
 
-export type Surface = "capsule" | "deck" | "chat" | "phone" | "cli" | "glass";
+export type Surface = "capsule" | "deck" | "chat" | "phone" | "cli" | "glass" | "statusline";
+
+/** One need under needs.credentials (ADR 0028, 9a). */
+export interface CredentialNeed {
+  id: string;
+  kind: string;
+  provider: string;
+  purpose: string;
+  /** The vault item; omitted, it is "<module>-<id>". */
+  item?: string;
+  group?: string;
+  optional?: boolean;
+  /** More than one of it may be connected. */
+  multiple?: boolean;
+  [experimental: `x-${string}`]: unknown;
+}
+
+/**
+ * What a tool answers when it is called with render: true, and what `vyre <cmd> --view` frames
+ * carry as `view`, so the Capsule, chat and the CLI draw one set of views.
+ */
+export interface Render {
+  kind: "table" | "card" | "text" | "qr" | "checks" | "prompt" | "error";
+  title?: string;
+  /** table */
+  columns?: string[];
+  rows?: unknown[][] | Record<string, unknown>[];
+  /** text, card, error */
+  text?: string;
+  /** qr: the payload to draw */
+  qr?: string;
+  /** checks: one line per check */
+  checks?: { label: string; ok: boolean | null; note?: string }[];
+  /** prompt: a question the surface asks, and the tool that takes the answer */
+  prompt?: { question: string; tool: ToolName; input?: Record<string, unknown>; choices?: string[] };
+  actions?: { label: string; tool: ToolName; input?: Record<string, unknown> }[];
+}
 
 export interface Tip {
   id: string;
@@ -228,6 +266,8 @@ export interface ModuleStatus {
   suggest?: ToolName;
   notices?: string[];
   emits?: EventType[];
+  /** needs.credentials, for the vault. */
+  credentials?: CredentialNeed[];
   /** Calls to its tools from people, surfaces and models (never modules or webhooks). lastUsed is ms since the epoch. */
   use: { calls: number; lastUsed: number | null };
 }
