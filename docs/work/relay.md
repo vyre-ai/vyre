@@ -10,7 +10,7 @@ meet it there over an end-to-end encrypted Noise IK channel, paired by QR code. 
 `docs/adr/0026-relay.md`, this file. Small changes elsewhere go through their owners' contracts,
 listed under Changed contracts.
 
-Paseo reference: <team-dir>/../reference/paseo (Apache 2.0, commit d7b7016).
+Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 
 ## Design in one screen
 
@@ -36,34 +36,55 @@ Paseo reference: <team-dir>/../reference/paseo (Apache 2.0, commit d7b7016).
   reorder, wrong key, wrong prologue, low-order key, rekey tests. 8/8.
 - core/relay/wire.js (route id, box auth, limits, close codes) and relay/node/server.js, the
   reference relay: signed box control socket, ticketed data sockets, buffering, caps, text
-  ping answered at the relay. 7/7. package.json test glob gains relay/**/*.test.js.
+  ping answered at the relay. 7/7. package.json test glob gains `relay/**/*.test.js`.
 
 - Box module core/relay/ (index, link, bridge, pairing, module.json): keys, signed control
-  socket, data sockets, admit (pairing secret or paired key), device:<id> through ctx.handler,
+  socket, data sockets, admit (pairing secret or paired key), `device:<id>` through ctx.handler,
   tools and events. test/relay.test.js: 7/7 end to end on testbox (pair, router as device,
   presence still required, one-time QR, stranger refused, first-device path closes, remove
   closes the live channel, socket cannot claim device:, SSE event live through the relay).
   Neighbour suites (guests, daemon, modules, harness, presence, hygiene, docs-check) green but
   the pre-existing screenshot mtimes.
 
+- 97300e6 relay/worker/: Worker + DO (hibernation, WebCrypto Ed25519, storage-backed buffer,
+  optional DEVICE_LIMITER), fake runtime that rebuilds the DO after every event, link.js runs
+  unchanged against it. 29 tests.
+- 370ca7a relay/client/: device side for the one app, zero deps: Noise over WebCrypto
+  (non-extractable device key) or injected @noble, byte-compatible channel, reconnect with
+  fresh handshake, 60 s visible-only keepalive, SSE resume by Last-Event-ID, one retry with the
+  same Idempotency-Key, paths.js tailnet/relay failover (Direction A). 31 tests.
+- 7e46854 bridge passes Idempotency-Key (+ bridge.test.js); a replaced box (4409) waits 5 min.
+- ADR 0026 accepted, section 10 "The hosted web app" (app.vyre.run, 7 trust mitigations),
+  pairing notice, sections 2-4 and 8 synced with the code, 0029/0030 tie-ins.
+- testbox: `core/relay`, `relay/**`, `test/relay.test.js` 89/89.
+
 ## Doing
-- Lead has the design summary (no reply yet). Next up regardless: relay/worker/.
+- Nothing in flight. Reported to the lead.
 
 ## Next
-1. relay/worker/: Worker + DO (hibernation, signed box via WebCrypto Ed25519, autoresponse
-   ping), tested with a fake DO state. No deploy without the lead.
-2. `vyre relay` CLI (status, pair with a terminal QR, devices), and WebSocket streams through
-   the bridge (Glass).
-3. `relay/worker/`: Worker + DO, tested with a fake DO state (no deploy).
-4. `relay/client/`: the TypeScript transport for the Expo app (@noble), tested in Node.
+1. WebSocket streams through the bridge (Glass): one whole message per data frame, never split
+   by Stream.write (the client already sends it that way).
+2. Box side of section 10: `kind: "web"` in the hello and relay_devices, the web-device limits
+   (no pair.start, no vault reveal/export), 30-day expiry, build check against published
+   releases, the pairing notice to every surface.
+3. relay/app/: the app.vyre.run host (CSP, SRI, signed release manifest, pinning service
+   worker) and vyre.run/pair forwarding the fragment. Build comes from mobile.
+4. `vyre relay` CLI (status, pair with a terminal QR, devices).
 5. Onboarding card and Settings, Devices (with deck-design / docs owners).
 6. perf-check numbers for the idle box with the relay on.
+7. First real Cloudflare deploy: approved spend ($5/mo), but ASK THE LEAD before deploying.
 
 ## Needs from others
-- lead: approve the design (ADR 0026), and later a real Cloudflare deploy (Workers Paid, $5 a
-  month, recommended before launch; free plan is fine for testing).
+- tailnet: CORS on vyred for https://app.vyre.run (the /v1/health probe and API calls), or
+  Direction A's direct path is blocked in the browser.
+- presence owner: enroll a `webauthn` presence key (rp app.vyre.run) sent at pairing by a web
+  device.
+- resilience: the Registry.call idempotency layer; the bridge already forwards the header.
+- lead: go for the first real Cloudflare deploy (design and $5/mo spend are approved).
 - mobile (ADR 0018/0027): the `device` presence method (a168aa6 on work/mobile) must land on
-  main first; the app imports `relay/client/` as its second transport; scan screen.
+  main first; the app imports `relay/client/` (see relay/client/README.md) with paths.js on
+  top, injects @noble on native and an AppState visibility adapter; scan screen; the web
+  target's build for app.vyre.run.
 - security/presence owner: `relay.pair.start`, `relay.devices.remove|rename`, `relay.enable|disable`
   join HUMAN_ONLY; pairing enrolls a `device` presence key directly (today `presence.enroll`
   by code needs caller `tailnet:<owner>`).
@@ -74,7 +95,7 @@ Paseo reference: <team-dir>/../reference/paseo (Apache 2.0, commit d7b7016).
   uses it for "deck" and "tailnet" entries (mobile's fad6f0f also touches callerAllowed: merge
   by keeping both, ownerDevice covers tailnet owners). `core/daemon/index.js` `FORBIDDEN_LABEL`
   gains `device:`. `core/harness/rules.js` `registryRules` person check uses `ownerDevice`.
-  `scripts/lib/docs/check.js` OWNERS gains "relay". package.json test glob gains relay/**.
+  `scripts/lib/docs/check.js` OWNERS gains "relay". package.json test glob gains `relay/**`.
 - New module `relay`: tools relay.*, events relay.connected, relay.disconnected, device.paired,
   device.removed; config `relay: { enabled, url }` (default url wss://relay.vyre.run).
 - Planned, waiting on the lead: floor denies Bash naming relay/keys.json; HUMAN_ONLY additions;

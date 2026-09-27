@@ -22,8 +22,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `relay.pair.first` (onboarding only, before any person exists; Touch ID on a Mac),
   `relay.devices.list|rename|remove` (remove needs presence and closes the device's connection
   at once). Events: `relay.connected`, `relay.disconnected`, `device.paired`, `device.removed`.
-- relay/node/server.js: the relay in plain Node, for tests and self-hosting. The Cloudflare
-  Worker comes next; nothing is deployed.
+- relay/node/server.js: the relay in plain Node, for tests and self-hosting.
+- relay/worker/: the same relay as a Cloudflare Worker with one hibernating Durable Object per
+  route. It has no timers, and buffered frames sit in DO storage. Tested against a fake
+  runtime that rebuilds the object after every event, with the box's own link running
+  unchanged against it. Nothing is deployed.
+- relay/client/: the device side for the one app (web, iOS, Android), with no dependencies.
+  Noise runs over WebCrypto, where the device's private key is non-extractable, or over
+  @noble functions the app injects. The client reproduces the cacophony vector, multiplexes
+  streams byte-compatibly with the box, and reconnects with a fresh handshake. Event streams
+  resume with Last-Event-ID. A write whose answer was lost is retried once with the same
+  Idempotency-Key. It fails over between the tailnet and the relay (ADR 0029, R5).
+- The box's bridge passes `Idempotency-Key`. A box replaced on its route by another copy of
+  itself waits 5 minutes before retrying, instead of trading places with the copy.
+- ADR 0026 accepted. It gains section 10, the hosted web app at app.vyre.run, and its trust
+  mitigations, and section 2 now matches the code (4429, the ticket, text pings).
 
 #### Docs: the planner page
 
