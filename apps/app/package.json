@@ -8,6 +8,7 @@
     "web": "expo start --web",
     "export:web": "expo export -p web && node scripts/precache.mjs",
     "typecheck": "tsc --noEmit",
+    "icons": "node scripts/gen-icons.mjs",
     "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\""
   },
   "dependencies": {

@@ -153,6 +153,44 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - test/boundaries.test.js and docs/architecture/boundaries.md freeze core/sessions -> spawner,
   switchboard and transcripts, and core/switchboard -> harness and sessions: the sessions and
   switchboard split (ADR 0030). Sessions owes the cleanup after 0.1.0 (one module, or ctx.call).
+#### One app: a Glass card scrolled off screen fetches no still
+
+- The card on Now counts as hidden while it is out of view: an IntersectionObserver on the web, and
+  on native a measure in the window on layout and on the scroller's signal (at most every 100 ms).
+  `src/ui/onscreen.js` holds the pure overlap check and the signal, with tests.
+
+#### App: the Glass mini-view on Now and in the thread, from sight.frame stills
+
+- `apps/app/src/state/glass-model.js` (pure, node-tested) folds `sight.targets`, `sight.steps` and
+  `sight.stepped` into one view per agent's computer (the Mac never shows), with the step line,
+  the shield pause, the 30 s done card then pill, and "Stopped. N steps done." for 4 s.
+- `src/state/glass.ts` follows the light rule with no interval timer: one still when a card shows,
+  then one per `sight.stepped` at most every 2 s per target, only on screen, in front and off the
+  relay; `maxWidth` is the card's device pixels rounded to 80 in 160..1280.
+- `src/ui/GlassMini.tsx`: the Card (16:10, radius 8, `codeBg`, letterboxed, the Live badge) and the
+  Pill, one button "Open Glass for kit's computer" that opens the step's thread, the picture hidden
+  from assistive tech and a polite live region at most every 5 s.
+- Now draws a card per acting agent after the waiting rows; the session draws its agent's under
+  the header, collapsible to the Pill ("Hide screen", "Show screen"). A box without
+  `sight.targets` draws nothing.
+- The connection store knows its path (`usePath`, from relay/client's `onstate`), so stills pause
+  over the relay with "Picture paused · steps still live".
+
+#### App: icons generated from icons.txt, and Back as the chevron with the page's name
+
+- `apps/app/scripts/gen-icons.mjs` (`npm run icons`, `-- --check` in CI) writes
+  `src/ui/icons.generated.ts` from `docs/design/one-app/icons.txt`, now app-design's copy with
+  unlock and minus; `Icon` draws from it, so a name the set lacks does not type-check.
+- `IconButton` draws 16 at 28 and 32 and 20 at 44 (the composer circles, nav buttons).
+- `src/ui/BackButton.tsx` is the one Back (phone-shell item 6): chev-l at 44, the previous page's
+  name at 17 when it fits, named "Back to <page>" or "Back", testID `back`. Screen, the session
+  and the needs item all use it; Screen takes `backTo`, else the page under it in the stack.
+
+#### One app: the swipe releases by the needs-row rule
+
+- `SwipeRow` releases by `src/ui/swipe.js` (the pwa's `release(x, v)`): a 100 px reveal or a
+  0.5 px/ms fling past 24 commits, 40 to 100 rests open with the action a button that commits, under
+  40 springs back. The web drops the scroll-snap strip for pointer events on the row's face.
 
 #### A bare "tailnet" label is never a caller
 
@@ -866,6 +904,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - docs-check knows the cohesion team as a page owner.
 - test/cohesion-drift.test.js freezes the surfaces' own copies of model names and presence's
   tool-policy sets; a new copy fails, and the list only shrinks.
+- `SwipeRow` releases by `src/ui/swipe.js` (the pwa's `release(x, v)`): a 100 px reveal or a
+  0.5 px/ms fling past 24 commits, 40 to 100 rests open with the action a button that commits, under
+  40 springs back. The web drops the scroll-snap strip for pointer events on the row's face.
+
 #### One app: real icons, the full status mark, 44 list rows
 
 - New dependency: react-native-svg 15.12.1 (the SDK 54 pin from `expo install`). The icon set has
