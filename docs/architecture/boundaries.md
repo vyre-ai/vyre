@@ -44,7 +44,7 @@ Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one s
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
 | `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
-| `core/cli -> local/voice` | talk.js | `vyre talk`, push-to-talk from a terminal until the native Capsule has voice | ctx.call |
+| `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Capsule has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
