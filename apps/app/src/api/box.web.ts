@@ -41,6 +41,9 @@ const b = makeBox(async () => {
     paths: pairing ? [...direct, { kind: "relay" as const, ...pairing, about, keyStore: relayKeyStore(), crypto: relayCrypto() }] : direct,
   });
   const o = over(p.fetch);
+  // Which path answers, for what may not go over the relay (Glass stills).
+  p.onstate = (st) => connection.path(st.kind);
+  connection.path(p.current);
   return {
     base: origin,
     // One path for follow(): which way the box is reached is the paths layer's job.

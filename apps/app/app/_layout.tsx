@@ -8,6 +8,7 @@ import { connect } from "../src/api/box";
 import { PerfBadge } from "../src/perf/PerfBadge";
 import { usePerfOverlay } from "../src/perf/usePerfOverlay";
 import { startPwa } from "../src/pwa/pwa";
+import { startGlass } from "../src/state/glass";
 import { startLive } from "../src/state/live";
 import { ThemeProvider, useTheme } from "../src/theme/theme";
 import { UndoToast } from "../src/ui/UndoToast";
@@ -21,6 +22,7 @@ function Shell() {
   useEffect(() => {
     connect().catch(() => {});
     startLive();
+    startGlass();
   }, []);
   // The installed web app: its service worker, a tapped notification's route, push.seen.
   useEffect(() => startPwa((path) => router.push(path as never)), []);

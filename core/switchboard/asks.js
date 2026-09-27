@@ -94,7 +94,7 @@ const shape = (r, offers) => {
     at: Number(r.at), state: String(r.state), decision: r.decision == null ? null : String(r.decision),
     request_id: String(r.request_id), kind,
     ...(kind === "question" ? { questions: Array.isArray(detail) ? detail : [] } : detail ? { detail } : {}),
-    agent: r.agent == null ? null : String(r.agent), thread_name: r.thread_name == null ? null : String(r.thread_name),
+    agent: r.agent == null ? null : String(r.agent), project: r.project == null ? null : String(r.project), thread_name: r.thread_name == null ? null : String(r.thread_name),
     anchor: { tool_use_id: r.tool_use_id == null ? null : String(r.tool_use_id), event: r.event == null ? null : Number(r.event) },
     ...(kind === "permission" && r.state === "open"
       ? offers({ id: String(r.id), thread: String(r.thread), project: r.project == null ? null : String(r.project) })

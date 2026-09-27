@@ -13,7 +13,7 @@ Apple Developer account. Absorbs deck-design and phone-design.
   Vault, Devices; places Onboarding, Projects, Memory, Settings; States, Install 1 and 2, Capsule
   and CLI; every key screen in dark and paper, each with a "Smooth:" note. All pass the audit.
 - Design canvas "Vyre one app" (private, owned by the user):
-  https://claude.ai/artifact/Ap7uKGmbiEs4wM44iSyi1X. 23 boards: Main (principles), System,
+  https://claude.ai/artifact/CKLkX4pcZpsyiKYDEnXKWr (republished on the new account 27 Sep from <team-dir>/design-backup/canvas-2026-09-27; the old link belonged to the previous account). 23 boards: Main (principles), System,
   Layout, then Needs you, Session, Agents and Glass, Planner, Vault, Devices, States,
   InstallLaptop, InstallPhones, Capsule and CLI, each key screen in dark and paper.
 - Source in docs/design/one-app/ (project/ is the canvas, vyre.css the shared parts),
@@ -25,11 +25,27 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Doing
 
-- Design A v1 codified in docs/design/system/ (27 Sep, first pass): 41 component specs plus tokens,
-  layout, copy and audit pages; the audit runs in CI (design.yml). Next: close spec gaps with
-  native-core, pwa, mobile and capsule-pro; redraw the install boards' pairing code (8 chars).
+Session 5 (27 Sep, after logout 4). Done this session, all on work/app-design:
+- Canvas republished on the new account (51 boards from the backup, then the Capsule and Install
+  changes below): https://claude.ai/artifact/CKLkX4pcZpsyiKYDEnXKWr.
+- docs/design/system/capsule.md (6f8ae52f): the Capsule redesign for capsule-pro. Boards
+  CapsuleLong and CapsuleDo drawn, CapsuleSearch and CapsuleIQ on the canvas (63321814); the 8
+  Capsule boards pass the audit on testbox.
+- Tokens in the hub: lib/theme (95b430f7) and core/appearance (c4f1ca5d). 8 pass, 1 skip here
+  (the hub test skips until native-core's settings land); 33/33 with native-core's settings code
+  overlaid.
+- Spec lists by team: docs/design/system/teams.md (f0752612).
+- Install boards: the real 8-character code, 7KQM-4P2X, valid 10 min (e7db7f55).
 
-- Nothing in flight. The full direction A sheet is published (35 boards).
+- Later in session 5: appearance aligned with ADR 0035 (34ac793b; 14/15 with native-core's
+  settings overlaid, the skip is the device level); specs tip, glass-mini, suggestions,
+  account-row, credential-sheet, result-card and the waiting count in needs-row (b4d7b27e); boards
+  TipLine and GlassMini (3da9eecb), all audited; canvas republished (63 boards).
+- The design workflow passed in CI on 548c4572 (run 36326407452).
+
+Next: native-core's six asks for appearance (device level, call check, choicesFrom shape,
+settings.snapshot, /theme.css and /v1/theme from the daemon, GROUPS), then switch the keys to
+account + device and drop the tokens tool store. Then polish passes over the specs with each team.
 
 ## Next
 
@@ -51,6 +67,16 @@ Apple Developer account. Absorbs deck-design and phone-design.
 3. Verify the iPhone web app over a `*.ts.net` address on a real device (Tailscale issue 19147).
 
 ## Needs from others
+
+- native-core: add ["appearance", "Appearance"] to GROUPS; consider a `check: {tool}` field that
+  settings.set calls before writing a plain key (appearance.tokens could then drop its tool
+  store). Update the Theme.swift and deck.css comments that name docs/design/one-app/tokens.json.
+- platform: ADR 0033 calls appearance.theme a preset ("vyre" or "<module>/<name>"); the module
+  built the enum system, dark, paper. One of the two changes. A /v1/theme alias and /theme.css
+  from the hub are daemon changes (platform's call).
+- capsule-pro: capsule.md Gaps, in order. memory-iq: iq.ask stream stages. sessions: the capsule
+  prompt (Vyre IQ, cite or say you don't know, temperature 0).
+- ci: release-check's install-size gate already fails on main (12936 KB); lib adds about 72 KB.
 
 - relay (parked until after native-core, lead 27 Sep): relay.devices.trust asks no proof when
   trusted is false (reducing trust protects the person; e2e's rule that revoke needs no proof);
@@ -77,6 +103,14 @@ Apple Developer account. Absorbs deck-design and phone-design.
 - relay: the hosted app at app.vyre.run and the relay QR copy follow ADR 0026 as proposed.
 
 ## Changed contracts
+
+- New module core/appearance (ADR 0035): settings appearance.theme (a preset), appearance.scheme
+  and appearance.tokens (group "appearance", account and device level, kept in the hub), tools
+  appearance.check (the hub's check), appearance.presets (choicesFrom) and appearance.resolve
+  {device?, project?, format?}, event appearance.changed {version, theme, scheme}. No route of its
+  own: vyred serves GET /v1/theme and GET /theme.css by calling appearance.resolve.
+- tokens.json moved to lib/theme/tokens.json; package.json files gains "lib"; release-check
+  requires lib/theme/tokens.json in the tarball.
 
 - scripts/lib/docs/check.js (docs): OWNERS gains "app-design". docs/nav.json gains a "Design system"
   section. package.json gains `design:audit`. New workflow .github/workflows/design.yml (ci).

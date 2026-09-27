@@ -197,6 +197,14 @@ async function body(req) {
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
+/**
+ * The chat's id for one tool call (X-Vyre-Call-Id), or null. Read only on a session's own paths
+ * (its thread socket, or a call vyred bound to a thread by its agent or session key), so a tool can
+ * link what it shows (a Glass step) to that call's row in the chat. It is the session's claim,
+ * never checked, and no tool decides anything on it. A malformed id is dropped without a word.
+ */
+export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : null);
+
 const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|onboard$|hook$)/;
 
 /**
@@ -403,6 +411,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
     return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+      // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
+      // its box by argv, never through a shell, and must run the same version.
+      cli: [process.execPath, path.join(REPO, "bin", "vyre")],
       // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
@@ -469,7 +480,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
     const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}),
+    // Only a caller vyred bound to a thread above says which chat tool call this is.
+    const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
@@ -514,10 +527,26 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
   if (own) return own(req, res, { caller, url });
-  // The Deck's colours from config, read on every request so a changed theme needs no restart.
-  if (req.method === "GET" && url.pathname === "/theme.css") {
-    res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
-    return res.end(themeCss((config.load(root).theme || {}).colors));
+  // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
+  // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
+  // so a surface that follows settings.changed asks again with If-None-Match and gets a 304 when
+  // nothing it paints moved. Without the appearance module, the Deck's colours from config.
+  if (req.method === "GET" && (url.pathname === "/theme.css" || url.pathname === "/v1/theme")) {
+    const css = url.pathname === "/theme.css";
+    const q = url.searchParams.get("device");
+    const device = q && /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,127}$/.test(q) ? q
+      : /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(String(caller)) ? String(caller) : undefined;
+    const r = registry.tools.has("appearance.resolve") ? await registry.call("appearance.resolve", { ...(device ? { device } : {}) }, caller) : null;
+    if (!r || r.error || !r.data) {
+      if (!css) return send(res, 404, { error: { code: "not_found", message: "the appearance module is not running" } });
+      res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
+      return res.end(themeCss((config.load(root).theme || {}).colors));
+    }
+    const tag = `"${r.data.rev ?? r.data.version ?? 0}${device ? "-" + device : ""}"`;
+    const head = { "cache-control": "no-cache", etag: tag, vary: "cookie, authorization", "x-content-type-options": "nosniff" };
+    if (req.headers["if-none-match"] === tag) { res.writeHead(304, head); return res.end(); }
+    res.writeHead(200, { ...head, "content-type": css ? "text/css" : "application/json" });
+    return res.end(css ? String(r.data.css || "") : JSON.stringify({ data: r.data }));
   }
   // The browser half of the resilience client (ADR 0029), which the Deck imports as
   // ../../core/resilience/<file>.js: that resolves here in a browser and to the repo file in Node,

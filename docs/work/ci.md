@@ -99,6 +99,12 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
 - testbox keeps vyre-box:gate and ~/vyre-ci/{ci,ci-gate,sdk-js,gate1.sh}.
 
 ## Next
+- 0.1.1 (lead): move the generated docs/index.json (1 MB) and docs/reference (0.8 MB) out of the
+  npm package if nothing at runtime reads them (asked docs). Install is 16.6 MB, cap 20 MB for 0.1.0.
+- RC prep is HELD on work/ci-rc 1d8ae652 (root + apps/app 0.1.0-rc.1, module-sdk stays 0.1.0,
+  CHANGELOG "## 0.1.0", release.yml rc tags + notes fallback + dry run builds the dispatched
+  branch, release/min_from 0.1.0-rc.1). It goes to the integrator as the LAST item of the RC batch;
+  rebase it on that batch's main then. work/ci reverted it (0cff3258). No tag until the user says yes.
 - After 0.1.0: drop build-app.sh's dist/assets/node_modules move and rewrite once mobile says the
   export no longer writes a node_modules path (mobile will drop expo-router's error/sitemap icons).
 - Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,

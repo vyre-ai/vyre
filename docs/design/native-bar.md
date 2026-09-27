@@ -83,6 +83,13 @@ chat's windowing in), then work/chat 553017a1 and work/pwa 2d150fdd for budgets 
 Budget 1 now passes at 2,000 rows with windowing; the composer also stops laying out per key
 (field-sizing, or one measure a frame). Event Timing rounds to 8 ms, so 24 ms is the floor it shows.
 
+Budget 8 on pwa's fetch stream, work/pwa 15d02055, testbox at load 1.3 (2026-09-27 evening). The
+harness now tees /v1/events/stream fetches and reads deck:stream, since that Deck makes no
+EventSource. Sockets cut at the proxy for 2,500 ms: caught up 3,240 ms after the box came back
+(the last retry went out 187 ms before it did, the next one 3.2 s later). No duplicate rows or
+events and no blank frames, but the reader, scrolled up 300 px, was moved 3,254 px when the
+reply finished (the jump chat fixed in 553017a1, not in this tree).
+
 Budget 1's first method counted the wait for the next frame (0 to 16.7 ms), so it read high even on
 an idle page; it moves to the Event Timing API (work per key, then time to the painted frame).
 

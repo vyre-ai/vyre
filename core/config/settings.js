@@ -7,7 +7,7 @@
 //
 // A declaration:
 //   { key: "<module>.<name>", group, label, help?, type, enum?, choices?, min?, max?, default?,
-//     levels: ["account"] | ["project"] | ["account","project"], apply: "live"|"session"|"restart",
+//     levels: any of "account", "project", "device", "session" (ADR 0035), apply: "live"|"session"|"restart",
 //     advanced?, security?: "loosens", confirm?: true | { values: [...] }, loosens?: "<what>",
 //     store?: StoreDecl }
 // Stores (StoreDecl), all declarative so a module in <home>/modules can use them too:
@@ -17,15 +17,16 @@
 //                            account ~/.claude/settings.json, project <home>/.claude/settings.local.json
 //   { tool: { get: { tool, input, read }, set: { tool, input } } }
 //                            the module's own tool. "$value" (a whole string) is the value,
-//                            "$project" inside a string is the project's slug.
-// A project's value beats the account's, which beats the default.
+//                            "$project" inside a string is the project's slug, "$session" the thread's.
+// A narrower level wins: session > device > project > account > default. A device's value lives
+// in the hub (no store); a session's lives with the thread, in the module's own tools.
 
 import fs from "node:fs";
 import path from "node:path";
 import * as config from "./index.js";
 
 export const TYPES = ["enum", "bool", "int", "number", "string", "list", "object", "model"];
-const LEVELS = ["account", "project"];
+const LEVELS = ["account", "project", "device", "session"];
 const APPLY = ["live", "session", "restart"];
 
 /**
@@ -46,7 +47,19 @@ export function validateDecls(module, list, { firstParty = false, tools = [] } =
     if (seen.has(k)) out.push(`setting ${k} is declared twice`);
     seen.add(k);
     if (!TYPES.includes(d.type)) out.push(`setting ${k}: type must be one of ${TYPES.join(", ")}`);
-    if (!Array.isArray(d.levels) || !d.levels.length || d.levels.some(l => !LEVELS.includes(l))) out.push(`setting ${k}: levels must be account and/or project`);
+    if (!Array.isArray(d.levels) || !d.levels.length || d.levels.some(l => !LEVELS.includes(l))) out.push(`setting ${k}: levels must be some of account, project, device and session`);
+    // ADR 0035: a device's value changes how a surface looks, never what Claude may do, and a
+    // session value is a thread's chip, which only a module's own tool store keeps.
+    if (Array.isArray(d.levels) && d.levels.includes("device") && (d.confirm !== undefined || d.security !== undefined)) out.push(`setting ${k}: a setting with confirm or security may not be set per device`);
+    if (Array.isArray(d.levels) && d.levels.includes("session") && !(d.store && typeof d.store === "object" && d.store.tool !== undefined)) out.push(`setting ${k}: the session level needs a store in this module's own tools`);
+    // check and choicesFrom name one of the module's own tools, first-party or not.
+    for (const f of ["check", "choicesFrom"]) {
+      if (d[f] === undefined) continue;
+      const t = d[f] && typeof d[f] === "object" ? d[f].tool : undefined;
+      if (typeof t !== "string" || !t.startsWith(module + ".") || (tools.length && !tools.includes(t))) out.push(`setting ${k}: ${f}.tool must be one of ${module}'s own tools`);
+    }
+    if (d.choices !== undefined && !(Array.isArray(d.choices) && d.choices.every(n => typeof n === "number"))) out.push(`setting ${k}: choices is a list of numbers; a tool goes in choicesFrom`);
+    if (Array.isArray(d.levels) && d.levels.includes("device") && d.store !== undefined) out.push(`setting ${k}: a device's value is kept in the hub, so a setting set per device has no store`);
     if (!APPLY.includes(d.apply)) out.push(`setting ${k}: apply must be live, session or restart`);
     if (typeof d.label !== "string" || !d.label) out.push(`setting ${k}: needs a label`);
     if (d.secret !== undefined && typeof d.secret !== "boolean") out.push(`setting ${k}: secret is true or false`);
@@ -82,12 +95,16 @@ function put(o, keys, v) {
   return out;
 }
 
-/** "$value" and "$project" filled into a tool store's input. @param {any} t @param {any} value @param {string|null} project */
-function fill(t, value, project) {
+/**
+ * "$value", "$project" and "$session" filled into a tool store's input. `target` is the level's own
+ * name: a project's slug at project level, a thread at session level.
+ * @param {any} t @param {any} value @param {string|null} target @param {string} [level]
+ */
+function fill(t, value, target, level = target ? "project" : "account") {
   if (t === "$value") return value === undefined ? null : value;
-  if (typeof t === "string") return t.split("$project").join(String(project ?? ""));
-  if (Array.isArray(t)) return t.map(x => fill(x, value, project));
-  if (t && typeof t === "object") return Object.fromEntries(Object.entries(t).map(([k, v]) => [fill(k, value, project), fill(v, value, project)]));
+  if (typeof t === "string") return t.split("$project").join(level === "project" ? String(target ?? "") : "").split("$session").join(level === "session" ? String(target ?? "") : "");
+  if (Array.isArray(t)) return t.map(x => fill(x, value, target, level));
+  if (t && typeof t === "object") return Object.fromEntries(Object.entries(t).map(([k, v]) => [fill(k, value, target, level), fill(v, value, target, level)]));
   return t;
 }
 
@@ -156,8 +173,18 @@ export function coerce(d, v) {
   return bad("unknown type");
 }
 
-/** Does changing this key to this value need an explicit confirm? @param {any} d @param {any} v */
-export function needsConfirm(d, v) {
+/**
+ * Does changing this key to this value need an explicit confirm? `before` is the level's value
+ * now, for a list whose confirm is { drops: true }: taking an entry out (a reset takes them all)
+ * lets Claude do more, so it asks. v undefined is a reset, which asks only for drops.
+ * @param {any} d @param {any} v @param {any} [before]
+ */
+export function needsConfirm(d, v, before) {
+  if (d.confirm && d.confirm.drops && Array.isArray(before)) {
+    const next = (Array.isArray(v) ? v : []).map(x => JSON.stringify(x));
+    if (before.some(x => !next.includes(JSON.stringify(x)))) return true;
+  }
+  if (v === undefined) return false;
   if (d.security === "loosens" || d.confirm === true) return true;
   return Boolean(d.confirm && Array.isArray(d.confirm.values) && d.confirm.values.includes(v));
 }
@@ -165,7 +192,7 @@ export function needsConfirm(d, v) {
 /**
  * @typedef {{ db: import("node:sqlite").DatabaseSync, root: string, live: any, claudeDir: () => string,
  *   projectHome: (slug: string) => Promise<string|null>, call: (tool: string, input: any, as?: string) => Promise<any> }} Env
- * @typedef {"account"|"project"} Level
+ * @typedef {"account"|"project"|"device"|"session"} Level
  */
 
 /** The file a Claude Code setting lives in at this level. @param {Env} env @param {Level} level @param {string|null} project */
@@ -176,7 +203,7 @@ async function claudeFile(env, level, project) {
   return path.join(home, ".claude", "settings.local.json");
 }
 
-const scopeOf = (/** @type {Level} */ level, /** @type {string|null} */ project) => (level === "project" ? `project:${project}` : "account");
+const scopeOf = (/** @type {Level} */ level, /** @type {string|null} */ target) => (level === "account" ? "account" : `${level}:${target}`);
 
 /** Read one level of one key. @param {Env} env @param {any} d @param {Level} level @param {string|null} project */
 export async function read(env, d, level, project) {
@@ -194,9 +221,9 @@ export async function read(env, d, level, project) {
   const g = s.tool.get;
   // Reading a module's own settings is harmless, and its tool may be open to people only. A module
   // from outside Vyre is never read as a person: its tool sees the settings module.
-  const r = await env.call(g.tool, fill(g.input || {}, undefined, project), d.firstParty ? "local" : undefined);
+  const r = await env.call(g.tool, fill(g.input || {}, undefined, project, level), d.firstParty ? "local" : undefined);
   if (r && r.error) throw fault(r.error.code === "no_such_tool" ? "unavailable" : r.error.code, r.error.message);
-  return g.read ? dig(r.data, fill(g.read, undefined, project)) : r.data;
+  return g.read ? dig(r.data, fill(g.read, undefined, project, level)) : r.data;
 }
 
 /**
@@ -231,14 +258,14 @@ export async function write(env, d, level, project, value, as, by) {
   }
   const t = s.tool.set;
   // Only Vyre's own modules' tools hear the person; any other module's tool sees the settings module.
-  const r = await env.call(t.tool, fill(t.input || {}, value, project), d.firstParty ? as : undefined);
+  const r = await env.call(t.tool, fill(t.input || {}, value, project, level), d.firstParty ? as : undefined);
   if (r && r.error) throw fault(r.error.code === "no_such_tool" ? "unavailable" : r.error.code, r.error.message);
 }
 
 /** Where a change would land, for the "what changes" line before a Claude Code file is written. @param {Env} env @param {any} d @param {Level} level @param {string|null} project */
 export async function whereIs(env, d, level, project) {
   const s = d.store;
-  if (!s) return "vyre";
+  if (!s) return "hub.json";
   if (s.config) return `config.json ${s.config}`;
   if (s.claude) return `${await claudeFile(env, level, project)} ${s.claude}`;
   return s.tool.set.tool;

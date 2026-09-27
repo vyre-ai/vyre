@@ -12,7 +12,10 @@ export const count = n => NUM[n] || String(n);
 export const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
 /** "14:20" */
-export const clock = t => new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+// One formatter, made once: toLocaleTimeString builds a new one on every call, which a transcript
+// of 2,000 rows scrolled fast felt (chat, native bar budget 6).
+let clockFmt = /** @type {Intl.DateTimeFormat|null} */ (null);
+export const clock = t => (clockFmt ||= new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })).format(new Date(t));
 
 /** "Friday 26 September · 14:20" */
 export function today(t = Date.now()) {

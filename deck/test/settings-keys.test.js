@@ -21,8 +21,8 @@ const SCHEMA = {
   groups: [{ id: "models", label: "Models and thinking" }, { id: "permissions", label: "Permissions" }, { id: "sessions", label: "Sessions" },
     { id: "vault", label: "Vault" }, { id: "tools", label: "Tools" }, { id: "notifications", label: "Notifications" }, { id: "empty", label: "Nothing here" }],
   keys: [
-    { key: "sessions.model", module: "sessions", group: "models", label: "Model for chat", type: "model", levels: ["account"], apply: "session", owner: "V", default: "opus" },
-    { key: "sessions.model_fallback", module: "sessions", group: "models", label: "Fallback model", type: "model", levels: ["account", "project"], apply: "session", owner: "V" },
+    { key: "sessions.model", module: "sessions", group: "models", label: "Model for chat", type: "model", enum: ["opus", "sonnet", "haiku"], labels: { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }, levels: ["account"], apply: "session", owner: "V", default: "opus" },
+    { key: "sessions.model_fallback", module: "sessions", group: "models", label: "Fallback model", type: "model", enum: ["opus", "sonnet", "haiku"], labels: { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }, levels: ["account", "project"], apply: "session", owner: "V" },
     { key: "sessions.effort", module: "sessions", group: "models", label: "Thinking effort", help: "How hard Claude thinks.", type: "enum", enum: ["low", "medium", "high", "xhigh", "max"],
       levels: ["account", "project"], apply: "session", owner: "V" },
     { key: "chat.thinking", module: "chat", group: "models", label: "Show thinking", type: "enum", enum: ["folded", "open", "hidden"], default: "folded", levels: ["account"], apply: "live", owner: "V" },
@@ -57,7 +57,7 @@ const BY = new Map(SCHEMA.keys.map(k => [k.key, k]));
  * write fail with that message; `off` lists keys whose module is off; `problems` gives a key a
  * problem; `noProof` makes the presence proof fail as a cancelled passkey would. Every call's
  * options are kept, so a test can see which went through the presence path.
- * @param {{ account?: Record<string, any>, project?: Record<string, Record<string, any>>, off?: string[], problems?: Record<string, string>, missing?: string[], noProof?: boolean }} [o]
+ * @param {{ account?: Record<string, any>, project?: Record<string, Record<string, any>>, off?: string[], problems?: Record<string, string>, missing?: string[], noProof?: boolean, noPasskey?: boolean }} [o]
  */
 function fakeSettings(o = {}) {
   const account = { ...(o.account || {}) };
@@ -94,6 +94,7 @@ function fakeSettings(o = {}) {
           before: bag[d.key], after: value, ...(needsConfirm(d, value) ? { confirm: d.loosens } : {}) } };
       }
       if (d.security === "loosens" && !opts.presence) return { error: { code: "presence_required", message: `${d.key} needs a person`, methods: ["passkey"] } };
+      if (d.security === "loosens" && o.noPasskey) return { error: { code: "bad_input", message: "no passkey is enrolled; enroll one with presence.enroll" } };
       if (d.security === "loosens" && o.noProof) return { error: { code: "cancelled", message: "The passkey was cancelled or timed out." } };
       if (value !== undefined && needsConfirm(d, value) && input.confirm !== true) return { error: { code: "confirm_required", message: `${d.loosens} Show the person and send confirm: true.` } };
       if (hold) await new Promise(r => waiting.push(() => r(undefined)));
@@ -425,6 +426,15 @@ test("settings keys: a loosening key goes through the presence path", async () =
   assert.equal(sw2.getAttribute("aria-checked"), "true", "back to on");
   assert.match(text(rowOf(el2, "vault.lock_on_sleep")), /Not saved\s+The passkey was cancelled/);
   assert.equal(sw.getAttribute("aria-checked"), "true");
+
+  // no passkey yet: the row says where to add one, in plain words, never a tool name
+  const api3 = fakeSettings({ noPasskey: true });
+  const { el: el3 } = await render(api3);
+  await $(rowOf(el3, "vault.lock_on_sleep"), "button.sw").click(); await tick();
+  await $(rowOf(el3, "vault.lock_on_sleep"), "button.sk-yes").click(); await tick();
+  const said = text(rowOf(el3, "vault.lock_on_sleep"));
+  assert.match(said, /Not saved\s+This needs your passkey, and none is set up yet\. Add one in Settings, Your devices/);
+  assert.doesNotMatch(said, /presence\./);
 
   // resetting a loosening key also asks, and proves presence
   await wait(60);

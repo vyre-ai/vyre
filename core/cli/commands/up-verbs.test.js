@@ -212,3 +212,36 @@ test("uninstall --system: needs --system; a dry run prints the plan and changes 
   assert.match(refused.out, /run it with sudo, or add --dry-run/);
   assert.doesNotMatch(refused.out, /remove /);
 });
+
+const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
+
+test("up.js commands: vyre commands lists vyre name's verbs; the others take flags and arguments", async t => {
+  const root = tempHome(t);
+  const d = JSON.parse((await run(root, ["commands", "--all", "--json"])).stdout);
+  const of = n => d.commands.find(c => c.name === n);
+  assert.deepEqual(of("name").verbs.map(v => v.verb), ["status", "check", "claim", "ts.net", "release"]);
+  assert.deepEqual(of("name").verbs.find(v => v.verb === "claim").args, [{ name: "n", required: true }]);
+  assert.deepEqual(of("name").verbs.filter(v => v.read).map(v => v.verb), ["status", "check"]);
+  for (const n of ["up", "backup", "restore", "owner", "uninstall"]) assert.deepEqual(of(n).verbs, [], `${n} has no verbs`);
+  assert.deepEqual(of("up").flags.map(f => f.name), ["box", "connect", "no-capsule", "keep-link", "dry-run", "json"]);
+  assert.deepEqual(of("up").flags.find(f => f.name === "connect"), { name: "connect", value: "addr" });
+  assert.deepEqual(of("restore").args, [{ name: "file", required: true }]);
+});
+
+test("up.js commands --view: up --dry-run is a card, name a card, name status the same as name, backup a card", async t => {
+  const root = seeded(t);
+  const up = await run(root, ["up", "--dry-run", "--view"]);
+  assert.equal(up.code, 0, up.out);
+  const u = frames(up.stdout);
+  assert.deepEqual([u[0].cmd, u[0].view.kind, u[0].data.role, u[0].data.ready], ["up", "card", "box", false]);
+  assert.equal(u.length, 2, "the object, then done: no prose");
+  const calls = await fakeVyred(t, root, { "names.status": async () => ({ data: { address: "https://harlow-legal.vyre.run", phase: "serving", owner: "alex@example.com" } }) });
+  const n = frames((await run(root, ["name", "--view"])).stdout);
+  assert.deepEqual([n[0].cmd, n[0].view.kind, n[0].view.state, n[0].view.fields[0].value], ["name", "card", "ok", "https://harlow-legal.vyre.run"]);
+  assert.deepEqual(JSON.parse((await run(root, ["name", "status", "--json"])).stdout), n[0].data);
+  assert.deepEqual(calls.map(c => c.tool), ["names.status", "names.status"]);
+  const file = path.join(SCRATCH, `up-view-${process.pid}-${Date.now()}.tar.gz`);
+  t.after(() => fs.rmSync(file, { force: true }));
+  const b = frames((await run(root, ["backup", file, "--view"])).stdout);
+  assert.deepEqual([b[0].cmd, b[0].view.kind, b[0].data.file], ["backup", "card", file]);
+});

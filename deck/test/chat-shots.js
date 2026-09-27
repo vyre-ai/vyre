@@ -7,7 +7,7 @@
 //
 //   node deck/test/chat-shots.js <out dir> [--port 4795] [--only demo,ask]
 //
-// Runs on testbox (the load rule: one Chrome at a time). CHROME=<path> names the binary.
+// Runs on testbox (the load rule: one Chrome at a time), in vyre-chrome --headless=new. CHROME=<path> names another binary.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -58,10 +58,12 @@ const base = await new Promise((resolve, reject) => {
 });
 log(`world ${base}`);
 
-const bin = process.env.CHROME || path.join(os.homedir(), "vyre-ci/pwa-chrome/chrome-headless-shell/linux-154.0.8037.57/chrome-headless-shell-linux64/chrome-headless-shell");
+// vyre-chrome in the new headless mode: chrome-headless-shell (the old mode) loses the variable
+// font's space advances and draws "No one is typing" as "Nooneis typing" (pwa, 27 Sep).
+const bin = process.env.CHROME || "/usr/local/bin/vyre-chrome";
 const cdpPort = 9431 + Math.floor(Math.random() * 400);
 const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${profile}`,
-  "--no-sandbox", "--no-first-run", "--no-default-browser-check", "about:blank"], { stdio: "ignore" });
+  "--headless=new", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "about:blank"], { stdio: "ignore" });
 started.push(chrome);
 const CDP = `http://127.0.0.1:${cdpPort}`;
 for (let i = 0; i < 100; i++) { try { await fetch(`${CDP}/json/version`); break; } catch { await sleep(200); } }
@@ -75,11 +77,11 @@ for (let i = 0; i < 60; i++) {
   const r = await tool("threads.list", {});
   threads = r.data?.threads || r.data || [];
   const asks = (await tool("threads.asks", {})).data || [];
-  if (threads.length >= 3 && asks.length >= 2) break;
+  if (threads.length >= 4 && asks.length >= 3) break;
   await sleep(500);
 }
 const idOf = (/** @type {string} */ name) => { const t = threads.find((/** @type {any} */ t) => t.name === name); if (!t) throw new Error(`no thread named ${name}`); return t.id; };
-const DEMO = idOf("Tidy the intake form"), ASK = idOf("Intake form, second pass"), QUESTION = idOf("Northwind menu page");
+const DEMO = idOf("Tidy the intake form"), ASK = idOf("Intake form, second pass"), QUESTION = idOf("Northwind menu page"), PLAN = idOf("Northwind price list plan");
 const cwd = threads.find((/** @type {any} */ t) => t.id === DEMO).cwd;
 
 const DEVICES = [
@@ -102,6 +104,7 @@ const SHOTS = [
     type(".composer textarea", "Keep the phone field optional"); ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await wait(800);
     type(".composer textarea", "Then update the changelog"); ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", altKey: true, bubbles: true })); await wait(1000);` },
   { name: "7-terminal", term: true },
+  { name: "8-plan", thread: PLAN, script: `await waitFor(".cv-plan", 15000); await wait(300);` },
 ];
 
 let failed = 0;

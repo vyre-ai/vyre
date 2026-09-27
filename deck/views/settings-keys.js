@@ -31,13 +31,15 @@ import { attempt as apiAttempt } from "../js/api.js";
 /** When a change takes effect, as the row's description line says. Live says nothing. */
 export const APPLY = { live: "", session: "Next session", restart: "After restart" };
 const SOURCE = { project: "Project", account: "Account" };
-export const MODELS = ["opus", "sonnet", "haiku"];
 const OTHER = "__other";
 
 /** A group id the page already uses for a section of its own gets a prefix, so both can be linked. */
 export const domId = (/** @type {string} */ id, /** @type {Set<string>} */ taken) => (taken.has(id) ? "set-" + id : id);
 const safe = (/** @type {string} */ key) => "sk-" + String(key).replace(/[^A-Za-z0-9_-]/g, "-");
-const errText = (/** @type {any} */ e) => (e?.missing ? `The ${e.module} module is not running, so this cannot be changed here yet.` : String(e?.message || e));
+// The box's words for a proof it could not ask for, in the person's: where to add a passkey.
+const NO_PASSKEY = "This needs your passkey, and none is set up yet. Add one in Settings, Your devices, then try again.";
+const errText = (/** @type {any} */ e) => (e?.missing ? `The ${e.module} module is not running, so this cannot be changed here yet.`
+  : /no passkey is enrolled/.test(String(e?.message || "")) ? NO_PASSKEY : String(e?.message || e));
 const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -302,7 +304,7 @@ export async function drawKeys(el, ctx, deps = {}) {
       settle(setGuess(v), "settings.set", { ...target(), value: v, ...(o.confirm ? { confirm: true } : {}) },
         { kind: "set", value: v, presence: o.presence, asked: o.asked });
     const doReset = (/** @type {{ presence?: boolean, asked?: boolean }} */ o = {}) =>
-      settle(resetGuess(), "settings.reset", target(), { kind: "reset", presence: o.presence, asked: o.asked, label: resetTo() });
+      settle(resetGuess(), "settings.reset", { ...target(), ...(o.asked && !o.presence ? { confirm: true } : {}) }, { kind: "reset", presence: o.presence, asked: o.asked, label: resetTo() });
 
     /**
      * Ask on the row before a change that widens what Claude may do or loosens security: preview
@@ -321,7 +323,7 @@ export async function drawKeys(el, ctx, deps = {}) {
       if (!ctx.alive() || mine !== seq) return;
       if (p.error) { closeAsk(); r.dirty = false; r.error = errText(p.error); r.paint(true); return; }
       const sentence = kind === "set" ? String(p.data?.confirm || def.loosens || `This lets Claude do more without asking: ${def.label}.`)
-        : `${resetTo()} needs your passkey.`;
+        : presence ? `${resetTo()} needs your passkey.` : String(p.data?.confirm || def.loosens || `${resetTo()} lets Claude do more without asking.`);
       const ok = h("button", { type: "button", class: "btn btn-primary btn-sm sk-yes",
         onclick: () => (kind === "set" ? doSet(value, { confirm: true, presence, asked: true }) : doReset({ presence, asked: true })) },
         "Confirm");
@@ -561,7 +563,8 @@ function model(def, k) {
   let cur = /** @type {any} */ (undefined);
   const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", id: k.id },
     h("option", { value: "" }, def.default !== undefined ? `Default (${def.default})` : "Not set"),
-    MODELS.map(m => h("option", { value: m }, m[0].toUpperCase() + m.slice(1))),
+    // The box's aliases (sessions.models.get, through the schema's choices); none are kept here.
+    (def.enum || []).map(m => h("option", { value: m }, (def.labels && def.labels[m]) || m)),
     h("option", { value: OTHER }, "Other…")));
   const other = /** @type {HTMLInputElement} */ (h("input", { type: "text", class: "input sk-input sk-other", hidden: true,
     "aria-label": `${def.label}, model id`, placeholder: "A model id", autocomplete: "off", spellcheck: "false" }));
@@ -583,7 +586,7 @@ function model(def, k) {
     el: h("div", { class: "sk-model" }, sel, other), labelable: true,
     set: v => {
       cur = v;
-      const alias = v == null || v === "" ? "" : MODELS.includes(String(v)) ? String(v) : OTHER;
+      const alias = v == null || v === "" ? "" : (def.enum || []).includes(String(v)) ? String(v) : OTHER;
       sel.value = alias;
       other.hidden = alias !== OTHER;
       other.value = alias === OTHER ? String(v) : "";

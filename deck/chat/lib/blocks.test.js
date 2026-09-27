@@ -95,18 +95,24 @@ test("formatters: duration, tokens, cost, the turn footer", () => {
   assert.deepEqual(turnParts({ duration_ms: 19000, tokens: { input: 18420, output: 912 }, cost_usd: 0.05 }), ["19 s", "19k tokens", "$0.050"]);
 });
 
-test("shortPath: inside the session's folder relative, outside whole (long ones cut to the last three parts)", () => {
+test("shortPath: inside the session's folder relative, outside whole", () => {
   const cwd = "/home/alex/Work/harlow-site";
   assert.equal(shortPath(cwd + "/menu.md", cwd), "menu.md");
   assert.equal(shortPath(cwd + "/src/app.js", cwd + "/"), "src/app.js");
   assert.equal(shortPath(cwd, cwd), ".");
   assert.equal(shortPath("/home/alex/Work/harlow-site-old/menu.md", cwd), "/home/alex/Work/harlow-site-old/menu.md", "a sibling with the same prefix is not inside");
-  assert.equal(shortPath("/srv/data/alex/Work/other/notes/q3.md", cwd), "…/other/notes/q3.md");
+  assert.equal(shortPath("/srv/data/alex/Work/other/notes/q3.md", cwd), "/srv/data/alex/Work/other/notes/q3.md", "outside the folder: whole");
   assert.equal(shortPath("notes.md", null), "notes.md");
   assert.equal(shortPath(null, cwd), "");
   assert.equal(toolTitle("Read", { file_path: cwd + "/menu.md" }, cwd), "menu.md");
   assert.equal(toolTitle("Grep", { pattern: "price", path: cwd + "/src" }, cwd), "price in src");
   assert.equal(toolTitle("Bash", { command: `cat ${cwd}/menu.md && ls ${cwd}` }, cwd), "cat menu.md && ls .");
+});
+
+test("raw view: paths relative to the session's folder, as Claude Code prints them", () => {
+  const cwd = "/home/alex/Work/harlow-site";
+  assert.equal(rawToolHead("Edit", { file_path: cwd + "/menu.md" }, cwd), "Update(menu.md)");
+  assert.deepEqual(rawLines([{ kind: "tool", tool: "Edit", input: { file_path: cwd + "/menu.md" }, output: "ok", done: true, cwd }]), ["⏺ Update(menu.md)", "  ⎿  Updated menu.md"]);
 });
 
 test("toolVerb: past tense done, -ing while running or waiting, never the SDK's names", () => {

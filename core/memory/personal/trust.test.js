@@ -17,6 +17,7 @@ test("trust: programs, subagents, the Capsule's asks and Vyre's own folders neve
   assert.equal(sessionTrust({ cwd: "/home/alex/Work", human: 1, parent: "p" }).why, "program");
   assert.equal(sessionTrust({ cwd: "/home/alex/Work", name: "Capsule: who is my wife" }).why, "ask");
   assert.equal(sessionTrust({ cwd: "/home/alex/.vyre/capsule/ask/x" }, { scratch: "/home/alex/.vyre/capsule/ask" }).why, "ask");
+  assert.equal(sessionTrust({ cwd: "/home/alex/.vyre/quick/memory" }, { quick: "/home/alex/.vyre/quick" }).why, "ask");
   for (const cwd of ["/home/alex/Code/vyre", "/home/alex/Code/vyre-memory-iq", "/home/alex/Code/vyre/core", "/home/alex/src/Vyre_fork"]) {
     assert.equal(sessionTrust({ cwd }).why, "dev", cwd);
   }
@@ -40,7 +41,7 @@ test("trust: talk about building memory is examples, not a life", () => {
   for (const s of ["write a fixture where my wife is Jordan", "the eval should answer jordan", "add a test case: my dog Biscuit",
     "memory.answer should return Jordan", "use the sample world for this", "it should extract the spouse here"]) assert.ok(devTalk(s), s);
   for (const s of ["my wife Noor has the car today", "i need to test the brakes on the volvo", "booked a table for my wife's birthday",
-    "the reader app on my kindle is slow"]) assert.ok(!devTalk(s), s);
+    "the reader app on my kindle is slow", "load the seed data, my brother moved to leeds so im slower this week", "assert the status is 200"]) assert.ok(!devTalk(s), s);
 });
 
 /** An empty store in a temp home. */

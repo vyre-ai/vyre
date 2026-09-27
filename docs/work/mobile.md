@@ -115,6 +115,29 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   chevron, your bubble hover fill, device-row proof names and tags, web swipe commits at 40%. The
   mobile checklist is app-design's teams.md "mobile" section (f0752612); next in its Start here
   order: 7, the shell (header labels and page swipe, floating Capsule, Places as a bottom sheet).
+- Batch 4 reds fixed on work/mobile-b4fix d66af88b (2f1ccfff + fixes; with the integrator):
+  world test signs in as the person, the world runs threads on the CLI runner and keeps alex outside
+  VYRE_HOME, Md.kt animateFloat import, iOS DetailFactRow. Android compileDebugKotlin and the iOS
+  simulator build pass on the Mac under the lock.
+- Swipe (06e9674b): pwa's release rule (src/ui/swipe.js: 100 px or a 0.5 px/ms fling past 24
+  commits, 40 to 100 rests open with a tappable action, under 40 closes). Web is pointer-driven now
+  (no scroll-snap); checked with mouse drags in headless Chrome against apps/test/world.js. ci's
+  perf job faked the swipe with scrollTo: told ci to drag instead.
+- Icons (d447c6c3): generated from docs/design/one-app/icons.txt (apps/app/scripts/gen-icons.mjs,
+  `npm run icons -- --check`), react-native-svg, 16 at 28/32 and 20 at 44 (app-design 305fc07b).
+  Back is src/ui/BackButton.tsx: chev-l, 44, the previous page's name at 17 when it fits, "Back to
+  `<page>`" (Screen `backTo`, else the page under it in the router stack).
+- Glass mini-view (glass-mini.md, b756d128): src/state/glass-model.js (+17 tests), glass.ts,
+  src/ui/GlassMini.tsx; card on Now after the waiting rows, header card in a thread collapsing to the
+  pill. Stills: one when shown, then on sight.stepped, at most one per 2 s per target, only visible
+  and foreground, never over the relay; no timer (asked app-design to fix the spec's "every 2 s").
+  Off when sight.targets is no_such_tool. Seen in headless Chrome with faked sight tools (CDP Fetch).
+  app-design matched the spec to this build (f0dbbe36: a still on each step, at most one per 2 s;
+  tap opens the thread until phone Glass). Scroll visibility done (ada72020): a card out of view
+  fetches nothing (IntersectionObserver on web, measureInWindow on the scroll signal on native);
+  checked in headless Chrome at 360 tall, no still until scrolled in. Native untested on a device.
+  ci's app-perf drags the swipe now (work/ci 9668cef8), proven on the next app run.
+- HOLD (lead): Start-here item 7, the phone shell, until after the user's first iPhone run.
 - BLOCKER for the iPhone run (ci is fixing it, lead): main 53cd1326 has no apps/ (batch 4) and nothing packs
   apps/app/dist into vyre.tgz or the box image, so /app/ is 404 no_app on the box. Told the lead.
 
@@ -250,6 +273,12 @@ down after):
   sight.steps + sight.stepped), only while it is visible. The mini-view needs an app-design phone
   spec first. Asked cohesion: frame wire format, size and rate, a lower-rate option for the relay,
   tailnet/device callers and presence for sight.*, answer.tool carrying its input, device defaulting.
+  Answered: sight.frame built (work/cohesion 791bd180): `{target:"agent:<name>", maxWidth 160-1280,
+  default 480}` returns `{image (base64 JPEG), mime, at, step}`; refetch only on sight.stepped; a
+  shield refusal is code "failed" (show "paused while a person signs in", wait for sight.stepped or
+  computer.unshielded); "mac" is local_only. sight.* and tips.* take the owner's devices with no
+  presence. answer is `{tool, input, fill}`. context.report fills device for `device:<id>`
+  callers; over the tailnet send it (snapshot's echoed id).
 - docs tips (work/docs d960197d, docs/build/tips.md "Show one on a surface"), after 0.1.0 and an
   app-design look: tips.next {surface:"phone", context:{module, idle}} on Places open and once after a
   pause on Now (one visible-only timer), busy:true during approvals, presence or a running turn;

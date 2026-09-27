@@ -139,7 +139,8 @@ export class Personal {
           if (!tr.ok) break;
           const t = text.get(rowid);
           if (!t) continue;       // deleted since the scan: gone, not an error
-          if (String(t.role) !== "user") continue;
+          // Claude's words teach nothing, but they say who "he" or "the car" is in the user's next turn.
+          if (String(t.role) !== "user") { focus = extractPersonal(String(t.text), { role: String(t.role), prev: focus }).focus; continue; }
           const own = userWords(String(t.text));
           if (devTalk(own)) {
             if (++tr.dev >= DEV_TURNS) { tr.ok = false; tr.why = "about memory"; dropClaims.run(session); dropQueue.run(session); this.dirty = true; }
@@ -397,7 +398,7 @@ export class Personal {
 
     // ---- what is connected to me: facts about anyone else are someone else's.
     const out = new Map();
-    for (const r of rows) if (!isLit(r.obj) && !INTERNAL.has(r.rel)) { if (!out.has(r.subj)) out.set(r.subj, new Set()); out.get(r.subj).add(r.obj); }
+    for (const r of rows) if (!isLit(r.obj) && (!INTERNAL.has(r.rel) || r.rel === "ended:owns")) { if (!out.has(r.subj)) out.set(r.subj, new Set()); out.get(r.subj).add(r.obj); }
     const mine = new Set(["me"]);
     const queue = ["me"];
     while (queue.length) for (const n of out.get(/** @type {string} */ (queue.shift())) || []) if (!mine.has(n)) { mine.add(n); queue.push(n); }
@@ -423,10 +424,12 @@ export class Personal {
     const ended = new Map();
     for (const r of rows) {
       if (!mine.has(r.subj)) continue;
-      if (r.rel === "ended:owns") { const k = `${r.subj}|${r.obj}`; ended.set(k, Math.max(ended.get(k) || 0, r.ts)); continue; }
-      if (INTERNAL.has(r.rel)) continue;
-      const id = `${r.subj}|${r.rel}|${r.obj}`;
-      const g = groups.get(id) || { id, subj: r.subj, rel: r.rel, obj: r.obj, turns: new Map(), sessions: new Set(), first: r.ts, last: r.ts, user: false };
+      // Sold: it was owned until then ("sold the outback" says the user had one).
+      if (r.rel === "ended:owns") { const k = `${r.subj}|${r.obj}`; ended.set(k, Math.max(ended.get(k) || 0, r.ts)); }
+      else if (INTERNAL.has(r.rel)) continue;
+      const rel = r.rel === "ended:owns" ? "owns" : r.rel;
+      const id = `${r.subj}|${rel}|${r.obj}`;
+      const g = groups.get(id) || { id, subj: r.subj, rel, obj: r.obj, turns: new Map(), sessions: new Set(), first: r.ts, last: r.ts, user: false };
       if (r.method !== "assistant") g.user = true;
       const tk = `${r.session}\u0000${r.seq}`;
       const had = g.turns.get(tk);

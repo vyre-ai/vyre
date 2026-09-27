@@ -53,8 +53,15 @@ export const fromAsks = rows => rows.map(a => {
   const first = question && Array.isArray(a.questions) && a.questions[0] ? a.questions[0].question : "";
   const title = clean(a.summary) || clean(first) || (question ? "A question from a session" : `Allow ${clean(a.tool, 40) || "a tool"}?`);
   const who = [clean(a.agent, 40), clean(a.thread_name, 80)].filter(Boolean).join(" in ");
+  // An ask from a session on the paired Mac is answered on that Mac: the box cannot forward an
+  // answer yet (threads.answer {machine} arrives with federation, after 0.1.0). Until then the
+  // row names the machine and its answer has no tool, so a surface says "Answer it on <mac>".
+  const mac = a.source === "mac";
+  const machine = mac && a.machine ? clean(a.machine, 80) : "";
   return { id: `threads:${a.id}`, kind: "ask", title, ...opt("detail", cap(who, DETAIL_MAX)), ...opt("project", a.project), ...opt("thread", a.thread),
-    at: at(a.at), source: "threads", answer: { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
+    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads",
+    answer: mac ? { tool: null, input: null, fill: [], on: machine || "your Mac" }
+      : { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
 });
 
 /** gate.held rows. Only the sender's own summary and where it goes, never the draft. */

@@ -124,3 +124,39 @@ test("learn skills: dismiss says no to a proposed skill, retire removes an insta
   assert.match(noId.out + noId.err, /vyre learn lists them with their numbers/);
   assert.equal((await vyre("learn", "skills", "dismiss", "x")).code, 2);
 });
+
+test("learn cli: vyre commands lists every verb run() handles, without vyred", async t => {
+  const root = tempHome(t);
+  const r = await run(root, ["commands", "learn", "--json"]);
+  assert.equal(r.code, 0, r.err);
+  const verbs = JSON.parse(r.out).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["list", "show", "add", "accept", "retire", "level", "scope", "relax", "stats", "signals", "skills"]);
+  assert.deepEqual(verbs.filter(v => v.person).map(v => v.verb), ["accept", "retire", "level", "scope", "relax", "skills"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["list", "show", "stats", "signals"]);
+  assert.deepEqual(verbs.find(v => v.verb === "level").args, [{ name: "id", required: true }, { name: "choice", required: true, choices: ["remind", "ask", "block"] }]);
+});
+
+test("learn cli: --view draws lessons and signals as tables and one lesson as a card, with the data --json prints", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" }, modules: { disable: ["recall", "memory"] } }));
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
+  const id = JSON.parse((await run(root, ["learn", "add", "always", "run", "the", "tests", "--json"])).out).id;
+
+  const l = await run(root, ["learn", "list", "--view"]);
+  assert.equal(l.code, 0, l.err);
+  const f = frames(l.out);
+  assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.title], ["learn list", "table", "Lessons"]);
+  assert.deepEqual(f[0].view.columns.map(c => c.key), ["id", "rule", "level", "status", "effect"]);
+  assert.deepEqual(f[0].view.rows.map(r => r.id), [id]);
+  assert.deepEqual(f[0].data, JSON.parse((await run(root, ["learn", "--json"])).out));
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
+
+  const s = frames((await run(root, ["learn", "show", String(id), "--view"])).out);
+  assert.deepEqual([s[0].view.kind, s[0].view.title, s[0].view.state], ["card", `Lesson ${id}`, "ok"]);
+  assert.equal(s[0].data.id, id);
+  const g = frames((await run(root, ["learn", "signals", "--view"])).out);
+  assert.deepEqual(g[0].view.columns.map(c => c.key), ["kind", "n"]);
+  assert.deepEqual(g[0].data, JSON.parse((await run(root, ["learn", "signals", "--json"])).out));
+});

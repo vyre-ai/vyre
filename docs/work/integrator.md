@@ -45,6 +45,40 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   796bdcb phone-design, 246af82 docs, f3b5e36 SPEC 5.2 ctx.call. Full suite at f3b5e36 on the
   test box: 1917 tests, 0 fail, exit 0.
 
+## Done: 0.1.0-rc.1 landed (2026-09-27 ~19:55 UTC)
+
+- main = ac60d3c5 (fast-forward from 68463d04). Not tagged: the tag is the lead's and ci's call.
+- Full suite on testbox at a435d516: 3765 tests, 3665 pass, 7 fail (up welcome 0.0.1, pwa keep
+  list, onboard.css raw tokens, voice usage exit, plugin version, thread.status), 3 todo. Fixed in
+  8ff0d6d5 + ac60d3c5; those files plus onboard, docs, hygiene and boundaries rerun green with
+  tmp-guard before/after clean.
+- rc.2 queue: vault-next (HELD for e2e's sign-off on the send_mail takeover fix) + connectors
+  8be461a9, launch 4d3b808f, then ci bumps to rc.2.
+
+## Earlier: the RC batch on pre/rc (2026-09-27 ~19:00 UTC)
+
+- Merged on pre/rc: native-core 6ccad201, platform e75a6a11 + settings-write d62792d0,
+  app-design-hub 9a6abbcf, cohesion 0f4d1105, sessions db4af9c3 + 501ca3fc, memory-iq 1a76d383,
+  chat ff62e37b, pwa c78b87c0, mobile 01068595, polish-cli 12851fab, docs ecdb22eb, e2e daf63e22,
+  then native-core-composer c012c13c (sessions.models reads MODEL_ALIASES), platform a79d58f1
+  (vyre module; CLI group keeps "commands"), sessions e8fd0e42, memory-iq 1815b37d, chat 0b6f9091,
+  e2e 88610b5e, capsule-pro a127335d, ci 35bfed5f.
+- Waiting: vault work/vault-next (green sha from the vault team) with connectors 8be461a9.
+- Then: full suite once on testbox, ci-rc 1d8ae652 LAST, push main, report to the lead.
+- Generated docs on a conflict: take ours, rerun `node scripts/gen-docs-reference`.
+- Fixes on pre/rc: 75148174 onboard reserve test waits for its claim (tmp-guard leak), ae6fe249
+  switchboard fake key built at run time (hygiene), 2913b069 drift allowlist shrinks. Targeted run
+  after them: 1129 tests, only the drift allowlist failed, now 2/2.
+- Launch: 342e02f5 merged (b662d5da, same tree as d61fd341; the lead said keep it). Follow-up 57eebd9f
+  merged (violet fills gone).
+- capsule-pro 0a7d7f53 Design A merged (supersedes a127335d and streamfix 686520d1).
+- launch acca5cbc + c81244a1 merged. e2e-label 1941f2cf merged (cb1f8e66): a person's label from
+  under a claude is "mcp". When vault + connectors land, check mail and on_behalf are covered by it
+  too. Suites that call as "cli" run on testbox only, never under a claude.
+- rc.1 = pre/rc a435d516 (ci-rc 1d8ae652 in; no vault, no connectors), full suite on testbox.
+- rc.2 queue: vault-next HELD (a1a4e0b8 has an e2e HIGH: connection takeover reroutes send_mail; wait for e2e sign-off on the fix sha) + connectors 8be461a9 (check mail and on_behalf
+  under e2e-label's rule), launch 4d3b808f (CSS), then ci bumps to rc.2.
+
 ## Done after Logout 3 (2026-09-27)
 
 - Full suite at ef51363 on the test box: 2085 tests, 2047 pass, 1 fail (google OAuth, real: the
