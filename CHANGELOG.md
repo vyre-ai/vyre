@@ -5,10 +5,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 #### The answer eval runs without the Electron Capsule
+#### Onboarding: the first steps load the theme and fonts
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
   (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
 - test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+
+#### Docs: new screenshots, no passkey in Glass, the /vyre planner verbs
+
+- deck/test/world.js: alex's sample folders sit in a folder plainly named alex, so shown paths read
+  .../alex/Work, not a temp name.
+- Screenshots retaken on main; six new ones placed (Settings devices and connections, the pairing
+  card, a fresh box's Now, Find on a phone, the onboarding's last screen).
+- using/glass.md: take-over, hand-back and Sign in privately ask for no passkey. using/deck.md,
+  using/chat.md, concepts/presence.md: only a send, payment or deletion asks, and one proof covers
+  30 minutes. using/claude-code.md: `/vyre todo`, `remind`, `agenda`, `remember`, `lesson`.
 
 #### The design docs stay out of the package
 
