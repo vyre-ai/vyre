@@ -45,6 +45,14 @@ const SITE_HOSTS = ["docs.vyre.run"];
 // Files the build writes beside the pages, which a page may link to.
 const BUILT = ["/llms.txt", "/llms-full.txt", "/sitemap.xml", "/search-index.json", "/index.json", "/404.html"];
 const EM_DASH = "\u2014", SECTION = "\u00a7";
+// "box" is retired (ADR 0038): the Linux machine is a server, a Mac/PC/phone is a device. Narrow
+// allowlist for the alias window (0.1.1) and unrelated senses of the word.
+const BOX_WORD = /\bbox(es)?\b/i;
+const BOX_ALLOWED = /\b(vyre\s+box|box\s+image|message\s+box(es)?|text\s+box(es)?|dialog\s+box(es)?)\b/i;
+// Pages that discuss the retired word itself, or are a historical record (ADRs keep their
+// original wording; CHANGELOG.md is not rewritten for old releases), are exempt.
+const BOX_EXEMPT_FILE = ["docs/reference/glossary.md", "CHANGELOG.md"];
+const isBoxExempt = file => BOX_EXEMPT_FILE.includes(file) || file.startsWith("docs/adr/");
 const INCLUDE = /^\s*<!--\s*include:\s*(\S+)\s*-->\s*$/;
 
 /** @typedef {{ file: string, line: number, kind: string, problem: string }} Problem */
@@ -272,6 +280,7 @@ export async function check({ root = REPO, tmp, reference } = {}) {
     t.split("\n").forEach((l, i) => {
       if (l.includes(EM_DASH)) add(file, i + 1, "characters", "em dash; use a colon, a comma or two sentences");
       if (l.includes(SECTION)) add(file, i + 1, "characters", "section sign; write Section 5.1");
+      if (!isBoxExempt(file) && BOX_WORD.test(l.replace(new RegExp(BOX_ALLOWED, "gi"), ""))) add(file, i + 1, "terminology", "\"box\" is retired (ADR 0038); use server or device");
     });
     for (const h of scanText(t)) add(file, h.line, "hygiene", h.problem);
   };
