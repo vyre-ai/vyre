@@ -2,7 +2,7 @@
 # channel; vX.Y.Z-beta.N publishes a prerelease on beta. The assets are what
 # scripts/build-site.sh makes for the box (install-box.sh, compose.yml, compose.build.yml,
 # vyre.env.example, vyre, Dockerfile, dockerignore, vyre.tgz, VERSION), the unsigned Android APK
-# and android.json from app.yml's run on the same commit when there is one, and release.json
+# (as android-<version>-<sha7>.apk) and android.json from app.yml's run on the same commit when there is one, and release.json
 # { version, channel, commit, date, min_from, notes }. SHA256SUMS covers them all, and each gets
 # a build provenance attestation (keyless: the workflow's OIDC identity, no key and no secret).
 # notes is this version's CHANGELOG section ("## X.Y.Z" or "## X.Y.Z-beta.N"), also the release
@@ -83,7 +83,12 @@ jobs:
           sha=$(git rev-parse HEAD)
           id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --commit "$sha" --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
           if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n "app-android-$sha" -D "$RUNNER_TEMP/android" 2>/dev/null; then
-            cp "$RUNNER_TEMP"/android/vyre-*.apk "$RUNNER_TEMP/android/android.json" dist/
+            # Released as android-<version>-<sha7>.apk (ADR 0033), the name vyre update looks for;
+            # android.json's file follows. Same bytes, so its sha256 still holds.
+            apk="android-$VERSION-$(echo "$sha" | cut -c1-7).apk"
+            cp "$(ls "$RUNNER_TEMP"/android/vyre-*.apk | head -1)" "dist/$apk"
+            node -e 'const fs = require("fs"), [src, dst, file] = process.argv.slice(1); const j = JSON.parse(fs.readFileSync(src, "utf8")); j.file = file; fs.writeFileSync(dst, JSON.stringify(j, null, 2) + "\n")' \
+              "$RUNNER_TEMP/android/android.json" dist/android.json "$apk"
             echo "Android: from app.yml run $id" | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "Android: no green app.yml run on $sha, released without the APK" | tee -a "$GITHUB_STEP_SUMMARY"
