@@ -12,6 +12,7 @@
 
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
 import { DETAILS, defaultField } from "./kinds.js";
+import { codes, importCodes } from "./codes.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
@@ -212,12 +213,23 @@ export default {
         const n = name ?? id;
         if (typeof n !== "string" || !n) throw new Error("name the item");
         const r = await vault.code({ name: n }, caller);
-        return { code: r.code, period: r.period ?? 30, remaining: r.remaining };
+        return { code: r.code, next: r.next, period: r.period ?? 30, remaining: r.remaining };
       },
       presence("Show a one-time code", ({ name, id }) => `Show the one-time code for ${quoted(name ?? id)}`,
         { skip: ({ input }) => Boolean(input && /** @type {any} */ (vault).sessions?.ok(input.session, input.name ?? input.id)),
           // The presence floor's session method covers a code unless the item is reprompt.
           session: input => { const n = input && (input.name ?? input.id); return typeof n === "string" && !reprompt(vault, n); } }));
+
+    // The authenticator (ADR 0028): every code at once, current and next, on the same window as one.
+    tool("vault.codes", SURFACES, "Every one-time code: the current and next code for each item with a TOTP seed, the seconds left, and the issuer. Never a seed.",
+      obj({ names: strs, session: str }), (input, { caller }) => codes(vault, { names: input.names }, caller),
+      presence("Show your one-time codes", () => "Show the current one-time codes for every account in the vault",
+        { session: () => true }));
+
+    // Scanned codes only: the person's own camera read them, so they never pass through Claude.
+    tool("vault.codes.import", SURFACES, "Bring in accounts from scanned codes: every part of a Google Authenticator export (otpauth-migration://), or otpauth://totp/ addresses. preview stores nothing. A split export waits until every part is scanned.",
+      obj({ uris: strs, preview: { type: "boolean" } }, ["uris"]), (input, { caller }) => importCodes(vault, input, caller),
+      presence("Import one-time codes", ({ uris, preview }) => `${preview ? "Preview" : "Import"} ${Array.isArray(uris) ? uris.length : 0} scanned code${Array.isArray(uris) && uris.length === 1 ? "" : "s"} into the vault`));
 
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),

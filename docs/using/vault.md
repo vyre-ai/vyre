@@ -119,6 +119,23 @@ folders, lists `.env.example` files without importing them, and follows no symli
 `--rewrite` changes a file only after every value in it is stored, writes no backup of the old
 file, and leaves a file alone when its values differ from the vault's (a conflict).
 
+## One-time codes
+
+The vault is an authenticator too. Every login with a seed, and every `authenticator` item, shows
+its current code and the next one, so a code about to roll over is never a guess:
+
+```
+vyre vault codes                         # every code: current, next, seconds left
+vyre vault totp harlow-google            # one
+vyre vault codes import --from codes.txt # Google Authenticator's export, as scanned text
+```
+
+To leave Google Authenticator, open it, choose Transfer accounts, then Export, and scan the QR
+codes with the Vyre phone app or the Deck's camera. A large export is split across several codes;
+the import waits until every part is scanned, in any order. A seed already in the vault is
+recognised and skipped. Counter-based (HOTP) codes are not supported. `otpauth://totp/` links
+work the same way.
+
 ## See what you have
 
 ```

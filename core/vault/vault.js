@@ -1221,8 +1221,10 @@ export class Vault {
     const f = await this.fields(r);
     if (!f.totp) throw new Error(`${name} has no one-time password`);
     const c = totp(f.totp);
+    // The next code too, so a code about to roll over is never a guess (ADR 0028).
+    const next = totp(f.totp, { at: Date.now() + c.remaining * 1000 }).code;
     this.audit("totp", name, caller);
-    return { code: c.code, period: c.period, remaining: c.remaining };
+    return { code: c.code, next, period: c.period, remaining: c.remaining };
   }
 
   async generate({ length, words, symbols, name, description }, caller) {

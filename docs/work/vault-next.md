@@ -34,14 +34,16 @@ mobile and the Capsule (through their owners).
   Unsure layouts (from memory, fixtures only): Keeper headerless CSV, Dashlane payments/ids,
   Proton state/expiry, Enpass cc field types. vault + tools + CLI + extension: 415 pass, 0 fail.
 
+- Steps 5+6, the authenticator: core/vault/otpmigration.js (protobuf, multi-part batches),
+  core/vault/codes.js, vault.codes (current + next + remaining) and vault.codes.import (people's
+  surfaces only, never mcp), vault.totp adds next, CLI `vyre vault codes [import]`. codes.test.js.
+
 ## Doing
 
-- Step 5: Google Authenticator migration QR + otpauth.
+- Step 7: leak sweep + rotation (and ADR 0028 decision 4's daily reminders).
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-5. Google Authenticator migration QR (multi-part) + otpauth (M); the client decodes the image.
-6. vault.codes: current + next + remaining (S).
 7. Leak sweep + rotation (L): auto for AWS, GCP SA, Cloudflare, Twilio, GitLab, Tailscale; guided
    otherwise; ADR 0028 decision 4 reminders.
 8. `vyre vault ssh setup` (S). 9. vault.agent.fill (M, needs computers). 10. Passkeys (L).
@@ -57,7 +59,10 @@ mobile and the Capsule (through their owners).
 - capsule-pro: a credential provider extension target in the Capsule app (after Apple team).
 - planner: planner.add from module:vault (already allowed), planner.done on items it added.
 - polish-cli: CLI keeps a fresh proof per call; fills never ride a CLI window.
-- pwa: Deck import sheet (preview), Grants place and "Used by" rows.
+- pwa: Deck import sheet (preview, incl. a folder's .env `files`), Grants place and "Used by" rows,
+  the Codes list (vault.codes) with a ring from `remaining`, a camera scan via BarcodeDetector ->
+  vault.codes.import {uris}.
+- mobile: the phone's Codes screen + camera scan -> vault.codes.import (same shapes).
 - user: a paid Apple Developer team (NOT approved for now: iOS/macOS providers stay simulator + CI).
 - lead: refs stay vault://item/field; accept vyre://vault/... as an alias? Who builds the Deck/phone vault board (Direction A): pwa + mobile, or vault-next?
 

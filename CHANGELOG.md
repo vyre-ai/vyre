@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The authenticator: current and next codes, and Google Authenticator's export
+
+- `vault.codes` lists every one-time code with the next one and the seconds left; `vault.totp`
+  now returns `next` too. `vault.codes.import` reads Google Authenticator's transfer export
+  (otpauth-migration://, split across several QR codes, gathered in any order) and otpauth://totp/
+  links into `authenticator` items; a seed already in the vault is skipped; HOTP and MD5 are
+  refused by name. CLI: `vyre vault codes`, `vyre vault codes import`. Neither tool is offered
+  to Claude. Tests: core/vault/codes.test.js.
+
 #### Vault import reads LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass and Firefox
 
 - New formats in core/vault/import-more.js, detected without a hint: lastpass-csv, dashlane-csv

@@ -593,7 +593,52 @@ async function totp(args) {
   if (!name || args.length > 1) return oops("vyre vault totp <name>");
   const r = await tool("vault.totp", { name });
   if (r.error) return fail(r);
-  say(`  ${bold(signal(r.data.display || r.data.code))}  ${dim(`${r.data.remaining}s left`)}`);
+  say(`  ${bold(signal(r.data.display || r.data.code))}  ${dim(`${r.data.remaining}s left${r.data.next ? ` · next ${r.data.next}` : ""}`)}`);
+  return 0;
+}
+
+/** `codes`: every one-time code, current and next. `codes import`: scanned codes into the vault. */
+async function codesCmd(args) {
+  if (args[0] === "import") return codesImport(args.slice(1));
+  let f;
+  try { f = flags(args, {}); } catch (e) { return oops(e.message); }
+  const r = await tool("vault.codes", f._.length ? { names: f._ } : {});
+  if (r.error) return fail(r);
+  const list = r.data.codes || [];
+  if (!list.length) { say(dim("  no one-time codes yet · vyre vault codes import <scanned code...>")); return 0; }
+  const wide = Math.min(40, Math.max(...list.map(c => c.name.length)));
+  for (const c of list) {
+    if (c.error) { say(`  ${c.name.padEnd(wide)}  ${beacon(c.error)}`); continue; }
+    const half = Math.floor(c.code.length / 2);
+    say(`  ${c.name.padEnd(wide)}  ${bold(signal(c.code.slice(0, half) + " " + c.code.slice(half)))}  ${dim(`next ${c.next} · ${c.remaining}s`)}`);
+  }
+  return 0;
+}
+
+/**
+ * Scanned codes, as text: otpauth-migration:// parts from Google Authenticator's export, or
+ * otpauth://totp/ addresses, given as arguments, one per line in a file (--from), or piped in.
+ * Previews first, then imports. Reading a QR picture is the phone's or the Deck's job.
+ */
+async function codesImport(args) {
+  let f;
+  try { f = flags(args, { string: ["from"], boolean: ["preview"] }); } catch (e) { return oops(e.message); }
+  let uris = [...f._];
+  if (f.from) uris.push(...fs.readFileSync(path.resolve(f.from), "utf8").split(/\s+/));
+  if (!uris.length && !process.stdin.isTTY) uris.push(...fs.readFileSync(0, "utf8").split(/\s+/));
+  uris = uris.filter(u => /^otpauth(-migration)?:\/\//i.test(u));
+  if (!uris.length) return oops("vyre vault codes import <otpauth-migration://...> [more parts] | --from codes.txt   (scan the export on your phone or in the Deck to get these)");
+  const p = await tool("vault.codes.import", { uris, preview: true });
+  if (p.error) return fail(p);
+  const d = p.data;
+  for (const m of d.missing || []) say(beacon(`  scan part${m.parts.length > 1 ? "s" : ""} ${m.parts.join(", ")} of ${m.of} too`) + dim(" · the export is split across several codes"));
+  say(`  ${signal(plural((d.add || []).length, "account"))} to add${d.add && d.add.length ? `: ${d.add.join(", ")}` : ""}`);
+  if ((d.same || []).length) say(dim(`  already here: ${d.same.join(", ")}`));
+  for (const s of d.skipped || []) say(dim(`  skipped: ${s}`));
+  if (f.preview || (d.missing || []).length || !(d.add || []).length) return (d.missing || []).length ? 1 : 0;
+  const r = await tool("vault.codes.import", { uris });
+  if (r.error) return fail(r);
+  say(`  ${signal("added")} ${r.data.added.join(", ")} ${dim("· vyre vault codes shows them")}`);
   return 0;
 }
 
@@ -1219,7 +1264,8 @@ const HELP = [
   ["pending", "grants and passes an agent asked for"],
   ["approve <id>", "allow one of them"],
   ["run [--env-file f] <item...> -- <command...>", "items as VAR=name.field, or KEY=vault://item/field lines; output scrubbed"],
-  ["totp <name>", "the current code"],
+  ["totp <name>", "the current code, and the next"],
+  ["codes [name...] | codes import <scanned code...> [--from f] [--preview]", "every one-time code, current and next; bring in a Google Authenticator export"],
   ["generate [--length n] [--words n] [--no-symbols] [name]", "a password; stored when named"],
   ["import <file|folder> [--preview] [--update-conflicts] [--rewrite] [--format f]", ".env files (a whole project), 1Password, Bitwarden, Chrome, Apple Passwords; --rewrite swaps .env values for vault:// refs"],
   ["audit [name] [--limit n]", "who used what, and when"],
@@ -1266,7 +1312,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {

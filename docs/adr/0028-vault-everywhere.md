@@ -153,6 +153,20 @@ Not defended, stated plainly:
 - Watchtower adds `expired` and `expiring` (within 14 days). Reuse also counts the value a typed
   credential hands over. Decision 4's daily job turns both into planner todos.
 
+### 1c. The authenticator
+
+- `vault.codes {names?}` (people's surfaces, presence, rides the 30-minute window) returns every
+  item with a seed: `{name, kind, issuer?, code, next, period, remaining, digits}`. Never a seed.
+  `vault.totp` adds `next`. The client counts down from `remaining` and asks again at the
+  rollover, only while the list is on screen (principle 8).
+- `vault.codes.import {uris, preview?}` takes scanned text: Google Authenticator's
+  `otpauth-migration://offline` parts (protobuf, decoded in core/vault/otpmigration.js) and
+  `otpauth://totp/` links. Parts of one export share a batch id; the import refuses until every
+  part is there and says which to scan. A seed already in the vault (compared by algorithm,
+  digits, period and bytes) is `same`. New accounts are `authenticator` items named after the
+  issuer and label. The QR image is read on the client (camera, BarcodeDetector, Vision), so
+  vyred only sees text, and Claude never does: the tool is not offered to mcp.
+
 ### 2. Agent logins: one agent, one login, one origin
 
 A new table, MACed like the other grant rows:
