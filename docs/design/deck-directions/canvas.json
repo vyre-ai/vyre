@@ -1,0 +1,206 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "B-Agents-light.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Agents, new agent \u00b7 paper",
+      "w": 1440,
+      "x": 1520,
+      "y": 4440
+    },
+    "B-Agents.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Agents, new agent \u00b7 dark",
+      "w": 1440,
+      "x": 0,
+      "y": 4440
+    },
+    "B-Chat-light.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "Deck \u00b7 Chat \u00b7 paper",
+      "w": 1440,
+      "x": 1520,
+      "y": 3120
+    },
+    "B-Chat.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "title": "Deck \u00b7 Chat \u00b7 dark",
+      "w": 1440,
+      "x": 0,
+      "y": 3120
+    },
+    "B-Now-light.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Now \u00b7 paper",
+      "w": 1440,
+      "x": 1520,
+      "y": 1800
+    },
+    "B-Now.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Now \u00b7 dark",
+      "w": 1440,
+      "x": 0,
+      "y": 1800
+    },
+    "B-Projects-light.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Projects, list and new \u00b7 paper",
+      "w": 1440,
+      "x": 1520,
+      "y": 5760
+    },
+    "B-Projects.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Projects, list and new \u00b7 dark",
+      "w": 1440,
+      "x": 0,
+      "y": 5760
+    },
+    "B-Settings-light.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Settings \u00b7 paper",
+      "w": 1440,
+      "x": 1520,
+      "y": 8400
+    },
+    "B-Settings.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Settings \u00b7 dark",
+      "w": 1440,
+      "x": 0,
+      "y": 8400
+    },
+    "B-Vault-light.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Vault, add item \u00b7 paper",
+      "w": 1440,
+      "x": 1520,
+      "y": 7080
+    },
+    "B-Vault.dc.html": {
+      "h": 900,
+      "title": "Deck \u00b7 Vault, add item \u00b7 dark",
+      "w": 1440,
+      "x": 0,
+      "y": 7080
+    },
+    "Main.dc.html": {
+      "h": 960,
+      "title": "Direction B, second pass: the system",
+      "w": 2960,
+      "x": 0,
+      "y": 0
+    },
+    "Attention.dc.html": {
+      "x": 0,
+      "y": -1460,
+      "w": 2960,
+      "h": 1060,
+      "title": "Attention colour: violet, or teal"
+    },
+    "B-States.dc.html": {
+      "h": 1400,
+      "title": "Deck \u00b7 States \u00b7 dark",
+      "w": 1440,
+      "x": 0,
+      "y": 9720
+    },
+    "B-States-light.dc.html": {
+      "h": 1400,
+      "title": "Deck \u00b7 States \u00b7 paper",
+      "w": 1440,
+      "x": 1520,
+      "y": 9720
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-27T10:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "rAgents": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Agents",
+      "w": 240,
+      "x": 0,
+      "y": 4180
+    },
+    "rChat": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Chat",
+      "w": 240,
+      "x": 0,
+      "y": 2860
+    },
+    "rNow": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Now",
+      "w": 240,
+      "x": 0,
+      "y": 1540
+    },
+    "rProjects": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Projects",
+      "w": 240,
+      "x": 0,
+      "y": 5500
+    },
+    "rSettings": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Settings",
+      "w": 240,
+      "x": 0,
+      "y": 8140
+    },
+    "rVault": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Vault",
+      "w": 240,
+      "x": 0,
+      "y": 6820
+    },
+    "rStates": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "States",
+      "w": 240,
+      "x": 0,
+      "y": 9460
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "B-Now.dc.html",
+    "B-Now-light.dc.html",
+    "B-Chat.dc.html",
+    "B-Chat-light.dc.html",
+    "B-Agents.dc.html",
+    "B-Agents-light.dc.html",
+    "B-Projects.dc.html",
+    "B-Projects-light.dc.html",
+    "B-Vault.dc.html",
+    "B-Vault-light.dc.html",
+    "B-Settings.dc.html",
+    "B-Settings-light.dc.html",
+    "B-States.dc.html",
+    "B-States-light.dc.html",
+    "Attention.dc.html"
+  ],
+  "pages": [],
+  "title": "Vyre Deck, Direction B"
+}

@@ -288,7 +288,7 @@ async function optional(el, label, tool, draw) {
 const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "Off");
 
 /**
- * Box shares (Taildrive): each folder the box offers, shared or not, and who the tailnet policy
+ * VyreDrive (Taildrive underneath): each folder the box offers, shared or not, and who the tailnet policy
  * lets reach them. The check runs on demand, and a drive.exposed event (after any share) shows
  * its findings here too. Sharing stays with the owner's terminal and the Capsule.
  */
@@ -310,11 +310,12 @@ function drawShares(el, ctx) {
     check.disabled = false; put(st);
     if (a.error) put(st, errText(a.error)); else showAudit(a.data);
   } }, "Check who can reach them");
-  return optional(el, "Box shares", "files.drive.status", d => {
+  const intro = () => faint("VyreDrive (built on Tailscale's Taildrive) opens your box's folders in Finder on your Mac.");
+  return optional(el, "VyreDrive", "files.drive.status", d => {
     const shares = listOf(d.shares, "name");
-    if (!d.enabled) return row("Box shares", onOff(false),
-      faint("Your box's folders, open in Finder on your Mac through Taildrive."), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
-    return row("Box shares", h("span", null, d.access === "rw" ? "Read and write" : "Read only"),
+    if (!d.enabled) return row("VyreDrive", onOff(false),
+      intro(), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
+    return row("VyreDrive", h("span", null, d.access === "rw" ? "Read and write" : "Read only"), intro(),
       shares.length ? plainList(shares, x => [mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
         x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null]) : faint("The box offers no folders (files.drive.shares)."),
       d.error ? faint(d.error) : null,
@@ -376,7 +377,7 @@ function drawGuests(el) {
       }) : null,
       safeLine,
       faint("Add someone from the box's terminal:"),
-      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["glass.open"]}'`),
+      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["threads.list"]}'`),
       people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null,
       faint("Turn guests off:"), cmd(`vyre call --tty network.guests.enable '{"on":false}'`));
   });
