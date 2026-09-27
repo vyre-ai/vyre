@@ -20,6 +20,7 @@ import { profile } from "./personal/profile.js";
 import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 import { fixes as fixLog } from "./iq/fix.js";
+import { heard } from "./iq/heard.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -395,18 +396,68 @@ export default {
       const t = String(x ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
       return t.length > max ? t.slice(0, max - 3) + "..." : t;
     };
+    // ---- an agent corrects only with the person's own words behind it (core/memory/iq/heard.js)
+    /** A model's caller: the user's own Claude Code session, a thread's, or a named agent's. */
+    const agentCaller = caller => /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || ""));
+    const suggest = (input, caller, meta, why) => {
+      const { from_turn: _f, ...rest } = input;
+      const id = Number(ctx.store.db.prepare("INSERT INTO memory_iq_suggested (at, caller, thread, seq, input, why) VALUES (?,?,?,?,?,?)")
+        .run(Date.now(), plain(caller, 80), typeof meta.thread === "string" ? meta.thread : null, Number.isInteger(input.from_turn?.seq) ? input.from_turn.seq : null, JSON.stringify(rest), plain(why, 200)).lastInsertRowid);
+      ctx.events.emit("memory.suggested", { id });
+      return { applied: false, suggestion: { id, why: plain(why, 200) }, message: "Not applied: the person's own words do not say it. It waits for them to accept." };
+    };
+    const suggestions = ({ all = false } = {}) => /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE (? OR state = 'open') ORDER BY id DESC LIMIT 100").all(all ? 1 : 0))
+      .map(r => ({ id: Number(r.id), at: Number(r.at), caller: String(r.caller), thread: r.thread, seq: r.seq, input: JSON.parse(String(r.input)), why: String(r.why), state: String(r.state) }));
+    const settleSuggestion = (id, state) => {
+      const r = /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE id = ? AND state = 'open'").get(Number(id)));
+      if (!r) throw Object.assign(new Error(`no open suggestion ${id}`), { code: "not_found" });
+      ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = ?, settled = ? WHERE id = ?").run(state, Date.now(), Number(id));
+      ctx.events.emit("memory.suggested", { id: Number(id), state });
+      return JSON.parse(String(r.input));
+    };
+    const fromAgent = async (input, caller, meta, apply) => {
+      if (typeof input.suggestion !== "undefined") throw denied("a suggestion is accepted by the person, not an agent");
+      // The thread is the one vyred verified for this call; a thread named in the input is ignored.
+      const thread = typeof meta.thread === "string" && meta.thread ? meta.thread : null;
+      const seq = input.from_turn && Number.isInteger(input.from_turn.seq) ? input.from_turn.seq : null;
+      if (!thread) return suggest(input, caller, meta, "the call did not come from a thread vyred knows");
+      // An agent granted only some projects never writes the person's memory, even with evidence.
+      try { await personalOnly(input, caller, "memory.correct"); } catch { return suggest(input, caller, meta, "an agent granted only some projects suggests; the person decides"); }
+      if (seq == null) return suggest(input, caller, meta, "no from_turn: which of the person's turns says this");
+      const r = await ctx.call("threads.said", { thread, seq });
+      if (r?.error) return suggest(input, caller, meta, r.error.code === "no_such_tool" ? "vyred cannot tell who wrote that turn yet" : `that turn could not be read: ${r.error.message}`);
+      const value = ["replace", "add"].includes(input.action) ? String(input.object ?? "") : null;
+      if (!["replace", "add", "wrong", "forget", "ended"].includes(input.action)) return suggest(input, caller, meta, `an agent does not ${input.action}; the person does`);
+      const h = heard(r.data, { action: input.action, value });
+      if (!h.ok) return suggest(input, caller, meta, h.why);
+      const out = await apply({ ...input, from_turn: undefined }, `heard:${thread}#${seq}`);
+      ctx.events.emit("memory.updated", { by: "agent", thread, ...(out.fix ? { fix: out.fix.id } : {}), ...(out.correction ? { correction: out.correction.id } : {}) });
+      return { applied: true, heard: { thread, seq }, ...out };
+    };
+
     ctx.tool("memory.correct", {
       // No callers list: the person's device reaches it too, and ownerWrite decides.
-      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre IQ answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it.",
+      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre IQ answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it. An agent (Claude in a chat) may correct only when the person said so in its own thread: from_turn: { seq } names that turn of the person's, and the new value must be in their words. It is applied as theirs ({ applied: true, heard }); otherwise it waits as a suggestion for the person ({ applied: false, suggestion }). suggestion: <id> accepts one (the person only).",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
         answer: { type: "string", description: "memory.ask's answer_id" },
+        from_turn: { type: "object", properties: { seq: { type: "integer" } }, description: "an agent's evidence: the person's turn in this thread that says it" },
+        suggestion: { type: "integer", description: "accept an agent's suggestion (the person only)" },
         action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add", "forget"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
-      run: ownerWrite(async (input, { caller } = {}) => {
-        if (typeof input.answer === "string" && input.answer) return fixAnswer(input, caller);
+      run: async (input, extra = {}) => {
+        if (!personWrites(extra.caller, extra) && agentCaller(extra.caller)) return fromAgent(input, extra.caller, extra, (i, who) => applyCorrection(i, who));
+        return ownerWrite(async (i, { caller } = {}) => {
+          if (Number.isInteger(i.suggestion)) return { accepted: i.suggestion, ...(await applyCorrection(settleSuggestion(i.suggestion, "accepted"), String(caller || ""))) };
+          return applyCorrection(i, String(caller || ""));
+        })(input, extra);
+      },
+    });
+    /** A correction as the person made it, or as they said it in a thread (who says which). */
+    const applyCorrection = async (input, who) => {
+        if (typeof input.answer === "string" && input.answer) return fixAnswer(input, who);
         if (input.action === "forget") throw Object.assign(new Error("forget corrects an IQ answer: pass answer"), { code: "bad_input" });
         const { scope, sc } = scopeOf(input);
         const t = graph.target(input, sc);
-        const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who: String(caller || "") });
+        const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who });
         corrected(c, t.row);
         // Every room is derived again, which on a large history takes a while. The Deck does not
         // wait: memory.curated says when the graph has it. wait: true (the CLI) waits and
@@ -414,14 +465,14 @@ export default {
         if (!input.wait) { run({ force: true }).catch(e => ctx.log("curate failed: " + e.message)); return { correction: c, pending: true }; }
         await settle();
         return { correction: c, facts: graph.facts({ about: t.src, room: sc?.room ?? undefined, limit: 20 }).facts.filter(f => f.rel === t.rel) };
-      }),
-    });
+    };
     // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
     // checks the owner surfaces and tailnet callers itself.
     ctx.tool("memory.corrections", {
-      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }.",
-      input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, ...roomField } },
-      run: readerOnly(async input => input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
+      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them, as { suggestions }.",
+      input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, suggested: { type: "boolean" }, ...roomField } },
+      run: readerOnly(async input => input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }) }
+        : input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
         : curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
     });
     // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
@@ -587,8 +638,9 @@ export default {
     ctx.tool("memory.uncorrect", {
       // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
-      input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "an IQ answer correction's id" } } },
-      run: ownerWrite(async ({ id, fix }) => {
+      input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "an IQ answer correction's id" }, suggestion: { type: "integer", description: "dismiss an agent's suggestion" } } },
+      run: ownerWrite(async ({ id, fix, suggestion }) => {
+        if (Number.isInteger(suggestion)) { settleSuggestion(suggestion, "dismissed"); return { dismissed: suggestion }; }
         if (Number.isInteger(fix)) {
           const f = fixed.undo(fix);
           if (f.told != null) {

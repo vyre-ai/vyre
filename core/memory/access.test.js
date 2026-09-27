@@ -124,6 +124,8 @@ test("presence: correct, merge and split are the user's own, with no prompt; age
   // The allowlist and the agent refusal stay, and refusals carry a code.
   // No callers list: the tool decides (the person's surfaces, or their device with a person session).
   for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.equal(tools.get(tool).callers, undefined);
-  for (const caller of ["mcp", "module:harness", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, caller, { person: { id: "s1" } })).code, "denied", caller);
+  for (const caller of ["module:harness", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, caller, { person: { id: "s1" } })).code, "denied", caller);
+  // A model (mcp) with no words of the person's behind it only suggests (core/memory/iq/heard.js).
+  assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "mcp", { person: { id: "s1" } })).data.applied, false);
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "deck agent:kit")).code, "denied");
 });

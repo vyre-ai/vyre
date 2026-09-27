@@ -233,4 +233,8 @@ export const MIGRATIONS = [
     action TEXT NOT NULL, old TEXT NOT NULL, text TEXT, facts TEXT NOT NULL, turns TEXT NOT NULL, who TEXT, told INTEGER, undone INTEGER);
   CREATE INDEX memory_iq_fixes_qkey ON memory_iq_fixes (qkey);
   CREATE TABLE memory_me_denied (fact TEXT NOT NULL, fix INTEGER NOT NULL, PRIMARY KEY (fact, fix)) WITHOUT ROWID;`,
+  // An agent's correction with no words of the person's behind it (core/memory/iq/heard.js): kept
+  // for the person to accept or dismiss in "waiting on you", never applied.
+  `CREATE TABLE memory_iq_suggested (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, caller TEXT NOT NULL, thread TEXT, seq INTEGER, input TEXT NOT NULL, why TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open', settled INTEGER);`,
 ];

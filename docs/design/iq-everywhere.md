@@ -253,6 +253,46 @@ that for the future and improves." Built on work/memory-iq (95b2b891).
   - mobile: Find's card gets the same line and choices. Without a person session the reply is
     `person_session_required`: offer the passkey sign-in, then send again.
 
+## An agent corrects memory from the person's own words
+
+The user: when he tells an agent in chat "no, my wife is Juno", the agent must be able to fix memory.
+Built on work/memory-iq (core/memory/iq/heard.js), 0.1.1, for e2e's review.
+
+- **Evidence or nothing.** An agent (a model's caller: `mcp`, `mcp:thread:`, `mcp:agent:`) calls
+  `memory.correct` as the person would, plus `from_turn: { seq }`: the person's turn that says it.
+  The thread is the one vyred verified for the call (meta.thread, from the session key or the
+  agent key); a thread named in the input is ignored. Memory asks the switchboard who wrote that
+  turn (threads.said, below). It counts only when the switchboard says `role: "user"` and `by: "person"`,
+  and every name, number or content word of the new value is in that turn's own words, with
+  injected blocks (system reminders, pasted content, command output) removed. For "wrong",
+  "forget" and "ended", which carry no value, the turn must say so ("no", "wrong", "forget").
+- **Applied as the person's.** It goes through the same path as a correction from the Deck:
+  highest trust, told to memory for a personal answer, attributed `heard:<thread>#<seq>`,
+  undoable with `memory.uncorrect`. It emits `memory.updated { by: "agent", thread, fix | correction }`
+  so the person's surfaces show "Memory updated · Undo". No Touch ID and no confirm: they said it.
+- **Everything else waits.** No verified thread, no `from_turn`, a turn that is not the person's
+  (tool output, a web page, a file, a launch brief, another agent), a value not in their words (a
+  paraphrase), a project-scoped agent, or an action only the person takes (confirm, merge, split):
+  kept as a suggestion (`memory_iq_suggested`), never applied. The agent gets
+  `{ applied: false, suggestion: { id, why } }`. The person lists them with
+  `memory.corrections { suggested: true }`, accepts with `memory.correct { suggestion }` and
+  dismisses with `memory.uncorrect { suggestion }`; an agent can do neither.
+- **Tests** (core/memory/iq/heard.test.js): a tool result saying "the user's wife is X", another
+  agent quoting a web page, a launch brief, an injected system reminder, pasted content, a
+  paraphrase, another thread's turn, no thread, no from_turn and a project-scoped agent are all
+  kept as suggestions; the person's own turn is applied and answers at once; undo restores; an agent
+  cannot accept a suggestion.
+- **Needs from the switchboard (sessions): `threads.said { thread, seq }`** (internal, modules
+  only) -> `{ role: "user"|"assistant"|"tool", by: "person"|"agent"|"module"|"program", text }`
+  from its own records, never from the caller. `by: "person"` only for a prompt the person typed:
+  in their own terminal session (an interactive claude, not `-p`), or sent by `threads.send` from a
+  person surface (deck, cli, local, capsule, or a device with a person session). A launch brief, a
+  `threads.send` from an agent or module, a queued hand-over, and every tool result are not. Until
+  it exists, every agent correction waits as a suggestion, which is safe.
+- **Needs from waiting (cohesion):** a fifth source, `memory` (kind `memory`), read from
+  `memory.corrections { suggested: true }`, refreshed on `memory.suggested`. The title stays
+  generic ("An agent suggests a memory update"), never the value: it reaches the lock screen.
+
 ## Ranked
 
 Value is how often the user meets it and how wrong things are today. Cost is the work to build and
@@ -272,6 +312,7 @@ test it.
 | 10 | Teammates' brief: memory_ask for project history | teammates | S | low | built (work/teammates 7eb7ffb8; reaches teammates with core/team step 3) |
 | 11 | Project graphs: IQ reads a project's picked sessions, not only its folders | memory-iq, recall | S | high | proposed (0.1.1) |
 | 12 | Mac sessions build the box's graph (consent, dedupe, one reader) | federation, memory-iq | L+M | highest for a box user | contract agreed; ADR 0008 amended; 0.2 |
+| 14 | An agent corrects from the person's own words; anything else waits | memory-iq; threads.said: sessions; waiting: cohesion | S+S+S | high | memory side built; e2e review asked |
 | 13 | Correct IQ where it appears, remembered | memory-iq; card: capsule-pro, app-design, chat, mobile | S+M | high | tool, CLI and eval built; card specs sent |
 
 ## What makes IQ smarter, whatever the surface

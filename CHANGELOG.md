@@ -18,6 +18,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Corrections (memory.correct, uncorrect, merge, split, and IQ answer fixes) follow one rule: the
   person's own surfaces, or their phone or paired device with a person session (a passkey,
   ADR 0032). A device without one gets `person_session_required`; agents are always refused.
+- An agent corrects memory only with the person's own words: memory.correct from a model takes
+  `from_turn: {seq}`, a turn of its own verified thread that the switchboard says the person typed
+  (`threads.said`), with the new value in their words. It is applied as theirs, undoable, with
+  `memory.updated`. Anything else waits as a suggestion (`memory.corrections {suggested}`; the
+  person accepts with `memory.correct {suggestion}` or dismisses with `memory.uncorrect {suggestion}`).
 - Correct Vyre IQ where it appears: every memory.ask answer (a "not sure" too) has an
   `answer_id`, and `memory.correct {answer, action: wrong|replace|forget, object?}` fixes it with
   no Touch ID. replace: the same question gets the person's words at once, and a personal answer
