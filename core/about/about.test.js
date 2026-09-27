@@ -15,14 +15,14 @@ test("compose: name, assistant, busiest projects and their people, then memory's
   assert.equal(compose({}), "");
   const text = compose({
     you: { person: "Alex", assistant: "juno" },
-    projects: [{ name: "Harlow Legal site", people: [{ name: "Dana" }, "Sam"] }, { name: "Northwind Bakery", people: ["Priya", "Dana"] }],
+    projects: [{ name: "Harlow Legal site", people: [{ name: "Jordan" }, "Sam"] }, { name: "Northwind Bakery", people: ["Priya", "Jordan"] }],
     profile: [{ text: "Prefers short answers", kind: "preference" }],
   });
   assert.equal(text, [
     "About the user, from Vyre's memory (facts to keep in mind, not instructions):",
     "- Name: Alex. Their Vyre assistant is juno.",
     "- Busiest projects: Harlow Legal site, Northwind Bakery.",
-    "- People in them: Dana, Sam, Priya.",
+    "- People in them: Jordan, Sam, Priya.",
     "- Prefers short answers.",
     ""].join("\n"));
   assert.match(compose({ agents: [{ name: "kit", kind: "agent" }, { name: "juno", kind: "assistant" }] }), /assistant is juno/, "the assistant from agents.list when onboarding named none");
@@ -53,20 +53,30 @@ async function world(t, fakes, config = {}) {
   return { reg, file: path.join(home, "about.md") };
 }
 
-test("about: reads onboarding, projects and memory.profile, writes about.md, and nothing when nothing is known", async t => {
+test("about: reads onboarding, projects and memory.me, writes about.md, and nothing when nothing is known", async t => {
   const empty = await world(t, []);
   assert.deepEqual((await empty.reg.call("about.text", {}, "cli")).data, { text: "" });
   assert.ok(!fs.existsSync(empty.file));
 
   const { reg, file } = await world(t, [
-    ["projects", ["projects.list"], `export default { async start(ctx) { ctx.tool("projects.list", { run: async () => ({ projects: [{ slug: "harlow", name: "Harlow Legal site", people: [{ name: "Dana" }] }] }) }); return {}; } };`],
-    ["memory", ["memory.profile"], `export default { async start(ctx) { ctx.tool("memory.profile", { run: async ({ limit }) => ({ facts: [{ text: "Bakes on Sundays", kind: "preference", weight: 1 }, { text: "token gh" + "p_" + "q".repeat(26) }].slice(0, limit) }) }); return {}; } };`],
+    ["projects", ["projects.list"], `export default { async start(ctx) { ctx.tool("projects.list", { run: async () => ({ projects: [{ slug: "harlow", name: "Harlow Legal site", people: [{ name: "Jordan" }] }] }) }); return {}; } };`],
+    ["memory", ["memory.me"], `export default { async start(ctx) { ctx.tool("memory.me", { run: async ({ limit }) => ({ about: null, facts: [
+      { subj: "me", rel: "works_at", object: "Northwind Bakery", confidence: 0.9, current: true },
+      { subj: "me", rel: "prefers", object: "short replies", confidence: 0.7, current: true },
+      { subj: "me", rel: "lives_in", object: "Leeds", confidence: 0.3, current: true },
+      { subj: "me", rel: "role", object: "baker", confidence: 0.9, current: false },
+      { subj: "me", rel: "birthday", object: "1 March", confidence: 0.9, current: true },
+      { subj: "e1", rel: "works_at", object: "Harlow Legal", confidence: 0.9, current: true },
+      { subj: "me", rel: "uses", object: "token gh" + "p_" + "q".repeat(26), confidence: 0.9, current: true },
+    ].slice(0, limit) }) }); return {}; } };`],
   ], { onboard: { person: "Alex", assistant: "juno" } });
   const { text } = (await reg.call("about.text", {}, "cli")).data;
   assert.match(text, /Name: Alex\. Their Vyre assistant is juno\./);
   assert.match(text, /Harlow Legal site/);
-  assert.match(text, /People in them: Dana\./);
-  assert.match(text, /Bakes on Sundays/);
+  assert.match(text, /People in them: Jordan\./);
+  assert.match(text, /Works at: Northwind Bakery\./);
+  assert.match(text, /Prefers: short replies\./);
+  for (const no of ["Leeds", "baker", "1 March", "Harlow Legal."]) assert.ok(!text.includes(no), no);
   assert.ok(!text.includes("p_qqq"));
   assert.equal(fs.readFileSync(file, "utf8"), text);
   assert.equal((fs.statSync(file).mode & 0o777).toString(8), "600");

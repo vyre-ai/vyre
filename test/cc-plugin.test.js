@@ -171,32 +171,48 @@ test("about: a session starts knowing the user, from about.md, with vyred down; 
   assert.match((await hook(cache, "brief", { session_id: "s1", source: "startup" }, { ...e, VYRE_AGENT: "juno", VYRE_AGENT_KIND: "assistant" })).out, /Alex/);
 });
 
-test("planner: a stand-in planner's tools reach Claude through the copied plugin's MCP server", async t => {
+// The real planner (work/planner) when it is in the tree; until then a stand-in with its shapes:
+// planner.add {text, kind?} -> the item {id, kind, title, at (ms), tz, date, wall}, and
+// planner.agenda {from?} -> {tz, from, to, entries, todos}.
+const REAL_PLANNER = fs.existsSync(path.join(REPO, "core", "planner", "index.js"));
+test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools reach Claude through the copied plugin's MCP server`, async t => {
   const { cache, env } = install(t, { withVyre: true });
   const root = tempHome(t);
-  // A stand-in for the planner's contract until theirs merges. memory.answer (memory-iq) will
-  // come from the memory module itself, which a test module cannot stand in for (one module per
-  // name, and a module registers only its own tools); it reaches Claude by the same forwarding.
-  writeModule(path.join(root, "modules"), "planner", { roles: ["box", "local"], does: { tools: ["planner.add", "planner.agenda"] } }, `
+  if (!REAL_PLANNER) writeModule(path.join(root, "modules"), "planner", { roles: ["box", "local"], does: { tools: ["planner.add", "planner.agenda"] } }, `
     const items = [];
     export default { async start(ctx) {
-      ctx.tool("planner.add", { description: "Add a todo or a reminder.", input: { type: "object", required: ["text"], properties: { text: { type: "string" }, kind: { type: "string" }, at: { type: "string" } } },
-        run: async ({ text, kind = "todo", at }) => { if (kind === "reminder" && !at) throw new Error("a reminder needs a time"); const it = { id: "p" + (items.length + 1), text, kind, at: at ? "2026-09-27T18:00:00+01:00" : null, project: null }; items.push(it); return it; } });
-      ctx.tool("planner.agenda", { description: "Today's reminders and open todos.", input: { type: "object", properties: { day: { type: "string" } } },
-        run: async () => ({ items: items.map(i => ({ ...i, done: false })) }) });
+      ctx.tool("planner.add", { description: "Add a todo or a reminder.", input: { type: "object", properties: { text: { type: "string" }, kind: { type: "string" } } },
+        run: async ({ text, kind }) => {
+          const m = /^remind me (in 2 hours) (.+)$/.exec(text);
+          if (!kind && !m) throw new Error("a reminder needs a time: at, or wall (and date)");
+          const it = m ? { id: "i" + (items.length + 1), kind: "reminder", title: m[2], at: Date.now() + 7_200_000, tz: "UTC", date: null, wall: null }
+            : { id: "i" + (items.length + 1), kind, title: text, at: null, tz: "UTC", date: null, wall: null };
+          items.push(it); return it; } });
+      ctx.tool("planner.agenda", { description: "What is on today.", input: { type: "object", properties: { from: { type: "string" } } },
+        run: async () => ({ tz: "UTC", from: 0, to: 0, entries: items.filter(i => i.at != null).map(i => ({ source: "planner", item: i.id, kind: i.kind, title: i.title, at: i.at })),
+          todos: items.filter(i => i.kind === "todo") }) });
       return {}; } };`);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+  // What /vyre remind, todo and agenda send (harness/commands/vyre.md).
   const replies = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-    call(3, "planner_add", { text: "call Dana", kind: "reminder", at: "6pm" }), call(4, "planner_agenda", {}),
-    call(5, "planner_add", { text: "no time", kind: "reminder" })], 5);
+    call(3, "planner_add", { text: "remind me in 2 hours call Harlow Legal" }), call(4, "planner_add", { text: "buy flour", kind: "todo" }),
+    call(5, "planner_agenda", {}), call(6, "planner_add", { text: "remind me call Harlow Legal" })], 6);
   const names = replies.get(2).result.tools.map(x => x.name);
   for (const n of ["planner_add", "planner_agenda"]) assert.ok(names.includes(n), n);
   assert.equal(replies.get(1).result.instructions.includes("planner_add"), true, "Claude is told to make a promised reminder real");
-  assert.equal(JSON.parse(replies.get(3).result.content[0].text).at, "2026-09-27T18:00:00+01:00");
-  assert.equal(JSON.parse(replies.get(4).result.content[0].text).items[0].text, "call Dana");
-  assert.equal(replies.get(5).result.isError, true, "a reminder with no time is refused, and Claude sees it");
+  const out = id => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
+  const rem = out(3);
+  assert.equal(rem.kind, "reminder");
+  assert.equal(rem.title, "call Harlow Legal");
+  assert.ok(Math.abs(rem.at - (Date.now() + 7_200_000)) < 120_000, "it rings in about 2 hours");
+  assert.equal(out(4).kind, "todo");
+  const agenda = out(5);
+  assert.equal(typeof agenda.tz, "string");
+  assert.ok(agenda.todos.some(x => x.title === "buy flour"), "the todo is on the agenda");
+  if (new Date(rem.at).toDateString() === new Date().toDateString() || !REAL_PLANNER) assert.ok(agenda.entries.some(e => e.title === "call Harlow Legal"), "today's reminder is on the agenda");
+  assert.equal(replies.get(6).result.isError, true, "a reminder with no time is refused, and Claude sees it");
 });
 
 test("commands: /vyre covers todo, remind, agenda, remember and lesson", () => {

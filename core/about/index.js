@@ -4,8 +4,8 @@
 // The SessionStart hook runs before every session, so it must not wait on memory. This module
 // does the asking instead, when something changes, and leaves the result in <home>/about.md,
 // which the hook reads in a millisecond. It holds only durable, harmless facts: the person's
-// name, their assistant's, their busiest projects and the people in them, and memory's profile
-// of them when Memory offers one. Nothing from the vault, no emails, phone numbers or anything
+// name, their assistant's, their busiest projects and the people in them, and what memory.me
+// knows about their work. Nothing from the vault, no emails, phone numbers or anything
 // shaped like a credential, and never more than BUDGET characters.
 
 import fs from "node:fs";
@@ -58,6 +58,21 @@ export function compose({ you, agents, projects, profile }) {
   return out === head ? "" : out + "\n";
 }
 
+// memory.me's facts about the user that help with work. Family, birthdays and what they own stay
+// out: this text reaches every project's sessions, clients' included.
+const ME_RELS = { works_at: "Works at", role: "Role", lives_in: "Lives in", uses: "Uses", prefers: "Prefers" };
+
+/**
+ * memory.me's rows as profile lines: the user's own, still true, and sure enough to state.
+ * @param {any[]|null} facts
+ * @returns {{ text: string }[]|null}
+ */
+export function fromMe(facts) {
+  if (!Array.isArray(facts)) return null;
+  return facts.filter(f => f && f.subj === "me" && f.current !== false && Number(f.confidence) >= 0.5 && ME_RELS[f.rel] && one(f.object))
+    .map(f => ({ text: `${ME_RELS[f.rel]}: ${one(f.object)}` }));
+}
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -69,12 +84,13 @@ export default {
     };
 
     const compute = async () => {
-      const [agents, projects, profile] = await Promise.all([ask("agents.list"), ask("projects.list"), ask("memory.profile", { limit: 8 })]);
+      const [agents, projects, me] = await Promise.all([ask("agents.list"), ask("projects.list"), ask("memory.me", { limit: 20 })]);
+      const profile = fromMe(me && me.facts);
       // The names from onboarding's step 1, straight from config: onboard.status would probe Tailscale.
       const you = (ctx.config && ctx.config.onboard) || null;
       return compose({ you, agents: Array.isArray(agents) ? agents : null,
         projects: projects && Array.isArray(projects.projects) ? projects.projects : Array.isArray(projects) ? projects : null,
-        profile: profile && Array.isArray(profile.facts) ? profile.facts : Array.isArray(profile) ? profile : null });
+        profile });
     };
 
     /** By rename, so the hook never reads half a file; nothing known means no file. */

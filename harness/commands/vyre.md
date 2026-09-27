@@ -24,13 +24,16 @@ The user ran `/vyre $ARGUMENTS`.
 - `project`: call `projects_context` for the current folder's project and show it as is. If the
   folder is in no project, say so and mention `vyre new`.
 - `todo <text>`: call `planner_add` with `{"text": "<text>", "kind": "todo"}`. With no text, call
-  `planner_agenda` and show only the open todos. Say in one line what was added.
-- `remind <when> <text>`: `<when>` is the leading time words ("6pm", "at 6", "tomorrow 9am",
-  "in 20 minutes"). Call `planner_add` with `{"text": "<text>", "kind": "reminder", "at": "<when>"}`
-  and say in one line when it will fire, using the `at` it returned, in the user's local time. If
-  there is no time, ask for one. Never say a reminder is set unless `planner_add` returned it.
-- `agenda`: call `planner_agenda` (today). Timed items first, one line each with the time, then
-  open todos. Nothing today: say so in one line. `agenda tomorrow` passes tomorrow's date.
+  `planner_agenda` and show only its `todos`. Say in one line what was added.
+- `remind <when> <text>`: call `planner_add` with `{"text": "remind me <when> <text>"}`, the user's
+  words as they typed them ("remind me 6pm call Harlow Legal", "remind me in 20 minutes check the
+  oven"); the planner reads the time itself. Say in one line what it will say and when, from the
+  `title`, `date` and `wall` it returned (the planner's local time). If it comes back with an
+  error because there is no time, ask for one. Never say a reminder is set unless `planner_add`
+  returned it.
+- `agenda`: call `planner_agenda` with `{}` (today). Show its `entries` first, one line each with
+  the local time of `at` in its `tz`, then the open `todos`. Nothing on: say so in one line.
+  `agenda tomorrow` (or another day) passes `{"from": "YYYY-MM-DD"}` for that day.
 - `remember <fact>`: a fact about the user or their work, for every future session. Call
   `memory_remember` with `{"text": "<fact>"}` and say in one line that it is remembered. If
   `memory_remember` is not offered, say memory cannot take facts by hand yet, and offer to make
