@@ -168,8 +168,14 @@ async function startLocked(opts, root, p, release) {
   return { registry, events, config: cfg, paths: p, stop };
 }
 
-/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit", "mcp agent:kit". */
+/** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */
 const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+/**
+ * The only forms a socket caller may name an agent in: its MCP server's and its hooks' (harness
+ * mcp/server.js, hooks/hook.js). A surface's label with an agent in it ("cli:agent:kit") would be
+ * vouched by the key and then pass every callers list as that surface, so it is refused.
+ */
+const AGENT_LABEL = /^(?:mcp|harness):agent:([A-Za-z0-9_-]+)$/;
 
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -381,6 +387,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
+  } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
+    return send(res, 403, { error: { code: "denied", message: "an agent is named only as mcp:agent:<name> or harness:agent:<name>" } });
   } else if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
