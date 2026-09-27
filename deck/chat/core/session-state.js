@@ -866,7 +866,7 @@ export function applyEvent(s, e) {
     case "mode.changed":
       if (typeof p.mode === "string") { s.mode = p.mode; out.add("@session"); }
       break;
-    case "thread.model":
+    case "model.changed": case "thread.model":
       if (p.model != null) { s.model = String(p.model); out.add("@session"); }
       break;
     case "thread.thinking":

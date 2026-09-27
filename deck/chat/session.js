@@ -188,10 +188,10 @@ export function mountSession(container, opts) {
   /** The live todo list and the background tasks, above the composer. */
   const pin = todoPin();
   const tray = tasksTray({
-    can: () => CAPS.has("threads.kill_task"),
+    can: () => CAPS.has("threads.kill-task"),
     onView: t => { if (!t.call) return; const el = reveal("t:" + t.call); if (el) { el.scrollIntoView?.({ block: "center" }); el.classList.add("cv-flash"); setTimeout(() => el.classList.remove("cv-flash"), FLASH_MS); } },
     onKill: async t => {
-      const r = await CAPS.use("threads.kill_task", () => attempt("threads.kill_task", { thread, id: t.id }));
+      const r = await CAPS.use("threads.kill-task", () => attempt("threads.kill-task", { thread, id: t.id }));
       return r.error ? (r.missing ? NEEDS_UPDATE : "Could not stop it: " + (r.error.message || r.error.code)) : null;
     },
   });
@@ -1309,6 +1309,7 @@ export function mountSession(container, opts) {
     on("thread.*", onLive),
     // Not a thread.* name: heard on its own.
     on("mode.changed", onLive),
+    on("model.changed", onLive),
     on("ask.raised", onLive),
     on("ask.answered", onLive),
     on("ask.cancelled", onLive),
