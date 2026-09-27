@@ -39,6 +39,8 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 - Nothing in flight. Waiting for the next live-box deploy.
 
 ## Next
+0. When 71503ab (with dcb03ce) is on main, SendMessage docs: they hold the no-passkey glass.md and
+   presence.md changes in docs/work/docs.md until then.
 1. After the live box is redeployed, two read-only checks only (no agents or computers made):
    `ssh <test-box> docker exec vyre-vyre-1 vyre call computers.limits '{}'` must not say
    no_such_tool, and a WS upgrade with a bogus ticket to
