@@ -11,6 +11,9 @@
 // On a Mac it checks vyred, Tailscale here, the box (through Tailscale, its address, and through
 // the link for what only the box knows), the phone, the Capsule and the install. On a box it
 // checks the same things from the box's side.
+//
+// --json: { ok, role, ms, checks: [{ id, label, ok, detail?, fix? }] }. --view draws the same
+// checks live: a checks frame as each one answers (data null), then the whole result as the last.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -26,7 +29,7 @@ import { shadows } from "../shadow.js";
 import { progressLine } from "../../recall/progress.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { INSTALL } from "../brand.js";
-import { json, emit, EXIT } from "../kit.js";
+import { json, emit, EXIT, viewing } from "../kit.js";
 
 /** The whole run's budget, and one check's. */
 export const BUDGET_MS = 2000;
@@ -73,7 +76,8 @@ export function installSize(dir = REPO, cap = 200_000) {
  * @param {{ health?: () => Promise<any>, tool?: (name: string, input?: any) => Promise<{ data?: any, error?: any }>,
  *   tailscale?: () => Promise<any>, resolve?: (h: string) => Promise<any>, probe?: (a: string, ms: number) => Promise<any>,
  *   capsuleApps?: string[], size?: () => { bytes: number, files: number }, role?: string, box?: string | null,
- *   path?: () => ReturnType<typeof shadows> }} [deps]
+ *   path?: () => ReturnType<typeof shadows>, onCheck?: (i: number, c: Check | null) => void }} [deps] onCheck hears each
+ *   check as it answers, by its place in IDS (null: it does not apply here)
  * @returns {Promise<{ role: string, checks: Check[], ms: number }>}
  */
 export async function diagnose(deps = {}) {
@@ -241,11 +245,24 @@ export async function diagnose(deps = {}) {
 
   const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, recall, onPath, size];
   const left = Math.max(100, BUDGET_MS - (Date.now() - t0));
-  const results = await Promise.all(all.map(p => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))));
-  const labels = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Search", "The vyre on PATH", "Install size"];
-  const ids = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "recall", "path", "install"];
-  const checks = results.map((c, i) => c && c.id === "?" ? { ...c, id: ids[i], label: labels[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c).filter(Boolean);
+  const named = (c, i) => c && c.id === "?" ? { ...c, id: IDS[i], label: LABELS[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c;
+  const results = await Promise.all(all.map((p, i) => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))
+    .then(c => { const n = named(c, i); if (deps.onCheck) deps.onCheck(i, n || null); return n; })));
+  const checks = results.filter(Boolean);
   return { role, checks: /** @type {Check[]} */ (checks), ms: Date.now() - t0 };
+}
+
+/** Every check's id and short label, in the order diagnose runs them. */
+export const IDS = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "recall", "path", "install"];
+const LABELS = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Search", "The vyre on PATH", "Install size"];
+
+/**
+ * A check as a checks frame's item: ok, failed or unknown, the detail and the fix in the note.
+ * @param {Check} c @returns {{ id: string, label: string, state: "ok"|"failed"|"unknown", note?: string }}
+ */
+export function item(c) {
+  const note = [c.detail, c.fix && c.ok !== true ? `next: ${c.fix}` : ""].filter(Boolean).join(" · ");
+  return { id: c.id, label: c.label, state: c.ok === true ? "ok" : c.ok === false ? "failed" : "unknown", ...(note ? { note } : {}) };
 }
 
 /** One check as terminal lines. */
@@ -255,12 +272,26 @@ export function lines(/** @type {Check} */ c) {
   return c.fix && c.ok !== true ? [head, "      " + (c.ok === false ? c.fix : dim(c.fix))] : [head];
 }
 
+/** --view: a checks frame each time a check answers, then the result with its checks as the last frame. */
+async function live() {
+  /** @type {(Check | null | undefined)[]} */
+  const known = IDS.map(() => undefined);
+  const items = () => IDS.map((id, i) => known[i] === undefined ? { id, label: LABELS[i], state: /** @type {const} */ ("wait") } : known[i] ? item(/** @type {Check} */ (known[i])) : null).filter(Boolean);
+  emit(null, { kind: "checks", title: "Checking", items: items() });
+  const r = await diagnose({ onCheck: (i, c) => { known[i] = c; emit(null, { kind: "checks", title: "Checking", items: items() }); } });
+  const ok = r.checks.every(c => c.ok !== false);
+  const bad = r.checks.filter(c => c.ok === false).length;
+  emit({ ok, role: r.role, ms: r.ms, checks: r.checks }, { kind: "checks", title: `${bad ? `${bad} to fix` : "Nothing to fix"} · checked in ${(r.ms / 1000).toFixed(1)} s`, items: r.checks.map(item) });
+  return ok ? EXIT.OK : EXIT.FAILED;
+}
+
 export default {
   name: "doctor", order: 12, usage: "vyre doctor [--json]",
   summary: "check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix",
   help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.",
   /** @param {string[]} args */
   async run(args = []) {
+    if (viewing()) return live();
     const r = await diagnose();
     const ok = r.checks.every(c => c.ok !== false);
     if (json() || args.includes("--json")) { emit({ ok, role: r.role, ms: r.ms, checks: r.checks }); return ok ? EXIT.OK : EXIT.FAILED; }
