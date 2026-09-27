@@ -434,8 +434,10 @@ the change survives every resync and re-register. `use` is a map from capability
   also `use`, that one entry. A module must pass `surface`, or `caller` (the caller it acts for).
   So "send an email" in the Capsule offers every account that can send, and Claude in a chat
   thread sees the same list. Never a value, a token or a field name that holds one.
-  `vault.connections.get {id}` is one row, on the same terms; a module may read any row by id
-  (mail.release does, after the Gate approved), with no values.
+  `vault.connections.get {id}` (modules only) is one row's metadata for the module that acts on
+  it: a row of its own source, or one whose `use` names one of its tools (so `mail` reads a row
+  that routes to `mail.send`, as mail.release does after the Gate approved). Any other row, a row
+  that fails its check and an id that is not there all answer the same `not_found`.
 - `vault.connections.grant {id, surface}` (presence), `vault.connections.revoke {id, surface}`
   (no presence: taking access away never needs it), `vault.connections.sync` (people).
 - `vault.connections.allowed {id} | {source, ref}, caller` (modules only) returns

@@ -230,8 +230,21 @@ test("connections: several email accounts, one list, granted per surface", async
   assert.deepEqual(ok(await cli("vault.connections.grant", { id: m2.id, surface: "agents" })).connection.surfaces, ["capsule", "chat", "agents"]);
   const agentSees = ok(await kit("vault.connections.list", { capability: "send_mail" })).connections;
   assert.deepEqual(agentSees.map(r => r.id), [m2.id]);
-  assert.deepEqual(ok(await kit("vault.connections.get", { id: m2.id })).connection.account, "juno@harlowlegal.test");
-  assert.equal((await kit("vault.connections.get", { id: g.id })).error.code, "not_found");
+  assert.equal((await kit("vault.connections.get", { id: m2.id })).error.code, "denied", "get is for modules");
+  /** A row as the person's list shows it. */
+  const one = async id => ok(await cli("vault.connections.list")).connections.find(r => r.id === id);
+
+  // get: the module that acts on a row reads it; any other module, a tampered row and a gone id
+  // all get the same not_found.
+  const mail = inproc("module:mail"), suggest = inproc("module:suggest");
+  assert.equal(ok(await mail("vault.connections.get", { id: im.id })).connection.account, "kit@northwind.test", "an IMAP row routes to mail.send");
+  const gRow = ok(await mail("vault.connections.get", { id: g.id })).connection;
+  assert.deepEqual(gRow.uses.read_mail, { tool: "mail.search", input: { account: g.id } }, "a Google row routes read_mail to mail");
+  assert.equal(gRow.surfaces, undefined);
+  assert.equal(ok(await google("vault.connections.get", { id: g.id })).connection.ref, "northwind", "its own source");
+  assert.equal((await suggest("vault.connections.get", { id: g.id })).error.code, "not_found");
+  assert.equal((await suggest("vault.connections.get", { id: "cn_gone" })).error.code, "not_found");
+  assert.equal((await mail("vault.connections.get", { id: "cn_gone" })).error.message, (await suggest("vault.connections.get", { id: g.id })).error.message, "a gone id and a refused one read the same");
 
   // allowed: by id or by source and ref; people always; a module is not a surface.
   const ask = async input => ok(await other("vault.connections.allowed", input));
@@ -259,24 +272,24 @@ test("connections: several email accounts, one list, granted per surface", async
   const again = ok(await google("vault.connections.register", { ref: "northwind", provider: "google-dwd", account: "kit@northwind.test", auth: "service-account",
     capabilities: ["send_mail", "read_mail", "calendar"], items: ["google-northwind-sa"] }));
   assert.equal(again.id, g.id, "the id is stable across upserts");
-  let row = ok(await cli("vault.connections.get", { id: g.id })).connection;
+  let row = await one(g.id);
   assert.equal(row.label, "Northwind orders");
   assert.deepEqual(row.capabilities, ["send_mail", "calendar"]);
   assert.deepEqual(row.surfaces, ["capsule", "agents"]);
   assert.equal(row.state, "ready");
   // And a resync of the vault's own rows leaves them too.
   ok(await cli("vault.connections.sync"));
-  assert.equal(ok(await cli("vault.connections.get", { id: g.id })).connection.label, "Northwind orders");
+  assert.equal((await one(g.id)).label, "Northwind orders");
   assert.equal((await mcp("vault.connections.sync")).error.code, "denied");
 
   // A missing credential: the row says which need fills it.
   const lost = ok(await postbox("vault.connections.register", { ref: "harlow", provider: "imap-smtp", account: "alex@harlowlegal.test", auth: "password",
     capabilities: ["send_mail"], items: ["postbox-harlow"] }));
-  row = ok(await cli("vault.connections.get", { id: lost.id })).connection;
+  row = await one(lost.id);
   assert.equal(row.state, "needs_credential");
   assert.deepEqual(row.needs, [{ module: "postbox", need: "account" }]);
   await cli("vault.revoke", { name: "google-northwind-sa", module: "google" });
-  assert.equal(ok(await cli("vault.connections.get", { id: g.id })).connection.state, "needs_credential", "an item not granted to its module");
+  assert.equal((await one(g.id)).state, "needs_credential", "an item not granted to its module");
   await cli("vault.grant", { name: "google-northwind-sa", module: "google" });
 
   // unregister is scoped to the caller's own source.
@@ -294,8 +307,9 @@ test("connections: several email accounts, one list, granted per surface", async
   const seen = ok(await cli("vault.connections.list")).connections.find(r => r.id === m1.id);
   assert.equal(seen.tampered, true); assert.deepEqual(seen.surfaces, []);
   assert.equal((await cli("vault.connections.update", { id: m1.id, label: "x" })).error.code, "tampered");
+  assert.equal((await mail("vault.connections.get", { id: m1.id })).error.code, "not_found", "a tampered row is not_found");
   ok(await hub("vault.connections.register", { ref: "gmail-harlow", provider: "mcp", account: "alex@harlowlegal.test", auth: "oauth", tools: ["search_threads", "send_message"] }));
-  const reset = ok(await cli("vault.connections.get", { id: m1.id })).connection;
+  const reset = await one(m1.id);
   assert.deepEqual(reset.surfaces, []); assert.equal(reset.tampered, undefined);
   assert.equal((await ask({ id: m1.id, caller: "capsule" })).allowed, false, "still granted to nobody");
   ok(await cli("vault.connections.grant", { id: m1.id, surface: "capsule" }));

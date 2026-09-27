@@ -31,7 +31,7 @@ export function register({ ctx, vault, tool }) {
   tool("vault.connections.list", [...PEOPLE, "mobile", "mcp", "tailnet", "module"], "Connections the caller's surface may use: {surface, connections: [{id, source, ref, provider, account, auth, label, capabilities, state, needs?, uses, use?}]}. `uses` maps each capability to the {tool, input} that acts on it; with `capability`, `use` is that one. A person sees every row with its surfaces and may pass `surface` to see one surface's view; a module must pass `surface` or `caller` (the caller it acts for). Never a value.",
     obj({ capability: str, surface: str, caller: str }), (input, { caller }) => c.list(input, caller));
 
-  tool("vault.connections.get", [...PEOPLE, "mobile", "mcp", "tailnet", "module"], "One connection, as vault.connections.list shows it, if the caller's surface may use it.",
+  tool("vault.connections.get", ["module"], "One connection's metadata, for the module that acts on it: a row of its own source, or one whose uses name one of its tools. Anything else is not_found. Never a value.",
     obj({ id: str }, ["id"]), (input, { caller }) => c.get(input, caller));
 
   tool("vault.connections.grant", PEOPLE, "Let a surface (capsule, chat, agents or phone) use a connection.",

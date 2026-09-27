@@ -3706,11 +3706,11 @@ May `caller` use this connection ({id}, or {source, ref})? {allowed, surface, re
 
 ### `vault.connections.get`
 
-One connection, as vault.connections.list shows it, if the caller's surface may use it.
+One connection's metadata, for the module that acts on it: a row of its own source, or one whose uses name one of its tools. Anything else is not_found. Never a value.
 
 - Input:
   - `id` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `module`
 
 ### `vault.connections.grant`
 

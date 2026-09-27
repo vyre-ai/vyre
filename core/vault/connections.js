@@ -492,14 +492,25 @@ export class Connections {
     return { surface: eyes || "person", connections: out };
   }
 
-  /** One row, as list shows it, for a caller whose surface may use it. @param {{ id: string }} input @param {string} caller */
+  /**
+   * One row for the module that acts on it: its own source, or a row whose uses name one of its
+   * tools (module:mail reads a row that routes to mail.send). Metadata only. Anything else, a
+   * row that fails its check and an id that is not there all answer the same not_found.
+   * @param {{ id: string }} input @param {string} caller
+   */
   async get({ id }, caller) {
-    const { person, eyes } = await this.eyes(undefined, caller).catch(e => { if (surfaceOf(caller).surface === "module") return { person: true, eyes: null }; throw e; });
+    const m = /^module:([a-z][a-z0-9-]{0,40})$/.exec(String(caller ?? ""));
+    const none = () => fail("no such connection", "not_found");
+    if (!m) throw none();
     await this.ready();
-    const r = this.must(id);
-    const ok = this.v.rowOk("vault_connections", r);
-    if (eyes && !(ok && json(r.surfaces, []).includes(eyes))) throw fail(`no connection ${cut(id, 40)} for this surface`, "not_found");
-    return { connection: this.out(r, ok, person, this.items()) };
+    const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_connections WHERE id = ?").get(String(id ?? "")));
+    if (!r) throw none();
+    await this.v.key();
+    if (!this.v.rowOk("vault_connections", r)) throw none();
+    const row = this.out(r, true, false, this.items());
+    const mine = r.source === m[1] || Object.values(row.uses).some(u => String(u.tool).startsWith(`${m[1]}.`));
+    if (!mine) throw none();
+    return { connection: row };
   }
 
   must(id) {
