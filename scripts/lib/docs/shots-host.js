@@ -6,6 +6,7 @@
 // the onboarding shows the address a real box gets. Nothing else changes.
 
 import https from "node:https";
+import net from "node:net";
 import os from "node:os";
 import { syncBuiltinESMExports } from "node:module";
 
@@ -28,4 +29,16 @@ if (tls) {
     }
     return listen.apply(this, args);
   });
+}
+
+// With VYRE_SHOTS_PEER=<local>=<tailnet> (e.g. 127.0.0.2=100.64.0.2), a connection from the local
+// address reads as coming from the tailnet one, so a request docs-shots makes as alex's Mac passes
+// the listener's tailnet-address check and reaches the fake whois. Only that one address changes.
+const peer = String(process.env.VYRE_SHOTS_PEER || "").split("=");
+if (peer.length === 2) {
+  const d = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(net.Socket.prototype, "remoteAddress"));
+  Object.defineProperty(net.Socket.prototype, "remoteAddress", { ...d, get() {
+    const a = d.get ? d.get.call(this) : undefined;
+    return a === peer[0] || a === `::ffff:${peer[0]}` ? peer[1] : a;
+  } });
 }

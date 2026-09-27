@@ -108,7 +108,8 @@ function child(cmd, argv, opts) {
  * and its tailnet address is 127.0.0.1 so the box's HTTPS listener can bind here). `up` signs
  * in at once; `cert` makes a self-signed certificate and moves to serving. alex's phone and Mac
  * are on the tailnet as peers (as in deck/test/fake-tailscale.js, the Deck world's own), and
- * `whois 127.0.0.2` is the Mac, so a pairing request made from that address (pairFrom below)
+ * `whois 100.64.0.2` is the Mac. A pairing request made from 127.0.0.2 (pairFrom below) reads as
+ * 100.64.0.2 through the preload's VYRE_SHOTS_PEER, so it
  * comes from alex-mbp.
  */
 function fakes(dir, start) {
@@ -145,7 +146,7 @@ EOF
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -keyout "$K" -out "$C" -days 90 -subj "/CN=$D" -addext "subjectAltName=DNS:$D" >/dev/null 2>&1 || exit 1
     echo serving > '${state}' ;;
   debug) echo '{"OperatorUser":"alex"}' ;;
-  whois) case "$3" in 127.0.0.2*) cat <<'EOF'
+  whois) case "$3" in 100.64.0.2*) cat <<'EOF'
 ${whois}
 EOF
     ;; *) exit 1 ;; esac ;;
@@ -314,7 +315,7 @@ async function onboardWorld() {
     recall: { vectors: false, download: false }, vault: { keystore: "file", breach: "off" }, network: { onboardPort: 0 },
   }, null, 2));
   const tls = await freePort();
-  const env = worldEnv(home, bins, { VYRE_SHOTS_TLS_PORT: String(tls), VYRE_HARNESS_DIR: path.join(home, "no-harness") });
+  const env = worldEnv(home, bins, { VYRE_SHOTS_TLS_PORT: String(tls), VYRE_SHOTS_PEER: "127.0.0.2=100.64.0.2", VYRE_HARNESS_DIR: path.join(home, "no-harness") });
   const d = child(process.execPath, [path.join(REPO, "core", "daemon", "main.js")], { env, stdio: ["ignore", "ignore", "pipe"] });
   d.stderr.on("data", c => { const s = String(c); if (!/ExperimentalWarning|trace-warnings/.test(s)) process.stderr.write("onboard vyred: " + s); });
   const { call } = await import("../core/daemon/client.js");
