@@ -4,6 +4,112 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre capsule install` builds the Capsule on the Mac
+
+- vyre.run no longer serves `Vyre-mac.zip`, so the download would have failed. `vyre capsule
+  install` now runs `vyre capsule build --app` (Electron into local/capsule, the helpers, an
+  ad-hoc signed Vyre.app) and downloads nothing; `vyre capsule` opens that build.
+  `capsule-install.js`, its test and `VYRE_DOWNLOAD_BASE`/`VYRE_APPS_DIR` are gone (capsule-pro's
+  native build replaces this path when it merges). docs/using/capsule.md and
+  docs/get-started/install.md say so; the reference is regenerated.
+#### The box reads a Mac session as blocks
+
+- `recall.transcript` on the box, for the person, reads a session the box does not have from the
+  paired Mac (or any session with `source: "mac"`), labelled `source: "mac"` and `machine`, so a
+  Mac reply keeps its rich view after the re-read. Nothing is stored on the box. An id no machine
+  has is still `not_found`; an away Mac says so. `recall.transcript` joins the link's read
+  allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
+  test/federation-reads.test.js.
+
+#### Chat starts sessions, browses the box's folders, opens a terminal, and asks real questions (ADR 0024)
+
+- Chat has New session (header, rail, empty state, key `n`): pick a project, a folder on the box or
+  no folder, pick Vyre or an agent, type the first message. A folder browser lists recent folders
+  first, then the box's folders, with search, "New session here" and "Open in terminal"
+  (files.dirs, files.recent, through the files guard).
+- A terminal in the browser: core/term runs a login shell under `script` (no native dependency),
+  over a ticketed WebSocket, with xterm 6.0.0 vendored in deck/vendor/xterm (MIT). Opening one
+  needs no passkey, and only the screen that opened it can reattach. A terminal ends 10 s after
+  its last viewer leaves, and nothing it prints is logged.
+- The session view reads the transcript (recall.transcript, new): tool calls as cards with
+  command, output, duration and status, edits as diffs, reads as previews, todo lists as
+  checklists, thinking folded, time and tokens per turn, and a Raw toggle that prints it the way
+  the terminal does. Replies read "Vyre" (or the agent's name), and your messages read "you".
+- Claude Code's questions (AskUserQuestion) are asks of kind `question`, answered from a card:
+  options, multi-select, Other, previews side by side, arrow keys and number keys.
+  threads.answer takes `answers`. Permission asks carry what exactly will run (`detail`) and
+  offer Always for this (decision `always`, when Claude Code suggests it). Answering needs no
+  passkey or Touch ID: `threads.answer` left the floor's human-only list for a new `PERSON_ONLY`
+  list (with `term.open` and `term.attach`), which asks no proof but which the harness still
+  refuses to a model's shell (core/presence/index.js, core/harness/rules.js).
+- Permission asks for Edit, MultiEdit, Write and a plain `git push` carry a diff summary in
+  `detail.changes` (file, added, removed per file) and `detail.totals` (files, added, removed).
+  Edits count lines from their full input, a Write is compared with the file on disk, and a push
+  runs `git diff --numstat` over what is ahead of `@{push}` (else the upstream, else origin's
+  default branch) with no shell, no network and a 3 s budget. Binary files are counted as files
+  with `binary: true`, and a push keeps 200 rows (`truncated: true`). ask.raised stays small.
+  offer Always for this (decision `always`, when Claude Code suggests it).
+
+#### Find shows which sessions are the Mac's
+
+- The phone's Find page puts the machine chip beside a Mac session's title, in search results,
+  Recent and the "Type into" list, outside the title's ellipsis so a long title never hides it
+  (deck/views/find.js, deck/css/views/find.css). The files note no longer says Mac files show
+  when the Mac is online: the box does not search the Mac's files, so it says that.
+
+#### The box's words wait for whoever holds a Mac session
+
+- The person at the box never takes a Mac session's keyboard. While another surface on the Mac
+  holds it (the Capsule, say), `threads.send` queues the words as it does for a terminal, and
+  answers with `busy` (`"terminal"` or the holder). The box's note names the Mac: "<name> is busy
+  in your terminal on alex-mac." The link's caller `link:box` is a caller kind of its own
+  (`fromLink` in core/switchboard/index.js): it queues, is no agent, and its surface is always
+  `box:<surface>`. A queued message from the box reaches Claude as "via the Deck on the box"
+  (core/harness/index.js). Decided with capsule-now. Tests: test/federation-send.test.js,
+  core/switchboard/switchboard.test.js.
+
+#### The person on the box types into a Mac's session
+
+- `threads.send` on the box, for a thread only a paired Mac has, goes to that Mac for the
+  person's own callers (the Deck, the terminal, the Capsule, the owner over the tailnet); `machine`
+  picks one Mac. The answer is the Mac's, plus `source: "mac"` and `machine`; a Mac that is away
+  answers `mac_offline`, "<name> is offline; your message was not sent". Agents, MCP, guests and
+  modules never reach a Mac (core/switchboard/index.js).
+- The link carries one write: `WRITE = ["threads.send"]` (core/link/allow.js), only with
+  `as: "person"`, checked by the box before queueing and by the Mac before running. The Mac runs
+  it as `link:box` with the surface `box:<surface>`, so a session busy in a terminal queues the
+  words and hands them over at its next Stop (core/link/mac.js, core/link/box.js).
+- The Mac follows that thread's events and sends them to the new box tool `link.events` at most
+  every 250 ms while they flow, until the answer finishes (a finish while queued words wait does
+  not count), 30 minutes pass, or the link ends; the box re-emits them with `source: "mac"` and
+  `machine` for threads it sent to, from the Mac it sent to.
+- `ctx.call(tool, input, { as })` calls as another caller label only for a core module and only
+  a label the registry's fixed map gives it (today the link, as `link:box`). A manifest cannot
+  grant it, so a module installed into a home can never act as the person (core/modules/index.js).
+- Tests: test/federation-send.test.js. Decision: ADR 0021, "Sending to a Mac session".
+
+#### The Deck on a box with a paired Mac, in a browser
+
+- `deck/test/mac-world.js`: one process runs a box vyred (harlow-box) and a Mac vyred (alex-mac)
+  in temp homes, paired through the link seams and a simulated tailnet (test/link-harness.js),
+  with the fictional corpus split between them, and serves the box's Deck on 127.0.0.1.
+  `POST /__mac/off` and `/__mac/on` stop and start the simulated tailnet, for the offline chip.
+- `deck/test/mac-shots.js`: shots of Chat, a Mac session, Now, search, a project board with a
+  picked Mac session, onboarding history and the offline chip, at 1440x900 and 390x844, through
+  a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
+- `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
+  `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+#### Streams over the tailnet are the owner's alone
+
+- The tailnet listener hands a WebSocket (`/v1/streams/...`: the terminal, Glass's screen) to
+  vyred's stream router only for the owner. A guest and an agent's node are refused with 403,
+  whatever tools they hold (`core/names/service.js`). The onboarding loopback now takes upgrades
+  itself: a Host that is not a loopback name gets 421, no session gets 403, and past both it
+  still opens no stream (`core/onboard/loopback.js`). Tests: owner allowed, guest and agent node
+  refused (`core/names/service.test.js`), wrong Host and no session on loopback
+  (`test/onboard.test.js`).
+
+
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
 - The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
@@ -24,6 +130,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the build (`scripts/install-box.sh`, `box/vyre`). The test tarball is packed with 1985 mtimes,
   as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
   Found by box-deploy.
+
+#### Every ask and held item says what answering it takes
+
+- `threads.asks`, `threads.get`'s asks, `gate.held` and `gate.get` carry
+  `presence: {required, covered}`, computed on the box: `required` is true only where a proof is
+  needed (approving a send, a spend or a deletion at the Gate; asks never), `covered` when the caller's
+  device has a live presence session. Surfaces render from it and never guess from tool names.
+- The no-nag rule at the Gate and for asks: `gate.revise`, `gate.reject` and `threads.answer` are
+  off the floor's list and ask for no proof (a person caller still; models are refused).
+  `gate.approve` asks only for kinds `send`, `spend` and `delete`, through the floor's
+  new `NARROWABLE` list, and is sessionable: a request with `x-vyre-presence-keep: 1` and a
+  strong proof gets back `x-vyre-presence-session: session id=.. secret=.. expires=..`, which
+  proves the next sends on that device as `x-vyre-presence`. A presence session now lasts 30
+  minutes from the proof with no idle cutoff (it was 5 minutes idle).
+  `core/presence/index.js`, `core/presence/module.js` (internal `presence.covered`),
+  `core/modules/index.js`, `core/daemon/index.js`, `core/gate/index.js`,
+  `core/switchboard/index.js`; test/presence-bypass.test.js.
 
 #### Making or changing an agent is the person's, with no passkey
 
