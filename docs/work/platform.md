@@ -33,6 +33,10 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Cohesion ADR 0036 asks accepted for P1: meta.call from header X-Vyre-Call-Id (per-thread socket + MCP only, ^[A-Za-z0-9_-]{1,128}$, linking only, never for decisions); registry.status() rows gain use {calls, lastUsed} for person/agent callers only (not module:), in memory, flushed to a kernel table at most once a minute and at stop. Glue module 4 is `waiting`.
 - P1 split: the settings-free part (call id, use counts, commands.list, events.catalog, status fields commands/connections/suggest/notices) can start on work/platform now; ctx.settings waits for native-core on main.
 
+- P1 settings-free part DONE 382a8574: meta.call (X-Vyre-Call-Id on session paths), use counts (modules_use, 60 s flush), status fields, ctx.modules.status()/tools(), core/commands (commands.list), core/event-catalog (events.catalog). Sessions must send X-Vyre-Call-Id.
+- End-to-end `vyre update` on testbox (npm path, throwaway): update 4.6 s, failed-health rollback 18 to 25 s, --rollback 5.4 s, RSS ~83 MB settled; found and fixed a prune bug (9343bc44). Box wrapper path not run (needs own compose project + no tailscale login).
+- Combined targeted run 217 pass / 0 fail / 1 skip (shellcheck). Finished sha for the integrator: 9343bc44.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
