@@ -25,6 +25,7 @@
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
+import fs from "node:fs";
 import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
@@ -77,7 +78,14 @@ export default {
     const db = ctx.store.db;
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
-    const folders = readable(ctx.config.transcripts || [], ctx.paths?.root || "");
+    const configured = readable(ctx.config.transcripts || [], ctx.paths?.root || "");
+    // <home>/synced holds one folder per device that sent its sessions (ADR 0008, amendment), each
+    // in Claude Code's own layout: read afresh each time, since a device can be added or revoked.
+    const syncedRoot = ctx.paths?.root ? path.join(ctx.paths.root, "synced") : null;
+    const folders = () => configured.flatMap(f => {
+      if (!syncedRoot || path.resolve(f) !== path.resolve(syncedRoot)) return [f];
+      try { return fs.readdirSync(f, { withFileTypes: true }).filter(e => e.isDirectory() && /^[A-Za-z0-9._-]{1,80}$/.test(e.name)).map(e => path.join(f, e.name)).sort(); } catch { return []; }
+    });
     // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
     // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
     const dense = new Dense(db, { maxChunks: opts.maxChunks });
@@ -117,7 +125,7 @@ export default {
         if (stopped) return null;
         running = true;
         try {
-          const s = await indexer.run(folders, { stopped: isStopped, pace: paced, onProgress: (d, t) => { progress.done = d; progress.total = t; } });
+          const s = await indexer.run(folders(), { stopped: isStopped, pace: paced, onProgress: (d, t) => { progress.done = d; progress.total = t; } });
           return s;
         }
         finally { running = false; vectorLoop(); }
@@ -282,7 +290,7 @@ export default {
       // is "not_found", which the Deck takes quietly.
       let row = sessionRow(db, input.session);
       if (!row) {
-        const e = find(folders, input.session);
+        const e = find(folders(), input.session);
         if (!e) throw Object.assign(new Error(`no session ${input.session}`), { code: "not_found" });
         row = { id: e.id, file: e.file, ...peek(e.file), title: null };
       }
@@ -297,7 +305,7 @@ export default {
       resolve: session => {
         const row = sessionRow(db, session);
         if (row) return { id: String(row.id), file: String(row.file) };
-        const e = find(folders, session);
+        const e = find(folders(), session);
         return e ? { id: e.id, file: e.file } : null;
       },
     });
@@ -328,6 +336,12 @@ export default {
         return mergeRows(ctx, own, answers, { compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
       },
     });
+    ctx.tool("recall.forget", {
+      internal: true,
+      description: "Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.",
+      input: { type: "object", required: ["sessions"], properties: { sessions: stringArray } },
+      run: async ({ sessions: ids }) => { const n = indexer.forget(ids.map(String)); dense.invalidate(); return { forgot: n }; },
+    });
     ctx.tool("recall.index", {
       description: "Index new and changed transcripts now. Returns what the pass did.",
       input: { type: "object", properties: {} },
@@ -343,7 +357,7 @@ export default {
         const last = /** @type {any} */ (db.prepare("SELECT v FROM recall_meta WHERE k = 'last_index'").get());
         return {
           sessions: n("SELECT COUNT(*) n FROM recall_sessions"), turns,
-          folders, every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
+          folders: folders(), every, indexing: running, last: last ? JSON.parse(String(last.v)) : null, error: lastError,
           progress: { sessions: progress.total ? { done: progress.done, total: progress.total } : null, paused: g ? g.why : null, priority: "low" },
           watches: watches.stats(),
           vectors: { on: vec.on, ready: Boolean(vec.embedder), why: vec.why, embedded, pending: Math.max(0, turns - embedded), embedding: vec.busy, dense: dense.stats() },
@@ -389,7 +403,7 @@ export default {
       clearTimeout(soon.get(id));
       soon.set(id, setTimeout(() => {
         soon.delete(id);
-        chain = chain.then(() => { if (!stopped) indexer.session(folders, id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+        chain = chain.then(() => { if (!stopped) indexer.session(folders(), id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
       }, SOON_MS));
     };
     const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),

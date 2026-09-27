@@ -173,3 +173,32 @@ test("memory module: the person corrects from their phone only with a person ses
   const undo = await d.registry.call("memory.uncorrect", { fix: ok.data.fix.id }, "device:abcdefghijklmnop", signed);
   assert.equal(undo.data?.fix?.undone > 0, true, JSON.stringify(undo));
 });
+
+test("memory module: a device's synced sessions revoked: recall, graph, facts and IQ's caches forget them", async t => {
+  const { writeTranscripts } = await import("../../test/fixtures/corpus.js");
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ me: { domains: ["riverastudio.com"] }, vault: { keystore: "file" }, modules: { disable: ["learn"] } }));
+  const synced = path.join(root, "synced", "mac-1");
+  writeTranscripts(synced);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await call("recall.index", {}, { root });
+  await call("memory.curate", {}, { root });
+  assert.equal((await call("recall.status", {}, { root })).data.sessions, SESSIONS.length, "the synced sessions are indexed like any others");
+  assert.equal((await call("memory.facts", { about: "Harlow" }, { root })).data.about?.label, "Harlow Legal");
+  await call("memory.ask", { question: "who works at Harlow Legal?" }, { root });
+
+  // Federation deletes the files, then says so; memory and Recall forget everything they made.
+  fs.rmSync(synced, { recursive: true, force: true });
+  const done = new Promise(resolve => { const off = d.events.on("memory.forgot", e => { off(); resolve(e.payload); }); });
+  d.events.emit("link", "sync.revoked", { machine: "mac-1" });
+  const out = await done;
+  assert.equal(out.sessions, SESSIONS.length);
+  assert.equal((await call("recall.status", {}, { root })).data.sessions, 0);
+  assert.equal((await call("memory.facts", { about: "Harlow" }, { root })).data.about, null, "a fact from a revoked device's sessions stayed");
+  const db = open(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  for (const table of ["memory_iq_asks", "memory_evidence", "memory_me_claims"]) assert.equal(db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n, 0, table);
+  // A name that is not a machine's forgets nothing.
+  d.events.emit("link", "sync.revoked", { machine: "../../etc" });
+});

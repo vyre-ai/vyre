@@ -25,7 +25,8 @@ test("claudeHome: a temp home's default transcripts are inside it", t => {
   const root = tempHome(t);
   const c = load(root);
   const inside = path.join(root, "claude");
-  assert.deepEqual(c.transcripts, [path.join(inside, "projects"), path.join(inside, "projects-archive")]);
+  // synced: other devices' sessions sent here with consent, inside the home too.
+  assert.deepEqual(c.transcripts, [path.join(inside, "projects"), path.join(inside, "projects-archive"), path.join(root, "synced")]);
   assert.ok(!c.transcripts.some(f => f.startsWith(path.join(os.homedir(), ".claude"))));
 });
 

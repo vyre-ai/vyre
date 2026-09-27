@@ -30,7 +30,9 @@ export default {
     let last = null;
 
     const roots = extra => {
-      const configured = (ctx.config.transcripts || []).map(p => ({ path: String(p), kind: /archive/i.test(String(p)) ? "archive" : claude && path.resolve(String(p)).startsWith(path.resolve(claude)) ? "claude" : "folder" }));
+      // <home>/synced holds other devices' sessions: never offered as this device's own.
+      const synced = root ? path.resolve(root, "synced") : null;
+      const configured = (ctx.config.transcripts || []).filter(p => !synced || path.resolve(String(p)) !== synced).map(p => ({ path: String(p), kind: /archive/i.test(String(p)) ? "archive" : claude && path.resolve(String(p)).startsWith(path.resolve(claude)) ? "claude" : "folder" }));
       const added = (extra || []).filter(p => typeof p === "string" && path.isAbsolute(p)).map(p => ({ path: p, kind: /** @type {const} */ ("folder") }));
       const all = [...configured, ...added];
       // The person's ~/.claude only for their own ~/.vyre; a dev, demo or test home reads its own.
