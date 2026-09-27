@@ -15,16 +15,28 @@ const hit = (/** @type {any} */ p) => {
   if (typeof p !== "string" && !(p instanceof URL) && !Buffer.isBuffer(p)) return false;
   const s = path.resolve(p instanceof URL ? p.pathname : String(p));
   const yes = WATCHED.some(w => s === w || s.startsWith(w + path.sep));
-  if (yes) touched.add(s.replace(String(process.env.REAL_HOME), "<real home>").replace(String(process.env.FAKE_HOME), "<home>"));
+  if (yes) {
+    // Where in Vyre it came from: the first frame outside this file and node's own.
+    const at = (new Error().stack || "").split("\n").slice(2).find(l => !l.includes("no-claude-child") && !l.includes("node:")) || "";
+    const where = (at.match(/\/((?:core|local|modules)\/[^):]+:\d+)/) || [])[1] || "?";
+    touched.add(`${s.replace(String(process.env.REAL_HOME), "<real home>").replace(String(process.env.FAKE_HOME), "<home>")} (${where})`);
+  }
   return yes;
 };
 const denied = () => Object.assign(new Error("EACCES: a temp home never reads ~/.claude"), { code: "EACCES" });
 const NAMES = ["readFileSync", "readdirSync", "statSync", "lstatSync", "openSync", "opendirSync", "realpathSync", "accessSync",
   "createReadStream", "watch", "watchFile", "writeFileSync", "appendFileSync", "mkdirSync", "copyFileSync", "cpSync", "rmSync"];
+// Resolving the folder itself (no contents) is how the files guard denies it (core/files/safety.js
+// HOME_DENIED), so a realpath of exactly ~/.claude is let through and not counted.
+const bare = (/** @type {any} */ p) => typeof p === "string" && WATCHED.includes(path.resolve(p));
 for (const n of NAMES) {
   const orig = /** @type {any} */ (fs)[n];
   if (typeof orig !== "function") continue;
-  /** @type {any} */ (fs)[n] = function (/** @type {any} */ p, /** @type {any[]} */ ...rest) { if (hit(p)) throw denied(); return orig.call(this, p, ...rest); };
+  /** @type {any} */ (fs)[n] = function (/** @type {any} */ p, /** @type {any[]} */ ...rest) {
+    if (n === "realpathSync" && bare(p)) return orig.call(this, p, ...rest);
+    if (hit(p)) throw denied();
+    return orig.call(this, p, ...rest);
+  };
 }
 const exists = fs.existsSync;
 fs.existsSync = p => (hit(p) ? false : exists(p));
