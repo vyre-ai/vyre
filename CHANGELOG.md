@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Project teammates, step 4 slice A: worktree isolation, the integrator, merge-before-dispatch
+
+- `team.add` with `isolation: "worktree"` now gives a teammate its own git worktree and branch
+  (`<repo>/../<repo>-<role>`, `team/<role>`, off the project's own current branch), refusing
+  outright when the project's home is not a git repo instead of running `git init` on the
+  person's behalf. The project's first such teammate brings an `"integrator"` teammate along
+  automatically. Before every dispatch, vyred (never the model) merges the project's own branch
+  into the teammate's, backing out a conflict at once and failing that one request rather than
+  leaving the worktree stuck; the teammate's session runs with its worktree as `cwd`. A request
+  that finishes with new commits queues a merge to the integrator. `core/team/git.js`: no shell,
+  no prompt, no network, a deadline, the same pattern `core/switchboard/changes.js` uses for
+  `git diff --numstat`. The integrator's own merge tool (conflicts, the test command, the
+  compare-and-swap fast-forward into main) is slice B, sent separately.
+
 #### Project teammates: a listener leak on a failed launch
 
 - The catch-all listener that closes the launch-vs-turn-finished race (previous entry) never
