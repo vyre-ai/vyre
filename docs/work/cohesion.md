@@ -6,7 +6,7 @@ Branch: work/cohesion · Worktree: ../vyre-cohesion · Started 2026-09-27 from m
 Make Vyre feel like ONE system: audit every module and surface for interconnection opportunities,
 then coordinate the owning teams to wire them through the registry. Cohesion writes contracts,
 glue modules (sight, context, suggest, waiting) and drift tests. It does not build features that
-belong to another team. Map: docs/design/cohesion.md (18 ranked items, approved by the lead).
+belong to another team. Map: docs/design/cohesion.md (19 ranked items, approved by the lead).
 
 ## Done
 - Survey of every module, surface and team work doc; opportunity map; top 10 agreed with the lead.
@@ -37,6 +37,12 @@ belong to another team. Map: docs/design/cohesion.md (18 ranked items, approved 
   sight.stepped, glass is a second sight.frame caller not a second capture path. Open for 0.1.1:
   where an agent-made (non-screen) image lives, inline size before it is a link, rate limiting
   sight.frame across two callers.
+- New cross-team spec from the lead: item 19 written into docs/design/cohesion.md (f6cc51b0), file
+  router + attach-a-session-to-a-project-later + Vyre Drive UI credit. Owners: projects and files
+  (router + layout), projects and memory-iq (the attach, shaped like projects.move, and the graph
+  join), federation (Vyre Drive credit on the moved-file event). Chat's upload/attach UI spec'd for
+  hand-over, chat is paused. Sent the lead a summary; not built, direction and owners only. Needs
+  federation and memory-iq to settle the router's exact contract next.
 - SAVED for restart. Integrator has 0f4d1105 (release candidate; supersedes f5cd36f7): glue modules,
   drift test, hands privacy fix (e2e signed off), sight.frame, context view/now {surface}, Mac asks,
   suggest account ranking, Chrome teardown fix. testbox: 156 targeted pass; hands-chrome 8/8 on
