@@ -129,6 +129,9 @@ facts are not a project's.
 - Model-backed answering with evidence (asked by the lead): too slow for memory.answer's 150 ms
   bar, so a separate `deep` path the Capsule can call when there's no fact. Design it after the
   numbers.
+- Once ADR 0030 lands, route the reader's model calls through the sessions layer as a background
+  job: its per-purpose model map, concurrency slots and budget. Today reader.js runs `claude -p` itself.
+  The runner is injected (deps.runner), so this is a swap of one function.
 - CI step for `npm run eval:answer` (replay only), ADR 0023, and contract notes for capsule-pro,
   pwa and mobile.
 
