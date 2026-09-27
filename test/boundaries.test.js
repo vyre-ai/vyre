@@ -37,7 +37,7 @@ export const ALLOW = {
   "core/cli -> core/vault": { files: ["core/vault/backup.js", "core/vault/cli-io.js", "core/vault/refs.js"], next: "surface",
     why: "vyre vault's terminal side: no-echo prompts, vault:// refs and the sealed backup format" },
   "core/cli -> local/voice": { files: ["local/voice/talk.js"], next: "ctx.call",
-    why: "vyre talk, push-to-talk from a terminal until the native Capsule has voice" },
+    why: "vyre voice, push-to-talk from a terminal until the native Capsule has voice" },
   "core/daemon -> core/harness": { files: ["core/harness/rules.js"], next: "lib",
     why: "the kernel runs the security floor on every call's input; the floor belongs in the kernel" },
   "core/daemon -> core/names": { files: ["core/names/guests.js"], next: "ctx.call",

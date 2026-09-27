@@ -74,3 +74,9 @@ Four files carry most of it. `core/names/tailscale.js` (6 edges) and `core/link/
 that both names and link use, which also ends the `names` and `link` cycle.
 `core/connectors/auth.js` (2) is already a library by design. The ctx.call cases (8) are places
 where a part reaches into another's state and should ask its tools instead.
+
+## First cleanup: a tailnet lib
+
+Scheduled after the native-core milestone. `core/names/tailscale.js` and
+`core/link/transport.js` move into one small tailnet lib beside the kernel, with no feature state.
+That removes about 10 edges from the list above and ends the `names` and `link` cycle.
