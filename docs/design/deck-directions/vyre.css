@@ -76,6 +76,7 @@
 .vy .btn-p[disabled] { background: var(--hover); border-color: var(--hover); color: var(--label); }
 .btn .k { font-size: 12px; font-weight: 400; color: var(--label); }
 .btn-p .k { color: var(--primary-ink); }
+.vy .btn-p[disabled] .k { color: var(--label); }
 .ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px;
   border: 0; background: transparent; color: var(--text-2); cursor: pointer; padding: 0; flex: none; }
 .ibtn:hover { background: var(--hover); color: var(--text); }

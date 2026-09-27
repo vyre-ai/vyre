@@ -2,169 +2,118 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Vyre Deck, two directions</title>
+<title>Deck B, the system</title>
 <script src="./support.js"></script>
 <link rel="stylesheet" href="vyre.css">
 </head>
 <body>
 <x-dc>
 <helmet>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
-<style>body{margin:0;background:#0E0D0C}</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0E0D0C}
+.sw { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; height: 40px; border-top: 1px solid var(--rule); }
+.sw:first-child { border-top: 0; }
+.sw i { width: 40px; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--rule-strong); }
+.ts { display: grid; grid-template-columns: 96px minmax(0, 1fr) 260px; align-items: baseline; gap: 16px; padding: 14px 0; border-top: 1px solid var(--rule); }
+.kr { display: flex; align-items: center; gap: 12px; height: 36px; border-top: 1px solid var(--rule); }
+.kr:first-child { border-top: 0; }
+</style>
 </helmet>
-<div class="vy t-dark" style="width: 2960px; height: 1400px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0px;">
+<div class="vy t-dark" style="width: 2960px; height: 960px; flex-direction: column; padding: 64px 88px; gap: 40px;">
 
-<div style="padding: 88px 96px; display: flex; flex-direction: column; gap: 56px; border-right: 1px solid var(--rule);">
-  <div class="row" style="gap: 16px;">
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
-    <svg width="95" height="40" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path class="wm" d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-    <div style="width: 1px; height: 28px; background: var(--rule-strong);"></div>
-    <span class="mono" style="font-size: 16px; line-height: 20px; font-weight: 500; letter-spacing: 0.18em; color: var(--text-2);">DECK</span>
-  </div>
-  <div class="col" style="gap: 20px; max-width: 1080px;">
-    <span class="lbl">Polish pass · 27 Sep · for alex to pick one</span>
-    <h1 class="display">Two directions for the Deck. Same colours, same mark, more craft.</h1>
-    <p class="lead" style="font-size: 20px; line-height: 30px; max-width: 900px;">Both keep the Lead mark and the lime signal. They differ in density, navigation and how much the surface holds you. Each screen below is drawn in dark and on paper.</p>
-  </div>
-
-  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px;">
-    <div class="card" style="padding: 28px; display: flex; flex-direction: column; gap: 14px;">
-      <div class="row"><span class="tag">A</span><span class="h3">Instrument</span></div>
-      <p class="body t2">The identity we have, finished properly. A named rail, hairline lists, engraved mono labels and buttons. Dense and quiet, like a well-made tool. Chat reads as one column of type, close to the Claude Code transcript.</p>
-      <div class="hr"></div>
-      <div class="col small t2" style="gap: 8px;">
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Nav</span>240px rail with words and counts</div>
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Buttons</span>Mono caps, as TOKENS says</div>
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Surfaces</span>Rules, not boxes. Cards only for held items</div>
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Best for</span>People who live in it all day</div>
-      </div>
+  <div class="row" style="align-items: flex-end; gap: 48px;">
+    <div class="col" style="gap: 8px; max-width: 1500px;">
+      <span class="lbl">Vyre Deck · Direction B, second pass · 27 Sep 2026</span>
+      <h1 class="t28 w6">B's look, built for daily use: two fonts, five sizes, two weights, two colours.</h1>
+      <p class="t15 t2">Every screen now shows its real states: focused, selected, loading, empty with the action inline, failed with a way out, offline, many items and long names. Every action has a key, and the primary action always sits in the same place.</p>
     </div>
-    <div class="card" style="padding: 28px; display: flex; flex-direction: column; gap: 14px;">
-      <div class="row"><span class="tag">B</span><span class="h3">Studio</span></div>
-      <p class="body t2">Roomier and warmer. An icon rail, a command bar that is always on screen, content held in cards, sentence-case buttons. Chat gets a side panel with the plan, the files that changed and anything waiting on you.</p>
-      <div class="hr"></div>
-      <div class="col small t2" style="gap: 8px;">
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Nav</span>72px icon rail, labels under icons</div>
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Buttons</span>Sans 14/500, sentence case</div>
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Surfaces</span>12px cards on ground, one light edge</div>
-        <div class="row" style="gap: 10px;"><span class="lbl" style="width: 96px;">Best for</span>First week, and people new to agents</div>
-      </div>
+    <div class="col" style="margin-left: auto; gap: 4px; width: 560px;">
+      <span class="lbl">On this canvas</span>
+      <span class="t2">Now · Chat · Agents · Projects · Vault · Settings, each in dark and paper, then States and the attention colour. Direction A is retired.</span>
     </div>
   </div>
 
-  <div class="col" style="gap: 16px;">
-    <span class="lbl">What the pass fixes, in both</span>
-    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 40px;">
-      <div class="row small" style="align-items: flex-start;"><svg class="ic sig" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span><b style="font-weight: 600;">New agent</b> is a guided sheet: a job in plain words, where it works, what wakes it, how careful it is. No database fields.</span></div>
-      <div class="row small" style="align-items: flex-start;"><svg class="ic sig" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span><b style="font-weight: 600;">Every empty state</b> carries its next action inline. No projects yet means a name field, right there.</span></div>
-      <div class="row small" style="align-items: flex-start;"><svg class="ic sig" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span><b style="font-weight: 600;">Chat</b> always has a composer and a session list. Tool calls fold, diffs read, questions and approvals answer in place.</span></div>
-      <div class="row small" style="align-items: flex-start;"><svg class="ic sig" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span><b style="font-weight: 600;">Vault add</b> picks the kind first, seals the value as you paste, and says who may use it.</span></div>
+  <div style="display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 24px; align-items: start;">
+
+    <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column;" aria-label="Type">
+      <div class="row" style="gap: 8px; padding-bottom: 12px;"><span class="t20 w6">Type</span><span class="t2" style="margin-left: auto;">Instrument Sans · JetBrains Mono for code only</span></div>
+      <div class="ts"><span class="mono t12 t3">28 / 34</span><span class="t28 w6 trunc">Good afternoon, alex</span><span class="t12 t2">Spec sheets and first-run heroes. Rare.</span></div>
+      <div class="ts"><span class="mono t12 t3">20 / 26</span><span class="t20 w6 trunc">Harlow Legal</span><span class="t12 t2">Page greeting, detail and sheet titles</span></div>
+      <div class="ts"><span class="mono t12 t3">15 / 22</span><span class="t15 trunc">Found it. The Estate branch skips contactFields.</span><span class="t12 t2">Messages, prose, card titles (600)</span></div>
+      <div class="ts"><span class="mono t12 t3">13 / 18</span><span class="trunc">Allow once · Harlow Legal · Intake form rebuild</span><span class="t12 t2">The default: rows, buttons, fields, the top bar</span></div>
+      <div class="ts"><span class="mono t12 t3">12 / 16</span><span class="t12 trunc">Needs you · kit · 14:21 · ⌘K</span><span class="t12 t2">Labels, meta, counts, shortcuts, rail</span></div>
+      <div class="ts"><span class="mono t12 t3">mono</span><span class="mono trunc">git push origin main · src/intake/schema.ts</span><span class="t12 t2">Commands, code, paths, IDs. 12 or 13.</span></div>
+      <div class="col" style="gap: 6px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule);">
+        <span class="t2"><span class="w6" style="color: var(--text);">Weights:</span> 400 to read, 600 for names, titles, labels and buttons. Nothing else.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Labels:</span> 12/600 sentence case in ash. No mono caps.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Phone:</span> +2 on the 15 and 20 steps (17 and 22). 12, 13 and 28 are shared.</span>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px;" aria-label="Colour">
+      <div class="row" style="gap: 8px;"><span class="t20 w6">Colour</span><span class="t2" style="margin-left: auto;">8 neutrals · lime · violet</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="vy t-dark" style="flex-direction: column; border-radius: 10px; padding: 8px 14px; border: 1px solid var(--rule);">
+          <div class="sw"><i style="background: var(--bg);"></i><span>bg</span><span class="mono t12 t3">#0E0D0C</span></div>
+          <div class="sw"><i style="background: var(--panel);"></i><span>panel</span><span class="mono t12 t3">#161513</span></div>
+          <div class="sw"><i style="background: var(--hover);"></i><span>hover</span><span class="mono t12 t3">#1E1C1A</span></div>
+          <div class="sw"><i style="background: var(--rule);"></i><span>rule</span><span class="mono t12 t3">#2B2926</span></div>
+          <div class="sw"><i style="background: var(--rule-strong);"></i><span>rule-strong</span><span class="mono t12 t3">#3A3733</span></div>
+          <div class="sw"><i style="background: var(--label);"></i><span>label</span><span class="mono t12 t3">#8C877D</span></div>
+          <div class="sw"><i style="background: var(--text-2);"></i><span>text-2</span><span class="mono t12 t3">#B3AEA4</span></div>
+          <div class="sw"><i style="background: var(--text);"></i><span>text</span><span class="mono t12 t3">#F1EEE6</span></div>
+          <div class="sw"><i style="background: var(--primary-bg);"></i><span class="w6">lime</span><span class="mono t12 t3">#C6F36B</span></div>
+          <div class="sw"><i style="background: var(--beacon-dot);"></i><span class="w6 bea">violet</span><span class="mono t12 t3">#B8A4FF</span></div>
+        </div>
+        <div class="vy t-light" style="flex-direction: column; border-radius: 10px; padding: 8px 14px; border: 1px solid var(--rule);">
+          <div class="sw"><i style="background: var(--bg);"></i><span>bg</span><span class="mono t12 t3">#F4F1EA</span></div>
+          <div class="sw"><i style="background: var(--panel);"></i><span>panel</span><span class="mono t12 t3">#FBFAF6</span></div>
+          <div class="sw"><i style="background: var(--hover);"></i><span>hover</span><span class="mono t12 t3">#EEEAE2</span></div>
+          <div class="sw"><i style="background: var(--rule);"></i><span>rule</span><span class="mono t12 t3">#DCD7CC</span></div>
+          <div class="sw"><i style="background: var(--rule-strong);"></i><span>rule-strong</span><span class="mono t12 t3">#C9C3B7</span></div>
+          <div class="sw"><i style="background: var(--label);"></i><span>label</span><span class="mono t12 t3">#6B665D</span></div>
+          <div class="sw"><i style="background: var(--text-2);"></i><span>text-2</span><span class="mono t12 t3">#4A463F</span></div>
+          <div class="sw"><i style="background: var(--text);"></i><span>text</span><span class="mono t12 t3">#141311</span></div>
+          <div class="sw"><i style="background: var(--focus);"></i><span class="w6">lime (focus)</span><span class="mono t12 t3">#46700C</span></div>
+          <div class="sw"><i style="background: var(--beacon-dot);"></i><span class="w6 bea">violet</span><span class="mono t12 t3">#5B3FC4</span></div>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule);">
+        <span class="t2"><span class="w6" style="color: var(--text);">Lime:</span> the primary button, the focus ring, running, a selected row. On paper the button is ink and focus is deep lime.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Violet:</span> "needs you", as a dot, a label or a count. Never a card, a border or a wash.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Everything else is neutral:</span> memory, success, info and errors are words plus an icon.</span>
+      </div>
+    </section>
+
+    <div class="col" style="gap: 24px; min-height: 0;">
+      <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 12px;" aria-label="Rules">
+        <span class="t20 w6">Placement</span>
+        <div class="col" style="gap: 8px;">
+          <span class="t2"><span class="w6" style="color: var(--text);">Page primary</span> at the right end of the top bar, after "need you", with its key (N). Now has none: its composer is the primary.</span>
+          <span class="t2"><span class="w6" style="color: var(--text);">In a card or sheet</span> the actions sit in the footer: primary first, then secondary; Cancel, Deny or Discard pushed right.</span>
+          <span class="t2"><span class="w6" style="color: var(--text);">Drafts</span> edit in place. Only Send and Discard.</span>
+          <span class="t2"><span class="w6" style="color: var(--text);">Cards</span> are panel plus a hairline. No box in a box, except code.</span>
+        </div>
+      </section>
+      <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 8px;" aria-label="Keyboard">
+        <span class="t20 w6" style="padding-bottom: 4px;">Keyboard</span>
+        <div class="col">
+          <div class="kr"><span class="grow">Jump to anything, run a command</span><span class="kbd">⌘K</span></div>
+          <div class="kr"><span class="grow">The page's primary action</span><span class="kbd">N</span></div>
+          <div class="kr"><span class="grow">Next and previous item</span><span class="kbd">J</span><span class="kbd">K</span></div>
+          <div class="kr"><span class="grow">Allow once</span><span class="kbd">A</span></div>
+          <div class="kr"><span class="grow">Deny or discard</span><span class="kbd">D</span></div>
+          <div class="kr"><span class="grow">Send, save, create</span><span class="kbd">⌘⏎</span></div>
+          <div class="kr"><span class="grow">Filter this list</span><span class="kbd">/</span></div>
+          <div class="kr"><span class="grow">Close, cancel, stop editing</span><span class="kbd">Esc</span></div>
+        </div>
+      </section>
     </div>
   </div>
-</div>
-
-<div style="padding: 88px 96px; display: flex; flex-direction: column; gap: 44px;">
-  <div class="col" style="gap: 6px;"><span class="lbl">Shared system · desktop and phone</span><span class="h2">One scale, one set of parts</span></div>
-
-  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px;">
-    <div class="col" style="gap: 14px;">
-      <span class="lbl">Type · Instrument Sans + JetBrains Mono</span>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">H1 44/48</span><span class="h1">Two need you</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">H2 28/34</span><span class="h2">Intake form rebuild</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">H3 20/26</span><span class="h3">What wakes kit</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">Lead 17/26</span><span class="lead">Keys and logins, sealed on alex-box.</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">Body 15/23</span><span class="body">Found it. The Estate branch skips the contact fields.</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">Small 13/18</span><span class="small t2">Harlow Legal · kit · 4 min</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">Micro 12/16</span><span class="micro t3">Used 14:19 by juno</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">Label 11</span><span class="lbl">Needs you</span></div>
-      <div class="row" style="align-items: baseline; gap: 20px;"><span class="mono t3 micro" style="width: 92px;">Code 13/20</span><span class="code">Edit(src/intake/schema.ts)</span></div>
-    </div>
-
-    <div class="col" style="gap: 14px;">
-      <span class="lbl">Colour roles · meaning, not decoration</span>
-      <div class="row"><span style="width: 36px; height: 36px; border-radius: 8px; background: #C6F36B; flex: none;"></span><div class="col"><span class="small" style="font-weight: 600;">Signal</span><span class="micro t2">Focus, the one primary action per view, running</span></div></div>
-      <div class="row"><span style="width: 36px; height: 36px; border-radius: 8px; background: #B8A4FF; flex: none;"></span><div class="col"><span class="small" style="font-weight: 600;">Attention</span><span class="micro t2">Needs you: held calls, questions, approvals. Nothing else</span></div></div>
-      <div class="row"><span style="width: 36px; height: 36px; border-radius: 8px; background: #EBC76B; flex: none;"></span><div class="col"><span class="small" style="font-weight: 600;">Recall</span><span class="micro t2">Came from memory, no model used</span></div></div>
-      <div class="row"><span style="width: 36px; height: 36px; border-radius: 8px; background: rgba(198,243,107,0.12); border: 1px solid #3A3733; flex: none;"></span><div class="col"><span class="small" style="font-weight: 600;">Signal wash</span><span class="micro t2">Selected row, added diff line</span></div></div>
-      <div class="row"><span style="width: 36px; height: 36px; border-radius: 8px; background: rgba(140,135,125,0.14); border: 1px solid #3A3733; flex: none;"></span><div class="col"><span class="small" style="font-weight: 600;">Ash wash</span><span class="micro t2">Removed diff line. Never red: red would mean "needs you"</span></div></div>
-      <div class="row" style="gap: 6px; margin-top: 6px;">
-        <span style="width: 44px; height: 24px; border-radius: 4px; background: #0E0D0C; border: 1px solid #3A3733;"></span>
-        <span style="width: 44px; height: 24px; border-radius: 4px; background: #161513; border: 1px solid #3A3733;"></span>
-        <span style="width: 44px; height: 24px; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733;"></span>
-        <span style="width: 44px; height: 24px; border-radius: 4px; background: #F4F1EA;"></span>
-        <span style="width: 44px; height: 24px; border-radius: 4px; background: #FBFAF6;"></span>
-        <span class="micro t3" style="margin-left: 8px;">ground, panel, hover · paper, paper panel</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="col" style="gap: 14px;">
-    <span class="lbl">Icons · 16 grid, 1.5 stroke, round caps, drawn inline in currentColor</span>
-    <div class="row" style="gap: 22px; color: var(--text-2);">
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 4l4 4-4 4M8.5 12.5h5"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-8 8h-3v-3z"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.5 6-5.5 7-3-1-5.5-3.5-5.5-7v-4z"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="5" cy="11" r="2.5"></circle><path d="M7 9l6.5-6.5M11 4.5l1.5 1.5"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"></rect><path d="M2 4.5l6 4.5 6-4.5"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v3l2 1.5"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="4" cy="3.5" r="1.5"></circle><circle cx="4" cy="12.5" r="1.5"></circle><circle cx="12" cy="5.5" r="1.5"></circle><path d="M4 5v6M12 7c0 3-4 2.5-7.5 4.5"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"></rect><path d="M5.5 14h5M8 11.5V14"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3z"></path><path d="M6.5 14h3"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>
-      <svg class="ic ic-20" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg>
-    </div>
-  </div>
-
-  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px;">
-    <div class="col" style="gap: 14px;">
-      <span class="lbl">Parts</span>
-      <div class="row" style="flex-wrap: wrap; gap: 10px;">
-        <button class="btn btn-p">Allow once</button><button class="btn">Always in Harlow Legal</button><button class="btn btn-g">Discard</button>
-      </div>
-      <div class="row" style="flex-wrap: wrap; gap: 10px;">
-        <button class="sbtn sbtn-p">Create agent</button><button class="sbtn">Preview</button><button class="sbtn sbtn-g">Cancel</button>
-      </div>
-      <div class="row" style="flex-wrap: wrap; gap: 10px;">
-        <span class="chip chip-on">Harlow Legal</span><span class="chip">Northwind Bakery</span><span class="tag">API KEY</span><span class="pill-need"><span class="dot dot-need"></span>2 need you</span>
-      </div>
-      <div class="row" style="gap: 14px;">
-        <span class="av">k</span><span class="av">j</span><span class="av-p">AL</span>
-        <span class="av-v"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path class="mk-w" d="M2.5 4L8 13L11.52 7.24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="13.5" cy="4" r="1.8"></circle></svg></span>
-        <span class="dot dot-run"></span><span class="dot dot-need"></span><span class="dot dot-idle"></span>
-        <span class="tog tog-on"></span><span class="tog"></span>
-        <span class="seg"><button class="on">Dark</button><button>Paper</button><button>System</button></span>
-      </div>
-    </div>
-    <div class="col" style="gap: 12px;">
-      <span class="lbl">Rhythm and motion</span>
-      <div class="small t2" style="display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 16px;">
-        <span class="mono t3">Space</span><span>4 base. 8, 12, 16, 24, 32, 48, 72. Lists breathe at 56 rows.</span>
-        <span class="mono t3">Radius</span><span>4 chips, 6 buttons and inputs, 10 cards, 12 composer, 14 windows and sheets</span>
-        <span class="mono t3">Hover</span><span>120ms ease-out, background only</span>
-        <span class="mono t3">Expand</span><span>180ms ease-out on height and chevron. Tool cards, sheets</span>
-        <span class="mono t3">Stream</span><span>Text lands in words, never letters. Signal caret blinks at 1s</span>
-        <span class="mono t3">Arrive</span><span>New held item slides 8px and fades in 200ms. Nothing bounces</span>
-        <span class="mono t3">Reduced</span><span>All of the above become instant; the caret holds still</span>
-      </div>
-    </div>
-  </div>
-</div>
-
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2960,"height":1400}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2960,"height":960}}'>
 class Component extends DCLogic {
   renderVals() { return {}; }
 }

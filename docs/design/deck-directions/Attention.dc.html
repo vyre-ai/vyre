@@ -2,115 +2,93 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Attention colour options</title>
+<title>Attention colour</title>
 <script src="./support.js"></script>
 <link rel="stylesheet" href="vyre.css">
 </head>
 <body>
 <x-dc>
 <helmet>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
 <style>body{margin:0;background:#0E0D0C}</style>
 </helmet>
-<div class="vy t-dark" style="width: 2960px; height: 1560px; flex-direction: column; padding: 72px 88px; gap: 40px;">
+<div class="vy t-dark" style="width: 2960px; height: 1060px; flex-direction: column; padding: 72px 88px; gap: 40px;">
 
   <div class="row" style="align-items: flex-end; gap: 48px;">
-    <div class="col" style="gap: 12px; max-width: 1500px;">
-      <span class="lbl">Replacing coral · pick one · every pair below passes WCAG AA</span>
-      <h1 class="h1">"Needs you" gets a new colour. Coral is gone everywhere.</h1>
-      <p class="lead">Three options, each shown in the places attention appears: the pill, the rail badge, a nav count, a Needs row and a held block. Lime stays for focus and running. Gold stays for memory.</p>
+    <div class="col" style="gap: 8px; max-width: 1400px;">
+      <span class="lbl">Attention colour · every pair passes WCAG AA</span>
+      <h1 class="t28 w6">"Needs you" is violet. Teal is the one alternative.</h1>
+      <p class="t15 t2">It appears only as a dot, a label and a count. Cards, rows and held blocks stay neutral. Lime keeps primary actions, focus and running. There is no third colour.</p>
     </div>
-    <div class="card" style="margin-left: auto; padding: 20px 24px; width: 720px; display: flex; flex-direction: column; gap: 8px;">
-      <div class="row"><span class="dot" style="background: #B8A4FF;"></span><span class="h4">Recommended: Violet</span></div>
-      <p class="small t2">It sits opposite lime on the wheel and far from memory's gold, so a glance tells running, remembered and needs-you apart. Honey is lovely, but it is within a few degrees of the gold used for memory (#EBC76B): picking it means moving memory to another colour. Teal reads close to lime's "running" at small sizes.</p>
+    <div class="card" style="margin-left: auto; padding: 20px 24px; width: 760px; display: flex; flex-direction: column; gap: 8px;">
+      <div class="row" style="gap: 8px;"><span class="dot dot-need"></span><span class="t15 w6">Recommended: violet</span></div>
+      <p class="t2">It sits opposite lime on the wheel, so running and needs-you never read alike, even at 8px. Teal is clear and passes every pair, but next to lime's running dot it reads as the same family at small sizes.</p>
     </div>
   </div>
 
-  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;">
-    <sc-for list="{{cells}}" as="c" hint-placeholder-count="6">
-      <div class="vy {{c.cls}}" style="flex-direction: column; border-radius: 14px; border: 1px solid var(--rule); padding: 24px; gap: 16px; height: 520px;">
-        <div class="row">
-          <span class="h3">{{c.name}}</span><span class="tag">{{c.theme}}</span>
-          <span class="mono micro t3" style="margin-left: auto;">{{c.hex}}</span>
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px;">
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="4">
+      <div class="vy dB {{c.cls}}" style="flex-direction: column; border-radius: 14px; border: 1px solid var(--rule); padding: 24px; gap: 20px; height: 560px;">
+        <div class="row" style="gap: 8px;">
+          <span class="t20 w6">{{c.name}}</span><span class="tag">{{c.theme}}</span>
+          <span class="mono t12 t3" style="margin-left: auto;">{{c.hex}}</span>
         </div>
+
         <div class="row" style="gap: 16px;">
-          <span class="pill-need"><span class="dot dot-need"></span>2 need you</span>
-          <div class="dB" style="display: flex;">
-            <a class="rb" href="#" style="background: var(--panel); border: 1px solid var(--rule);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="rb-badge">2</span></a>
-          </div>
-          <div class="dA" style="width: 200px;">
-            <a class="nav nav-on" href="#"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="nav-need">2</span></a>
-          </div>
+          <a class="needs" href="#" style="padding: 0;"><span class="dot dot-need"></span>4 need you</a>
+          <a class="rb" href="#" style="border: 1px solid var(--rule);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">4</span></a>
         </div>
-        <div class="row" style="gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);">
-          <span class="dot dot-need"></span>
-          <span class="av">j</span>
-          <div class="col grow"><span class="small" style="font-weight: 600;">juno's email to Harlow Legal is held</span><span class="micro t3">Q3 report, the short version · 13:58</span></div>
-          <span class="lbl bea">Needs you</span>
+
+        <div class="list">
+          <div class="li"><span class="dot dot-need"></span><span class="lbl bea" style="width: 76px;">Permission</span><span class="grow trunc w6">Allow kit to push to main?</span><span class="t12 t3">14:21</span></div>
+          <div class="li"><span class="dot dot-run"></span><span class="lbl" style="width: 76px;">Running</span><span class="grow trunc">Holiday menu copy</span><span class="t12 t3">14:02</span></div>
+          <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="lbl" style="width: 60px;">Done</span><span class="grow trunc">Weekly Northwind update</span><span class="t12 t3">12:10</span></div>
         </div>
-        <div class="gate">
-          <div class="row" style="padding: 12px 16px 6px; gap: 10px;"><span class="dot dot-need"></span><span class="lbl bea">Held · needs you</span><span class="msg-time" style="margin-left: auto;">14:21</span></div>
-          <div class="gate-cmd">git push origin main</div>
-          <p class="small t2" style="padding: 8px 16px 0;">kit is waiting on you. Your rule held this push to Harlow Legal's main branch.</p>
-          <div class="row" style="padding: 12px 16px 14px; gap: 8px;">
-            <button class="btn btn-p btn-sm">Allow once</button><button class="btn btn-sm">Always in Harlow Legal</button><button class="btn btn-g btn-sm">Deny</button>
+
+        <article class="card" style="display: flex; flex-direction: column;">
+          <div class="card-h"><span class="dot dot-need"></span><span class="lbl bea">Permission</span><span class="t12 t3" style="margin-left: auto;">kit · 14:21</span></div>
+          <div class="col" style="padding: 0 16px; gap: 4px;"><span class="t15 w6">Allow kit to push to main?</span><span class="t2">Harlow Legal · Intake form rebuild</span></div>
+          <div class="code" style="margin: 12px 16px 16px;">git push origin main</div>
+          <div class="card-f"><button class="btn btn-p">Allow once<span class="k">A</span></button><button class="btn">Always in Harlow Legal</button><button class="btn btn-g" style="margin-left: auto;">Deny</button></div>
+        </article>
+
+        <div class="col" style="gap: 8px; margin-top: auto;">
+          <div class="row t12 t2" style="gap: 16px;">
+            <span class="row" style="gap: 6px;"><span class="dot dot-run"></span>running</span>
+            <span class="row" style="gap: 6px;"><span class="dot dot-need"></span>needs you</span>
+            <span class="row" style="gap: 6px;"><span class="dot dot-idle"></span>idle</span>
           </div>
-        </div>
-        <div class="row micro t3" style="gap: 14px; margin-top: auto;">
-          <span class="row" style="gap: 6px;"><span class="dot dot-run"></span>running</span>
-          <span class="row" style="gap: 6px;"><span class="dot" style="background: var(--recall);"></span>memory</span>
-          <span class="row" style="gap: 6px;"><span class="dot dot-need"></span>needs you</span>
-          <span class="mono" style="margin-left: auto;">{{c.ratios}}</span>
+          <span class="mono t12 t3">{{c.ratios}}</span>
         </div>
       </div>
     </sc-for>
   </div>
 
-  <div class="card" style="padding: 28px 32px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px;">
-    <div class="col" style="gap: 10px;">
-      <span class="lbl">Errors and destructive actions · no red</span>
-      <p class="small t2">A failure is a fact, not an alarm. It reads in text colour with a crossed-circle glyph and a "failed" label. It takes the attention colour only when you have to act. Destroying things is slowed down by words and a second step, never by colour.</p>
+  <div class="card" style="padding: 24px 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px;">
+    <div class="col" style="gap: 6px;">
+      <span class="lbl">No red, anywhere</span>
+      <p class="t2">A failure is a fact, not an alarm: a crossed-circle icon, plain words and a way out (Retry, Open doctor). It takes violet only when you have to act on it.</p>
     </div>
-    <div class="col" style="gap: 10px;">
-      <span class="lbl">A failed run</span>
-      <div class="tool">
-        <div class="tool-h" style="cursor: default;">
-          <svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg>
-          <span class="tool-name">Bash</span><span class="tool-arg">npm run deploy</span>
-          <span class="tag" style="margin-left: auto;">FAILED</span>
-        </div>
-        <div class="tool-b"><div class="out" style="color: var(--text);">Error: RAILWAY_TOKEN is not set</div></div>
-      </div>
-      <span class="micro t3">Shown in text colour. Becomes attention only if kit is now waiting on you to fix it.</span>
+    <div class="col" style="gap: 6px;">
+      <span class="lbl">Destructive actions</span>
+      <p class="t2">Slowed down by words and a second step ("Delete Harlow Legal? Type its name"), never by colour.</p>
     </div>
-    <div class="col" style="gap: 10px;">
-      <span class="lbl">A destructive confirm</span>
-      <div class="panel" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
-        <span class="h4">Delete Northwind Bakery?</span>
-        <span class="small t2">This removes 214 files, 41 memories and 3 sessions from alex-box. It cannot be undone.</span>
-        <div class="row" style="gap: 8px;">
-          <button class="btn btn-sm" style="border-color: var(--text); font-weight: 600;">Delete 214 files</button>
-          <button class="btn btn-g btn-sm">Keep it</button>
-          <span class="micro t3" style="margin-left: auto;">Hold to confirm, 0.6s</span>
-        </div>
-      </div>
-      <span class="micro t3">Outline in text colour, the count in the label, a hold to confirm. The safe choice is never the primary fill.</span>
+    <div class="col" style="gap: 6px;">
+      <span class="lbl">Honey is out</span>
+      <p class="t2">Dropped at your request. Memory no longer has a colour of its own either: it is a neutral row with the memory icon.</p>
     </div>
   </div>
-
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2960,"height":1560}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2960,"height":1060}}'>
 class Component extends DCLogic {
   renderVals() {
     return {
       cells: [
-        { cls: 't-dark att-violet', name: 'Violet', theme: 'DARK', hex: '#B8A4FF', ratios: '9.1:1 on ground · 7.5:1 on wash' },
-        { cls: 't-dark att-honey', name: 'Honey', theme: 'DARK', hex: '#F2B84B', ratios: '10.9:1 on ground · 8.8:1 on wash' },
-        { cls: 't-dark att-teal', name: 'Teal', theme: 'DARK', hex: '#5FD4C4', ratios: '10.8:1 on ground · 8.8:1 on wash' },
-        { cls: 't-light att-violet', name: 'Violet', theme: 'PAPER', hex: '#5B3FC4', ratios: '6.3:1 on paper · 5.6:1 on wash' },
-        { cls: 't-light att-honey', name: 'Honey', theme: 'PAPER', hex: '#8A5A00', ratios: '5.3:1 on paper · 4.7:1 on wash' },
-        { cls: 't-light att-teal', name: 'Teal', theme: 'PAPER', hex: '#0B6E66', ratios: '5.4:1 on paper · 4.9:1 on wash' }
+        { cls: 't-dark', name: 'Violet', theme: 'Dark', hex: '#B8A4FF', ratios: '9.1:1 on ground · 8.5:1 on a card · count 9.1:1' },
+        { cls: 't-light', name: 'Violet', theme: 'Paper', hex: '#5B3FC4', ratios: '6.3:1 on paper · 6.8:1 on a card · count 6.3:1' },
+        { cls: 't-dark att-teal', name: 'Teal', theme: 'Dark', hex: '#5FD4C4', ratios: '10.8:1 on ground · 10.2:1 on a card · count 10.8:1' },
+        { cls: 't-light att-teal', name: 'Teal', theme: 'Paper', hex: '#0B6E66', ratios: '5.4:1 on paper · 5.9:1 on a card · count 5.4:1' }
       ]
     };
   }
