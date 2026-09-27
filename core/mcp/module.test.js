@@ -344,6 +344,11 @@ test("mcp: hold and on_behalf are for modules only", async t => {
   assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "a" }, on_behalf: { thread: "t-none" } })).error.code, "bad_input");
   assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "b" }, on_behalf: { thread: "t-9", agent: "juno" } })).error.code, "denied");
   assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c" }, on_behalf: { thread: "t-8", agent: "kit" } })).error.code, "denied");
+  // An agent named with no thread must exist.
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c2" }, on_behalf: { agent: "nobody" } })).error.code, "bad_input");
+  assert.ok((await v.cli("agents.create", { name: "kit" })).data);
+  const onlyAgent = await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c3" }, on_behalf: { agent: "kit" } });
+  assert.equal((await gateGet(onlyAgent.data.held)).agent, "kit", JSON.stringify(onlyAgent));
 
   // A module label the loader does not count as shipped is refused, and passing firstParty in
   // changes nothing: the registry sets it.

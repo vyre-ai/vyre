@@ -8,7 +8,8 @@
 //   person's CLI) is refused, not quietly ignored, so a mistake shows.
 // - A thread must exist, and when it belongs to an agent, the agent named must be that one. A
 //   mismatch is refused rather than filed, so a held item never lands in someone else's chat.
-// No state; the one lookup goes through the `call` it is given (threads.get).
+// - An agent named without a thread must exist (agents.list).
+// No state; the one lookup goes through the `call` it is given (threads.get or agents.list).
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 const named = v => (typeof v === "string" && v ? v : undefined);
@@ -24,7 +25,14 @@ export async function checkBehalf(call, meta, behalf) {
   if (!meta || meta.firstParty !== true) throw fail("on_behalf is for Vyre's own modules only", "denied");
   if (typeof behalf !== "object") throw fail("on_behalf must be { thread, agent }");
   const thread = named(behalf.thread), agent = named(behalf.agent);
-  if (!thread) return agent ? { agent } : null;
+  if (!thread) {
+    if (!agent) return null;
+    // An agent with no thread must still be one vyred knows, so no made-up name lands on an item.
+    const r = await call("agents.list", {});
+    const list = r && Array.isArray(r.data) ? r.data : [];
+    if (!list.some(a => a && a.name === agent)) throw fail(`on_behalf names agent ${agent.slice(0, 64)}, which does not exist`);
+    return { agent };
+  }
   const r = await call("threads.get", { thread, limit: 1 });
   const rec = r && r.data && (r.data.thread || r.data);
   if (!rec || r.error) throw fail(`on_behalf names thread ${thread.slice(0, 64)}, which does not exist`);
