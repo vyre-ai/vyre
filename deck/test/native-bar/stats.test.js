@@ -57,3 +57,15 @@ test("the burst is deterministic, has a fence, a list and a table, and batches o
   const r = rng(1);
   assert.ok(r() >= 0 && r() < 1);
 });
+
+test("thresholdP95 is exact when enough events were reported, and a bound when not", async () => {
+  const { thresholdP95 } = await import("./stats.js");
+  // 200 events, 20 reported at 16..35: rank 190 is the 10th reported value.
+  const rep = Array.from({ length: 20 }, (_, i) => 16 + i);
+  assert.deepEqual(thresholdP95(rep, 200, 16), { value: 25, under: false });
+  // 10 reported of 200: rank 190 falls among the unreported, so the p95 is under 16.
+  assert.deepEqual(thresholdP95(rep.slice(0, 10), 200, 16), { value: null, under: true });
+  assert.deepEqual(thresholdP95([], 200, 16), { value: null, under: true });
+  // values under the threshold in the list are not counted as reported
+  assert.deepEqual(thresholdP95([3, 40], 2, 16), { value: 40, under: false });
+});
