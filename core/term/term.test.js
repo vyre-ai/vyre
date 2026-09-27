@@ -76,6 +76,8 @@ async function registry(t, term = {}, o = {}) {
   return { reg, work, events, root, stop, handle: reg.modules.get("term")?.handle };
 }
 
+/** The person session vyred's router sets for a signed-in Deck over the tailnet (core/presence/person.js). */
+const PERSON = { id: "s1", kind: "cookie" };
 const ok = async (reg, tool, input, caller = "deck", meta = {}) => {
   const r = await reg.call(tool, input, caller, meta);
   if (r.error) throw new Error(`${tool}: ${r.error.code} ${r.error.message}`);
@@ -164,6 +166,17 @@ const lastAt = async c => { await wait(1300); const all = c.msgs.filter(m => m.t
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+test("term: a surface is <kind>:<name>; the CLI opens as cli:<name>, and a bare kind says what is missing", async t => {
+  const { reg, work } = await registry(t);
+  const bare = await reg.call("term.open", { cwd: work, surface: "cli" }, "cli");
+  assert.equal(bare.error?.code, "bad_input");
+  assert.match(bare.error.message, /"cli" needs a name after it, such as cli:<tty or pid>/);
+  assert.match((await reg.call("term.open", { cwd: work, surface: "laptop" }, "cli")).error?.message, /deck, phone, capsule, glass or cli/);
+  const o = await ok(reg, "term.open", { cwd: work, surface: "cli:ttys007" }, "cli");
+  await ok(reg, "term.attach", { term: o.term, surface: "cli:ttys007" }, "cli");
+  assert.equal((await reg.call("term.attach", { term: o.term, surface: "cli:ttys008" }, "cli")).error?.code, "not_found", "another terminal is another screen");
+});
+
 test("term: only a person's surfaces may use it; a tailnet guest and an agent are refused", async t => {
   const { reg, work } = await registry(t);
   for (const caller of ["tailnet-guest:someone@example.com", "mcp", "mcp:agent:kit", "anonymous"]) {
@@ -184,9 +197,9 @@ test("term: the owner opens a terminal with no passkey, and only the screen that
   // Another screen, another caller or another tailnet node cannot pick it up.
   assert.equal((await reg.call("term.attach", { term: o.term, surface: "phone:zzz999" }, "deck")).error?.code, "not_found");
   assert.equal((await reg.call("term.attach", { term: o.term, surface: DECK }, "cli")).error?.code, "not_found");
-  const p = await ok(reg, "term.open", { cwd: work, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } });
-  assert.equal((await reg.call("term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "not_found");
-  await ok(reg, "term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } });
+  const p = await ok(reg, "term.open", { cwd: work, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON });
+  assert.equal((await reg.call("term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "not_found");
+  await ok(reg, "term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON });
 });
 
 test("term: cwd must pass the files guard", async t => {
@@ -464,14 +477,55 @@ test("term: a terminal the box lost while vyred was down (a deploy) answers term
   const { reg, events, work, stop } = await registry(t, {}, { root });
   const closed = events.since(0, { type: "term.closed", limit: 10 });
   assert.deepEqual(closed.map(e => e.payload), [{ term: "tlost", reason: "box updated" }]);
-  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON });
   assert.equal(r.error?.code, "terminal_closed");
   assert.match(r.error.message, /box was updated/);
   // Another screen still learns nothing about it.
-  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } })).error?.code, "not_found");
+  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON })).error?.code, "not_found");
   // And it is remembered across the next restart, without a second announcement.
   await stop();
   const again = await registry(t, {}, { root, work });
-  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "terminal_closed");
+  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "terminal_closed");
   assert.equal(again.events.since(0, { type: "term.closed", limit: 10 }).length, 1);
+});
+
+test("term: one socket owns the size; take moves it, and the oldest left takes over at its own size", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  const { reg, work, handle } = await registry(t);
+  const port = await server(t, reg);
+  const o = await ok(reg, "term.open", { cwd: work, surface: DECK, cols: 100, rows: 30 });
+  const pty = () => handle.terms.get(o.term).pty;
+  const sizeOf = (c, pred) => c.untilMsg(m => m.t === "size" && pred(m));
+  const laptop = await connect(port, o.path + "&from=0");
+  await sizeOf(laptop, m => m.owner === true && m.cols === 100);
+  laptop.send({ t: "size", cols: 120, rows: 40 });
+  await sizeOf(laptop, m => m.owner === true && m.cols === 120 && m.rows === 40);
+  assert.deepEqual([pty().cols, pty().rows], [120, 40]);
+
+  const re = await ok(reg, "term.attach", { term: o.term, surface: DECK, from: 0 });
+  const phone = await connect(port, re.path);
+  await sizeOf(phone, m => m.owner === false && m.cols === 120);
+  // A size from a socket that does not own it is kept, not applied.
+  phone.send({ t: "size", cols: 50, rows: 20 });
+  await wait(200);
+  assert.deepEqual([pty().cols, pty().rows], [120, 40]);
+
+  // An old client (no from=) never gets text frames and does not change who owns the size.
+  const old = await connect(port, (await ok(reg, "term.attach", { term: o.term, surface: DECK })).path);
+  await wait(200);
+  assert.deepEqual(old.msgs, []);
+
+  // Take size: the phone owns it at the size it asked for; the laptop is told it does not.
+  laptop.msgs.length = 0;
+  phone.send({ t: "take" });
+  await sizeOf(phone, m => m.owner === true && m.cols === 50 && m.rows === 20);
+  await sizeOf(laptop, m => m.owner === false && m.cols === 50);
+  assert.deepEqual([pty().cols, pty().rows], [50, 20]);
+
+  // The phone leaves: the laptop, the oldest still here, owns it again at its own size.
+  laptop.msgs.length = 0;
+  phone.sock.destroy();
+  await sizeOf(laptop, m => m.owner === true && m.cols === 120 && m.rows === 40);
+  assert.deepEqual([pty().cols, pty().rows], [120, 40]);
+  assert.deepEqual(old.msgs, [], "the old client still got no text frames");
+  laptop.sock.destroy(); old.sock.destroy();
 });

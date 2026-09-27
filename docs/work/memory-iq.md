@@ -47,6 +47,38 @@ Attributes: `name` (me|name|lit:Alex, kin:spouse|name|lit:Jordan), `birthday`, `
 `from`, `works_at`, `role`, `owns` (vehicles and other things), `drives`, `client`, `uses`,
 `prefers`.
 
+### The reader (27 Sep; lead-approved budget)
+
+- Every user turn with a personal signal (reader.js signal(): first person plus a life word or
+  "im in X") waits in memory_me_queue, keyed by the hash of the text and VERSION. The fast model
+  (config.models.memory, then .background, then config.memory.model.model, then haiku) reads 20
+  at a time through `claude -p` (no tools, MCP, settings or session kept), newest first.
+- Budget: config.memory.model {on, dailyUsd 0.25, backfillUsd 2 (one-time pool), batch 20, gapMs
+  >= 60 s}. It runs on events only, never while a user thread works. Spend is what the runner
+  reports. The usage line is memory.read and `vyre status`.
+- Check (checkRead): the quote must be in ownText(turn), and the subject and object must be
+  said there. Relations are the vocabulary of model.js plus sold (-> ended:owns) and color (a
+  vehicle's). method "model", at most 0.8. Kept in memory_me_reads by hash, so it is applied
+  again with no call.
+- Eval: test/eval/reads/<world>.json replays the reads. `--record` records them with `claude -p`
+  (testbox), and the sealed world is recorded without anyone reading the file.
+
+### Round 1 additions (27 Sep, the contract both halves build against)
+
+- Relations: `diet` (me|diet|lit:vegetarian; single-valued), `breed` (a pet|breed|lit:beagle;
+  single-valued), `friend` (me|friend|kin:friend or name:<Name>, many). A relative's own
+  attributes use the existing relations with the relative as subject: kin:spouse|role|lit:nurse,
+  kin:mother|lives_in|place:Tucson, kin:spouse|works_at|org:<Org>.
+- Kin words gain friend: friend, buddy, mate (only as "my mate"), pal, bestie -> role `friend`
+  (not singular: each named friend is name:<Name>).
+- Vehicles: trucks, vans, motorbikes are vehicles; owns/drives/ended:owns as for cars.
+- Answer kinds: `of {who: {kin?|name?}, rel}` (a relative's or named person's attribute),
+  `diet`, `car` also for truck/van/suv/pickup/bike, `carFate {car}` ("what happened to the
+  outback"), friend questions through `kin` with role friend.
+- Evaluation discipline: rules are written for the general phrasing with the agent's own varied
+  test sentences, never by copying a world's sentence. test/fixtures/personal-fresh.js and
+  test/eval/answer-fresh.json are SEALED: never opened, only scored.
+
 ### Confidence
 
 Per claim by method: explicit rule 0.9, indirect rule 0.7, model 0.75, assistant's words 0.35.
@@ -85,22 +117,47 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
-## Doing
-- Held-out extraction gaps: pasted and quoted email text taken as the user's words (Claire),
-  and lowercase names, nicknames (hubby, "robin and i"), "the mazda", and moves ("moved to
-  leeds") missed.
+## Doing (SAVED 27 Sep, before a restart)
+- RC handed to the integrator: work/memory-iq 1a76d383, the leak fix via e2e's transcriptFolders
+  (88c90d56 merged; recall readable() wraps it), source trust, memory.retrieve/ask/suggest,
+  recall.search {prefix}, eval-iq and the iq worlds, and ADR 0034 amended (status stable). After
+  it: 7b48652d, memory.ask's cap at $0.50/day, with limited plus a message at the cap (the lead
+  asked for this in the next RC). Tests at 1a76d383: 319 + 71 pass on testbox. ask.test.js's new
+  cap assertions have NOT run yet.
+- The open-world memory.ask re-record with prompt v2 (ask.js VERSION 2) was running on testbox
+  (the test box's memory-iq copy, `node scripts/eval-iq.js --world open --answer --record`) and was stopped
+  for the restart. Rerun that command: it keeps the replies already recorded. Then scp
+  test/eval/asks/open.json back and commit it. v1 numbers: accuracy 0.722, confident-wrong 7
+  (4 of them over-literal golds, now widened), abstained 0.40, ungrounded 0, inconsistent 0, about
+  $0.003 a question.
+- Scores (replayed reads): personal 1.0, heldout 1.0, blind 0.959, fresh 0.76, trust 1.0,
+  sealed 0.551 with 7 confident wrong (was 0.577 with 6). Two sealed answers were lost because
+  Claude's words no longer count. Not tuned on sealed.
+- Retrieval (memory.retrieve, real MiniLM): recall@8 open 0.833, sealed 0.638. Graph expansion
+  adds 0 on both, but the graph stays (a pillar). Dense weight stays 0.25 (lead). Sealed stays sealed.
+- memory.ask runs on sessions' threads.quick (work/sessions db4af9c3, lands after batch 4), else
+  `claude -p`. threads.quick sessions write no transcript (sessions c6663f14), and <home>/quick is
+  skipped as a second guard.
 
 ## Next
-- Get held-out to 0.9 without regressing gold. Then write a third, unseen world so the score
-  still means something.
-- CI step for `npm run eval:answer` (both worlds), ADR 0023, contract notes for capsule-pro, pwa
-  and mobile.
+- Finish the v2 re-record, report accuracy and cost to the lead, commit asks/open.json, and hand
+  the integrator a new RC sha containing 7b48652d.
+- Run core/memory/iq/ask.test.js (only when uptime is under 6, nice 15, --test-timeout).
+- Record the sealed world's asks without reading them (eval-iq --world sealed --answer --record).
+- Phase 4: the second look for people answers, and an answer cache by fact-set version. Phase 5:
+  latency on threads.quick; memory.ask in the Capsule, Chat and the phone.
+- "Before" for places: its confidence is the current place's, so a wrong past place comes back
+  confident (sealed place-history).
+- The full backfill cost (about $1.50 to $2.60) waits for the user's yes, via the lead.
 
 ## Needs from others
+- main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
+  backfill of about $2, then about $0.25/day, configurable), and recording eval fixtures with `claude -p`.
+- sessions: the per-purpose model map location and the one-shot background job call. Also
+  per-turn memory.answer or a combined memory.context tool (message sent 27 Sep).
 - polish-cli: the contract of the low-priority index worker. Until then extraction runs in the
   memory curator's background pass, in bounded batches that yield.
-- main/integrator: core/memory/rooms.test.js:227 fails on main's code. agents.create now needs
-  presence ("Making or changing an agent needs a person"), and the test does not provide it.
 
 ## Changed contracts
+- core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
 - New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).

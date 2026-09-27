@@ -78,6 +78,8 @@ public protocol CapsuleExtension: AnyObject {
     func sidePanel(for item: ResultItem?) -> AnyView?
     /// A chord from keyChords was pressed.
     func handle(chord: KeyShortcut, query: Query) -> Bool
+    /// A key came up while the Capsule is key (Return, for hold-to-talk). True if it was yours.
+    func handleUp(key: String) -> Bool
 
     /// The words in the box or the chip changed (a key, a pick, a chip dropped). Forget anything
     /// that was waiting for a second Enter on the old ones. The default does nothing.
@@ -108,6 +110,7 @@ public extension CapsuleExtension {
         await send(text, to: target, query: query)
     }
     func handle(chord: KeyShortcut, query: Query) -> Bool { false }
+    func handleUp(key: String) -> Bool { false }
     func boxChanged() {}
     func capsuleWillShow(front: FrontApp?) {}
     func capsuleDidHide() {}
@@ -148,7 +151,7 @@ public extension VyredLink {
     }
 }
 
-/// Something an extension offers to add to words on their way out ("with your screen: Safari ·
+/// Something an extension offers to add to words on their way out ("sees: Safari ·
 /// Northwind Bakery"). Shown as a chip before sending; one key or a click on its x removes it;
 /// nothing is ever attached without the chip on screen.
 public struct SendAttachment: Sendable, Equatable {
@@ -293,6 +296,9 @@ public protocol CapsuleHost: AnyObject {
     func hidePanel()
     /// Put the text in the box, as if the user typed it.
     func setQuery(_ text: String)
+    /// Words being spoken into the box. While `final` is false nothing is asked on its own; the
+    /// final words are then submitted as ⏎ would (a question answers, a follow-up continues).
+    func dictate(_ text: String, final: Bool)
     /// A line under the box, for a moment ("Copied", "No window in front").
     func say(_ line: String)
     /// Hide the Capsule and wait until `front` is frontmost again (up to 800 ms). True if it is.
@@ -311,15 +317,44 @@ public protocol CapsuleHost: AnyObject {
     /// 'on my way' to Dana in WhatsApp"). A live presence session covers it without asking when
     /// the tool may ride one. Esc or a refusal comes back as `.failure(code: "presence")`.
     func prove(tool: String, input: [String: Any], summary: String) async -> VyredResult
+
+    /// A module needs a key or a login: the Capsule shows "Add your <label>" in the panel with a
+    /// secure field, saves it through the vault as the person, then calls `saved`. Never a
+    /// terminal command to run (the user, 2026-09-27). See Host/Credentials.swift.
+    func askCredential(_ need: CredentialNeed, saved: @escaping @MainActor () -> Void)
+}
+
+/// What a module needs saved in the vault: vault's need (module + need id, ADR 0028 decision 9),
+/// and for a vyred without vault.connect, the item name the module reads.
+public struct CredentialNeed: Sendable, Equatable {
+    public struct Field: Sendable, Equatable {
+        public var name: String
+        public var label: String
+        public var secret: Bool
+        public init(name: String, label: String, secret: Bool = true) { self.name = name; self.label = label; self.secret = secret }
+    }
+    public var module: String
+    public var need: String
+    /// "Deepgram key": what the row asks for.
+    public var label: String
+    public var fields: [Field]
+    /// The vault item the module reads (voice-deepgram-key), for vault.put + vault.grant.
+    public var item: String?
+    public var help: String?
+    public init(module: String, need: String, label: String, fields: [Field] = [Field(name: "value", label: "Key")], item: String? = nil, help: String? = nil) {
+        self.module = module; self.need = need; self.label = label; self.fields = fields; self.item = item; self.help = help
+    }
 }
 
 public extension CapsuleHost {
     /// A host with no windows (a test's fake host) hands out one that shows nothing.
     func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+    func dictate(_ text: String, final: Bool) { setQuery(text) }
     func prove(tool: String, input: [String: Any], summary: String) async -> VyredResult {
         await vyred.call(tool, input, presence: true, summary: summary)
     }
     func commandsChanged() {}
+    func askCredential(_ need: CredentialNeed, saved: @escaping @MainActor () -> Void) {}
 }
 
 @MainActor

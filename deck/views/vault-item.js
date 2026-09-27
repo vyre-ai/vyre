@@ -192,8 +192,8 @@ export function itemPane(app, panel, name, focus) {
 }
 
 async function drawUsage(app, el, name) {
-  let r = await attempt("vault.usage", { name });
-  if (r.error?.missing) { const a = await attempt("vault.audit", { name, limit: 100 }); if (!a.error) r = a; }
+  // vault.audit is the item's use and grant trail (there is no vault.usage; asking for it was a 404).
+  const r = await attempt("vault.audit", { name, limit: 100 });
   if (!app.ctx.alive() || !el.isConnected) return;
   if (r.error) { put(el, h("li", { class: "vt-urow vt-hint" }, errText(r.error))); return; }
   const t0 = startOfToday();

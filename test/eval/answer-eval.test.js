@@ -53,3 +53,25 @@ test("answer eval: memory.answer clears the bar", async t => {
   assert.equal(a.confident_wrong, 0, `confident wrong answers:\n${list(a)}`);
   assert.ok(a.p95_ms < 150, `p95 ${a.p95_ms} ms is not under 150 ms`);
 });
+
+test("answer eval: the same question gives the same answer, and every answer names its source", async t => {
+  const r = await report;
+  const a = r.answerers.answer;
+  if (!a.supported) { t.skip(a.reason); return; }
+  assert.equal(a.inconsistent, 0, "an answer changed when the question was asked again");
+  assert.equal(a.ungrounded, 0, "an answer told as a fact names no fact or turn");
+});
+
+// The "Jordan" trap (ADR 0034, source trust): the user's own words say Noor; dev sessions,
+// subagents, injected blocks, Claude and the Capsule say Jordan.
+test("answer eval: only the user's own words teach memory who their wife is", async () => {
+  const r = await runEval({ world: "trust", only: ["answer"] });
+  const a = r.answerers.answer;
+  assert.ok(a.supported, a.reason);
+  const said = a.answers.map(x => `${x.q} -> ${x.answer}`).join("\n");
+  assert.ok(!/jordan/i.test(a.answers.map(x => x.answer || "").join(" ")), `Jordan came back:\n${said}`);
+  assert.equal(a.confident_wrong, 0, said);
+  assert.equal(a.overall, 1, `${list(a)}`);
+  assert.equal(a.inconsistent, 0);
+  assert.equal(a.ungrounded, 0);
+});

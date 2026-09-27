@@ -2,9 +2,9 @@
 name: capsule-mac
 on:
   push:
-    paths: ["local/**", "core/vault/native*", "package*.json", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", "package*.json", ".github/workflows/capsule-mac.yml"]
   pull_request:
-    paths: ["local/**", "core/vault/native*", "package*.json", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", "package*.json", ".github/workflows/capsule-mac.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -76,8 +76,8 @@ jobs:
           security find-identity -v -p codesigning "$KC"
           APP=local/capsule/native/.build/Vyre.app
           if [ ! -d "$APP" ]; then
-            echo "Vyre.app did not build: signing a copy of vyre-launcher instead"
-            APP="$RUNNER_TEMP/vyre-launcher"; cp local/capsule/bin/vyre-launcher "$APP"
+            echo "Vyre.app did not build: signing a copy of /bin/echo instead"
+            APP="$RUNNER_TEMP/signing-probe"; cp /bin/echo "$APP"
           fi
           codesign --force --sign "Vyre Local" --keychain "$KC" --identifier sh.vyre.capsule "$APP"
           codesign --verify --strict "$APP"

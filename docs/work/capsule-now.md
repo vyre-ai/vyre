@@ -62,6 +62,16 @@ them, one per fix.
    stops following only ("Stopped following. <name> already has your message; its reply lands
    in its thread."), never threads.stop. Reference: `bridge.js` `unqueue`.
 
+9. **A queued reply follows its own turn, live.** While queued, the thread's `thread.text`,
+   `thread.tool` and `thread.finished` belong to the turn it is busy with: ignore them. The
+   reply is handed over at the `thread.sent` whose `queued` equals its `queued_id` (any
+   `queued` when the id is unknown); remember that event's `turn` if it has one. From then on,
+   fold the pieces as they stream (caret on) and finish at the next `thread.finished`; with a
+   turn known, drop events that name a different `turn`. Terminal sessions still answer in one
+   piece at their Stop (`threads.replied`); owned sessions (ADR 0030) stream. The status line
+   after hand-over: "Handed to <name>. Its reply shows here as it comes." Reference:
+   `state.js` `applyReply`, `State.swift` `applyReply`.
+
 ## Done
 - f5bd7b9 fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
 - cf4531e fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
@@ -81,12 +91,23 @@ them, one per fix.
 - Tailnet has my answers to its Mac-send design (sent 2026-09-27).
 
 ## Doing
-- Nothing in flight. Saved 2026-09-27 at logout. All work pushed: work/capsule-now (live,
-  threads.unqueue, Electron Esc take-back 6c5bfe0) and work/capsule-agent (capsule.report, no
-  orange b62130d, native Esc take-back 792420c). Merge capsule-now before capsule-agent.
+- Nothing in flight. Stopped 2026-09-27 on the lead's word: the user is refocusing on the native
+  core. Final shas: work/capsule-now 8eece58+ (Electron rule 9, main merged), work/capsule-agent
+  42e8da0 (native rule 9, main merged). Merge capsule-now before capsule-agent.
+- sessions built rules 1 to 9 on work/sessions b8b1a0a7, then d12171cc (batch 3a): thread.steered {uuid, turn, step}; an idle send emits thread.turn {turn, uuid} (result stays {sent:true, thread}); send-now returns {sent, queued, uuid, turn}; one threads.unqueue (main's folded in). `threads.send-now {thread, queued}`
+  (dash, not underscore), owned-session note "<name> is working on something..." with
+  busy:"working", `turn` on every turn event, thread.unqueued gains uuid and reason. When
+  sessions merges, keep ONE threads.unqueue (theirs supersedes the switchboard copy here).
 
 ## Next (open requests, in order)
-- threads.unqueue on the phone (mobile's, rule 8 is the spec). Streaming a queued session's reply live.
+- threads.unqueue on the phone (mobile's, rule 8 is the spec).
+- Cmd-Enter on a queued reply calls `threads.send-now {thread, queued: queued_id}` (sessions
+  b8b1a0a7). {sent:false, note} for a terminal-busy session: show the note, stay queued. Then a
+  live test against an owned session on the fake. Keep the no-`turn` fallback for terminal
+  sessions (threads.replied carries no turn).
+- Terminal sessions could stream too, from recall.watch on the transcript (on main via chat
+  46e68bc); only if the user wants it, since it reads the transcript while the Capsule is open.
+- The DM view (applyDm) has the same busy-turn mix-up for queued words: port rule 9 there.
 - tailnet (answers sent 2026-09-27): sending to Mac sessions from the box. My answers:
   1 yes: a separate WRITE allowlist (threads.send, later threads.unqueue), person callers only, and
     `as: "person"` checked on the Mac.

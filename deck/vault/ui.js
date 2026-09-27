@@ -5,6 +5,7 @@
 import { h, put } from "../js/dom.js";
 import { icon as deckIcon } from "../js/icons.js";
 import { initial } from "../js/fmt.js";
+import { showToast } from "../js/toast.js";
 
 // Constant drawings only (16 grid, 1.5 stroke), parsed like icons.js does.
 const EXTRA = {
@@ -110,34 +111,27 @@ export function sheet({ label, title, body, onClose, wide }) {
 
 // ---- the copy toast -------------------------------------------------------------------------
 
-let toastEl = /** @type {HTMLElement | null} */ (null);
-let toastStop = () => {};
+/** @type {import("../js/toast.js").Toast | null} */ let mine = null;
 /**
  * "Copied the password of acme-mail. Clipboard clears in 1:30 · Clear now", with a 1px bar
- * that drains to when the clipboard clears. The bar is a CSS animation, not a timer.
+ * that drains to when the clipboard clears. The Deck's one toast (js/toast.js) draws it.
  * @param {{ text: string, clearsAt?: number | null, onClear?: (() => Promise<void>) | null }} o
  */
 export function toast({ text, clearsAt = null, onClear = null }) {
   hideToast();
   const left = h("span", { class: "vt-toast-left" });
-  const bar = h("span", { class: "vt-toast-bar" });
-  const el = h("div", { class: "vt-toast", role: "status" },
-    h("span", { class: "vt-toast-text" }, text, clearsAt ? [" Clipboard clears in ", left] : null),
-    clearsAt && onClear ? [h("span", { class: "faint", "aria-hidden": "true" }, "·"), h("button", { type: "button", class: "vt-toast-btn", onclick: async () => { await onClear(); hideToast(); } }, "Clear now")] : null,
-    h("button", { type: "button", class: "ibtn vt-toast-x", "aria-label": "Dismiss", onclick: hideToast }, icon("close", 12)),
-    clearsAt ? bar : null);
-  document.body.append(el);
-  toastEl = el;
-  if (clearsAt) {
-    const total = Math.max(0, clearsAt - Date.now());
-    bar.style.animationDuration = total + "ms";
-    toastStop = everySecond(now => { put(left, mmss(clearsAt - now)); if (now >= clearsAt) hideToast(); });
-  } else {
-    const t = window.setTimeout(hideToast, 5000);
-    toastStop = () => clearTimeout(t);
-  }
+  let stop = () => {};
+  mine = showToast({
+    text: clearsAt ? [text, " Clipboard clears in ", left] : text,
+    ms: clearsAt ? Math.max(0, clearsAt - Date.now()) : 5000,
+    bar: !!clearsAt,
+    action: clearsAt && onClear ? { label: "Clear now", run: () => { onClear(); } } : null,
+    dismiss: icon("close", 12),
+    onClose: () => { stop(); mine = null; },
+  });
+  if (clearsAt) stop = everySecond(now => { put(left, mmss(clearsAt - now)); if (now >= clearsAt) hideToast(); });
 }
-export function hideToast() { toastStop(); toastStop = () => {}; toastEl?.remove(); toastEl = null; }
+export function hideToast() { mine?.close(); }
 
 /** Favorites: a per-viewer convenience, kept in this browser only. */
 export const favorites = {

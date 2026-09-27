@@ -222,36 +222,86 @@ public enum VyState {
         var x = r
         // A notice is vyred talking (a usage limit), not the model: status, never the answer.
         if e.type == "thread.text" && VJ.truthy(p["notice"]) { x.notice = s(p["text"]); return x }
-        // Words queued for a session busy in a terminal reached it (the Harness handed them over).
-        if e.type == "thread.sent" && p["queued"] != nil && !(p["queued"] is NSNull), x.queued != nil { x.queued?.delivered = true; return x }
+        // Words queued for a busy session reached it: the Harness at a terminal's Stop, or the owned
+        // session's own turn end. Only our row counts; another surface's queued words are not ours.
+        if e.type == "thread.sent" && p["queued"] != nil && !(p["queued"] is NSNull), let q = x.queued {
+            if q.delivered { return r }
+            if let id = q.id, VJ.int(p["queued"]) != id { return r }
+            x.queued?.delivered = true
+            if let t = VJ.nonEmpty(p["turn"]) { x.queued?.turn = t }
+            // The turn it was busy with is not this reply's: the answering turn fixes it afresh.
+            x.turn = VJ.nonEmpty(p["turn"])
+            return x
+        }
+        // Until then the thread is answering something else (the turn it is busy with): none of that
+        // is this reply. After it, only the answering turn is, when events name their turn.
+        if let q = x.queued, ["thread.text", "thread.tool", "thread.finished"].contains(e.type) {
+            if !q.delivered { return r }
+            if let t = q.turn, let et = VJ.nonEmpty(p["turn"]), et != t { return r }
+        }
+        // Every event of a turn names it: the first one fixes this reply's turn (for queued words,
+        // the first after they were handed over).
+        if let t = VJ.nonEmpty(p["turn"]), x.queued.map({ $0.delivered }) ?? true {
+            if x.turn == nil { x.turn = t } else if t != x.turn { return r }
+        }
         switch e.type {
+        case "thread.turn": break
+        case "thread.state":
+            let st = VJ.s(p["state"])
+            x.state = st
+            if st == "failed" { x.finished = true; x.ok = false; x.error = VJ.nonEmpty(p["error"]) ?? "the turn failed" }
+            if st == "idle" && x.finished && x.error == nil { x.idle = true }
+        case "thread.usage":
+            if let c = VJ.num(p["cost_usd"]) { x.cost = c }
+            if let t = VJ.num(p["total_cost_usd"]) { x.totalCost = t }
         case "thread.text":
             let id = VJ.nonEmpty(p["message"]) ?? "m"
             if !x.order.contains(id) { x.order.append(id) }
             x.text[id] = VJ.truthy(p["done"]) ? s(p["text"]) : (r.text[id] ?? "") + s(p["delta"])
             x.finished = false
         case "thread.tool":
-            if VJ.str(p["phase"]) == "done" {
-                let id = s(p["id"])
-                x.tools = r.tools.map { t in t.id == id ? ReplyTool(id: t.id, summary: t.summary, done: true, error: VJ.truthy(p["error"])) : t }
-            } else {
-                x.tools = Array((r.tools + [ReplyTool(id: s(p["id"]), summary: VJ.nonEmpty(p["summary"]) ?? s(p["tool"]), done: false, error: false)]).suffix(6))
-            }
+            x.tools = foldTool(r.tools, p, keep: 6)
         case "thread.stopped":
             // reason "idle": the session closed after 10 quiet minutes and resumes on the next
             // send (ADR 0030). The answer stands; nothing failed.
             if VJ.str(p["reason"]) == "idle" { x.finished = true; x.idle = true; break }
             x.finished = true; x.ok = false; x.error = "the thread stopped" + (VJ.nonEmpty(p["reason"]).map { ": \($0)" } ?? "")
         case "thread.finished":
-            if let c = VJ.num(p["cost_usd"]) { x.cost = (r.cost ?? 0) + c }
+            // A reply with turn ids is one turn: its cost is that turn's. Without them (an older
+            // switchboard) the turns of the reply are summed, as before.
+            if let c = VJ.num(p["cost_usd"]) ?? VJ.num(p["cost"]) { x.cost = x.turn != nil ? c : (r.cost ?? 0) + c }
             if let ms = VJ.num(p["duration_ms"]) { x.ms = ms }
-            let failed = VJ.bool(p["ok"]) == false
+            // canceled: an interrupt (Esc here or elsewhere) or a restart. Stopped, not failed.
+            if VJ.truthy(p["canceled"]) { x.finished = true; x.ok = false; x.error = "stopped"; x.tools = r.tools.map { t in var t = t; if t.status == .running { t.status = .canceled }; return t }; break }
+            let failed = VJ.bool(p["ok"]) == false || VJ.nonEmpty(p["error"]) != nil
             x.finished = true; x.ok = !failed; x.error = failed ? (VJ.nonEmpty(p["error"]) ?? "the turn failed") : nil
         // lease.changed {holder, previous, took?}: holder null when the keyboard was given back.
         case "lease.changed": x.lease = VJ.str(p["holder"])
         default: return r
         }
         return x
+    }
+
+    /// thread.tool's status: `status` (ADR 0030), or the older `phase` with `error`.
+    static func toolStatus(_ p: [String: Any]) -> ToolStatus {
+        if let st = VJ.str(p["status"]).flatMap(ToolStatus.init(rawValue:)) { return st }
+        guard VJ.str(p["phase"]) == "done" else { return .running }
+        return VJ.truthy(p["error"]) ? .failed : .completed
+    }
+
+    /// Fold one thread.tool into a turn's rows: a known call id changes its status in place (a
+    /// row never moves), a new one is added at the end, and only the newest `keep` stay.
+    static func foldTool(_ tools: [ReplyTool], _ p: [String: Any], keep: Int) -> [ReplyTool] {
+        let id = VJ.nonEmpty(p["call"]) ?? s(p["id"])
+        let status = toolStatus(p)
+        if let i = tools.firstIndex(where: { $0.id == id }) {
+            var out = tools
+            out[i].status = status
+            if let words = VJ.nonEmpty(p["summary"]), out[i].summary != words { out[i].summary = words }
+            return out
+        }
+        let words = VJ.nonEmpty(p["summary"]) ?? VJ.nonEmpty(p["name"]) ?? VJ.nonEmpty(p["tool"]) ?? "a tool"
+        return Array((tools + [ReplyTool(id: id, summary: words, status: status)]).suffix(keep))
     }
 
     /// The reply as one string, messages in the order they began.
@@ -371,16 +421,15 @@ public enum VyState {
         case "thread.tool":
             var list = msgs
             var i = openTurn(list, nil)
-            if VJ.str(p["phase"]) == "done" {
+            if toolStatus(p) != .running {
                 d.last = last
                 if i < 0 { return d }
-                let id = s(p["id"])
-                list[i].tools = (list[i].tools ?? []).map { x in x.id == id ? ReplyTool(id: x.id, summary: x.summary, done: true, error: VJ.truthy(p["error"])) : x }
+                list[i].tools = foldTool(list[i].tools ?? [], p, keep: dmTools)
                 d.messages = list
                 return d
             }
             if i < 0 { list = insertTurn(list, newTurn(e, "t\(hasId ? e.id : last)")); i = openTurn(list, nil) }
-            list[i].tools = Array(((list[i].tools ?? []) + [ReplyTool(id: s(p["id"]), summary: VJ.nonEmpty(p["summary"]) ?? VJ.nonEmpty(p["tool"]) ?? "a tool", done: false, error: false)]).suffix(dmTools))
+            list[i].tools = foldTool(list[i].tools ?? [], p, keep: dmTools)
             d.last = last; d.busy = true; d.messages = list
             return trim(d)
         case "thread.finished", "thread.stopped":
@@ -466,12 +515,22 @@ public enum VyState {
 
 // MARK: - The values
 
+/// A tool call's status, as thread.tool carries it (ADR 0030): running, then one of the others.
+public enum ToolStatus: String, Sendable, Equatable {
+    case running, completed, failed, canceled
+}
+
+/// One tool call in a turn, keyed by its call id so a status update finds its row.
 public struct ReplyTool: Sendable, Equatable {
     public var id: String
     public var summary: String
-    public var done: Bool
-    public var error: Bool
-    public init(id: String, summary: String, done: Bool, error: Bool) { self.id = id; self.summary = summary; self.done = done; self.error = error }
+    public var status: ToolStatus
+    public var done: Bool { status != .running }
+    public var error: Bool { status == .failed }
+    public init(id: String, summary: String, status: ToolStatus) { self.id = id; self.summary = summary; self.status = status }
+    public init(id: String, summary: String, done: Bool, error: Bool) {
+        self.init(id: id, summary: summary, status: !done ? .running : error ? .failed : .completed)
+    }
 }
 
 /// A place a memory answer came from: a fact's own turn, or a transcript quote.
@@ -496,6 +555,13 @@ public struct ReplyMemory: Sendable, Equatable {
 /// of this reply, `ms` how long the last turn took. The switchboard reports no token counts.
 public struct Reply: Sendable, Equatable {
     public var thread: String
+    /// The turn this reply is (`<thread>:<n>`), from the first event that names one; events of
+    /// another turn of the same thread are not this reply's.
+    public var turn: String?
+    /// The session's state from thread.state: starting, running, waiting, idle, stopped, failed.
+    public var state: String?
+    /// What the whole session has cost so far (thread.usage total_cost_usd).
+    public var totalCost: Double?
     public var order: [String] = []
     public var text: [String: String] = [:]
     public var tools: [ReplyTool] = []
@@ -524,6 +590,8 @@ public struct QueuedSend: Sendable, Equatable {
     public var delivered = false
     /// Its id in the queue (threads.send's queued_id), for Esc to take it back (threads.unqueue).
     public var id: Int?
+    /// The turn answering it (thread.sent's `turn`), when vyred names turns.
+    public var turn: String?
     /// Taken back before it was handed over.
     public var withdrawn = false
     public init(name: String, note: String? = nil, id: Int? = nil) { self.name = name; self.note = note; self.id = id }

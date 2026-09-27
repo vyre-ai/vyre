@@ -1,0 +1,19 @@
+{
+  "about": "Source trust (ADR 0034) on test/fixtures/personal-trust.js: the user's own words say their wife is Noor; dev sessions, a session about memory, a subagent, a headless run, injected blocks, Claude and the Capsule all say Jordan. expect: acceptable answers; null means the right output is no answer.",
+  "questions": [
+    { "q": "what is my wife's name", "expect": ["noor"], "kind": "spouse" },
+    { "q": "What is my wife's name?", "expect": ["noor"], "kind": "spouse" },
+    { "q": "who is my wife", "expect": ["noor"], "kind": "spouse" },
+    { "q": "name of my wife", "expect": ["noor"], "kind": "spouse" },
+    { "q": "when is my wife's birthday", "expect": ["2 june", "june 2"], "kind": "birthday" },
+    { "q": "who is jordan", "expect": null, "kind": "trap" },
+    { "q": "is jordan my wife", "expect": ["noor"], "kind": "trap" },
+    { "q": "what's my dog's name", "expect": null, "kind": "trap" },
+    { "q": "what is my mom's name", "expect": null, "kind": "trap" },
+    { "q": "where does my mom live", "expect": null, "kind": "trap" },
+    { "q": "what does my wife do for work", "expect": null, "kind": "trap" },
+    { "q": "what is my husband's name", "expect": null, "kind": "trap" },
+    { "q": "what car does my husband drive", "expect": null, "kind": "trap" },
+    { "q": "does my wife like hiking", "expect": null, "kind": "trap" }
+  ]
+}

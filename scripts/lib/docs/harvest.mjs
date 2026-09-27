@@ -93,7 +93,7 @@ async function harvest(role) {
 }
 
 const result = { box: await harvest("box"), local: await harvest("local"), commands: [], blocked };
-result.commands = (await commands()).map(c => ({
+result.commands = (await commands()).filter(c => !c.secret).map(c => ({
   name: c.name, aliases: c.aliases || [], summary: c.summary || "", usage: c.usage || "",
   order: c.order ?? 50, hidden: Boolean(c.hidden), help: typeof c.help === "string" ? c.help : "",
 }));
