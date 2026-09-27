@@ -164,13 +164,14 @@ test("personal extract: 20,000 turns in well under 2 s", () => {
     "I live in Seattle and work at Northwind Bakery; Harlow Legal is a client.",
     "Can you update the README with the new flags and bump the version? Also check the CI logs for the flaky test. ".repeat(4),
   ];
-  const t0 = performance.now();
+  // CPU time, not wall time: the test box is shared, and waiting for a core is not our cost.
+  const t0 = process.cpuUsage(), w0 = performance.now();
   let n = 0;
   for (let i = 0; i < 20000; i++) n += extractPersonal(T[i % T.length] + " " + i, { role: i % 2 ? "assistant" : "user" }).claims.length;
-  const ms = performance.now() - t0;
-  console.log(`# personal extract: 20000 turns in ${Math.round(ms)} ms (${n} claims)`);
+  const c = process.cpuUsage(t0), ms = (c.user + c.system) / 1000;
+  console.log(`# personal extract: 20000 turns in ${Math.round(ms)} ms of CPU (${Math.round(performance.now() - w0)} ms wall, ${n} claims)`);
   assert.ok(n > 0);
-  assert.ok(ms < 1500, `took ${Math.round(ms)} ms`);
+  assert.ok(ms < 1500, `took ${Math.round(ms)} ms of CPU`);
 });
 
 test("personal extract: a car by its model alone, its colour, and the I a diary leaves out", () => {

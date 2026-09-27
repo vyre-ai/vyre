@@ -478,3 +478,20 @@ test("answer: no answer when only a name, or only the user's own fact, is known"
   // A boyfriend is a partner, not a husband.
   assert.equal((await ask("who is my husband")).answer, null);
 });
+
+test("context: one call per prompt, the sure answer first, then the graph's lines", async t => {
+  const { call } = await world(t);
+  const W = ["/home/alex/Work/harlow-site"];
+  const r = await call("memory.context", { text: "whats my wife's name", project_cwds: W }, "mcp:thread:t-1");
+  assert.ok(!r.error, r.error);
+  assert.equal(r.data.answer?.text, "Your wife is Jordan.");
+  assert.equal(r.data.lines[0], "Your wife is Jordan.");
+  // A project's agent gets the graph's lines for its project, never the user's personal answer.
+  const k = await call("memory.context", { text: "whats my wife's name", project_cwds: ["/home/alex/Work/harlow-site"] }, "mcp:agent:kit");
+  assert.ok(!k.error, k.error);
+  assert.equal(k.data.answer, null);
+  // Not a question about the user's life: no answer, only what the graph knows.
+  const p = await call("memory.context", { text: "fix the flaky test in the cart", project_cwds: W }, "mcp:thread:t-1");
+  assert.equal(p.data.answer, null);
+  assert.ok(Array.isArray(p.data.lines));
+});

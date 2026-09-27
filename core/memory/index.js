@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
-import { answerer } from "./personal/answer.js";
+import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
 import { createReader, claudeOnce } from "./personal/reader.js";
 
@@ -34,6 +34,17 @@ export default {
     // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
     const personal = new Personal(ctx.store.db, { log: ctx.log });
     /** Read every unread turn for personal facts, then derive if anything changed. */
+    // memory.profile.changed: the about-you lines moved, so a session rebuilds its note on resume.
+    // Counts only; the lines themselves are read with memory.profile.
+    let lastProfile = null;
+    const profileChanged = () => {
+      try {
+        const lines = profile(personal, { limit: 12 }).facts.map(f => f.text);
+        const key = lines.join("\n");
+        if (lastProfile !== null && key !== lastProfile) ctx.events.emit("memory.profile.changed", { facts: lines.length });
+        lastProfile = key;
+      } catch (e) { ctx.log("memory profile check: " + /** @type {Error} */ (e).message); }
+    };
     /** Names memory knew after the last pass: new ones send their older turns to the reader. */
     // Kept in memory_meta so a restart does not scan for every name again.
     const metaGet = ctx.store.db.prepare("SELECT v FROM memory_meta WHERE k = 'me_known'");
@@ -49,6 +60,7 @@ export default {
         await new Promise(r => setImmediate(r));
       }
       const d = stopping ? { changed: false } : personal.derive();
+      if (d.changed && !stopping) profileChanged();
       // A name just learned: the turns that mention it are read by the model too.
       if (!stopping) {
         const now = personal.known(), fresh = [...now].filter(w => !knownNames.has(w));
@@ -71,7 +83,10 @@ export default {
     };
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
-      runner: ctx.memoryRunner !== undefined ? ctx.memoryRunner : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null,
+      // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
+      runner: ctx.memoryRunner !== undefined ? ctx.memoryRunner
+        : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
+        : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null,
     });
     const modelOffs = [
       ctx.events.on("thread.stopped", () => void model.pump()),
@@ -508,6 +523,30 @@ export default {
         await guard({ agent }, caller, { whole: true });
         if (running) await running.catch(() => {});
         return run({ full, force: true });
+      },
+    });
+    // One call per prompt for a session (ADR 0030 phase 3's UserPromptSubmit): what the graph knows
+    // about the words in it, and, when the prompt is a question about the user's own life that
+    // memory can answer surely, that answer first.
+    ctx.tool("memory.context", {
+      description: "Context for one prompt: lines worth adding before it. The graph's facts about what it names (as memory.relevant), and when the prompt asks about the user's own life and memory is sure (confidence 0.5 or more), that answer first. Returns { lines: string[], answer: { text, confidence, from } | null }.",
+      input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer", minimum: 1, maximum: 20 }, ...agentField } },
+      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
+        const room = roomOf(rest);
+        await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const lines = graph.relevant({ text, project_cwds, room, limit: Math.min(20, Math.max(1, limit)) }).map(x => String(x.text));
+        let a = null;
+        // Only a question memory's rules can read, only a fact (never a loose quote), only for
+        // callers who may read the user's personal facts.
+        if (parseQuestion(String(text || ""))) {
+          const may = await personalOnly({ agent }, caller, "memory.context").then(() => true, () => false);
+          if (may) {
+            if (running) await running.catch(() => {});
+            const r = await answer({ q: String(text), project_cwds: clean(project_cwds), sources: false });
+            if (r.answer && r.kind === "fact" && Number(r.confidence) >= 0.5) a = { text: r.answer, confidence: r.confidence, from: r.from };
+          }
+        }
+        return { lines: a ? [a.text, ...lines.filter(l => l !== a.text)] : lines, answer: a };
       },
     });
     // The reader's usage line, and "read now" for the person (spends from the same caps).
