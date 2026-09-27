@@ -1,7 +1,15 @@
+---
+title: "Windows support: tiers and plan"
+summary: The full assessment behind ADR 0037: a file-level inventory of Mac-only versus cross-platform code, four support tiers with sizes and an order, and the open risks.
+audience: builders, agents
+owner: windows
+status: draft
+---
+
 # Windows support: tiers and plan
 
-Status: assessment (ADR 0037 to follow once a tier is chosen). No Windows hardware was used for
-this pass; recommendations that depend on Windows-only behavior are marked unverified.
+Decision and what shipped from it: [ADR 0037](../adr/0037-windows.md). No Windows hardware was
+used for this pass; recommendations that depend on Windows-only behavior are marked unverified.
 
 ## 1. Inventory
 
@@ -20,7 +28,7 @@ macOS. Mac-only code is concentrated and gated:
 - **`osascript`**: harness rules/shell, files/drive (Finder), `local/apps` (app launch/discovery),
   keychain test doubles.
 - **`security(1)`/keychain**: `core/vault/keys.js`, `core/vault/mac/keychain.swift`,
-  `capsule-native.js` — this is the whole native-vault backend on Mac.
+  `capsule-native.js`, this is the whole native-vault backend on Mac.
 - **`launchd`**: `core/daemon/main.js`/`peer.js` (vyred as a LaunchAgent), `local/capsule/native`
   build/install, `local/voice/build.sh`, `local/apps/installed.js`. Linux equivalent today is
   systemd/Docker on the box; nothing here assumes launchd outside these files.
@@ -29,60 +37,58 @@ macOS. Mac-only code is concentrated and gated:
   (`core/names/tailscale.js` shells out to the `tailscale` binary, not Mac-specific).
 
 Conclusion: the kernel and box were already built to run headless on Linux. The Mac-only surface
-is the Capsule (native UI, hotkey, screen context, hands/voice) and the native vault backend —
-exactly the parts a Windows Capsule would also need to newly build, not retrofit.
+is the Capsule (native UI, hotkey, screen context, hands/voice) and the native vault backend, exactly the parts a Windows Capsule would also need to newly build, not retrofit.
 
 ## 2. Tiers (cheapest first)
 
-**Tier A — Windows as a client of a Linux box.** Deck in a browser, the PWA, CLI, and Claude Code
+**Tier A, Windows as a client of a Linux box.** Deck in a browser, the PWA, CLI, and Claude Code
 + the Vyre plugin (`harness/`) all run on Windows today with near-zero change, since they're pure
 Node/web. Gaps: `bin/vyre` and `scripts/postinstall.mjs` need testing on Windows paths (no `~`,
 backslash paths, no `chmod`); the CLI's `darwin` branches need an explicit "unsupported here, use
 the Deck" message instead of failing silently. No native code required. **This is close to done
 already; verification is the remaining work.**
 
-**Tier B — `vyred` running on Windows itself**, for someone who wants their own PC as the box
+**Tier B, `vyred` running on Windows itself**, for someone who wants their own PC as the box
 instead of Linux. Recommend **WSL2**, not native Windows Node: the box's Docker Compose
 (`box/compose.yml`), systemd-style daemon assumptions, and `tailscale`/`osascript`-shaped shell
 patterns all map onto WSL2's Linux userland with no code change, and Docker Desktop already
 targets WSL2 as its backend. Native Windows Node would need a second platform branch throughout
-`core/daemon`, `core/vault`, `core/files`, `local/apps` for every `darwin` gate — real, ongoing
+`core/daemon`, `core/vault`, `core/files`, `local/apps` for every `darwin` gate, real, ongoing
 maintenance. WSL2 costs a heavier install (Docker Desktop or WSL) but reuses the whole Linux box
 image unchanged.
 
-**Tier C — a Windows "Capsule."** Recommend **Tauri** over WinUI 3/.NET or Electron: Tauri gives a
+**Tier C, a Windows "Capsule."** Recommend **Tauri** over WinUI 3/.NET or Electron: Tauri gives a
 lightweight native shell (Rust core, web UI reusable from Deck components) matching the design
 intent behind retiring Electron on the Mac, with a real global-hotkey API
 (`tauri-plugin-global-shortcut`) and small footprint. WinUI 3/.NET (C#) is the "most native" option
 and gets deepest UI Automation access for screen context, at the cost of a second UI codebase with
 no code-sharing with Deck. Screen context and computer use are both anchored on Windows UI
-Automation (UIA) — the Windows analogue of the accessibility tree `local/hands-mac`/`screen-mac`
+Automation (UIA), the Windows analogue of the accessibility tree `local/hands-mac`/`screen-mac`
 already use, so the module shape carries over even though the API doesn't.
 
-**Tier D — computer use, voice, credentials.** Computer use: UIA for observe, `SendInput` for act,
+**Tier D, computer use, voice, credentials.** Computer use: UIA for observe, `SendInput` for act,
 mirroring `hands-mac`'s observe/find/act/commit/verify loop and its floor (no acting in
 password/sign-in surfaces) and stop-key contract. Voice: existing Deepgram/voice module is already
-network-based, not Mac-specific — porting is mostly the audio-capture layer. Credentials: Windows
+network-based, not Mac-specific, porting is mostly the audio-capture layer. Credentials: Windows
 Credential Manager replaces Keychain (`core/vault/keys.js`'s `security(1)` calls), Windows Hello
-replaces Touch ID (`core/presence/touchid`) — both have first-party Node bindings or a small native
+replaces Touch ID (`core/presence/touchid`), both have first-party Node bindings or a small native
 helper, same shape as the current `keychain-helper`/`touchid` split.
 
 ## 3. Multiple Windows PCs per person
 
 Same pattern as multiple Macs today: each device pairs into the person's tailnet and gets a device
 identity (ADR 0032, person-and-device); "which device is mine" / "answer on this PC" is already a
-federation concern (ADR 0021, box-reads-the-mac) generalized to N capsules, not Mac-specific — a
+federation concern (ADR 0021, box-reads-the-mac) generalized to N capsules, not Mac-specific, a
 Windows Capsule is just another federated peer. Vyre Drive (Taildrive) is a Tailscale feature, not
 ours; Tailscale ships a native Windows client and ADR 0014 (tailnet) already treats the tailscale
-binary as a black box via `core/names/tailscale.js`, so this should carry over unchanged —
-**unverified**: Taildrive's Windows-side file-share UX specifically.
+binary as a black box via `core/names/tailscale.js`, so this should carry over unchanged, **unverified**: Taildrive's Windows-side file-share UX specifically.
 
 ## 4. Modularity
 
 Every Windows piece ships as its own `local/*-win` module (`local/hands-win`, `local/screen-win`,
 `local/vault-win` or a `vault` backend switch, `local/capsule-win`) behind the same registry/manifest
 contract `local/hands-mac` already uses (`module.json` with `does.tools`, `watches.emits`, no cross-
-feature imports — enforced by `test/boundaries.test.js`). No fork of `core`; the existing
+feature imports, enforced by `test/boundaries.test.js`). No fork of `core`; the existing
 `darwin`/`else` branches in files like `core/vault/keys.js` become a real platform-backend switch
 (`darwin` -> mac module, `win32` -> win module, else -> unsupported) rather than new special-casing
 per file.
@@ -90,13 +96,13 @@ per file.
 ## 5. Testing without Windows hardware
 
 - `windows-latest` GitHub Actions runners: add a `windows` job to `node.yml` (or a new
-  `node-windows.yml`) running the same `npm test` — this alone would catch path/shell assumptions
+  `node-windows.yml`) running the same `npm test`, this alone would catch path/shell assumptions
   today, since nothing currently runs the suite on Windows.
 - A dedicated `local/*-win` module's Swift/native-equivalent build (Tauri/Rust or C#) needs its own
-  workflow, same shape as `capsule-mac.yml`/`ios.yml`/`android.yml` — a `capsule-win.yml` building
+  workflow, same shape as `capsule-mac.yml`/`ios.yml`/`android.yml`, a `capsule-win.yml` building
   on `windows-latest`.
 - A Windows VM (Parallels/UTM on the Mac, or a cloud Windows box) is the only way to hand-test UIA,
-  Windows Hello and the hotkey — recommend this only once Tier C is actually being built, not for
+  Windows Hello and the hotkey, recommend this only once Tier C is actually being built, not for
   the Tier A/B assessment.
 
 ## 6. Sizes, order, 0.1.x vs later
@@ -110,15 +116,15 @@ per file.
 
 Recommended order: A -> B -> C -> D. A and B give every current Windows-using client a working
 path with days, not weeks, of work and no new native surface. C/D is a real second native client
-to build and maintain long-term — worth it once Windows users want Capsule-parity (hotkey, screen
+to build and maintain long-term, worth it once Windows users want Capsule-parity (hotkey, screen
 context, computer use), not before.
 
 ## 7. Risks and open questions
 
 - Tier B WSL2 requires Docker Desktop (licensing cost at company scale) or bare WSL2 + Docker
-  Engine — which does he want documented/supported?
+  Engine, which does he want documented/supported?
 - Tier C native cost: Tauri vs WinUI 3 is a real fork in long-term maintenance burden (Rust+web vs
-  C#) — worth prototyping both before committing an ADR.
+  C#), worth prototyping both before committing an ADR.
 - UIA parity with the macOS accessibility tree is unverified in depth: some apps (Electron, custom-
   drawn UI) expose weaker UIA trees than AX on Mac, which could make `hands-win` less reliable than
   `hands-mac` for those apps.

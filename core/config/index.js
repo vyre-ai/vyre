@@ -140,12 +140,14 @@ export function boxProjectsDir() {
   return path.join(workDir(), "projects");
 }
 
-/** Defaults: one person on one Mac, nothing enabled that needs setting up. */
+/** Defaults: one person on one device, nothing enabled that needs setting up. */
 /** @param {string} root */
 function defaults(root) {
   const claude = claudeHome(root);
   return {
-    role: process.platform === "darwin" ? "local" : "box",
+    // A fresh install on a Mac or a Windows PC is someone's own device, pointed at a server
+    // (vyre up finds or is told one); only a bare Linux install defaults to being the server.
+    role: process.platform === "darwin" || process.platform === "win32" ? "local" : "box",
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },

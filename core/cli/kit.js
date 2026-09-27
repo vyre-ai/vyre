@@ -15,8 +15,30 @@
 //
 // Colours come from style.js only.
 
+import { spawn } from "node:child_process";
 import { out, dim, beacon } from "./style.js";
 import { frame } from "./view.js";
+
+/**
+ * Spawn this device's "open a URL in the browser" command, detached, its errors swallowed (a
+ * missing browser command is never worth failing a run over). `VYRE_OPEN_BIN` (env) always wins,
+ * for tests and for a person's own override. darwin: `open` · win32: `cmd /c start "" <url>`
+ * (the empty title keeps a URL containing `&` from being read as the window's title) · anything
+ * else (linux, WSL, ...): `xdg-open`.
+ * @param {string} url @param {{ env?: NodeJS.ProcessEnv }} [opts]
+ */
+export function openInBrowser(url, { env = process.env } = {}) {
+  const custom = env.VYRE_OPEN_BIN;
+  const [cmd, args] = custom ? [custom, [url]]
+    : process.platform === "darwin" ? ["open", [url]]
+    : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]]
+    : ["xdg-open", [url]];
+  try {
+    const p = spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true });
+    p.on("error", () => {});
+    p.unref();
+  } catch {}
+}
 
 export const EXIT = Object.freeze({ OK: 0, FAILED: 1, USAGE: 2, PRESENCE: 3, LOCKED: 4, UNREACHABLE: 5 });
 

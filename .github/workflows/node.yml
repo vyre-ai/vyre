@@ -33,3 +33,21 @@ jobs:
       - run: npm test
       - run: npm run eval:answer
       - run: npm run perf-check
+  # Windows support (ADR 0037): the same suite on windows-latest, to catch path and shell
+  # assumptions before any Windows-specific code lands. Not yet green; non-blocking on purpose
+  # while docs/work/windows.md tracks the fixes it finds. Skips eval:answer and perf-check, which
+  # assume a Linux/Mac process model for their CPU/RSS budget, not what this job is proving.
+  test-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
