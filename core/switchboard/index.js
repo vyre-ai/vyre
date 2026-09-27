@@ -80,6 +80,10 @@ export const MIGRATIONS = [
   // is (chat, agent, project, capsule, job, memory, planner, learn), which picks its model.
   `ALTER TABLE threads_runs ADD COLUMN provider TEXT;
    ALTER TABLE threads_runs ADD COLUMN purpose TEXT;`,
+  // Claude Code reports a session's cost as a running total (total_cost_usd, across the turns of
+  // one process, continued from the transcript's saved total on a resume): the last one seen, so
+  // each turn's own cost is the difference.
+  `ALTER TABLE threads_runs ADD COLUMN cost_total REAL;`,
 ];
 
 /**
@@ -361,6 +365,8 @@ export class Switchboard {
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
       this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ? WHERE id = ?").run(o.provider, o.purpose, id);
+      // A fork's running total starts at its source's, as Claude Code continues it.
+      if (o.forkFrom) this.db.prepare("UPDATE threads_runs SET cost_total = (SELECT cost_total FROM threads_runs WHERE id = ?) WHERE id = ?").run(o.forkFrom, id);
       const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
@@ -502,7 +508,18 @@ export class Switchboard {
       if (e.type === "thread.text") this.flush(id, st);                // the whole text lands after its last delta
       if (e.type === "thread.finished") {
         this.flush(id, st);
-        const cost = Number(e.payload.cost_usd) || 0;
+        // The turn's own cost from the running total: a total below the last one is a new count
+        // (a fresh process on a transcript with no saved total, or a /clear).
+        const total = Number(e.payload.cost_usd) || 0;
+        if (st.costBase == null) {
+          const row = /** @type {any} */ (this.db.prepare("SELECT cost_total FROM threads_runs WHERE id = ?").get(id));
+          st.costBase = st.launch.resume || st.launch.forkFrom ? Number(row && row.cost_total) || 0 : 0;
+        }
+        const cost = total >= st.costBase ? total - st.costBase : total;
+        st.costBase = total;
+        this.db.prepare("UPDATE threads_runs SET cost_total = ? WHERE id = ?").run(total, id);
+        e.payload.cost_usd = Math.round(cost * 1e6) / 1e6;
+        e.payload.total_cost_usd = total;
         this.db.prepare("UPDATE threads_runs SET cost_usd = cost_usd + ?, turns = turns + 1, last_at = ? WHERE id = ?").run(cost, Date.now(), id);
         const tk = e.payload.tokens || {};
         this.db.prepare(`INSERT INTO threads_turns (thread, agent, auth, at, ok, cost_usd, duration_ms, input, output, cache_read, cache_write)

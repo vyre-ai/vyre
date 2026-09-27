@@ -452,6 +452,17 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(copy, /start the menu for Northwind Bakery/, "the fork starts with the conversation so far");
   });
 
+  test(`${driver}: a turn's cost is its own, from Claude Code's running total`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "spend 0.5", surface: "deck" })).data;
+    await w.finished(th.id);
+    await w.tool("threads.send", { thread: th.id, text: "spend 0.35", surface: "deck" });
+    await w.finished(th.id, 2);
+    const done = (await w.events(th.id)).filter(e => e.type === "thread.finished").map(e => [e.payload.cost_usd, e.payload.total_cost_usd]);
+    assert.deepEqual(done, [[0.5, 0.5], [0.35, 0.85]]);
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.cost_usd, 0.85);
+  });
+
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
     const w = await boot(t, { driver, role: "local" });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;

@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: a turn's cost is its own
+
+- Claude Code reports `total_cost_usd` as the running total of a session's process (continued
+  from the transcript's saved total on a resume), not the turn's own cost. The Switchboard added
+  it up per turn, so a thread's cost, `threads.usage` and agents' API-key budgets counted every
+  earlier turn again. It now keeps the last total per thread (`cost_total`) and records the
+  difference; `thread.finished` says `cost_usd` (the turn's) and `total_cost_usd`. A fork starts
+  from its source's total. The fake `claude` reports a running total as Claude Code does.
+
 #### Sessions: adopting existing sessions, fork, and ADR 0030's settled contract
 
 - `threads.fork {thread, prompt?, name?}`: a new thread that carries on another session's

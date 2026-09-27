@@ -170,8 +170,10 @@ const TODOS = [
   { content: "Ask kit to review the copy", status: "pending", activeForm: "Asking kit to review the copy" },
 ];
 
+// Claude Code's total_cost_usd is the running total of this process's turns, not the turn's own.
+let spent = 0;
 const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "success" : "error_during_execution", is_error: !ok, result: text,
-  total_cost_usd: cost, duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
+  total_cost_usd: (spent = Math.round((spent + cost) * 1e6) / 1e6), duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
   usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 } });
 
 async function turn(prompt) {
