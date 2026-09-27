@@ -133,8 +133,9 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   and foreground, never over the relay; no timer (asked app-design to fix the spec's "every 2 s").
   Off when sight.targets is no_such_tool. Seen in headless Chrome with faked sight tools (CDP Fetch).
   app-design matched the spec to this build (f0dbbe36: a still on each step, at most one per 2 s;
-  tap opens the thread until phone Glass). Open: the spec says nothing is fetched off screen, and
-  Now does not yet track scroll position, so a card scrolled out of view still counts as visible.
+  tap opens the thread until phone Glass). Scroll visibility done (ada72020): a card out of view
+  fetches nothing (IntersectionObserver on web, measureInWindow on the scroll signal on native);
+  checked in headless Chrome at 360 tall, no still until scrolled in. Native untested on a device.
   ci's app-perf drags the swipe now (work/ci 9668cef8), proven on the next app run.
 - HOLD (lead): Start-here item 7, the phone shell, until after the user's first iPhone run.
 - BLOCKER for the iPhone run (ci is fixing it, lead): main 53cd1326 has no apps/ (batch 4) and nothing packs
