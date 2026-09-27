@@ -227,3 +227,13 @@ test("phone: usage mistakes exit 2 before asking vyred", async t => {
   assert.ok(lines.some(l => /next: /.test(l)));
   await assert.rejects(phone.run(["add", "--bogus"]), /--bogus is not a flag of vyre phone/);
 });
+
+test("phone: a device new on the relay counts as reached, and says it came through the relay", async () => {
+  const { evaluate } = await import("./phone.js");
+  const before = { devices: [], keys: [], relay: [{ id: "d_old", path: null }] };
+  const now = { devices: [], keys: [], relay: [{ id: "d_old", path: null }, { id: "d_new", kind: "web", path: "relay", online: true }] };
+  const reached = evaluate(before, now, { address: "https://vyre.tail0000.ts.net" }).find(c => c.id === "reached");
+  assert.equal(reached?.state, "ok");
+  assert.match(String(reached?.note), /through the relay/);
+  assert.equal(evaluate(before, before, {}).find(c => c.id === "reached")?.state, "wait", "a device already there is not new");
+});
