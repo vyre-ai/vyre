@@ -224,6 +224,15 @@ Done this session:
 - rooms.test.js:227 passes alone on testbox; asked the integrator for the failing text (likely a
   run under a `claude` process, since agents.create is PERSON_ONLY on the socket).
 - Batch 4 sha sent: work/e2e 0856b9b9.
+- native-core re-review of 62abf2cf (tip 87fb03d7): HIGH 1 and 2 fixed, store limits right, 60/60
+  on testbox. NOT signed off: new HIGH, settings.get has no callers, so mcp and agents read
+  sessions.env values (Claude Code's env, API keys). Asked for masked values for non-person
+  callers plus a test. MEDIUMs sent: firstParty = "under the repo" (dev home in a checkout),
+  env/plugins/deny-removal without confirm, asPerson's "deck" fallback. Waiting on their sha.
+
+Batch 4 Next (lead, 27 Sep): unknown ids at gate.get and agents.delete answer 500 "failed", make
+them 404 not_found; `vyre link signin` says nothing when it succeeds, make it say "signed in until
+<date>".
 
 Next, in order:
 1. DONE (see above). To rerun the headscale gate on a new sha: Setup kept in
