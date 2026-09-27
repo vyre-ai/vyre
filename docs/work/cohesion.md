@@ -21,6 +21,7 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
   a4efd0d8, 533f84e2; e2e signed off), context view + now {surface}, sight.frame, Mac asks answered
   on the Mac, suggest account ranking, Chrome teardown fix. testbox: targeted non-Chrome set 156
   (all pass after the context shape fix), hands-chrome e2e on testbox Chromium 8/8, no Chrome left.
+- Owe chat: tell it when platform P1 (382a8574, commands.list) and the settled Render shape are both on main (item 5).
 - Next: follow owners as their parts land; switch suggest/waiting to ctx.modules.status() when
   platform 382a8574 is on main.
 
@@ -35,7 +36,7 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 | # | Item | Owners | Status |
 |---|---|---|---|
 | 1 | Screen service, both sides (sight) | capsule-pro, pwa, mobile, sessions, chat, platform | capsule-pro yes (sees-chip + context.report this session); mobile yes after 0.1.0 (wants a phone spec; sight.frame offered); sessions yes (passes tool_use id once meta.call exists); platform yes (meta.call from X-Vyre-Call-Id, P1); acted fields done c362505b; sight.frame 791bd180 for the phone; pwa BUILT on work/pwa (waiting b623ddcc, context 41f9b14d, sight pills 084036c1, Glass mini still + device ca934d2d; tests pending); stills refresh on sight.stepped, not a 2 s timer (glass-mini.md fixed, work/app-design e00280ad) |
-| 2 | Context now | capsule-pro, chat, sessions, mobile, docs | all yes; chat reports on thread open (4793f351; new sessions should use merged context.now {}); pwa 41f9b14d |
+| 2 | Context now | capsule-pro, chat, sessions, mobile, docs | all yes; chat reports on thread open (4793f351; merged context.now for new sessions ccb8b410); pwa 41f9b14d |
 | 3 | Connections | vault (owns), connectors | agreed: vault.connections.list {surface}, vault.connection-added/removed/changed, use {tool, input:{account}} |
 | 4 | Suggest | memory-iq (memory.suggest, recall prefix), native-core (composer), capsule-pro | memory-iq yes; capsule-pro yes (local rows first); chat routed composer to native-core |
 | 5 | One ask path | memory-iq, sessions, capsule-pro | sessions mostly done 51eaa964 (no temperature in SDK); memory-iq: Said.swift must be REMOVED; capsule-pro removes it once iq.ask + suggest on main (asked for memory.answer fallback now) |
