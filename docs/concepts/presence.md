@@ -26,7 +26,7 @@ Before you prove anything, every method shows you the tool's summary: for the Ga
 
 The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A module can add a tool to it with `presence: true`, or ask only for some inputs with a `when` function on the tool's presence setting, but it cannot take one away.
 
-- Sending: `gate.approve`.
+- Sending: `gate.approve`, for a send, a payment or a deletion (every Gate kind today; a kind added later asks only if the Gate lists it).
 - Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.kit`.
 - Learning: `learn.skill-install`.
 - Machines: `link.pair.approve`.
@@ -73,7 +73,7 @@ vyre presence remove <id>
 
 ## Sessions in the Deck
 
-Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 30 minutes from the proof, bound to the tailnet node that opened it. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
+Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 30 minutes from the proof, used or not, bound to the tailnet node that opened it. A Gate approval can open one too: a send with `x-vyre-presence-keep: 1` and a strong proof gets a session back, so the next sends on that device ask for nothing. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
 
 A session serves the Deck and the Capsule. The CLI gets a narrower window of its own, with no secret on disk: after one Touch ID (or a Capsule or passkey proof) from a login terminal, vyred remembers that login (the terminal, the login's first process and its start time, so a new tab that reuses the terminal's number starts with nothing), and that login's vault approvals and grants ask nothing until 30 minutes from the proof. Anything that puts a secret or a code on screen (`vyre vault get --reveal`, copy, one-time codes, `vyre vault run` resolving secrets) asks every time in a terminal. Each use of the window writes one line to that terminal ("vyre: used your Touch ID window for ...") and one to the vault's audit (`vyre vault audit`). vyred names the login from the kernel's word on which process connected and which terminal it runs in, never from anything the caller sends. A process under a Claude session, a process with no controlling terminal (the Bash tool, anything detached), and a `script` or expect pty that `who` does not list never ride it. A tmux pane rides the window of the logins its attached clients run in (tmux attached from your own login shell), and asks every time when a client is missing, is not a login, or runs under Claude. A terminal code proves its one call without opening a window. The window lives in vyred's memory, so a restart asks again. On a box the CLI never gets one: the Deck's passkey proves each call there. A Claude session's MCP tools and an agent are refused, and never asked.
 

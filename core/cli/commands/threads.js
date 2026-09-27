@@ -13,10 +13,9 @@
 
 import { follow as followStream } from "../../resilience/stream.js";
 import { open } from "../../resilience/node.js";
-import crypto from "node:crypto";
 import path from "node:path";
 import readline from "node:readline";
-import { call } from "../../daemon/client.js";
+import { call, write } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { untilde } from "../../config/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -48,10 +47,11 @@ const fail = (msg, next) => kitFail(msg, { next });
 /**
  * A tool call that prints its own error, in the mode this run is in. A vyred without the tool yet
  * (the sessions verbs, ADR 0030) says so in one line; a person-only change refused from inside a
- * Claude session names where to do it (./sessions.js toolError).
+ * Claude session names where to do it (./sessions.js toolError). A write made `once` carries a
+ * key and rides out a vyred restart (ADR 0029, R2).
  */
-async function tool(name, input) {
-  const r = await call(name, input);
+async function tool(name, input, { once = false } = {}) {
+  const r = once ? await write(name, input) : await call(name, input);
   if (r.error) { toolError(r.error, name); return null; }
   return r.data;
 }
@@ -503,14 +503,10 @@ const run = {
     const f = await resolveThread(ref);
     if ("error" in f) return missed(f);
     // No flag: vyred decides (a running turn of a session it owns is steered, ADR 0030).
-    // One key for this send: a retry after a dropped answer returns {already:true} and never
-    // starts a second turn (ADR 0029 R2), so a lost reply is retried once.
-    const input = { thread: f.id, text: words.join(" "), surface: SURFACE, ...(how ? { mode: how } : {}) };
-    const opts = { headers: { "idempotency-key": crypto.randomUUID() } };
-    let sent = await call("threads.send", input, opts);
-    if (sent.error && ["unreachable", "timeout"].includes(sent.error.code)) sent = await call("threads.send", input, opts);
-    if (sent.error) { toolError(sent.error, "threads.send"); return 1; }
-    const r = sent.data;
+    // One key for this send (write): a retry after a dropped answer or a vyred restart returns
+    // {already:true} and never starts a second turn (ADR 0029 R2).
+    const r = await tool("threads.send", { thread: f.id, text: words.join(" "), surface: SURFACE, ...(how ? { mode: how } : {}) }, { once: true });
+    if (!r) return 1;
     if (json()) { emit(r); return r.sent || r.queued || r.already ? 0 : 1; }
     if (r.already) { out(dim("  already sent (a retry of the same message)")); return 0; }
     const qid = queuedId(r);
@@ -785,7 +781,7 @@ const run = {
       Object.assign(input, { decision, ...(flags.scope ? { scope: flags.scope } : {}), ...(message ? { message } : {}) });
     }
 
-    const r = await tool("threads.answer", input);
+    const r = await tool("threads.answer", input, { once: true });
     if (!r) return 1;
     if (json()) { emit(r); return r.answered ? 0 : 1; }
     if (r.answered) {

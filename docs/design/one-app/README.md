@@ -51,6 +51,12 @@ values.
 - Space 4 to 64 on a 4 grid. Radius 4, 8 (10 touch), 12 (10 phone cards), 14 sheets. Motion:
   tap 120, panel 220, sheet 280, text reveal 150, hold 600, undo 4 s.
 
+## Chat
+
+Chat behaves like Claude Code in the terminal: typing while the agent works steers it (⌥⏎ queues
+for after), Esc stops, Esc Esc rewinds, ⇧Tab cycles modes, and / @ ! # ⌘V ↑ work as there. See
+DIRECTION.md and the Composer board.
+
 ## Layout
 
 | Width | Shape |
@@ -64,20 +70,23 @@ Planner joins the desktop rail. On the phone it lives in Today on Now and in the
 
 ## Install without an Apple Developer account
 
-| Platform | Default | Fallback | Advanced |
+Every phone connects through the relay first (app.vyre.run, sealed end to end) and switches to
+Tailscale by itself whenever it answers. Tailscale on the phone is recommended, never required.
+
+| Platform | Default | Also | Advanced |
 |---|---|---|---|
-| iPhone | The installed web app from `https://vyre.<tailnet>.ts.net` over the Tailscale app | The same web app over the relay (app.vyre.run), no Tailscale on the phone | A native build sideloaded from the Mac with a free Apple ID: expires every 7 days, no push |
+| iPhone | The installed web app, from app.vyre.run/pair | Tailscale on the phone for a faster, private path | A native build sideloaded from the Mac with a free Apple ID: expires every 7 days, no push |
 | Android | The APK installed by `vyre phone add --android --usb` (or `--wireless`), self-updating from the box | Chrome's Install app (the web app) | The APK downloaded from the box (Google's unverified-developer flow applies from 30 Sep 2026 in four countries, worldwide in 2027) | <!-- terms: ignore -->
 
 The laptop runs the flow (Devices, Add your phone, or `vyre phone add`, a proposed CLI verb): pick <!-- terms: ignore -->
-the phone, join the network (Tailscale QR, or a single-use relay QR), open Vyre on the phone,
-install, then five live checks (reached the box, HTTPS, opened as an app, test notification,
-Face ID key). Pairing asks Touch ID once on the laptop.
+the phone, scan the single-use relay QR, install, then five live checks (reached the box via the
+relay, HTTPS, opened as an app, test notification, Face ID key), then the optional "Faster and
+private: add Tailscale" step. Pairing asks Touch ID once on the laptop.
 
 Honest limits: the iPhone web app has push (iOS 16.4+), badge, offline cache, camera QR and
 passkeys, but no haptics, share target, background sync or system password autofill. Push needs
 the box to reach Apple's and Google's push services. Service workers need HTTPS, so
 `tailscale serve` certificates are required on the tailnet path (plain `http://100.x` does not
-work). An open Tailscale issue (19147) reports iPhones failing TLS to `*.ts.net`; test on a real
-device before calling the tailnet path the default. System autofill on iOS and the Mac needs the
+work). Tailscale issues 19147 (an iOS DNS override) and 18889 and 19504 (the tunnel dropping) are why
+the relay is the default path and the tailnet an automatic upgrade. System autofill on iOS and the Mac needs the
 paid Apple account.

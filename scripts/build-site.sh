@@ -6,7 +6,7 @@
 #   --src DIR       the checkout to take the box files from and pack vyre.tgz from (default: this
 #                   repo, which needs box/ in it).
 #
-# The Mac installs from npm (`vyre capsule` builds the Capsule there), so there is no Capsule zip.
+# The Capsule is not here: a Mac builds it from the npm install (`vyre capsule install`).
 #
 # Writes (all generated, all gitignored):
 #   site/install.sh               what `curl -fsSL https://vyre.run/install.sh | sh` runs

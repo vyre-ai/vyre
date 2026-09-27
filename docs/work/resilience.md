@@ -23,16 +23,23 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   ends terminals and says so (term.closed "box updated", term.attach terminal_closed). Term
   sidecar that survives deploys: backlog.
 - ctx.events.latestId() for modules (planner.upcoming's last_event).
-- Tests on testbox (27 Sep, after main b1dbb49): 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
+- CLI write() with idempotency keys (threads send/answer, screen send); sse.js split-CRLF fix;
+  strict-tsc JSDoc. c8f5654 is on main (15e82dd, with the integrator's term save() fix).
+- Tests on testbox (27 Sep, after main 15e82dd): 145 targeted pass, 0 fail. Earlier: 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
   (real dtach), daemon and modules tests.
 
 ## Doing
-- Reporting to the lead; filing per-team fixes.
+- Waiting on planner 3c75e47 for the R6 chaos test; helping pwa and mobile adopt web.js.
 
 ## Next
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
-2. R6: planner.upcoming is ready (work/planner 3c75e47); mobile and pwa schedule local
-   notifications from it with the key planner-<item>-<due seconds>. Add a chaos test.
+2. R6 chaos test, once work/planner 3c75e47 is on main (not yet at b1dbb49). Planner's spec:
+   key = planner-<item>-<Math.floor(due/1000)>; planner.upcoming omits moments answered or
+   ringing and returns last_event; done/snooze/dismiss {key} on an unrung moment records it
+   answered, the box never rings it, planner.acked carries unrung:true; a repeat of the key
+   returns {already:true}; the push tag and planner-ack tag equal the key. Test: a device takes
+   upcoming, goes offline (proxy partition), answers from its outbox by key, comes back; the box
+   never rings it, one planner.acked, and a retried answer is {already:true}.
 3. `last_event` on threads.get, planner.list and Needs reads (R1), with their owners.
 4. A 30 min perf check of an idle durable terminal and of the stream client (scripts/perf-check).
 
@@ -74,6 +81,7 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.
 - Switchboard stopAll: `thread.stopped` reason `restart` (was `stopped`).
 - Module ctx: `ctx.events.latestId()`.
+- daemon client: new `write()`; CLI threads send/answer and the screen's send use it (polish-cli).
 - term: `term.closed` reason `box updated` at start for lost terminals; `term.attach` error code
   `terminal_closed`; terms.json gains `gone`.
 - box image: ENTRYPOINT tini, CMD core/daemon/loop.sh.
