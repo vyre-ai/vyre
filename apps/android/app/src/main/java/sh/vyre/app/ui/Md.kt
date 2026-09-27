@@ -27,6 +27,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.runtime.getValue
 import sh.vyre.app.data.Markdown
 import sh.vyre.app.design.Mono
 import sh.vyre.app.design.Radius
@@ -35,22 +40,32 @@ import sh.vyre.app.design.Type
 import sh.vyre.app.design.V
 import sh.vyre.app.design.VyreColors
 
-/** Assistant text drawn from parsed markdown: plain text spans only, never HTML. */
+/**
+ * Assistant text drawn from parsed markdown: plain text spans only, never HTML. `style` is the
+ * paragraph type (chat messages are Lead, 17/24). `caret` puts the streaming caret (2 x 19,
+ * --text, blinking once a second) at the end of the last paragraph while a reply grows.
+ */
 @Composable
-fun Md(text: String, modifier: Modifier = Modifier) {
+fun Md(text: String, modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = Type.body, caret: Boolean = false) {
     val c = V.c
     val blocks = remember(text) { Markdown.parse(text) }
+    val caretContent = if (caret) mapOf("caret" to androidx.compose.foundation.text.InlineTextContent(
+        androidx.compose.ui.text.Placeholder(2.sp, 19.sp, androidx.compose.ui.text.PlaceholderVerticalAlign.TextBottom)) { Caret() }) else emptyMap()
+    val lastPara = blocks.indexOfLast { it is Markdown.Block.Para }.takeIf { caret && it == blocks.lastIndex }
     SelectionContainer {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(Space.s)) {
-            for (b in blocks) when (b) {
-                is Markdown.Block.Para -> Text(spans(b.spans, c), style = Type.body, color = c.text)
+            if (caret && blocks.isEmpty()) Caret(Modifier.size(2.dp, 19.dp))
+            for ((n, b) in blocks.withIndex()) when (b) {
+                is Markdown.Block.Para -> if (n == lastPara) Text(buildAnnotatedString { append(spans(b.spans, c)); append(" "); appendInlineContent("caret", "|") },
+                    style = style, color = c.text, inlineContent = caretContent)
+                    else Text(spans(b.spans, c), style = style, color = c.text)
                 is Markdown.Block.Heading -> Text(spans(b.spans, c), style = if (b.level <= 2) Type.h3 else Type.bodyStrong, color = c.text)
-                is Markdown.Block.Quote -> Text(spans(b.spans, c), style = Type.body, color = c.text2, modifier = Modifier.padding(start = Space.m))
+                is Markdown.Block.Quote -> Text(spans(b.spans, c), style = style, color = c.text2, modifier = Modifier.padding(start = Space.m))
                 is Markdown.Block.Bullets -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (i in b.items) Row { Text("•", style = Type.body, color = c.label, modifier = Modifier.width(18.dp)); Text(spans(i, c), style = Type.body, color = c.text) }
+                    for (i in b.items) Row { Text("•", style = style, color = c.label, modifier = Modifier.width(18.dp)); Text(spans(i, c), style = style, color = c.text) }
                 }
                 is Markdown.Block.Numbered -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    b.items.forEachIndexed { n, i -> Row { Text("${b.start + n}.", style = Type.code, color = c.label, modifier = Modifier.width(28.dp)); Text(spans(i, c), style = Type.body, color = c.text) } }
+                    b.items.forEachIndexed { k, i -> Row { Text("${b.start + k}.", style = Type.code, color = c.label, modifier = Modifier.width(28.dp)); Text(spans(i, c), style = style, color = c.text) } }
                 }
                 is Markdown.Block.Code -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.button)).background(c.codeBg)
                     .horizontalScroll(rememberScrollState()).padding(Space.m)) {
@@ -59,6 +74,15 @@ fun Md(text: String, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+/** The streaming caret: --text, on for half a second, off for half. */
+@Composable
+private fun Caret(modifier: Modifier = Modifier.fillMaxSize()) {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "caret")
+    val a by t.animateFloat(1f, 0f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.keyframes {
+        durationMillis = 1000; 1f at 0; 1f at 499; 0f at 500; 0f at 999 }), label = "blink")
+    androidx.compose.foundation.layout.Box(modifier.background(V.c.text.copy(alpha = a)))
 }
 
 fun spans(list: List<Markdown.Span>, c: VyreColors): AnnotatedString = buildAnnotatedString {

@@ -525,7 +525,7 @@ private fun ColumnScope.QuestionBody(ask: JsonElement, header: @Composable Colum
 }
 
 @Composable
-private fun QuestionBlock(q: sh.vyre.app.data.Question, pick: Pick, enabled: Boolean, set: (Pick) -> Unit) {
+fun QuestionBlock(q: sh.vyre.app.data.Question, pick: Pick, enabled: Boolean, set: (Pick) -> Unit) {
     val c = V.c
     Column(Modifier.padding(top = Space.l), verticalArrangement = Arrangement.spacedBy(Space.s)) {
         q.header?.let { Text(it, style = Type.micro, color = c.label) }

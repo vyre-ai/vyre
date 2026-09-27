@@ -27,6 +27,8 @@ class VyreApp : Application() {
      * collapses them at once and pulses the next row, before the box's event arrives.
      */
     val settled = MutableStateFlow<Set<String>>(emptySet())
+    /** Each session's last words as the stream last said them, for the Chats list (threads.list has none). */
+    val lastLines = androidx.compose.runtime.mutableStateMapOf<String, String>()
 
     override fun onCreate() {
         super.onCreate()

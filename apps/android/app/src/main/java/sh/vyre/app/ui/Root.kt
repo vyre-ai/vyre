@@ -189,7 +189,7 @@ private fun Shell(activity: MainActivity) {
     val assistant = Speaker.assistant(agents.v.value.orEmpty(), info.v.value)
     val avatar = initials(info.v.value.at("owner").str("name"), host)
 
-    CompositionLocalProvider(LocalNav provides nav, LocalGo provides go, LocalToast provides { t -> toast = t }) {
+    CompositionLocalProvider(LocalNav provides nav, LocalGo provides go, LocalToast provides { t -> toast = t }, LocalAssistant provides assistant) {
         Box(Modifier.fillMaxSize().background(V.c.bg)) {
             AnimatedContent(
                 targetState = stack.lastOrNull(),

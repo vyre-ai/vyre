@@ -24,7 +24,10 @@ sealed class Line {
     data class Notice(override val key: String, val text: String) : Line()
     data class Tools(override val key: String, val calls: List<ToolCall>) : Line()
     data class Ask(override val key: String, val ask: String, val tool: String, val summary: String, val destination: String?, val reason: String?, val decision: String?,
-                   val scope: String? = null, val decidedAt: Long? = null) : Line()
+                   val scope: String? = null, val decidedAt: Long? = null, val raw: JsonObject? = null) : Line() {
+        /** A question (AskUserQuestion) rather than a permission. */
+        val question: Boolean get() = raw?.str("kind") == "question"
+    }
     data class Held(override val key: String, val id: String, val state: String) : Line()
     data class Finished(override val key: String, val ok: Boolean, val cost: Double?, val durationMs: Long?, val error: String?) : Line()
     data class Stopped(override val key: String, val reason: String) : Line()
@@ -91,6 +94,9 @@ class Transcript(val thread: String) {
         return null
     }
 
+    /** When a line began, for the time stamps at the gaps. */
+    fun at(key: String): Long? = began[key]
+
     /** Whether the anchor lies before everything loaded, so an older page may hold it. */
     fun older(a: Anchor): Boolean = (a.event != null && oldest != null && a.event < oldest!!) || (a.at != null && earliest != null && a.at < earliest!!)
 
@@ -135,7 +141,7 @@ class Transcript(val thread: String) {
             "ask.raised" -> {
                 val ask = e.str("ask") ?: return false
                 if (lines.any { it is Line.Ask && it.ask == ask }) return false
-                lines += Line.Ask("ask:$ask", ask, e.str("tool").orEmpty(), e.str("summary").orEmpty(), e.str("destination"), e.str("reason"), null)
+                lines += Line.Ask("ask:$ask", ask, e.str("tool").orEmpty(), e.str("summary").orEmpty(), e.str("destination"), e.str("reason"), null, raw = e)
                 status = "waiting"
             }
             "ask.answered" -> {
@@ -165,7 +171,8 @@ class Transcript(val thread: String) {
     fun openAsk(a: JsonObject) {
         val ask = a.str("id") ?: return
         if (lines.any { it is Line.Ask && it.ask == ask }) return
-        lines += Line.Ask("ask:$ask", ask, a.str("tool").orEmpty(), a.str("summary").orEmpty(), a.str("destination"), a.str("reason"), a.str("decision"))
+        lines += Line.Ask("ask:$ask", ask, a.str("tool").orEmpty(), a.str("summary").orEmpty(), a.str("destination"), a.str("reason"), a.str("decision"), raw = a)
+        a.long("at")?.let { began["ask:$ask"] = it }
     }
 
     fun setStatus(s: String?) { status = s }

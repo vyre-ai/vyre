@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -78,6 +79,27 @@ val LocalOnScreen = staticCompositionLocalOf { true }
 val LocalToast = staticCompositionLocalOf<(Toast) -> Unit> { {} }
 /** Open a route on the tab it belongs to (a session on Chat from Now's "Open session"), as a link would. */
 val LocalGo = staticCompositionLocalOf<(String) -> Unit> { {} }
+/** The assistant's name (system.info assistant.name; "Vyre" when there is none), for labels and placeholders. */
+val LocalAssistant = androidx.compose.runtime.compositionLocalOf { sh.vyre.app.data.Speaker.FALLBACK }
+
+/** A grouped card (phone.md section 4): --panel, a --rule border, radius 10. Rows inside draw their own hairlines. */
+@Composable
+fun Grouped(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val c = V.c
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(sh.vyre.app.design.Radius.panel)
+    Column(modifier.fillMaxWidth().clip(shape).background(c.panel).border(1.dp, c.rule, shape), content = content)
+}
+
+/** A 32 (or 24, 40) agent tile: --hover, a --rule-strong border, the agent's initial. */
+@Composable
+fun Tile(name: String?, size: androidx.compose.ui.unit.Dp = 32.dp) {
+    val c = V.c
+    val r = if (size >= 40.dp) 11.dp else if (size >= 32.dp) 8.dp else 6.dp
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(r)
+    Box(Modifier.size(size).clip(shape).background(c.hover).border(1.dp, c.ruleStrong, shape), contentAlignment = Alignment.Center) {
+        Text((name ?: "V").take(1).uppercase(), style = (if (size >= 32.dp) Type.secondary else Type.micro).copy(fontWeight = androidx.compose.ui.text.font.FontWeight(600)), color = c.text)
+    }
+}
 
 /** A read from the box: loading, its value, or what went wrong. */
 class Load<T>(val value: T?, val error: Throwable?, val loading: Boolean)

@@ -14,12 +14,16 @@ object Speaker {
     const val FALLBACK = "Vyre"
     const val YOU = "you"
 
-    /** The assistant's name: agents.list's assistant, then system.info's (`assistant` or `assistant.name`), then "Vyre". */
-    fun assistant(agents: List<JsonElement>, info: JsonElement? = null): String =
-        listOf(
-            agents.firstOrNull { it.str("kind") == "assistant" }?.str("name"),
-            info.at("assistant")?.let { a -> a.str("name") ?: (a as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content },
-        ).firstOrNull { ok(it) } ?: FALLBACK
+    /**
+     * The assistant's name, the label on its replies: system.info's `assistant.name` (the name the
+     * user gave it in onboarding), which every surface uses; null there means "Vyre". Only a box
+     * whose system.info could not be read falls back to agents.list's assistant.
+     */
+    fun assistant(agents: List<JsonElement>, info: JsonElement? = null): String {
+        if (info != null) return info.at("assistant")?.let { a -> a.str("name") ?: (a as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content }
+            ?.takeIf { ok(it) } ?: FALLBACK
+        return agents.firstOrNull { it.str("kind") == "assistant" }?.str("name")?.takeIf { ok(it) } ?: FALLBACK
+    }
 
     /** Who wrote a reply in a thread: the thread's agent, or the assistant when no agent ran it. */
     fun reply(threadAgent: String?, assistant: String): String = threadAgent?.takeIf { ok(it) } ?: assistant.takeIf { ok(it) } ?: FALLBACK

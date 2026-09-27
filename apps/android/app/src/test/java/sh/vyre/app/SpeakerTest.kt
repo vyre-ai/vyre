@@ -11,8 +11,11 @@ class SpeakerTest {
     private fun j(s: String): JsonElement = JsonCodec.parseToJsonElement(s)
     private val agents = listOf(j("""{"name":"juno","kind":"assistant"}"""), j("""{"name":"kit","kind":"agent"}"""))
 
-    @Test fun assistantFromAgentsThenInfoThenVyre() {
-        assertEquals("juno", Speaker.assistant(agents, j("""{"assistant":{"name":"alex's helper"}}""")))
+    @Test fun assistantFromSystemInfoNullMeansVyre() {
+        assertEquals("alex's helper", Speaker.assistant(agents, j("""{"assistant":{"name":"alex's helper"}}""")))
+        assertEquals("Vyre", Speaker.assistant(agents, j("""{"assistant":{"name":null}}""")))
+        // Only a box whose system.info could not be read falls back to agents.list.
+        assertEquals("juno", Speaker.assistant(agents, null))
         assertEquals("Harlow", Speaker.assistant(emptyList(), j("""{"assistant":{"name":"Harlow"}}""")))
         assertEquals("Harlow", Speaker.assistant(emptyList(), j("""{"assistant":"Harlow"}""")))
         assertEquals("Vyre", Speaker.assistant(emptyList(), j("""{"owner":{"name":"Alex"}}""")))
