@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A person's label from a model's shell is the model's, for every tool
+
+- On the socket, `x-vyre-caller` is only a claim. vyred already refused a person-only call from
+  under a `claude` or one of its threads; any other tool took the label as given, so a session's
+  Bash calling as "cli" read secret settings in the clear, passed the floor's rules as the person
+  and got through every callers list and check that trusts cli, local, deck or capsule. Now a
+  person's label (cli, local, deck, capsule) from under a `claude` or a thread is the session's own,
+  "mcp" (or "mcp:thread:<id>" when the call proved its session), for every tool and for streams.
+  The person at a terminal, the Capsule and the Deck keep theirs; an ancestry vyred cannot read
+  (a `docker exec` on the box) keeps its label, and person-only tools still refuse it. The verdict
+  is read once per connection (test/peer.test.js).
+
 #### Project teammates, step 1: core/team, the serial inbox, notes, CLI
 
 - New module `core/team` (ADR 0031 Migration step 1): a named teammate per role per project, a
