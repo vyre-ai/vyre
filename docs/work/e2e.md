@@ -288,6 +288,15 @@ Plan (to the lead before building):
   restart vyred (23/0/2). A/B could not force the collision (pid timing); the unit test covers it.
   box-deploy asked for 2 alone reruns. The flaky step 3 in their runs is not fully explained yet.
   Slip: a merge left conflict markers in CHANGELOG (fixed in 850473f5: main's copy).
+- Flake diagnosis DONE: reproduced with box-deploy's tree+tgz and the new rc-smoke (1 of 2: stale
+  lock pid 22). "vault item gone" = never written (step 3 hit the gap), no data loss. Build diff
+  (Mac capsule bins) inert; suggest ci excludes local/capsule/bin. Live box on a3a844e4 (my tgz),
+  backup /srv/vyre-backups/2026-09-28-2.
+- memory-iq: memory.correct {answer} OK; phone only with meta.person (same for graph). Session-sync
+  ADR OK with conditions (machine from link peer, box-side switch, trust=min, scrub, provenance for
+  delete, backups note). Review federation's transport when built.
+- federation 0f2a8752: OK once MEDIUM fixed (Mac fails open when threads.asks errors). LOW: box
+  treats unknown asks as ungated; nonces in memory.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
