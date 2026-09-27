@@ -54,6 +54,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   tmp-guard before/after clean.
 - rc.2 on pre/rc: e2e-surfaces 5a646023, launch 4d3b808f, hotfix a3a844e4, e2e-agentclaim 1ff45c03,
   cohesion 4b9c0c0d (targeted 144/0). cl.py now checks headings across the whole CHANGELOG.
+- rc.2 also: memory-iq 4ff57bb6, pack fix 607fcca0. Expected: capsule-pro e76aecdd or newer (NOT c670ed15)
+  once capsule-mac is green; launch opportunities sha.
   MUST also take glass-live's rebased sha (two e2e HIGHs: container Env secrets, unfenced CDP), via
   e2e; its computer image rollout goes with box-deploy. Waiting: vault-next
   (HELD for e2e's sign-off on the send_mail takeover fix) + connectors 8be461a9, then ci bumps to rc.2.
