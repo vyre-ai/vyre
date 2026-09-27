@@ -48,10 +48,10 @@ import { toolDetail } from "./tool-detail.js";
  *   patch?: any, at?: number, seq?: number }} ToolItem
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem
- * @typedef {{ key: string, kind: "notice", text: string, at?: number }} NoticeItem
+ * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
  * @typedef {{ key: string, kind: "ask", ask: string, askKind: string, tool: string|null, state: "open"|"answered"|"cancelled",
- *   decision?: string|null, summary?: string|null, answers?: any, at?: number }} AskItem
- * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number }} ShellItem
+ *   decision?: string|null, summary?: string|null, answers?: any, at?: number, seq?: number }} AskItem
+ * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number, seq?: number }} ShellItem
  * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem|ShellItem} Item
  * @typedef {{ ask: string, kind: string, tool: string|null, state: "open"|"answered"|"cancelled", decision: string|null, at: number|null }} Ask
  * @typedef {{ uuid: string|null, text: string, queued: number|string|null, at: number|null, local?: boolean }} Queued
