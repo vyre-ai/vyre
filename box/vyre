@@ -304,6 +304,20 @@ update() {
   done
   case "$CHANNEL" in stable|beta) ;; *) die "the channel is stable or beta, not $CHANNEL" ;; esac
 
+  # A box built from a checkout the person keeps themselves (VYRE_SOURCE is not $DIR/src) is
+  # updated with git, not from a release: nothing is downloaded, and the source is left alone.
+  if [ "$BUILD" = 1 ]; then
+    src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
+    if [ "${src%/}" != "${DIR%/}/src" ]; then
+      say "this box builds from $src: update it with git; rebuilding from it now"
+      compose build --pull
+      compose up -d
+      ready
+      docker compose exec -T vyre vyre up --keep-link || true
+      exit 0
+    fi
+  fi
+
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' EXIT
   TAG=""
