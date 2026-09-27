@@ -53,13 +53,25 @@
 // last request held of the model's window (contextLabel). The mode is mode.changed {mode}; the
 // model is model.switched {model} (threads.model), model.changed {model} on older boxes (a
 // model.changed with a scope is sessions.models.set's per-purpose default, not this thread's).
+//
+// Sessions 034c71e5: thinking is thread.text {kind: "reasoning"} (deltas and whole, keyed
+// r:<message>:<block>, never the text's m:<message>:<block>; the box flushes a step's reasoning
+// before its text) and thinking.switched {on} (threads.thinking). thread.sent {images: n} counts a
+// message's pasted images. thread.shell {command, code, output} is a "!" line run by the person
+// (the answer to threads.shell carries the same, uncut), and its output goes to Claude at the
+// front of the next message as <bash-input>/<bash-stdout>/<bash-stderr> blocks, which a
+// transcript read splits back into shell rows. thread.remembered {scope, file} is a "#" line
+// saved to a CLAUDE.md. thread.task {id, kind: shell|agent, title, status, call, background,
+// summary, error} is a background task: started with its kind and title, updated with the
+// fields that changed (status running, completed, failed or killed), ended with a summary;
+// threads.tasks {thread} lists them (seedTasks) and threads.kill-task {thread, task} stops one.
 
 import { toolDetail } from "./tool-detail.js";
 
 /**
  * @typedef {"starting"|"idle"|"running"|"waiting"|"stopped"} SessionState
  * @typedef {{ key: string, kind: "user", text: string, uuid?: string, at?: number, seq?: number, command?: true, surface?: string|null,
- *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, opened?: boolean }} UserItem
+ *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, opened?: boolean, images?: number }} UserItem
  * @typedef {{ key: string, kind: "steer", uuid: string|null, user: string|null, step: number|null, turn: string|null, pending: boolean,
  *   taken?: boolean, at?: number, seq?: number }} SteerItem
  * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number }} TextItem
@@ -71,12 +83,14 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
  * @typedef {{ key: string, kind: "ask", ask: string, askKind: string, tool: string|null, state: "open"|"answered"|"cancelled",
  *   decision?: string|null, summary?: string|null, answers?: any, at?: number, seq?: number }} AskItem
- * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number, seq?: number }} ShellItem
+ * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number, seq?: number,
+ *   local?: boolean, answered?: boolean, echoed?: boolean }} ShellItem
  * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem|ShellItem} Item
  * @typedef {{ ask: string, kind: string, tool: string|null, state: "open"|"answered"|"cancelled", decision: string|null, at: number|null }} Ask
  * @typedef {{ uuid: string|null, text: string, queued: number|string|null, at: number|null, local?: boolean }} Queued
  * @typedef {{ content: string, status: string, activeForm?: string }} Todo
- * @typedef {{ id: string, kind: "shell"|"agent", title: string, status: string, call?: string, at?: number|null, derived?: boolean }} Task
+ * @typedef {{ id: string, kind: "shell"|"agent", title: string, status: string, call?: string|null, at?: number|null, derived?: boolean,
+ *   background?: boolean, summary?: string, error?: string }} Task
  * @typedef {{ type: string, payload?: any, at?: number, id?: number|string }} SessionEvent
  * @typedef {{ uuid: string, seq: number|null, from: number|null, at: number }} Rewind
  *   A rewind: the message's line (seq) and time (from) once known, and when it happened (at).
@@ -313,7 +327,7 @@ function ensureMarker(s, user, f, out) {
  * tail; "queue": a row in the queue, and again with `queued` (the row id threads.send answered)
  * once it is known, so the row's buttons can name it. A plain send (idle) draws nothing:
  * thread.sent does. Returns the keys touched.
- * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|null, at?: number, queued?: number|string|null }} m
+ * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|null, at?: number, queued?: number|string|null, images?: number }} m
  */
 export function localSend(s, m) {
   /** @type {Set<string>} */
@@ -331,6 +345,7 @@ export function localSend(s, m) {
   liveUser(s, { text: m.text, uuid: m.uuid, at: m.at }, out);
   const user = /** @type {UserItem|undefined} */ (s.byKey.get(/** @type {string} */ (s.meta.uuids.get(m.uuid))));
   if (!user) return [...out];
+  if (m.images) user.images = m.images;
   user.local = true;
   user.steered = true;
   // A marker thread.steered made first (it can overtake the send's answer) is already confirmed.
@@ -544,19 +559,97 @@ function abandoned(s, b) {
 }
 
 /**
- * A "!" command the person ran in the session's folder, from threads.shell's answer (no event
- * carries it): a row with the command and its output. Returns the keys touched.
+ * A "!" command the person ran here, drawn on run and filled from threads.shell's answer
+ * {code, output} (uncut; the event's output is cut at 4000). Returns the keys touched.
  * @param {Session} s
  * @param {{ id: string, command: string, output?: string, exit?: number|null, duration_ms?: number|null, error?: string, at?: number }} r
  */
 export function localShell(s, r) {
   const key = `sh:${r.id}`;
+  const answered = r.output !== undefined || r.exit != null || !!r.error;
+  const was = /** @type {ShellItem|undefined} */ (s.byKey.get(key));
   /** @type {ShellItem} */
-  const item = { key, kind: "shell", command: r.command, output: String(r.output ?? ""), exit: r.exit ?? null, duration_ms: r.duration_ms ?? null,
+  const item = { key, kind: "shell", command: r.command, output: String(r.output ?? was?.output ?? ""), exit: r.exit ?? was?.exit ?? null,
+    duration_ms: r.duration_ms ?? null, local: true, ...(answered ? { answered: true } : {}),
     ...(r.error ? { error: r.error } : {}), ...(r.at !== undefined ? { at: r.at } : {}) };
-  const was = s.byKey.get(key);
   if (was) Object.assign(was, item); else insert(s, item);
   return [key];
+}
+
+/**
+ * thread.shell {command, code, output}: the row drawn here for it (the newest with that command
+ * not echoed yet) takes it, else it is a row of its own (run on another screen).
+ * @param {Session} s @param {any} p @param {number|undefined} at @param {SessionEvent} e @param {Set<string>} out
+ */
+function onShell(s, p, at, e, out) {
+  const command = String(p.command ?? "");
+  if (!command) return;
+  const exit = typeof p.code === "number" ? p.code : null;
+  for (let i = s.items.length - 1; i >= 0; i--) {
+    const it = /** @type {ShellItem} */ (s.items[i]);
+    if (it.kind !== "shell" || !it.local || it.echoed || !sameText(command, it.command)) continue;
+    it.echoed = true;
+    // The answer's output is whole; the event's is cut.
+    if (!it.answered) { it.output = String(p.output ?? ""); it.exit = exit; }
+    out.add(it.key);
+    return;
+  }
+  const key = `sh:e${e.id ?? ++s.meta.notices}`;
+  if (s.byKey.has(key)) return;
+  insert(s, /** @type {ShellItem} */ ({ key, kind: "shell", command, output: String(p.output ?? ""), exit, duration_ms: null, ...(at !== undefined ? { at } : {}) }));
+  out.add(key);
+}
+
+/** "!" lines at the front of a message, as the box sends them to Claude. */
+const SHELL_BLOCK = /^\s*<bash-input>([\s\S]*?)<\/bash-input>\s*<bash-stdout>([\s\S]*?)<\/bash-stdout>\s*(?:<bash-stderr>([\s\S]*?)<\/bash-stderr>)?/;
+
+/**
+ * A transcript user line split into the "!" lines it carried and the person's own words.
+ * @param {string} text @returns {{ shells: { command: string, output: string }[], text: string }}
+ */
+export function splitShells(text) {
+  const shells = [];
+  let rest = String(text ?? "");
+  for (let m = SHELL_BLOCK.exec(rest); m; m = SHELL_BLOCK.exec(rest)) {
+    const out = m[2] ?? "", err = m[3] ?? "";
+    shells.push({ command: m[1], output: out + (err ? (out ? "\n" : "") + err : "") });
+    rest = rest.slice(m[0].length);
+  }
+  return { shells, text: shells.length ? rest.replace(/^\s+/, "") : String(text ?? "") };
+}
+
+/**
+ * threads.tasks' answer: the box's list of this thread's background tasks. From then on they
+ * are the box's, as with thread.task. Returns the keys touched.
+ * @param {Session} s @param {any[]} list
+ */
+export function seedTasks(s, list) {
+  if (!Array.isArray(list)) return [];
+  /** @type {Set<string>} */
+  const out = new Set();
+  if (!s.meta.taskEvents) { s.meta.taskEvents = true; s.tasks = new Map(); out.add("@tasks"); }
+  for (const t of list) if (t && t.id != null) { putTask(s, t, undefined); out.add("@tasks"); }
+  return [...out];
+}
+
+/** One task from the box (thread.task or threads.tasks), merged over what was known. @param {Session} s @param {any} p @param {number|undefined} at */
+function putTask(s, p, at) {
+  const id = String(p.id);
+  const was = s.tasks.get(id);
+  // The status words the box uses: running, completed, failed, killed (Claude Code's stopped).
+  const status = p.status === "stopped" ? "killed" : p.status;
+  /** @type {Task} */
+  const t = { id, kind: p.kind === "agent" || p.kind === "shell" ? p.kind : was?.kind ?? "shell", title: String(p.title ?? was?.title ?? ""),
+    status: String(status ?? was?.status ?? "running"), at: was?.at ?? at ?? null };
+  const call = p.call ?? was?.call;
+  if (call) t.call = String(call);
+  const background = p.background ?? was?.background;
+  if (typeof background === "boolean") t.background = background;
+  const summary = p.summary ?? was?.summary;
+  if (summary) t.summary = String(summary);
+  const error = p.error ?? was?.error;
+  if (error) t.error = String(error);
+  s.tasks.set(id, t);
 }
 
 /**
@@ -830,6 +923,8 @@ function onSent(s, p, at, out) {
   if (uuid && p.via !== "steer" && p.via !== "now") s.meta.texts.delete(uuid);
   const key = uuid ? s.meta.uuids.get(uuid) : undefined;
   const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
+  // How many pasted images came with it (the box does not echo them).
+  if (user && typeof p.images === "number" && p.images > 0 && user.images !== p.images) { user.images = p.images; out.add(user.key); }
   if (user && user.seq === undefined) {
     const steer = p.via === "steer" || (p.via === "now" && !user.opened);
     const m = markerOf(s, user.key);
@@ -930,18 +1025,25 @@ export function applyEvent(s, e) {
     case "model.switched": case "thread.model":
       if (p.model != null && p.model !== "") { s.model = String(p.model); out.add("@session"); }
       break;
-    case "thread.thinking":
+    case "thinking.switched":
       if (typeof p.on === "boolean") { s.thinking = p.on; out.add("@session"); }
       break;
     case "thread.task": {
-      const id = String(p.id ?? "");
-      if (!id) break;
+      if (p.id == null || p.id === "") break;
       // The box names its tasks now: the ones guessed from tool calls give way.
       if (!s.meta.taskEvents) { s.meta.taskEvents = true; s.tasks = new Map(); }
-      const was = s.tasks.get(id);
-      s.tasks.set(id, { id, kind: p.kind === "agent" ? "agent" : "shell", title: String(p.title ?? was?.title ?? ""), status: String(p.status ?? was?.status ?? "running"),
-        at: was?.at ?? at ?? null });
+      putTask(s, p, at);
       out.add("@tasks");
+      break;
+    }
+    case "thread.shell": onShell(s, p, at, e, out); break;
+    case "thread.remembered": {
+      const key = `n:${e.id ?? ++s.meta.notices}`;
+      if (s.byKey.has(key)) break;
+      const file = String(p.file ?? "").split(/[\\/]/).pop() || "CLAUDE.md";
+      const where = p.scope === "user" ? "yours, every project" : p.scope === "local" ? "this folder, not shared" : "this project";
+      insert(s, /** @type {NoticeItem} */ ({ key, kind: "notice", text: `Remembered in ${file} (${where})`, ...(at !== undefined ? { at } : {}) }));
+      out.add(key);
       break;
     }
     case "thread.text": onText(s, p, at, e, out); break;
@@ -1010,6 +1112,7 @@ function matchLive(s, b, taken, list, i, anyLive = true) {
     return s.items.find(it => it.kind === "text" && live(it) && /** @type {TextItem} */ (it).message === b.message) ?? null;
   }
   if (b.kind === "thinking") return s.items.find(it => it.kind === "reasoning" && live(it)) ?? null;
+  if (b.kind === "shell") return s.items.find(it => it.kind === "shell" && live(it) && sameText(/** @type {ShellItem} */ (it).command, b.command)) ?? null;
   if (b.kind === "turn") {
     // An open turn read earlier closes in place; else the oldest live turn marker.
     for (let i = s.items.length - 1; i >= 0; i--) {
@@ -1034,6 +1137,7 @@ function newKey(s, b, ord) {
   if (b.kind === "user") return `u:@${b.seq}`;
   if (b.kind === "turn") return `turn:@${b.seq}`;
   if (b.kind === "thinking") return `r:@${b.seq}:${ord}`;
+  if (b.kind === "shell") return `sh:@${b.seq}:${ord}`;
   if (b.message == null) return `m:@${b.seq}:${ord}`;
   let n = 0;
   while (s.byKey.has(`m:${b.message}:${n}`)) n++;
@@ -1060,8 +1164,27 @@ function fieldsOf(b) {
       return f;
     }
     case "turn": return { kind: "turn", duration_ms: b.duration_ms ?? null, tokens: b.tokens ?? null, model: b.model ?? null, open: Boolean(b.open), ...at };
+    // What ran is known from the line; its exit code is not (a live row keeps its own).
+    case "shell": return { kind: "shell", command: String(b.command ?? ""), output: String(b.output ?? ""), ...at };
     default: return null;
   }
+}
+
+/**
+ * A user line that carried "!" lines (threads.shell's output, sent with the next message): shell
+ * blocks on its line, then the person's own words. Other blocks as they are.
+ * @param {any[]} list
+ */
+function withShells(list) {
+  if (!list.some(b => b.kind === "user" && typeof b.text === "string" && b.text.includes("<bash-input>"))) return list;
+  const out = [];
+  for (const b of list) {
+    const sp = b.kind === "user" && typeof b.text === "string" ? splitShells(b.text) : null;
+    if (!sp || !sp.shells.length) { out.push(b); continue; }
+    for (const sh of sp.shells) out.push({ seq: b.seq, kind: "shell", ...(b.ts !== undefined ? { ts: b.ts } : {}), command: sh.command, output: sh.output });
+    out.push({ ...b, text: sp.text });
+  }
+  return out;
 }
 
 /** Shallow: does the item already hold these fields? @param {any} item @param {Record<string, any>} f */
@@ -1086,7 +1209,7 @@ export function applyBlocks(s, blocks) {
   // First pass: which item each block is (or null for a new one), so a new block can be placed
   // before the next block that is already on screen.
   // A branch a rewind left is never drawn again, whatever the transcript still holds.
-  const list = blocks.filter(b => b && typeof b === "object" && typeof b.seq === "number" && !(s.meta.rewinds.length && abandoned(s, b)));
+  const list = withShells(blocks.filter(b => b && typeof b === "object" && typeof b.seq === "number" && !(s.meta.rewinds.length && abandoned(s, b))));
   const anyLive = s.items.some(it => it.seq === undefined);
   const plan = list.map((b, i) => {
     const ok = `${b.seq}:${b.kind}`;
@@ -1130,6 +1253,7 @@ export function applyBlocks(s, blocks) {
     if (made.kind === "reasoning") made.message = null;
     if (made.kind === "text" || made.kind === "reasoning") made.block = b.kind === "text" && b.message != null ? Number(key.split(":").pop()) : ord;
     if (made.kind === "tool" && !made.status) made.status = "running";
+    if (made.kind === "shell") { made.exit = null; made.duration_ms = null; }
     const at = placeOf(s, plan, i, prev, hint.at);
     insert(s, made, at);
     hint.at = at >= 0 && at < s.items.length && s.items[at] === made ? at : s.items.length - 1;

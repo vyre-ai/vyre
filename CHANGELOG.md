@@ -4,6 +4,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: images, ! shell, # memory, thinking and background tasks on the box's real shapes
+
+Wires sessions 034c71e5 in deck/chat.
+- caps.js: threads.shell, threads.remember, threads.thinking, threads.tasks and threads.kill-task
+  are live (SESSION_TOOLS); NOT_OFFERED is empty. threads.tasks' answer (asked when a session
+  opens) says it for images, "!", "#", thinking and Stop (RELEASE_034, LINKED), so an older box
+  keeps all of them off from its first "no such tool".
+- Images: threads.send {images: [{media_type, data}]}, the box's caps (5, 5 MB each as base64
+  length * 3/4; png, jpeg, gif, webp). Paste, an attach button or a drop; a box that has not said
+  yet is asked first, so images never go to one that would drop them. thread.sent {images} and a
+  steer drawn on send show "N images" on the message.
+- "!": threads.shell {thread, command} answers {code, output}; thread.shell is the same row, not a
+  second one, and another screen's is a row of its own. A transcript read splits the next
+  message's <bash-input>/<bash-stdout>/<bash-stderr> blocks back into shell rows and the words.
+- "#": threads.remember {thread, text, scope} answers {scope, file}: the note names the file;
+  thread.remembered is a notice in the timeline.
+- Thinking: threads.thinking {thread, on} ({thinking: null, note} when not running puts the chip
+  back); thinking.switched moves the chip (thread.thinking is gone). Reasoning rows from
+  thread.text kind "reasoning" are keyed r:<message>:<block>, apart from text's m:.
+- Background tasks: thread.task merges only the fields each event carries (kind and title from
+  the start, summary and error at the end; stopped reads killed); threads.tasks seeds the tray;
+  Stop sends threads.kill-task {thread, task} (was {id}). The tray says done, failed or stopped
+  and the summary.
+- Tests: the live-key tests in core/switchboard and core/transcripts compare text keys with text
+  keys and reasoning with reasoning, so they pass with or without thinking deltas.
+  test/chat-sessions-contract: the 034c71e5 tools and events are AHEAD (remove when on main),
+  and their payload keys are checked on both sides, strictly once core has them.
+
 #### Chat: the model picker, the session's commands, rewind with code, the context meter
 
 Wires sessions 7543952e and 468af69f in deck/chat.

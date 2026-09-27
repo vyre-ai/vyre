@@ -42,18 +42,22 @@ const serverEvents = names(core, /\b(?:emit|emitRaw|fire)\(\s*"([a-z]+\.[a-z._-]
 
 const chat = [...sources("deck/chat"), "deck/js/api.js"];
 const chatTools = names(chat, /"((?:threads|sessions)\.[a-z_-]+(?:\.[a-z_-]+)*)(?::[a-z]+)?"/g);
-const chatEvents = names(chat, /"((?:thread|ask|mode|model)\.[a-z_-]+)"/g);
+const chatEvents = names(chat, /"((?:thread|ask|mode|model|thinking)\.[a-z_-]+)"/g);
 
-/** Events chat reduces ahead of the server (feature-checked by their tools in NOT_OFFERED). */
-const FUTURE_EVENTS = new Set(["thread.thinking", "thread.task", "thread.model", "thread.mode"]);
+/** Events chat reduces ahead of the server (older names it still accepts; nothing sends them yet). */
+const FUTURE_EVENTS = new Set(["thread.model", "thread.mode"]);
 /** Events older boxes emit that this one no longer does (a cancelled ask is now ask.answered, decision "cancelled"). */
 const LEGACY_EVENTS = new Set(["ask.cancelled"]);
 
 // Ships with sessions 7543952e (threads.model, threads.commands, rewind restore) and 468af69f
 // (thread.usage context); remove when on main. Missing from core here is allowed; once core has
 // one, every check on it is strict (AHEAD only excuses absence).
-const AHEAD_TOOLS = new Set(["threads.model", "threads.commands"]);
-const AHEAD_EVENTS = new Set(["model.switched"]);
+// Ships with sessions 034c71e5 (images on threads.send, threads.shell, threads.remember,
+// threads.thinking, threads.tasks, threads.kill-task; thread.task, thinking.switched,
+// thread.shell, thread.remembered); remove when on main.
+const AHEAD_TOOLS = new Set(["threads.model", "threads.commands",
+  "threads.shell", "threads.remember", "threads.thinking", "threads.tasks", "threads.kill-task"]);
+const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thinking.switched", "thread.shell", "thread.remembered"]);
 
 test("the sessions layer is on this tree (merge pre/3a first)", () => {
   assert.ok(serverTools.has("threads.send"), "core registers threads.send");
@@ -85,7 +89,8 @@ test("every event chat listens for is emitted, or is a known future one", () => 
 test("chat hears every session event the sessions layer emits", () => {
   const needed = ["thread.started", "thread.turn", "thread.text", "thread.tool", "thread.finished", "thread.stopped", "thread.state",
     "thread.usage", "thread.limit", "thread.sent", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
-    "ask.raised", "ask.answered", "mode.changed", "model.changed", "model.switched"];
+    "ask.raised", "ask.answered", "mode.changed", "model.changed", "model.switched",
+    "thread.task", "thinking.switched", "thread.shell", "thread.remembered"];
   for (const e of needed) {
     assert.ok(serverEvents.has(e) || AHEAD_EVENTS.has(e), `the server no longer emits ${e}: update this test and chat together`);
     assert.ok(chatEvents.has(e), `chat does not listen for ${e}`);
@@ -128,4 +133,48 @@ test("the payload fields chat keys on are the ones the server sends", () => {
     assert.match(sb, /"model.switched", \{ model:/, "model.switched carries model");
   }
   if (/context: \{ used/.test(sb)) assert.match(sb, /share:/, "thread.usage context carries share");
+});
+
+test("sessions 034c71e5's shapes: images, ! shell, # memory, thinking, background tasks", () => {
+  const sb = read("core/switchboard/index.js");
+  const tr = read("core/switchboard/translate.js");
+  const st = read("deck/chat/core/session-state.js");
+  const comp = read("deck/chat/composer.js");
+  const cs = read("deck/chat/core/composer-state.js");
+  const view = read("deck/chat/session.js");
+  // Chat's side, always: the names and keys it sends and reads.
+  assert.match(comp, /images: sendImages\(imgs\)/, "threads.send carries images");
+  assert.match(cs, /media_type: a\.media_type, data: a\.data/, "each image is {media_type, data}");
+  assert.match(cs, /MAX_IMAGES = 5\b/, "at most 5 images");
+  assert.match(cs, /MAX_IMAGE_BYTES = 5 \* 1024 \* 1024/, "5 MB each");
+  assert.match(comp, /"threads\.shell", \{ thread, command \}/, "threads.shell {thread, command}");
+  assert.match(comp, /d\.code/, "chat reads the shell's code");
+  assert.match(comp, /"threads\.remember", \{ thread, text, scope \}/, "threads.remember {thread, text, scope}");
+  assert.match(comp, /"threads\.thinking", \{ thread, on: want \}/, "threads.thinking {thread, on}");
+  assert.match(view, /"threads\.kill-task", \{ thread, task: t\.id \}/, "threads.kill-task {thread, task}");
+  assert.match(view, /"threads\.tasks", \{ thread \}/, "threads.tasks {thread}");
+  assert.match(st, /p\.kind === "reasoning" \? "reasoning"/, "chat keys reasoning apart from text");
+  assert.match(st, /prefix = kind === "reasoning" \? "r" : "m"/, "reasoning is r:<message>:<block>, text m:<message>:<block>");
+  for (const f of ["summary", "background", "call", "error"]) assert.match(st, new RegExp(`p\\.${f}\\b`), `chat reads thread.task's ${f}`);
+  assert.match(st, /p\.code/, "chat reads thread.shell's code");
+  // The server's side, once core has the release (strict then).
+  if (!serverTools.has("threads.shell")) return;
+  assert.match(sb, /images: \{ type: "array", items: \{ type: "object", required: \["media_type", "data"\]/, "threads.send takes images [{media_type, data}]");
+  assert.match(sb, /IMAGES = \{ count: 5, mb: 5 \}/, "the box's image caps are chat's");
+  assert.match(sb, /IMAGE_TYPES = \["image\/png", "image\/jpeg", "image\/gif", "image\/webp"\]/, "the image types are chat's");
+  assert.match(sb, /images: images\.length/, "thread.sent counts the images");
+  assert.match(sb, /required: \["thread", "command"\]/, "threads.shell takes {thread, command}");
+  assert.match(sb, /"thread\.shell", \{ command: [^,]+, code: r\.code, output:/, "thread.shell carries {command, code, output}");
+  assert.match(sb, /return \{ thread: id, code: r\.code, output: out/, "threads.shell answers {code, output}");
+  assert.match(sb, /enum: \["project", "user", "local"\]/, "threads.remember scopes");
+  assert.match(sb, /"thread\.remembered", \{ scope, file \}/, "thread.remembered carries {scope, file}");
+  assert.match(sb, /required: \["thread", "on"\]/, "threads.thinking takes {thread, on}");
+  assert.match(sb, /"thinking\.switched", \{ on:/, "thinking.switched carries on");
+  assert.match(sb, /return \{ thread: id, thinking: Boolean\(on\) \}/, "threads.thinking answers {thinking}");
+  assert.match(sb, /required: \["thread", "task"\]/, "threads.kill-task takes {thread, task}");
+  assert.match(sb, /"thread\.task", task,/, "thread.task is the task itself");
+  assert.match(sb, /tasks: st && st\.tasks \?/, "threads.tasks answers {tasks}");
+  for (const f of ["kind:", "title:", "call:", "background:", "summary:", "error:"]) assert.ok(tr.includes(f), `thread.task has ${f}`);
+  assert.match(tr, /"killed"/, "a stopped task is killed");
+  assert.match(sb + tr, /kind: "reasoning"/, "thinking is thread.text kind reasoning");
 });

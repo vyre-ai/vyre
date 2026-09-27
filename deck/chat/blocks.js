@@ -52,12 +52,14 @@ export function agentAv(who, assistant = who === "Vyre") {
 const tag = (el, kind, ts) => { /** @type {any} */ (el)._kind = kind; /** @type {any} */ (el)._ts = ts ?? null; return el; };
 
 /** "you" (or a surface's name) and the words, as a chat message. */
-export function userRow(who, text, ts, me = null) {
+export function userRow(who, text, ts, me = null, images = 0) {
   return tag(h("div", { class: "msg cv-row cv-user" },
     personAv(who, me),
     h("div", { class: "msg-body" },
       h("div", { class: "msg-head" }, h("span", { class: "msg-who" }, who), ts ? h("span", { class: "msg-when" }, clock(ts)) : null),
-      h("div", { class: "msg-text cv-user-text" }, String(text ?? ""))),
+      h("div", { class: "msg-text cv-user-text" }, String(text ?? "")),
+      // Pasted images went with the words (threads.send images); the count, not the pictures.
+      images > 0 ? h("div", { class: "cv-user-images faint" }, images === 1 ? "1 image" : `${images} images`) : null),
   ), "user", ts);
 }
 
@@ -292,7 +294,7 @@ function displayName(tool) {
 
 /** A block as its row. @param {any} b @param {{ who?: string, me?: string|null }} [ctx] */
 export function blockRow(b, ctx = {}) {
-  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me); if (b.command) el.classList.add("cv-command"); return el; }
+  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Number(b.images) || 0); if (b.command) el.classList.add("cv-command"); return el; }
   if (b.kind === "text") return textRow(b.text, b.ts);
   if (b.kind === "thinking") return thinkingRow(b.text, b.ts);
   if (b.kind === "tool") return toolCard(b);

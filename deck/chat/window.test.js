@@ -158,6 +158,15 @@ const scrollTo = y => {
   timeline.scrollTop = y;
   timeline.dispatchEvent(new Event("scroll"));
 };
+// Frames here are timers (no requestAnimationFrame): a reply's reveal takes one, the stick that
+// follows it another, and a loaded machine can push both past any fixed wait. So the stick tests
+// wait for what they look at, not for a time.
+/** The streaming reply shows `s` (its reveal is paced over frames). */
+const drawn = s => until(() => { const live = $(container, ".cv-live"); return !!live && text(live).includes(s); }).catch(() => {});
+/** At the bottom once the stick frame has run; the assertion after it says whether it did. */
+const bottom = () => until(() => timeline.scrollTop + VIEW === timeline.scrollHeight, 2000).catch(() => {});
+/** A few frames' worth of timers: enough for a stick frame that was asked for to have run. */
+const frames = async () => { for (let i = 0; i < 4; i++) await wait(20); };
 const mountedRows = () => timeline.children.filter(c => !has(c, "cv-spacer") && has(c, "cv-row") || has(c, "day-rule")).length;
 
 const { mountSession } = await import("./session.js");
@@ -242,27 +251,32 @@ test("stuck: content that moves the view up without the reader (a clamp, a shrin
   timeline.scrollTop = timeline.scrollTop - 300;
   timeline.dispatchEvent(new Event("scroll"));
   emit("thread.text", { message: "msg_x", delta: "Still following. " });
-  await wait(60);
+  await drawn("Still following.");
+  await bottom();
   assert.equal(timeline.scrollTop + VIEW, timeline.scrollHeight, "back at the bottom");
   assert.equal($(container, ".jump-latest").hidden, true);
   // An upward wheel does detach; scrolling back to the bottom sticks again.
   scrollTo(timeline.scrollTop - 400);
   emit("thread.text", { message: "msg_x", delta: "More while reading above. " });
-  await wait(60);
+  await drawn("More while reading above.");
+  // A stick frame, had there been one, would have run by now.
+  await frames();
   assert.ok(timeline.scrollTop + VIEW < timeline.scrollHeight - 100, "the reader stays where they went");
   scrollTo(timeline.scrollHeight);
   emit("thread.text", { message: "msg_x", delta: "Back at the tail. " });
-  await wait(60);
+  await drawn("Back at the tail.");
+  await bottom();
   assert.equal(timeline.scrollTop + VIEW, timeline.scrollHeight, "stuck again");
   // Leave it detached for the next test, as the one before left it.
   scrollTo(timeline.scrollHeight / 2);
   emit("thread.text", { message: "msg_x", delta: "And more. " });
-  await wait(60);
+  await drawn("And more.");
+  await frames();
 });
 
 test("Jump to latest mounts the tail and sticks again", async () => {
   await $(container, ".jump-latest").click();
-  await wait(40);
+  await bottom();
   assert.equal(timeline.scrollTop + VIEW, timeline.scrollHeight);
   assert.ok($(container, ".cv-live"), "the streaming reply is mounted");
   assert.ok(mountedRows() < 150);
