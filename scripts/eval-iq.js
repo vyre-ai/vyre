@@ -8,6 +8,7 @@
 //   node scripts/eval-iq.js --json            the same, as JSON
 //   node scripts/eval-iq.js --answer          also memory.ask on every question, its replies replayed
 //                                             from test/eval/asks/<world>.json (CI calls no model)
+//   node scripts/eval-iq.js --explain --json  --answer, and every miss with why (never on a sealed world)
 //   node scripts/eval-iq.js --fix             --answer, then correct every wrong answer as a person would and ask again
 //   node scripts/eval-iq.js --answer --record  ask the fast model (`claude -p`, testbox) and keep
 //                                             its replies there; the sealed world is recorded unread
@@ -93,7 +94,7 @@ export function scoreRetrieval(questions, got, ms) {
 }
 
 /**
- * @param {{ world?: "open"|"sealed", embedder?: "fake"|"real", only?: string[], answer?: boolean, record?: boolean, fix?: boolean }} [opts]
+ * @param {{ world?: "open"|"sealed", embedder?: "fake"|"real", only?: string[], answer?: boolean, record?: boolean, fix?: boolean, explain?: boolean }} [opts]
  */
 export async function runIq(opts = {}) {
   const w = WORLDS[opts.world || "open"];
@@ -152,6 +153,8 @@ export async function runIq(opts = {}) {
       // memory.ask: right (an acceptable answer, or an abstention where there is none),
       // confident-wrong, abstained, ungrounded, and the same answer when asked again.
       let right = 0, cw = 0, abst = 0, ungrounded = 0, incons = 0, usd = 0;
+      if (opts.explain && sealed) throw new Error("--explain never runs on a sealed world");
+      const misses = [];
       const ms = [], kinds = {}, whys = {};
       for (const q of questions) {
         const r = await mem.call("memory.ask", { question: q.q });
@@ -164,10 +167,17 @@ export async function runIq(opts = {}) {
         const again = await mem.call("memory.ask", { question: q.q });
         if (again.answer !== r.answer || JSON.stringify((again.sources || []).map(x => `${x.session}:${x.seq}`)) !== JSON.stringify((r.sources || []).map(x => `${x.session}:${x.seq}`))) incons++;
         const k = kinds[q.kind] || (kinds[q.kind] = { n: 0, ok: 0 }); k.n++; if (ok) k.ok++;
+        // --explain: why each miss missed, on a world one may tune on. Never on a sealed one.
+        if (opts.explain && !sealed && !ok) {
+          const ps = (await mem.call("memory.retrieve", { question: q.q, k: K })).passages || [];
+          const t = targets(q);
+          misses.push({ kind: q.kind, q: q.q, expect: q.expect, answer: r.answer, confidence: r.confidence, why: r.why || null, known: r.known,
+            gold_in_8: ps.some(p => t.turns.has(`${p.session}:${p.seq}`)), answer_in_8: q.expect ? ps.some(p => correct(p.text, q.expect)) : null });
+        }
       }
       answered = { accuracy: round(right / questions.length), confident_wrong: cw, abstain_rate: round(abst / questions.length), ungrounded, inconsistent: incons,
         p50_ms: round(pct(ms, 0.5)), p95_ms: round(pct(ms, 0.95)), cost_usd: round(usd * 1e3) / 1e3, cost_per_question: round(usd / questions.length * 1e4) / 1e4,
-        by_kind: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, round(v.ok / v.n)])), abstained_why: whys };
+        by_kind: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, round(v.ok / v.n)])), abstained_why: whys, ...(opts.explain ? { misses } : {}) };
       // --fix: the person corrects every answer IQ got wrong where it was shown, then everything is
       // asked again. A corrected question must now be right, and nothing that was right may change.
       if (opts.fix) {
@@ -228,7 +238,7 @@ function print(r) {
 async function main(argv) {
   const wi = argv.indexOf("--world"), ei = argv.indexOf("--embedder");
   const r = await runIq({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), embedder: /** @type {any} */ (ei >= 0 ? argv[ei + 1] : "fake"),
-    answer: argv.includes("--answer") || argv.includes("--fix"), record: argv.includes("--record"), fix: argv.includes("--fix"), only: argv.includes("--answer") || argv.includes("--fix") ? ["full"] : undefined });
+    answer: argv.includes("--answer") || argv.includes("--fix") || argv.includes("--explain"), record: argv.includes("--record"), fix: argv.includes("--fix"), explain: argv.includes("--explain"), only: argv.includes("--answer") || argv.includes("--fix") || argv.includes("--explain") ? ["full"] : undefined });
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 1) + "\n"); else print(r);
 }
 

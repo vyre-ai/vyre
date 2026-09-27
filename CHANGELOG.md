@@ -18,6 +18,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Corrections (memory.correct, uncorrect, merge, split, and IQ answer fixes) follow one rule: the
   person's own surfaces, or their phone or paired device with a person session (a passkey,
   ADR 0032). A device without one gets `person_session_required`; agents are always refused.
+- Vyre IQ's check counts what the model was shown for a cited passage: its date, project folder
+  and session name, and a name of several words when each word is there. It had been refusing
+  grounded answers ("it went live on 2026-06-12" from the passage's date). Replayed, no new model
+  calls: open world 0.778 to 0.867 (confident-wrong 1 to 1); sealed 0.62 to 0.72 (6 to 7).
+  `eval-iq --explain` lists each miss and why, and refuses a sealed world.
 - An agent corrects memory only with the person's own words: memory.correct from a model takes
   `from_turn: {seq}`, a turn of its own verified thread that the switchboard says the person typed
   (`threads.said`), with the new value in their words. It is applied as theirs, undoable, with
