@@ -258,6 +258,12 @@ test("recall: search filters by role, by project folders and caps hits per sessi
   assert.equal((await search(e.db, { q: "intake", project_cwds: ["/home/alex/Work/harlow"] })).hits.length, 0, "a folder matched another folder that only starts with the same letters");
   const one = (await search(e.db, { q: "intake form", per_session: 1 })).hits;
   assert.equal(new Set(one.map(h => h.session)).size, one.length);
+  // A project's attached sessions count wherever they ran; alone they scope as tightly.
+  const outside = under.find(h => h.cwd !== "/home/alex/Work/harlow-site");
+  const joined = (await search(e.db, { q: "intake", project_cwds: ["/home/alex/Work/harlow-site/"], sessions: [outside.session] })).hits;
+  assert.ok(joined.some(h => h.session === outside.session), "an attached session outside the folder was missed");
+  assert.ok(joined.every(h => h.cwd === "/home/alex/Work/harlow-site" || h.session === outside.session));
+  assert.ok((await search(e.db, { q: "intake", sessions: [outside.session] })).hits.every(h => h.session === outside.session));
 });
 
 test("recall: FTS grammar in a query is a search, not a crash", async t => {
@@ -377,6 +383,12 @@ test("recall: dense retrieval honours role and project folders", async t => {
   assert.ok(asst.every(h => h.role === "assistant"));
   const elsewhere = (await search(e.db, { q: "blind visitors", project_cwds: ["/home/alex/Work/northwind"] }, emb, dense)).hits;
   assert.ok(elsewhere.every(h => h.cwd === "/home/alex/Work/northwind"), "a dense hit came from outside the project");
+  const all = (await search(e.db, { q: "blind visitors" }, emb, dense)).hits;
+  const far = all.find(h => h.cwd !== "/home/alex/Work/northwind");
+  if (far) {
+    const joined = (await search(e.db, { q: "blind visitors", project_cwds: ["/home/alex/Work/northwind"], sessions: [far.session] }, emb, dense)).hits;
+    assert.ok(joined.some(h => h.session === far.session), "dense missed an attached session");
+  }
 });
 
 test("recall: the exact keyword matches stay pinned when meaning disagrees", async t => {

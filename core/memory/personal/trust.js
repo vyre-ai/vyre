@@ -36,6 +36,8 @@ export const DEV_TURNS = 2;
 
 /** A folder of Vyre itself: the repo or one of its worktrees. */
 const VYRE_DIR = /(?:^|\/)vyre(?:[-_.][\w.-]*)?(?:\/|$)/i;
+/** A folder of Vyre itself. @param {string|null|undefined} cwd */
+export const vyreFolder = cwd => VYRE_DIR.test(String(cwd || ""));
 
 /**
  * Whether a session may teach personal facts, from what Recall knows of it.

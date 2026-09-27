@@ -19,6 +19,11 @@ test("modules: tools must carry the module's own name", () => {
 
 test("modules: the five verbs must be objects", () => {
   assert.match(validate({ ...good, needs: ["x"] }).join(), /needs must be an object/);
+  // sync.* makes memory forget a device's history: only federation's first-party module declares it.
+  assert.match(validate({ ...good, watches: { emits: ["sync.deleted"] } }).join(), /event "sync.deleted" is reserved for sync/);
+  assert.match(validate({ ...good, name: "sync", does: {}, watches: { emits: ["sync.deleted"] } }).join(), /reserved/, "a home module named sync is not first-party");
+  assert.deepEqual(validate({ ...good, name: "sync", does: {}, watches: { emits: ["sync.deleted"] } }, { firstParty: true }), []);
+  assert.match(validate({ ...good, name: "link", does: {}, watches: { emits: ["sync.deleted"] } }, { firstParty: true }).join(), /reserved for sync/, "only core/sync");
 });
 
 test("modules: dependencies start first; cycles and missing ones are named", () => {

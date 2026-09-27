@@ -264,6 +264,22 @@ export class Personal {
   }
 
   /** One remembered line by id, or null. */
+  /**
+   * The person settled one slot by picking its value (memory.settle): kept as their words, with
+   * exactly that one claim, so a value that happens to read like another sentence adds nothing else.
+   * @param {string} text @param {{ subj: string, rel: string, obj: string }} claim
+   */
+  tell(text, claim, { who = null } = {}) {
+    const t = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, TOLD_MAX);
+    const ts = this.now();
+    const id = Number(this.db.prepare("INSERT INTO memory_me_told (ts, text, room, who) VALUES (?,?,?,?)").run(ts, t, null, who).lastInsertRowid);
+    this.addClaims(`told:${id}`, 0, ts, [{ subj: claim.subj, rel: claim.rel, obj: claim.obj, conf: TOLD.explicit, method: "told" }]);
+    this.derive();
+    const facts = this.db.prepare(`SELECT f.* FROM memory_me_facts f JOIN memory_me_evidence v ON v.fact = f.id WHERE v.session = ? ORDER BY f.confidence DESC, f.rel`)
+      .all(`told:${id}`).map(row => this.row(row));
+    return { id, text: t, facts };
+  }
+
   told(id) {
     const r = this.db.prepare("SELECT id, ts, text, room FROM memory_me_told WHERE id = ?").get(Number(id));
     return r ? { id: Number(r.id), ts: Number(r.ts), text: String(r.text), room: r.room == null ? null : String(r.room) } : null;
@@ -439,8 +455,10 @@ export class Personal {
       g.first = Math.min(g.first, r.ts); g.last = Math.max(g.last, r.ts);
       groups.set(id, g);
     }
+    // The person said an answer resting on it was wrong (core/memory/iq/fix.js): it carries no belief.
+    const denied = new Set(/** @type {any[]} */ (db.prepare("SELECT DISTINCT fact FROM memory_me_denied").all()).map(r => String(r.fact)));
     const facts = [...groups.values()].map(g => {
-      const raw = combine([...g.turns.values()].map(t => t.conf));
+      const raw = denied.has(g.id) ? 0 : combine([...g.turns.values()].map(t => t.conf));
       return { ...g, raw: g.user ? raw : Math.min(raw, ASSISTANT_MAX), confidence: 0, current: 1 };
     });
     // Single-valued relations: rival values share the belief; the newest is favoured where a
@@ -458,6 +476,7 @@ export class Personal {
       const win = [...list].sort((a, b) => b.confidence - a.confidence || b.last - a.last)[0];
       for (const f of list) f.current = f === win ? 1 : 0;
     }
+    for (const f of facts) if (denied.has(f.id)) f.current = 0;
     // Sold: owning (and driving) it stopped, unless it was said again after.
     for (const f of facts) if ((f.rel === "owns" || f.rel === "drives") && (ended.get(`${f.subj}|${f.obj}`) || -1) >= f.last) f.current = 0;
 

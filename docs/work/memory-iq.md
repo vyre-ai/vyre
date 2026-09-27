@@ -4,6 +4,11 @@ Branch: work/memory-iq · Worktree: ../vyre-memory-iq · ADR 0023 · Owner sessi
 
 ## Scope
 
+28 Sep (the user, via the lead): memory-iq owns recall, the graph and IQ as one product. The old
+memory team's branch (work/memory) had one unmerged change, the teach me:you fix, now ported.
+Carried forward from its notes: prefers/decided stay off until more gold with distractors; the
+Deck's projects view should pass room: slug; agent sessions should put the agent in the caller.
+
 Memory that knows the user. Today "name of my wife" returns unrelated quotes and "which car do I
 own" works only when one literal sentence matches. This workstream adds:
 
@@ -117,29 +122,73 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
-## Doing (SAVED 27 Sep, before a restart)
-- RC handed to the integrator: work/memory-iq 1a76d383, the leak fix via e2e's transcriptFolders
-  (88c90d56 merged; recall readable() wraps it), source trust, memory.retrieve/ask/suggest,
-  recall.search {prefix}, eval-iq and the iq worlds, and ADR 0034 amended (status stable). After
-  it: 7b48652d, memory.ask's cap at $0.50/day, with limited plus a message at the cap (the lead
-  asked for this in the next RC). Tests at 1a76d383: 319 + 71 pass on testbox. ask.test.js's new
-  cap assertions have NOT run yet.
-- The open-world memory.ask re-record with prompt v2 (ask.js VERSION 2) was running on testbox
-  (the test box's memory-iq copy, `node scripts/eval-iq.js --world open --answer --record`) and was stopped
-  for the restart. Rerun that command: it keeps the replies already recorded. Then scp
-  test/eval/asks/open.json back and commit it. v1 numbers: accuracy 0.722, confident-wrong 7
-  (4 of them over-literal golds, now widened), abstained 0.40, ungrounded 0, inconsistent 0, about
-  $0.003 a question.
-- Scores (replayed reads): personal 1.0, heldout 1.0, blind 0.959, fresh 0.76, trust 1.0,
-  sealed 0.551 with 7 confident wrong (was 0.577 with 6). Two sealed answers were lost because
-  Claude's words no longer count. Not tuned on sealed.
-- Retrieval (memory.retrieve, real MiniLM): recall@8 open 0.833, sealed 0.638. Graph expansion
-  adds 0 on both, but the graph stays (a pillar). Dense weight stays 0.25 (lead). Sealed stays sealed.
-- memory.ask runs on sessions' threads.quick (work/sessions db4af9c3, lands after batch 4), else
-  `claude -p`. threads.quick sessions write no transcript (sessions c6663f14), and <home>/quick is
-  skipped as a second guard.
+## Doing (28 Sep, cutover)
+- 7ee03df6 (sync.deleted only from federation's module; sync.* reserved) signed off by the reviewer.
+  Federation's module is core/sync: SYNC_OWNERS and RESERVED_EVENTS.sync trimmed to "sync".
+- Stream cutover: 0.1.1 batch 1 (target 30 Sep, starts after rc.2 lands). memory-iq's 0.1.1 sha must
+  reach the integrator before batch 1 starts; the integrator holds capsule-pro's change until it
+  does. Unpair keeps data (d0b916b9); delete is sync.deleted with memory.device as the preview.
+
+## Doing (28 Sep, import, later)
+- Built: import.scan (caps, exclusions before listing, credential folders never walked,
+  claude_keeps_days), import.plan (pace estimates), import.status, import.progress,
+  memory.graph-grew (counts), synced root read per device, sync.revoked forgets everything derived
+  incl. fixes (9be6e31a). memory.ask screen input (bb455992), trust world with a trap screen 1.0.
+- Waiting: federation's sync.send and the server-side switch record (then import.start/stop/cancel);
+  capsule-pro on the screen shape; app-design's 5-stage boards; e2e's code review of import.
+- Agreed: launch owns the onboarding step shell and wires the three screens to the tools above.
+
+## Doing (28 Sep, import)
+- 0.1.1 flagship, led here: discover, import and build the graph in onboarding. Design:
+  docs/design/import.md; ADR 0008 amendment item 5a (one-time import). Next: build import.scan /
+  import.plan on the device and import.status / import.progress on the box; owners contacted
+  (federation, launch, app-design, e2e).
+- rc.2: e2e signed off work/memory-iq-rc2 aaf4fcb5; handed to the integrator.
+
+## Doing (28 Sep, later)
+- Sealed IQ 0.62 -> 0.80 (confident-wrong 6 -> 5), open 0.778 -> 0.878, from two failure classes
+  found on the open world only (eval-iq --explain): the check refused answers grounded in the
+  passage header (034a4397), and retrieval found the question turn with the answer one turn later
+  (398f6156, passages carry the reply). Replies re-recorded (both asks files).
+- Agent corrections hardened per e2e (e1851941), waiting for re-review. threads.said is the
+  switchboard's to build.
+- Project graphs (398f6156) and memory.today in the brief (df22ca0c) built.
+
+## Doing (28 Sep)
+- Merged main (e79eb5c6). Open-world v2 re-record finished: all 90 replies kept in
+  test/eval/asks/open.json (ce980557). v2 open: accuracy 0.778, confident-wrong 1, abstained 0.411,
+  ungrounded 0, inconsistent 0. v1 re-recorded the same day on the same golds: 0.767, 2 CW,
+  p50/p95 3.8/4.4 s via claude -p, $0.0032 a question. One question apart: not a measured win.
+- A/B done. Sealed (blind): v1 0.61 / 9 confident-wrong, v2 0.62 / 6. Open: v1 0.767 / 2, v2 0.778 / 1.
+  v2 keeps (already in the RC via 1815b37d). Both worlds' v2 replies committed (test/eval/asks).
+- Reader billing fix ec097430 (rc2 branch head; cherry-picked here as well): API keys are left out of model calls unless memory.model.billing is "api".
+- Correct IQ in place (95b2b891): memory.correct {answer}, memory.uncorrect {fix}, corrections {answers},
+  stats.iq, `vyre memory fix`, eval-iq --fix (open 20/20, sealed 38/38, 0 regressed). Tables
+  memory_iq_answers, memory_iq_fixes, memory_me_denied. 0.1.1. Card specs sent to capsule-pro and app-design;
+  e2e asked for a review of tailnet corrections and of the sync amendment.
+- Session sync: contract agreed with federation, ADR 0008 amended (f63fe0e2), e2e's conditions in
+  item 6 (5f36a227). 0.2. e2e reviews federation's transport code when it exists.
+- Phone corrections (personWrites, 5f36a227): e2e SIGNED OFF 28 Sep. 0.1.1.
+- rc.2 handoff: branch work/memory-iq-rc2 (worktree ../vyre-memory-iq-rc2) = 1815b37d + the teach
+  me:you fix ported from work/memory + both asks files + "you prefer" grammar, head 4ff57bb6.
+  199/199 memory tests on testbox.
+- IQ everywhere: docs/design/iq-everywhere.md (surfaces, ranked gaps, owner specs). Built here:
+  memory.ask stream + caller id + memory.thinking/answered (6adfc4b6), `vyre memory ask` on
+  memory.ask (6adfc4b6), memory.suggest offered to suggest + suggest.ready (f50c5f21). All 0.1.1
+  unless the lead says otherwise.
 
 ## Next
+- Built 28 Sep: memory.card (e67ba34d), memory.contradictions/settle (fd7f57ab).
+- 0.1.1 queue, in order: import.start/stop/cancel
+  (after federation's sync.send); then site recipes (memory.recipe per site from glass's
+  browse.finished, module browse; self-correcting, person-editable). Landmark shape proposed to
+  glass: {role, name, css?, near?}, role+name first, never values. Waits on the lead's review of
+  glass's docs/design/agent-browsers.md (work/glass-live b4584a7f) before building.
+- Project graphs: recall.search `sessions` filter + retrieve scopes by folders plus picked ids (0.1.1).
+- Host-to-server sync: contract in docs/design/iq-everywhere.md; agree it with federation (paused)
+  and amend ADR 0008.
+- Reader billing: claude -p inherits vyred's env, so an ANTHROPIC_API_KEY there bills API dollars.
+  Proposal: strip it from the reader and IQ unless config.memory.model.billing = "api".
 - Finish the v2 re-record, report accuracy and cost to the lead, commit asks/open.json, and hand
   the integrator a new RC sha containing 7b48652d.
 - Run core/memory/iq/ask.test.js (only when uptime is under 6, nice 15, --test-timeout).
@@ -159,5 +208,14 @@ facts are not a project's.
   memory curator's background pass, in bounded batches that yield.
 
 ## Changed contracts
+- core/modules/index.js: a module's ctx.call passes { firstParty } (from the loader) in the callee's meta.
+- core/config/index.js: default transcripts add <home>/synced; recall reads each device folder under it. recall.forget (internal). Event recall.embedded. memory listens to sync.revoked and emits memory.forgot. New module core/import (import.scan/plan/status, event import.progress).
+- core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.
+- recall.search takes `sessions` (union with project_cwds; dropped for any caller but modules and the person's surfaces); dense keep(cwd, session).
+- New tools memory.today; memory.retrieve takes `replies`; passages may carry `reply {seq, text}`.
+- memory.correct from a model: `from_turn {seq}`, `suggestion`; needs threads.said from the switchboard; events memory.suggested, memory.updated.
+- memory.correct takes `answer` (an IQ answer_id) and action `forget`; memory.uncorrect takes `fix`; memory.corrections takes `answers`; memory.stats adds `iq`; memory.ask replies carry `answer_id` and may be `via: "corrected"`; event memory.fixed {id, action, kind}.
+- core/suggest/index.js emits `suggest.ready` at the end of start (module.json emits it), so a module that started first offers again. memory.suggest also returns `items` (suggest.offer's shape).
+- memory.ask takes `stream` and `id`; events memory.thinking {id, stage} and memory.answered {id, abstained, limited}.
 - core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
 - New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).

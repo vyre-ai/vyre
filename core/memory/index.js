@@ -7,8 +7,9 @@
 // read; every tool still answers, with nothing.
 
 import { Curator } from "./curator.js";
-import { Graph } from "./graph.js";
+import { Graph, ago } from "./graph.js";
 import { floorPlan } from "./floor.js";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { retriever } from "./iq/retrieve.js";
@@ -16,8 +17,12 @@ import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
-import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
+import { contradictions, settle as answerOf } from "./personal/contradict.js";
+import { createReader, claudeOnce, modelFor, turnHash } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
+import { fixes as fixLog } from "./iq/fix.js";
+import { heard, contentWords } from "./iq/heard.js";
+import { userWords, devTalk, vyreFolder } from "./personal/trust.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -92,7 +97,7 @@ export default {
     };
     const runner = ctx.memoryRunner !== undefined ? ctx.memoryRunner
       : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
-      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null;
+      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()), billing: () => ctx.config.memory?.model?.billing }) : null;
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
       // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
@@ -103,6 +108,9 @@ export default {
       ctx.events.on("thread.finished", () => void model.pump()),
     ];
     let running = null, again = false, stopping = false, timer = null;
+    /** The graph's people, orgs and projects after the last pass, to say which are new. */
+    const GROWN = "SELECT id, kind FROM memory_nodes WHERE kind IN ('person', 'org', 'repo', 'domain')";
+    let known = new Set(/** @type {any[]} */ (ctx.store.db.prepare(GROWN).all()).map(n => String(n.id)));
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
     // the first pass and whenever a project or a pick changes.
     let roomsStale = true;
@@ -119,7 +127,20 @@ export default {
           try { result.personal = await personalPass({ full: Boolean(opts.full) }); }
           catch (e) { ctx.log("personal facts failed: " + /** @type {Error} */ (e).message); }
           opts = {};
-          if (result.changed) ctx.events.emit("memory.curated", { nodes: result.nodes, edges: result.edges, ms: result.ms, updated: curator.updated() });
+          if (result.changed) {
+            ctx.events.emit("memory.curated", { nodes: result.nodes, edges: result.edges, ms: result.ms, updated: curator.updated() });
+            // The graph grew: how many new people, orgs and projects, for a live graph view during
+            // an import (docs/design/import.md). Counts by kind only: a node's id is its name, and
+            // an event is no place for names. The view reads what is new with memory.graph { since }.
+            const now = /** @type {any[]} */ (ctx.store.db.prepare(GROWN).all());
+            const fresh = now.filter(n => !known.has(String(n.id)));
+            if (fresh.length) {
+              const by = {};
+              for (const n of fresh) by[String(n.kind)] = (by[String(n.kind)] || 0) + 1;
+              ctx.events.emit("memory.graph-grew", { nodes: result.nodes, edges: result.edges, new: by, updated: curator.updated() });
+            }
+            known = new Set(now.map(n => String(n.id)));
+          }
         } while (again && !stopping);
         return result;
       })().finally(() => { running = null; });
@@ -139,6 +160,62 @@ export default {
       if (p.rewritten && p.session) { curator.reset(String(p.session)); personal.reset(String(p.session)); }
       soon();
     });
+    // What came from a device belongs to the person, not the device (the user, 28 Sep): unpairing,
+    // replacing or losing a device, or turning its sync off, deletes nothing. Deleting is its own
+    // action the person takes ("Delete everything that came from <device>"): federation deletes the
+    // files and says sync.deleted, and memory forgets everything derived from them here, then
+    // Recall forgets the sessions. Every derived row keeps its machine so that stays possible.
+    const deviceSessions = machine => {
+      const m = String(machine || "");
+      if (!/^[A-Za-z0-9._-]{1,80}$/.test(m) || !ctx.paths?.root || !personal.hasRecall()) return { m, ids: [] };
+      const dir = path.join(ctx.paths.root, "synced", m) + path.sep;
+      return { m, ids: /** @type {any[]} */ (ctx.store.db.prepare("SELECT id FROM recall_sessions WHERE substr(file, 1, ?) = ?").all(dir.length, dir)).map(r => String(r.id)) };
+    };
+    const forgetMachine = async machine => {
+      const { m, ids } = deviceSessions(machine);
+      const db = ctx.store.db;
+      if (!ids.length) return { machine: m, sessions: 0 };
+      // The model's reads are kept by the text's hash: the hashes come from the turns, before they go.
+      const hashes = new Set();
+      const turns = db.prepare("SELECT text FROM recall_turns WHERE session = ? AND role = 'user'");
+      for (const id of ids) for (const t of /** @type {any[]} */ (turns.all(id))) hashes.add(turnHash(String(t.text)));
+      if (running) await running.catch(() => {});
+      for (const id of ids) { personal.reset(id); curator.reset(id); }
+      db.exec("BEGIN");
+      try {
+        const delRead = db.prepare("DELETE FROM memory_me_reads WHERE hash = ?");
+        for (const h of hashes) delRead.run(h);
+        // Corrections of answers that stood on this device's turns go too, with what they changed
+        // (e2e: the machine on every derived row, fixes included).
+        const fixesOf = db.prepare("SELECT id, told FROM memory_iq_fixes WHERE turns LIKE ?");
+        for (const id of ids) for (const f of /** @type {any[]} */ (fixesOf.all(`%"${id}:%`))) {
+          db.prepare("DELETE FROM memory_me_denied WHERE fix = ?").run(f.id);
+          if (f.told != null) { db.prepare("DELETE FROM memory_me_claims WHERE session = ?").run(`told:${f.told}`); db.prepare("DELETE FROM memory_me_told WHERE id = ?").run(f.told); }
+          db.prepare("DELETE FROM memory_iq_fixes WHERE id = ?").run(f.id);
+        }
+        const inAnswers = db.prepare("DELETE FROM memory_iq_answers WHERE turns LIKE ?");
+        for (const id of ids) inAnswers.run(`%"${id}:%`);
+        db.prepare("DELETE FROM memory_iq_heard WHERE thread IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
+        db.prepare("DELETE FROM memory_iq_suggested WHERE thread IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
+        // Kept replies quote passages; which ones came from this device is not recorded, so all go.
+        db.exec("DELETE FROM memory_iq_asks");
+        db.exec("COMMIT");
+      } catch (e) { db.exec("ROLLBACK"); throw e; }
+      const r = await ctx.call("recall.forget", { sessions: ids });
+      personal.derive({ force: true });
+      await run({ force: true }).catch(e => ctx.log("curate failed: " + e.message));
+      const out = { machine: m, sessions: ids.length, recall: r?.data?.forgot ?? 0, reads: hashes.size };
+      ctx.events.emit("memory.forgot", out);
+      return out;
+    };
+    // Only federation's own module says a device's history was deleted (the reviewer, 28 Sep): the
+    // same event from anyone else forgets nothing. core/modules reserves sync.* for it too.
+    const SYNC_OWNERS = new Set(["sync"]);
+    const revokedOff = ctx.events.on("sync.deleted", e => {
+      if (!SYNC_OWNERS.has(String(e.source || ""))) { ctx.log(`ignored sync.deleted from ${plain(e.source || "an unknown module", 40)}`); return; }
+      forgetMachine(e.payload?.machine).catch(err => ctx.log(`forgetting a deleted device's sessions failed: ${err.message}`));
+    });
+
     // A project made, changed or a thread picked changes the rooms.
     const offs = ["project.created", "project.changed", "thread.picked", "thread.unpicked"].map(type => ctx.events.on(type, () => { roomsStale = true; soon(); }));
     soon();
@@ -312,6 +389,26 @@ export default {
     // ---- the user's corrections (docs/adr/0007-intelligence.md, decision 4). Owner callers only:
     // a session never writes Memory; inside a turn Claude proposes a correction as a lesson.
     const OWNERS = ["deck", "cli", "local", "capsule"];
+    // The person's corrections to Vyre IQ's answers (core/memory/iq/fix.js), made where the answer is shown.
+    const fixed = fixLog({ db: ctx.store.db });
+    const fixAnswer = async (input, caller) => {
+      if (!["wrong", "replace", "forget"].includes(input.action)) throw Object.assign(new Error("an IQ answer is corrected with wrong, replace or forget"), { code: "bad_input" });
+      const fix = fixed.add({ answer: input.answer, action: input.action, text: input.object ?? null, who: String(caller || "") });
+      // A personal fact's right answer is the person's own words about their life: told to memory,
+      // so every other question about it has it too (it outweighs what was said before).
+      const a = fixed.answer(input.answer);
+      if (fix.action === "replace" && a?.via === "fact") {
+        if (running) await running.catch(() => {});
+        // Card text is IQ's second person ("Your wife is Juno."); the person's own words are first person.
+        const own = String(fix.text).replace(/\byou are\b/gi, "I am").replace(/\byou're\b/gi, "I'm").replace(/\byour\b/g, "my").replace(/\bYour\b/g, "My").replace(/\byou\b/gi, "I");
+        const r = personal.remember(own, { who: `fix:${fix.id}` });
+        fixed.told(fix.id, r.id);
+        fix.told = r.id;
+      }
+      if (fix.facts.length) personal.derive({ force: true });
+      ctx.events.emit("memory.fixed", { id: fix.id, action: fix.action, kind: fix.kind });
+      return { fix };
+    };
     /**
      * The registry reads "deck agent:kit" as a deck caller; for the user's own tools a caller
      * that names an agent is an agent, whatever surface carried it.
@@ -321,9 +418,23 @@ export default {
       if (/(?:^|[\s:])agent:/.test(String(extra.caller || ""))) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);
     };
-    /** Writes: the registry's callers list, checked here too, so a tailnet caller never corrects. */
+    /**
+     * Corrections are the person's: their own surfaces, or their device over the tailnet or the
+     * relay with a person session (a passkey, ADR 0032), the rule settings uses for secrets. Never
+     * an agent, an agent's node, or a device nobody signed in on.
+     */
+    const personWrites = (caller, meta) => {
+      const c = String(caller || "");
+      if (/(?:^|[\s:])agent:/.test(c)) return false;
+      if (OWNERS.includes(c)) return true;
+      return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
+    };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
-      if (!owner(extra.caller)) throw denied(`corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
+      if (!personWrites(extra.caller, extra)) {
+        const device = /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
+        throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
+          : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
+      }
       return run(input, extra);
     });
     /** Reading corrections: the owner's surfaces, or the user on a tailnet device. Never an agent. */
@@ -359,15 +470,133 @@ export default {
       const t = String(x ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
       return t.length > max ? t.slice(0, max - 3) + "..." : t;
     };
+    // ---- an agent corrects only with the person's own words behind it (core/memory/iq/heard.js)
+    /** A model's caller: the user's own Claude Code session, a thread's, or a named agent's. */
+    const agentCaller = caller => /^mcp(?::|$)/.test(String(caller || "")) || /^harness:agent:/.test(String(caller || ""));
+    /** Caps (e2e, 28 Sep): a thread applies at most this many an hour; suggestions wait this many a thread and in all, for this long. */
+    const AGENT = { perHour: 3, openPerThread: 5, openTotal: 50, expireMs: 14 * 86_400_000 };
+    /** What a suggestion is about, as it reads now: if it changes before the person decides, the suggestion expires. */
+    const targetOf = input => {
+      try {
+        if (typeof input.answer === "string" && input.answer) { const a = fixed.answer(input.answer); return a ? JSON.stringify([a.question, fixed.lookup(a.question)?.id ?? null]) : null; }
+        const { sc } = scopeOf(input);
+        const t = graph.target({ ...input, action: input.action === "add" ? "add" : input.action }, sc);
+        return JSON.stringify(t.row ? [t.row.id ?? `${t.src}|${t.rel}|${t.dst}`, t.row.valid_to ?? null, t.row.confidence ?? null] : [t.src, t.rel, t.dst]);
+      } catch { return null; }
+    };
+    const suggest = (input, caller, meta, why) => {
+      const { from_turn: _f, ...rest } = input;
+      const db = ctx.store.db, t = Date.now(), thread = typeof meta.thread === "string" ? meta.thread : null;
+      expireSuggestions(t);
+      const body = JSON.stringify(rest);
+      // The same suggestion again is the same row, seen once more.
+      const same = /** @type {any} */ (db.prepare("SELECT id FROM memory_iq_suggested WHERE state = 'open' AND input = ? AND thread IS ?").get(body, thread));
+      if (same) { db.prepare("UPDATE memory_iq_suggested SET at = ?, seen = seen + 1, why = ? WHERE id = ?").run(t, plain(why, 200), same.id); return { applied: false, suggestion: { id: Number(same.id), why: plain(why, 200) }, message: SUGGESTED }; }
+      const open = (/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM memory_iq_suggested WHERE state = 'open' AND thread IS ?").get(thread))).n;
+      const all = (/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM memory_iq_suggested WHERE state = 'open'").get())).n;
+      // The no-nag rule: an agent in a loop never fills "waiting on you".
+      if (open >= AGENT.openPerThread || all >= AGENT.openTotal) return { applied: false, dropped: true, why: plain(why, 200), message: "Not applied and not kept: enough suggestions already wait for the person." };
+      const id = Number(db.prepare("INSERT INTO memory_iq_suggested (at, caller, thread, seq, input, why, target) VALUES (?,?,?,?,?,?,?)")
+        .run(t, plain(caller, 80), thread, Number.isInteger(input.from_turn?.seq) ? input.from_turn.seq : null, body, plain(why, 200), targetOf(rest)).lastInsertRowid);
+      ctx.events.emit("memory.suggested", { id });
+      return { applied: false, suggestion: { id, why: plain(why, 200) }, message: SUGGESTED };
+    };
+    const SUGGESTED = "Not applied: the person's own words do not say it. It waits for them to accept.";
+    const expireSuggestions = (t = Date.now()) => ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = 'expired', settled = ? WHERE state = 'open' AND at < ?").run(t, t - AGENT.expireMs);
+    /** An agent's text, as a surface may show it: one plain line each. */
+    const shown = input => Object.fromEntries(Object.entries(input).map(([k, v]) => [k, typeof v === "string" ? plain(v, 200) : v]));
+    const suggestions = ({ all = false } = {}) => {
+      expireSuggestions();
+      return /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE (? OR state = 'open') ORDER BY id DESC LIMIT 100").all(all ? 1 : 0))
+        .map(r => ({ id: Number(r.id), at: Number(r.at), caller: String(r.caller), thread: r.thread, seq: r.seq, input: shown(JSON.parse(String(r.input))), why: String(r.why), state: String(r.state), seen: Number(r.seen) }));
+    };
+    const settleSuggestion = (id, state) => {
+      expireSuggestions();
+      const r = /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_suggested WHERE id = ?").get(Number(id)));
+      if (!r || r.state !== "open") throw Object.assign(new Error(r?.state === "expired" ? `suggestion ${id} expired: what it was about has changed or it is older than 14 days` : `no open suggestion ${id}`), { code: "not_found" });
+      const input = JSON.parse(String(r.input));
+      // What it targets changed since the agent suggested it: it expires rather than apply to something else.
+      if (state === "accepted" && r.target != null && targetOf(input) !== r.target) {
+        ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = 'expired', settled = ? WHERE id = ?").run(Date.now(), Number(id));
+        throw Object.assign(new Error(`suggestion ${id} expired: what it was about has changed since`), { code: "not_found" });
+      }
+      ctx.store.db.prepare("UPDATE memory_iq_suggested SET state = ?, settled = ? WHERE id = ?").run(state, Date.now(), Number(id));
+      ctx.events.emit("memory.suggested", { id: Number(id), state });
+      return input;
+    };
+    /** Corrections agents applied from the person's words this week, newest first, each with its undo. */
+    const heardList = () => /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM memory_iq_heard WHERE at >= ? ORDER BY at DESC LIMIT 50").all(Date.now() - 7 * 86_400_000))
+      .map(r => ({ thread: String(r.thread), seq: Number(r.seq), at: Number(r.at), by: String(r.caller), summary: String(r.summary),
+        undo: r.kind === "fix" ? { tool: "memory.uncorrect", input: { fix: Number(r.ref) } } : { tool: "memory.uncorrect", input: { id: Number(r.ref) } } }));
+    /** What a correction is about, and what it says was wrong: the words the person's turn must name. */
+    const aboutOf = input => {
+      if (typeof input.answer === "string" && input.answer) {
+        const a = fixed.answer(input.answer);
+        if (!a) return null;
+        return { about: contentWords(a.question), old: a.answer, summary: `${a.question}: ${input.action === "replace" ? input.object : input.action}` };
+      }
+      const { sc } = scopeOf(input);
+      const t = graph.target(input, sc);
+      const label = id => graph.node(id, sc)?.label || String(id).replace(/^[a-z]+:/, "");
+      return { about: [...contentWords(label(t.src)), ...contentWords(String(t.rel).replace(/_/g, " "))], old: label(t.dst),
+        summary: `${label(t.src)} ${String(t.rel).replace(/_/g, " ")} ${input.action === "replace" || input.action === "add" ? input.object : `${label(t.dst)}: ${input.action}`}` };
+    };
+    const fromAgent = async (input, caller, meta, apply) => {
+      if (typeof input.suggestion !== "undefined") throw denied("a suggestion is accepted by the person, not an agent");
+      // The thread is the one vyred verified for this call; a thread named in the input is ignored.
+      const thread = typeof meta.thread === "string" && meta.thread ? meta.thread : null;
+      const seq = input.from_turn && Number.isInteger(input.from_turn.seq) ? input.from_turn.seq : null;
+      if (!thread) return suggest(input, caller, meta, "the call did not come from a thread vyred knows");
+      // An agent granted only some projects never writes the person's memory, even with evidence.
+      try { await personalOnly(input, caller, "memory.correct"); } catch { return suggest(input, caller, meta, "an agent granted only some projects suggests; the person decides"); }
+      if (!["replace", "add", "wrong", "forget", "ended"].includes(input.action)) return suggest(input, caller, meta, `an agent does not ${input.action}; the person does`);
+      if (seq == null) return suggest(input, caller, meta, "no from_turn: which of the person's turns says this");
+      const db = ctx.store.db, t = Date.now();
+      if (db.prepare("SELECT 1 FROM memory_iq_heard WHERE thread = ? AND seq = ?").get(thread, seq)) return suggest(input, caller, meta, "one correction per turn of the person's; that turn already made one");
+      if ((/** @type {any} */ (db.prepare("SELECT COUNT(*) n FROM memory_iq_heard WHERE thread = ? AND at >= ?").get(thread, t - 3_600_000))).n >= AGENT.perHour) return suggest(input, caller, meta, "this thread has made enough corrections this hour");
+      let target;
+      try { target = aboutOf(input); } catch (e) { return suggest(input, caller, meta, `not a fact memory holds: ${/** @type {Error} */ (e).message}`); }
+      if (!target) return suggest(input, caller, meta, "no such answer");
+      const r = await ctx.call("threads.said", { thread, seq });
+      if (r?.error) return suggest(input, caller, meta, r.error.code === "no_such_tool" ? "vyred cannot tell who wrote that turn yet" : `that turn could not be read: ${r.error.message}`);
+      const value = ["replace", "add"].includes(input.action) ? String(input.object ?? "") : null;
+      const h = heard(r.data, { action: input.action, value, old: value == null ? target.old : null, about: target.about }, t);
+      if (!h.ok) return suggest(input, caller, meta, h.why);
+      // Reserve the turn first, so two calls on one turn cannot both apply; released if apply fails.
+      try { db.prepare("INSERT INTO memory_iq_heard (thread, seq, at, caller, kind, ref, summary) VALUES (?,?,?,?,'pending',0,?)").run(thread, seq, t, plain(caller, 80), plain(target.summary, 200)); }
+      catch { return suggest(input, caller, meta, "one correction per turn of the person's; that turn already made one"); }
+      let out;
+      try { out = await apply({ ...input, from_turn: undefined }, `heard:${thread}#${seq}`); }
+      catch (e) { db.prepare("DELETE FROM memory_iq_heard WHERE thread = ? AND seq = ? AND kind = 'pending'").run(thread, seq); throw e; }
+      const kind = out.fix ? "fix" : "correction", ref = out.fix ? out.fix.id : out.correction.id;
+      db.prepare("UPDATE memory_iq_heard SET kind = ?, ref = ? WHERE thread = ? AND seq = ?").run(kind, Number(ref), thread, seq);
+      ctx.events.emit("memory.updated", { by: "agent", thread, ...(out.fix ? { fix: out.fix.id } : {}), ...(out.correction ? { correction: out.correction.id } : {}) });
+      return { applied: true, heard: { thread, seq }, ...out };
+    };
+
     ctx.tool("memory.correct", {
-      callers: OWNERS,
-      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads.",
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
+      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre IQ answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it. An agent (Claude in a chat) may correct only when the person said so in its own thread: from_turn: { seq } names that turn of the person's, and the new value must be in their words. It is applied as theirs ({ applied: true, heard }); otherwise it waits as a suggestion for the person ({ applied: false, suggestion }). suggestion: <id> accepts one (the person only).",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
-        action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
-      run: ownerWrite(async (input, { caller } = {}) => {
+        answer: { type: "string", description: "memory.ask's answer_id" },
+        from_turn: { type: "object", properties: { seq: { type: "integer" } }, description: "an agent's evidence: the person's turn in this thread that says it" },
+        suggestion: { type: "integer", description: "accept an agent's suggestion (the person only)" },
+        action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add", "forget"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
+      run: async (input, extra = {}) => {
+        if (!personWrites(extra.caller, extra) && agentCaller(extra.caller)) return fromAgent(input, extra.caller, extra, (i, who) => applyCorrection(i, who));
+        return ownerWrite(async (i, { caller } = {}) => {
+          if (Number.isInteger(i.suggestion)) return { accepted: i.suggestion, ...(await applyCorrection(settleSuggestion(i.suggestion, "accepted"), String(caller || ""))) };
+          return applyCorrection(i, String(caller || ""));
+        })(input, extra);
+      },
+    });
+    /** A correction as the person made it, or as they said it in a thread (who says which). */
+    const applyCorrection = async (input, who) => {
+        if (typeof input.answer === "string" && input.answer) return fixAnswer(input, who);
+        if (input.action === "forget") throw Object.assign(new Error("forget corrects an IQ answer: pass answer"), { code: "bad_input" });
         const { scope, sc } = scopeOf(input);
         const t = graph.target(input, sc);
-        const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who: String(caller || "") });
+        const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who });
         corrected(c, t.row);
         // Every room is derived again, which on a large history takes a while. The Deck does not
         // wait: memory.curated says when the graph has it. wait: true (the CLI) waits and
@@ -375,14 +604,15 @@ export default {
         if (!input.wait) { run({ force: true }).catch(e => ctx.log("curate failed: " + e.message)); return { correction: c, pending: true }; }
         await settle();
         return { correction: c, facts: graph.facts({ about: t.src, room: sc?.room ?? undefined, limit: 20 }).facts.filter(f => f.rel === t.rel) };
-      }),
-    });
+    };
     // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
     // checks the owner surfaces and tailnet callers itself.
     ctx.tool("memory.corrections", {
-      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones.",
-      input: { type: "object", properties: { all: { type: "boolean" }, ...roomField } },
-      run: readerOnly(async input => curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
+      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them and the ones agents applied from their words this week, as { suggestions, heard: [{ thread, seq, at, by, summary, undo }] }.",
+      input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, suggested: { type: "boolean" }, ...roomField } },
+      run: readerOnly(async input => input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }), heard: heardList() }
+        : input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
+        : curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
     });
     // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
     // devices read them; agents never do.
@@ -429,11 +659,14 @@ export default {
     // would be read from, fused from Recall's searches and widened by names memory knows. Personal
     // names widen it only for a caller that may see personal facts.
     const retrieve = retriever({ graph, personal, askDir, quickDir, now: () => Date.now(),
+      // The sessions picked into the project these folders are, so IQ in a project reads them too.
+      picks: cwds => { try { const sc = graph.view(cwds); return sc?.room ? curator.rooms().find(r => r.slug === sc.room)?.threads || [] : []; } catch { return []; } },
+      next: async (session, seq) => { const r = await ctx.call("recall.thread", { session, from: seq + 1, limit: 1 }); return r?.error ? null : (r?.data?.turns || [])[0] || null; },
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
     ctx.tool("memory.retrieve", {
       description: "The turns Vyre IQ would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
-        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" },
+        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
         knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const project_cwds = clean(input.project_cwds);
@@ -441,7 +674,7 @@ export default {
         try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
         return retrieve({ question: String(input.question || ""), project_cwds, k: input.k ?? 8, personal: sees,
-          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, knobs: input.knobs || {} });
+          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: input.knobs || {} });
       },
     });
     // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
@@ -457,44 +690,70 @@ export default {
       if (r?.error || !r?.data?.ok) throw new Error(r?.error?.message || "threads.quick did not answer");
       return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
     });
-    const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
+    const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
+    const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
+    const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
+    const ask = asker({ db: ctx.store.db, answer, retrieve, fixes: fixed,
+      personalQ: q => {
+        // About the user's own life: a relative, their car, home, diet, birthday, name. Work
+        // questions that the personal parser also reads ("who's priya") stay work questions.
+        const p = /** @type {any} */ (parseQuestion(q));
+        const t = String(q).toLowerCase();
+        if (!p || !LIFE.has(p.kind) || !/\b(?:my|our|i|me|mine)\b/.test(t)) return false;
+        return !p.word || new RegExp(`\\b${String(p.word).replace(/[^a-z]/g, "")}s?\\b`).test(t);
+      },
+      // A session source trust refused, or one a program started (a subagent, a headless run), never grounds a personal answer.
+      // Fails closed (e2e, 28 Sep): a session counts only once recall says a person started it.
+      trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human === 1, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
-        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
+        // The person's plan share (memory.plan_share) scales IQ's day too; an explicit figure wins.
+        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd)
+          : ASK_DAILY_USD * ({ small: 0.5, medium: 1, large: 4 }[String(ctx.config.memory?.model?.share || "medium")] ?? 1)) + 1e-9,
         charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
           ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
       } });
     ctx.tool("memory.ask", {
-      description: "Vyre IQ: answer a question from everything memory holds, with its sources, or abstain. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing.",
+      description: "Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
-        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 },
+        screen: { type: "object", description: "what the person is looking at (the Capsule, floor-redacted): only to understand a question that points at it; never evidence, never a source", properties: { app: { type: "string" }, title: { type: "string" }, selection: { type: "string" }, text: { type: "string" } } }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
         let sees = true;
         try { await personalOnly(input, caller, "memory.ask"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
-        return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread: typeof input.context?.thread === "string" ? input.context.thread : null });
+        const thread = typeof input.context?.thread === "string" ? input.context.thread : null;
+        // The screen is the person's own: only their surfaces send it, never an agent.
+        const screen = sees && input.screen && typeof input.screen === "object" ? input.screen : null;
+        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread, screen });
+        // Streamed: the events carry the id and the step, never the question or the answer.
+        const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
+        const r = await ask({ question: String(input.question || ""), project_cwds, personal: sees, thread, screen, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
+        ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });
+        return { id, ...r };
       },
     });
     // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory
     // knows whose names start with the prefix. Personal names only for the user's own surfaces.
     ctx.tool("memory.suggest", {
-      description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }] }. Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
+      description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }], items } (items: the same in suggest.offer's shape; memory offers this tool to suggest). Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
       input: { type: "object", required: ["prefix"], properties: { prefix: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 20 },
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const pre = String(input.prefix || "").toLowerCase().replace(/\s+/g, " ").trimStart();
         const limit = Math.max(1, Math.min(20, Number(input.limit) || 8));
-        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
-        if (pre.length < 1) return { suggestions: [] };
+        // suggest.query passes its surface's context, where project may be a slug: only a folder scopes.
+        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && path.isAbsolute(input.context.project) ? [input.context.project] : [])];
+        if (pre.length < 1) return { suggestions: [], items: [] };
         let sees = true;
         try { await personalOnly(input, caller, "memory.suggest"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
-        const out = [], seen = new Set();
-        const add = (text, kind, id, via) => { const k = text.toLowerCase(); if (seen.has(k) || out.length >= limit) return; seen.add(k); out.push({ text, kind, id, via }); };
+        const out = [], labels = [], seen = new Set();
+        const add = (text, kind, id, via, label = text) => { const k = text.toLowerCase(); if (seen.has(k) || out.length >= limit) return; seen.add(k); out.push({ text, kind, id, via }); labels.push(label); };
         if (sees) {
           // Aliases are lower case and the key's first column: a range scan, not a table scan.
           for (const r of /** @type {any[]} */ (ctx.store.db.prepare(`SELECT a.alias, e.id, e.kind, e.label FROM memory_me_aliases a JOIN memory_me_entities e ON e.id = a.entity
-              WHERE a.alias >= ? AND a.alias < ? ORDER BY length(a.alias), a.alias LIMIT 40`).all(pre, pre + "\uffff"))) add(String(r.alias), String(r.kind), String(r.id), "personal");
+              WHERE a.alias >= ? AND a.alias < ? ORDER BY length(a.alias), a.alias LIMIT 40`).all(pre, pre + "\uffff"))) add(String(r.alias), String(r.kind), String(r.id), "personal", String(r.label || r.alias));
         }
         try {
           const sc = graph.view(project_cwds);
@@ -506,7 +765,14 @@ export default {
             if (out.length >= limit) break;
           }
         } catch { /* no graph yet */ }
-        return { suggestions: out };
+        // items: the same names in suggest.offer's shape. A name typed as its label ("juno") shows
+        // as the label; a role ("my wife") keeps its words and names who it is.
+        const items = out.map((x, i) => {
+          const same = labels[i].toLowerCase() === x.text.toLowerCase();
+          const label = same ? labels[i] : x.text;
+          return { label, kind: "entity", insert: label, id: x.id, detail: same ? x.kind : labels[i] };
+        });
+        return { suggestions: out, items };
       },
     });
     ctx.tool("memory.profile", {
@@ -531,13 +797,26 @@ export default {
       },
     });
     ctx.tool("memory.uncorrect", {
-      callers: OWNERS,
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
-      input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
-      run: ownerWrite(async ({ id }) => { const c = curator.uncorrect(id); await settle(); return c; }),
+      input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "an IQ answer correction's id" }, suggestion: { type: "integer", description: "dismiss an agent's suggestion" } } },
+      run: ownerWrite(async ({ id, fix, suggestion }) => {
+        if (Number.isInteger(suggestion)) { settleSuggestion(suggestion, "dismissed"); return { dismissed: suggestion }; }
+        if (Number.isInteger(fix)) {
+          const f = fixed.undo(fix);
+          if (f.told != null) {
+            ctx.store.db.prepare("DELETE FROM memory_me_claims WHERE session = ?").run(`told:${f.told}`);
+            ctx.store.db.prepare("DELETE FROM memory_me_told WHERE id = ?").run(f.told);
+          }
+          personal.derive({ force: true });
+          return { fix: f };
+        }
+        if (!Number.isInteger(id)) throw Object.assign(new Error("uncorrect needs id (a correction) or fix (an IQ answer correction)"), { code: "bad_input" });
+        const c = curator.uncorrect(id); await settle(); return c;
+      }),
     });
     ctx.tool("memory.merge", {
-      callers: OWNERS,
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Two nodes are one: everything said about the first is said about the second (into).",
       input: { type: "object", required: ["node", "into"], properties: { node: { type: "string" }, into: { type: "string" } } },
       run: ownerWrite(async ({ node, into }, { caller } = {}) => {
@@ -552,7 +831,7 @@ export default {
       }),
     });
     ctx.tool("memory.split", {
-      callers: OWNERS,
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "One node is two: with room or project, the one that project's sessions name is someone else (two different people with one name); with other, two nodes that were merged are kept apart.",
       input: { type: "object", required: ["node"], properties: { node: { type: "string" }, other: { type: "string" }, ...roomField } },
       run: ownerWrite(async (input, { caller } = {}) => {
@@ -618,12 +897,155 @@ export default {
         return { ...(r ? { ran: r } : {}), status: model.status() };
       }),
     });
+    // A session starts knowing today (ADR 0036, "sessions start knowing today"): the project's last
+    // session and what memory learned about it this week, in at most 300 characters. No model and no
+    // personal facts: a project's room only, for its brief.
+    ctx.tool("memory.today", {
+      description: "For a session's brief: the project's last session and the few things memory learned about the project this week from the person's own words, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts, and never a fact only Claude, tool output or a module stands behind.",
+      input: { type: "object", properties: { project_cwds: cwds, ...roomField, session: { type: "string", description: "the session starting, left out" }, days: { type: "integer", minimum: 1, maximum: 30 }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const room = roomOf(input);
+        const project_cwds = clean(input.project_cwds);
+        if (!room && !project_cwds.length) return { lines: [] };
+        await guard({ agent: input.agent, project_cwds, room }, caller, { tailnet: true });
+        let sc;
+        try { sc = graph.view(project_cwds, room); } catch { return { lines: [] }; }
+        if (!sc) return { lines: [] };
+        const t = Date.now(), since = t - (input.days ?? 7) * 86_400_000;
+        const lines = [];
+        const ids = [...(sc.sessions || [])].filter(x => x !== input.session);
+        if (ids.length && personal.hasRecall()) {
+          // Only when: a session's name is usually a title Claude chose, a slot in every brief (e2e).
+          const last = /** @type {any} */ (ctx.store.db.prepare(`SELECT ended FROM recall_sessions WHERE id IN (${ids.map(() => "?").join(",")}) AND human = 1 AND parent IS NULL ORDER BY ended DESC LIMIT 1`).get(...ids));
+          if (last && last.ended) lines.push(`Last session here: ${ago(Number(last.ended), t)} ago.`);
+        }
+        // A brief goes into every session's context, so only the person's own words may feed it
+        // (e2e, 28 Sep): a fact they corrected or confirmed, or one a turn they typed supports, in a
+        // session a person started. Never one only Claude's words, tool output or a module taught.
+        // The evidence must hold in the person's own words of that turn: pasted and injected blocks
+        // stripped, no dev talk, in a session source trust keeps and not in a Vyre folder (e2e, 28 Sep).
+        const turnsOf = (() => { try { return ctx.store.db.prepare(`SELECT t.text, s.cwd, t.session FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id
+          JOIN recall_turns t ON t.session = v.session AND t.seq = v.seq JOIN recall_sessions s ON s.id = t.session
+          WHERE e.src = ? AND e.rel = ? AND e.dst = ? AND t.role = 'user' AND s.human = 1 AND s.parent IS NULL LIMIT 12`); } catch { return null; } })();
+        const refused = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
+        const low = x => String(x || "").toLowerCase();
+        const byUser = f => (turnsOf ? /** @type {any[]} */ (turnsOf.all(f.subject?.id, f.rel, f.object?.id)) : []).some(r => {
+          if (/** @type {any} */ (refused.get(r.session))?.ok === 0 || vyreFolder(r.cwd) || devTalk(String(r.text))) return false;
+          const words = low(userWords(String(r.text)));
+          return [f.subject?.label, f.object?.label].filter(Boolean).every(l => words.includes(low(l)));
+        });
+        const own = f => ["user", "confirmed"].includes(String(f.origin)) || (String(f.origin || "extract") === "extract" && byUser(f));
+        const learned = graph.facts({ project_cwds, room: sc.room ?? undefined, limit: 80 }).facts
+          .filter(f => f.rel !== "mentioned_in" && !f.stale && Number(f.seen) >= since && own(f))
+          .sort((a, b) => Number(b.seen) - Number(a.seen) || (a.id < b.id ? -1 : 1));
+        for (const f of learned.slice(0, 3)) lines.push(`${plain(f.text, 90)} (${f.seen_age} ago).`);
+        const out = [];
+        let n = 0;
+        for (const l of lines) { if (n + l.length > 300) break; out.push(l); n += l.length + 1; }
+        return { lines: out };
+      },
+    });
+    // "Who is ..." and "everything about ...": one card per person, org or project (graph win 2).
+    // The graph's facts about it, the projects it comes up in, when it last did, and a few
+    // sessions to open; for the person's own surfaces, what it is to them too (their wife, their dog).
+    ctx.tool("memory.card", {
+      description: "One card about a person, org or project: { card: { label, kind, role, to_you?, facts: [{ text, source, age }], projects: [name], sessions, last, sources: [{ session, name, ts }] } | null }. to_you is who it is to the person (\"your wife\"), for their own surfaces only. project_cwds or room scope it as memory.facts does.",
+      input: { type: "object", required: ["about"], properties: { about: { type: "string" }, project_cwds: cwds, ...roomField, ...agentField } },
+      run: async ({ about, project_cwds = [], agent, ...rest }, { caller } = {}) => {
+        const room = roomOf(rest);
+        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const g = graph.facts({ about: String(about), project_cwds: clean(project_cwds), room, limit: 40 });
+        let sees = true;
+        try { await personalOnly({ agent }, caller, "memory.card"); } catch { sees = false; }
+        const mine = sees ? personal.about(String(about)) : null;
+        if (!g.about && !mine) return { card: null };
+        const a = g.about;
+        const facts = (g.facts || []).filter(f => f.rel !== "mentioned_in" && !f.stale).slice(0, 8).map(f => ({ text: f.text, source: f.source, age: f.seen_age || f.age }));
+        // A caller granted only some projects sees only those projects' names and counts (the
+        // reviewer, 28 Sep): which other clients an entity comes up with is the person's.
+        const rows = a ? /** @type {any[]} */ (ctx.store.db.prepare("SELECT r.slug, r.name, n.sessions, n.last_seen FROM memory_room_nodes n JOIN memory_rooms r ON r.slug = n.room WHERE n.id = ? ORDER BY r.name").all(a.id)) : [];
+        const mayRoom = slug => r.all || r.slugs.has(String(slug));
+        const seen = rows.filter(x => mayRoom(x.slug));
+        const projects = [...new Set(seen.map(x => String(x.name)))];
+        const counts = r.all ? { sessions: a?.sessions ?? 0, last: a?.age ?? null }
+          : { sessions: seen.reduce((n, x) => n + Number(x.sessions || 0), 0), last: seen.length ? ago(Math.max(...seen.map(x => Number(x.last_seen) || 0)), Date.now()) || null : null };
+        const sources = a ? /** @type {any[]} */ ((() => { try { return graph.why({ fact: a.id, project_cwds: clean(project_cwds), room, limit: 3 }).turns || []; } catch { return []; } })())
+          .map(x => ({ session: String(x.session), name: x.name ?? null, ts: x.ts ?? null })) : [];
+        // Who it is to the person: a relative or pet, in their own word for them.
+        const link = mine?.links?.find(l => l.subj === "me" && l.current);
+        const to_you = link ? `your ${personal.called(mine.entity.id) || link.rel}` : null;
+        return { card: { label: a?.label || mine?.entity?.label || String(about), kind: a?.kind || mine?.entity?.kind || null, role: a?.role ?? null,
+          ...(to_you ? { to_you } : {}), facts, projects, sessions: counts.sessions, last: counts.last, sources } };
+      },
+    });
+    // The first read's pace, the person's choice on the import screen (docs/design/import.md):
+    // fast reads batches of 50 a minute instead of 20, within the plan's normal limits; gentle keeps
+    // the default. Never extra paid usage: no money step (the user, 28 Sep).
+    ctx.tool("memory.pace", {
+      internal: true,
+      description: "Set the first read's pace for an import: fast (bigger batches, within the plan's normal limits) or gentle (the default).",
+      input: { type: "object", required: ["pace"], properties: { pace: { type: "string", enum: ["fast", "gentle"] } } },
+      run: async ({ pace }, { caller, firstParty: shipped } = {}) => {
+        // Vyre's own import module only: a home module could take the name "import" (e2e).
+        if (caller !== "module:import" || shipped !== true) throw denied("the pace is set by the import the person started");
+        ctx.store.db.prepare("INSERT INTO memory_meta (k, v) VALUES ('read_pace', ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").run(pace === "fast" ? "fast" : "gentle");
+        return { pace: pace === "fast" ? "fast" : "gentle" };
+      },
+    });
+    // Two values for one thing about the person's life, put to them to settle (graph win 3).
+    ctx.tool("memory.contradictions", {
+      description: "Things memory holds two values for about the person's life (where they live, their wife's name), for them to settle: { contradictions: [{ id, question, values: [{ value, confidence, sessions, last_seen }] }] }. The person's own surfaces only.",
+      input: { type: "object", properties: {} },
+      run: readerOnly(async () => {
+        if (running) await running.catch(() => {});
+        return { contradictions: contradictions(personal).map(({ _say, subject, ...c }) => c) };
+      }, "memory.contradictions"),
+    });
+    ctx.tool("memory.settle", {
+      description: "The person settles a contradiction: pick is the value that holds. It is told to memory in their words (\"I live in Porto\"), which outweighs every older value. Returns { id, text, facts } as memory.remember does; memory.uncorrect is not needed: telling memory again changes it.",
+      input: { type: "object", required: ["id", "pick"], properties: { id: { type: "string" }, pick: { type: "string" } } },
+      run: ownerWrite(async ({ id, pick }, { caller } = {}) => {
+        if (running) await running.catch(() => {});
+        const c = contradictions(personal).find(x => x.id === id);
+        if (!c) throw Object.assign(new Error(`no open contradiction ${id}: it may be settled already`), { code: "not_found" });
+        const said = answerOf(c, pick);
+        const r = personal.tell(said.text, said.claim, { who: `settle:${plain(caller || "", 40)}` });
+        ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });
+        return { id: r.id, text: r.text, facts: r.facts.map(f => ({ id: f.id, subject: f.subject, rel: f.rel, object: f.object, confidence: f.confidence })) };
+      }),
+    });
+    // The preview for "Delete everything that came from <device>": what would go, in counts.
+    ctx.tool("memory.device", {
+      description: "What came from one paired device's synced sessions, in counts, for the preview before the person deletes it: { machine, sessions, turns, facts, people, orgs }. Unpairing never deletes; deleting is the person's own action through federation, and memory forgets on sync.deleted.",
+      input: { type: "object", required: ["machine"], properties: { machine: { type: "string" } } },
+      run: readerOnly(async ({ machine }) => {
+        const { m, ids } = deviceSessions(machine);
+        const db = ctx.store.db;
+        if (!ids.length) return { machine: m, sessions: 0, turns: 0, facts: 0, people: 0, orgs: 0 };
+        const list = JSON.stringify(ids);
+        const one = (sql) => Number(/** @type {any} */ (db.prepare(sql).get(list))?.n || 0);
+        // Graph nodes and facts no other session supports: what deleting would take away.
+        const only = `SELECT e.id, e.src FROM memory_edges e WHERE e.room = '*' AND e.rel != 'mentioned_in'
+          AND EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session IN (SELECT value FROM json_each(?1)))
+          AND NOT EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session NOT IN (SELECT value FROM json_each(?1)))`;
+        const nodes = kind => Number(/** @type {any} */ (db.prepare(`SELECT COUNT(DISTINCT n.id) n FROM memory_nodes n WHERE n.kind = ? AND n.id IN (SELECT e.src FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id WHERE v.session IN (SELECT value FROM json_each(?)))
+          AND n.id NOT IN (SELECT e.src FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id WHERE v.session NOT IN (SELECT value FROM json_each(?)))`).get(kind, list, list))?.n || 0);
+        return { machine: m, sessions: ids.length, turns: one("SELECT COUNT(*) n FROM recall_turns WHERE session IN (SELECT value FROM json_each(?))"),
+          facts: Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) n FROM (${only})`).get(list))?.n || 0), people: nodes("person"), orgs: nodes("org") };
+      }, "memory.device"),
+    });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
       // Counts over everything are the main graph's.
-      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() } }),
+      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() }, iq: fixed.week() }),
     });
+
+    // Names memory knows go into every surface's predictive text (suggest, ADR 0036): offered now,
+    // and again when suggest starts after memory. No suggest module is fine.
+    const offerNames = async () => { const r = await ctx.call("suggest.offer", { tool: "memory.suggest", kinds: ["entity"] }); if (r?.error && r.error.code !== "no_such_tool") ctx.log(`could not offer names to suggest: ${r.error.message}`); };
+    offs.push(ctx.events.on("suggest.ready", () => void offerNames()));
+    await offerNames();
 
     return {
       async stop() {
@@ -631,6 +1053,7 @@ export default {
         clearTimeout(timer);
         off();
         for (const o of offs) o();
+        revokedOff();
         for (const o of modelOffs) if (typeof o === "function") o();
         model.stop();
         if (running) await running.catch(() => {});

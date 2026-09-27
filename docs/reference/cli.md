@@ -385,13 +385,15 @@ An id is its first few characters, as vyre needs and vyre gate print them.
 What memory holds, or everything about one thing.
 
 ```
-vyre memory [about [<thing...>]|ask <question...>|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]
+vyre memory [about [<thing...>]|ask <question...>|fix [<answer id> <fix>]|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]
 ```
 
 Read it:
   vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing
 Ask it:
-  vyre memory ask "<question>" [--sources]   one line about your life, from what you have said
+  vyre memory ask "<question>" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from
+  vyre memory fix <answer id> wrong | forget | "<the right answer>"   correct an answer; remembered next time
+  vyre memory fix [undo <n>]   what you corrected this week, or undo one
 Change what it holds:
   vyre memory correct <fact> wrong|ended|replace|confirm [new object] [--at <date>] [--note <why>] [--project <slug>]
   vyre memory correct '<subject>|<rel>|<object>' add [--project <slug>]
