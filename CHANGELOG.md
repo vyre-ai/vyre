@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The native bar measures a Deck that streams over fetch
+
+- deck/test/native-bar: page.js tees /v1/events/stream fetches for the events, opens and drops,
+  and keeps the Deck's deck:stream states; budget 8 cuts a fetch stream at the proxy and names the
+  states in its detail. docs/design/native-bar.md: budget 8 on work/pwa 15d02055.
+
 #### Theme route tests hold with or without the appearance module
 
 - core/settings/hub.test.js uses the shipped core/appearance when the tree has it, and a small
