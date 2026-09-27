@@ -17,8 +17,9 @@
 //   needs presence, like every outbound item; nothing here asks for it (the no-nag rule).
 // - The chat or agent a call came from goes with it as `on_behalf`, so a held item is filed where
 //   it was asked for.
-// - A missing or ungranted vault item answers needs_credential with {module, need, account}, so
-//   the vault's flow can ask the person. Never a value.
+// - A missing or ungranted vault item answers needs_credential with {module, need, account}, where
+//   need is an id under needs.credentials in module.json, so the vault's flow (vault.connect)
+//   can ask the person. Never a value.
 // - Nothing runs in the background: no timer, no poll, no child.
 
 import { addresses, checkContent, parseQuery, addressOf, nameOf } from "../connectors/message.js";
@@ -83,7 +84,7 @@ export default {
         const m = String(/** @type {any} */ (e)?.message || e);
         if (/is not granted to|no item named/.test(m)) {
           ctx.events.emit("mail.needs-credential", { account: acct.id, item });
-          throw fail(`${acct.label || acct.account} needs the vault item ${item}, granted to mail · open Vault, Connections`, "needs_credential", { module: "mail", need: item, account: acct.id });
+          throw fail(`${acct.label || acct.account} needs the vault item ${item}, granted to mail · open Vault, Connections`, "needs_credential", { module: "mail", need: adapterOf(acct) === "apps-script" ? "apps-script" : "imap", account: acct.id });
         }
         if (/locked/i.test(m)) throw fail("the vault is locked; unlock it to use this account", "locked");
         throw fail(m, "vault");

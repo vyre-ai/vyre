@@ -146,7 +146,7 @@ test("mail: a rejected send never reaches SMTP, and an ungranted item answers ne
   const chat = w.as("mcp", { thread: "t-2" });
   const r = await chat("mail.search", { q: "order" });
   assert.equal(r.error.code, "needs_credential", JSON.stringify(r));
-  assert.deepEqual(r.error.detail, { module: "mail", need: "mail-alex", account: "cn_imap_alex" });
+  assert.deepEqual(r.error.detail, { module: "mail", need: "imap", account: "cn_imap_alex" });
   assert.ok(w.events.some(e => e.type === "mail.needs-credential" && e.payload.item === "mail-alex"));
   assert.ok(!JSON.stringify(r).includes(PASSWORD));
 

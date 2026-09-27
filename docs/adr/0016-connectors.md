@@ -169,7 +169,7 @@ Scopes are the narrowest per call: `calendar.readonly` and `gmail.readonly` for 
 must be allowed those scopes in the Workspace admin console; `google.test` names any that are
 refused.
 
-Sign-in. `google.connect {name, client}` (people only) runs Google's installed-app flow: the
+Sign-in. `google.connect {name, client?}` (people only; `client` defaults to `google-oauth-client`) runs Google's installed-app flow: the
 person keeps an OAuth client (`client_id`, `client_secret`, optionally `auth_uri` and
 `token_uri`, both https) as a vault env-set granted to google, and Vyre returns the consent
 address, with PKCE S256 and a random state, redirecting to a loopback listener on 127.0.0.1 port
@@ -260,8 +260,9 @@ Rules, and why:
   `is:unread`. Google and Apps Script pass it to Gmail as is; IMAP translates it to `SEARCH`
   and never marks a message read; an MCP account passes it to the mapped argument.
 - **Needs a credential.** A missing or ungranted item answers
-  `{code: "needs_credential", detail: {module: "mail", need: <item>, account: <connection>}}`
-  and emits `mail.needs-credential`, so the vault's flow can ask the person. Never a value.
+  `{code: "needs_credential", detail: {module: "mail", need, account: <connection>}}`, where `need`
+  is `imap` or `apps-script` from `needs.credentials` in the manifest (both `multiple: true`), so
+  surfaces call `vault.connect {module: "mail", need, label}`. Never a value.
 - **Native adapters.** IMAP and SMTP need TLS (implicit or STARTTLS), except to a loopback host,
   which exists for the test fakes. SMTP never carries Bcc in the headers. Apps Script is a POST
   with the token in the body, and one redirect is followed only to

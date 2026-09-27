@@ -46,6 +46,22 @@
   "needs": {
     "vault": [
       "per-connection"
+    ],
+    "credentials": [
+      {
+        "id": "imap",
+        "kind": "env-set",
+        "provider": "imap-smtp",
+        "purpose": "Read and send mail over IMAP and SMTP",
+        "multiple": true
+      },
+      {
+        "id": "apps-script",
+        "kind": "env-set",
+        "provider": "google-apps-script",
+        "purpose": "Read and send Gmail through your own Apps Script web app",
+        "multiple": true
+      }
     ]
   },
   "teaches": {}

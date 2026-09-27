@@ -140,10 +140,10 @@ export default {
     });
 
     ctx.tool("google.connect", {
-      description: "Start \"Sign in with Google\": `client` names a vault env-set with the OAuth client's client_id and client_secret (and optionally auth_uri, token_uri), granted to google. Returns { id, url, redirect }: open `url` in a browser. When Google sends the browser back, the account is added as `name` and google.connected is emitted. A browser on another device cannot reach `redirect`; paste the address it landed on into google.connect.finish.",
-      input: obj({ name: str, client: str, base: str }, ["name", "client"]),
+      description: "Start \"Sign in with Google\": `client` (default google-oauth-client) names a vault env-set with the OAuth client's client_id and client_secret (and optionally auth_uri, token_uri), granted to google. Returns { id, url, redirect }: open `url` in a browser. When Google sends the browser back, the account is added as `name` and google.connected is emitted. A browser on another device cannot reach `redirect`; paste the address it landed on into google.connect.finish.",
+      input: obj({ name: str, client: { type: "string", description: "the OAuth client env-set; default google-oauth-client" }, base: str }, ["name"]),
       callers: PEOPLE,
-      run: async ({ name, client, base }) => {
+      run: async ({ name, client = "google-oauth-client", base }) => {
         if (base !== undefined && !loopback(base)) throw fail("base must be a loopback origin such as http://127.0.0.1:8080 (it exists for test fakes)");
         return signIn.start({ name, client, base });
       },

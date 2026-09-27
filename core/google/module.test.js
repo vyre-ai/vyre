@@ -339,6 +339,10 @@ test("google: Sign in with Google over the loopback adds an account that works, 
   }
   assert.equal(tcp(), idle, "nothing listens before a sign-in");
   assert.match((await v.cli("google.connect", { name: "home", client: "google-client", base: "https://example.org" })).error.message, /loopback/);
+  // With no client named, the default item google-oauth-client is the one asked for (vault.connect's `next` passes only a name).
+  const dflt = await v.cli("google.connect", { name: "home", base: fake.base });
+  assert.match(dflt.error.message, /google-oauth-client/, JSON.stringify(dflt));
+  assert.equal(tcp(), idle, "a sign-in that could not start leaves no listener");
 
   const started = (await v.cli("google.connect", { name: "home", client: "google-client", base: fake.base })).data;
   assert.ok(started?.id && started.url && started.redirect, JSON.stringify(started));
