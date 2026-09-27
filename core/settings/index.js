@@ -70,9 +70,13 @@ export const isPerson = (caller, meta) => {
 export const said = (d, value) => (d && d.secret ? {} : { value: value === undefined ? null : value });
 
 /** The label another module sees when this one passes a person's change on. @param {string} caller */
-const asPerson = caller => {
-  const k = String(caller).replace(/[\s:]agent:.*$/s, "");
-  return PEOPLE.includes(k) ? k : "deck"; // the owner's own Deck over the tailnet is "tailnet:<login>"
+export const asPerson = caller => {
+  const c = String(caller);
+  if (PEOPLE.includes(c)) return c;
+  // The owner's own Deck over the tailnet or the relay (it has a person session, or the registry
+  // would have refused the call) is the Deck. Nothing else is a person, and never passes as one.
+  if (/^tailnet:(?!agent:)[^\s:]+$/.test(c) || /^device:[a-z2-7]{16}$/.test(c)) return "deck";
+  throw Object.assign(new Error(`${c} is not a person's surface`), { code: "denied" });
 };
 
 /** What a caller may see about one key, without its value. @param {any} d */
@@ -201,7 +205,7 @@ export default {
           catch (e) { hubProblems.set(d.key, `hub.json: ${d.key}: ${/** @type {Error} */ (e).message}; ${JSON.stringify(now ?? d.default ?? null)} still applies`); continue; }
           if (JSON.stringify(value) === JSON.stringify(now)) { pending.delete(pkey(d.key, target)); continue; }
           known.add(pkey(d.key, target));
-          const held = value === undefined ? d.security === "loosens" : needsConfirm(d, value);
+          const held = (value === undefined && d.security === "loosens") || needsConfirm(d, value, now);
           if (held) { pending.set(pkey(d.key, target), { value }); ctx.log(`hub.json asks to ${value === undefined ? "reset" : "change"} ${d.key}; it waits for the person`); continue; }
           pending.delete(pkey(d.key, target));
           await write(env, d, lv, target, value, "local", "hub.json");
@@ -321,8 +325,8 @@ export default {
       const before = await level(d, lv, target);
       // What would change, for the person to see first. Nothing is written.
       if (i.preview) return { key: d.key, level: lv, ...(target ? { project: target } : {}), where, before: before.value, after: value,
-        ...(needsConfirm(d, value) ? { confirm: d.loosens || `This lets Claude do more without asking: ${d.label}.` } : {}) };
-      if (raw !== undefined && needsConfirm(d, value) && i.confirm !== true) {
+        ...(needsConfirm(d, value, before.value) ? { confirm: d.loosens || `This lets Claude do more without asking: ${d.label}.` } : {}) };
+      if (needsConfirm(d, value, before.value) && i.confirm !== true) {
         throw Object.assign(new Error(`${d.loosens || `This lets Claude do more without asking: ${d.label}.`} Show the person and send confirm: true.`), { code: "confirm_required" });
       }
       await write(env, d, lv, target, value, asPerson(caller), String(caller));
@@ -350,8 +354,8 @@ export default {
     });
 
     ctx.tool("settings.reset", {
-      description: "Remove a setting's value at one level, so the level below (account, then default) applies again.",
-      input: { type: "object", required: ["key"], properties: { key: str, level: { type: "string", enum: ["account", "project"] }, project: str, preview: { type: "boolean" } } },
+      description: "Remove a setting's value at one level, so the level below (account, then default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.",
+      input: { type: "object", required: ["key"], properties: { key: str, level: { type: "string", enum: ["account", "project"] }, project: str, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE, presence,
       run: async (i, { caller }) => change(i, caller, undefined),
     });

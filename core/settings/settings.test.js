@@ -70,6 +70,28 @@ test("ADR 0035 levels and hooks: device never with confirm or security, session 
   assert.deepEqual(validateDecls("bakery", [{ ...base, check: { tool: "bakery.check" }, choicesFrom: { tool: "bakery.get" } }], { tools: ["bakery.check", "bakery.get"] }), []);
 });
 
+test("env and plugins ask first; taking an entry off deny or ask asks first, adding one does not", async t => {
+  const { c, claudeDir } = await world(t);
+  assert.equal((await c("settings.set", { key: "sessions.env", value: { LOG_LEVEL: "debug" } })).error.code, "confirm_required");
+  assert.equal((await c("settings.set", { key: "sessions.plugins", value: { "bakery@market": true } })).error.code, "confirm_required");
+  assert.ok(!(await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)", "WebFetch"] })).error, "adding to deny is stricter");
+  let r = await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"] });
+  assert.equal(r.error.code, "confirm_required", "dropping WebFetch lets it run");
+  assert.equal((await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"], preview: true })).data.confirm, "Claude will no longer be refused what you take off this list.");
+  assert.equal((await c("settings.reset", { key: "sessions.deny" })).error.code, "confirm_required", "a reset drops them all");
+  assert.ok(!(await c("settings.reset", { key: "sessions.deny", confirm: true })).error);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(claudeDir, "settings.json"), "utf8")).permissions?.deny, undefined);
+  assert.ok(!(await c("settings.reset", { key: "sessions.ask" })).error, "nothing to drop, nothing to ask");
+});
+
+test("asPerson names a person's surface, the owner's device as the Deck, and refuses anything else", async () => {
+  const { asPerson } = await import("./index.js");
+  assert.equal(asPerson("cli"), "cli");
+  assert.equal(asPerson("tailnet:alex"), "deck");
+  assert.equal(asPerson("device:abcdefghijklmnop"), "deck");
+  for (const c of ["mcp", "tailnet:agent:kit", "cli agent:kit", "module:bakery", "tailnet-guest:juno", "unknown"]) assert.throws(() => asPerson(c), /not a person's surface/, c);
+});
+
 test("coerce reads CLI text and refuses what is out of range", () => {
   const idle = { key: "sessions.idle_minutes", type: "int", min: 1, max: 1440 };
   assert.equal(coerce(idle, "15"), 15);
@@ -182,7 +204,7 @@ test("settings.changed says which key, level and rev, the new value only for a k
   await c("settings.reset", { key: "sessions.effort", project: "northwind" });
   assert.equal(d.events.since(0, { type: "settings.changed" }).at(-1).payload.value, null, "a reset says null");
   // A secret key's change never carries its value.
-  await c("settings.set", { key: "sessions.env", value: { NORTHWIND_TOKEN: "nw-secret-123" } });
+  await c("settings.set", { key: "sessions.env", value: { NORTHWIND_TOKEN: "nw-secret-123" }, confirm: true });
   const s = d.events.since(0, { type: "settings.changed" }).at(-1).payload;
   assert.equal(s.key, "sessions.env");
   assert.ok(!("value" in s) && !JSON.stringify(s).includes("nw-secret"));

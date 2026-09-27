@@ -3051,10 +3051,11 @@ Settings with the value in effect and where it comes from (project, account, def
 
 ### `settings.reset`
 
-Remove a setting's value at one level, so the level below (account, then default) applies again.
+Remove a setting's value at one level, so the level below (account, then default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.
 
 - Input:
   - `key` string, required
+  - `confirm` boolean
   - `level` "account" or "project"
   - `preview` boolean
   - `project` string

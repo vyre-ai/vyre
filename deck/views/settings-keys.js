@@ -305,7 +305,7 @@ export async function drawKeys(el, ctx, deps = {}) {
       settle(setGuess(v), "settings.set", { ...target(), value: v, ...(o.confirm ? { confirm: true } : {}) },
         { kind: "set", value: v, presence: o.presence, asked: o.asked });
     const doReset = (/** @type {{ presence?: boolean, asked?: boolean }} */ o = {}) =>
-      settle(resetGuess(), "settings.reset", target(), { kind: "reset", presence: o.presence, asked: o.asked, label: resetTo() });
+      settle(resetGuess(), "settings.reset", { ...target(), ...(o.asked && !o.presence ? { confirm: true } : {}) }, { kind: "reset", presence: o.presence, asked: o.asked, label: resetTo() });
 
     /**
      * Ask on the row before a change that widens what Claude may do or loosens security: preview
@@ -324,7 +324,7 @@ export async function drawKeys(el, ctx, deps = {}) {
       if (!ctx.alive() || mine !== seq) return;
       if (p.error) { closeAsk(); r.dirty = false; r.error = errText(p.error); r.paint(true); return; }
       const sentence = kind === "set" ? String(p.data?.confirm || def.loosens || `This lets Claude do more without asking: ${def.label}.`)
-        : `${resetTo()} needs your passkey.`;
+        : presence ? `${resetTo()} needs your passkey.` : String(p.data?.confirm || def.loosens || `${resetTo()} lets Claude do more without asking.`);
       const ok = h("button", { type: "button", class: "btn btn-primary btn-sm sk-yes",
         onclick: () => (kind === "set" ? doSet(value, { confirm: true, presence, asked: true }) : doReset({ presence, asked: true })) },
         "Confirm");

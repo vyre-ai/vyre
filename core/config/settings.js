@@ -167,8 +167,18 @@ export function coerce(d, v) {
   return bad("unknown type");
 }
 
-/** Does changing this key to this value need an explicit confirm? @param {any} d @param {any} v */
-export function needsConfirm(d, v) {
+/**
+ * Does changing this key to this value need an explicit confirm? `before` is the level's value
+ * now, for a list whose confirm is { drops: true }: taking an entry out (a reset takes them all)
+ * lets Claude do more, so it asks. v undefined is a reset, which asks only for drops.
+ * @param {any} d @param {any} v @param {any} [before]
+ */
+export function needsConfirm(d, v, before) {
+  if (d.confirm && d.confirm.drops && Array.isArray(before)) {
+    const next = (Array.isArray(v) ? v : []).map(x => JSON.stringify(x));
+    if (before.some(x => !next.includes(JSON.stringify(x)))) return true;
+  }
+  if (v === undefined) return false;
   if (d.security === "loosens" || d.confirm === true) return true;
   return Boolean(d.confirm && Array.isArray(d.confirm.values) && d.confirm.values.includes(v));
 }

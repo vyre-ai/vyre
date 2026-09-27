@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Three loosening paths closed before 0.1.0 (e2e review, MEDIUM)
+
+- core/modules firstParty: a module is Vyre's own only when its folder sits directly in the repo's
+  core/, local/ or modules/, and never inside the home, so a dev home kept in a checkout
+  (VYRE_HOME=<repo>/.dev) gets no first-party rights for its modules.
+- sessions.env and sessions.plugins ask first (confirm: true). sessions.deny and sessions.ask ask
+  first when an entry is taken off, a reset included (confirm: { drops: true }); settings.reset
+  takes confirm. The Deck sends it after the row's Confirm.
+- core/settings asPerson: cli, local, deck and capsule pass as themselves, the owner's device as
+  the Deck, and anything else is refused rather than passing as the Deck.
+
 #### The settings hub file (ADR 0035, step 1)
 
 - core/settings/hub.js and core/settings: `<home>/hub.json` holds Vyre's own settings at account
