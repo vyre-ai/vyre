@@ -16,7 +16,7 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
 - deck/onboard/onboard.css: the finish's focus rings use --radius-chip and its burst --focus, not
   the raw --r-1 and --signal.
 - test/chat-sessions-contract.test.js: thread.status is a future event (chat listens ahead).
-- local/voice/talk.test.js: a usage error exits 2 (EXIT.USAGE).
+- local/voice/talk.test.js: a usage error exits 2 (EXIT.USAGE) and names the command's usage line.
 
 #### Release prep: 0.1.0-rc.1
 
