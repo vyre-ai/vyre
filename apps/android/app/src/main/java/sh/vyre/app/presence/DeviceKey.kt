@@ -91,13 +91,15 @@ class DeviceKey(private val context: Context) {
         val ts = System.currentTimeMillis()
         val nonce = Proof.nonce()
         val msg = Proof.message(tool, input, ts, nonce)
-        val unlocked = withContext(Dispatchers.Main) { prompt(activity, BiometricPrompt.CryptoObject(sig), reason) }
+        // A presence session is one touch for the next half hour: the sheet says so under the reason.
+        val note = if (tool == "presence.session.open") "One touch keeps this phone trusted for about 30 minutes." else null
+        val unlocked = withContext(Dispatchers.Main) { prompt(activity, BiometricPrompt.CryptoObject(sig), reason, note) }
         val s = unlocked.signature ?: throw ApiError.Cancelled()
         s.update(msg)
         return Proof.header(keyId, ts, nonce, s.sign())
     }
 
-    private suspend fun prompt(activity: FragmentActivity, crypto: BiometricPrompt.CryptoObject, reason: String): BiometricPrompt.CryptoObject =
+    private suspend fun prompt(activity: FragmentActivity, crypto: BiometricPrompt.CryptoObject, reason: String, note: String?): BiometricPrompt.CryptoObject =
         suspendCancellableCoroutine { cont ->
             val bp = BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -111,6 +113,7 @@ class DeviceKey(private val context: Context) {
             val info = BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Confirm it's you")
                 .setSubtitle(reason.take(120))
+                .apply { if (note != null) setDescription(note) }
                 .setNegativeButtonText("Cancel")
                 .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                 .setConfirmationRequired(false)

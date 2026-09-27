@@ -115,8 +115,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             SectionHead("Sign out")
             Text("The box forgets this phone's key; this phone forgets the key, the box address and what it kept.", style = Type.small, color = c.text2)
             Row(horizontalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.padding(top = Space.s)) {
-                VButton(if (busy) "Signing out" else "Sign out", onClick = { signOut() }, enabled = !busy, kind = ButtonKind.Beacon)
-                if (offerLocal) VButton("Forget on this phone only", onClick = { app.wipe() }, kind = ButtonKind.Quiet)
+                VButton(if (busy) "Signing out" else "Sign out", onClick = { signOut() }, enabled = !busy, kind = ButtonKind.Secondary)
+                if (offerLocal) VButton("Forget on this phone only", onClick = { app.wipe() }, kind = ButtonKind.Ghost)
             }
             out?.let { Quiet(it) }
         }

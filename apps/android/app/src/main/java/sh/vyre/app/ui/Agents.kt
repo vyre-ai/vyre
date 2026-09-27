@@ -118,7 +118,7 @@ fun AgentScreen(name: String, back: String, onBack: () -> Unit) {
                 }
             })
             note?.let { Quiet(it) }
-            if (running) VButton("Stop $name", kind = ButtonKind.Quiet, modifier = Modifier.padding(top = Space.s), onClick = {
+            if (running) VButton("Stop $name", kind = ButtonKind.Ghost, modifier = Modifier.padding(top = Space.s), onClick = {
                 scope.launch {
                     note = try { val out = app.client.call("agents.stop", input("agent" to name)); "Stopped ${out.at("stopped").arr.size} session(s)." } catch (e: Exception) { e.plain() }
                     threads.refresh(); agent.refresh()
@@ -209,7 +209,7 @@ fun FactScreen(id: String, back: String, onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
                 VButton("Pin", onClick = { mark("memory.pin", sid, false) })
                 VButton("Mute", onClick = { mark("memory.mute", sid, false) })
-                VButton("Clear", kind = ButtonKind.Quiet, onClick = { mark("memory.pin", sid, true) })
+                VButton("Clear", kind = ButtonKind.Ghost, onClick = { mark("memory.pin", sid, true) })
             }
             note?.let { Quiet(it) }
         }

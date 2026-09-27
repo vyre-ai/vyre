@@ -49,6 +49,12 @@ object Glyph {
         drawPath(Path().apply { moveTo(5f * u, 12.5f * u); lineTo(10f * u, 17f * u); lineTo(19f * u, 7f * u) }, color, style = st)
     }
 
+    /** A circle crossed through: a failure, in --text (never red). */
+    @Composable fun Failed(color: Color, size: Dp = 16.dp, modifier: Modifier = Modifier) = draw(size, modifier) { u, st ->
+        drawCircle(color, radius = 8.5f * u, center = Offset(12f * u, 12f * u), style = st)
+        drawLine(color, Offset(6f * u, 18f * u), Offset(18f * u, 6f * u), strokeWidth = st.width, cap = StrokeCap.Round)
+    }
+
     @Composable
     private fun draw(size: Dp, modifier: Modifier, block: DrawScope.(u: Float, st: Stroke) -> Unit) {
         Canvas(modifier.size(size)) {

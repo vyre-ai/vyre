@@ -22,6 +22,11 @@ class VyreApp : Application() {
     lateinit var stream: EventStream
     lateinit var key: DeviceKey
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * Needs you rows answered, or waiting out an Undo, from Now's swipes or the detail sheet: Now
+     * collapses them at once and pulses the next row, before the box's event arrives.
+     */
+    val settled = MutableStateFlow<Set<String>>(emptySet())
 
     override fun onCreate() {
         super.onCreate()

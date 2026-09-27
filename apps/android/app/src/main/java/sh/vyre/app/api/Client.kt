@@ -80,19 +80,61 @@ class Client(
     }
 
     /**
-     * A tool that may or may not need a person (agents.create and agents.update are becoming
-     * human-only): call it plainly, and on presence_required sign with the device key after the
-     * fingerprint and retry exactly once. Any other answer, or a second refusal, is thrown.
+     * Tools this box would not let a presence session prove (it answered "needs its own proof"),
+     * so the next proof for one goes straight to the call instead of opening a session first.
      */
-    suspend fun callOrProve(tool: String, input: JsonObject, reason: String, timeoutSec: Long = 60): JsonElement =
-        try { call(tool, input, null, timeoutSec) }
-        catch (e: ApiError.PresenceRequired) { callProved(tool, input, reason, timeoutSec) }
+    var rules: SessionRules = MemoryRules()
+
+    /**
+     * A call a person may have to answer for (the user's no-nag rule, absolute): the fingerprint
+     * only for pairing, vault secrets and sending, posting or paying outside, and only when no live
+     * presence session on this phone covers it. The app never guesses from the tool name:
+     *
+     * 1. With `session` and a live presence session, the call rides it (`session id=.. secret=..`).
+     * 2. Unless the box said a proof is `required`, the call goes plainly.
+     * 3. Only when the box answers presence_required does the fingerprint sheet show, once. With
+     *    `session`, that one proof opens presence.session.open and the call retries on the new
+     *    session, so later calls within about 30 minutes skip the sheet; a box that will not take a
+     *    session for this tool gets the tool's own proof (and is remembered, [rules]). Without
+     *    `session` (agents.create, a harmless fallback), the proof signs the call, retried once.
+     *
+     * `prompt` false never shows the sheet: a call that needs one throws PresenceRequired.
+     * `check` runs before each attempt that carries a proof (floor rule 1: what was shown is what goes).
+     */
+    suspend fun callOrProve(tool: String, input: JsonObject, reason: String, timeoutSec: Long = 60, required: Boolean? = null,
+                            session: Boolean = false, prompt: Boolean = true, check: (suspend () -> Unit)? = null): JsonElement {
+        var needed = required == true
+        if (session) presenceSession?.takeIf { it.live() && !rules.refused(tool) }?.let { s ->
+            try { check?.invoke(); return call(tool, input, s.header(), timeoutSec).also { s.touch() } }
+            catch (e: ApiError.PresenceRequired) { learn(tool, e); needed = true }
+        }
+        if (!needed) {
+            try { return call(tool, input, null, timeoutSec) }
+            catch (e: ApiError.PresenceRequired) { if (!prompt) throw e }
+        } else if (!prompt) throw ApiError.PresenceRequired("This needs your fingerprint", listOf("device"))
+        val p = prover ?: throw ApiError.PresenceRequired("This phone has no device key yet", listOf("device"))
+        if (session && presenceSession?.live() != true && !rules.refused(tool)) {
+            val open = JsonObject(emptyMap())
+            val s = PresenceSession.of(call("presence.session.open", open, p.header("presence.session.open", open, reason), timeoutSec))
+            presenceSession = s
+            if (s != null) try { check?.invoke(); return call(tool, input, s.header(), timeoutSec).also { s.touch() } }
+            catch (e: ApiError.PresenceRequired) { learn(tool, e) }
+        }
+        val h = p.header(tool, input, reason)
+        check?.invoke()
+        return call(tool, input, h, timeoutSec)
+    }
+
+    /** A session refused for this tool is remembered; one that ended is dropped. */
+    private fun learn(tool: String, e: ApiError.PresenceRequired) {
+        if (e.message.contains("own proof")) rules.refuse(tool) else presenceSession = null
+    }
 
     /** vault.reveal / vault.totp inside an open presence session, else a device proof for this item. */
     suspend fun callVault(tool: String, input: JsonObject, reason: String): JsonElement {
         val s = presenceSession?.takeIf { it.live() }
         if (s != null) {
-            try { return call(tool, input, "session id=${s.id} secret=${s.secret}").also { s.touch() } }
+            try { return call(tool, input, s.header()).also { s.touch() } }
             catch (e: ApiError.PresenceRequired) { presenceSession = null }
         }
         return callProved(tool, input, reason)
@@ -139,6 +181,29 @@ class Client(
 data class PresenceSession(val id: String, val secret: String, val expires: Long, val idleMs: Long, var lastUsed: Long = System.currentTimeMillis()) {
     fun live(now: Long = System.currentTimeMillis()) = now < expires && now - lastUsed < idleMs
     fun touch() { lastUsed = System.currentTimeMillis() }
+    fun header() = "session id=$id secret=$secret"
+
+    companion object {
+        /** presence.session.open's `{session, secret, expires, idle}`; expiry is kept a minute short of the box's. */
+        fun of(out: JsonElement): PresenceSession? {
+            val id = out.str("session") ?: return null
+            val secret = out.str("secret") ?: return null
+            return PresenceSession(id, secret, (out.long("expires") ?: (System.currentTimeMillis() + 30 * 60_000L)) - 60_000L, (out.long("idle") ?: 300_000L) - 15_000L)
+        }
+    }
+}
+
+/** What Client.callOrProve learned about presence sessions on this box. */
+interface SessionRules {
+    fun refused(tool: String): Boolean
+    fun refuse(tool: String)
+}
+
+/** For this run of the app: a box that is upgraded to take sessions for more tools is tried again next launch. */
+class MemoryRules : SessionRules {
+    private val tools = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    override fun refused(tool: String) = tool in tools
+    override fun refuse(tool: String) { tools += tool }
 }
 
 /** The offline cache Client consults when the box is out of reach. See data/Cache.kt. */

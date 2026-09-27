@@ -208,7 +208,7 @@ fun VaultItemScreen(name: String, onBack: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.padding(top = Space.s)) {
                         if (s == null) VButton("Reveal", onClick = { reveal(f.ifEmpty { null }, false) }, enabled = busy == null)
                         else VButton("Hide", onClick = { shown.remove(f) })
-                        VButton("Copy", onClick = { reveal(f.ifEmpty { null }, true) }, kind = ButtonKind.Quiet, enabled = busy == null)
+                        VButton("Copy", onClick = { reveal(f.ifEmpty { null }, true) }, kind = ButtonKind.Ghost, enabled = busy == null)
                     }
                 }
                 Hairline()

@@ -23,7 +23,8 @@ sealed class Line {
     data class Assistant(override val key: String, val text: String, val done: Boolean) : Line()
     data class Notice(override val key: String, val text: String) : Line()
     data class Tools(override val key: String, val calls: List<ToolCall>) : Line()
-    data class Ask(override val key: String, val ask: String, val tool: String, val summary: String, val destination: String?, val reason: String?, val decision: String?) : Line()
+    data class Ask(override val key: String, val ask: String, val tool: String, val summary: String, val destination: String?, val reason: String?, val decision: String?,
+                   val scope: String? = null, val decidedAt: Long? = null) : Line()
     data class Held(override val key: String, val id: String, val state: String) : Line()
     data class Finished(override val key: String, val ok: Boolean, val cost: Double?, val durationMs: Long?, val error: String?) : Line()
     data class Stopped(override val key: String, val reason: String) : Line()
@@ -39,6 +40,11 @@ data class ToolCall(val id: String, val tool: String, val summary: String, val d
 class Transcript(val thread: String) {
     private val lines = mutableListOf<Line>()
     private val seen = HashSet<String>()
+    /** Per line: the events that made it and when it began, so Open session can find it (Anchor). */
+    private val events = HashMap<String, MutableSet<Long>>()
+    private val began = HashMap<String, Long>()
+    private var oldest: Long? = null
+    private var earliest: Long? = null
     var status: String? = null
         private set
     val items: List<Line> get() = lines.toList()
@@ -54,12 +60,47 @@ class Transcript(val thread: String) {
         if (t == null && (type.startsWith("ask.") || type.startsWith("gate.held") || type == "gate.revised")) return false
         val ev = e.str("event")
         if (ev != null && !seen.add(ev)) return false
+        val before = lines.size
+        val ok = apply(type, e, ev)
+        if (ok) note(e, ev, before)
+        return ok
+    }
+
+    /** Record which line an event made or changed (the last new one, or the one whose content moved). */
+    private fun note(e: JsonObject, ev: String?, before: Int) {
+        val key = (if (lines.size > before) lines.last().key else touched) ?: return
+        touched = null
+        val id = ev?.toLongOrNull()
+        if (id != null) { events.getOrPut(key) { HashSet() } += id; if (oldest == null || id < oldest!!) oldest = id }
+        e.long("at")?.let { at -> if (key !in began) began[key] = at; if (earliest == null || at < earliest!!) earliest = at }
+    }
+    private var touched: String? = null
+
+    /**
+     * The line an anchor points at (phone.md section 15): the tool row holding `tool_use_id`, else
+     * the line its event made, else the first line after that event, else the first line at or
+     * after `at`. Null when it is not in what is loaded; [older] says whether paging back may find it.
+     */
+    fun locate(a: Anchor): Int? {
+        a.toolUseId?.let { id -> lines.indexOfFirst { it is Line.Tools && it.calls.any { c -> c.id == id } }.takeIf { it >= 0 }?.let { return it } }
+        a.event?.let { ev ->
+            lines.indexOfFirst { events[it.key]?.contains(ev) == true }.takeIf { it >= 0 }?.let { return it }
+            if (oldest != null && ev >= oldest!!) lines.indexOfFirst { l -> (events[l.key]?.minOrNull() ?: -1L) >= ev }.takeIf { it >= 0 }?.let { return it }
+        }
+        a.at?.let { at -> if (earliest != null && at >= earliest!!) lines.indexOfFirst { (began[it.key] ?: -1L) >= at }.takeIf { it >= 0 }?.let { return it } }
+        return null
+    }
+
+    /** Whether the anchor lies before everything loaded, so an older page may hold it. */
+    fun older(a: Anchor): Boolean = (a.event != null && oldest != null && a.event < oldest!!) || (a.at != null && earliest != null && a.at < earliest!!)
+
+    private fun apply(type: String, e: JsonObject, ev: String?): Boolean {
         when (type) {
             "thread.sent" -> {
                 val text = e.str("text").orEmpty()
                 val i = lines.indexOfFirst { it is Line.User && it.pending && it.text == text }
                 val line = Line.User("sent:$ev", text, e.str("surface"), e.long("at"))
-                if (i >= 0) lines[i] = line else lines += line
+                if (i >= 0) { lines[i] = line; touched = line.key } else lines += line
                 status = "working"
             }
             "thread.text" -> {
@@ -70,6 +111,7 @@ class Transcript(val thread: String) {
                 if (i >= 0) {
                     val a = lines[i] as Line.Assistant
                     if (a.done && !done) return false
+                    touched = a.key
                     lines[i] = if (done) a.copy(text = e.str("text") ?: a.text, done = true) else a.copy(text = a.text + e.str("delta").orEmpty())
                 } else lines += Line.Assistant("msg:$msg", if (done) e.str("text").orEmpty() else e.str("delta").orEmpty(), done)
                 status = "working"
@@ -80,11 +122,12 @@ class Transcript(val thread: String) {
                     val i = lines.indexOfLast { it is Line.Tools && it.calls.any { c -> c.id == id } }
                     if (i < 0) return false
                     val t = lines[i] as Line.Tools
+                    touched = t.key
                     lines[i] = t.copy(calls = t.calls.map { if (it.id == id) it.copy(done = true, error = e.bool("error") == true) else it })
                 } else {
                     val call = ToolCall(id, e.str("tool").orEmpty(), e.str("summary").orEmpty(), e.str("destination"), false, false)
                     val last = lines.lastOrNull()
-                    if (last is Line.Tools) lines[lines.size - 1] = last.copy(calls = last.calls + call)
+                    if (last is Line.Tools) { lines[lines.size - 1] = last.copy(calls = last.calls + call); touched = last.key }
                     else lines += Line.Tools("tools:$id", listOf(call))
                 }
                 status = "working"
@@ -98,7 +141,7 @@ class Transcript(val thread: String) {
             "ask.answered" -> {
                 val ask = e.str("ask") ?: return false
                 val i = lines.indexOfFirst { it is Line.Ask && it.ask == ask }
-                if (i >= 0) lines[i] = (lines[i] as Line.Ask).copy(decision = e.str("decision") ?: "answered")
+                if (i >= 0) { lines[i] = (lines[i] as Line.Ask).copy(decision = e.str("decision") ?: "answered", scope = e.str("scope"), decidedAt = e.long("at")); touched = lines[i].key }
                 status = "working"
             }
             "gate.held", "gate.revised" -> {

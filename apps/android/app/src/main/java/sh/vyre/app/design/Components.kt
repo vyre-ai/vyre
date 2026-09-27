@@ -54,12 +54,14 @@ fun Hairline(modifier: Modifier = Modifier, strong: Boolean = false) {
     Box(modifier.fillMaxWidth().height(1.dp).background(if (strong) V.c.ruleStrong else V.c.rule))
 }
 
-enum class ButtonKind { Primary, Secondary, Quiet, Beacon }
+/** The Deck's three kinds, and no others: no red, no attention fill, no error role. */
+enum class ButtonKind { Primary, Secondary, Ghost }
 
 /**
- * A button (phone.md section 2): sentence-case sans 15/600, 44 tall with radius 10, or [tall]
- * (54, radius 12, 17/600) for a sheet's primary. Primary is --primary-bg, one per view; Secondary
- * is an outline on --rule-strong; Quiet is text only.
+ * A button (phone.md section 2): sentence-case sans 15/600, 44 tall with radius 10, or taller
+ * (46 and 54, radius 12; 17/600 at 54) in a sheet. Primary is --primary-bg with --primary-ink, one
+ * per view; Secondary is --text on --hover with a --rule-strong border; Ghost is text only, full
+ * --text at 600, never --text-2.
  */
 @Composable
 fun VButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, kind: ButtonKind = ButtonKind.Secondary, enabled: Boolean = true,
@@ -69,19 +71,34 @@ fun VButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, ki
     val shape = RoundedCornerShape(if (tall) 12.dp else 10.dp)
     val (fill, ink, border) = when (kind) {
         ButtonKind.Primary -> Triple(c.primaryBg, c.primaryInk, Color.Transparent)
-        ButtonKind.Secondary -> Triple(Color.Transparent, c.text, c.ruleStrong)
-        ButtonKind.Quiet -> Triple(Color.Transparent, c.text2, Color.Transparent)
-        ButtonKind.Beacon -> Triple(c.beaconWash, c.beaconInk, Color.Transparent)
+        ButtonKind.Secondary -> Triple(c.hover, c.text, c.ruleStrong)
+        ButtonKind.Ghost -> Triple(Color.Transparent, c.text, Color.Transparent)
     }
     val tint = if (enabled) ink else c.label
     Row(
-        modifier.heightIn(min = height).widthIn(min = 64.dp).clip(shape).background(if (enabled) fill else if (kind == ButtonKind.Primary) c.hover else Color.Transparent)
+        modifier.heightIn(min = height).widthIn(min = 64.dp).clip(shape).background(if (enabled) fill else if (kind == ButtonKind.Ghost) Color.Transparent else c.hover)
             .border(1.dp, if (enabled) border else if (kind == ButtonKind.Secondary) c.rule else Color.Transparent, shape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = Space.l),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
         if (icon != null) { icon(tint); androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp)) }
         Text((if (leading != null) "$leading  " else "") + text, style = if (height >= 54.dp) Type.buttonLarge else Type.button, color = tint, textAlign = TextAlign.Center, maxLines = 1)
+    }
+}
+
+/**
+ * A failure, as a fact and not an alarm (phone.md section 11): a crossed circle, a `failed` label
+ * in --label, and the reason in --text. Never red.
+ */
+@Composable
+fun Failure(reason: String, modifier: Modifier = Modifier) {
+    val c = V.c
+    Row(modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.Top) {
+        Glyph.Failed(c.text, 16.dp, Modifier.padding(top = 1.dp))
+        androidx.compose.foundation.layout.Spacer(Modifier.size(6.dp))
+        Text("failed", style = Type.meta, color = c.label)
+        androidx.compose.foundation.layout.Spacer(Modifier.size(6.dp))
+        Text(reason, style = Type.meta, color = c.text)
     }
 }
 

@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import androidx.compose.animation.core.tween
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -64,6 +65,7 @@ import sh.vyre.app.api.obj
 import sh.vyre.app.api.plain
 import sh.vyre.app.api.str
 import sh.vyre.app.api.flatten
+import sh.vyre.app.data.Anchor
 import sh.vyre.app.data.Line
 import sh.vyre.app.data.Transcript
 import sh.vyre.app.data.Speaker
@@ -168,7 +170,7 @@ fun ProjectScreen(slug: String, onBack: () -> Unit) {
  * focused and in front, and releasing it on blur.
  */
 @Composable
-fun ThreadScreen(id: String, onBack: () -> Unit) {
+fun ThreadScreen(id: String, anchor: Anchor = Anchor(), onBack: () -> Unit) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current
@@ -232,7 +234,23 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
     }
     val list = rememberLazyListState()
     val lines = remember(version) { transcript.items }
-    LaunchedEffect(lines.size) { if (lines.isNotEmpty()) list.animateScrollToItem(lines.size) }
+    // Open session (phone.md section 5): the line the anchor points at, centred, flashing --match
+    // for 1.2 s. Until then, and after, new lines keep the view at the bottom only when it was.
+    var target by remember(id) { mutableStateOf(if (anchor.empty) null else anchor) }
+    var flash by remember(id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(version) {
+        val a = target
+        if (a != null) {
+            val i = transcript.locate(a) ?: return@LaunchedEffect
+            target = null
+            list.scrollToItem(i)
+            val info = list.layoutInfo
+            val size = info.visibleItemsInfo.firstOrNull { it.index == i }?.size ?: 0
+            list.animateScrollToItem(i, -((info.viewportEndOffset - info.viewportStartOffset) / 2 - size / 2).coerceAtLeast(0))
+            flash = lines.getOrNull(i)?.key
+            delay(1200); flash = null
+        } else if (lines.isNotEmpty() && (anchor.empty || !list.canScrollForward || list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 >= lines.size - 2)) list.animateScrollToItem(lines.size)
+    }
     val status = transcript.status ?: record.str("status")
     val c = V.c
 
@@ -240,7 +258,7 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
         Column(Modifier.padding(horizontal = Space.gutter)) {
             BackBar(record.str("project") ?: "Chat", onBack) {
                 if (status == "working" || status == "waiting" || status == "starting")
-                    VButton("Stop", kind = ButtonKind.Quiet, onClick = { scope.launch { runCatching { app.client.call("threads.stop", input("thread" to id)) }; reload() } })
+                    VButton("Stop", kind = ButtonKind.Ghost, onClick = { scope.launch { runCatching { app.client.call("threads.stop", input("thread" to id)) }; reload() } })
             }
             Text(record.str("name") ?: "Session", style = Type.h3, color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Label(dots(Speaker.reply(record.str("agent"), assistantName), status, Speaker.model(record.str("model"))), Modifier.padding(top = 2.dp, bottom = Space.s))
@@ -248,7 +266,12 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.gutter, vertical = Space.m), verticalArrangement = Arrangement.spacedBy(Space.m)) {
             if (error != null && lines.isEmpty()) item { Quiet(error!!, "failed") }
-            items(lines, key = { it.key }) { l -> LineView(l, speakerOf(l, record.str("agent"), assistantName)) }
+            items(lines, key = { it.key }) { l ->
+                val bg by androidx.compose.animation.animateColorAsState(if (flash == l.key) c.match else Color.Transparent, tween(if (flash == l.key) 0 else 1200), label = "match")
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.panel)).background(bg)) {
+                    LineView(l, speakerOf(l, record.str("agent"), assistantName), record.str("agent") ?: assistantName, record.str("project"))
+                }
+            }
             item { Spacer(Modifier.size(1.dp)) }
         }
         Column(Modifier.padding(horizontal = Space.gutter, vertical = Space.s)) {
@@ -278,7 +301,7 @@ fun ThreadScreen(id: String, onBack: () -> Unit) {
 }
 
 @Composable
-fun LineView(l: Line, who: String?) {
+fun LineView(l: Line, who: String?, agent: String = Speaker.FALLBACK, project: String? = null) {
     val c = V.c
     when (l) {
         is Line.User -> Column(Modifier.fillMaxWidth()) {
@@ -291,19 +314,91 @@ fun LineView(l: Line, who: String?) {
         }
         is Line.Notice -> Text(l.text, style = Type.small, color = c.label)
         is Line.Tools -> ToolBlock(l)
-        is Line.Ask -> AskItem(JsonObject(mapOf("id" to kotlinx.serialization.json.JsonPrimitive(l.ask), "summary" to kotlinx.serialization.json.JsonPrimitive(l.summary),
-            "destination" to (l.destination?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull),
-            "reason" to (l.reason?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull),
-            "decision" to (l.decision?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull))), null, onDone = {})
-        is Line.Held -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.panel)).background(c.beaconWash).padding(Space.l)) {
-            if (l.state == "held") HeldItem(l.id, onDone = {}, inline = true) else Text(if (l.state == "sent") "Sent after you approved it." else "Discarded.", style = Type.small, color = c.text2)
-        }
+        is Line.Ask -> ApprovalCard(l, agent, project)
+        is Line.Held -> HeldCard(l, agent)
         is Line.Finished -> Row(verticalAlignment = Alignment.CenterVertically) {
             Hairline(Modifier.weight(1f)); Spacer(Modifier.width(Space.s))
             Label(listOfNotNull(if (l.ok) "Done" else "Failed", l.durationMs?.let { "${it / 1000} s" }, money(l.cost).takeIf { it.isNotEmpty() }).joinToString(" · "))
             Spacer(Modifier.width(Space.s)); Hairline(Modifier.weight(1f))
         }
         is Line.Stopped -> Label("Stopped · ${l.reason}")
+    }
+}
+
+/** "12:07". */
+private fun clock(at: Long?): String = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(at ?: System.currentTimeMillis()))
+
+/** How an answered ask reads, folded to one Meta line (phone.md section 6). */
+fun answeredLine(decision: String?, scope: String?, project: String?, at: Long?): String = when {
+    decision == "always" && scope == "project" -> "Always allowed in ${project ?: "this project"}, ${clock(at)}"
+    decision == "always" -> "Always allowed, ${clock(at)}"
+    decision == "allow" -> "Approved by you, ${clock(at)}"
+    decision == "deny" -> "Denied by you, ${clock(at)}"
+    decision == "cancelled" -> "Withdrawn, ${clock(at)}"
+    else -> "Answered, ${clock(at)}"
+}
+
+/**
+ * An ask in this session (phone.md section 6): a neutral card (--panel, --rule-strong, no wash),
+ * the attention dot and "<agent> is waiting on you", Details (the detail sheet), the command in a
+ * mono block, then Deny and Approve. Answered, it folds to one line.
+ */
+@Composable
+fun ApprovalCard(l: Line.Ask, agent: String, project: String?) {
+    val app = LocalApp.current
+    val nav = LocalNav.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val c = V.c
+    var busy by remember(l.ask) { mutableStateOf(false) }
+    var failure by remember(l.ask) { mutableStateOf<String?>(null) }
+    if (l.decision != null && l.decision != "null") {
+        Text(answeredLine(l.decision, l.scope, project, l.decidedAt), style = Type.meta, color = c.label)
+        return
+    }
+    fun answer(decision: String) {
+        if (busy) return
+        busy = true; failure = null
+        app.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            try {
+                val out = app.client.callOrProve("threads.answer", sh.vyre.app.data.answerInput(l.ask, decision, SURFACE),
+                    (if (decision == "allow") "Approve: " else "Deny: ") + l.summary, session = true)
+                if (out.str("answered") == "false") failure = out.str("note") ?: "It was already answered."
+                else view.performHapticFeedback(if (android.os.Build.VERSION.SDK_INT >= 30) (if (decision == "allow") android.view.HapticFeedbackConstants.CONFIRM else android.view.HapticFeedbackConstants.REJECT) else android.view.HapticFeedbackConstants.LONG_PRESS)
+            } catch (e: ApiError.Cancelled) { } catch (e: Exception) { failure = e.plain() }
+            busy = false
+        }
+    }
+    val shape = RoundedCornerShape(12.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(c.panel).border(1.dp, c.ruleStrong, shape).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Dot(c.beaconDot, 7.dp); Spacer(Modifier.width(Space.s))
+            Text("$agent is waiting on you", style = Type.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight(600)), color = c.beaconInk, modifier = Modifier.weight(1f))
+            Box(Modifier.heightIn(min = 44.dp).clickable(role = Role.Button, onClick = { nav("needs/${l.ask}") }).padding(start = Space.m), contentAlignment = Alignment.Center) {
+                Text("Details", style = Type.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight(600)), color = c.text)
+            }
+        }
+        CommandBlock(l.summary, radius = 6.dp)
+        listOfNotNull(l.destination?.takeIf { it != l.summary }, project).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(" · "), style = Type.meta, color = c.text2) }
+        failure?.let { sh.vyre.app.design.Failure(it) }
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+            VButton("Deny", onClick = { answer("deny") }, enabled = !busy, modifier = Modifier.weight(1f))
+            VButton("Approve", onClick = { answer("allow") }, kind = ButtonKind.Primary, enabled = !busy, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** A draft this session held at the Gate: the same neutral card; its words and Send are in the detail sheet. */
+@Composable
+fun HeldCard(l: Line.Held, agent: String) {
+    val nav = LocalNav.current
+    val c = V.c
+    if (l.state != "held") { Text(if (l.state == "sent") "Sent after you approved it." else "Discarded.", style = Type.meta, color = c.label); return }
+    val shape = RoundedCornerShape(12.dp)
+    Row(Modifier.fillMaxWidth().clip(shape).background(c.panel).border(1.dp, c.ruleStrong, shape).clickable(role = Role.Button) { nav("needs/${l.id}") }.padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Dot(c.beaconDot, 7.dp); Spacer(Modifier.width(Space.s))
+        Text("$agent held a draft for you", style = Type.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight(600)), color = c.beaconInk, modifier = Modifier.weight(1f))
+        Text("Details", style = Type.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight(600)), color = c.text)
     }
 }
 

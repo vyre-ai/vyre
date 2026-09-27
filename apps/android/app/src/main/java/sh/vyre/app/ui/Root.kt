@@ -69,6 +69,7 @@ import sh.vyre.app.MainActivity
 import sh.vyre.app.api.arr
 import sh.vyre.app.api.at
 import sh.vyre.app.api.str
+import sh.vyre.app.data.Anchor
 import sh.vyre.app.data.Links
 import sh.vyre.app.data.Speaker
 import sh.vyre.app.data.initials
@@ -129,12 +130,14 @@ private fun Shell(activity: MainActivity) {
     var toast by remember { mutableStateOf<Toast?>(null) }
 
     fun showPage(p: PageId) { stack.clear(); scope.launch { pager.animateScrollToPage(p.ordinal) } }
-    val nav: (String) -> Unit = { r -> if (r == "settings") sheet = "settings" else if (stack.lastOrNull() != r) stack.add(r) }
+    // A held item, an ask or a question opens its detail sheet over whatever is showing (phone.md section 5).
+    val nav: (String) -> Unit = { r -> if (r == "settings" || r.startsWith("needs/")) sheet = r else if (stack.lastOrNull() != r) stack.add(r) }
     // Any route, from a link, a push or a button elsewhere: the page it belongs to, with the route on top.
     val go: (String) -> Unit = { r ->
         when {
             r == "tab/find" -> sheet = "find"
             r == "settings" -> { showPage(PageId.Now); sheet = "settings" }
+            r.startsWith("needs/") -> { showPage(PageId.Now); sheet = r }
             else -> {
                 val p = PageId.entries.firstOrNull { it.name.equals(Links.tabOf(r), true) } ?: PageId.Now
                 sheet = null
@@ -146,7 +149,7 @@ private fun Shell(activity: MainActivity) {
     val back: () -> Unit = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
     BackHandler(enabled = stack.isNotEmpty()) { back() }
 
-    // Links: a push's path (/needs/<id>, /threads/<id>) or vyre:// opens its item.
+    // Links: a push's path (/needs/<id>, /threads/<id>) or vyre:// opens its item: a need's sheet, a session.
     val pending by activity.pending.collectAsState()
     LaunchedEffect(pending) {
         val i = pending ?: return@LaunchedEffect
@@ -224,21 +227,27 @@ private fun Shell(activity: MainActivity) {
 
         // Sheets: Settings (from the avatar) and Find (the Capsule, opened), both full height.
         val close = { sheet = null }
-        val inSheetNav: (String) -> Unit = { r -> sheet = null; nav(r) }
+        val inSheetNav: (String) -> Unit = { r -> if (!r.startsWith("needs/")) sheet = null; nav(r) }
         val inSheetGo: (String) -> Unit = { r -> sheet = null; go(r) }
-        if (sheet != null) ModalBottomSheet(
-            onDismissRequest = close,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = V.c.panel,
-            scrimColor = V.c.scrim,
-            shape = RoundedCornerShape(topStart = Radius.window, topEnd = Radius.window),
-        ) {
-            CompositionLocalProvider(LocalNav provides inSheetNav, LocalGo provides inSheetGo, LocalInShell provides true) {
-                Box(Modifier.fillMaxWidth().fillMaxHeight()) {
-                    when (sheet) {
-                        "settings" -> SettingsScreen(onBack = close)
-                        "find" -> FindScreen(onClose = close)
-                        "newagent" -> NewAgentSheet(onClose = close)
+        // A need's sheet may open another need's (Details on a card), so the sheet is keyed by what it shows.
+        val current = sheet
+        if (current != null) androidx.compose.runtime.key(current) {
+            ModalBottomSheet(
+                onDismissRequest = close,
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = V.c.panel,
+                scrimColor = V.c.scrim,
+                shape = RoundedCornerShape(topStart = Radius.window, topEnd = Radius.window),
+                dragHandle = { Grabber() },
+            ) {
+                CompositionLocalProvider(LocalNav provides inSheetNav, LocalGo provides inSheetGo, LocalInShell provides true) {
+                    Box(Modifier.fillMaxWidth().fillMaxHeight()) {
+                        when {
+                            current == "settings" -> SettingsScreen(onBack = close)
+                            current == "find" -> FindScreen(onClose = close)
+                            current == "newagent" -> NewAgentSheet(onClose = close)
+                            current.startsWith("needs/") -> NeedSheet(current.removePrefix("needs/"), onClose = close)
+                        }
                     }
                 }
             }
@@ -258,8 +267,7 @@ private fun Pushed(route: String, prev: String?, back: () -> Unit) {
         else -> "Back"
     }
     when (head) {
-        "thread" -> ThreadScreen(rest, back)
-        "needs" -> NeedsScreen(rest, back)
+        "thread" -> Anchor.parse(rest).let { (id, anchor) -> ThreadScreen(id, anchor, back) }
         "project" -> ProjectScreen(rest, back)
         "file" -> FileScreen(android.net.Uri.decode(rest), from, back)
         "agent" -> AgentScreen(android.net.Uri.decode(rest), from, back)

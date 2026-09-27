@@ -21,16 +21,21 @@ data class Need(
     val thread: String?,
     val raw: JsonElement,
 ) {
-    enum class Kind { Ask, Draft }
-    /** The swipe-right verb and the swipe-left one. */
-    val yes: String get() = if (kind == Kind.Draft && raw.str("kind") == "send") "Send" else "Approve"
-    val no: String get() = if (kind == Kind.Draft) "Discard" else "Deny"
+    enum class Kind { Ask, Draft, Question }
+    /** The swipe-right verb and the swipe-left one. A question has no one-swipe answer: right opens it, left is Later. */
+    val yes: String get() = when { kind == Kind.Question -> "Answer"; kind == Kind.Draft && raw.str("kind") == "send" -> "Send"; else -> "Approve" }
+    val no: String get() = when (kind) { Kind.Draft -> "Discard"; Kind.Question -> "Later"; Kind.Ask -> "Deny" }
+    /** The fingerprint glyph on its action: only when the box says one is required and not covered (Gate.glyph). */
+    val glyph: Boolean get() = Gate.glyph(raw)
     /** The tile's letter: the agent that asked. */
     val initial: String get() = (agent ?: "V").take(1).uppercase()
 }
 
 object Needs {
-    /** Held items and asks together, oldest first. `agentOf` and `projectOf` read an ask's thread. */
+    /**
+     * Held items, asks and questions together, oldest first. An ask names its agent itself (work/chat
+     * 10604b9); `agentOf` and `projectOf` read its thread for an older box and for the project.
+     */
     fun rows(held: List<JsonElement>, asks: List<JsonElement>, agentOf: (String?) -> String?, projectOf: (String?) -> String?): List<Need> {
         val out = mutableListOf<Need>()
         for (h in held) {
@@ -40,8 +45,12 @@ object Needs {
         for (a in asks) {
             val id = a.str("id") ?: continue
             val t = a.str("thread")
-            out += Need(Need.Kind.Ask, id, askTitle(a.str("tool"), a.str("summary"), a.str("destination")), askLine(a.str("tool"), a.str("summary"), a.str("destination")),
-                agentOf(t), projectOf(t), a.str("at")?.toLongOrNull(), t, a)
+            val agent = a.str("agent") ?: agentOf(t)
+            out += if (a.str("kind") == "question") {
+                val first = Questions.of(a).firstOrNull()?.question ?: a.str("summary").orEmpty()
+                Need(Need.Kind.Question, id, "${agent ?: "Vyre"} has a question", first, agent, projectOf(t), a.str("at")?.toLongOrNull(), t, a)
+            } else Need(Need.Kind.Ask, id, askTitle(a.str("tool"), a.str("summary"), a.str("destination")), askLine(a.str("tool"), a.str("summary"), a.str("destination")),
+                agent, projectOf(t), a.str("at")?.toLongOrNull(), t, a)
         }
         return out.sortedBy { it.at ?: Long.MAX_VALUE }
     }
@@ -125,8 +134,8 @@ object Needs {
      * q3-report, git push origin q3-report, 4 minutes ago."
      */
     fun label(n: Need, now: Long = System.currentTimeMillis()): String {
-        val wants = "wants to " + n.title.replaceFirstChar { it.lowercase() }
-        return listOfNotNull(n.agent, n.project, wants, n.line.takeIf { it.isNotBlank() }, spoken(n.at, now).takeIf { it.isNotEmpty() })
+        val wants = if (n.kind == Need.Kind.Question) "asks: " + n.line else "wants to " + n.title.replaceFirstChar { it.lowercase() }
+        return listOfNotNull(n.agent, n.project, wants, n.line.takeIf { it.isNotBlank() && n.kind != Need.Kind.Question }, spoken(n.at, now).takeIf { it.isNotEmpty() })
             .joinToString(", ") + "."
     }
 }

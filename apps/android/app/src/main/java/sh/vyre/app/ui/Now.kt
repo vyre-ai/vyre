@@ -72,7 +72,9 @@ import sh.vyre.app.api.input
 import sh.vyre.app.api.long
 import sh.vyre.app.api.plain
 import sh.vyre.app.api.str
+import sh.vyre.app.data.Gate
 import sh.vyre.app.data.Need
+import sh.vyre.app.data.answerInput
 import sh.vyre.app.data.Needs
 import sh.vyre.app.data.ago
 import sh.vyre.app.design.ButtonKind
@@ -148,15 +150,13 @@ fun NowScreen() {
     val projectOf = d?.threads?.associate { it.str("id") to it.str("project") }.orEmpty()
     val rows = remember(d) { if (d == null) emptyList() else Needs.rows(d.held, d.asks, { agentOf[it] }, { projectOf[it] }) }
 
-    // Swipe state: rows collapsed (answered or waiting out Undo), a failure per row, and a reset
-    // signal per row that springs it back.
-    val hidden = remember { mutableStateMapOf<String, Boolean>() }
+    // Swipe state: rows answered or waiting out Undo (app.settled, shared with the detail sheet),
+    // a failure per row, and a reset signal per row that springs it back.
+    val settled by app.settled.collectAsState()
     val failed = remember { mutableStateMapOf<String, String>() }
     val resets = remember { mutableStateMapOf<String, Int>() }
     var busy by remember { mutableStateOf<String?>(null) }
     fun reset(id: String) { resets[id] = (resets[id] ?: 0) + 1 }
-    val decide = rememberDecider { load.refresh() }
-    ConfirmDialog(decide)
     val prefs = remember { app.getSharedPreferences("shell", android.content.Context.MODE_PRIVATE) }
     var swiped by remember { mutableStateOf(prefs.getBoolean("swiped", false)) }
     fun swipedOnce() { if (!swiped) { swiped = true; prefs.edit().putBoolean("swiped", true).apply() } }
@@ -168,20 +168,35 @@ fun NowScreen() {
         val before = seen
         if (before != null && onScreen && (ids - before).isNotEmpty()) haptic(view, "reject")
         if (d != null) seen = ids
+        // Rows the box no longer lists need no hiding.
+        if (d != null) app.settled.value = app.settled.value.filter { it in ids }.toSet()
+    }
+    // After an answer the next row pulses once (phone.md section 5), unless motion is reduced.
+    var pulse by remember { mutableStateOf<String?>(null) }
+    var settledBefore by remember { mutableStateOf(settled) }
+    LaunchedEffect(settled) {
+        val added = settled - settledBefore
+        settledBefore = settled
+        if (added.isEmpty() || reduceMotion(view)) return@LaunchedEffect
+        val at = rows.indexOfFirst { it.id in added }
+        pulse = rows.drop(at + 1).firstOrNull { it.id !in settled }?.id ?: rows.firstOrNull { it.id !in settled }?.id
+        delay(500); pulse = null
     }
 
     fun yes(n: Need) {
         swipedOnce(); failed.remove(n.id)
         when (n.kind) {
-            // Floor rule 1: a draft shows its final words before the proof (Decider).
-            Need.Kind.Draft -> { reset(n.id); decide.approve(n.id) }
+            // Floor rule 1: a draft shows its final words before anything goes, so a swipe opens
+            // its sheet; a question has no one-swipe answer, so it opens too.
+            Need.Kind.Draft, Need.Kind.Question -> { reset(n.id); nav("needs/${n.id}") }
             Need.Kind.Ask -> {
                 busy = n.id
                 app.scope.launch(Dispatchers.Main) {
                     try {
-                        val out = app.client.callProved("threads.answer", input("ask" to n.id, "decision" to "allow", "surface" to SURFACE), "Approve: " + n.line)
+                        val out = app.client.callOrProve("threads.answer", answerInput(n.id, "allow", SURFACE), "Approve: " + n.line,
+                            required = Gate.required(n.raw), session = true)
                         if (out.str("answered") == "false") { failed[n.id] = out.str("note") ?: "Already answered."; reset(n.id) }
-                        else { haptic(view, "confirm"); hidden[n.id] = true; delay(200); load.refresh() }
+                        else { haptic(view, "confirm"); app.settled.value = app.settled.value + n.id; delay(200); load.refresh() }
                     } catch (e: ApiError.Cancelled) { reset(n.id) } catch (e: Exception) { failed[n.id] = e.plain(); reset(n.id) }
                     busy = null
                 }
@@ -189,28 +204,18 @@ fun NowScreen() {
         }
     }
 
-    /** Deny or discard: the proof now, the row gone at once, the answer sent after 4 s unless undone. */
+    /** Deny, Discard or Later: the row gone at once, the answer sent after 4 s unless undone. */
     fun no(n: Need) {
         swipedOnce(); failed.remove(n.id)
         val (tool, body) = if (n.kind == Need.Kind.Draft) "gate.reject" to input("id" to n.id)
-            else "threads.answer" to input("ask" to n.id, "decision" to "deny", "surface" to SURFACE)
-        app.scope.launch(Dispatchers.Main) {
-            val prover = app.client.prover ?: run { failed[n.id] = "This phone has no device key yet."; reset(n.id); return@launch }
-            val header = try { prover.header(tool, body, "${n.no}: ${n.title}") }
-                catch (e: ApiError.Cancelled) { reset(n.id); return@launch } catch (e: Exception) { failed[n.id] = e.plain(); reset(n.id); return@launch }
-            haptic(view, "reject")
-            hidden[n.id] = true
-            var undone = false
-            toast(Toast("${if (n.kind == Need.Kind.Draft) "Discarded" else "Denied"}: ${n.title}", "Undo", 4000, onAction = { undone = true; hidden.remove(n.id); reset(n.id) }))
-            delay(4000)
-            if (undone) return@launch
-            try { app.client.call(tool, body, header); load.refresh() }
-            catch (e: Exception) { hidden.remove(n.id); failed[n.id] = e.plain(); reset(n.id) }
-        }
+            else "threads.answer" to answerInput(n.id, "deny", SURFACE)
+        haptic(view, "reject")
+        val done = when (n.kind) { Need.Kind.Draft -> "Discarded"; Need.Kind.Question -> "Later"; Need.Kind.Ask -> "Denied" }
+        declineAfterUndo(app, n.id, tool, body, "${n.no}: ${n.title}", "$done: ${n.title}", toast) { why -> failed[n.id] = why; reset(n.id) }
     }
 
     val c = V.c
-    val visible = rows.filter { hidden[it.id] != true }
+    val visible = rows.filter { it.id !in settled }
     Page {
         // Setup: anything missing is one row at the top (phone.md section 4).
         setupRow(app)?.let { (text, route) -> item { SetupRow(text) { nav(route) } } }
@@ -224,18 +229,20 @@ fun NowScreen() {
             item {
                 Card {
                     rows.forEachIndexed { i, n ->
-                        AnimatedVisibility(hidden[n.id] != true, exit = shrinkVertically(tween(180)) + fadeOut(tween(180))) {
+                        AnimatedVisibility(n.id !in settled, exit = shrinkVertically(tween(180)) + fadeOut(tween(180))) {
                             Column {
-                                if (i > 0 && rows.take(i).any { hidden[it.id] != true }) HairlineIn()
-                                NeedRow(n, failed[n.id], busy == n.id, resets[n.id] ?: 0,
+                                if (i > 0 && rows.take(i).any { it.id !in settled }) HairlineIn()
+                                NeedRow(n, failed[n.id], busy == n.id, resets[n.id] ?: 0, pulse == n.id,
                                     onYes = { yes(n) }, onNo = { no(n) }, onOpen = { nav("needs/${n.id}") }, onCross = { haptic(view, "confirm") })
                             }
                         }
                     }
                 }
             }
-            if (!swiped) item { Text("Swipe right to approve with fingerprint, left to deny.", style = Type.meta, color = c.label, modifier = Modifier.padding(top = Space.s)) }
-            item { DecideNote(decide) }
+            if (!swiped) item {
+                val how = if (visible.any { it.glyph }) "Swipe right to approve with fingerprint, left to deny." else "Swipe right to approve, left to deny."
+                Text(how, style = Type.meta, color = c.label, modifier = Modifier.padding(top = Space.s))
+            }
         }
 
         working(d, steps, nav)
@@ -300,7 +307,7 @@ private fun Skeleton() {
  * Every swipe action is also an accessibility action, with Open.
  */
 @Composable
-private fun NeedRow(n: Need, failed: String?, busy: Boolean, reset: Int, onYes: () -> Unit, onNo: () -> Unit, onOpen: () -> Unit, onCross: () -> Unit) {
+private fun NeedRow(n: Need, failed: String?, busy: Boolean, reset: Int, pulse: Boolean, onYes: () -> Unit, onNo: () -> Unit, onOpen: () -> Unit, onCross: () -> Unit) {
     val c = V.c
     val scope = rememberCoroutineScope()
     val max = with(LocalDensity.current) { 100.dp.toPx() }
@@ -355,7 +362,7 @@ private fun NeedRow(n: Need, failed: String?, busy: Boolean, reset: Int, onYes: 
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Glyph.Fingerprint(c.primaryInk, 24.dp)
+                if (n.glyph) Glyph.Fingerprint(c.primaryInk, 24.dp)
                 Text(if (busy) "Checking" else n.yes, style = Type.meta.copy(fontWeight = FontWeight(600)), color = c.primaryInk, maxLines = 1)
             }
         }
@@ -369,8 +376,9 @@ private fun NeedRow(n: Need, failed: String?, busy: Boolean, reset: Int, onYes: 
                 Text(n.no, style = Type.meta.copy(fontWeight = FontWeight(600)), color = c.text, maxLines = 1)
             }
         }
+        val flash by androidx.compose.animation.animateColorAsState(if (pulse) c.hover else c.panel, tween(if (pulse) 120 else 400), label = "pulse")
         Row(
-            Modifier.offset { IntOffset(x.roundToInt(), 0) }.fillMaxWidth().background(c.panel).clickable(onClick = onOpen)
+            Modifier.offset { IntOffset(x.roundToInt(), 0) }.fillMaxWidth().background(flash).clickable(onClick = onOpen)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.Top,
         ) {
@@ -383,14 +391,10 @@ private fun NeedRow(n: Need, failed: String?, busy: Boolean, reset: Int, onYes: 
                     Text(n.title, style = Type.rowTitle, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(Needs.short(n.at), style = Type.meta, color = c.label, modifier = Modifier.padding(start = Space.s))
                 }
-                if (n.line.isNotBlank()) Text(n.line, style = if (n.kind == Need.Kind.Ask) Type.commandRow else Type.secondary, color = c.text2,
+                if (n.line.isNotBlank()) Text(n.line, style = if (n.kind == Need.Kind.Ask && n.raw.str("tool") == "Bash") Type.commandRow else Type.secondary, color = c.text2,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 Text(dots(n.agent, n.project), style = Type.meta, color = c.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                if (failed != null) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("failed", style = Type.meta, color = c.label)
-                    Spacer(Modifier.width(Space.s))
-                    Text(failed, style = Type.meta, color = c.text)
-                }
+                if (failed != null) sh.vyre.app.design.Failure(failed, Modifier.padding(top = 4.dp))
             }
             Spacer(Modifier.width(Space.s))
             Glyph.Chevron(c.label, modifier = Modifier.padding(top = 3.dp))
@@ -464,30 +468,6 @@ private fun LazyListScope.remembered(d: NowData, nav: (String) -> Unit) {
     }
 }
 
-/** needs/<id>: a held item or an ask, whole (a push lands here too). */
-@Composable
-fun NeedsScreen(id: String, onBack: () -> Unit) {
-    val app = LocalApp.current
-    val load = rememberLoad(id) {
-        val asks = runCatching { app.client.call("threads.asks").arr.toList() }.getOrDefault(emptyList())
-        asks.firstOrNull { it.str("id") == id }
-    }
-    // The held item's brief, for its thread (gate.held carries it; the item view reads gate.get itself).
-    val brief = rememberLoad("brief", id) { runCatching { app.client.call("gate.held").arr.firstOrNull { it.str("id") == id } }.getOrNull() }
-    val go = LocalGo.current
-    Page(top = { BackBar("Now", onBack) { androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) { sh.vyre.app.design.Dot(V.c.beaconDot); androidx.compose.foundation.layout.Spacer(Modifier.padding(horizontal = 4.dp)); Label("Needs you", color = V.c.beaconInk) } } }) {
-        item {
-            val ask = load.v.value
-            when {
-                load.v.loading && ask == null -> Quiet("Loading")
-                ask != null -> AskItem(ask, null, onDone = onBack)
-                else -> HeldItem(id, onDone = { onBack() })
-            }
-            // Into the exact Chat session this came from: the Chat tab, that thread on top of its list.
-            val thread = ask?.str("thread") ?: brief.v.value?.str("thread")
-            sh.vyre.app.data.Links.session(thread)?.let { route ->
-                VButton("Open session", onClick = { go(route) }, kind = ButtonKind.Quiet, modifier = Modifier.padding(top = Space.m))
-            }
-        }
-    }
-}
+/** Reduce Motion (phone.md section 9): the system animator scale set to off. */
+fun reduceMotion(view: android.view.View): Boolean =
+    runCatching { android.provider.Settings.Global.getFloat(view.context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }.getOrDefault(false)
