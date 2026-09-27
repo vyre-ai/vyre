@@ -3,7 +3,7 @@ title: "ADR 0032: The person and the device"
 summary: Over the network a device of the owner is not the person. Person sessions (passkey, 30 days, pinned to a node) carry the person's actions over HTTP; on the box, Vyre-owned sessions run as a uid that cannot open vyred's socket.
 audience: builders, agents
 owner: e2e
-status: accepted
+status: draft
 ---
 
 # ADR 0032: The person and the device
