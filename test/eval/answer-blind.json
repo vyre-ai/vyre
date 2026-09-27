@@ -1,0 +1,346 @@
+{
+  "about": "Blind questions for memory.answer on test/fixtures/personal-blind.js, written without reading the rules or the other worlds. expect: acceptable answers, matched case-insensitively as whole words or phrases; null means the right output is no answer.",
+  "questions": [
+    {
+      "q": "whats my wife's name",
+      "expect": [
+        "dani",
+        "daniela"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "who is my wife",
+      "expect": [
+        "dani",
+        "daniela"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "wifes name?",
+      "expect": [
+        "dani",
+        "daniela"
+      ],
+      "kind": "spouse-typo"
+    },
+    {
+      "q": "who's dani",
+      "expect": [
+        "wife"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "my partner",
+      "expect": [
+        "dani",
+        "daniela"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "when is dani's birthday",
+      "expect": [
+        "march 14",
+        "14 march",
+        "14th of march",
+        "march 14th"
+      ],
+      "kind": "birthday"
+    },
+    {
+      "q": "wife bday?",
+      "expect": [
+        "march 14",
+        "14 march",
+        "14th of march",
+        "march 14th"
+      ],
+      "kind": "birthday-typo"
+    },
+    {
+      "q": "what does my wife do for work",
+      "expect": [
+        "nurse"
+      ],
+      "kind": "spouse-job"
+    },
+    {
+      "q": "whats my daughter called",
+      "expect": [
+        "luna"
+      ],
+      "kind": "child"
+    },
+    {
+      "q": "my kids name",
+      "expect": [
+        "luna"
+      ],
+      "kind": "child"
+    },
+    {
+      "q": "who is luna",
+      "expect": [
+        "daughter",
+        "kid"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "whats my moms name",
+      "expect": [
+        "rosa"
+      ],
+      "kind": "parent"
+    },
+    {
+      "q": "who's rosa",
+      "expect": [
+        "mom",
+        "mother"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "where does my mom live",
+      "expect": [
+        "tucson"
+      ],
+      "kind": "parent-place"
+    },
+    {
+      "q": "whats my dog's name",
+      "expect": [
+        "biscuit"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "what kind of dog is biscuit",
+      "expect": [
+        "beagle"
+      ],
+      "kind": "pet-breed"
+    },
+    {
+      "q": "wat breed is my dog",
+      "expect": [
+        "beagle"
+      ],
+      "kind": "pet-breed-typo"
+    },
+    {
+      "q": "what car do i drive",
+      "expect": [
+        "maverick"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "what truck did i buy",
+      "expect": [
+        "maverick"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "what colour is my truck",
+      "expect": [
+        "blue"
+      ],
+      "kind": "vehicle-colour"
+    },
+    {
+      "q": "what did i drive before the maverick",
+      "expect": [
+        "subaru",
+        "outback"
+      ],
+      "kind": "vehicle-before"
+    },
+    {
+      "q": "what happened to the outback",
+      "expect": [
+        "sold"
+      ],
+      "kind": "vehicle-sold"
+    },
+    {
+      "q": "where do i live",
+      "expect": [
+        "denver"
+      ],
+      "kind": "place"
+    },
+    {
+      "q": "what city am i in now",
+      "expect": [
+        "denver"
+      ],
+      "kind": "place"
+    },
+    {
+      "q": "where did we move to",
+      "expect": [
+        "denver"
+      ],
+      "kind": "place"
+    },
+    {
+      "q": "where did i live before denver",
+      "expect": [
+        "portland"
+      ],
+      "kind": "place-before"
+    },
+    {
+      "q": "whats my job",
+      "expect": [
+        "developer",
+        "app developer"
+      ],
+      "kind": "job"
+    },
+    {
+      "q": "what do i do for a living",
+      "expect": [
+        "developer",
+        "app developer"
+      ],
+      "kind": "job"
+    },
+    {
+      "q": "whats my company called",
+      "expect": [
+        "tinfoil studio"
+      ],
+      "kind": "company"
+    },
+    {
+      "q": "who are my clients",
+      "expect": [
+        "northwind",
+        "northwind bakery",
+        "harlow",
+        "harlow legal"
+      ],
+      "kind": "clients"
+    },
+    {
+      "q": "who is priya shah",
+      "expect": [
+        "northwind",
+        "northwind bakery"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "who's marcus",
+      "expect": [
+        "harlow",
+        "harlow legal"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "what editor do i use",
+      "expect": [
+        "neovim"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "which db gui do i use",
+      "expect": [
+        "tableplus"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "am i vegetarian",
+      "expect": [
+        "vegetarian",
+        "yes"
+      ],
+      "kind": "diet"
+    },
+    {
+      "q": "whats my diet",
+      "expect": [
+        "vegetarian"
+      ],
+      "kind": "diet"
+    },
+    {
+      "q": "who is theo",
+      "expect": [
+        "friend",
+        "buddy"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "whats my husband's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what's my son's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "whats my cat called",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what is my dad's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "whats my sister's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "whats my brother called",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "when is my birthday",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what bank do i use",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "where was i born",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what gym do i go to",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what electric car do i drive",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "whats my blood type",
+      "expect": null,
+      "kind": "unknown"
+    }
+  ]
+}

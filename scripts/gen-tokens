@@ -1,0 +1,49 @@
+#!/usr/bin/env node
+// @ts-check
+// gen-tokens: renders docs/design/one-app/tokens.json, the one token source, for every surface:
+// the Expo app's tokens.ts, the Capsule's Swift file and the Deck's custom properties. Never edit
+// an output by hand; change the JSON and run this.
+//
+//   node scripts/gen-tokens              write every file
+//   node scripts/gen-tokens --check      exit 1 if a file is stale, write nothing
+//   --ts <path> --swift <path> --css <path>   write only these, to these paths
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { swift, ts, css, load, TOKENS } from "./lib/tokens.js";
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const SOURCE = TOKENS;
+export const OUTPUTS = {
+  "apps/app/src/theme/tokens.ts": ts,
+  "local/capsule/native/Sources/UI/Tokens.generated.swift": swift,
+  "deck/css/tokens.css": css,
+};
+
+/** @returns {Record<string, string>} repo path to contents */
+export function generate() {
+  const t = load(REPO);
+  return Object.fromEntries(Object.entries(OUTPUTS).map(([rel, render]) => [rel, render(t)]));
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  const args = process.argv.slice(2);
+  const check = args.includes("--check");
+  let files = generate();
+  const picked = [["--ts", ts], ["--swift", swift], ["--css", css]].filter(([f]) => args.includes(f));
+  if (picked.length) {
+    const t = load(REPO);
+    files = Object.fromEntries(picked.map(([f, render]) => [args[args.indexOf(f) + 1], render(t)]));
+  }
+  let stale = 0;
+  for (const [rel, body] of Object.entries(files)) {
+    const file = path.resolve(REPO, rel);
+    const now = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+    if (now === body) continue;
+    if (check) { console.error(`${rel} is stale; run node scripts/gen-tokens`); stale++; continue; }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, body);
+    console.log(`wrote ${rel}`);
+  }
+  process.exit(stale ? 1 : 0);
+}

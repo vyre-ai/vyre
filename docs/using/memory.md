@@ -136,7 +136,8 @@ terminal, the Deck, the Capsule), to the assistant, and to an agent granted ever
 ## Correct a fact
 
 You are the only one who can change memory: correcting, merging and splitting are open to your
-own surfaces and ask you to prove presence. A session never writes memory.
+own surfaces (the CLI, the Deck, the Capsule) and ask nothing more. A session's tools and an
+agent never write memory: they are refused.
 
 ```
 vyre memory correct '<fact id>' wrong                  # never true

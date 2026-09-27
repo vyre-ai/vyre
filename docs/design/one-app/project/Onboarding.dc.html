@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>First run, the box then your phone</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2700px; height: 1360px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">First run · the box, then your phone</span>
+      <h1 class="t28 w6">The box sets itself up in your browser, the terminal keeps count, and the phone opens ready.</h1>
+      <p class="t15 t2">Door A from ADR 0008: <span class="mono">npm i -g vyre</span>, <span class="mono">vyre up</span>, then <span class="mono">vyre box add</span> over SSH. Six steps in the browser, each with one line of purpose, one primary action and a skip. The box serves its own app, so the last step hands off to Add your phone and the Capsule.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <div class="col" style="gap: 24px; width: 1770px; flex: none;">
+
+      <div class="cap">
+        <span class="cap-t">The six steps and the ending · every step can be skipped and finished later in Settings · the link is single use and expires in 1 hour</span>
+        <div class="row" style="gap: 12px; align-items: stretch;">
+          <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
+            <div class="row step-done" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 w6 grow trunc">1 · You</span><span class="t12 t3">Saved</span></div>
+            <span class="t12 t2">Your name and your assistant's name.</span>
+            <span class="t12 t3 trunc" style="margin-top: auto;">alex · assistant juno</span>
+          </div>
+          <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
+            <div class="row step-done" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 w6 grow trunc">2 · Claude Code</span><span class="t12 t3">Saved</span></div>
+            <span class="t12 t2">Your subscription (paste a code) or an API key. Codex later.</span>
+            <span class="t12 t3 trunc" style="margin-top: auto;">Subscription · in the vault</span>
+          </div>
+          <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
+            <div class="row step-done" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 w6 grow trunc">3 · Tailscale</span><span class="t12 t3">Saved</span></div>
+            <span class="t12 t2">Connect. No account? Sign in with Google, GitHub, Apple or Microsoft.</span>
+            <span class="t12 t3 trunc" style="margin-top: auto;">Connected · tailnet harlow</span>
+          </div>
+          <div class="tile tile-on" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
+            <div class="row step-on" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;">4</span><span class="t13 w6 grow trunc">4 · Your address</span><span class="t12 t3">Now</span></div>
+            <span class="t12 t2">The one address every device uses, with HTTPS.</span>
+            <span class="mono t12 t3 trunc" style="margin-top: auto;">vyre.harlow.ts.net</span>
+          </div>
+          <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
+            <div class="row" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;">5</span><span class="t13 w6 grow trunc">5 · History</span><span class="t12 t3">Background</span></div>
+            <span class="t12 t2">Your Mac's Claude Code sessions, indexed.</span>
+            <div style="height: 4px; border-radius: 2px; background: var(--rule); margin-top: auto;"><div style="width: 65%; height: 4px; border-radius: 2px; background: var(--focus);"></div></div>
+            <span class="t12 t3 trunc">268 of 412 sessions · 38 projects</span>
+          </div>
+          <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
+            <div class="row" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;">6</span><span class="t13 w6 grow trunc">6 · Devices</span></div>
+            <span class="t12 t2">Add your phone, then the Capsule. Tailscale on the phone is optional.</span>
+            <span class="t12 t3 trunc" style="margin-top: auto;">Opens the Add your phone sheet</span>
+          </div>
+          <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
+            <div class="row" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 w6 grow trunc">Ready</span></div>
+            <span class="t12 t2">juno says hello. Three ticks, one button.</span>
+            <span class="t12 t3 trunc" style="margin-top: auto;">Open Vyre · first passkey</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="gap: 30px; align-items: flex-start;">
+
+        <div class="cap">
+          <span class="cap-t">Browser, step 2 · Claude Code, the code pasted</span>
+          <div class="win" style="width: 870px; height: 470px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u mono">localhost:7300/onboard</span></div>
+            <div class="vy {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+              <aside class="col" style="width: 208px; flex: none; border-right: 1px solid var(--rule); padding: 20px 16px; gap: 4px;">
+                <div class="row" style="gap: 10px; margin-bottom: 14px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="t13 w6">Set up Vyre</span></div>
+                <div class="row step-done" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 grow">You</span><span class="t12 t3">alex</span></div>
+                <div class="row step-on" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">2</span><span class="t13 w6 grow">Claude Code</span></div>
+                <div class="row" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">3</span><span class="t13 t2 grow">Tailscale</span></div>
+                <div class="row" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">4</span><span class="t13 t2 grow">Your address</span></div>
+                <div class="row" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">5</span><span class="t13 t2 grow">History</span></div>
+                <div class="row" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">6</span><span class="t13 t2 grow">Devices</span></div>
+                <div class="col" style="gap: 4px; margin-top: auto;">
+                  <span class="t12 t3">Single-use link</span>
+                  <span class="t12 t3">Expires 15:31, in 52 min</span>
+                </div>
+              </aside>
+              <main class="col grow" style="padding: 28px 36px 24px; gap: 16px;">
+                <div class="col" style="gap: 4px;">
+                  <span class="lbl">Step 2 of 6</span>
+                  <h2 class="t20 w6">Connect Claude Code</h2>
+                  <p class="t13 t2">juno and your agents run on your own Claude plan. Nothing is read from this Mac.</p>
+                </div>
+                <div class="row" style="gap: 12px; align-items: stretch;">
+                  <div class="tile tile-on" style="flex: 1 1 0; min-width: 0; gap: 4px; cursor: default;">
+                    <div class="row" style="gap: 8px;"><span class="radio radio-on"></span><span class="t13 w6 grow">Subscription</span><span class="tag">Recommended</span></div>
+                    <span class="t12 t3">Pro or Max. Sign in, then paste the code Claude shows.</span>
+                  </div>
+                  <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 4px; cursor: default;">
+                    <div class="row" style="gap: 8px;"><span class="radio"></span><span class="t13 w6 grow">API key</span></div>
+                    <span class="t12 t3">Pay per use from your Anthropic console.</span>
+                  </div>
+                </div>
+                <div class="fl">
+                  <div class="row" style="gap: 8px;"><span class="fl-l grow">Code from Claude</span><span class="st"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>Sign-in opened in a new tab</span></div>
+                  <div class="inp inp-focus"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="5" cy="11" r="2.5"></circle><path d="M6.8 9.2l6.2-6.2M11 5l2 2M9.5 6.5l1.5 1.5"></path></svg><span class="mono grow trunc">••••••••••••••••••••••••••M4pQ</span><span class="caret"></span></div>
+                  <span class="fl-h">Saved to the vault as <span class="mono">claude-setup-token</span>, granted to agents only.</span>
+                </div>
+                <div class="row" style="gap: 10px; padding: 10px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>
+                  <span class="t13 grow">Codex (optional, later)</span>
+                  <span class="t12 t3">Add it any time in Settings, Sessions</span>
+                </div>
+                <div class="row" style="gap: 8px; margin-top: auto;">
+                  <button class="btn btn-p" type="button">Connect<span class="k">⏎</span></button>
+                  <button class="btn btn-g" type="button">Skip for now</button>
+                  <span class="st" style="margin-left: auto;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Step 1 saved</span>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+
+        <div class="cap">
+          <span class="cap-t">Browser, step 4 · Your address, HTTPS is off in the tailnet</span>
+          <div class="win" style="width: 870px; height: 470px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u mono">localhost:7300/onboard</span></div>
+            <div class="vy {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+              <aside class="col" style="width: 208px; flex: none; border-right: 1px solid var(--rule); padding: 20px 16px; gap: 4px;">
+                <div class="row" style="gap: 10px; margin-bottom: 14px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="t13 w6">Set up Vyre</span></div>
+                <div class="row step-done" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 grow">You</span><span class="t12 t3">alex</span></div>
+                <div class="row step-done" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 grow">Claude Code</span></div>
+                <div class="row step-done" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 grow">Tailscale</span><span class="t12 t3">harlow</span></div>
+                <div class="row step-on" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">4</span><span class="t13 w6 grow">Your address</span></div>
+                <div class="row" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">5</span><span class="t13 t2 grow">History</span></div>
+                <div class="row" style="gap: 10px; height: 34px;"><span class="step-n" style="width: 24px; height: 24px;">6</span><span class="t13 t2 grow">Devices</span></div>
+                <div class="col" style="gap: 4px; margin-top: auto;">
+                  <span class="t12 t3">Single-use link</span>
+                  <span class="t12 t3">Expires 15:31, in 41 min</span>
+                </div>
+              </aside>
+              <main class="col grow" style="padding: 28px 36px 24px; gap: 14px;">
+                <div class="col" style="gap: 4px;">
+                  <span class="lbl">Step 4 of 6</span>
+                  <h2 class="t20 w6">Your address</h2>
+                  <p class="t13 t2">The one address your Mac, phone and browser use. Tailscale signs its certificate.</p>
+                </div>
+                <div class="row" style="gap: 8px;"><span class="mono t15 w6 grow trunc">https://vyre.harlow.ts.net</span><button class="ibtn ibtn-sm" type="button" aria-label="Copy"><svg class="ic" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg></button></div>
+                <div class="col">
+                  <div class="check"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 grow">Name <span class="mono">vyre</span> is free on tailnet harlow</span></div>
+                  <div class="check"><svg class="ic" viewBox="0 0 16 16" style="width: 18px; height: 18px;"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg><span class="t13 grow">HTTPS certificates are off in this tailnet</span><span class="t12 t3">Tailscale ships them off</span></div>
+                  <div class="check"><span class="wait"></span><span class="t13 t2 grow">Certificate for vyre.harlow.ts.net</span><span class="t12 t3">next</span></div>
+                </div>
+                <div class="banner" style="align-items: flex-start;">
+                  <svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>
+                  <span class="t12 t2">Shown once: certificate names are public. The name vyre.harlow.ts.net will appear in Certificate Transparency logs. Nothing else about the box does.</span>
+                </div>
+                <div class="row" style="gap: 8px; margin-top: auto;">
+                  <button class="btn btn-p" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"></path></svg>Turn on HTTPS</button>
+                  <button class="btn btn-s" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"></path></svg>Check again</button>
+                  <span class="t12 t3" style="margin-left: auto;">Opens Tailscale's DNS settings. One switch.</span>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="row" style="gap: 30px; align-items: flex-start;">
+
+        <div class="cap">
+          <span class="cap-t">Browser, the ending · the page has moved to the box's own address</span>
+          <div class="win" style="width: 1030px; height: 390px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u mono">vyre.harlow.ts.net/onboard/done</span></div>
+            <div class="vy {{theme}}" style="flex: 1 1 auto; min-height: 0; padding: 32px 40px; gap: 40px;">
+              <div class="col grow" style="gap: 14px;">
+                <div class="row" style="gap: 12px;"><span class="av av-40">j</span><div class="col" style="gap: 2px;"><span class="t15 w6">juno</span><span class="st"><span class="ring"></span>Writing</span></div></div>
+                <div class="prose col" style="gap: 8px;">
+                  <p>Hi alex, I'm juno. I'll keep watch while your agents work and bring you only what needs you.</p>
+                  <p>I can already see 412 of your Claude Code sessions across 38 projects. Harlow Legal / intake has the most open threads, so it might be a good first stop<span class="caret"></span></p>
+                </div>
+                <span class="t12 t3" style="margin-top: auto;">Everything you skipped waits in Settings, Finish setup.</span>
+              </div>
+              <div class="col" style="width: 400px; flex: none; gap: 16px;">
+                <span class="lbl">You're set</span>
+                <div class="col">
+                  <div class="check" style="min-height: 52px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t13 w6">Mac</span><span class="t12 t3 trunc">alex's MacBook Pro · paired · Capsule installed</span></div></div>
+                  <div class="check" style="min-height: 52px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t13 w6">Phone</span><span class="t12 t3 trunc">alex's iPhone · 5 of 5 checks · relay, Tailscale optional</span></div></div>
+                  <div class="check" style="min-height: 52px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t13 w6">History</span><span class="t12 t3 trunc">412 sessions, 38 projects · indexing in the background</span></div></div>
+                </div>
+                <button class="btn btn-p" type="button" style="height: 40px; width: 100%;"><svg class="ic" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path><path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M6 10.8c1.2.9 2.8.9 4 0"></path></svg>Open Vyre</button>
+                <span class="t12 t3">Touch ID makes your first passkey here. It approves pairing, secrets and sends, and one proof lasts 30 min.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cap">
+          <span class="cap-t">Terminal on the Mac · after <span class="mono">npm i -g vyre</span> and <span class="mono">vyre up</span></span>
+          <div class="cli" style="width: 710px; height: 390px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u">alex's MacBook Pro · zsh</span></div>
+            <div class="term">$ vyre box add alex@box.harlow.test
+<span class="g">✓</span> This Mac is on tailnet harlow
+<span class="g">✓</span> Installed Vyre 0.14.3 on box.harlow.test over SSH
+Finish in your browser. I'll wait here.
+
+<span class="g">✓</span> You            <span class="s">alex, assistant juno</span>
+<span class="g">✓</span> Claude Code    <span class="s">subscription, in the vault</span>
+<span class="g">✓</span> Tailscale      <span class="s">tailnet harlow</span>
+<span class="g">✓</span> Your address   <span class="s">https://vyre.harlow.ts.net</span>
+<span class="g">✓</span> History        <span class="s">412 sessions, 38 projects (indexing)</span>
+<span class="g">✓</span> Devices        <span class="s">alex's iPhone (relay) · Capsule installed</span>
+<span class="g">✓</span> Passkey saved · this Mac paired
+
+  Vyre is ready.
+
+    your box        https://vyre.harlow.ts.net
+    your assistant  juno · in the Capsule and on your phone
+    next            vyre      <span class="s">(your projects and threads)</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="col" style="gap: 24px; width: 390px; flex: none;">
+      <div class="cap">
+        <span class="cap-t">Phone, first open after install · Now</span>
+        <div class="phone">
+          <div class="island"></div>
+          <div class="safe-t"></div>
+          <div class="ph-h">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
+            <span class="pg pg-on">Now</span><span class="pg">Chats</span><span class="pg">Agents</span>
+            <span class="av av-me" style="width: 34px; height: 34px; margin-left: auto; font-size: 13px;">a</span>
+          </div>
+          <div class="ph-body">
+            <div class="ph-card col" style="padding: 14px; gap: 12px;">
+              <div class="row" style="gap: 12px; align-items: flex-start;">
+                <span class="av av-32">j</span>
+                <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 w6">juno is ready</span><span class="t13 t2">Ask in the bar below, or try one:</span></div>
+              </div>
+              <button class="btn btn-s ph-btn" type="button" style="justify-content: flex-start;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Try: summarise my inbox</button>
+            </div>
+            <div class="ph-sec">Needs you<span class="t13 t2" style="margin-left: auto; font-weight: 400;">0</span></div>
+            <div class="ph-card col" style="padding: 18px 14px; gap: 6px; align-items: center; text-align: center;">
+              <span class="empty-ic"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+              <span class="t17 w6">Nothing needs you yet</span>
+              <span class="t13 t2">Asks, drafts and questions from juno and kit land here. Your test notification was answered on this phone at 14:36.</span>
+            </div>
+            <div class="ph-card col">
+              <div class="col" style="padding: 12px 14px 10px; gap: 2px;">
+                <div class="row" style="gap: 8px;"><span class="t17 w6 grow">Swipe right to approve, left to deny</span></div>
+                <span class="t13 t2">Try it on this demo row. Nothing runs.</span>
+              </div>
+              <div class="swipe" style="border-top: 1px solid var(--rule);">
+                <div class="swipe-a"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Approve</div>
+                <div class="ph-row" style="border-top: 0; flex: 1 1 auto; min-width: 0; margin-right: -100px;">
+                  <span class="av av-32">j</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><div class="row" style="gap: 8px;"><span class="ttl trunc grow">Read your calendar</span><span class="tag">Demo</span></div><span class="t13 t2 trunc">juno · to plan tomorrow</span></div>
+                </div>
+              </div>
+              <div class="row" style="padding: 6px 8px; border-top: 1px solid var(--rule);"><span class="t13 t2 grow" style="padding-left: 6px;">Shown once</span><button class="btn btn-g ph-btn" type="button">Got it</button></div>
+            </div>
+          </div>
+          <div class="capsule"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="ph">Ask juno, find, or run</span><button class="mic" type="button" aria-label="Hold to talk"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button></div>
+          <div class="home-ind"></div>
+        </div>
+      </div>
+
+      <div class="cap">
+        <span class="cap-t">Settings, when steps were skipped</span>
+        <div class="list">
+          <div class="list-h"><span class="lbl grow">Finish setup</span><span class="t12 t3">2 left</span></div>
+          <div class="li"><svg class="ic t2" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg><div class="col grow" style="min-width: 0;"><span class="t13 w6">History</span><span class="t12 t3 trunc">Import your Mac's Claude Code sessions</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+          <div class="li"><svg class="ic t2" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg><div class="col grow" style="min-width: 0;"><span class="t13 w6">Devices</span><span class="t12 t3 trunc">Add your phone and the Capsule</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="anno">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>Three commands on the Mac and never a shell on the server. <span class="mono">vyre box add</span> installs over SSH, opens the one-time link through a tunnel, and says "Finish in your browser. I'll wait here."</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>One screen per step: one line of purpose, one primary, Skip as the secondary. Skipped steps wait in Settings under Finish setup. The link is single use and expires in 1 hour.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Claude Code: the subscription through <span class="mono">claude setup-token</span> (sign in, paste the code) or an API key, straight into the vault. The Mac's own sign-in is never read. Codex is optional, later.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Your address is the one step Tailscale forces. HTTPS off shows Turn on HTTPS and Check again, and says once that certificate names are public. When it passes, the page moves to the box's own address.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>The ending is one screen: juno's greeting streams, three ticks, one button. Open Vyre makes the first passkey with Touch ID; after that, proof is asked only to pair, release a secret or send.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Devices hands off to Add your phone (Install board) and the Capsule. The box needs Tailscale (step 3, for HTTPS and the Mac); the phone does not: it pairs over the relay and switches to Tailscale when it answers. The phone opens on Now with the test notification answered and a one-time swipe hint on a demo row.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: each step saves as it is answered, so a closed tab (or <span class="mono">vyre box add</span> run again) resumes where it stood. Browser and terminal read the same <span class="mono">onboard.status</span>, so a tick in one is a line in the other. History imports in the background and never blocks Open Vyre.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2700,"height":1360}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

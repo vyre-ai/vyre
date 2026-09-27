@@ -94,7 +94,7 @@ base64url, and ids and codes are plain tokens in the same alphabet.
 |---|---|---|---|
 | `touchid` | the Mac | vyred itself shows the macOS authentication dialog (Touch ID, Watch or password), with the summary as its reason | press the sensor or type into the system dialog, which takes no synthetic keystrokes |
 | `tty` | any terminal, the box over SSH | vyred writes a code and the summary straight to a **login terminal**, and the person types the code back | read what is written to a terminal it does not hold the master of; a `script` pty is not a login terminal |
-| `capsule` | the Capsule | an Ed25519 signature over the call by a per-install key that Electron's main process keeps in the keychain, made only after a click | read a keychain item whose ACL names only the Capsule |
+| `capsule` | the Capsule | an Ed25519 signature over the call by a per-install key that the native Capsule keeps in the login keychain, made only after a click | read a keychain item whose ACL names only the Capsule |
 | `passkey` | the Deck, on the tailnet or locally | a WebAuthn assertion with user verification, over a challenge from vyred | make a platform passkey assertion; that needs the device's biometric |
 | `code` | enrolling a passkey | a one-time code from `presence.code`, which itself needs presence | (only accepted by `presence.enroll`) |
 
@@ -268,7 +268,8 @@ Touch ID, a Capsule signature or a passkey. It returns a secret that lasts 5 min
 at most, bound to the tailnet node that opened it. The proof is then
 `x-vyre-presence: session id=<id> secret=<secret>`.
 
-Only the floor's `SESSIONABLE` tools (`vault.reveal`, `vault.copy`, `vault.totp`) take it, and
+Only the floor's `SESSIONABLE` tools (`vault.reveal`, `vault.copy`, `vault.totp`, and `apps.send`
+for a burst of messages from the Capsule, ADR 0022) take it, and
 only when the tool's `presence.session(input)` says yes, so a reprompt item never rides a
 session. A tool-side skip that reads headers is not accepted, because headers are what a model
 forges.
@@ -285,6 +286,19 @@ starts a real vyred and calls one of these tools as a person needs a verifier:
 already carries those edits for the gate, vault, watchers, switchboard, Capsule bridge,
 computers, glass, hands, link and CLI tests. A branch that merges after it keeps them, and adds
 the same line to any new test of that kind.
+
+## Addendum, 27 Sep 2026: device keys for the phone apps
+
+ADR 0018 adds a seventh method, `device`, for the native iOS and Android apps. A phone holds an
+ECDSA P-256 key in its Secure Enclave or StrongBox, behind a biometric prompt, and enrolls it
+with `presence.enroll {kind: "device", name, public_key, alg: -7}` under a passkey or one-time
+code proof. Its id is the key's fingerprint, as a Capsule key's is, and it has no relying party. A
+call then carries `x-vyre-presence: device key=<id> ts=<ms> nonce=<n> sig=<DER ECDSA>` over the
+Capsule's message, with the same 60-second window and the same single-use nonce set; the Capsule
+and device checks are one code path. `device` counts as a strong proof: it is offered on the box,
+and it opens `presence.session.open`. It is listed in `presence_required` methods only once a
+device key is enrolled. The floor already denies a command that writes any `x-vyre-presence`
+header, a device one included.
 
 ## Addendum, 27 Sep 2026: no proof for the keyboard
 

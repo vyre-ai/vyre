@@ -93,6 +93,7 @@ export function privateSocketDir() {
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
  *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } },
+ *   term: { keep_hours: number, max?: number, shell?: string },
  *   projects?: { move?: "enabled" } }} Config
  * projects.move "enabled" lets projects.move really move a box's homes (off until box-deploy validates it). */
 
@@ -143,6 +144,7 @@ function defaults() {
     computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
     // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
     hooks: { enabled: false, port: 7310, routes: {} },
+    term: { keep_hours: 12 },
   };
 }
 
@@ -167,6 +169,7 @@ export function load(root = home()) {
     glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
     computers: { ...d.computers, ...(user.computers || {}), tailnet: { ...d.computers.tailnet, ...((user.computers && user.computers.tailnet) || {}) } },
     hooks: { ...d.hooks, ...(user.hooks || {}) },
+    term: { ...d.term, ...(user.term || {}) },
   };
   if (!["box", "local"].includes(c.role)) { problems.push(`role "${c.role}" is not box or local; using ${d.role}`); c.role = d.role; }
   // On a box with a work folder, projects live there so Taildrive can share them, but only where

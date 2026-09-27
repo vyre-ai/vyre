@@ -83,6 +83,9 @@ Then the Mac pairs with the box:
    the code from the Mac's screen into **Code on that Mac** and press **Approve**, which asks for
    your passkey. **Deny** turns it down. A terminal on the box cannot give a passkey, so
    `vyre link approve <code>` there answers "approve it in the Deck".
+
+   ![The card on Now when a Mac asks to pair: alex-mbp, a field for the code the Mac shows, Approve and Deny.](shots/deck-pair.png)
+
 3. Check it on the Mac with `vyre link`:
 
    ```output

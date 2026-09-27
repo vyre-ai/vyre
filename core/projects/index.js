@@ -47,6 +47,16 @@ const OWNER = ["cli", "local", "capsule", "deck"];
 /** A caller that names an agent ("cli:agent:kit"): the same test as drive's and glass's. */
 const isAgent = (/** @type {any} */ caller) => /(?:^|[\s:])agent:/.test(String(caller || ""));
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+/**
+ * The catalogue with live on each session: true when a terminal has it open now, from the
+ * Switchboard's binds. Without the Switchboard every row says false.
+ * @param {any} ctx @param {{ sessions: any[] }} cat
+ */
+export async function withLive(ctx, cat) {
+  const r = await ctx.call("threads.live", {}).catch(() => null);
+  const live = new Set(r && r.data && Array.isArray(r.data.sessions) ? r.data.sessions : []);
+  return { ...cat, sessions: cat.sessions.map(s => ({ ...s, live: live.has(s.id) })) };
+}
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -87,15 +97,15 @@ export default {
       run: async ({ project, threads }) => P.removeThreads(project, threads),
     });
     ctx.tool("projects.catalog", {
-      description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity and projects. q searches names, first messages, folders and, through Recall, what was said.",
+      description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },
       run: async (input, { caller } = {}) => {
         const { machines: _, ...own } = input;
-        if (!wantsMacs(ctx, input, caller)) return P.catalog(own);
+        if (!wantsMacs(ctx, input, caller)) return withLive(ctx, await P.catalog(own));
         // On the box, for the person: every Mac's sessions too, in one list in the catalogue's
         // order, capped at the limit. total counts every machine; sources says who answered, and
         // each one's own total.
-        const [here, answers] = await Promise.all([P.catalog(own), askMacs(ctx, "projects.catalog", own)]);
+        const [here, answers] = await Promise.all([P.catalog(own).then(c => withLive(ctx, c)), askMacs(ctx, "projects.catalog", own)]);
         const total = answers.reduce((n, a) => n + (a.ok && a.data ? Number(a.data.total) || 0 : 0), here.total);
         const sessions = mergeRows(ctx, here.sessions, answers, { rows: d => d && d.sessions, compare: byCatalog, limit: own.limit ?? 50 });
         const totals = [here.total, ...answers.map(a => (a.ok && a.data ? Number(a.data.total) || 0 : undefined))];

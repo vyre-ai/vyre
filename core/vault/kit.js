@@ -36,7 +36,7 @@ export function kitPage(k) {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer"><title>Vyre recovery kit</title>
 <style>
-:root { --paper: #F4F1EA; --paper-raised: #FBFAF6; --paper-rule: #DCD7CC; --paper-rule-strong: #C9C3B7; --ink: #141311; --ink-2: #4A463F; --ink-3: #6B665D; --beacon-deep: #C2411F; }
+:root { --paper: #F4F1EA; --paper-raised: #FBFAF6; --paper-rule: #DCD7CC; --paper-rule-strong: #C9C3B7; --ink: #141311; --ink-2: #4A463F; --ink-3: #6B665D; --beacon-deep: #5B3FC4; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/22px 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; }
 main { max-width: 760px; margin: 32px auto; padding: 40px; background: var(--paper-raised); border: 1px solid var(--paper-rule); }
