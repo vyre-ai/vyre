@@ -4,6 +4,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Onboarding's session-import step: discover, choose, watch (0.1.1, provisional)
+
+- deck/onboard/onboard.js's `history` step rewritten from the old post-hoc project-picker into
+  the three screens docs/design/import.md (memory-iq) and docs/design/onboarding-v2.md spec:
+  Discover (`import.scan`, sources with counts/size/date range, dev/Vyre folders unticked with
+  the reason), Choose (`import.plan`, a "Keep them in sync" checkbox unticked by default, a
+  Fast/Gentle reading-pace choice with neither preselected, and the 30-day Claude Code retention
+  note: Vyre never changes Claude Code's own settings, it only explains why to import now),
+  Watch (`import.status`, polled every 5 s, three plain-language stages via the existing
+  `progressRow()` component, and a question box wired to `memory.answer` as soon as the first
+  sessions are searchable).
+- core/onboard/loopback.js: added `import.scan`, `import.plan`, `import.start`, `import.status`
+  and `memory.answer` to the onboarding page's tool allowlist (`TOOLS`), the same way
+  `projects.catalog`/`recall.status` were already let through.
+- deck/fixtures/import.json (new) and a `memory.answer` entry added to deck/fixtures/memory.json,
+  sample world, so the new screens render with `?fixtures=1` before memory-iq's tools exist.
+- Provisional: memory-iq had not shipped `import.*` yet at the time of this commit (checked their
+  branch), so every call degrades through the existing `empty()`/missing-module pattern; nothing
+  breaks today, and it lights up once they ship. `import.start`'s `pace` field is not in
+  memory-iq's spec; flagged to them as a needed addition. Not yet screenshot-verified against
+  fixtures (proportionate to how provisional the underlying contract still is);
+  `test/onboard*.test.js` (16/16) still green, confirming the daemon/loopback side is untouched.
+  Server-side `history` step "done" detection (core/onboard/index.js) intentionally left as-is
+  this round, to avoid destabilizing its existing test coverage before the real contract lands.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at

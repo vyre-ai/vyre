@@ -1,0 +1,58 @@
+{
+  "import.scan": {
+    "sources": [
+      {
+        "id": "claude-projects",
+        "path": "~/.claude/projects",
+        "kind": "claude",
+        "sessions": 214,
+        "bytes": 18900000,
+        "from": "$ago:180d",
+        "to": "$ago:1h",
+        "suggested": true
+      },
+      {
+        "id": "archive-2025",
+        "path": "~/Archive/claude-2025",
+        "kind": "archive",
+        "sessions": 96,
+        "bytes": 7400000,
+        "from": "$ago:400d",
+        "to": "$ago:190d",
+        "suggested": true
+      },
+      {
+        "id": "vyre-dev",
+        "path": "~/Code/vyre",
+        "kind": "folder",
+        "sessions": 41,
+        "bytes": 3100000,
+        "from": "$ago:90d",
+        "to": "$ago:2d",
+        "suggested": false,
+        "why": "looks like Vyre's own development"
+      }
+    ]
+  },
+  "import.plan": {
+    "plan": "plan-sample",
+    "sessions": 310,
+    "bytes": 26300000,
+    "folders": 2,
+    "box": "alex.vyre.run"
+  },
+  "import.start": { "started": true },
+  "import.status": {
+    "stages": {
+      "upload": { "done": 310, "total": 310 },
+      "search": { "done": 310, "total": 310 },
+      "meaning": { "done": 180, "total": 310 },
+      "graph": { "done": 96, "total": 310 },
+      "facts": { "done": 22, "total": 310 }
+    },
+    "searchable_sessions": 310,
+    "people": 6,
+    "projects": 2,
+    "facts": 22
+  }
+}
