@@ -343,9 +343,23 @@ export default {
       if (/(?:^|[\s:])agent:/.test(String(extra.caller || ""))) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);
     };
-    /** Writes: the registry's callers list, checked here too, so a tailnet caller never corrects. */
+    /**
+     * Corrections are the person's: their own surfaces, or their device over the tailnet or the
+     * relay with a person session (a passkey, ADR 0032), the rule settings uses for secrets. Never
+     * an agent, an agent's node, or a device nobody signed in on.
+     */
+    const personWrites = (caller, meta) => {
+      const c = String(caller || "");
+      if (/(?:^|[\s:])agent:/.test(c)) return false;
+      if (OWNERS.includes(c)) return true;
+      return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
+    };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
-      if (!owner(extra.caller)) throw denied(`corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`);
+      if (!personWrites(extra.caller, extra)) {
+        const device = /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
+        throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
+          : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
+      }
       return run(input, extra);
     });
     /** Reading corrections: the owner's surfaces, or the user on a tailnet device. Never an agent. */
@@ -382,7 +396,7 @@ export default {
       return t.length > max ? t.slice(0, max - 3) + "..." : t;
     };
     ctx.tool("memory.correct", {
-      callers: OWNERS,
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre IQ answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it.",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
         answer: { type: "string", description: "memory.ask's answer_id" },
@@ -571,7 +585,7 @@ export default {
       },
     });
     ctx.tool("memory.uncorrect", {
-      callers: OWNERS,
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
       input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "an IQ answer correction's id" } } },
       run: ownerWrite(async ({ id, fix }) => {
@@ -589,7 +603,7 @@ export default {
       }),
     });
     ctx.tool("memory.merge", {
-      callers: OWNERS,
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Two nodes are one: everything said about the first is said about the second (into).",
       input: { type: "object", required: ["node", "into"], properties: { node: { type: "string" }, into: { type: "string" } } },
       run: ownerWrite(async ({ node, into }, { caller } = {}) => {
@@ -604,7 +618,7 @@ export default {
       }),
     });
     ctx.tool("memory.split", {
-      callers: OWNERS,
+      // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "One node is two: with room or project, the one that project's sessions name is someone else (two different people with one name); with other, two nodes that were merged are kept apart.",
       input: { type: "object", required: ["node"], properties: { node: { type: "string" }, other: { type: "string" }, ...roomField } },
       run: ownerWrite(async (input, { caller } = {}) => {

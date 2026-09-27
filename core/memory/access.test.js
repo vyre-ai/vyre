@@ -35,8 +35,8 @@ async function module_(t) {
   const handle = await memory.start(ctx);
   t.after(() => handle.stop());
   /** A tool's answer, or { error, code } as vyred would pass them on. */
-  const call = async (name, input, caller) => {
-    try { return { data: await tools.get(name).run(input, { caller }) }; } catch (e) { return { error: /** @type {Error} */ (e).message, code: /** @type {any} */ (e).code || "failed" }; }
+  const call = async (name, input, caller, meta = {}) => {
+    try { return { data: await tools.get(name).run(input, { ...meta, caller }) }; } catch (e) { return { error: /** @type {Error} */ (e).message, code: /** @type {any} */ (e).code || "failed" }; }
   };
   await call("memory.curate", {}, "cli");
   return { call, tools, db };
@@ -90,7 +90,7 @@ test("facts by thread: the same access rules as every other read", async t => {
   assert.match((await call("memory.facts", { thread: SITE, about: "Dana" }, "deck")).error || "", /thread is read on its own/);
 });
 
-test("tailnet: the user's other devices read as the owner, and never correct", async t => {
+test("tailnet: the user's other devices read as the owner, and correct only with a person session", async t => {
   const { call } = await module_(t);
   for (const [tool, input] of [["memory.graph", {}], ["memory.facts", { about: "Dana Reyes" }], ["memory.facts", { thread: SITE }],
     ["memory.why", { fact: WORKS }], ["memory.stats", {}], ["memory.corrections", {}]]) {
@@ -101,8 +101,12 @@ test("tailnet: the user's other devices read as the owner, and never correct", a
   for (const [tool, input] of [["memory.correct", { fact: WORKS, action: "wrong" }], ["memory.merge", { node: "Dana Reyes", into: "Sam Okafor" }],
     ["memory.split", { node: "Dana Reyes", other: "Sam Okafor" }], ["memory.uncorrect", { id: 1 }]]) {
     const r = await call(tool, input, TAILNET);
-    assert.equal(r.code, "denied", `${tool}: ${JSON.stringify(r)}`);
+    assert.equal(r.code, "person_session_required", `${tool}: ${JSON.stringify(r)}`);
   }
+  // Signed in with a passkey on that device (ADR 0032), the person corrects there too.
+  const signed = await call("memory.correct", { fact: WORKS, action: "confirm" }, TAILNET, { person: { id: "s1", kind: "cookie" } });
+  assert.ok(!signed.error, JSON.stringify(signed));
+  assert.equal((await call("memory.correct", { fact: WORKS, action: "confirm" }, "tailnet:agent:kit", { person: { id: "s1" } })).code, "denied", "an agent's node never corrects");
   // Find on the owner's phone searches memory by meaning, account-wide, as the Deck does.
   const rel = await call("memory.relevant", { text: "email Dana Reyes" }, TAILNET);
   assert.ok(!rel.error && !rel.code, `memory.relevant: ${JSON.stringify(rel)}`);
@@ -118,6 +122,8 @@ test("presence: correct, merge and split are the user's own, with no prompt; age
   const { tools, call } = await module_(t);
   for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.equal(tools.get(tool).presence, undefined, `${tool} asks for presence`);
   // The allowlist and the agent refusal stay, and refusals carry a code.
-  for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.deepEqual(tools.get(tool).callers, ["deck", "cli", "local", "capsule"]);
+  // No callers list: the tool decides (the person's surfaces, or their device with a person session).
+  for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.equal(tools.get(tool).callers, undefined);
+  for (const caller of ["mcp", "module:harness", "tailnet-guest:sam@harlow.example"]) assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, caller, { person: { id: "s1" } })).code, "denied", caller);
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "deck agent:kit")).code, "denied");
 });

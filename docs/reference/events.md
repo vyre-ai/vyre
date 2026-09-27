@@ -198,7 +198,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `memory.merged` | `id`, `scope` |
 | `memory.profile-changed` | `facts` |
 | `memory.remembered` | `facts`, `id` |
-| `memory.split` | none; sometimes `callers`, `description`, `id`, `input`, `run`, `scope` |
+| `memory.split` | none; sometimes `id`, `scope` |
 | `memory.thinking` | `id`, `stage` |
 
 ## names

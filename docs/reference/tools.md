@@ -1891,7 +1891,7 @@ Correct a fact: wrong (never true), ended (stopped being true at `at`), replace 
   - `room` string
   - `subject` string
   - `wait` boolean
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: any caller
 
 ### `memory.corrections`
 
@@ -1958,7 +1958,7 @@ Two nodes are one: everything said about the first is said about the second (int
 - Input:
   - `into` string, required
   - `node` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: any caller
 
 ### `memory.mute`
 
@@ -2048,7 +2048,7 @@ One node is two: with room or project, the one that project's sessions name is s
   - `other` string
   - `project` string
   - `room` string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: any caller
 
 ### `memory.stats`
 
@@ -2089,7 +2089,7 @@ Undo a correction, merge or split by its id. It stays listed as undone.
 - Input:
   - `fix` integer: an IQ answer correction's id
   - `id` integer
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: any caller
 
 ### `memory.why`
 

@@ -147,3 +147,29 @@ test("memory module: an IQ answer corrected where it is shown is the answer next
   assert.match((await call("memory.ask", { question: "what is my wife's name?" }, { root })).data.answer, /Jordan/, "undone, the fact is back");
   assert.equal((await call("memory.stats", {}, { root })).data.iq.corrected, 0);
 });
+
+test("memory module: the person corrects from their phone only with a person session; agents never", async t => {
+  const root = seeded(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await call("memory.curate", {}, { root });
+  await call("memory.remember", { text: "my wife is Jordan" }, { root });
+  const a = (await call("memory.ask", { question: "what is my wife's name?" }, { root })).data;
+  const phone = "tailnet:alex@example.com", signed = { person: { id: "s1", kind: "cookie" } };
+
+  const bare = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, {});
+  assert.equal(bare.error?.code, "person_session_required", JSON.stringify(bare));
+  const graphBare = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, {});
+  assert.equal(graphBare.error?.code, "person_session_required", "graph corrections follow the same rule");
+  for (const agent of ["tailnet:agent:kit", "device:abcdefghijklmnop agent:kit"]) {
+    const r = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, agent, signed);
+    assert.ok(r.error, `${agent} corrected`);
+  }
+
+  const ok = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, signed);
+  assert.equal(ok.data?.fix?.action, "wrong", JSON.stringify(ok));
+  const graph = await d.registry.call("memory.correct", { subject: "Dana Reyes", rel: "works_at", object: "Harlow Legal", action: "confirm" }, phone, signed);
+  assert.ok(graph.data?.correction, JSON.stringify(graph));
+  const undo = await d.registry.call("memory.uncorrect", { fix: ok.data.fix.id }, "device:abcdefghijklmnop", signed);
+  assert.equal(undo.data?.fix?.undone > 0, true, JSON.stringify(undo));
+});
