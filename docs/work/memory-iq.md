@@ -123,6 +123,9 @@ facts are not a project's.
   pasted email). The held-out world is the real number.
 
 ## Doing (28 Sep, cutover)
+- 7ee03df6 (sync.deleted only from federation's module; sync.* reserved) signed off by the reviewer.
+  TODO when federation names its module: trim SYNC_OWNERS (core/memory/index.js) and
+  RESERVED_EVENTS.sync (core/modules/index.js) to that one name.
 - Stream cutover: 0.1.1 batch 1 (target 30 Sep, starts after rc.2 lands). memory-iq's 0.1.1 sha must
   reach the integrator before batch 1 starts; the integrator holds capsule-pro's change until it
   does. Unpair keeps data (d0b916b9); delete is sync.deleted with memory.device as the preview.
