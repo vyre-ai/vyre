@@ -139,8 +139,13 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - native-core budget 8: their harness counts EventSource opens, which the fetch stream never makes;
   told them to use "deck:stream" or count /v1/events/stream fetches and rerun on 2a577ede. If
   catch-up is over 1 s: an immediate retry on "online" and on the first failure.
-- Next in order: the live theme and settings from native-core's hub (ADR 0035: /theme.css?device=
-  with the rev as ETag, settings.snapshot + settings.changed); cohesion's waiting.list,
+- Live theme done on the Deck side (ddc9b127, deck/js/theme-live.js, 7 tests), against ADR 0035's
+  paths: settings.snapshot at start, /theme.css?device=&rev=, swap on settings.changed appearance.*
+  and on a reconnect whose rev moved; feature-detected. Not tried against a real hub yet (the
+  theme module is platform P4, not on main). Asked app-design and native-core to agree one route
+  (app-design wrote /v1/appearance/theme). Settings' own Dark/Paper toggle (native-core's view)
+  still writes localStorage; with the hub it should write appearance.scheme at device level.
+- Next in order: cohesion's waiting.list,
   context.report, connections.list, credential sheet, Glass mini-view (said yes, once on main);
   docs' tips.next wiring (said yes, once on main).
 - Open for app-design: Places hint wording ("Hold a place to keep it as a fourth page." vs the
