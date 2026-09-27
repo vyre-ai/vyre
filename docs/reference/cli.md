@@ -62,6 +62,7 @@ In the order `vyre help` lists them.
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
+| [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -453,6 +454,24 @@ The Vyre MCP server on stdio, for plain claude.
 ```
 vyre mcp [install [--yes]]
 ```
+
+### vyre update
+
+Install the newest release after a backup, and roll back if it does not come up.
+
+```
+vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]
+```
+
+--check          say whether a newer release is out; exit 0 when current, 1 when one waits
+--channel NAME   stable (the default, or config update.channel) or beta
+--to VERSION     a given release, for stepping through one an update asks for
+--yes            do not ask first (needed when there is no terminal to ask on)
+--rollback       put the previous release back and keep the current data
+--restore-data   with --rollback: also put back the data from before the update
+
+Every download is checked against the release's SHA256SUMS. On a box, the host's
+vyre update does this; from a checkout, update with git.
 
 ### vyre backup
 

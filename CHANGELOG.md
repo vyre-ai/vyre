@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre update` on the Mac and the box, with backup and rollback (ADR 0033, phase 2)
+
+- `vyre update` (new, in Box care): reads GitHub Releases for the channel (`update.channel` or
+  `--channel`, stable or beta), shows the changelog from the running version, backs up into
+  <home>/backups/pre-<version>/, checks vyre.tgz against SHA256SUMS, installs it with npm and
+  restarts vyred through the same path `vyre up` uses. If vyred isn't healthy on the new version
+  inside the update window, the previous tarball goes back and the backup is restored. After a
+  healthy update nothing restores data by itself. `--check` exits 1 when an update is waiting;
+  `--rollback` keeps the current data, `--restore-data` asks first; `--to` steps through a
+  release when `min_from` needs it. A checkout is told to update with git.
+- core/cli/commands/up.js exports health, waitFor and bring, and bring compares vyred against the
+  build it is asked for (the release just installed), not the running CLI's own version number.
+- box/vyre `update`: the same steps on the box. The release comes from GitHub Releases, with
+  VYRE_BOX_URL as the fallback, so today's install keeps working while there are no releases.
+  It backs up first, tags the running image vyre:prev, keeps src.prev, refreshes the box files and
+  the wrapper (never .env), rolls back and restores data only when health fails, then brings the
+  phone app: APK first, android.json last and atomically (android.json.prev kept), then
+  `vyre call releases.sign`, whose refusal is reported without failing the update.
+  `vyre update --rollback [--restore-data]` swaps back.
+- docs/build/first-module.md (draft): a step-by-step "Build your first module" in the sample world,
+  run end to end in a throwaway home; what arrives in phases 1 and 3 is marked as coming.
+
 #### ADR 0033: Hackable Vyre (accepted), and the module SDK's first piece
 
 - docs/adr/0033-hackable-vyre.md: a versioned module API (apiVersion, a manifest schema, the v1

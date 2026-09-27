@@ -44,7 +44,7 @@ const GROUPS = [
   ["Time and lists", ["agenda", "alarm", "timer", "remind", "snooze", "todo", "notes"]],
   ["Memory", ["recall", "index", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence"]],
-  ["Box care", ["backup", "restore"]],
+  ["Box care", ["update", "backup", "restore"]],
   ["Under the hood", ["modules", "tools", "call"]],
 ];
 
