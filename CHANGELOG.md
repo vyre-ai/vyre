@@ -26,6 +26,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (role: user or assistant). The trust
   world through memory.ask (`eval-iq --world trust`): accuracy 1, confident-wrong 0, the "Jordan"
   trap refused.
+- One card per person, org or project: `memory.card {about}` gives what the graph knows about it,
+  the projects it comes up in, when it last did, and three sessions to open; on the person's own
+  surfaces also who it is to them ("your wife"), never for a project's agent.
 - Contradictions to confirm: `memory.contradictions` lists what memory holds two values for about
   the person's life ("Where do you live: Porto or Lisbon?", "What your wife's name is: Juno or
   Jordan?"), when a rival still carries a fifth of the belief and the person has not settled it.
