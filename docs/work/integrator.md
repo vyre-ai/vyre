@@ -148,6 +148,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   connectors will ping.
 - memory-iq batch 1 head 0a7ea3e7: fd7f57ab + 0a7ea3e7 cleared; e67ba34d (memory.card) HELD (MEDIUM: a
   project agent's card lists other projects). Wait for the reviewer's cleared fix sha before taking the head.
+- box -> server (ADR 0038): core/cli user strings listed by docs; I asked docs to route them to polish-cli with
+  the vyre server rename (one pass, no conflicts). If the lead gives them to me: 0.1.1, after rc.2.
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
