@@ -89,55 +89,67 @@ still leak:
 - `scaleViewport: true`, `resizeSession: false` (watch.js:259-260) — fit-to-window is the current
   default; 1:1 pixel and retina scale are not implemented as an explicit toggle.
 
-**New work, in priority order:**
+**New work, in priority order (reset 28 Sep per cohesion's binding interaction pass,
+`docs/design/interaction.md` 5debc1bc — items 1 and 3 below are now top-2, not mid-list):**
 
-1. **Native full screen** (M): browser Fullscreen API is wired on Deck; extend to phone
+1. **Close the latency badge's own loop** (S→M). Shipped 47d90b0c as an open-time snapshot
+   (`link.latencyMs` from `glass.open`, read once at connect); every other "what's happening now"
+   surface in Vyre updates live, so this is the one that goes stale mid-session. Needs continuous
+   sampling and one event, not a bigger UI change — the render side is already there.
+2. **Native full screen** (M): browser Fullscreen API is wired on Deck; extend to phone
    (`deck/glass/phone.js`) and verify iOS Safari's fullscreen restrictions (iOS Safari has no
    real element fullscreen in some contexts — may need a CSS "cover the viewport" fallback
    instead of the API). A Mac native window through the Capsule is L: needs a real window (not a
    panel/extension) hosting the same RFB canvas, which is new Capsule-native surface, not a
-   Glass-side change alone — coordinate with capsule-pro.
-2. **Fit and zoom** (S): the `Fit` button and pinch zoom exist; add a `1:1` toggle next to it and
+   Glass-side change alone — coordinate with capsule-pro. This is the user's literal ask ("feels
+   like my own screen"); reprioritized to the top per cohesion/the lead.
+3. **`sight.frame` for the reconnect still and the resting-tile preview** (S): already agreed with
+   cohesion (2026-09-28) — call `sight.frame` right when the socket drops, show that as the frozen
+   frame, swap to the live stream once `sight.watch`'s ticket reconnects; same call, small
+   `maxWidth`, for the resting tile, refetched on the next `sight.stepped` rather than a timer.
+   Replaces the "reconnect without a black flash" item below 1:1 — this is now that item's
+   implementation, not a separate one.
+4. **Fit and zoom** (S): the `Fit` button and pinch zoom exist; add a `1:1` toggle next to it and
    retina-aware canvas sizing (devicePixelRatio into scaleViewport math) — currently unclear if
    the canvas accounts for DPR, likely blurry on Retina today.
-3. **Latency/fps targets + measurement** (S to define, M to instrument): propose p95 input-to-
+5. **Latency/fps targets + measurement** (S to define, M to instrument): propose p95 input-to-
    paint under 150ms on Tailscale-direct / 300ms over relay, sustained 24fps minimum during
    active use, under 5% dropped frames over a 10s window — matching the smoothness bar Design A
    already set for the rest of the app (`one-app/DIRECTION.md`'s 60fps/1% table is the sibling
    spec for page UI; Glass needs its own row in that same table, not a separate standard).
-   Measure via RFB's existing frame timestamps plus a round-trip ping tool (watch.js already
-   tracks `link.latencyMs` from `glass.open` — extend to a live-updating badge instead of an
-   open-time snapshot).
-4. **Input fidelity** (M): keyboard shortcuts through noVNC's domkeytable/keysymdef are vendored
+   Measure via RFB's existing frame timestamps plus a round-trip ping tool — the same sampling
+   loop item 1 needs, shared rather than built twice.
+6. **Input fidelity** (M): keyboard shortcuts through noVNC's domkeytable/keysymdef are vendored
    and presumably complete; clipboard is called out in `docs/work/glass.md`'s Next as
    "clipboard to the holder only while shielded" — still open. Two-way clipboard, IME support
    (noVNC's input layer is keysym-based, which is lossy for IME composition — needs explicit
    testing with CJK input), and scroll fidelity (trackpad vs wheel) are all unverified.
-5. **Cursor** (S): confirm noVNC's cursor decoder is on (local cursor rendering vs remote-only)
+7. **Cursor** (S): confirm noVNC's cursor decoder is on (local cursor rendering vs remote-only)
    — cheap to check, meaningfully changes perceived latency since a local cursor never waits on
    the round trip.
-6. **Audio** (not applicable today — Chrome-in-a-container has no audio pipeline in this design;
+8. **Audio** (not applicable today — Chrome-in-a-container has no audio pipeline in this design;
    skip unless a future computer type needs it).
-7. **Reconnect without a black flash** (S): hold the last frame as a still (this is literally
-   what `sight.frame` now gives the phone elsewhere in the system) while RFB reconnects, instead
-   of blanking the canvas. Direct reuse of cohesion's sight work — see section 7.
-8. **Instant take-over handoff** (S, mostly done): shield/unshield and holder events already
+9. **Instant take-over handoff** (S, mostly done): shield/unshield and holder events already
    exist; the "instant" feel is mostly about not re-negotiating the RFB session on take-over,
    which the code already avoids (take-over is a permission change, not a reconnect). Verify no
    visible stall today; if there is one, it's likely the passkey/Touch ID round trip, not video.
 
-## 5. Cheap opportunities (S/M), rc.2 candidates (~2h)
+## 5. Cheap opportunities (S/M) — status 28 Sep
 
-- **1:1 zoom toggle next to Fit** (S, ~30 min) — UI-only, button + scaleViewport flip.
-- **DPR-aware canvas sizing** (S, ~30 min) — likely a one-line fix if canvas width/height ignore
-  devicePixelRatio; verify first, could be a non-issue.
-- **Live latency badge** (S, ~30 min) — `link.latencyMs` is already captured at open; refresh it
-  on an interval using RFB's own ping/pong if noVNC exposes one, else a lightweight app-level
-  ping tool call.
-- **Reconnect still-frame instead of black flash** (S, ~30 min if `sight.frame` is already
-  callable from glass's context; ask cohesion) — biggest perceived-quality win for the cost.
-- Everything else above (native Mac window, clipboard, IME, IME-aware input, IME, fps
-  instrumentation) is M or L — not rc.2 candidates in a 2h budget.
+rc.2 was narrowed to 14f1824c only (the HIGH-fix merge); everything below is 0.1.1, built on
+work/glass-live behind it.
+
+- **Live latency badge** — done (47d90b0c): `latencyLabel(link)` in `deck/glass/watch.js`, a pure
+  function with a unit test (`watch.test.js`), rendered next to the connection badge. It is an
+  open-time snapshot today, not the closed loop cohesion asked for (item 1 above) — that part is
+  still open.
+- **1:1 zoom toggle, DPR-aware canvas sizing, sight.frame reconnect still** — written up but not
+  yet coded. Blocker: `deck/glass` has no test harness that mounts `mountScreen` (only pure
+  helpers extracted from `watch.js`/`input.js` are unit-tested; nothing exercises the RFB/DOM
+  wiring these three touch). Landing them on inspection alone, in the same file that just carried
+  the security-review take-over work, was judged too risky without either (a) a live check on
+  testbox the way the isolation fixes got one, or (b) a browser-mounting test added first. Flagged
+  to the lead 28 Sep; the resolution decides which of (a)/(b) happens before this code ships.
 
 ## 6. Tests that improve UX (measurable)
 
@@ -156,36 +168,40 @@ still leak:
 - **Reconnect test**: kill the socket mid-session, assert the still-frame fallback shows within
   one frame interval and the black-flash duration is 0 (or under one frame).
 
-## 7. Coordinate with cohesion
+## 7. Coordinate with cohesion — resolved 28 Sep
 
-Asked cohesion (pending reply) how Glass should read as one system with sight, waiting, context
-and the Glass mini-view — specifically:
-- Reuse `sight.frame` as the reconnect fallback and possibly the resting-computer preview (glass
-  already "rests" a computer after idle per `docs/work/glass.md`'s Done section; a still instead
-  of a blank tile there is the same asset).
-- **Inline screenshots/pictures in chat**: now that chat runs through the Agent SDK, should an
-  agent's screen-at-a-step or a generated image show inline in the transcript rather than only in
-  Glass? This is a chat/sessions-surface decision more than a glass one — sessions and chat are
-  paused, the lead relaunches them — but Glass should own the *source* (sight.frame stills,
-  Glass's own screenshot capability) regardless of which surface renders it. Proposing: glass/
-  sight own capture, chat/sessions own render-in-transcript, decided once those teams are back up.
+- **sight.frame reuse**: agreed. Glass calls `sight.frame {target: "agent:<name>", maxWidth}`
+  directly for both the reconnect still (call it the moment the socket drops, show the still,
+  swap to the live stream once `sight.watch`'s ticket reconnects — no separate JPEG path or
+  polling loop of Glass's own) and the resting-tile preview (small `maxWidth`, refetched on the
+  next `sight.stepped` for that target, not a timer). No changes needed on cohesion's side.
+  Note the target format is `agent:<name>` (confirmed via `core/sight/sight.test.js`), not
+  glass's own `computer:<name>` — the conversion happens at the call site.
+- **Inline chat pictures**: item 18 in `docs/design/cohesion.md` (cohesion, sha baf5ec7c), now
+  bound by the lead's interaction pass. Split as proposed: chat owns rendering (built once in
+  chat-core), sessions passes image blocks through from the Agent SDK's own shape, sight owns the
+  one capture path (`sight.frame`/`sight.stepped`) — glass is a second caller of that same path
+  (the reconnect tile, and now chat's per-step thumbnail), not a second capture contract. The
+  other inline-image source (files the agent made — Canva renders, saved screenshots, not a live
+  screen) is explicitly unowned, open for 0.1.1, the lead's call.
 
 ## 0.1.1 build list
 
-| Item | Size | Owner |
-|---|---|---|
-| Land the two HIGH e2e fixes on main | — | integrator/e2e (blocker, not glass) |
-| Land vault fill contract + idle hand-back + restart/limits on main | M | glass + vault |
-| 1:1 zoom toggle | S | glass |
-| DPR-aware canvas sizing | S | glass |
-| Live latency badge | S | glass |
-| Reconnect still-frame (via sight.frame) | S | glass + cohesion |
-| Phone fullscreen + iOS fallback | M | glass |
-| Native Mac window for Glass in Capsule | L | glass + capsule-pro |
-| Two-way clipboard while shielded | M | glass + computers |
-| IME-aware input testing/fix | M | glass |
-| fps/latency instrumentation + CI budgets | M | glass + e2e |
-| guard.js/link denied-path sync test | S | glass |
-| Reconcile event families (computer.* vs glass.*) | M | glass |
-| Move handback settings into the settings hub | S | glass |
-| Re-skin Glass boards against Design A | M | glass + app-design |
+| Item | Size | Owner | Status (28 Sep) |
+|---|---|---|---|
+| Merge the two HIGH e2e fixes + fill contract onto main | — | glass (this session) | done, 14f1824c, sent to e2e for rc.2 |
+| Live latency badge | S | glass | done, 47d90b0c |
+| Close the latency badge's loop (continuous sampling, one event) | S/M | glass | top-2, cohesion's interaction pass |
+| Native full screen: phone + Mac window in the Capsule | L | glass + capsule-pro | top-2, the user's literal ask |
+| Reconnect still + resting-tile preview via sight.frame | S | glass + cohesion | agreed, needs a test path before coding |
+| 1:1 zoom toggle | S | glass | blocked on test harness decision |
+| DPR-aware canvas sizing | S | glass | blocked on test harness decision |
+| Phone fullscreen + iOS fallback | M | glass | |
+| Two-way clipboard while shielded | M | glass + computers | |
+| IME-aware input testing/fix | M | glass | |
+| fps/latency instrumentation + CI budgets | M | glass + e2e | shares the sampling loop above |
+| guard.js/link denied-path sync test | S | glass | |
+| Reconcile event families (computer.* vs glass.*) | M | glass | |
+| Move handback settings into the settings hub | S | glass | |
+| Re-skin Glass boards against Design A | M | glass + app-design | |
+| A `deck/glass` browser-mounting test harness | M | glass | new, needed before item above three land |
