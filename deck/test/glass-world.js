@@ -19,6 +19,27 @@ import { SCRATCH } from "../../test/scratch.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
+// A 1x1 white JPEG, standing in for a real screenshot: enough for a real <img> to decode and a
+// real canvas to draw, which is the point (sight.frame's own contract, not its pixel content).
+const STILL_JPEG = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=";
+
+/** Written into the world's own home so a real sight.frame has a real hands-desktop.screenshot
+ * to call (sight is box+local, loaded like any other module; this is a home module, discovered
+ * from config.paths(root).modules, never touching the repo checkout). */
+function writeFakeHandsDesktop(root) {
+  const dir = path.join(root, "modules", "hands-desktop");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({
+    name: "hands-desktop", version: "0.1.0", roles: ["box", "local"],
+    does: { tools: ["hands-desktop.screenshot"] }, watches: { emits: [] },
+  }));
+  fs.writeFileSync(path.join(dir, "index.js"), `export default { async start(ctx) {
+    ctx.tool("hands-desktop.screenshot", { input: { type: "object" }, callers: ["module"],
+      run: async () => (${JSON.stringify({ image: STILL_JPEG, mime: "image/jpeg" })}) });
+    return {};
+  } };`);
+}
+
 /**
  * @param {{ agent?: string, width?: number, height?: number }} [o]
  */
@@ -26,6 +47,7 @@ export async function buildGlassWorld({ agent = "kit", width = 1024, height = 76
   const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-glass-")));
   if (path.resolve(root) === path.resolve(os.homedir(), ".vyre")) throw new Error("refusing to use the real ~/.vyre");
   const xvnc = await fakeXvnc({ width, height, name: `${agent}'s screen` });
+  writeFakeHandsDesktop(root);
 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
     name: "alex", role: "box", projectsDir: path.join(root, "projects"), roots: [],

@@ -65,6 +65,14 @@ try {
   for (let i = 0; i < 100; i++) { try { await fetch(`${CDP}/json/version`); break; } catch { await sleep(200); } }
   const kick = (/** @type {string} */ p) => fetch(`${world.url}${p}`);
 
+  // 0. sight.frame's data path: the fake hands-desktop the world seeds gives a real, decodable
+  // JPEG. watch.js's stillFrame() consumes exactly this shape for the reconnect/cold-start still;
+  // the local fake Xvnc connects too fast over loopback to reliably catch that still on screen
+  // mid-race in this harness, so this checks the data it would draw, not the paint itself.
+  const frame = await (await fetch(`${world.url}/v1/tools/sight.frame`, { method: "POST",
+    headers: { "content-type": "application/json", "x-vyre-caller": "deck" }, body: JSON.stringify({ target: `agent:${world.agent}` }) })).json();
+  say("sight.frame: a real image glass's stillFrame() could draw", frame?.data?.mime === "image/jpeg" && typeof frame?.data?.image === "string" && frame.data.image.length > 100, JSON.stringify(frame).slice(0, 200));
+
   // 1. Mount and connect: the RFB handshake completes against the fake Xvnc, no real container.
   const tab = await openGlass(CDP, world.url, world.agent, { width: 1440, height: 900, mobile: false });
   await tab.run(`await waitFor(".gl-badge-live", 10000); return true;`);

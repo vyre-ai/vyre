@@ -245,12 +245,31 @@ export function mountScreen(o) {
     put(log, logRows);
   }
 
+  /** A still from sight.frame, for a cold start or a reconnect with no local frame of its own
+   * yet to keep (keepFrame() already covers a warm reconnect for free, from the canvas the live
+   * session already painted; this is only for "never connected in this mount"). Never overwrites
+   * a real kept frame, and never wins a race against a live connection that lands first. */
+  async function stillFrame() {
+    if (dead || !snap.hidden) return;
+    const r = await attempt("sight.frame", { target: `agent:${name}`, maxWidth: phone ? 480 : 960 });
+    if (dead || rfb || !snap.hidden || !r.data?.image) return;
+    const img = new Image();
+    img.onload = () => {
+      if (dead || rfb || !snap.hidden) return;
+      snap.width = img.naturalWidth; snap.height = img.naturalHeight;
+      snap.getContext("2d")?.drawImage(img, 0, 0);
+      snap.hidden = false;
+    };
+    img.src = `data:${r.data.mime || "image/jpeg"};base64,${r.data.image}`;
+  }
+
   // ---- connection --------------------------------------------------------------------------
   async function connect() {
     if (dead || !s.visible()) return;
     clearTimeout(retry); retry = 0;
     const my = ++gen;
     if (conn !== "waiting") { conn = "connecting"; draw(); }
+    stillFrame();
     await closeSession();
     const r = await attempt("glass.open", { target, surface });
     if (dead || my !== gen) { if (r.data?.session) call("glass.close", { session: r.data.session }).catch(() => {}); return; }
