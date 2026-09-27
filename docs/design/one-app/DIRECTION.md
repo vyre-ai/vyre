@@ -2,7 +2,7 @@
 title: Vyre one app, the direction
 summary: Three directions for one app on every device, the recommendation, the smoothness bar and the install path, for the user to decide before the full sheet.
 audience: builders
-owner: mobile
+owner: app-design
 status: draft
 ---
 

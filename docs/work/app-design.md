@@ -25,6 +25,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Doing
 
+- Design A v1 codified in docs/design/system/ (27 Sep, first pass): 41 component specs plus tokens,
+  layout, copy and audit pages; the audit runs in CI (design.yml). Next: close spec gaps with
+  native-core, pwa, mobile and capsule-pro; redraw the install boards' pairing code (8 chars).
+
 - Nothing in flight. The full direction A sheet is published (35 boards).
 
 ## Next
@@ -73,6 +77,9 @@ Apple Developer account. Absorbs deck-design and phone-design.
 - relay: the hosted app at app.vyre.run and the relay QR copy follow ADR 0026 as proposed.
 
 ## Changed contracts
+
+- scripts/lib/docs/check.js (docs): OWNERS gains "app-design". docs/nav.json gains a "Design system"
+  section. package.json gains `design:audit`. New workflow .github/workflows/design.yml (ci).
 
 - New: scripts/gen-tokens and scripts/lib/tokens.js own the token exports (capsule-pro asked,
   27 Sep). The Swift output's default path is local/capsule/native/Sources/UI/Tokens.generated.swift;

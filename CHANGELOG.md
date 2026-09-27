@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Design system: Design A v1, frozen
+
+- docs/design/system/ is the design system of record: tokens, layout and navigation, copy, the
+  render audit, and 41 component specs (anatomy, variants, sizes, states, keyboard and touch,
+  motion, copy, accessibility), each naming its implementing file in the Deck, the app and the
+  Capsule, its status, and its gaps as a checklist. Surveyed 27 Sep on main and the teams' branches.
+- scripts/design-audit (`npm run design:audit`) renders every board in headless Chrome and fails on
+  text under AA, text outside its frame or cut by a clipping parent, and anything off the system.
+  .github/workflows/design.yml runs it with `gen-tokens --check` and the token and theme tests.
+- docs-check knows the app-design team as an owner. icons.txt gains unlock and minus.
+
 #### Sessions: concurrency slots for teammates and subagents (the user's usage control)
 
 - core/sessions/slots.js: a ledger of two kinds of slot, `teammate` and `subagent`, each with a

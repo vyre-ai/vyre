@@ -22,6 +22,7 @@
     "docs:build": "node scripts/build-docs",
     "docs:ref": "node scripts/gen-docs-reference",
     "tokens": "node scripts/gen-tokens",
+    "design:audit": "node scripts/design-audit",
     "docs:shots": "node scripts/docs-shots",
     "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
