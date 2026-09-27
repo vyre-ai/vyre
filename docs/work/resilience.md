@@ -32,6 +32,7 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   `vyre threads send`, `threads answer` and the live screen's send. Test file
   core/daemon/client-write.test.js. Run it (plus core/cli/*screen* and threads tests) when the
   freeze lifts, then CHANGELOG and report.
+- Also untested: sse.js holds a trailing \r (split CRLF bug from mobile); core/resilience/sse.test.js.
 - Reporting to the lead; filing per-team fixes.
 
 ## Next
