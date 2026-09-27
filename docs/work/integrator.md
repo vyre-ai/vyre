@@ -51,8 +51,12 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   (no Capsule zip in build-site/release, site/_redirects untracked, clean dirty stamp,
   release-check asserts both redirects, no zip, /start as committed, no node_modules, size cap
   16 MB since the docs make the install 11 MB). release-check --skip-tests passes on the test box.
-- Waiting for e2e's agents no-passkey reversal (e2e worktree has it uncommitted). Don't take baf6f30.
-  Then: merge on main, FULL suite once on the test box (nice -n 15), push, sha to lead, box-deploy, e2e.
+- fd633bd (local main): docs screenshots out of the npm package (`!docs/**/*.png`), install 8.9 MB,
+  cap back at 10 MB, release-check asserts no docs png. Lead's call.
+- e2e 61692fd merged on main (e6922da) + docs:ref regenerated for the agents callers. ci's 5 node
+  failures at d3ed622: home/floor/rooms fail at d3ed622 and pass after the e2e merge (the agents
+  presence broke their fixtures); docs-check/index pass after docs:ref. FULL suite running on the
+  test box (~/vyre-ci/integrator-full.log). Then push, sha to lead, box-deploy, e2e.
 - Trial merge of chat 65ce976 (brings federation 2379a0c) on pre/chat 9bd1cf4: only CHANGELOG
   conflicted (kept both); its 21 test files + presence-bypass: 245/245 on the test box.
 - pre/chat 61cc14d also has cc-plugin ddf4653 and planner 8acf291 (ADR table: 0024 chat, 0025
@@ -60,6 +64,13 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   real planner.add refuses the stand-in's input, bad_input). Asked the lead who fixes it.
 
 ## Next
+
+- Trial pre/next: main + chat 65ce976 + tailnet 7e09cb1 (owner-only streams), CHANGELOG only;
+  names/service, onboard, federation-send, term, glass: 64/64. Merge both after the deploy push, then glass-live 71503ab (dcb03ce + main 61692fd resolved; no-passkey take-over).
+- cc-plugin tip 171be2b (planner test rewritten in 749317f; 48/48 with planner+memory-iq): merge planner first, and its planner test uses the real module.
+- Coming later: relay team (ADR 0026), one Expo app (ADR 0027, mobile).
+- cc-plugin owns the stand-in planner test (rewriting against the real planner.add); planner makes
+  "6pm" parse. Merge cc-plugin and planner once those land.
 
 - After the deploy push: chat (redo the pre/chat merge on the new main), cc-plugin 9ce2f18,
   planner e4fbc70, docs tip, capsule-pro when asked. Not mobile until its coral tokens are swapped.
