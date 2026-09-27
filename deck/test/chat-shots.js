@@ -7,7 +7,7 @@
 //
 //   node deck/test/chat-shots.js <out dir> [--port 4795] [--only demo,ask]
 //
-// Runs on testbox (the load rule: one Chrome at a time). CHROME=<path> names the binary.
+// Runs on testbox (the load rule: one Chrome at a time), in vyre-chrome --headless=new. CHROME=<path> names another binary.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -58,10 +58,12 @@ const base = await new Promise((resolve, reject) => {
 });
 log(`world ${base}`);
 
-const bin = process.env.CHROME || path.join(os.homedir(), "vyre-ci/pwa-chrome/chrome-headless-shell/linux-154.0.8037.57/chrome-headless-shell-linux64/chrome-headless-shell");
+// vyre-chrome in the new headless mode: chrome-headless-shell (the old mode) loses the variable
+// font's space advances and draws "No one is typing" as "Nooneis typing" (pwa, 27 Sep).
+const bin = process.env.CHROME || "/usr/local/bin/vyre-chrome";
 const cdpPort = 9431 + Math.floor(Math.random() * 400);
 const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${profile}`,
-  "--no-sandbox", "--no-first-run", "--no-default-browser-check", "about:blank"], { stdio: "ignore" });
+  "--headless=new", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "about:blank"], { stdio: "ignore" });
 started.push(chrome);
 const CDP = `http://127.0.0.1:${cdpPort}`;
 for (let i = 0; i < 100; i++) { try { await fetch(`${CDP}/json/version`); break; } catch { await sleep(200); } }
