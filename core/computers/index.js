@@ -25,6 +25,7 @@ import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
 import { ensure as ensureBearer } from "../../lib/bearer/index.js";
+import { agentClaim } from "../modules/index.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -120,12 +121,17 @@ export default {
       return a ? String(a.kind) : null;
     };
 
-    /** Whose computer this call is about. */
+    /**
+     * Whose computer this call is about. `agentClaim` (core/modules) finds the agent behind any
+     * transport shape, not only "mcp:agent:<name>" - a caller vouched under another surface
+     * ("cli agent:<name>", what a person's own CLI gets when an agent runs inside it) gets the
+     * same self-or-assistant rule as an agent's own MCP hands (hands-desktop's resolveAgent had
+     * the same narrower gap, e2e review 2026-09-28).
+     */
     const resolve = async (input, caller) => {
-      const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
+      const self = agentClaim(caller);
       let agent;
-      if (m) {
-        const self = m[1];
+      if (self) {
         if (!input.agent || input.agent === self) agent = self;
         else if ((await kindOf(self)) === "assistant") agent = input.agent;
         else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
@@ -142,9 +148,6 @@ export default {
       return String(input.surface);
     };
 
-    /** A caller claiming to be an agent, in any of the forms vyred recognizes: "mcp:agent:kit", "harness:agent:kit". */
-    const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
-
     /**
      * A surface, refused when the caller is an agent that is not the assistant. `surface` names
      * a person's screen; an ordinary agent is not a person, and take-over/giveback/watch are
@@ -158,12 +161,18 @@ export default {
      * surface, but it cannot tell "deck:laptop" from an impersonator on the same trusted channel
      * (cli, local, a module, or the assistant) — that needs the caller-identity-matches-claimed-
      * surface check the Rules layer does for HUMAN_ONLY tools (asked of security 26 Sep, open).
+     *
+     * It also cannot see past a module that relabels the caller: sight.watch calls this tool as
+     * "module:sight" (core/modules/index.js's call wrapper), so an agent proxied through sight
+     * would clear this check no matter who it really is. core/sight/index.js's agentCaller runs
+     * the same test against sight.watch's own meta.caller before it ever forwards, so the floor
+     * holds end to end; a future proxy path needs the same guard on its own side.
      */
     const ownSurface = async (input, caller) => {
       const surface = surfaceOf(input);
       const who = String(caller || "");
-      const claim = AGENT_CLAIM.exec(who);
-      if (claim && (await kindOf(claim[1])) !== "assistant") throw new Error(`"${who}" is an agent, not a person's screen; ${surface} speaks for itself`);
+      const claim = agentClaim(who);
+      if (claim && (await kindOf(claim)) !== "assistant") throw new Error(`"${who}" is an agent, not a person's screen; ${surface} speaks for itself`);
       return surface;
     };
 
@@ -174,8 +183,8 @@ export default {
         const names = new Set(pool.rows().map(r => String(r.agent)));
         const r = await ctx.call("agents.list", {});
         if (!r.error) for (const a of r.data || []) if (a && a.computer === true) names.add(String(a.name));
-        const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
-        const mine = m && (await kindOf(m[1])) !== "assistant" ? m[1] : null;
+        const claim = agentClaim(caller);
+        const mine = claim && (await kindOf(claim)) !== "assistant" ? claim : null;
         const computers = [...names].filter(n => !mine || n === mine).sort().map(n => pool.view(n));
         return { driver: driver ? driver.name : "none", screens: pool.opts.screens, computers };
       });
@@ -209,8 +218,8 @@ export default {
     tool("computers.limits", `Set an agent's processor cores (cpus, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}) and memory (memory_gb, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}). They apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
       obj({ agent: str, cpus: { type: "number" }, memory_gb: { type: "number" } }), async (i, { caller }) => {
         const agent = await resolve(i, caller);
-        const claim = AGENT_CLAIM.exec(String(caller || ""));
-        if (claim && (await kindOf(claim[1])) !== "assistant") throw new Error(`${claim[1]} cannot change a computer's limits; the user sets them`);
+        const claim = agentClaim(caller);
+        if (claim && (await kindOf(claim)) !== "assistant") throw new Error(`${claim} cannot change a computer's limits; the user sets them`);
         await pool.allowed(agent);
         return pool.limits(agent, { cpus: i.cpus, memory_gb: i.memory_gb });
       });
@@ -283,7 +292,7 @@ export default {
     tool("computers.egress.set", "Turn the Mac egress on or off, or replace its site list (hostnames, optionally *.hostname). The owner's to change, never an agent's; it applies to computers started afterwards.",
       obj({ enabled: { type: "boolean" }, sites: { type: "array", items: str } }), async (i, { caller }) => {
         const who = String(caller || "");
-        if (AGENT_CLAIM.test(who)) throw new Error(`"${who}" is an agent; where an agent's browser goes out is the owner's to change`);
+        if (agentClaim(who)) throw new Error(`"${who}" is an agent; where an agent's browser goes out is the owner's to change`);
         const now = egress.setting(egressCfg());
         const next = { enabled: i.enabled === undefined ? now.enabled : i.enabled === true, sites: i.sites === undefined ? now.sites : egress.checkSites(i.sites) };
         if (!ctx.paths) throw new Error("this vyred has no home to save config in");
@@ -297,7 +306,7 @@ export default {
     const JOINS = "applies to computers that start or thaw after the change; one already running keeps what it has until computers.stop, and turning it off never logs a running node out early";
     const notAgent = (caller, what) => {
       const who = String(caller || "");
-      if (AGENT_CLAIM.test(who)) throw new Error(`"${who}" is an agent; ${what} is the owner's`);
+      if (agentClaim(who)) throw new Error(`"${who}" is an agent; ${what} is the owner's`);
       return who;
     };
 

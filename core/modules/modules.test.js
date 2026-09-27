@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -336,6 +336,25 @@ test("modules: the owner's Deck at the box's tailnet address may use what the De
   assert.equal(callerAllowed(deck, "tailnet-guest:juno@example.com"), false);
   assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
   assert.equal(callerAllowed(null, "anonymous"), true);
+});
+
+test("modules: agentClaim finds the agent name behind any transport shape, or null", () => {
+  for (const [caller, name] of [
+    ["mcp:agent:kit", "kit"], ["harness:agent:kit", "kit"], ["cli:agent:kit", "kit"],
+    ["module:agent:kit", "kit"], ["tailnet:agent:kit", "kit"], ["agent:kit", "kit"],
+    ["cli agent:kit", "kit"], ["mcp agent:kit", "kit"],
+  ]) assert.equal(agentClaim(caller), name, caller);
+  for (const caller of ["cli", "tailnet:alex@example.com", "module:notes", "mcp", "", null, undefined]) {
+    assert.equal(agentClaim(caller), null, String(caller));
+  }
+  // An empty or odd name still counts as a claim (e2e review, 2026-09-28): every caller checks
+  // `if (agentClaim(...))`, and "" is falsy, so a claim with no name must never come back as ""
+  // or it reads as no claim at all and the caller is trusted fully instead of refused.
+  for (const caller of ["cli agent:", "mcp:agent:", "agent:"]) {
+    const claim = agentClaim(caller);
+    assert.ok(claim, `${caller} -> ${JSON.stringify(claim)}, must be truthy`);
+    assert.notEqual(claim, "", caller);
+  }
 });
 
 test("modules: a use is a tool that ran for a person, a surface or a model; refusals, modules and hooks are not", async t => {
