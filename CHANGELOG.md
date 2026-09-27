@@ -46,8 +46,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - Theme.swift takes its colours, the status model (needs you, failed, running, unread, done: word,
   mark and colour key) and the card radius from `Sources/UI/Tokens.generated.swift`. That file is
-  written by scripts/gen-tokens from docs/design/one-app/tokens.json (work/capsule-pro-tokens,
-  450cd16, on mobile's generator), so the Capsule, the app and the Deck cannot drift. The values
+  written by app-design's scripts/gen-tokens from docs/design/one-app/tokens.json (work/app-design
+  99820a1, whose --check test covers it), so the Capsule, the app and the Deck cannot drift. The values
   are unchanged; recall stays the Capsule's own. `Tests/ThemeTokensTests.swift`.
 
 #### CI: the Capsule signing step can no longer hang

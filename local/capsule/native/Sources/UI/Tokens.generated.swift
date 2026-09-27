@@ -78,7 +78,7 @@ public enum Tokens {
     public struct Status: Equatable, Sendable {
         public let key: String, mark: String, color: String, word: String
     }
-    /// Most urgent first: a row shows the first that applies.
+    /// Most urgent first: a row shows the first that applies. The keys are a stable contract.
     public static let status: [Status] = [
         Status(key: "needsYou", mark: "dot", color: "beacon", word: "needs you"),
         Status(key: "failed", mark: "crossed-circle", color: "text2", word: "failed"),
@@ -119,13 +119,27 @@ public enum Tokens {
         public static let ease: [Double] = [0.25, 0.1, 0.25, 1]
     }
 
-    /// [size, line height] in points, desktop.
+    /// [size, line height] in points, desktop and the Capsule.
     public enum TypeScale {
         public static let meta: (size: CGFloat, line: CGFloat) = (12, 16)
         public static let base: (size: CGFloat, line: CGFloat) = (13, 18)
         public static let read: (size: CGFloat, line: CGFloat) = (15, 22)
         public static let title: (size: CGFloat, line: CGFloat) = (20, 26)
         public static let hero: (size: CGFloat, line: CGFloat) = (28, 34)
-        public static let mono: (size: CGFloat, line: CGFloat) = (12, 13)
     }
+
+    /// [size, line height] in points on a phone: the read and title steps are two larger.
+    public enum PhoneTypeScale {
+        public static let meta: (size: CGFloat, line: CGFloat) = (12, 16)
+        public static let base: (size: CGFloat, line: CGFloat) = (13, 18)
+        public static let read: (size: CGFloat, line: CGFloat) = (17, 24)
+        public static let title: (size: CGFloat, line: CGFloat) = (22, 28)
+        public static let hero: (size: CGFloat, line: CGFloat) = (28, 34)
+    }
+
+    /// Sizes JetBrains Mono may use, in points.
+    public static let monoSizes: [CGFloat] = [12, 13]
+
+    public static let fontSans = "Instrument Sans"
+    public static let fontMono = "JetBrains Mono"
 }
