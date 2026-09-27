@@ -59,7 +59,9 @@ for f in ('/proc/net/tcp', '/proc/net/tcp6'):
     except Exception: continue
     for l in lines:
         parts = l.split()
-        if parts[3] == '0A': listen.append(int(parts[1].split(':')[1], 16))
+        addr, port = parts[1].split(':')
+        # 127.0.0.11 is Docker's own DNS resolver in the network namespace, not the computer's.
+        if parts[3] == '0A' and addr != '0B00007F': listen.append(int(port, 16))
 dials = {}
 for port in (9222, 9223, 9229):
     s = socket.socket(); s.settimeout(1)
@@ -95,7 +97,11 @@ for pid in node:
     rc = libc.ptrace(16, pid, None, None)  # PTRACE_ATTACH
     traced[pid] = 'attached' if rc == 0 else ctypes.get_errno()
 leaks = []
+# docker exec gives every process it starts the container's create-time env, this one included;
+# the agent's own processes (xterm and what it starts) never had it.
+mine = {str(os.getpid()), str(os.getppid())}
 for f in glob.glob('/proc/[0-9]*/environ'):
+    if f.split('/')[2] in mine: continue
     try: data = open(f, 'rb').read()
     except Exception: continue
     if b'COMPUTERD_TOKEN=' in data or b'VNC_PASSWORD=' in data: leaks.append(f)
@@ -188,8 +194,10 @@ function shAgent(cmd) {
 
 test("isolation: the agent is an untrusted X client: no cookie no display, and no screen grab or XTEST with its own", { skip }, () => {
   assert.notEqual(shAgent("XAUTHORITY=/nonexistent xdpyinfo >/dev/null").code, 0, "the display admits a client with no cookie");
-  const ok = shAgent("xdpyinfo -queryExtensions | grep -c SECURITY");
+  const ok = shAgent("xdpyinfo -queryExtensions");
   assert.equal(ok.code, 0, `the agent's cookie does not open the display: ${ok.out}`);
+  // An untrusted client is not even shown XTEST (nor SECURITY).
+  assert.doesNotMatch(ok.out, /XTEST/, "the agent's display offers XTEST");
   // Chrome and the desktop are trusted windows; an untrusted client reading the root window gets
   // an error or nothing, never the pixels.
   const grab = shAgent("import -window root png:- 2>/dev/null | wc -c");
