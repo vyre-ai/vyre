@@ -4,7 +4,7 @@
   "description": "Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["files.search", "files.stat", "files.preview", "files.fetch", "files.send",
+  "does": { "tools": ["files.search", "files.stat", "files.dirs", "files.recent", "files.preview", "files.fetch", "files.send",
     "files.drive.status", "files.drive.share", "files.drive.unshare", "files.drive.audit",
     "files.drive.url", "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.drive.local"] },
   "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },

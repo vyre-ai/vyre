@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { translate, cut } from "./translate.js";
+import { translate, cut, clip, CAPS } from "./translate.js";
 import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
@@ -60,7 +60,29 @@ export const MIGRATIONS = [
   `CREATE TABLE threads_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT NOT NULL, text TEXT NOT NULL, surface TEXT NOT NULL,
      at INTEGER NOT NULL, delivered_at INTEGER, via TEXT, replied_at INTEGER);
    CREATE INDEX threads_inbox_thread ON threads_inbox (thread, delivered_at);`,
+  // Questions (AskUserQuestion) as well as permissions, and what a card shows for each: the
+  // questions, or the command, file and change a permission is for (JSON, redacted and capped).
+  `ALTER TABLE threads_asks ADD COLUMN kind TEXT NOT NULL DEFAULT 'permission';
+   ALTER TABLE threads_asks ADD COLUMN detail TEXT;`,
+  // Where an ask sits in its session, so a surface can open the transcript at it: the tool call it
+  // is about (Claude Code's tool_use_id) and the id of its ask.raised event.
+  `ALTER TABLE threads_asks ADD COLUMN tool_use_id TEXT;
+   ALTER TABLE threads_asks ADD COLUMN event INTEGER;`,
 ];
+
+/**
+ * An "always in <project>" rule, as Claude Code takes it in updatedPermissions. Claude Code's own
+ * addRules suggestions say best what to allow (a Bash suggestion names the command prefix), so
+ * their rules are kept and only the destination changes; a suggestion that is a mode (setMode, as
+ * for Edit and Write) becomes a rule for the whole tool. localSettings is the project folder's
+ * .claude/settings.local.json: the user's own, never committed with the project's code.
+ * @param {string} tool @param {any[]|null|undefined} suggestions
+ */
+export function projectRules(tool, suggestions) {
+  const rules = (suggestions || []).filter(x => x && x.type === "addRules" && Array.isArray(x.rules)).flatMap(x => x.rules)
+    .filter(r => r && r.toolName).map(r => ({ toolName: String(r.toolName), ...(r.ruleContent ? { ruleContent: String(r.ruleContent) } : {}) }));
+  return [{ type: "addRules", rules: rules.length ? rules : [{ toolName: tool }], behavior: "allow", destination: "localSettings" }];
+}
 
 
 /**
@@ -114,15 +136,30 @@ export function pluginDir() {
 }
 
 /**
- * What a person approves when they answer an ask: the decision, the tool, where it goes, and the thread.
- * @param {Switchboard} sb @param {{ ask: string, decision: string }} i
+ * What a person approves when they answer an ask: the decision, the tool, where it goes, and the
+ * thread; for a question, the answers they are giving.
+ * @param {Switchboard} sb @param {{ ask: string, decision: string, answers?: Record<string, any>, scope?: string }} i
  */
 export function answerSummary(sb, i) {
   const a = /** @type {any} */ (sb.asks.get(i.ask));
   if (!a) return `${i.decision} permission question ${i.ask}`;
   const t = sb.record(a.thread);
+  const thread = `(thread ${t && t.name ? t.name : String(a.thread).slice(0, 8)})`;
+  if (i.decision === "always" && i.scope === "project" && a.kind !== "question") {
+    const sc = sb.scopes && sb.scopes.get(a.thread);
+    return `Always allow ${a.tool} in ${sc ? sc.name : t && t.project ? t.project : "its project"}${a.summary ? `: ${a.summary}` : ""} ${thread}`;
+  }
+  if (a.kind === "question") {
+    if (i.decision === "deny") return `Decline the question${a.summary ? `: ${a.summary}` : ""} ${thread}`;
+    const said = Object.entries(i.answers || {}).map(([q, v]) => {
+      const shown = (a.questions || []).find(x => x.question === q);
+      return `Answer ${shown && shown.header ? shown.header : cut(q, 80)}: ${cut(clip(Array.isArray(v) ? v.join(", ") : String(v ?? ""), CAPS.answer), 120)}`;
+    });
+    return `${said.length ? said.join("; ") : "Answer the question"} ${thread}`;
+  }
   const where = a.destination ? ` to ${a.destination}` : "";
-  return `${i.decision === "allow" ? "Allow" : "Deny"} ${a.tool}${where}${a.summary ? `: ${a.summary}` : ""} (thread ${t && t.name ? t.name : String(a.thread).slice(0, 8)})`;
+  const verb = i.decision === "always" ? "Always allow" : i.decision === "allow" ? "Allow" : "Deny";
+  return `${verb} ${a.tool}${where}${a.summary ? `: ${a.summary}` : ""} ${thread}`;
 }
 
 /**
@@ -142,7 +179,14 @@ export class Switchboard {
     this.deps = deps;
     this.db = deps.db;
     this.leases = new Leases(deps.db);
-    this.asks = new Asks(deps.db);
+    /** @type {Map<string, any[]>} Claude Code's permission suggestions per open ask, in memory only (what "always" hands back) */
+    this.suggestions = new Map();
+    /** @type {Map<string, { slug: string, name: string, cwd: string }|null>} per thread: the project an "always in <project>" rule would be for */
+    this.scopes = new Map();
+    this.asks = new Asks(deps.db, ({ id, thread, project }) => {
+      const always = this.suggestions.has(id), sc = this.scopes.get(thread);
+      return { always, always_project: always && sc && sc.slug === project ? sc.name : null };
+    });
     /** @type {Map<string, any>} live sessions: id -> { proc, launch, message, pending, timer, lastPrompt } */
     this.live = new Map();
     this.run = deps.run || defaultRun;
@@ -191,7 +235,8 @@ export class Switchboard {
     catch (e) {
       if (!/looks like a secret/.test(/** @type {Error} */ (e).message)) throw e;
       const safe = { thread };
-      for (const [k, v] of Object.entries(payload)) safe[k] = typeof v === "string" && k !== "tool" && k !== "id" && k !== "ask" ? "[withheld: looked like a credential]" : v;
+      for (const [k, v] of Object.entries(payload)) safe[k] = typeof v === "string" && k !== "tool" && k !== "id" && k !== "ask" && k !== "kind" ? "[withheld: looked like a credential]"
+        : k === "questions" || k === "answers" ? "[withheld: looked like a credential]" : v;   // an ask's words are nested
       return this.deps.emit(type, safe, where);
     }
   }
@@ -331,11 +376,18 @@ export class Switchboard {
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
     }
     if (t.ask) {
-      const a = this.asks.raise({ thread: id, request_id: t.ask.request_id, tool: t.ask.tool, summary: t.ask.summary, destination: t.ask.destination, reason: t.ask.reason ? cut(t.ask.reason) : null });
+      const a = this.asks.raise({ thread: id, request_id: t.ask.request_id, tool: t.ask.tool, summary: t.ask.summary, destination: t.ask.destination,
+        reason: t.ask.reason ? cut(clip(t.ask.reason, 2000)) : null, kind: t.ask.kind, questions: t.ask.questions, detail: t.ask.detail, tool_use_id: t.ask.tool_use_id });
       st.inputs = st.inputs || new Map();
       st.inputs.set(a.id, t.ask.input);                                    // kept in memory only, to hand back on allow
+      if (t.ask.suggestions) { this.suggestions.set(a.id, t.ask.suggestions); if (rec && rec.project) this.projectScope(id).catch(() => {}); }
       this.set(id, { status: "waiting" });
-      this.emit("ask.raised", { ask: a.id, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null }, id, project);
+      // Small: a question's options without their previews, and never a permission's detail.
+      // Surfaces read the whole card from threads.asks.
+      const questions = a.kind === "question" ? { questions: (a.questions || []).map(q => ({ ...q, options: q.options.map(({ preview, ...o }) => o) })) } : {};
+      const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
+        agent: a.agent, thread_name: a.thread_name, ...questions }, id, project);
+      this.asks.anchored(a.id, ev && ev.id);
     }
     if (t.cancel) {
       const a = this.asks.byRequest(id, t.cancel);
@@ -444,10 +496,16 @@ export class Switchboard {
     this.emit("thread.stopped", { code: code ?? null, reason }, id, rec ? rec.project : null);
   }
 
-  closeAsk(a, decision, by) {
+  /**
+   * @param {any} a @param {string} decision @param {string|null} by @param {Record<string, string>|null} [answers] what was chosen, as shown
+   * @param {string|null} [scope] "project" for an "always in <project>"
+   */
+  closeAsk(a, decision, by, answers = null, scope = null) {
+    this.suggestions.delete(a.id);
     if (!this.asks.close(a.id, decision, by)) return false;
     const rec = this.record(a.thread);
-    this.emit("ask.answered", { ask: a.id, decision, by: by || null, tool: a.tool, summary: a.summary || null }, a.thread, rec ? rec.project : null);
+    this.emit("ask.answered", { ask: a.id, decision, by: by || null, tool: a.tool, summary: a.summary || null, ...(answers ? { answers } : {}), ...(scope ? { scope } : {}) },
+      a.thread, rec ? rec.project : null);
     return true;
   }
 
@@ -456,6 +514,15 @@ export class Switchboard {
     st.lastPrompt = text;
     st.proc.write(userLine(text, id));
     this.set(id, { status: "working" });
+  }
+
+  /**
+   * Does this machine have the thread: running here, recorded here, or a transcript here that
+   * send could adopt? What threads.send on the box checks before it asks a Mac.
+   * @param {string} id
+   */
+  knows(id) {
+    return this.live.has(id) || Boolean(this.record(id)) || Boolean(findSession(this.deps.transcripts || [], id));
   }
 
   /** Our children's pids: a session bound to one of these is ours, not open elsewhere. */
@@ -583,19 +650,86 @@ export class Switchboard {
     return { thread: id, ...r };
   }
 
-  /** Answer a permission question. The ask id is the capability; the decision reaches Claude Code first, then the row closes. */
-  answer(askId, decision, by, message) {
+  /**
+   * Answer a permission question or a question. The ask id is the capability; the decision reaches
+   * Claude Code first, then the row closes. A question is answered with `answers` (keyed by the
+   * question as shown) or declined with "deny"; "always" allows and hands back Claude Code's suggestions.
+   * `scope: "project"` with "always" writes the rule for the thread's project instead (projectRules).
+   * @param {string} askId @param {"allow"|"deny"|"always"} decision @param {string} by @param {string} [message]
+   * @param {Record<string, string|string[]>} [answers] @param {"project"} [scope]
+   */
+  async answer(askId, decision, by, message, answers, scope) {
     const a = this.asks.get(askId);
     if (!a) throw new Error(`no ask ${askId}`);
     if (a.state !== "open") return { ask: askId, answered: false, note: `already ${a.state}${a.decision ? " (" + a.decision + ")" : ""}` };
     const st = this.live.get(a.thread);
     if (!st) { this.closeAsk(a, "cancelled", "thread stopped"); return { ask: askId, answered: false, note: "the thread has stopped" }; }
     const input = st.inputs && st.inputs.get(askId);
-    st.proc.write(answerLine(a.request_id, decision, input, message));
+    let extra = {}, shown = null;
+    if (a.kind === "question" && decision !== "deny") {
+      if (decision === "always") throw new Error("a question is answered (allow with answers) or declined (deny); always is for permissions");
+      ({ sent: extra, shown } = this.questionAnswers(a, input, answers));
+    } else if (decision === "always") {
+      const permissions = this.suggestions.get(askId);
+      if (!permissions) throw new Error(`always allow is not on offer for ask ${askId}; allow or deny it`);
+      if (scope === "project") {
+        const sc = await this.projectScope(a.thread);
+        if (!sc) throw new Error(`always in a project needs a thread in its project's folder; thread ${String(a.thread).slice(0, 8)} is not in one`);
+        extra = { permissions: projectRules(a.tool, permissions) };
+      } else extra = { permissions };
+    }
+    // The answer may have waited on the project lookup: the ask can have closed meanwhile.
+    if (this.asks.get(askId)?.state !== "open" || !this.live.has(a.thread)) return { ask: askId, answered: false, note: "it closed while being answered" };
+    st.proc.write(answerLine(a.request_id, decision, input, message, extra));
     st.inputs && st.inputs.delete(askId);
-    this.closeAsk(a, decision, by);
+    this.closeAsk(a, decision, by, shown, decision === "always" && scope === "project" ? "project" : null);
     if (this.asks.open(a.thread).length === 0) this.set(a.thread, { status: "working" });
     return { ask: askId, answered: true, decision };
+  }
+
+  /**
+   * The project an "always in <project>" rule is for: the thread's project, when the thread runs in
+   * that project's home or one of its folders (the rule lands in the thread's folder). Kept per
+   * thread so the ask object can say it without waiting.
+   * @param {string} id
+   */
+  async projectScope(id) {
+    const rec = this.record(id);
+    let sc = null;
+    if (rec && rec.project && this.deps.call) {
+      const of = await this.deps.call("projects.of", { cwd: rec.cwd });
+      const p = of && of.data;
+      if (p && p.slug === rec.project && p.home) {
+        const home = path.resolve(String(p.home));
+        const folders = (Array.isArray(p.folders) ? p.folders : []).map(f => path.resolve(home, String(f)));
+        if (path.resolve(rec.cwd) === home || folders.includes(path.resolve(rec.cwd))) sc = { slug: rec.project, name: String(p.name || rec.project), cwd: rec.cwd };
+      }
+    }
+    this.scopes.set(id, sc);
+    return sc;
+  }
+
+  /**
+   * A question's answers, checked against its questions. Surfaces key them by the question as shown
+   * (redacted and capped); Claude Code expects its own text, so each is matched to its question by
+   * position. Returns what is sent, and what the ask.answered event may say (shown keys, capped).
+   * @param {any} a @param {any} input @param {Record<string, string|string[]>|undefined} answers
+   */
+  questionAnswers(a, input, answers) {
+    const shownQs = a.questions || [];
+    const realQs = input && Array.isArray(input.questions) ? input.questions : shownQs;
+    /** @type {Record<string, string>} */ const sent = {};
+    /** @type {Record<string, string>} */ const shown = {};
+    for (const [k, v] of Object.entries(answers || {})) {
+      let n = shownQs.findIndex(q => q.question === k);
+      if (n < 0) n = realQs.findIndex(q => q && q.question === k);
+      if (n < 0 || !realQs[n]) throw new Error(`ask ${a.id} has no question "${cut(k, 80)}"`);
+      const text = (Array.isArray(v) ? v.map(String).join(", ") : String(v ?? "")).slice(0, 4000);
+      sent[String(realQs[n].question)] = text;
+      shown[shownQs[n] ? shownQs[n].question : cut(k, CAPS.question)] = clip(text, CAPS.answer);
+    }
+    if (!Object.keys(sent).length) throw new Error("answer a question with answers: { [question]: answer }, or decline it with deny");
+    return { sent: { answers: sent }, shown };
   }
 
   async stop(id) {
@@ -619,7 +753,7 @@ export class Switchboard {
     const rec = this.must(id);
     const events = this.db.prepare("SELECT * FROM events WHERE thread = ? AND id > ? ORDER BY id DESC LIMIT ?").all(id, since, Math.min(1000, limit))
       .reverse().map(e => ({ id: e.id, at: e.at, type: e.type, payload: JSON.parse(String(e.payload)) }));
-    return { thread: rec, asks: this.asks.open(id), events };
+    return { thread: rec, asks: this.asks.open(id).map(({ request_id, ...a }) => a), events };
   }
 
   /**
@@ -764,10 +898,40 @@ export default {
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
       async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
 
-    tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first.",
-      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str } },
+    /**
+     * On the box, the person's words for a thread the box does not have go to the paired Mac that
+     * has it (docs/adr/0021-box-reads-the-mac.md, "Sending to a Mac session"): the Mac's answer,
+     * labelled { source: "mac", machine }, or null when no Mac has it, so the box answers as usual.
+     */
+    const sendToMac = async (i, caller) => {
+      const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
+        input: { thread: i.thread, text: i.text, surface: surfaceOf(i, caller) } });
+      if (r.error || !Array.isArray(r.data)) return null;
+      const done = r.data.find(a => a.ok);
+      if (done) return { ...done.data, source: "mac", machine: done.name };
+      // A Mac that answered with its own error has the thread (or failed on it): say that one. A
+      // Mac without the thread says "no thread"; an offline Mac may have it, so nothing was sent.
+      const failed = r.data.find(a => a.error && !["mac_offline", "timeout"].includes(a.error.code) && !/^no thread\b/.test(a.error.message));
+      if (failed) throw Object.assign(new Error(failed.error.message), { code: failed.error.code });
+      const away = r.data.find(a => a.error && a.error.code === "mac_offline");
+      if (away) throw Object.assign(new Error(`${away.name} is offline; your message was not sent`), { code: "mac_offline" });
+      const slow = r.data.find(a => a.error && a.error.code === "timeout");
+      if (slow) throw Object.assign(new Error(`${slow.name} did not answer in time; your message may not have been sent`), { code: "timeout" });
+      return null;
+    };
+
+    tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
+      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller }) => { guard(caller, "type into sessions"); return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller) }); });
+      async (i, { caller }) => {
+        guard(caller, "type into sessions");
+        // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
+        if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
+          const mac = await sendToMac(i, caller);
+          if (mac) return mac;
+        }
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller) });
+      });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
       { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },
@@ -792,13 +956,15 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
 
-    tool("threads.asks", "Permission questions waiting on the user, oldest first. A surface that reconnects reads these; events alone cannot say what is open now.",
-      { type: "object", properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "read questions"); return sb.asks.open(i.thread).map(({ request_id, ...a }) => a); });
+    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), and what always allow is on offer (always, always_project). A surface that reconnects reads these; events alone cannot say what is open now.",
+      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] } } },
+      async (i, { caller }) => { guard(caller, "read questions"); return sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a); });
 
-    tool("threads.answer", "Answer a permission question: allow or deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
-      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny"] }, message: str, surface: str } },
-      async (i, { caller }) => sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message),
+    tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
+      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,
+        answers: { type: "object", additionalProperties: { type: "string" } },
+        scope: { type: "string", enum: ["project"], description: "With always: allow this tool from now on in the thread's project only (the ask's always_project)." } } },
+      async (i, { caller }) => sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope),
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.

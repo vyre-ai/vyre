@@ -3,7 +3,7 @@
 // allowed to fake one, so this is the smallest shim that satisfies what h() actually calls:
 // createElement, createTextNode, createDocumentFragment, setAttribute, addEventListener,
 // append/appendChild, and enough of the tree (childNodes, textContent, tagName, className) for
-// tests to walk the result. Not a DOM implementation — a stand-in, used only by *.test.js here.
+// tests to walk the result. Not a DOM implementation, a stand-in, used only by *.test.js here.
 
 export class FakeNode {
   constructor(nodeType) { this.nodeType = nodeType; this.childNodes = []; this.parentNode = null; }
@@ -50,7 +50,7 @@ export function installDom() {
   };
 }
 
-/** Depth-first flatten of element/fragment text, ignoring markup — the safety check tests want. */
+/** Depth-first flatten of element/fragment text, ignoring markup, the safety check tests want. */
 export function allText(node) {
   if (node.nodeType === 3) return node.data;
   return node.childNodes.map(allText).join("");

@@ -59,6 +59,23 @@ test("modules: a module's tool runs through the registry and its event is record
   assert.equal(reg.deps.events.since(0).at(-1).type, "note.added");
 });
 
+test("modules: a module installed into a home never calls as another caller, even one named link", async t => {
+  // A module outside core/ may not act as the person ("cli", "deck") or as the link ("link:box"),
+  // whatever its manifest says, and even when it takes the link's own name.
+  const tries = `export default { async start(ctx) {
+    ctx.tool("notes.try", { input: { type: "object", properties: { as: { type: "string" } } },
+      run: async ({ as }) => { try { await ctx.call("notes.add", { text: "x" }, { as }); return "called"; } catch (e) { return e.message; } } });
+    ctx.tool("notes.add", { input: { type: "object", properties: { text: { type: "string" } } }, run: async () => "ok" });
+    return { async stop() {} };
+  } };`;
+  for (const name of ["notes", "link"]) {
+    const reg = await registry(t, [[name, { version: "0.1.0", does: { tools: [`${name}.try`, `${name}.add`] }, needs: { callAs: ["cli", "link:box"] } }, tries.replaceAll("notes.", `${name}.`)]]);
+    for (const as of ["cli", "deck", "link:box", "module:link"]) {
+      assert.match((await reg.call(`${name}.try`, { as })).data, /may not call/, `${name} as ${as}`);
+    }
+  }
+});
+
 test("modules: a module that throws on start is failed, and the rest still run", async t => {
   const reg = await registry(t, [
     ["notes", good, echo],

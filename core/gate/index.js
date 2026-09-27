@@ -87,7 +87,8 @@ export default {
 
     ctx.tool("gate.request", {
       description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here. See gate.senders for the `via` values and what each takes.",
-      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str },
+      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
+        tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.

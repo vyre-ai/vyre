@@ -1,0 +1,11 @@
+{
+  "name": "term",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["term.unlock", "term.open", "term.attach", "term.list", "term.close"] },
+  "watches": { "emits": ["term.opened", "term.closed"] },
+  "shows": { "streams": ["pty"] },
+  "needs": {},
+  "teaches": {}
+}
