@@ -132,6 +132,15 @@ test("ask: source trust: a question about the user's life, or an answer saying w
   const r = await ask({ question: "what is my wife's name", personal: true });
   assert.equal(r.answer, "Your wife is Noor.");
   assert.doesNotMatch(prompts[0], /Jordan/, "Claude's turn, a reply, dev talk and an injected block never reach the model for a personal question");
+  // A name only in a session's name (often Claude's summary) or folder never grounds a personal answer.
+  const named = asker({ db: d, answer: async () => ({ answer: null }), runner,
+    retrieve: async () => ({ passages: [{ session: "u9", seq: 0, role: "user", ts: Date.parse("2026-06-21T10:00:00Z"), name: "Jordan's birthday plans", cwd: "/home/alex/Jordan", text: "book the restaurant for my wife" }] }),
+    personalQ: q => /\bmy wife\b/.test(q), trusted: () => true });
+  const byName = await named({ question: "what is my wife's name", personal: true });
+  assert.equal(byName.answer, null, JSON.stringify(byName));
+  assert.match(String(byName.why), /not in what it cites: Jordan/);
+  // Each source says whose words it is.
+  assert.equal(r.sources[0].role, "user");
   // "who is jordan" is not a personal question, but "your wife Jordan" is a personal answer: refused.
   const who = await ask({ question: "who is jordan", personal: true });
   assert.equal(who.answer, null);
