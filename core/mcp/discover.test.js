@@ -50,6 +50,42 @@ test("parseServers: env and header values never appear, whatever they hold", () 
   assert.deepEqual(rows[1].headerNames, ["Authorization"]);
 });
 
+test("parseServers: a planted key in args or the url never appears, whatever form it takes (reviewer's MEDIUM on 9ca2c50a)", () => {
+  const rows = parseServers(JSON.stringify({ mcpServers: {
+    tracker: { command: "npx", args: ["-y", "@northwind/tracker-mcp", "--api-key", "nw-secret-abc123", "--other", "kept"] },
+    joined: { command: "npx", args: ["--token=nw-secret-abc123"] },
+    trailing: { command: "npx", args: ["--auth-token"] },
+    query: { type: "sse", url: "https://mcp.northwind.example/sse?key=nw-secret-abc123" },
+    userinfo: { type: "http", url: "https://alex:nw-secret-abc123@mcp.northwind.example/mcp" },
+    plain: { type: "http", url: "https://mcp.northwind.example/mcp" },
+  } }));
+  assert.ok(!JSON.stringify(rows).includes("nw-secret-abc123"), "no planted key leaks, from args or the url");
+
+  const tracker = rows.find(r => r.name === "tracker");
+  assert.deepEqual(tracker.args, ["-y", "@northwind/tracker-mcp", "--api-key", "[redacted]", "--other", "kept"]);
+  assert.equal(tracker.hasSecrets, true);
+
+  const joined = rows.find(r => r.name === "joined");
+  assert.deepEqual(joined.args, ["--token=[redacted]"]);
+  assert.equal(joined.hasSecrets, true);
+
+  const trailing = rows.find(r => r.name === "trailing");
+  assert.deepEqual(trailing.args, ["--auth-token"], "a secret flag with nothing after it is left alone, not thrown");
+  assert.equal(trailing.hasSecrets, undefined);
+
+  const query = rows.find(r => r.name === "query");
+  assert.equal(query.url, "https://mcp.northwind.example/sse", "the query string is gone, not just its value");
+  assert.equal(query.hasSecrets, true);
+
+  const userinfo = rows.find(r => r.name === "userinfo");
+  assert.equal(userinfo.url, "https://mcp.northwind.example/mcp", "userinfo is gone too");
+  assert.equal(userinfo.hasSecrets, true);
+
+  const plain = rows.find(r => r.name === "plain");
+  assert.equal(plain.url, "https://mcp.northwind.example/mcp");
+  assert.equal(plain.hasSecrets, undefined, "a url with neither never says hasSecrets");
+});
+
 test("parseServers: a ~/.claude.json-shaped file's projects[path].mcpServers is local scope, read separately from the top level", () => {
   const text = JSON.stringify({
     mcpServers: { "user-wide": { command: "node", args: ["a.js"] } },
