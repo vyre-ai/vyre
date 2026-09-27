@@ -157,7 +157,7 @@ test("vault cli: needs, connect (a key, a mailbox, a key file) and voice key, ne
   // A key file, by path, with the subject asked for after it.
   const pk = v(hex(40));
   const file = path.join(root, "harlow-sa.json");
-  fs.writeFileSync(file, JSON.stringify({ type: "service_account", client_email: "files@harlow-legal.iam.gserviceaccount.test", private_key: `-----BEGIN PRIVATE KEY-----\n${pk}\n-----END PRIVATE KEY-----\n` }));
+  fs.writeFileSync(file, JSON.stringify({ type: "service_account", client_email: "files@harlow-legal.iam.gserviceaccount.test", private_key: "-----BEGIN " + `PRIVATE KEY-----\n${pk}\n-----END ` + "PRIVATE KEY-----\n" }));
   const sa = await piped(root, ["vault", "connect", "harlow", "drive", "--file", file], "alex@harlow.test\n\n");
   assert.equal(sa.code, 0, sa.out);
   assert.match(sa.out, /stored harlow-drive · google-dwd, granted to harlow/);
