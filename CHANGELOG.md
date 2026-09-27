@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: long sessions and terminals that outlive vyred
+
+- Long sessions render windowed above 100 rows (deck/chat/core/window.js, deck/chat/window-view.js):
+  rows near the viewport are mounted, the rest are measured spacers; the reading position holds
+  while a reply streams and while history loads above. A 2,000-turn session keeps under 150 rows
+  mounted (46 at most in the test); a 3,500-block history page applies in 40 ms (was 817 ms).
+- Terminals run under a detached holder (core/term/holder.js, ring.js, ADR 0029 R4): a vyred
+  restart keeps the shell and re-finds it; the Deck reattaches with from=<offset> and gets only
+  what it missed (a cut redraws the kept 1 MB); keys typed while away are held (4 KB); the screen
+  that last sized the terminal owns its size and others get "Take size"; phones get a key bar
+  (Esc, Tab, Ctrl, Alt, arrows, Paste). Terminals are kept 12 h (term.keep_hours).
+
 #### Chat: a session reads as a native chat over the event stream (ADR 0030)
 
 - deck/chat/session.js renders from deck/chat/core/session-state.js: the transcript read and

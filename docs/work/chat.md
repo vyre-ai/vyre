@@ -200,8 +200,8 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
 - thread.limit as a line in the turn (the design's limit fallback); windowed rows above 100 items;
   an inline ask anchored to its tool row once ask.raised carries tool_use_id.
 - Screenshots in one world on port 4795 (load rule), time Back (< 100 ms).
-- Virtualize long sessions (windowed rows above 100), mounted tabs.
-- Terminal P4 (core/term/holder.js + ring.js exist, untested; ADR 0029 R4): tests, wire into term.
+- Mounted tabs (LRU) with pwa. Real WebKit run for 60 fps / 300 MB; if iOS momentum stutters, invert the scroller.
+- Design look at the key bar and Take size (app-design).
 - ask.raised should carry tool_use_id so an inline ask anchors to its tool row (ask sessions/switchboard).
 - deck/chat/lib/diff.js may share line-diff's "-- x" header bug: check.
 - Folder rows: path on a second line.
