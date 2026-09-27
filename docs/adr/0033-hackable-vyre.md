@@ -3,12 +3,12 @@ title: ADR 0033: Hackable Vyre
 summary: A stable, versioned module API, an extension point for every part, user modules and overrides that survive updates, `vyre update` with channels and rollback, and third-party modules installed as grants.
 audience: builders
 owner: platform
-status: draft
+status: accepted
 ---
 
 # ADR 0033: Hackable Vyre
 
-Status: proposed, 27 Sep 2026 · Workstream: platform ·
+Status: accepted, 27 Sep 2026 · Workstream: platform ·
 Builds on the module contract (SPEC section 5, docs/build/module-contract.md), ADR 0008 (install
 journey), ADR 0030 (sessions and providers), the settings registry (native-core) and
 docs/architecture/boundaries.md (ci).
@@ -41,8 +41,10 @@ The full inventory is in the appendix.
 
 **The manifest gets a schema and an API version.**
 
-- `core/modules/manifest.schema.json` is the one definition. The loader validates against it,
-  `vyre module check` runs it, and the SDK types are generated from it.
+- `packages/module-sdk/manifest.schema.json` is the one definition, next to a dependency-free
+  checker (`manifest.js`). `vyre module check` runs it, the loader adopts it in phase 1, and a
+  test holds the SDK types and every manifest in the repo to it. A new manifest key means a
+  schema change first; `x-` keys are free for experiments.
 - New required field for modules outside the repo: `"apiVersion": 1`. It is an integer that moves
   only on a breaking change. First-party modules get it too; a missing value means 1 during a
   grace period.
@@ -160,9 +162,10 @@ status line script).
   that require it show "off: needs <name>" instead of failing the start. The kernel and the floor
   (config, store, events, modules, presence, daemon, gate, harness rules, vault) can't be
   disabled.
-- **Replace a first-party module:** a home module declares `"replaces": "memory"`. It must
-  register every tool the original declares, with compatible inputs, or it is refused and the
-  original loads. The same floor list can't be replaced. After an update, `vyre doctor` names any
+- **Replace a first-party module:** a home module takes the original's name and says so,
+  `"name": "memory", "replaces": "memory"` (without `replaces`, a duplicate name is refused as
+  today). It must register every tool the original declares, with compatible inputs, or it is
+  refused and the original loads. The same floor list can't be replaced. After an update, `vyre doctor` names any
   replacement whose original gained tools ("your memory replacement lacks memory.answer, new in
   0.4").
 - **Patch prompt and theme layers:** files in `overrides/`, read after the shipped layers, shown
@@ -181,9 +184,15 @@ GitHub Actions.
 the box files and `SHA256SUMS`, puts them on a GitHub Release with that version's CHANGELOG
 section as the notes, and writes `releases.json` (channel, version, url, sha256, notes url, the
 lowest version it can update from). vyre.run mirrors the latest stable, so today's install lines
-keep working. Versions start at `0.1.0` with the first tagged release. npm and a ghcr image come
-later, when the person says so; `vyre update` reads `releases.json`, so the source can change
-without a client change. A release signature (minisign, key in the vault) is phase 5.
+keep working. Versions start at `0.1.0` with the first tagged release, and the module API stays
+at 1 while Vyre is 0.x. npm and a ghcr image come later, when the person says so; `vyre update`
+reads `releases.json`, so the source can change without a client change.
+
+Integrity: until phase 5, `vyre update` checks every file against `SHA256SUMS` fetched over TLS
+from the GitHub Release. Phase 5 adds keyless signing first: GitHub artifact attestations or
+sigstore through the release workflow's OIDC identity, verified by `vyre update` with
+sigstore-js, so there is no key to guard or leak. A long-lived signing key (minisign) would be a
+Vyre-wide identity; it is considered only if keyless doesn't work, and only with the person's OK.
 
 **`vyre update` on the Mac** (new, top-level):
 
@@ -193,11 +202,15 @@ without a client change. A release signature (minisign, key in the vault) is pha
    `<home>/releases/` (the last two are kept).
 4. Install the new tarball after checking its sha256, restart vyred (the existing stale-daemon
    logic in `vyre up`), and wait for `/v1/health` to report the new version.
-5. If health fails, reinstall the previous tarball and restore the backup (store migrations are
-   forward-only, so the database comes back from the backup, not by undoing steps).
+5. If health fails within the update window (the restart plus the health wait, before the
+   update reports success), reinstall the previous tarball and restore the backup. Store
+   migrations are forward-only, so the database comes back from the backup, not by undoing
+   steps. Once an update has reported healthy, nothing restores the database automatically, so
+   no data written after a healthy update is ever lost.
 
-`vyre update --rollback` runs step 5 by hand. The person typed the command, so there is no
-confirmation prompt (the no-nag rule).
+`vyre update --rollback` puts the previous release back by hand. It keeps the current database
+unless `--restore-data` names the pre-update backup, and says what that would drop. The person
+typed the command, so there is no confirmation prompt (the no-nag rule).
 
 **`vyre update` on the box** (box/vyre, extended): the same steps, plus it refreshes the box
 files and the wrapper itself from the release, tags the running image `vyre:prev` and keeps
@@ -279,9 +292,9 @@ this is the kernel plus surfaces (the CLI's own vault terminal code).
 - `docs/build/module-api.md`: the v1 reference, generated from the schema and the types, with a
   deprecation table.
 - `docs/build/extension-points.md`: the table in section 2, kept current as slots land.
-- The template repo `vyre-ai/module-template` is generated from `templates/module/` by the release
-  workflow, with a CI job running `vyre module check` and its tests. It is created only when the
-  person OKs a new public repo.
+- The template lives in the main repo at `templates/module/`, with a test running `vyre module
+  check` and its own tests. A public `vyre-ai/module-template` repo generated from it is an
+  outward-facing step: the lead asks the person when phase 3 is near.
 - The docs drift found in the inventory gets fixed with the schema: SPEC's `requires` example
   names non-modules, `shows.deck` is documented but unread, `ctx.events.latestId` is undocumented,
   and the entry-file sketch imports a type that doesn't exist.
@@ -290,22 +303,27 @@ this is the kernel plus surfaces (the CLI's own vault terminal code).
 
 | Phase | What | Touches shared code? | Waits on |
 |---|---|---|---|
-| 0 | This ADR, the inventory, `manifest.schema.json`, SDK types skeleton, docs drift fixes | no | the lead's OK |
+| 0 | This ADR, the inventory, `packages/module-sdk` (schema, checker, types), docs drift fixes | no | the lead's OK |
 | 1 | `apiVersion` and schema checks in the loader; `ctx.api`, `ctx.log` levels, `ctx.paths.data`, `ctx.settings`; the `settings` manifest key into native-core's registry; `watches.on` and `needs.tools` for home modules; `replaces` and disable; `vyre module new/list/check/disable/enable` | loader only (`core/modules`) | native-core's settings on main |
 | 2 | Release workflow, versions from 0.1.0, `releases.json`; `vyre update` on the Mac and the box with backup, rollback, box file refresh, channels, `update.available` | box/vyre, cli | ci, box-deploy, polish-cli (verbs) |
 | 3 | `vyre module add/remove/update`, `modules.lock.json` grants, `@vyre/module-sdk/testing`, `templates/module/`, Build your first module | new files | phase 1 |
 | 4 | Slots: declarative settings, Now cards, renderers and slash commands; then the sandboxed iframe for custom UI. Hooks, senders, @App adapters, themes and prompt layers | Deck, harness, gate | app-design, pwa, sessions, chat |
-| 5 | Out-of-process module host; release signing; kernel thinning steps 1 to 5 | kernel edges | the native-core milestone |
+| 5 | Out-of-process module host; keyless release signing; kernel thinning steps 1 to 5 | kernel edges | the native-core milestone |
+
+## Decisions (the lead, 27 Sep 2026)
+
+1. Versions start at `0.1.0`; the module API stays at 1 while Vyre is 0.x.
+2. No long-lived signing key now. Phase 5 evaluates keyless signing first (attestations or
+   sigstore via OIDC, verified with sigstore-js). Until then, SHA256SUMS over TLS from GitHub
+   Releases.
+3. Third-party UI runs only in a sandboxed iframe on its own origin. First-party UI renders inline.
+4. The template is built in the repo (`templates/module/`); the public template repo waits for the
+   person's OK near phase 3.
+5. Automatic rollback restores the database only when health fails within the update window.
 
 ## Open questions
 
-1. Versioning: start at `0.1.0` on the first tagged release, and keep the module API at 1 while
-   Vyre is 0.x? (Recommended.)
-2. Release signing key: minisign, held in the vault, used by the release workflow through a
-   GitHub secret. Who holds the key: the person.
-3. Custom module UI in a sandboxed iframe on its own origin, first-party inline only. (Recommended.)
-4. A public template repo `vyre-ai/module-template`: needs the person's OK.
-5. A community module list (a GitHub topic `vyre-module` first, a page on docs.vyre.run later).
+1. A community module list (a GitHub topic `vyre-module` first, a page on docs.vyre.run later).
 
 ## Appendix: inventory, 27 Sep 2026 (main c8fb9aae)
 
