@@ -32,7 +32,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 19 | 12 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 19 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 18 | 5 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
@@ -213,7 +213,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [19](tools.md#link), 2 of them only for other modules
-- Emits: [12 events](events.md#link)
+- Emits: [14 events](events.md#link)
 - Shows on: capsule, cli, deck
 
 ## mcp

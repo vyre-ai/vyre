@@ -974,6 +974,28 @@ export default {
       return null;
     };
 
+    /**
+     * On the box, the person's answer to an ask the box does not have goes to the paired Mac it is
+     * on (docs/adr/0021-box-reads-the-mac.md, "v2"): the link signs it for that Mac, and the Mac
+     * checks the signature before it answers. The Mac's answer, labelled { source: "mac", machine },
+     * or null when no Mac has the ask, so the box answers as usual ("no ask"). Never retried: a Mac
+     * that says the ask is gone or cancelled has the last word, and a retry would carry a new nonce.
+     */
+    const answerOnMac = async (i, caller, peer) => {
+      const input = { ask: i.ask, decision: i.decision, surface: surfaceOf(i, caller),
+        ...(i.message !== undefined ? { message: i.message } : {}), ...(i.answers !== undefined ? { answers: i.answers } : {}), ...(i.scope !== undefined ? { scope: i.scope } : {}) };
+      const by = { caller: String(caller || ""), ...(peer && peer.stableId ? { device: String(peer.stableId) } : {}) };
+      const r = await ctx.call("link.macs.call", { tool: "threads.answer", as: "person", by, input, ...(i.machine ? { mac: i.machine } : {}) });
+      if (r.error || !Array.isArray(r.data) || !r.data.length) return null;
+      const done = r.data.find(a => a.ok);
+      if (done) return { ...(done.data || {}), source: "mac", machine: done.name };
+      const a = r.data[0];
+      const e = a.error || { code: "failed", message: "the Mac could not answer" };
+      if (e.code === "mac_offline") throw Object.assign(new Error(`${a.name} is offline; your answer was not sent`), { code: "mac_offline" });
+      if (e.code === "timeout") throw Object.assign(new Error(`${a.name} did not answer in time; your answer may not have reached it`), { code: "timeout" });
+      throw Object.assign(new Error(e.message), { code: e.code });
+    };
+
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
@@ -1029,14 +1051,19 @@ export default {
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] } } },
       async (i, { caller, peer }) => { guard(caller, "read questions"); return withPresence(sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a), peer); });
 
-    tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
-      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,
+    tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's. On a box, the person's answer to a paired Mac's ask goes to that Mac (machine: its name, when the box has not seen the ask).",
+      { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str, machine: str,
         answers: { type: "object", additionalProperties: { type: "string" } },
         scope: { type: "string", enum: ["project"], description: "With always: allow this tool from now on in the thread's project only (the ask's always_project)." } } },
-      async (i, { caller, thread }) => {
+      async (i, { caller, thread, peer }) => {
         // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
+        // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
+        if (!a && !thread && wantsMacs(ctx, {}, caller)) {
+          const mac = await answerOnMac(i, caller, peer);
+          if (mac) return mac;
+        }
         return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope);
       },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
@@ -1045,7 +1072,9 @@ export default {
       // No presence proof: answering is the owner's own action on their own screen, and Vyre does
       // not nag (ADR 0024, "No nagging"). The allowlist keeps models, agents and guests out, and the
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
-      ["cli", "local", "module", "deck", "capsule"]);
+      // "link:box" is the person at the paired box, on a Mac: core/link runs it only after checking
+      // the box's signed assertion for this ask and this answer (docs/adr/0021, "v2").
+      ["cli", "local", "module", "deck", "capsule", "link:box"]);
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },

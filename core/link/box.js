@@ -18,10 +18,16 @@
 // then sends that thread's events back with link.events, and the box re-emits them labelled with
 // the Mac, so the Deck sees the answer arrive. Only for threads the box sent to in the last 30
 // minutes, and only from the Mac it sent to.
+//
+// The other write is threads.answer (ADR 0021 "v2"). Every Mac forwards its asks (ask.raised,
+// ask.answered) while paired, so the box knows which Mac an ask is on. When the person answers one
+// here, the box signs an assertion with its own key (assert.js) bound to that Mac, that ask and
+// that exact answer, and the Mac checks it against the key it pinned at pairing before it runs.
 
 import crypto from "node:crypto";
 import { createHealth, unknown } from "./health.js";
-import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
+import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
+import { boxKey, signAnswer } from "./assert.js";
 
 const TTL = 10 * 60_000;
 const MAX_PENDING = 5;
@@ -34,6 +40,9 @@ const FRESH = 3000;
 const FOLLOW = 30 * 60_000;
 /** At most this many events in one link.events batch. */
 const BATCH = 500;
+/** The Macs' open asks the box remembers (ask id -> Mac), and for how long at most. */
+const MAX_ASKS = 500;
+const ASK_AGE = 24 * 3600_000;
 
 const sha = s => crypto.createHash("sha256").update(s).digest("hex");
 
@@ -68,6 +77,11 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   /** @type {Map<string, { id: string, name: string, login: string, peer: any, code: Buffer, secret: Buffer, expires: number, key?: string, peerId?: string, denied?: boolean }>} */
   const pending = new Map();
   let wrong = 0;
+  // The key the box signs its answers to a Mac's asks with: made on first need, kept at 0600 in
+  // this home. Its public half goes to a Mac when it pairs, and in link.hello for one paired before.
+  /** @type {ReturnType<typeof boxKey> | null} */
+  let signing = null;
+  const assertKey = () => (signing ||= boxKey(ctx.paths.root));
 
   const sweep = () => { for (const [id, p] of pending) if (p.expires < now()) pending.delete(id); };
   const peerOf = meta => (meta && meta.peer) || null;
@@ -169,7 +183,9 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       if (p.denied) { pending.delete(id); return { state: "denied" }; }
       if (!p.key) return { state: "pending", expires: p.expires };
       pending.delete(id);
-      return { state: "approved", key: p.key, peer: p.peerId, box: { name: ctx.config.name || null } };
+      // The Mac pins the box's signing key with the pairing, and learns its own node as the box sees it.
+      return { state: "approved", key: p.key, peer: p.peerId, box: { name: ctx.config.name || null, assertKey: assertKey().publicKey },
+        you: p.peer && p.peer.stableId ? { stableId: p.peer.stableId } : null };
     },
   });
 
@@ -189,7 +205,9 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const row = byKey(key, meta);
       if (!row) return { paired: false };
       db.prepare("UPDATE link_peers SET last_seen = ? WHERE id = ?").run(now(), row.id);
-      return { paired: true, peer: row.id, box: { name: ctx.config.name || null, role: ctx.config.role } };
+      // assertKey and you: a Mac paired before answers crossed takes them once, over this pinned channel.
+      return { paired: true, peer: row.id, box: { name: ctx.config.name || null, role: ctx.config.role, assertKey: assertKey().publicKey },
+        you: row.stable_id ? { stableId: row.stable_id } : null };
     },
   });
 
@@ -258,8 +276,10 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const lastServe = new Map();
   /** @type {Map<string, string[]>} */
   const queues = new Map();
-  /** @type {Map<string, { id: string, mac: string, tool: string, input: any, as?: string, sent: boolean, done: (r: any) => void }>} */
+  /** @type {Map<string, { id: string, mac: string, tool: string, input: any, as?: string, assertion?: any, sent: boolean, done: (r: any) => void }>} */
   const asks = new Map();
+  /** The Macs' open asks, from their ask.raised: ask id -> { mac, thread, at }. Memory only. @type {Map<string, { mac: string, thread: string, at: number }>} */
+  const macAsks = new Map();
   /** Threads the box sent to on a Mac, for link.events: thread -> (mac id -> when). Memory only. @type {Map<string, Map<string, number>>} */
   const forwarded = new Map();
   const sweepForwarded = () => {
@@ -282,7 +302,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     const queue = queues.get(macId) || [];
     while (queue.length) {
       const a = asks.get(/** @type {string} */ (queue.shift()));
-      if (a) { a.sent = true; return { id: a.id, tool: a.tool, input: a.input, ...(a.as ? { as: a.as } : {}) }; }
+      if (a) { a.sent = true; return { id: a.id, tool: a.tool, input: a.input, ...(a.as ? { as: a.as } : {}), ...(a.assertion ? { assertion: a.assertion } : {}) }; }
     }
     return null;
   };
@@ -291,6 +311,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     release(macId, null);
     lastServe.delete(macId); queues.delete(macId);
     for (const [thread, macs] of forwarded) { macs.delete(macId); if (!macs.size) forwarded.delete(thread); }
+    for (const [ask, m] of macAsks) if (m.mac === macId) macAsks.delete(ask);
     for (const a of [...asks.values()]) if (a.mac === macId) a.done({ ok: false, error: { code: "unpaired", message: "this Mac was unpaired" } });
   };
   // A Mac counts as there when it holds a request, asked within FRESH, or is working on a question
@@ -334,10 +355,11 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.macs.call", {
-    description: "Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send. Answers [{ mac, name, ok, data?, error? }], one per Mac asked.",
-    input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" }, mac: { type: "string" }, as: { type: "string" } }, required: ["tool"] },
+    description: "Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send or threads.answer (by: the box's caller and device, for the answer's assertion). Answers [{ mac, name, ok, data?, error? }], one per Mac asked.",
+    input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" }, mac: { type: "string" }, as: { type: "string" },
+      by: { type: "object", properties: { caller: { type: "string" }, device: { type: "string" } } } }, required: ["tool"] },
     internal: true,
-    run: async ({ tool, input = {}, timeout, mac: only, as }) => {
+    run: async ({ tool, input = {}, timeout, mac: only, as, by }) => {
       // A read list widened by a test seam to take a write sends it as a read, without `as`: how
       // the Mac's own refusal is reached. Production's list never holds a write.
       const write = WRITE.includes(tool) && !allow.includes(tool);
@@ -346,8 +368,13 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       if (!write && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
       // A send that resumes a stopped session headless takes longer than a read.
       const wait = Math.min(15_000, Math.max(100, Number(timeout) || (write ? 15_000 : 5000)));
-      let macs = /** @type {any[]} */ (db.prepare("SELECT id, name FROM link_peers ORDER BY paired_at").all());
+      let macs = /** @type {any[]} */ (db.prepare("SELECT id, name, stable_id FROM link_peers ORDER BY paired_at").all());
       if (only) macs = macs.filter(m => m.id === only || m.name === only);
+      // An answer goes to the one Mac the ask is on: the one whose ask.raised the box heard, or the
+      // one `mac` names (after a box restart). Never to every Mac.
+      const answer = tool === "threads.answer";
+      const known = answer && input && typeof input.ask === "string" ? macAsks.get(input.ask) : undefined;
+      if (answer) macs = only ? macs : known ? macs.filter(m => m.id === known.mac) : [];
       const thread = write && input && typeof input.thread === "string" ? input.thread : null;
       const answers = await Promise.all(macs.map(m => new Promise(resolve => {
         const who = { mac: m.id, name: m.name };
@@ -361,7 +388,14 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         const id = crypto.randomUUID();
         const timer = setTimeout(() => a.done({ ok: false, error: { code: "timeout", message: `the Mac "${m.name}" did not answer in time` } }), wait);
         timer.unref();
-        const a = { id, mac: m.id, tool, input, ...(write ? { as: "person" } : {}), sent: false, done: r => {
+        // The person's answer, signed for this Mac alone: its node, the ask, the exact input.
+        let assertion;
+        if (answer) {
+          if (!m.stable_id) { clearTimeout(timer); return resolve({ ...who, ok: false, error: { code: "denied", message: `the Mac "${m.name}" paired without its node known; pair it again to answer its asks here` } }); }
+          assertion = signAnswer(assertKey().privateKey, { mac: m.stable_id, ask: String(input.ask), thread: known && known.mac === m.id ? known.thread : null, input,
+            caller: String((by && by.caller) || "unknown"), device: by && by.device ? String(by.device) : null, now: now() });
+        }
+        const a = { id, mac: m.id, tool, input, ...(write ? { as: "person" } : {}), ...(assertion ? { assertion } : {}), sent: false, done: r => {
           if (!asks.delete(id)) return;
           clearTimeout(timer);
           const queue = queues.get(m.id);
@@ -384,8 +418,17 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     },
   });
 
+  /** Remember which Mac an open ask is on, and forget it when it ends. Bounded by count and age. */
+  const noteAsk = (type, ask, macId, thread) => {
+    if (type !== "ask.raised") { macAsks.delete(ask); return; }
+    const old = now() - ASK_AGE;
+    for (const [k, v] of macAsks) if (v.at < old) macAsks.delete(k);
+    while (macAsks.size >= MAX_ASKS) macAsks.delete(/** @type {string} */ (macAsks.keys().next().value));
+    macAsks.set(ask, { mac: macId, thread, at: now() });
+  };
+
   ctx.tool("link.events", {
-    description: "A paired Mac sends the events of a thread the box sent to: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.",
+    description: "A paired Mac sends the events of a thread the box sent to, and of every ask it raises: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.",
     input: { type: "object", properties: { key: { type: "string" }, events: { type: "array", items: { type: "object" } } }, required: ["key", "events"] },
     run: async ({ key, events }, meta) => {
       const row = byKey(key, meta);
@@ -394,12 +437,16 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       let taken = 0;
       for (const e of events.slice(0, BATCH)) {
         const thread = e && typeof e.thread === "string" ? e.thread : null;
-        // Only the listed types, only for a thread the box sent to lately, only from that Mac.
-        if (!thread || !FOLLOWED.includes(e.type) || !forwarded.get(thread)?.has(row.id)) continue;
+        // A thread's events: only the listed types, only for a thread the box sent to lately, only
+        // from that Mac. An ask's: from any of the Mac's threads, so the person sees every ask.
+        const ask = ASKS.includes(e.type);
+        if (!thread || !(ask || (FOLLOWED.includes(e.type) && forwarded.get(thread)?.has(row.id)))) continue;
         const payload = e.payload && typeof e.payload === "object" && !Array.isArray(e.payload) ? e.payload : {};
+        if (ask && typeof payload.ask !== "string") continue;
         // The project slug is the Mac's, not the box's: it is not filed under a box project.
-        try { ctx.events.emit(e.type, { ...payload, source: "mac", machine: row.name }, { thread, project: null }); taken++; }
-        catch {} // one that looks like a secret, or is not an event, is dropped alone
+        try { ctx.events.emit(e.type, { ...payload, source: "mac", machine: row.name, node: row.stable_id || null }, { thread, project: null }); taken++; }
+        catch { continue; } // one that looks like a secret, or is not an event, is dropped alone
+        if (ask) noteAsk(e.type, payload.ask, row.id, thread);
       }
       return { ok: true, taken };
     },
@@ -416,7 +463,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   return {
     async stop() {
-      pending.clear(); forwarded.clear();
+      pending.clear(); forwarded.clear(); macAsks.clear();
       for (const id of [...waiting.keys()]) release(id, null);
       for (const a of [...asks.values()]) a.done({ ok: false, error: { code: "stopped", message: "the box is stopping" } });
     },

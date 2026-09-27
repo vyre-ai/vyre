@@ -8,7 +8,8 @@
     "link.pair.request", "link.pair.poll", "link.pair.approve", "link.pair.deny", "link.pending", "link.peers", "link.hello", "link.health",
     "link.serve", "link.reply", "link.macs", "link.macs.call", "link.events"] },
   "watches": { "emits": ["link.pair-requested", "link.paired", "link.unpaired", "link.connected", "link.lost",
-    "thread.queued", "thread.sent", "thread.text", "thread.finished", "thread.stopped", "thread.contended", "thread.limit"] },
+    "thread.queued", "thread.sent", "thread.text", "thread.finished", "thread.stopped", "thread.contended", "thread.limit",
+    "ask.raised", "ask.answered"] },
   "shows": { "deck": [], "capsule": [], "cli": ["link"] },
   "needs": {},
   "teaches": {}
