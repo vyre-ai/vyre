@@ -37,6 +37,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
+| [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 23 | 6 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
@@ -287,6 +288,17 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [14 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## mail
+
+- Folder: `core/mail`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `vault`, `gate`
+- Tools: [9](tools.md#mail), 1 of them only for other modules
+- Emits: [4 events](events.md#mail)
+- Shows on: capsule, deck
+- Needs credentials: `[object Object]`, `[object Object]`
+- Needs vault: `per-connection`
 
 ## mcp
 

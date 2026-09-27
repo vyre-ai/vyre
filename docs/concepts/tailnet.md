@@ -19,7 +19,7 @@ The Deck is served at one HTTPS address on the tailnet:
 | `https://vyre.tail1234.ts.net` | the default; your box's Tailscale name | `tailscale cert`; needs HTTPS turned on for your tailnet in the Tailscale admin console ([how](../get-started/tailscale.md#5-turn-on-https-certificates)) |
 | `https://alex.vyre.run` | when you claim a `vyre.run` name | Let's Encrypt, by DNS challenge |
 
-A `vyre.run` name is an A record pointing at the box's tailnet IPv4 address (a `100.x` address). It resolves on the public internet, but nothing off your tailnet can reach it. Today the record is written with your own Cloudflare token for the zone (`CLOUDFLARE_VYRE_TOKEN` in `~/.vyre/env`, or the vault item `cloudflare-vyre-token`). The hosted name directory at `api.vyre.run` is not built yet.
+A `vyre.run` name is an A record pointing at the box's tailnet IPv4 address (a `100.x` address). It resolves on the public internet, but nothing off your tailnet can reach it. Today the record is written with your own Cloudflare token for the zone (`CLOUDFLARE_vyre_token` in `~/.vyre/env`, or the vault item `cloudflare-vyre-token`). The hosted name directory at `api.vyre.run` is not built yet.
 
 ```
 vyre name                 # this box's address, its phase and its owner

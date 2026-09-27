@@ -562,8 +562,12 @@ export class Registry {
     // above never ran, and neither does a replayed answer. One module calling another is plumbing,
     // not use, and nor is a webhook.
     const counted = !["module", "hook"].includes(callerKind(caller));
+    // meta.firstParty: the caller is one of Vyre's own modules, by the loader's one rule
+    // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
+    const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
+    const fp = Boolean(rec && rec.dir && firstParty(rec.dir));
     const run = async () => {
-      try { return await this.run(def, input, { ...meta, caller, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
+      try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
