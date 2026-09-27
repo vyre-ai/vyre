@@ -538,7 +538,7 @@ A one-off alarm, timer or reminder ends; a repeating alarm rings again at its ne
 Credentials, sealed; shared by pass; used without being seen.
 
 ```
-vyre vault [list|get|read|put|edit|delete|inject|share|ssh|git-credential|pair|devices|unlock-passphrase|backup|restore|relay|grant|revoke|pending|approve|run|totp|health|breach|history|revert|clear-clipboard|generate|import|audit|card|people|fingerprint|kit|vaults|members|move|device|pass|offboard|unlock|lock|account|migrate-key|help] [--json]
+vyre vault [list|get|read|put|edit|delete|inject|share|ssh|git-credential|pair|devices|unlock-passphrase|backup|restore|relay|grant|revoke|pending|approve|run|totp|health|remind|breach|history|revert|clear-clipboard|needs|connect|connections|sweep|rotate|agent|uses|codes|emergency|generate|import|audit|card|people|fingerprint|kit|vaults|members|move|device|pass|offboard|unlock|lock|account|migrate-key|help] [--json]
 ```
 
 ### vyre watchers

@@ -341,9 +341,14 @@ export class Connections {
         if (r && !registered && json(r.edited, []).includes("registered")) { ids.push(r.id); continue; }
         if (!r) {
           const id = newId();
+          // A row a person can see coming (vault, google, mcp: a real account they already went
+          // through OAuth, DWD or vault.connect for) starts open to capsule and chat. A row a
+          // module merely registered is self-declared code the person has not looked at; it
+          // starts with no surface until they grant one (vault.connections.grant), the same bar
+          // any other access change is held to.
           this.db.prepare(`INSERT INTO vault_connections (id, source, ref, provider, account, auth, label, capabilities, surfaces, added, updated, items, use, edited)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, source, f.ref, f.provider, f.account, f.auth, f.label, JSON.stringify(f.capabilities),
-            JSON.stringify(DEFAULT_SURFACES), t, t, JSON.stringify(f.items || []), use, JSON.stringify(registered ? ["registered"] : []));
+            JSON.stringify(registered ? [] : DEFAULT_SURFACES), t, t, JSON.stringify(f.items || []), use, JSON.stringify(registered ? ["registered"] : []));
           this.v.sign("vault_connections", id);
           ids.push(id);
           events.push(["vault.connection-added", { id, source, provider: f.provider, account: f.account }]);

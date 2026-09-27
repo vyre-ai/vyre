@@ -215,6 +215,13 @@ test("connections: several email accounts, one list, granted per surface", async
   all = ok(await cli("vault.connections.list")).connections;
   assert.equal(all.length, 4, "the IMAP item is one connection, the module's");
   assert.ok(!all.some(r => r.source === "vault"));
+  assert.ok(all.every(r => r.surfaces.length === 0), "a module's own row starts open to no surface");
+
+  // A person looks each one over and opens it to the Capsule and chat.
+  for (const id of [g.id, m1.id, m2.id, im.id]) {
+    ok(await cli("vault.connections.grant", { id, surface: "capsule" }));
+    ok(await cli("vault.connections.grant", { id, surface: "chat" }));
+  }
 
   // From the Capsule, every account that can send.
   const send = ok(await capsule("vault.connections.list", { capability: "send_mail" }));
@@ -493,6 +500,8 @@ test("connections: one default per capability, the picker's order, and last_used
   const { db, c } = bare(now);
   const reg = (ref, label) => c.register({ ref, provider: "mcp", account: `${ref}@harlowlegal.test`, auth: "oauth", label, capabilities: ["send_mail", "read_mail"] }, "module:hub");
   const a = await reg("alpha", "Beta mail"), b = await reg("bravo", "Alpha mail"), z = await reg("zulu", "Zed mail");
+  // A module's own row starts closed; a person opens each to capsule and chat before it is used.
+  for (const { id } of [a, b, z]) { await c.grant({ id, surface: "capsule" }, "cli"); await c.grant({ id, surface: "chat" }, "cli"); }
   const pick = async () => (await c.list({ capability: "send_mail" }, "cli")).connections.map(r => [r.ref, r.is_default]);
   // No default, never used: by label.
   assert.deepEqual(await pick(), [["bravo", false], ["alpha", false], ["zulu", false]]);

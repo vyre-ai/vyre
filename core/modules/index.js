@@ -466,8 +466,15 @@ export class Registry {
         if (!driver || typeof driver.run !== "function") throw new Error(`provider ${name} needs a run function`);
         this.providers.set(name, { module: m.name, driver });
       },
-      // Every module's name, state and declared needs.credentials (the vault lists and fills them).
-      modules: { status: () => this.status() },
+      // What every module is, read only: the rows GET /v1/modules gives, including what each
+      // declares (commands, connections, suggest, notices, emits) and how much it is used. A copy,
+      // so nothing a module does to it changes the registry.
+      modules: {
+        status: () => structuredClone(this.status()),
+        // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
+        // what a surface can run (commands.list), never for deciding a call: the registry does that.
+        tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
+      },
       providers: {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],

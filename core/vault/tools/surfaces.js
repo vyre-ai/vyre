@@ -42,6 +42,12 @@ function testOptions(config) {
   return { test: true, ...(t && typeof t === "object" ? t : {}) };
 }
 
+/** vault.clipboard.pasteboard, when it is a plausible pasteboard name. */
+export function privatePasteboard(config) {
+  const p = config && config.vault && config.vault.clipboard && config.vault.clipboard.pasteboard;
+  return typeof p === "string" && /^[A-Za-z0-9._-]{1,100}$/.test(p) ? p : undefined;
+}
+
 /**
  * @param {{ ctx: any, vault: any }} deps
  * @returns {{ sessions: Sessions, clipboard: Clipboard, watch: LockWatch, stop(): Promise<void> }}
@@ -66,7 +72,9 @@ export function register({ ctx, vault }) {
   const clipboard = new Clipboard({
     helper: clipHelper,
     env: t.test && t.env ? { ...process.env, ...t.env } : process.env,
-    pasteboard: t.test ? t.pasteboard : undefined,
+    // vault.clipboard.pasteboard: a named private NSPasteboard instead of the real one (demos and
+    // click-throughs); tests may also set it through vault.testHelpers.
+    pasteboard: (t.test && t.pasteboard) || privatePasteboard(config),
     log: ctx.log,
     onEmpty: () => maybeIdle(),
   });
