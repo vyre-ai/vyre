@@ -25,12 +25,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/files/drop.js: the reverse of files.send. The box names one paired Mac (mac: its id or
   name), looks up its tailnet peer id from link.macs (stableId, not its name, which can be
   reused), and hands the file to `tailscale file cp` the same way the Mac already does for the
-  box. A Mac now also runs its own `tailscale file get --loop` into its inbox (default
-  `~/Vyre/inbox`, or config files.inbox as on the box), so a delivery from the box lands there
-  and is announced with files.received, unchanged.
+  box.
+- A Mac's own receiver for what the box delivers is off by default: config files.receive turns
+  it on. Without it, pairing never changes what Tailscale's own file flow does on a Mac — no
+  `tailscale file get --loop` runs, and every device's Taildrop keeps working exactly as before
+  (e2e review of 0c645473, MEDIUM). On, it lands in `~/Vyre/inbox` (or config files.inbox), and
+  is announced with files.received, unchanged.
+- files.deliver's callers drop "module": no first-party module needs to push box files onto a
+  Mac, and it stays the person's own choice each time (e2e review of 0c645473, LOW).
 - core/link/box.js: `link.macs` gains `stableId` (the Mac's tailnet peer id), additive; `node`
   keeps meaning the paired name shown to surfaces.
-- core/files/module.json: files.deliver in "does", a teaching tip.
+- core/files/module.json: files.deliver in "does", two teaching tips (files.deliver, files.receive).
 
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 

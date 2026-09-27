@@ -233,10 +233,11 @@ test("drop: files.deliver hands the checked file to tailscale file cp at the nam
   const cp = f.calls().find(a => a[0] === "file");
   assert.deepEqual(cp, ["file", "cp", fs.realpathSync(path.join(w, "report.pdf")), "100.64.0.7:"]);
   assert.deepEqual(seen, [{ name: "report.pdf", bytes: 5, to: "alex-mac.tail0000.ts.net", mac: "m1" }]);
-  // By name too, and refused for anyone but a person's surfaces or a module.
+  // By name too, and refused for anyone but a person's own surfaces: not MCP, and not a module
+  // either (e2e review of 0c645473, LOW: no first-party module needs to push files onto the Mac).
   const byName = await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "alex-mac" }, "deck");
   assert.equal(byName.data?.mac, "m1");
-  assert.equal((await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "m1" }, "mcp")).error?.code, "denied");
+  for (const caller of ["mcp", "module:test"]) assert.equal((await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "m1" }, caller)).error?.code, "denied", caller);
 });
 
 test("drop: files.deliver answers taildrop_unavailable when the named Mac is not among the box's tailnet peers", async t => {
@@ -249,12 +250,24 @@ test("drop: files.deliver answers taildrop_unavailable when the named Mac is not
   assert.match(r.error?.message || "", /not among this box's tailnet peers/);
 });
 
-test("drop: a Mac runs its own tailscale file get into its ~/Vyre/inbox default, for what the box delivers", async t => {
+test("drop: a Mac starts no receiver by default, so pairing never changes what Tailscale's own file flow does there (e2e review of 0c645473, MEDIUM)", async t => {
   const f = fake(t, running([]));
   const w = path.join(f.home, "work");
   fs.mkdirSync(w);
   const inbox = path.join(w, "inbox");
-  const { reg, events, stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox }, link: LINKED });
+  const { stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox }, link: LINKED });
+  await new Promise(r => setTimeout(r, 150));
+  assert.deepEqual(f.calls(), [], "tailscale was never asked about status, let alone file get");
+  assert.equal(f.pid(), 0);
+  await stop();
+});
+
+test("drop: a Mac runs its own tailscale file get into its ~/Vyre/inbox default, for what the box delivers, once files.receive is on", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  const { reg, events, stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox, receive: true }, link: LINKED });
   const got = [];
   events.on("files.received", e => got.push(e.payload));
   assert.ok(await until(() => got.length > 0), "files.received was emitted");

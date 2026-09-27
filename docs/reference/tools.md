@@ -555,12 +555,12 @@ Every event type the running modules may emit, sorted: { type, module }. An old 
 
 ### `files.deliver`
 
-Send a file from the box to a paired Mac with Taildrop. It lands in the Mac's inbox folder (~/Vyre/inbox). Secrets and dotfiles are refused.
+Send a file from the box to a paired Mac with Taildrop. It lands in the Mac's inbox folder (~/Vyre/inbox) only once that Mac has turned files.receive on; otherwise Tailscale holds it unclaimed. A Mac paired without its node known (no_link) needs pairing again. Secrets and dotfiles are refused.
 
 - Input:
   - `mac` string, required: A paired Mac's id or name (link.macs, vyre link).
   - `path` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`
 - Registered only on the box.
 
 ### `files.dirs`

@@ -186,7 +186,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Tools: [18](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
-- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## gate
 

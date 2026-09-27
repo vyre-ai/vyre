@@ -243,6 +243,20 @@ box.
 
 ## Doing
 
+28 Sep 2026: e2e amended their f712e7d7 review after reading 0c645473 (files.deliver) more
+closely — not signed off for that part, since it wasn't flagged as included when asked to review.
+Note for next time: name every commit in a sha handed over for review. Fixed: a Mac's own inbox
+receiver is off by default (config files.receive; without it, pairing changes nothing about a
+Mac's existing Tailscale file flow, MEDIUM); files.deliver drops "module" from its callers (LOW,
+no first-party need); the tool description now says a stableId gap answers no_link (LOW, already
+handled in code, just undocumented). CHANGELOG has the exact wording. Along the way, found and
+fixed an unrelated markdown bug this doc's own "Doing" text introduced: a bare `**/*.test.js`
+glob outside backticks reads as unmatched bold to the markdown renderer, which
+test/docs-build.test.js's "every Markdown file... renders" catches (any doc using a `**` glob
+must backtick it). Tests on the test box, nice -n 15, load under 2: 14/14 on drop.test.js (2 new:
+default-off, and the LOW's dropped caller), 115/115 on core/files + hygiene + docs-build +
+federation-answer + assert.
+
 28 Sep 2026: e2e reviewed 0f2a8752, then the lead asked for the LOWs too if small. All three
 fixed: core/link/mac.js's `answer()` fails closed ("could not read this ask") when threads.asks
 errors or does not have the ask, instead of `gatedAsk(null)` calling it ungated (MEDIUM); the
@@ -271,7 +285,7 @@ Sending the sha to e2e for sign-off next.
 - 1b (box→Mac file placement, the reverse of Taildrop): built. `files.deliver { path, mac }` on
   the box; a Mac now also runs a receiver into its own inbox. `link.macs` gained `stableId` so
   the box can find a named Mac among its own tailnet peers (see CHANGELOG). Tests: 13/13 on
-  core/files/drop.test.js (6 new), 97/97 on core/files/**/*.test.js + hygiene + docs-build,
+  core/files/drop.test.js (6 new), 97/97 on `core/files/**/*.test.js` + hygiene + docs-build,
   on the test box, nice -n 15, load 1.6-2.6. `npm run docs:ref` regenerated for the new tool.
   Not built (deferred to 1c/cohesion, per the plan): any drag-and-drop UI, and Chat/Deck surfacing
   files.deliver — this round is the tool and the Mac's inbox only.

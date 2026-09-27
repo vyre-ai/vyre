@@ -86,14 +86,21 @@ export function parseWrote(line, dir) {
 const inside = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
 
 /**
- * Register both tools and the inbox receiver for this machine's role: on the Mac, files.send and
- * an inbox for what the box delivers; on the box, files.deliver and an inbox for what a Mac sends.
+ * Register both tools and the inbox receiver for this machine's role: on the Mac, files.send
+ * always, and an inbox for what the box delivers only when files.receive is on (e2e review of
+ * 0c645473, MEDIUM: without a switch, every Mac would take over the user's whole Tailscale file
+ * flow — every device's Taildrop, not only the box's deliveries — the moment it upgrades, with no
+ * choice in it). On the box, files.deliver and its existing inbox for what a Mac sends.
  * @param {any} ctx the files module's context
  * @param {{ role: "box"|"local", g: ReturnType<typeof import("./safety.js").guard>, cfg: any }} opts
  * @returns {{ stop(): Promise<void> }}
  */
 export function drop(ctx, { role, g, cfg }) {
-  if (role === "local") { sender(ctx, g); return receiver(ctx, g, cfg, macInbox()); }
+  if (role === "local") {
+    sender(ctx, g);
+    if (!cfg.receive) return { async stop() {} };
+    return receiver(ctx, g, cfg, macInbox());
+  }
   boxSender(ctx, g);
   return receiver(ctx, g, cfg, INBOX);
 }
@@ -149,9 +156,11 @@ function boxSender(ctx, g) {
   const unable = message => Object.assign(new Error(message), { code: "taildrop_unavailable" });
 
   ctx.tool("files.deliver", {
-    description: "Send a file from the box to a paired Mac with Taildrop. It lands in the Mac's inbox folder (~/Vyre/inbox). Secrets and dotfiles are refused.",
+    description: "Send a file from the box to a paired Mac with Taildrop. It lands in the Mac's inbox folder (~/Vyre/inbox) only once that Mac has turned files.receive on; otherwise Tailscale holds it unclaimed. A Mac paired without its node known (no_link) needs pairing again. Secrets and dotfiles are refused.",
     input: { type: "object", required: ["path", "mac"], properties: { path: { type: "string" }, mac: { type: "string", description: "A paired Mac's id or name (link.macs, vyre link)." } } },
-    callers: ["cli", "local", "module", "deck", "capsule"],
+    // No "module": a home module has no first-party need to push box files onto the user's Mac,
+    // and it is the person's own choice each time (e2e review of 0c645473, LOW).
+    callers: ["cli", "local", "deck", "capsule"],
     run: async ({ path: p, mac: which }) => {
       const safe = g.resolveSafe(p);
       const st = fs.statSync(safe.real);
