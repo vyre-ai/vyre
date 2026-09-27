@@ -201,6 +201,8 @@ export class Switchboard {
     this.bin = deps.bin || process.env.VYRE_CLAUDE_BIN || "claude";
     /** The Agent SDK, once loaded (ADR 0030); null runs threads on the CLI runner. */
     this.sdk = deps.sdk || null;
+    /** @type {null | (() => Promise<{ module: any, bin: string|null }|null>)} loads it, on the first thread */
+    this.loadSdk = null;
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
     /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
@@ -315,6 +317,7 @@ export class Switchboard {
       rec = this.must(id);
     }
     await this.room(id);
+    if (!this.sdk && this.loadSdk) this.sdk = await this.loadSdk();
     // A thread no agent runs gets this machine's own Claude credential (sessions.auth): the
     // vault's setup token on a box, Claude Code's login on a Mac. An agent brings its own.
     if (!o.agent && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
@@ -1027,19 +1030,23 @@ export default {
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth,
     });
     sb.recover();
-    // The Agent SDK driver (ADR 0030): loaded now when installed, else installed in the
-    // background while threads run on the CLI runner, and used from the next thread on.
+    // The Agent SDK driver (ADR 0030). It is loaded with the first thread, not at start (the
+    // import alone is about 40 MB), and installed in the background on first use while threads
+    // run on the CLI runner.
     if (cfg.driver === "sdk") {
       const dir = sdkDir(root, cfg);
-      const use = async () => {
+      const bundled = cfg.claude === "bundled";
+      let failed = false;
+      sb.loadSdk = async () => {
+        if (failed || !sdkInstalled(dir, { bundled })) return null;
         const module = await loadSdk(dir);
-        if (module) sb.sdk = { module, bin: claudeBin(dir, cfg) };
-        else ctx.log(`threads: the Claude Agent SDK in ${dir} did not load; threads run on the CLI`);
+        if (!module) { failed = true; ctx.log(`threads: the Claude Agent SDK in ${dir} did not load; threads run on the CLI`); return null; }
+        return { module, bin: claudeBin(dir, cfg) };
       };
-      if (sdkInstalled(dir, { bundled: cfg.claude === "bundled" })) await use();
-      else if (cfg.install) {
+      // Never from a test run (node --test marks its children): a test brings its own SDK or none.
+      if (!sdkInstalled(dir, { bundled }) && cfg.install && !process.env.NODE_TEST_CONTEXT) {
         ctx.log(`threads: installing the Claude Agent SDK into ${dir}; threads run on the CLI until it is ready`);
-        installSdk(dir, { bundled: cfg.claude === "bundled" }).then(r => (r.why ? ctx.log(`threads: ${r.why}`) : use())).catch(() => {});
+        installSdk(dir, { bundled }).then(r => { if (r.why) ctx.log(`threads: ${r.why}`); }).catch(() => {});
       }
     }
 

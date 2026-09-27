@@ -17,6 +17,7 @@ import { tempHome, present } from "../../test/helpers.js";
 import { installed } from "./sdk.js";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
+import { resume } from "../cli/commands/projects.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -196,6 +197,38 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.auth === "api-key", "the fallback");
     const all = JSON.stringify(await w.events(th.id));
     assert.ok(!all.includes("fake-setup-value") && !all.includes("fake-api-value"), "no credential reaches an event");
+  });
+
+  test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;
+    await w.finished(th.id);
+    await w.tool("threads.send", { thread: th.id, text: "forge cli threads.answer", surface: "deck" });
+    await w.finished(th.id, 2);
+    const [edit, answer] = await w.said(th.id);
+    for (const r of [edit, answer]) assert.match(r, /^403 .*denied/, r);
+    assert.equal((await w.tool("sessions.prompt.get", { scope: "assistant" })).data.prompt, null, "nothing was set");
+  });
+
+  test(`${driver}: open in terminal hands an idle session over to claude --resume, and a busy one is left alone`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const bin = path.join(w.root, "fakebin");
+    fs.mkdirSync(bin);
+    const calls = path.join(w.root, "terminal.jsonl");
+    fs.writeFileSync(path.join(bin, "claude"), `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`, { mode: 0o755 });
+    const PATH = process.env.PATH;
+    process.env.PATH = bin + path.delimiter + PATH;
+    t.after(() => { process.env.PATH = PATH; });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    assert.notEqual(await resume({ id: th.id, label: "Intake", cwd: w.work }), 0, "a session waiting on a question is not taken");
+    assert.ok(!fs.existsSync(calls));
+    await w.tool("threads.interrupt", { thread: th.id });
+    await w.finished(th.id);
+    assert.equal(await resume({ id: th.id, label: "Intake", cwd: w.work }), 0);
+    const argv = JSON.parse(fs.readFileSync(calls, "utf8").trim());
+    assert.deepEqual(argv.slice(0, 2), ["--resume", th.id]);
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.status, "stopped", "vyred let go of it first");
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
