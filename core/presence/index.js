@@ -65,7 +65,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a
   // mode or a model, its own least of all.
-  "sessions.prompt.set", "sessions.prompt.revert", "threads.mode", "sessions.models.set", "sessions.limits.set"]);
+  "sessions.prompt.set", "sessions.prompt.revert", "threads.mode", "sessions.models.set", "sessions.limits.set",
+  // Every setting is the person's own: a model never changes one, and settings relays the
+  // person to the owning module's setter (e2e review, HIGH 1).
+  "settings.set", "settings.reset"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 

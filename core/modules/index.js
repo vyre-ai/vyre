@@ -298,6 +298,9 @@ export class Registry {
         const rec = this.modules.get(m.name);
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        // settings relays a person only to the tools first-party modules declared as their own
+        // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
+        if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
         return this.call(tool, input, String(as));
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
@@ -426,6 +429,20 @@ export class Registry {
       const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
       return { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } };
     }
+  }
+
+  /** The getter and setter tools first-party modules name in their settings' tool stores. */
+  settingTools() {
+    const out = new Set();
+    for (const r of this.modules.values()) {
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.settings) || !firstParty(r.dir)) continue;
+      for (const d of r.manifest.settings) {
+        const t = d && d.store && d.store.tool;
+        if (t && t.get && t.get.tool) out.add(String(t.get.tool));
+        if (t && t.set && t.set.tool) out.add(String(t.set.tool));
+      }
+    }
+    return out;
   }
 
   status() {

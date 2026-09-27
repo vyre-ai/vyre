@@ -129,6 +129,9 @@ export default {
     });
 
     const change = async (/** @type {any} */ i, /** @type {string} */ caller, /** @type {any} */ raw) => {
+      // A caller vouched as an agent ("cli agent:kit", "mcp:agent:kit") is never the person,
+      // whatever surface kind it rides on.
+      if (/(?:^|[\s:])agent:/.test(String(caller))) throw Object.assign(new Error("settings are the person's own; an agent never changes one"), { code: "denied" });
       const d = declOf(i.key);
       const project = slugOf(i.project);
       const lv = i.level || (project && d.levels.includes("project") ? "project" : "account");
