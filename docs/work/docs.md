@@ -87,6 +87,15 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
 - The drafts and generator scripts are in the session scratchpad (they may be gone). The
   manifests are now the source of truth.
 
+## Done after tips (27 Sep 2026)
+
+- Welcome tip (lead): context.first on a surface's first open gives one never-used discovery tip,
+  once per surface (meta welcomed:<surface>, cleared by tips.reset). 1ecf0e94.
+- Merged main 53cd1326. Shots retaken on it: 45 files, and phone-held's wait fixed (a phone opens
+  the held item as a sheet, .nsh-title). docs-check is clean, and the docs tests pass 67/67.
+- Fixed using/capsule.md (Ask about your screen section), using/cli.md (vyre help <command>)
+  and using/connectors.md (Google --sign-in).
+
 ## Next (queued before tips)
 
 - Shots retake on current main (docs-check shows 263 stale). Run `uptime` on the test box first
