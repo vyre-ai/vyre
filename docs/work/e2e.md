@@ -258,9 +258,8 @@ run check.sh + thread.sh.
   would go to hub.json in clear (and backup); LOW same-uid edits of plain settings, file rev lags.
 
 - transcriptFolders (lead OK, memory-iq agreed): core/config/dialogs.js, realpath both ways,
-  switchboard reads through it; e2e-noclaude 6faa06a3; tests running when testbox load allows. Then
-  send memory-iq the sha (recall's readable() becomes a wrapper).
-- cohesion a4efd0d8: fixed; one nit (callerKind strips agent labels: "cli agent:kit" names a thread).
+  switchboard reads through it; e2e-noclaude 88c90d56 green, sent to the integrator and memory-iq.
+- cohesion: SIGNED OFF at 533f84e2 (agent-label nit fixed); Chromium e2e result still to come.
 - connectors 7e648545: HIGH + MEDIUMs fixed, OK once tests run; build firstParty(name) on
   native-core's firstParty(dir).
 
