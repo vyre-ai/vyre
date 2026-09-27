@@ -165,6 +165,19 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   person-session sheet + Signed-in devices in Settings (against e2e's contract; wire to e2e's
   signIn/deck:person once 3b lands); 886a86e /pair for `vyre phone add --tailscale-only`, and
   push.seen carries device. 313/313 targeted.
+- ORDER (lead, native-core refocus): (1) wire the person sheet to e2e's signIn once batch 3b
+  lands (take pwa's api.js side over e2e's stopgap); (2) the Reconnecting pill and outbox are
+  done (cdf65f1..459b181), waiting for a Chrome shots run on testbox after chat's (port 4795)
+  and after the current HOLD, then send to the integrator for batch 4; (3) native-core's asks of
+  the Deck shell for chat and settings: top customer. Parked in Next: mobile's precache.json is
+  done on work/mobile 24e2091 (nothing needed from pwa until it lands); relay's device.paired.
+- Pending on main: tokens from app-design 4b77ba51 (regenerate tokens.css, then drop the raw
+  names graphite/carbon/raised/ash/stone/bone/signal*/beacon for roles, remove --recall* and
+  --beacon-wash/--beacon-rule, --r-1..4 -> --radius-*, --signal-ink-text -> --primary-ink);
+  chat 977198f/b27aa6f SHELL entries (reviewed); tailnet a7365a99 network.origins (Hosted row
+  drawn, feature-detected); federation v2 (batch 4): /needs/<ask> falls back to the relayed
+  ask.raised for a Mac-owned ask; platform ADR 0033 P4 slot seam (proposed deck/js/slots.js,
+  /m/ network-only in the SW).
 - Lead decisions: keep JS row swipes until mobile's iPhone spike; no merging other teams'
   branches, wait for main; pwa owns deck/sw.js (told chat and e2e).
 - Waiting (old line): the lead on e2e 8ad92a73 and app-design 99820a16 reaching main (items 2 and 3);

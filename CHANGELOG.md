@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings says whether the hosted app can reach the box
+
+- Settings, Network gains a read-only "Hosted app" row from system.info `network.origins` (the
+  effective list; empty is off), naming the config key. A box that does not report it shows no
+  row. `deck/views/settings.js`.
+
 #### The Deck on the resilience client (ADR 0029)
 
 - The Deck's one event stream is core/resilience's follow() over fetch (web.js open), with

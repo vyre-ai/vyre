@@ -237,7 +237,7 @@ async function drawNetwork(el, ctx) {
   const conn = h("div");
   const lockRow = h("div");
   // The tailnet features below each load on their own; a tool not on this vyred leaves its row out.
-  const extra = ["shares", "hooks", "guests", "agents", "egress", "handback"].map(() => h("div"));
+  const extra = ["shares", "hooks", "guests", "agents", "egress", "handback", "hosted"].map(() => h("div"));
   put(el, r.error ? empty("Tailscale is checked by the box module.", r.error) : null,
     h("div", { class: "rows" },
       r.error ? null : row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
@@ -248,8 +248,23 @@ async function drawNetwork(el, ctx) {
       extra),
     on ? null : foot(toOnboard("tailscale", "Connect")));
   if (on) drawLink(conn, ctx);
-  const [shares, hooks, guests, agents, egress, handback] = extra;
-  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress), drawHandback(handback)]);
+  const [shares, hooks, guests, agents, egress, handback, hosted] = extra;
+  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress), drawHandback(handback), drawHosted(hosted)]);
+}
+
+/**
+ * The hosted app: which web origins may call this box from the owner's browser (system.info
+ * network.origins, the effective list; [] is off). Read only; a box that does not say is left out.
+ */
+async function drawHosted(el) {
+  const r = await attempt("system.info");
+  const origins = r.data?.network?.origins;
+  if (r.error || !Array.isArray(origins)) { put(el); return; }
+  const hosts = origins.map(o => { try { return new URL(String(o)).host; } catch { return String(o); } });
+  put(el, row("Hosted app", origins.length ? h("span", null, "On") : h("span", { class: "muted" }, "Off"),
+    origins.length ? faint(`The app at ${hosts.join(", ")} can reach this box from your browser after you sign in.`)
+      : faint("No hosted app can reach this box. The Deck at the box's own address still works."),
+    faint("Set in the box's config:"), mono("network.origins")));
 }
 
 /** How the box reaches this device (link.health, the calling node), kept current by deck/js/health.js. */
