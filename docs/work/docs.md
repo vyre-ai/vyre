@@ -101,6 +101,10 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   schema enum), the chat queue tip says images can't be queued, and the pending Capsule tips say
   Cmd-Return thinks deeper and "do" starts computer use. The tools reference explains internal
   tools (threads.history is internal; agents.history is the public one).
+- The look is ready: app-design's docs/design/system/components/tip.md (work/app-design b756d128,
+  board TipLine), sent to capsule-pro, pwa, chat and mobile. native-core put "tips" in GROUPS
+  (ac34c322). cohesion's context.report already takes surface "glass", and pwa sends it from the
+  Glass page. When tip.md lands on main, link it from build/tips.md, "Show one on a surface".
 - Rule reminder from the lead: one Chrome on testbox at a time, and no shots while the integrator's
   suite runs.
 
