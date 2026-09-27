@@ -217,14 +217,38 @@ Filled in as each lands.
   `docs/design/onboarding-v2.md` now documents ten steps; the client `STEPS` array still has
   nine (noted as unreconciled).
 
+Resumed after the restart (28 Sep), reading RULES.md/HANDOFF.md fresh:
+
+- Merged `main` (docker-api hotfix 57dc12c3, safe-git gpg fix 4fd286d7) into work/launch;
+  CHANGELOG.md's additive conflict resolved by keeping both sections (e5514e46).
+- Committed the memory-iq plan-share wording (no dollars) that was sitting dirty in
+  `deck/onboard/onboard.js`/`deck/fixtures/import.json` (5bd97360) — Fast/Gentle now read
+  "uses more of your Claude plan" / "barely touches your plan", `import.json`'s `usd` field
+  dropped.
+  Confirmed the STEPS-array reconciliation noted above as still-open is actually done: the
+  array now has 11 entries matching onboarding-v2.md's 10-step table exactly (two client
+  screens for step 2, `capsule` split out as step 10) — landed in an earlier commit
+  (8dc07268) before this restart, this doc just hadn't caught up.
+- Vyre Drive step (`drive`) rebuilt from the bare "Coming soon" line into an honest preview of
+  federation's decided design (docs/design/drive-onboarding.md e69a544a): a sample folder
+  picker, "Files on demand" default vs. a disabled "Server only" alternative, per-folder agent
+  access noted, a disabled receive-files toggle, and the "watch it appear on your other device"
+  line named as the payoff once devices pair and phone/Capsule land (ac2407a1). Still inert —
+  no onboard.* tool for any of it is allowlisted in core/onboard/loopback.js yet.
+- CI: team-lead flagged onboard.test.js:265 (ts.net vs vyre.run reserve test) failing on the rc
+  build. That test is server-side (core/onboard/index.js, not launch's scope) and passes clean
+  locally (15/15) and on testbox (15 pass, 1 skipped, 0 fail) on this branch post-merge — asked
+  e2e for the actual rc-build failure output before assuming it's mine.
+
 ## Next
 
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
 - Start building the step-shell's new pieces (per-step celebration, the final summary) once more
   steps exist to celebrate; premature to scaffold against only 5 of 9 steps today.
 - Coordinate with tailnet once it replies about steps 1-2 and install-box.sh.
-- Reconcile the client STEPS array's 9 entries against onboarding-v2.md's 10-step table.
-- Design step 7 (Vyre Drive) once federation's options and the user's choices come back.
+- Follow up on the onboard.test.js:265 CI failure once e2e replies with the actual error.
+- Once vault/federation send real tool shapes for secrets/drive, replace the inert previews with
+  working forms.
 
 ## Needs from others
 
