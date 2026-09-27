@@ -98,15 +98,16 @@ export function evaluate(before, now, { address = null, tested = null } = {}) {
   const relayed = (now.relay || []).filter(r => !had.has("relay:" + r.id));
   const keys = now.keys.filter(k => k.kind === "passkey" && !had.has(k.id));
   const any = devices.length > 0 || keys.length > 0 || relayed.length > 0;
-  // rtt: the relay's round trip, when it reports one (ADR 0026 asks it to).
-  const viaRelay = relayed.find(r => r.path === "relay");
+  // path and rtt: the relay says how each device reaches the box (relay, or direct once the app
+  // has linked its tailnet node) and the round trip, when it has one.
+  const viaRelay = relayed.find(r => r.path === "relay" || r.path === "direct");
   // A device paired through the relay enrolls its own presence key (relay.devices.list presence).
   const keyed = keys.length > 0 || relayed.some(r => r.presence);
   const https = String(address || "").startsWith("https:");
   const apple = devices.some(d => APPLE.test(String(d.service)));
   return [
     { id: "reached", label: "Phone reached the box", state: any ? "ok" : "wait",
-      note: viaRelay ? `via relay${Number.isFinite(Number(viaRelay.rtt)) ? ` ${Math.round(Number(viaRelay.rtt))} ms` : ""}` : any ? "direct or relayed: the box cannot tell for a tailnet phone yet" : undefined },
+      note: viaRelay ? `${viaRelay.path === "direct" ? "direct" : "via relay"}${viaRelay.rtt != null && Number.isFinite(Number(viaRelay.rtt)) ? ` ${Math.round(Number(viaRelay.rtt))} ms` : ""}` : any ? "direct or relayed: the box cannot tell for a tailnet phone yet" : undefined },
     { id: "https", label: "Secure address works (HTTPS)", state: any && https ? "ok" : !https && address ? "failed" : "wait",
       note: any && https ? "a browser offers notifications and passkeys only on a secure page" : !https && address ? `${address} is not https` : undefined },
     { id: "app", label: "Opened as an app, not a browser tab", state: apple ? "ok" : devices.length ? "unknown" : "wait",
@@ -130,17 +131,17 @@ const checkLine = c => `    ${mark(c)} ${c.state === "ok" ? c.label : c.state ==
  * Follow the box's presence.enrolled events: this vyred's stream on a box, the link's copy of the
  * box's stream on a Mac. Returns a stop function. Losing the stream only leaves the 60 s re-read.
  */
-function follow(local, onEvent) {
+function follow(local, onEvent, type = "presence.enrolled") {
   const at = local ? "/v1/events/stream" : "/v1/link/events";
   let buf = "";
-  const req = http.request({ socketPath: config.paths().socket, path: `${at}?type=presence.enrolled&since=latest`, method: "GET",
+  const req = http.request({ socketPath: config.paths().socket, path: `${at}?type=${encodeURIComponent(type)}&since=latest`, method: "GET",
     headers: { accept: "text/event-stream", "x-vyre-caller": "cli" } }, res => {
     if (res.statusCode !== 200) { res.resume(); return; }
     res.setEncoding("utf8");
     res.on("data", chunk => {
       const r = parseSSE(buf + chunk);
       buf = r.rest;
-      for (const f of r.frames) if (f.event === "presence.enrolled") onEvent(f);
+      for (const f of r.frames) if (f.event === type) onEvent(f);
     });
   });
   req.on("error", () => {});
@@ -175,9 +176,14 @@ export async function add(flags, deps = {}) {
   let code = null, expires = Date.now() + (deps.life ?? CODE_LIFE);
   /** @type {string|null} */ let offer = null;
   let noRelay = false;
+  // From a Mac the box cannot check a proof made here (link.call refuses human-only tools, and a
+  // Touch ID on the Mac is not something the box can verify), so pairing happens on the box.
+  if (!t.local && !flags.tailscaleOnly) {
+    return fail("pairing a phone needs you at the box, and this Mac cannot prove that to it",
+      { next: "open your box's Deck (Settings, Devices, Add a device), or run vyre phone add on the box itself" });
+  }
   if (!flags.tailscaleOnly) {
-    const r = t.local ? await callAsPerson("relay.pair.start", {}, { io })
-      : await callAsPerson("link.call", { tool: "relay.pair.start", input: {} }, { io });
+    const r = await callAsPerson("relay.pair.start", {}, { io });
     if (r.error && r.error.code === "no_such_tool") noRelay = true;
     else if (r.error) return failTool(r.error, "vyre phone add --tailscale-only pairs over Tailscale instead");
     else {
@@ -245,9 +251,47 @@ export async function add(flags, deps = {}) {
     const code0 = await watch(t, { address, before, expires }, deps);
     out("");
     for (const l of tail) out(l);
-    return code0;
+    if (code0 !== 0) return code0;
+    return switched(t, deps);
   }
   return watch(t, { address, before, expires }, deps);
+}
+
+/**
+ * After a relay pairing: wait for the phone to switch to Tailscale (the relay's device.moved
+ * event), for as long as the person keeps the terminal here. Enter or Ctrl-C ends it; so does a
+ * pipe, which does not wait at all.
+ * @param {{ local: boolean }} t @param {AddDeps} deps @returns {Promise<number>}
+ */
+function switched(t, deps) {
+  const input = deps.input !== undefined ? deps.input : process.stdin.isTTY ? process.stdin : null;
+  if (!input) return Promise.resolve(0);
+  out(dim("                   Waiting here for the switch · Enter or Ctrl-C finishes"));
+  return new Promise(resolve => {
+    let done = false;
+    const end = (/** @type {string} */ line) => {
+      if (done) return;
+      done = true;
+      stop(); clearTimeout(timer);
+      input.off("data", onKey); input.pause?.();
+      process.off("SIGINT", onInt);
+      if (line) out(line);
+      resolve(0);
+    };
+    const stop = follow(t.local, f => {
+      let d = {};
+      try { d = JSON.parse(f.data || "{}"); d = d.payload || d; } catch {}
+      if (/** @type {any} */ (d).path === "direct") {
+        const rtt = /** @type {any} */ (d).rtt;
+        end(`  ${signal("●")} Switched to Tailscale, direct${rtt != null && Number.isFinite(Number(rtt)) ? ` ${Math.round(Number(rtt))} ms` : ""}`);
+      }
+    }, "device.moved");
+    const onKey = chunk => { if (/[\r\n]/.test(String(chunk))) end(""); };
+    const onInt = () => end("");
+    const timer = setTimeout(() => end(dim("  still on the relay · it switches by itself once Tailscale is on the phone")), deps.life ?? CODE_LIFE);
+    input.on("data", onKey); input.resume?.();
+    process.on("SIGINT", onInt);
+  });
 }
 
 /**

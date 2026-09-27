@@ -240,5 +240,7 @@ test("phone: a device new on the relay counts as reached, and says it came throu
   const checks = evaluate(before, timed, { address: "https://vyre.tail0000.ts.net" });
   assert.equal(checks.find(c => c.id === "reached")?.note, "via relay 80 ms");
   assert.deepEqual([checks.find(c => c.id === "passkey")?.state, checks.find(c => c.id === "passkey")?.note], ["ok", "alex's iPhone"], "the relay device's own presence key");
+  const direct = { ...now, relay: [now.relay[0], { ...now.relay[1], path: "direct", rtt: 18, node: "alexs-iphone" }] };
+  assert.equal(evaluate(before, direct, {}).find(c => c.id === "reached")?.note, "direct 18 ms", "a phone the relay has linked to its tailnet node");
   assert.equal(evaluate(before, before, {}).find(c => c.id === "reached")?.state, "wait", "a device already there is not new");
 });
