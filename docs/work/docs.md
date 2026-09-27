@@ -96,6 +96,14 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
 - Fixed using/capsule.md (Ask about your screen section), using/cli.md (vyre help <command>)
   and using/connectors.md (Google --sign-in).
 
+- 393b7c97 (handed to the integrator): tips.next fills module from context.now's view and busy
+  from waiting.count (cohesion ADR 0036), the statusline surface (platform asked to add it to the
+  schema enum), the chat queue tip says images can't be queued, and the pending Capsule tips say
+  Cmd-Return thinks deeper and "do" starts computer use. The tools reference explains internal
+  tools (threads.history is internal; agents.history is the public one).
+- Rule reminder from the lead: one Chrome on testbox at a time, and no shots while the integrator's
+  suite runs.
+
 ## Next (queued before tips)
 
 - Shots retake on current main (docs-check shows 263 stale). Run `uptime` on the test box first
