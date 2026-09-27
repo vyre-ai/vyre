@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
+
+- apps.route reads no time itself any more: its duration, clock and reminder readers are gone
+  from local/apps/route.js. The rules pick the app and the kind; `planner.parse` reads when, for
+  the Planner and for Apple Clock and Reminders alike. Words no rule places ("5 min", "10 min
+  timer please") are asked of the planner too, so one grammar decides what a time is.
+- A timer, alarm or reminder for Apple's apps with no planner on this Vyre is code `setup`, "The
+  planner is not on this Vyre yet", rather than a second reading. A Planner add still goes
+  through, since `planner.add` reads its own words.
+- The Planner adapter's line, when the planner's answer has no words, is planner.parse's reading
+  ("Timer for 10 minutes"), or "Added to the planner: <words>".
+
 #### Apps: the planner by default, and a question instead of nothing (ADR 0022)
 
 - Timers, alarms, "wake me", reminders, todos and notes now route to Vyre's own planner

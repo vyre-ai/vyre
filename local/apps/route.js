@@ -9,15 +9,11 @@
 // When in doubt the rules say ambiguous rather than guess: a wrong guess sets the wrong alarm or,
 // worse, sends the wrong words to the wrong person.
 //
-// Times are wall-clock times in the given zone, never the zone of the machine running the code.
-// A bare hour ("at 6") is whichever of 6:00 and 18:00 comes next; a time in the current minute
-// counts as now. On a named later day it reads the way people mean it: 7 to 11 is the morning, 12
-// is noon, 1 to 6 is the afternoon. "Tonight at 12" is midnight, and "tonight at 1" to 4 are the
-// small hours after it.
-//
-// Daylight saving: "in 20 minutes" is added to the instant and then read on the zone's clock, so
-// it lands right across a change. A named wall time is handed on as written; one that a spring
-// change skips (02:30 on that morning) is left to Reminders to place.
+// Times are not read here. The rules say which app and which kind (a timer, an alarm, a
+// reminder); planner.parse (ADR 0025, the one reader of time words) says when, through the tool
+// (index.js: askFor, then fromPlanner). A timed route for a Mac app carries `time` until then.
+// Words the rules cannot place at all ("5 min", "10 minute timer please") are asked of the planner
+// too, so it alone decides what counts as a duration or a clock time.
 //
 // A message's words are sent exactly as typed: only who it is for is tidied. Who it is for must
 // look like a name (one to three words, or a #channel or @handle); anything else is ambiguous.
@@ -27,7 +23,7 @@
 // weather, or a message when the words name who it is for.
 
 /**
- * @typedef {{ app: string, action: string, args: Record<string, any>, sends: boolean, said: string }} Route
+ * @typedef {{ app: string, action: string, args: Record<string, any>, sends: boolean, said: string, time?: string }} Route
  * @typedef {{ ambiguous: true, reason: string, needs: { app?: any[], recipient?: any[] }, ask: string, text: string, app?: string, action?: string, to?: string, firstWordIsTo?: boolean }} NeedsPrompt
  * @typedef {{ ambiguous: true, reason: string } | NeedsPrompt} Ambiguous
  * @typedef {{ now: number, timeZone: string, app?: string, planner?: "planner" | "apple" }} RouteOptions
@@ -36,69 +32,12 @@
 /** Longer text than this is never a command; refusing it early also bounds every regex below. */
 export const MAX_TEXT = 2000;
 
-const UNIT = "(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])";
-const ONE = `\\d+(?:\\.\\d+)?\\s*${UNIT}`;
-const DUR = `(?:half\\s+an\\s+hour|an?\\s+(?:hour|minute)|${ONE})(?:\\s*(?:,|and)?\\s*${ONE})*`;
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const WEEKDAY = `(?:${DAYS.join("|")})`;
-const CLOCK = "(?:\\d{1,2}(?:[:.]\\d{2})?\\s*(?:[ap]\\.?m\\.?)?|noon|midnight)";
-const AMPM = "\\d{1,2}(?:[:.]\\d{2})?\\s*[ap]\\.?m\\.?";
 const MESSENGERS = /** @type {Record<string, string>} */ ({ slack: "Slack", whatsapp: "WhatsApp" });
 
-const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
-  "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
-const TENS = /** @type {Record<string, number>} */ ({ twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60 });
-
-/** "twenty-five minutes" -> "25 minutes": number words from one to sixty, as digits. */
-function numberWords(/** @type {string} */ s) {
-  return s
-    .replace(/\b(twenty|thirty|forty|fifty)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/g, (_, t, u) => String(TENS[t] + SMALL.indexOf(u)))
-    .replace(/\b(twenty|thirty|forty|fifty|sixty)\b/g, t => String(TENS[t]))
-    .replace(new RegExp(`\\b(${SMALL.slice(1).join("|")})\\b`, "g"), w => String(SMALL.indexOf(w)));
-}
-
-/**
- * Seconds in "10 min", "1h30m", "1h30", "a 10-minute", "ten minutes", "2 hours and 5 minutes",
- * "half an hour"; null unless the whole text is a duration.
- * @param {string} text
- */
-export function parseDuration(text) {
-  let s = numberWords(String(text).trim().toLowerCase());
-  s = s.replace(/^an?\s+(?=\d)/, "").replace(/(\d)-(?=[a-z])/g, "$1 ").replace(/^(\d+)\s*h\s*(\d{1,2})$/, "$1h$2m");
-  if (s.length > 80 || !new RegExp(`^${DUR}$`).test(s)) return null;
-  let total = 0;
-  if (/^half\s+an\s+hour/.test(s)) total += 1800;
-  else if (/^an?\s+hour/.test(s)) total += 3600;
-  else if (/^an?\s+minute/.test(s)) total += 60;
-  for (const m of s.matchAll(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${UNIT})`, "g"))) {
-    const u = m[2][0];
-    total += Number(m[1]) * (u === "h" ? 3600 : u === "m" ? 60 : 1);
-  }
-  return total > 0 ? Math.round(total) : null;
-}
-
-/**
- * "7", "6:45", "7.30", "7am", "3:30 p.m.", "noon" -> hour, minute, and am/pm when said.
- * @param {string} text
- * @returns {{ h: number, mi: number, mer: "am" | "pm" | null, colon: boolean } | null}
- */
-export function parseClock(text) {
-  const s = String(text).trim().toLowerCase();
-  if (s === "noon") return { h: 12, mi: 0, mer: "pm", colon: false };
-  if (s === "midnight") return { h: 0, mi: 0, mer: "am", colon: false };
-  const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*(?:([ap])\.?m\.?)?$/.exec(s);
-  if (!m) return null;
-  const h = Number(m[1]), mi = m[2] ? Number(m[2]) : 0, mer = m[3] ? (m[3] === "a" ? "am" : "pm") : null;
-  if (mi > 59 || h > 23 || (mer && (h < 1 || h > 12))) return null;
-  return { h, mi, mer, colon: Boolean(m[2]) };
-}
-
-/** A clock time on a 24-hour dial, when it can be only one. */
-function fixed(/** @type {{ h: number, mer: string | null }} */ c) {
-  if (c.mer === "am") return c.h % 12;
-  if (c.mer === "pm") return (c.h % 12) + 12;
-  return null;
-}
+/** Words with a length of time in them ("10 min", "1h30", "half an hour"): inside @Clock, a timer. */
+const LENGTH_WORDS = /\d\s*[hms](?![a-z])|\b(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\b|\bhalf\s+an\s+hour\b|\ban?\s+(?:hour|minute)\b/i;
 
 const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
 
@@ -147,33 +86,22 @@ const DURATION_WORDS = (/** @type {number} */ s) => {
 
 // ---- Clock -------------------------------------------------------------------------------
 
-/** @returns {Route} */
-function timer(/** @type {number} */ seconds) {
-  return { app: "Clock", action: "timer", args: { seconds }, sends: false, said: `Timer for ${DURATION_WORDS(seconds)}` };
-}
+/**
+ * A Clock timer or alarm. Its args wait for planner.parse (`time` says which kind it reads).
+ * @param {"timer" | "alarm"} action @returns {Route}
+ */
+const clock = action => ({ app: "Clock", action, args: {}, sends: false, said: "", time: action });
 
-/** An alarm's time: am/pm when said, a colon time as written, and a bare hour in the morning. */
-function alarm(/** @type {string} */ when) {
-  const c = parseClock(when);
-  if (!c) return unsure(`"${when}" is not a time Vyre can set an alarm for`);
-  const h = fixed(c) ?? c.h;
-  const time = `${pad(h)}:${pad(c.mi)}`;
-  return /** @type {Route} */ ({ app: "Clock", action: "alarm", args: { time }, sends: false, said: `Alarm at ${h}:${pad(c.mi)}` });
-}
-
-/** @param {string} t @returns {Route | Ambiguous | null} */
+/**
+ * "timer ...", "alarm ...", "wake me ...". Other timer words ("10 min timer", "5 min") match no
+ * rule and are the planner's to read.
+ * @param {string} t @returns {Route | Ambiguous | null}
+ */
 function clockRules(t) {
   let m = /^(?:(?:set|start)\s+)?(?:an?\s+)?timer(?:\s*:\s*|\s+(?:for\s+)?|$)(.*)$/i.exec(t);
-  if (m) {
-    const s = m[1] ? parseDuration(m[1]) : null;
-    return s ? timer(s) : unsure("how long a timer?");
-  }
-  m = /^(?:(?:set|start)\s+)?(.+?)\s+timer$/i.exec(t);
-  if (m && parseDuration(m[1])) return timer(/** @type {number} */ (parseDuration(m[1])));
+  if (m) return m[1] ? clock("timer") : unsure("how long a timer?");
   m = /^(?:(?:set|make)\s+)?(?:an?\s+)?alarm(?:\s*:\s*|\s+(?:for\s+|at\s+)?|$)(.*)$/i.exec(t) || /^wake\s+me(?:\s+up)?(?:\s+at)?\s+(.+)$/i.exec(t);
-  if (m) return m[1] ? alarm(m[1]) : unsure("an alarm for what time?");
-  const s = parseDuration(t);
-  if (s) return timer(s);
+  if (m) return m[1] ? clock("alarm") : unsure("an alarm for what time?");
   return null;
 }
 
@@ -195,91 +123,6 @@ function noteRules(raw) {
 
 // ---- Reminders ---------------------------------------------------------------------------
 
-/**
- * The due time a reminder's words name, and the words left over for the task. Time words are
- * taken after "at", "on" or "in" wherever they are, and bare ("tomorrow", "friday", "9am") only at
- * the start or the end, so "email about sunday brunch" and "take my 3pm pill" keep their words.
- * @param {string} words @param {RouteOptions} o
- * @returns {{ task: string, due: string | null } | Ambiguous}
- */
-function reminderParts(words, o) {
-  let rest = ` ${words} `;
-  /** @type {Record<string, RegExpExecArray | null>} */
-  const got = { dur: null, time: null, day: null };
-  /** @type {[keyof typeof got, RegExp][]} */
-  const rules = [
-    ["dur", new RegExp(`\\sin\\s+(${DUR})(?=\\s)`, "i")],
-    ["time", new RegExp(`\\sat\\s+(${CLOCK})(?=\\s)`, "i")],
-    ["time", new RegExp(`^\\s+(${AMPM})(?=\\s)`, "i")],
-    ["time", new RegExp(`\\s(${AMPM})\\s*$`, "i")],
-    ["day", new RegExp(`\\son\\s+((?:next\\s+)?${WEEKDAY})(?=\\s)`, "i")],
-    ["day", new RegExp(`^\\s+((?:next\\s+)?${WEEKDAY}|today|tonight|tomorrow)(?=\\s)`, "i")],
-    ["day", new RegExp(`\\s((?:next\\s+)?${WEEKDAY}|today|tonight|tomorrow)\\s*$`, "i")],
-  ];
-  // Taking one phrase can bring another to an edge ("tomorrow at 9 to ..."), so go round again.
-  for (let round = 0, moved = true; moved && round < 4; round++) {
-    moved = false;
-    for (const [k, re] of rules) {
-      if (got[k]) continue;
-      const m = re.exec(rest);
-      if (!m) continue;
-      got[k] = m;
-      rest = rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length) + " ";
-      moved = true;
-    }
-  }
-  const task = tidy(rest).replace(/^(?:to|that|about)\s+/i, "").replace(/\s+(?:to|at|on|in)$/i, "").trim();
-  if (!task) return unsure("remind you of what?");
-
-  const w = wall(o.now, o.timeZone);
-  if (got.dur) {
-    const s = parseDuration(got.dur[1]);
-    if (!s) return unsure(`"in ${got.dur[1]}" is not a length of time`);
-    return { task, due: nowIso(wall(Math.ceil((o.now + s * 1000) / 60000) * 60000, o.timeZone)) };
-  }
-  const clock = got.time ? parseClock(got.time[1]) : null;
-  if (got.time && !clock) return unsure(`"${got.time[1].trim()}" is not a time`);
-  const dayWord = got.day ? got.day[1].toLowerCase().replace(/\s+/g, " ") : null;
-  const next = Boolean(dayWord && dayWord.startsWith("next "));
-  const weekday = dayWord ? dayWord.replace(/^next /, "") : null;
-  const isWeekday = Boolean(weekday && DAYS.includes(weekday));
-  const tonight = dayWord === "tonight";
-  /** @type {number | null} days ahead the words fix, or null for "the next one" */
-  const offset = dayWord === "today" || tonight ? 0 : dayWord === "tomorrow" ? 1 : isWeekday ? ahead(w, /** @type {string} */ (weekday), next) : null;
-  if (!clock && offset === null) return { task, due: null };
-
-  // Candidate (days ahead, hour) pairs, earliest first; the first not yet past wins.
-  const mi = clock ? clock.mi : 0;
-  /** @type {[number, number][]} */
-  let tries;
-  if (tonight) {
-    // Tonight runs past midnight: 12 is midnight, 1 to 4 the small hours after it.
-    const f = clock ? fixed(clock) : null;
-    const h = !clock ? 20 : f !== null ? f : clock.h === 12 ? 0 : clock.h <= 4 ? clock.h : clock.h < 12 ? clock.h + 12 : clock.h;
-    tries = [[h < 5 ? 1 : 0, h]];
-  } else {
-    /** @type {number[]} */
-    let hours;
-    if (!clock) hours = [9];
-    else if (fixed(clock) !== null) hours = [/** @type {number} */ (fixed(clock))];
-    else if (clock.h === 0 || clock.h > 12) hours = [clock.h];
-    else if (clock.h === 12) hours = [12];
-    else if (offset !== null && offset > 0) hours = [clock.h >= 7 ? clock.h : clock.h + 12];
-    else hours = [clock.h, clock.h + 12];
-    // No day: today, then tomorrow. A weekday that is today, with its time gone, is next week's.
-    const days = offset === null ? [0, 1] : isWeekday && offset === 0 ? [0, 7] : [offset];
-    tries = days.flatMap(n => hours.map(h => /** @type {[number, number]} */ ([n, h])));
-  }
-  const now = nowIso(w);
-  for (const [n, h] of tries) {
-    const due = `${dayAfter(w, n)}T${pad(h)}:${pad(mi)}`;
-    if (due >= now) return { task, due };
-  }
-  // "today" with no time, once 09:00 has gone, is a plain reminder; a named time that has gone is not.
-  if (!clock && dayWord === "today") return { task, due: null };
-  return unsure(offset === 0 ? "that time has already passed today" : "that time has passed");
-}
-
 /** "today at 18:00", "tomorrow at 9:00", "Friday at 9:00", or a date. */
 function whenWords(/** @type {string} */ due, /** @type {RouteOptions} */ o) {
   const w = wall(o.now, o.timeZone);
@@ -293,21 +136,14 @@ function whenWords(/** @type {string} */ due, /** @type {RouteOptions} */ o) {
   return `${date} at ${time}`;
 }
 
-/** @param {string} words @param {RouteOptions} o @returns {Route | Ambiguous} */
-function reminder(words, o) {
-  const p = reminderParts(words, o);
-  if ("ambiguous" in p) return p;
-  const args = /** @type {Record<string, string>} */ ({ text: p.task });
-  if (p.due) args.due = p.due;
-  const when = p.due ? `, ${whenWords(p.due, o)}` : "";
-  return { app: "Reminders", action: "create", args, sends: false, said: `Reminder: ${p.task}${when}` };
-}
+/** A reminder in Reminders. Its task and due time wait for planner.parse. @returns {Route} */
+const reminder = () => ({ app: "Reminders", action: "create", args: {}, sends: false, said: "", time: "reminder" });
 
-/** @param {string} t @param {RouteOptions} o @returns {Route | Ambiguous | null} */
-function reminderRules(t, o) {
+/** @param {string} t @returns {Route | Ambiguous | null} */
+function reminderRules(t) {
   const m = /^remind\s+me(?:\s+(.*))?$/i.exec(t);
   if (!m) return null;
-  return m[1] ? reminder(m[1], o) : unsure("remind you of what?");
+  return m[1] ? reminder() : unsure("remind you of what?");
 }
 
 // ---- Weather -----------------------------------------------------------------------------
@@ -504,32 +340,78 @@ export function appleAsked(raw) {
 
 /** The same request, for the box's planner: the person's own words and the kind. @returns {Route} */
 function toPlanner(/** @type {Route} */ r, /** @type {string} */ kind, /** @type {string} */ raw) {
-  return { app: "Planner", action: "add", args: { text: raw, kind }, sends: false, said: r.said };
+  // A timer, alarm or reminder has no line of its own until planner.parse has read it.
+  return { app: "Planner", action: "add", args: { text: raw, kind }, sends: false, said: r.said || `${kind[0].toUpperCase()}${kind.slice(1)}: ${tidy(raw)}` };
 }
 
 // ---- The planner's reading ----------------------------------------------------------------
 
 /**
  * The kind of time words a route carries, for planner.parse's hint: a Planner add says it, a
- * Clock timer or alarm and a timed reminder are theirs. Null for a route with no time in it.
+ * Clock timer or alarm and a Reminders reminder carry it as `time`. Null for a route with none.
  * @param {Route} r @returns {string | null}
  */
 export function timeKind(r) {
   if (r.app === "Planner") return typeof r.args.kind === "string" ? r.args.kind : null;
-  if (r.app === "Clock") return r.action === "timer" || r.action === "alarm" ? r.action : null;
-  if (r.app === "Reminders" && r.action === "create" && r.args.due) return "reminder";
+  return typeof r.time === "string" ? r.time : null;
+}
+
+/**
+ * What to ask planner.parse about a route, or null when it has no time to read: a timed route's
+ * words (without "in Apple Clock") and its kind, or, for words no rule could place, the words
+ * alone, so the planner may read them as an item ("5 min", "alarm 6pm every weekday"). Never a
+ * message, a question about one, or words inside an app's scope.
+ * @param {Route | Ambiguous} r @param {string} text @param {RouteOptions} o
+ * @returns {{ text: string, kind?: string } | null}
+ */
+export function askFor(r, text, o) {
+  if ("needs" in r || ("sends" in r && r.sends)) return null;
+  if ("ambiguous" in r) return o.app || appleAsked(text) ? null : { text: String(text).trim() };
+  const kind = timeKind(r);
+  if (!kind) return null;
+  const words = r.app === "Planner" ? String(r.args.text) : (appleAsked(text) || { text }).text;
+  return { text: String(words).trim(), kind };
+}
+
+/** A Mac app's route for an item the planner read from words no rule placed. @returns {Route | null} */
+function macFor(/** @type {string} */ kind) {
+  if (kind === "timer" || kind === "alarm") return clock(kind);
+  if (kind === "reminder" || kind === "todo") return { ...reminder(), time: kind };
+  if (kind === "note") return { app: "Notes", action: "create", args: {}, sends: false, said: "", time: kind };
   return null;
 }
 
 /**
+ * The route, once planner.parse has answered `p` (its data, or null): the planner's no is the
+ * answer, and a Mac app's timed route it could not read is refused rather than guessed at.
+ * @param {Route | Ambiguous} r @param {string} text @param {any} p @param {RouteOptions} o
+ * @returns {Route | Ambiguous}
+ */
+export function fromPlanner(r, text, p, o) {
+  const item = p && typeof p === "object" && !p.ambiguous && typeof p.kind === "string" ? p : null;
+  if ("ambiguous" in r) {
+    if (!item) return r;
+    const base = o.planner === "apple" ? macFor(item.kind) : { app: "Planner", action: "add", args: { text: String(text).trim(), kind: item.kind }, sends: false, said: "" };
+    return base ? withParsed(base, item, o) : r;
+  }
+  if (p && p.ambiguous) return unsure(String(p.reason || "the planner could not place that time"));
+  if (item) return withParsed(r, item, o);
+  // A Planner add is read again by planner.add; a Mac app has nothing to set without a time.
+  return r.app === "Planner" ? r : unsure(`Vyre could not read a time in "${String(text).trim().slice(0, 60)}"`);
+}
+
+/**
  * The same route, with the time read by planner.parse (ADR 0025, the one reader of time words):
- * the Planner's line, or the Mac app's args and line. `p` is planner.parse's item.
+ * the Planner's line, or the Mac app's args and line. `p` is planner.parse's item. A Mac app's
+ * route that the item does not fit is refused.
  * @param {Route} r @param {any} p @param {RouteOptions} o @returns {Route | Ambiguous}
  */
 export function withParsed(r, p, o) {
   const at = typeof p.at === "number" ? nowIso(wall(p.at, o.timeZone)) : null;
   const title = typeof p.title === "string" ? p.title.trim() : "";
   const ms = typeof p.duration_ms === "number" ? p.duration_ms : typeof p.duration === "number" ? p.duration : null;
+  const { time: _, ...plain } = r;
+  const no = () => (r.app === "Planner" ? plain : unsure(`Vyre could not read a ${r.time || "time"} in those words`));
   /** @type {string} */
   let said;
   if (p.kind === "timer" && ms) said = `Timer for ${DURATION_WORDS(Math.max(1, Math.round(ms / 1000)))}`;
@@ -537,19 +419,24 @@ export function withParsed(r, p, o) {
   else if (p.kind === "reminder") said = `Reminder: ${title}${at ? `, ${whenWords(at, o)}` : ""}`;
   else if (p.kind === "todo") said = `Todo: ${title}`;
   else if (p.kind === "note") said = `Note: ${title}`;
-  else return r;
-  if (r.app === "Planner") return { ...r, said };
-  if (r.app === "Clock" && r.action === "timer" && p.kind === "timer" && ms) return { ...r, args: { seconds: Math.max(1, Math.round(ms / 1000)) }, said };
+  else return no();
+  if (r.app === "Planner") return { ...plain, said };
+  if (r.app === "Clock" && r.action === "timer" && p.kind === "timer" && ms) return { ...plain, args: { seconds: Math.max(1, Math.round(ms / 1000)) }, said };
   if (r.app === "Clock" && r.action === "alarm" && p.kind === "alarm" && at) {
     // Clock's alarm is the next time on the clock: it cannot repeat, or wait for another day.
     if (p.repeat) return unsure("an Apple Clock alarm from Vyre cannot repeat; leave out Apple Clock and the planner keeps it");
     if (at.slice(0, 10) !== dayAfter(wall(o.now, o.timeZone), 0) && at.slice(0, 10) !== dayAfter(wall(o.now, o.timeZone), 1)) {
       return unsure("an Apple Clock alarm from Vyre rings at the next time on the clock; leave out Apple Clock and the planner keeps the day");
     }
-    return { ...r, args: { time: at.slice(11, 16) }, said: `Alarm at ${Number(at.slice(11, 13))}:${at.slice(14, 16)}` };
+    return { ...plain, args: { time: at.slice(11, 16) }, said: `Alarm at ${Number(at.slice(11, 13))}:${at.slice(14, 16)}` };
   }
-  if (r.app === "Reminders" && p.kind === "reminder" && at && title) return { ...r, args: { text: title, due: at }, said };
-  return r;
+  if (r.app === "Reminders" && (p.kind === "reminder" || p.kind === "todo") && title) {
+    // A todo's due day is a date: Reminders gets it at 09:00, the planner's default hour.
+    const due = at || (typeof p.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.due) ? `${p.due}T09:00` : null);
+    return { ...plain, args: due ? { text: title, due } : { text: title }, said: p.kind === "todo" ? `Todo: ${title}` : said };
+  }
+  if (r.app === "Notes" && p.kind === "note" && title) return { ...plain, args: { text: title }, said };
+  return no();
 }
 
 // ---- The router --------------------------------------------------------------------------
@@ -578,13 +465,11 @@ export function route(text, o) {
       return "ambiguous" in r || r.app !== "Planner" ? { app: "Planner", action: "add", args: { text: raw }, sends: false, said: `Planner: ${t}` } : r;
     }
     if (app === "Notes") return noteRules(raw) || note(raw);
-    if (app === "Reminders") return reminderRules(t, o) || todoRoute(raw) || reminder(t, o);
+    if (app === "Reminders") return reminderRules(t) || todoRoute(raw) || reminder();
     if (app === "Weather") return weatherRules(t, o) || weather(weatherArgs(t, o, true));
     if (app === "Clock") {
-      const c = clockRules(t);
-      if (c) return c;
-      if (parseClock(t)) return alarm(t);
-      return unsure("a timer needs a length and an alarm a time");
+      // Other words are a timer when they say a length of time, else an alarm; the planner reads which.
+      return clockRules(t) || clock(LENGTH_WORDS.test(t) ? "timer" : "alarm");
     }
     return scopedMessage(raw, app);
   }
@@ -592,7 +477,7 @@ export function route(text, o) {
   const apple = appleAsked(raw);
   if (apple && !messageRules(raw, null)) return route(apple.text, { ...o, app: apple.app });
   /** @type {[string, Route | Ambiguous | null][]} */
-  const tries = [["clock", clockRules(t)], ["note", noteRules(raw)], ["todo", todoRoute(raw)], ["reminder", reminderRules(t, o)]];
+  const tries = [["clock", clockRules(t)], ["note", noteRules(raw)], ["todo", todoRoute(raw)], ["reminder", reminderRules(t)]];
   const hit = tries.find(([, r]) => r);
   if (hit) {
     const r = /** @type {Route | Ambiguous} */ (hit[1]);

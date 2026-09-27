@@ -5,23 +5,26 @@
 //
 // The planner reads the person's own words itself; this adapter hands them over with the kind the
 // router saw. The one line said back comes from what the planner kept, or, when its answer has
-// no words, from the router's own reading of the request.
+// no words, from planner.parse's reading of the same words.
 
 import { AppsError } from "../env.js";
-import { route } from "../route.js";
+import { withParsed } from "../route.js";
 
-/** The Mac app that says the same thing, for a fallback line from the router's own reading. */
-const APPLE = /** @type {Record<string, string>} */ ({ timer: "Clock", alarm: "Clock", reminder: "Reminders", todo: "Reminders", note: "Notes" });
 const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event"];
 const NAMES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer", reminder: "Reminder", todo: "Todo", note: "Note", event: "Event" });
 
 /** The line to show for an item the planner added. */
-export function saidFor(/** @type {any} */ item, /** @type {string} */ text, /** @type {string | undefined} */ kind, /** @type {any} */ env) {
+export async function saidFor(/** @type {any} */ item, /** @type {string} */ text, /** @type {string | undefined} */ kind, /** @type {any} */ env) {
   if (item && typeof item.said === "string" && item.said) return item.said;
   if (item && typeof item.title === "string" && item.title.trim()) return `${NAMES[item.kind] || "Planner"}: ${item.title.trim()}`;
-  const k = (item && item.kind) || kind;
-  const own = k && APPLE[k] ? route(text, { now: env.now(), timeZone: env.timeZone, app: APPLE[k] }) : null;
-  return own && "said" in own ? own.said : `Added to the planner: ${text}`;
+  let p = null;
+  try { p = await env.call("planner.parse", { text, ...(kind ? { kind } : {}) }); } catch {}
+  const d = p && !p.error ? p.data : null;
+  if (d && typeof d === "object" && !d.ambiguous && typeof d.kind === "string") {
+    const r = withParsed({ app: "Planner", action: "add", args: { text }, sends: false, said: "" }, d, { now: env.now(), timeZone: env.timeZone });
+    if ("said" in r && r.said) return r.said;
+  }
+  return `Added to the planner: ${text}`;
 }
 
 /** @type {import("./index.js").Adapter} */
@@ -45,7 +48,7 @@ export default {
           throw new AppsError(/^[a-z][a-z0-9_]{1,40}$/.test(String(r.error.code)) ? r.error.code : "failed", r.error.message || "the planner refused");
         }
         const item = r && r.data;
-        return { said: saidFor(item, text, kind, env), item };
+        return { said: await saidFor(item, text, kind, env), item };
       },
     },
   },

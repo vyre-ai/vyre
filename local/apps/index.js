@@ -21,7 +21,7 @@ import { checkInput } from "../../core/modules/index.js";
 import { makeEnv, AppsError } from "./env.js";
 import { adapters } from "./adapters/index.js";
 import { installed, DEFAULT_DIRS } from "./installed.js";
-import { route, sendTo, timeKind, withParsed, appleAsked } from "./route.js";
+import { route, sendTo, askFor, fromPlanner } from "./route.js";
 import { rank as rankTargets, STRONG } from "./fuzzy.js";
 import { setupFor } from "./setup.js";
 import path from "node:path";
@@ -210,33 +210,21 @@ export default {
     };
 
     /**
-     * The time in a route, read by the planner's parser (planner.parse, ADR 0025): our rules say
-     * which app and kind, the planner says when. Its "cannot place that" is the answer, so the
-     * person is asked rather than given a guess. With no planner on this Vyre (the tool is missing
-     * or fails), our own reading stands.
+     * The time in a route, read by the planner's parser (planner.parse, ADR 0025, the one reader
+     * of time words): our rules say which app and kind, the planner says when. Its "cannot place
+     * that" is the answer, so the person is asked rather than given a guess. Words no rule placed
+     * are asked too, and a timed route for a Mac app with no planner to read it is code setup.
      */
     const parsed = async (/** @type {string} */ text, /** @type {any} */ o, /** @type {any} */ r) => {
-      if (r.needs || r.sends) return r;
-      if (r.ambiguous) {
-        // Words our rules could not place may still be the planner's ("alarm 6pm every weekday"):
-        // when it reads them as an item, the item is the route. Not inside an app's scope, and not
-        // for the Mac's own apps, which cannot keep what our rules could not.
-        if (o.app || o.planner === "apple" || appleAsked(text)) return r;
-        let p;
-        try { p = await ctx.call("planner.parse", { text }); } catch { return r; }
-        const d = p && !p.error ? p.data : null;
-        if (!d || typeof d !== "object" || d.ambiguous || typeof d.kind !== "string") return r;
-        return withParsed({ app: "Planner", action: "add", args: { text: String(text).trim(), kind: d.kind }, sends: false, said: "" }, d, o);
-      }
-      const kind = timeKind(r);
-      if (!kind) return r;
-      // The words without "in Apple Clock": the planner reads time, not which app.
-      const words = r.app === "Planner" ? String(r.args.text) : (appleAsked(text) || { text }).text;
+      const q = askFor(r, text, o);
+      if (!q) return r;
       let p;
-      try { p = await ctx.call("planner.parse", { text: words, kind }); } catch { return r; }
-      if (!p || p.error || !p.data || typeof p.data !== "object") return r;
-      if (p.data.ambiguous) return { ambiguous: true, reason: String(p.data.reason || "the planner could not place that time") };
-      return withParsed(r, p.data, o);
+      try { p = await ctx.call("planner.parse", q); } catch (e) { p = { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
+      if (!p || !p.error) return fromPlanner(r, text, p ? p.data : null, o);
+      // A Planner add is read again by planner.add, which says setup itself.
+      if (r.ambiguous || r.app === "Planner") return r;
+      if (p.error.code === "no_such_tool" || p.error.code === "not_found") throw new AppsError("setup", "The planner is not on this Vyre yet");
+      return { ambiguous: true, reason: String(p.error.message || "the planner could not read that time") };
     };
 
     /**

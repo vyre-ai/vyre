@@ -1,27 +1,28 @@
 // @ts-check
 // The router, table-driven, at a fixed moment: Thursday 2026-09-24 15:00 in Asia/Karachi (UTC+5,
-// no daylight saving). Every row is words in, one route (or ambiguous) out.
+// no daylight saving). Every row is words in, one route (or ambiguous) out. The rules pick the app
+// and kind and the planner's parser reads the time, as apps.route does (index.js parsed()): here
+// the real parser is called in-process, where the tool reaches it through planner.parse.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { route, parseDuration } from "./route.js";
+import { route, askFor, fromPlanner } from "./route.js";
+import { parse } from "../../core/planner/parse.js";
 
 const TZ = "Asia/Karachi";
 const NOW = Date.UTC(2026, 8, 24, 10, 0); // 15:00 in Karachi
 const at = (/** @type {number} */ h, /** @type {number} */ m = 0) => Date.UTC(2026, 8, 24, h - 5, m);
 // Most tests read the Mac's own apps (planner: "apple"); the Planner default is checked against the
 // same table below, and on its own further down.
-const r = (/** @type {string} */ text, /** @type {any} */ o = {}) => route(text, { now: NOW, timeZone: TZ, planner: "apple", ...o });
-const rp = (/** @type {string} */ text, /** @type {any} */ o = {}) => route(text, { now: NOW, timeZone: TZ, ...o });
+/** route, then planner.parse for what it asks, then the route with the planner's reading. */
+function read(/** @type {string} */ text, /** @type {any} */ o) {
+  const first = route(text, o);
+  const q = askFor(first, text, o);
+  return /** @type {any} */ (q ? fromPlanner(first, text, parse(q.text, { now: o.now, tz: o.timeZone, kind: q.kind }), o) : first);
+}
+const r = (/** @type {string} */ text, /** @type {any} */ o = {}) => read(text, { now: NOW, timeZone: TZ, planner: "apple", ...o });
+const rp = (/** @type {string} */ text, /** @type {any} */ o = {}) => read(text, { now: NOW, timeZone: TZ, ...o });
 const pick = (/** @type {any} */ x) => (x.ambiguous ? { ambiguous: true } : { app: x.app, action: x.action, args: x.args, sends: x.sends });
-
-test("route: durations", () => {
-  for (const [s, n] of /** @type {[string, number|null][]} */ ([["10 min", 600], ["1h30m", 5400], ["90s", 90], ["2 hours and 5 minutes", 7500],
-    ["an hour", 3600], ["half an hour", 1800], ["1.5 hours", 5400], ["3 mins, 20 secs", 200], ["10", null], ["ten minutes", 600], ["10 minutes of fun", null],
-    ["1h30", 5400], ["a 10-minute", 600], ["twenty-five minutes", 1500], ["sixty seconds", 60], ["x".repeat(500), null]])) {
-    assert.equal(parseDuration(s), n, s);
-  }
-});
 
 const TIMER = (/** @type {number} */ seconds) => ({ app: "Clock", action: "timer", args: { seconds }, sends: false });
 const ALARM = (/** @type {string} */ time) => ({ app: "Clock", action: "alarm", args: { time }, sends: false });
@@ -163,10 +164,25 @@ test("route: todos go to the Planner by default and to Reminders on the Mac", ()
   assert.equal(rp("todo").ambiguous, true);
 });
 
-test("route: the Planner keeps our reading as its preview", () => {
+test("route: the planner's reading is the preview, and its no is the answer", () => {
   assert.equal(rp("timer 10 min").said, "Timer for 10 minutes");
   assert.equal(rp("remind me to call juno at 6").said, "Reminder: call juno, today at 18:00");
-  assert.equal(rp("remind me at 6").ambiguous, true, "our reading refused it, so the Planner is not asked");
+  assert.equal(rp("remind me at 6").ambiguous, true, "the planner found no task, so nothing is added");
+});
+
+test("route: the rules read no time; a timed route waits for the planner", () => {
+  const t = /** @type {any} */ (route("timer 10 min", { now: NOW, timeZone: TZ, planner: "apple" }));
+  assert.deepEqual({ app: t.app, action: t.action, args: t.args, time: t.time }, { app: "Clock", action: "timer", args: {}, time: "timer" });
+  assert.deepEqual(askFor(t, "timer 10 min", { now: NOW, timeZone: TZ }), { text: "timer 10 min", kind: "timer" });
+  assert.equal(/** @type {any} */ (r("timer 10 min")).time, undefined, "the mark goes once the time is read");
+  // No reading: a Mac app has nothing to set, a Planner add is read again by planner.add.
+  assert.equal(fromPlanner(t, "timer 10 min", null, { now: NOW, timeZone: TZ }).ambiguous, true);
+  const p = route("timer 10 min", { now: NOW, timeZone: TZ });
+  assert.deepEqual(fromPlanner(p, "timer 10 min", null, { now: NOW, timeZone: TZ }), p);
+  // Words no rule placed go to the planner bare; a message and a scope never do.
+  assert.deepEqual(askFor(route("5 min", { now: NOW, timeZone: TZ }), "5 min", { now: NOW, timeZone: TZ }), { text: "5 min" });
+  assert.equal(askFor(route("whatsapp juno: 5 min", { now: NOW, timeZone: TZ }), "whatsapp juno: 5 min", { now: NOW, timeZone: TZ }), null);
+  assert.equal(askFor(route("banana", { now: NOW, timeZone: TZ, app: "Weather" }), "banana", { now: NOW, timeZone: TZ, app: "Weather" }), null);
 });
 
 test("route: asking for the Mac's own app, a Mac scope, or planner apple keeps the Mac's apps", () => {
