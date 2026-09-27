@@ -58,6 +58,18 @@ test("an enum's labels name only its own values", () => {
   assert.match(validateDecls("bakery", [{ ...base, type: "string", labels: { gas: "Gas" } }]).join(), /labels/);
 });
 
+test("ADR 0035 levels and hooks: device never with confirm or security, session only with a tool store, check and choicesFrom name own tools", () => {
+  const base = { key: "bakery.oven", label: "Oven", type: "string", levels: ["account"], apply: "live" };
+  const bad = (/** @type {any} */ d, /** @type {RegExp} */ re) => assert.match(validateDecls("bakery", [{ ...base, ...d }], { tools: ["bakery.check", "bakery.get", "bakery.set"] }).join(" | "), re, JSON.stringify(d));
+  bad({ levels: ["device"], confirm: true }, /may not be set per device/);
+  bad({ levels: ["device"], security: "loosens" }, /may not be set per device/);
+  bad({ levels: ["session"] }, /session level needs a store in this module's own tools/);
+  bad({ check: { tool: "vault.reveal" } }, /check\.tool must be one of bakery's own tools/);
+  bad({ choicesFrom: { tool: "bakery.nope" } }, /choicesFrom\.tool must be one of bakery's own tools/);
+  bad({ choices: { tool: "bakery.get" } }, /choices is a list of numbers; a tool goes in choicesFrom/);
+  assert.deepEqual(validateDecls("bakery", [{ ...base, check: { tool: "bakery.check" }, choicesFrom: { tool: "bakery.get" } }], { tools: ["bakery.check", "bakery.get"] }), []);
+});
+
 test("coerce reads CLI text and refuses what is out of range", () => {
   const idle = { key: "sessions.idle_minutes", type: "int", min: 1, max: 1440 };
   assert.equal(coerce(idle, "15"), 15);
@@ -161,11 +173,19 @@ test("another module's keys go through its own tool, and a missing module reads 
   assert.equal((await c("sessions.limits.get", { project: "northwind" })).data.project.teammate, 2);
 });
 
-test("settings.changed says which key and level, never the value; resolve is for modules only", async t => {
+test("settings.changed says which key, level and rev, the new value only for a key that isn't secret; resolve is for modules only", async t => {
   const { c, d } = await world(t);
   await c("settings.set", { key: "sessions.effort", value: "high", project: "northwind" });
   const e = d.events.since(0, { type: "settings.changed" }).at(-1);
-  assert.deepEqual(e.payload, { key: "sessions.effort", level: "project", project: "northwind", apply: "session" });
+  assert.equal(typeof e.payload.rev, "number");
+  assert.deepEqual({ ...e.payload, rev: 0 }, { key: "sessions.effort", level: "project", project: "northwind", apply: "session", rev: 0, value: "high" });
+  await c("settings.reset", { key: "sessions.effort", project: "northwind" });
+  assert.equal(d.events.since(0, { type: "settings.changed" }).at(-1).payload.value, null, "a reset says null");
+  // A secret key's change never carries its value.
+  await c("settings.set", { key: "sessions.env", value: { NORTHWIND_TOKEN: "nw-secret-123" } });
+  const s = d.events.since(0, { type: "settings.changed" }).at(-1).payload;
+  assert.equal(s.key, "sessions.env");
+  assert.ok(!("value" in s) && !JSON.stringify(s).includes("nw-secret"));
   assert.equal((await c("settings.resolve", { project: "northwind" })).error.code, "no_such_tool");
 });
 

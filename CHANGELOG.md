@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The settings hub file (ADR 0035, step 1)
+
+- core/settings/hub.js and core/settings: `<home>/hub.json` holds Vyre's own settings at account
+  and project level, made at first start from what is in effect and rewritten atomically on every
+  change. Every change adds 1 to the hub's rev (settings_meta); settings.changed carries it, plus
+  the new value for a key that isn't secret (null for a reset), and `by: "hub.json"` for a hand
+  edit.
+- A person's edit to hub.json is read live (a file watch, and a size or mtime check on each read,
+  no polling), checked like settings.set: a plain change applies; a bad value is kept out and named
+  on its row; one that needs a confirm or a proof waits as `pending` until the person sets it. A
+  file that isn't JSON is named in settings.schema's `hub`, and moved to hub.json.bad on the next
+  change. Sessions can't read or write it (the harness keeps it with Vyre's internals).
+- core/names/backup.js: hub.json is in `vyre backup` and restore.
+- core/config/settings.js validateDecls (platform's patch): device never with confirm or security,
+  session only with a tool store, check and choicesFrom name the module's own tools, choices is a
+  list of numbers. settings GROUPS gains "tips".
+
 #### Settings says where to add a passkey
 
 - deck/views/settings-keys.js: a loosening change refused for want of a passkey now reads "This

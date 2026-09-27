@@ -162,11 +162,11 @@ One read and one event, for every surface:
   sources: { key: level } }` for the keys that surface shows. Agents may call it as well.
   Values a model shouldn't see (none today) would be left out by a declaration flag, not by
   surface.
-- `settings.changed { key, level, project?, device?, session?, apply, rev }` is emitted on every
+- `settings.changed { key, level, project?, device?, session?, apply, rev, value?, by? }` is emitted on every
   change, whatever made it: the Deck, `vyre config`, a hand edit, a module's own `settings.write`,
   or sessions changing a chip. It never carries the resolved value, which depends on who reads it,
-  and never a secret one; for a key that isn't secret it may carry `value`, the new value at the
-  level that changed. `settings.snapshot` returns each level per key, so a surface resolves it
+  and never a secret one. For a key that isn't secret it carries `value`, the new value at the
+  level that changed (null for a reset). `settings.snapshot` returns each level per key, so a surface resolves it
   locally with no second round trip. A surface that cares about the key reads
   it again (`settings.get`, or the theme endpoints for `appearance.*`).
 - On reconnect a surface compares its last `rev` with `settings.snapshot`'s and reads again if it
