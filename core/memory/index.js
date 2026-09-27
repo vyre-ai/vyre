@@ -19,6 +19,7 @@ import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
 import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
+import { fixes as fixLog } from "./iq/fix.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -313,6 +314,26 @@ export default {
     // ---- the user's corrections (docs/adr/0007-intelligence.md, decision 4). Owner callers only:
     // a session never writes Memory; inside a turn Claude proposes a correction as a lesson.
     const OWNERS = ["deck", "cli", "local", "capsule"];
+    // The person's corrections to Vyre IQ's answers (core/memory/iq/fix.js), made where the answer is shown.
+    const fixed = fixLog({ db: ctx.store.db });
+    const fixAnswer = async (input, caller) => {
+      if (!["wrong", "replace", "forget"].includes(input.action)) throw Object.assign(new Error("an IQ answer is corrected with wrong, replace or forget"), { code: "bad_input" });
+      const fix = fixed.add({ answer: input.answer, action: input.action, text: input.object ?? null, who: String(caller || "") });
+      // A personal fact's right answer is the person's own words about their life: told to memory,
+      // so every other question about it has it too (it outweighs what was said before).
+      const a = fixed.answer(input.answer);
+      if (fix.action === "replace" && a?.via === "fact") {
+        if (running) await running.catch(() => {});
+        // Card text is IQ's second person ("Your wife is Juno."); the person's own words are first person.
+        const own = String(fix.text).replace(/\byou are\b/gi, "I am").replace(/\byou're\b/gi, "I'm").replace(/\byour\b/g, "my").replace(/\bYour\b/g, "My").replace(/\byou\b/gi, "I");
+        const r = personal.remember(own, { who: `fix:${fix.id}` });
+        fixed.told(fix.id, r.id);
+        fix.told = r.id;
+      }
+      if (fix.facts.length) personal.derive({ force: true });
+      ctx.events.emit("memory.fixed", { id: fix.id, action: fix.action, kind: fix.kind });
+      return { fix };
+    };
     /**
      * The registry reads "deck agent:kit" as a deck caller; for the user's own tools a caller
      * that names an agent is an agent, whatever surface carried it.
@@ -362,10 +383,13 @@ export default {
     };
     ctx.tool("memory.correct", {
       callers: OWNERS,
-      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads.",
+      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre IQ answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it.",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
-        action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
+        answer: { type: "string", description: "memory.ask's answer_id" },
+        action: { type: "string", enum: ["wrong", "ended", "replace", "confirm", "add", "forget"] }, at: {}, note: { type: "string" }, wait: { type: "boolean" }, ...roomField } },
       run: ownerWrite(async (input, { caller } = {}) => {
+        if (typeof input.answer === "string" && input.answer) return fixAnswer(input, caller);
+        if (input.action === "forget") throw Object.assign(new Error("forget corrects an IQ answer: pass answer"), { code: "bad_input" });
         const { scope, sc } = scopeOf(input);
         const t = graph.target(input, sc);
         const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who: String(caller || "") });
@@ -381,9 +405,10 @@ export default {
     // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
     // checks the owner surfaces and tailnet callers itself.
     ctx.tool("memory.corrections", {
-      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones.",
-      input: { type: "object", properties: { all: { type: "boolean" }, ...roomField } },
-      run: readerOnly(async input => curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
+      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }.",
+      input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, ...roomField } },
+      run: readerOnly(async input => input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
+        : curator.corrections({ scope: roomOf(input), all: Boolean(input.all) })),
     });
     // Personal facts are the user's, not a project's: owner surfaces and the user's tailnet
     // devices read them; agents never do.
@@ -458,14 +483,14 @@ export default {
       if (r?.error || !r?.data?.ok) throw new Error(r?.error?.message || "threads.quick did not answer");
       return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
     });
-    const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
+    const ask = asker({ db: ctx.store.db, answer, retrieve, fixes: fixed, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
         allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
         charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
           ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
       } });
     ctx.tool("memory.ask", {
-      description: "Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
+      description: "Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 }, ...agentField } },
       run: async (input, { caller } = {}) => {
@@ -548,8 +573,20 @@ export default {
     ctx.tool("memory.uncorrect", {
       callers: OWNERS,
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
-      input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
-      run: ownerWrite(async ({ id }) => { const c = curator.uncorrect(id); await settle(); return c; }),
+      input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "an IQ answer correction's id" } } },
+      run: ownerWrite(async ({ id, fix }) => {
+        if (Number.isInteger(fix)) {
+          const f = fixed.undo(fix);
+          if (f.told != null) {
+            ctx.store.db.prepare("DELETE FROM memory_me_claims WHERE session = ?").run(`told:${f.told}`);
+            ctx.store.db.prepare("DELETE FROM memory_me_told WHERE id = ?").run(f.told);
+          }
+          personal.derive({ force: true });
+          return { fix: f };
+        }
+        if (!Number.isInteger(id)) throw Object.assign(new Error("uncorrect needs id (a correction) or fix (an IQ answer correction)"), { code: "bad_input" });
+        const c = curator.uncorrect(id); await settle(); return c;
+      }),
     });
     ctx.tool("memory.merge", {
       callers: OWNERS,
@@ -637,7 +674,7 @@ export default {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
       // Counts over everything are the main graph's.
-      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() } }),
+      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() }, iq: fixed.week() }),
     });
 
     // Names memory knows go into every surface's predictive text (suggest, ADR 0036): offered now,

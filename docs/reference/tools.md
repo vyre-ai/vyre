@@ -1849,7 +1849,7 @@ Answer a question about the user's own life in one line ("Your wife is Jordan.",
 
 ### `memory.ask`
 
-Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.
+Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.
 
 - Input:
   - `question` string, required
@@ -1877,10 +1877,11 @@ Context for one prompt: lines worth adding before it. The graph's facts about wh
 
 ### `memory.correct`
 
-Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads.
+Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre IQ answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it.
 
 - Input:
-  - `action` one of "wrong", "ended", "replace", "confirm", "add", required
+  - `action` one of "wrong", "ended", "replace", "confirm", "add", "forget", required
+  - `answer` string: memory.ask's answer_id
   - `at` any
   - `fact` string
   - `note` string
@@ -1894,10 +1895,11 @@ Correct a fact: wrong (never true), ended (stopped being true at `at`), replace 
 
 ### `memory.corrections`
 
-What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones.
+What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }.
 
 - Input:
   - `all` boolean
+  - `answers` boolean
   - `project` string
   - `room` string
 - Callers: any caller
@@ -2085,7 +2087,8 @@ A fact taught by another module, folded into the graph with that module as its s
 Undo a correction, merge or split by its id. It stays listed as undone.
 
 - Input:
-  - `id` integer, required
+  - `fix` integer: an IQ answer correction's id
+  - `id` integer
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `memory.why`
