@@ -9,10 +9,12 @@
 import { Curator } from "./curator.js";
 import { Graph, say } from "./graph.js";
 import { floorPlan } from "./floor.js";
+import fs from "node:fs";
 import path from "node:path";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer } from "./personal/answer.js";
+import { createModelPass } from "./personal/model.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -41,8 +43,36 @@ export default {
         await new Promise(r => setImmediate(r));
       }
       const d = stopping ? { changed: false } : personal.derive();
+      // New turns may have left sentences no rule could read: the model pass may take them.
+      if (turns && !stopping) void model.pump();
       return { turns, claims, changed: d.changed };
     };
+    // What the rules cannot read goes to a budgeted haiku pass through the Switchboard, run like
+    // learn's jobs: on events only, one at a time, under a daily cost cap (config.memory.model).
+    const model = createModelPass({
+      db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log,
+      config: () => ctx.config,
+      dir: () => {
+        const root = ctx.paths && ctx.paths.root;
+        if (!root) return null;
+        const d = path.join(root, "memory-jobs");
+        try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
+      },
+    });
+    const threadOf = e => e.thread || (e.payload && e.payload.thread);
+    const modelOffs = [
+      ctx.events.on("thread.text", e => {
+        const p = e.payload || {}, thread = threadOf(e);
+        if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !model.owns(thread)) return;
+        model.answered(thread, p.text).catch(err => ctx.log("memory model answer not read: " + err.message));
+      }),
+      ctx.events.on("thread.stopped", e => {
+        const thread = threadOf(e);
+        if (thread && model.owns(thread)) model.stopped(thread).catch(err => ctx.log("memory model run not closed: " + err.message));
+        else void model.pump();
+      }),
+      ctx.events.on("thread.finished", e => { const thread = threadOf(e); if (!thread || !model.owns(thread)) void model.pump(); }),
+    ];
     let running = null, again = false, stopping = false, timer = null;
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
     // the first pass and whenever a project or a pick changes.
@@ -446,7 +476,7 @@ export default {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
       // Counts over everything are the main graph's.
-      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: personal.stats() }),
+      run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() } }),
     });
 
     return {
@@ -455,6 +485,7 @@ export default {
         clearTimeout(timer);
         off();
         for (const o of offs) o();
+        for (const o of modelOffs) if (typeof o === "function") o();
         if (running) await running.catch(() => {});
       },
     };

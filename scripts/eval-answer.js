@@ -6,6 +6,8 @@
 //   node scripts/eval-answer.js          the synthetic personal world, as a report
 //   node scripts/eval-answer.js --json   the same, as JSON
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
+//   node scripts/eval-answer.js --world heldout  the held-out world (test/fixtures/personal-heldout.js
+//            and test/eval/answer-heldout.json), written before reading the rules
 //
 // Exits non-zero when memory.answer misses the bar: overall 0.9 or more, no confident wrong
 // answer, p95 under 150 ms.
@@ -33,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import { open } from "../core/store/index.js";
 import { seedRecall } from "../test/fixtures/corpus.js";
 import { PERSONAL_SESSIONS, ME, NOW, SCRATCH } from "../test/fixtures/personal-world.js";
+import * as heldout from "../test/fixtures/personal-heldout.js";
 import { search, thread } from "../core/recall/search.js";
 import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
@@ -42,6 +45,16 @@ import { words } from "../local/capsule/lib/route.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const GOLD_FILE = path.join(ROOT, "test/eval/answer-gold.json");
+export const HELDOUT_GOLD_FILE = path.join(ROOT, "test/eval/answer-heldout.json");
+
+/**
+ * The worlds the evaluation knows: the one the rules were written against, and a held-out one.
+ * @type {Record<string, () => { gold: any, sessions: any[], me: any, now: number, scratch: string }>}
+ */
+export const WORLDS = {
+  personal: () => ({ gold: JSON.parse(fs.readFileSync(GOLD_FILE, "utf8")), sessions: PERSONAL_SESSIONS, me: ME, now: NOW, scratch: SCRATCH }),
+  heldout: () => ({ gold: JSON.parse(fs.readFileSync(HELDOUT_GOLD_FILE, "utf8")), sessions: heldout.HELDOUT_SESSIONS, me: heldout.ME, now: heldout.NOW, scratch: heldout.SCRATCH }),
+};
 /** An answer at this confidence or more is one the user is told as a fact. */
 export const CONFIDENT = 0.5;
 /** What a said line (the user's own words turned to "you") is worth, as the Capsule treats it. */
@@ -179,7 +192,7 @@ const now = () => Number(process.hrtime.bigint()) / 1e6;
  * Capsule's recall() in local/capsule/lib/bridge.js, step for step, minus the page.
  * @typedef {(q: string) => Promise<{ answer: string|null, confidence: number|null, ms: number, via?: string|null }>} Answerer
  */
-function answerers(mem) {
+function answerers(mem, scratch = SCRATCH) {
   /** @type {Record<string, Answerer | null>} */
   const out = {
     before: async q => {
@@ -192,7 +205,7 @@ function answerers(mem) {
       const f = (facts.data || []).filter(x => (x.score ?? x.confidence ?? 0) >= 0.5)
         .map(x => ({ x, s: (x.score ?? x.confidence ?? 0) + 0.5 * words(x.text).filter(w => asked.includes(w) && !words(x.matched).includes(w)).length }))
         .sort((a, b) => b.s - a.s).map(({ x }) => x);
-      const h = rankSaid(hits.data || [], q, { scratch: SCRATCH });
+      const h = rankSaid(hits.data || [], q, { scratch });
       const said = f[0] ? null : yourAnswer(h[0], q);
       const answer = f[0] ? String(f[0].text) : said;
       const confidence = f[0] ? confidenceOf(f[0]) : said ? SAID_CONFIDENCE : null;
@@ -215,9 +228,14 @@ function answerers(mem) {
 /**
  * Run the evaluation on the personal world. Returns { world, answerers: { before, answer } },
  * where an answerer the code does not have is { supported: false, reason }.
- * @param {{ gold?: any, sessions?: any[], me?: any, now?: number, vectors?: boolean, only?: string[] }} [opts]
+ * @param {{ world?: string, gold?: any, sessions?: any[], me?: any, now?: number, scratch?: string, vectors?: boolean, only?: string[] }} [opts]
  */
 export async function runEval(opts = {}) {
+  if (opts.world) {
+    const w = WORLDS[opts.world];
+    if (!w) throw new Error(`no world called ${opts.world} (${Object.keys(WORLDS).join(", ")})`);
+    opts = { ...w(), ...opts };
+  }
   const gold = opts.gold || JSON.parse(fs.readFileSync(GOLD_FILE, "utf8"));
   const questions = gold.questions;
   const sessions = opts.sessions || PERSONAL_SESSIONS;
@@ -250,7 +268,7 @@ export async function runEval(opts = {}) {
       embed_ms: round(embedMs),
       curate_ms: round(curateMs),
     };
-    const all = answerers(mem);
+    const all = answerers(mem, opts.scratch || SCRATCH);
     /** @type {Record<string, any>} */
     const results = {};
     for (const [name, fn] of Object.entries(all)) {
@@ -308,7 +326,9 @@ export function barFailures(a) {
 }
 
 async function main(argv) {
-  const r = await runEval({ vectors: !argv.includes("--keyword") });
+  const wi = argv.indexOf("--world");
+  const world = wi >= 0 ? argv[wi + 1] : "personal";
+  const r = await runEval({ world, vectors: !argv.includes("--keyword") });
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 2) + "\n"); else print(r);
   // CI runs this: a memory.answer under the bar fails the build.
   const bad = barFailures(r.answerers.answer);
