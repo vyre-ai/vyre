@@ -126,7 +126,7 @@ Perf:
   server's `memory_answer` "who is my wife" -> "Your wife is Jordan." (also with project_cwds);
   VYRE_AGENT=kit is refused both. On a scratch tree of this branch + work/memory-iq 6f2c57c:
   cc-plugin, core/memory/personal/answer, core/about: 26/26. This branch alone: 13 pass, that
-  test skips with the reason. Drop the skip once 6f2c57c is on main.
+  test skipped with the reason. Both on main (9efbddc0); skip removed, testbox 14/14.
 
 ## Done: the Mac-only planner test failure (27 Sep)
 
@@ -141,7 +141,6 @@ Perf:
 
 ## Next
 
-- After memory-iq 6f2c57c merges: remove the skip in the memory test.
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 - If the hook's p95 creeps past 50 ms: import core/daemon/client.js lazily in hook.js (harness
   owner's file; ask first).
@@ -155,8 +154,6 @@ Perf:
   the hook): Sessions.bind accepts a pid that is `sh -c` whose parent is claude and binds that
   parent. The Mac's /bin/sh execs, so it binds there.
 
-- integrator: merge memory-iq 6f2c57c (the bare-mcp gate) with or before this branch; the memory
-  test skips until then.
 - planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
   "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
   an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent

@@ -9,6 +9,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
   (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
 - test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+#### Tests: the plugin's memory test always runs
+
+- test/cc-plugin.test.js: memory-iq's bare-mcp gate is on main, so the remember-then-answer test
+  no longer skips.
 
 #### The design docs stay out of the package
 
