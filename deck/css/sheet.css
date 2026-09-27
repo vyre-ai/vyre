@@ -70,18 +70,12 @@ html.sheet-open, html.sheet-open body { background: #000; }
   html.sheet-open #deck { transform: none; border-radius: 0; }
 }
 
-/* ---- buttons (sentence case on the phone, section 2) --------------------------------------- */
+/* ---- button rows ---------------------------------------------------------------------------- */
 
-.sb { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 16px;
-  border-radius: 12px; font-family: var(--sans); font-size: 15px; line-height: 20px; font-weight: 600; cursor: pointer;
-  border: 1px solid var(--rule-strong); background: var(--hover); color: var(--text); -webkit-user-select: none; user-select: none; }
-.sb.sb-primary { min-height: 54px; font-size: 17px; line-height: 22px; background: var(--primary-bg); color: var(--primary-ink); border-color: var(--primary-bg); }
-.sb:disabled { cursor: default; opacity: 0.45; }
-.sb:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* .sb, .sb-primary and .sb-full are aliases in css/buttons.css (secondary 44, primary 54, full width). */
 .sb-row { display: flex; gap: 8px; }
 .sb-row > .sb { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 44px; }
 .sb-row > .sb:first-child:not(:last-child) { flex-grow: 1.5; }
-.sb-full { width: 100%; }
 
 /* ---- the Needs sheet -------------------------------------------------------------------------- */
 
@@ -150,7 +144,7 @@ html.sheet-open, html.sheet-open body { background: #000; }
 .nsh-pair .pair-card { border: 0; padding: 0; background: none; margin-top: 12px; }
 .nsh-pair .pair-top, .nsh-pair .pair-title { display: none; }
 .nsh-pair .pair-code { font-size: 17px; min-height: 46px; }
-.nsh-pair .pair-actions .btn { min-height: 46px; border-radius: 12px; flex: 1 1 0; font-size: 15px; text-transform: none; letter-spacing: 0; font-family: var(--sans); }
+.nsh-pair .pair-actions .btn { flex: 1 1 0; }
 
 /* A setup step in a sheet: its own card, flattened. */
 .np-step-body { padding-top: 8px; }

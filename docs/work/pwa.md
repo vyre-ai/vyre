@@ -240,6 +240,18 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - A phone turned sideways (over 760 wide) gets the desktop layout; decide whether the phone
   shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`).
 
+## Design A gaps closed
+The Deck-wide components from Design A v1 (app-design's spec, docs/design/system/components on
+their branch). app-design ticks these in the specs' Gaps lists after the merge.
+
+| Component | Gap | Commit |
+|---|---|---|
+| Button | `.btn` is mono 12 caps: now Instrument Sans 13/18 600, sentence case (css/buttons.css) | buttons |
+| Button | no secondary, outline, hold or busy; disabled was opacity 0.45 and primary disabled kept lime | buttons |
+| Button | `.btn-ghost` ink `--text-2` and radius `--r-2`: now `--text` and `--radius-button` | buttons |
+| Button | `.sb` / `.sb-primary` second system (min 46, opacity disabled): folded in at 44 and 54 | buttons |
+| Icon button | `.ibtn` radius `--r-2`; no 44 size, no filled round, no busy | buttons |
+
 ## Needs from others
 - tailnet or names: a read of config `network.origins` (a field on system.info or names.status)
   for the Settings > Network "Hosted app" row.
@@ -256,6 +268,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- deck/onboard/index.html and deck/onboard/passkey/index.html link /css/buttons.css right after
+  deck.css (the onboarding pages use .btn, which moved there).
 - push.seen: optional `device` (string, at most 40), echoed in the push.seen event payload only
   when sent. The Deck (js/pwa.js) sends localStorage "vyre.push.device" (polish-cli asked).
 - Deck route /pair (a normal route; the SW serves index.html for it like any other).

@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One button system in the Deck (Design A v1)
+
+- deck/css/buttons.css is the Deck's one button: primary, secondary, outline, ghost and hold, at
+  28 and 32 on the desktop and 44 and 54 on touch, with busy (spinner, -ing word, same width) and
+  disabled (label ink on a quiet fill, no opacity). Instrument Sans 13/18 600, sentence case: no
+  more mono caps. Sizes, radii and motion read the Design A tokens with the spec values as
+  fallbacks. The old names are aliases: `.btn` (outline), `.btn-primary`, `.btn-ghost`, `.btn-sm`
+  (28), `.sb` (secondary 44), `.sb-primary` (primary 54), `.sb-full` and `.ibtn`, so every view
+  picks it up. On the phone every button is at least 44 and icon buttons get a 44 hit area.
+  deck/js/button.js builds one (`button()`, `setBusy()`, `hold()`). Tests in
+  deck/test/design-components.test.js.
+
 #### The Reconnecting pill no longer moves the view
 
 - `.reach` (the line js/pwa.js shows while the box does not answer) was in the normal flow under

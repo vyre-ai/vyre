@@ -152,9 +152,7 @@
 /* The row's actions as real buttons: for a keyboard (shown while focused) and a screen reader. */
 .np-kb { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .np-kb:focus-within { position: static; width: auto; height: auto; clip: auto; overflow: visible; display: flex; gap: 8px; padding: 0 14px 12px 58px; background: var(--panel); }
-.np-kb-b { min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--rule-strong); background: var(--hover); color: var(--text);
-  font-family: var(--sans); font-size: 15px; font-weight: 600; cursor: pointer; }
-.np-kb-b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* .np-kb-b is the secondary touch button (css/buttons.css). */
 
 .np-skel { padding: 0; }
 .np-skel-row { height: 78px; background: var(--hover); opacity: 0.6; }

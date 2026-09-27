@@ -65,21 +65,7 @@ code, .mono { font-family: var(--mono); }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* Controls */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px;
-  border-radius: var(--r-2); border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
-  font-family: var(--mono); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em;
-  text-transform: uppercase; text-decoration: none; cursor: pointer; white-space: nowrap; }
-.btn:hover { background: var(--hover); }
-.btn:disabled { opacity: 0.45; cursor: default; background: transparent; }
-.btn-primary { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
-.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-primary:disabled { background: var(--primary-bg); }
-.btn-ghost { border-color: transparent; color: var(--text-2); padding: 0 10px; }
-.btn-sm { height: 28px; }
-.ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--r-2);
-  border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; padding: 0; flex-shrink: 0; }
-.ibtn:hover { background: var(--hover); color: var(--text); }
-.ibtn[aria-pressed="true"] { color: var(--text); background: var(--hover); }
+/* Buttons and icon buttons (.btn, .btn-primary, .btn-ghost, .btn-sm, .ibtn) live in css/buttons.css. */
 .link { color: var(--text); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; cursor: pointer; }
 .link:hover { text-decoration-color: currentColor; }
 .link.quiet { text-decoration-color: transparent; }
@@ -311,7 +297,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .pull.on { height: calc(var(--pull, 0) * 44px); opacity: var(--pull, 0); border-bottom-color: var(--rule); }
   .pull.ready { color: var(--text); }
   .reach { min-height: 44px; font-size: 15px; line-height: 20px; }
-  .reach .btn { height: 44px; padding: 0 8px; font-family: var(--sans); font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
+  .reach .btn { padding: 0 8px; }
   /* Settings, from the avatar, inside a sheet: the sheet's title stands in for the page's. */
   .ph-settings .set-top h1 { display: none; }
 }

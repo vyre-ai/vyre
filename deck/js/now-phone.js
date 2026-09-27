@@ -289,7 +289,7 @@ export function phoneNow(ctx) {
     const main = h("button", { type: "button", class: "np-main" },
       tile, h("span", { class: "np-lines" }, h("span", { class: "np-l1" }, t1, time), t2, t3, err), h("span", { class: "np-chev", "aria-hidden": "true" }, glyph("right", 16)));
     const face = h("div", { class: "np-face" }, main);
-    const kb = (/** @type {string} */ label, /** @type {() => void} */ fn) => h("button", { type: "button", class: "np-kb-b", onclick: fn }, label);
+    const kb = (/** @type {string} */ label, /** @type {() => void} */ fn) => h("button", { type: "button", class: "button button-secondary button-touch np-kb-b", onclick: fn }, label);
     const kbd = h("div", { class: "np-kb" });
     el.append(...(still ? [] : [revR, revL]), face, kbd);
 
