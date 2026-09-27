@@ -335,6 +335,12 @@ Plan (to the lead before building):
   rotation puts notes + last results raw into the SYSTEM append -> move to first prompt, fenced,
   neutralized, capped. LOW: thread.finished can fire during launch's awaits -> stuck slot.
 - memory-iq-rc2 aaf4fcb5 SIGNED OFF for rc.2 (header not evidence on personal paths; human === 1; roles on sources). Last e2e item for rc.2.
+- MAC CHECK (lead OK, 28 Sep): probe under Claude: in-process and child calls keep cli/capsule (vyred's
+  own ancestors are excluded) -> lead's hypothesis false. switchboard.test.js DETACHED (double fork,
+  PPID 1) still hangs on the Mac at the first vyred+stream test; stopped at 3 min; passes on testbox;
+  reverting core/daemon/index.js fixes it (teammates). Suspect per-connection peer check on macOS
+  (perl LOCAL_PEERPID or ps -A). rc.1 carries it; the Capsule's stream goes through it. Asked lead for
+  one instrumented Mac run. Orphan teammates run pid 30878 on the Mac (not mine). Scratch: maccheck/.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
