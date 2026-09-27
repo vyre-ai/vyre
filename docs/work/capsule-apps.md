@@ -106,7 +106,10 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   route.test.js runs the same table through the real core/planner/parse.js: 105 pass, 0 fail.
 - Slice 2 Kit (work/capsule-apps-native): capsule-pro 07af5e5 merged at 8cba106 (resolutions as
   recorded before; plus AgentDestinations lost a stale askItem call). Extension suites 18/18 on the
-  Mac; capsule-mac CI run 36282275995 on 8cba106. Hand 8cba106 to capsule-pro once CI is green.
+  Mac; capsule-mac CI run 36282275995 on 8cba106 was cancelled at 45 min: the "Vyre Local signing"
+  step hangs on capsule-pro's line (their 834b28e too; main skips it). 7423c8c (includes 8cba106)
+  pushed, run 36312964068; every step before signing passed. Handed 7423c8c to capsule-pro
+  (2026-09-27) with the hang report.
 - AppsExtension (same branch, 8ce0cad + 4d40355): @App from apps.list with .file(path) icons,
   known apps first, others once named; nesting apps list apps.targets (read on pick, refreshed per
   words); Enter: apps.route with the contact's raw id; non-sends run at once via apps.act; sends
@@ -120,7 +123,7 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 - Lead (2026-09-27): the real-Mac check runs after the integrator merges work/planner.
 
 ## Next
-1. When CI on 8cba106 is green: send capsule-pro the hash to merge. Then run capsule-mac CI on
+1. DONE: handed 7423c8c to capsule-pro. Was: send capsule-pro the hash to merge. Then run capsule-mac CI on
    4d40355 (the AppsExtension) and hand that over too (it changes Kit, CapsuleModel,
    ExtensionHost and Panel by one line each: see Changed contracts).
 2. Switch the presence summary to host.prove when capsule-pro ships it.
