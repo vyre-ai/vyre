@@ -5,6 +5,53 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 #### On a Mac, waiting leaves the planner to the box
+#### Appearance settings per device, from the hub
+
+- The appearance keys (theme, scheme, tokens) are set per device and kept in hub.json. The hub
+  runs appearance.check before it stores a change. appearance.tokens.get/.set and GET
+  /v1/appearance/theme are removed. vyred's /v1/theme and /theme.css?device= (through
+  appearance.resolve) are the only theme routes. An old stored tokens row is read for one release,
+  then dropped on the first change.
+
+#### Design specs for tips, the Glass mini-view and the shared pieces
+
+- New specs in docs/design/system/components: tip (one quiet line or chip from tips.next on every
+  surface, and the one "What's new" card), glass-mini (what an agent is doing now: a small live
+  frame and its step line, from sight), suggestions (one list from suggest.query), account-row
+  (which account sends), credential-sheet (the one sheet for a missing key or sign-in) and
+  result-card (a vyre command's result drawn natively). needs-row gains the one waiting count
+  and row from waiting.list. Boards: TipLine and GlassMini, with paper boards.
+- appearance follows ADR 0035: appearance.theme is a preset (vyre) with choices from
+  appearance.presets, appearance.scheme (system, dark, paper) is its own key, and old theme
+  values map over for one release. appearance.check answers the hub's check call, and
+  appearance.resolve takes a device and a css format, re-checks what it paints and falls back to
+  the preset when a stored value breaks a rule. settings.changed is the repaint contract.
+
+#### The Capsule redesigned, and the design tokens in the hub
+
+- docs/design/system/capsule.md is the Design A Capsule for capsule-pro: keyboard first, a
+  question answers on pause and the field becomes the follow-up box, ⌘⏎ thinks deeper, Esc stops,
+  clears, then hides, and the footer shows only key hints. The answer card grows to the panel and
+  then scrolls with keys and a thumb, so it never clips, and a heading with no rows never draws.
+  Vyre IQ answers show their sources (iq.ask), say "Not sure" with what is known, and say when
+  nothing was found. Voice is on Option-Return; computer use ("do ...") shows its steps live and
+  Esc stops it. New boards: CapsuleLong and CapsuleDo, with CapsuleSearch and CapsuleIQ now on
+  the canvas.
+- The design tokens and the theme rules moved to lib/theme, a small pure library that ships in the
+  package (package.json "files" now has "lib"). tokens.json now lives at lib/theme/tokens.json.
+  scripts/lib/theme.js and scripts/lib/tokens.js still work, and gen-tokens writes the same bytes
+  as before.
+- New appearance module: the settings appearance.theme (system, dark or paper) and
+  appearance.tokens (a partial tokens file merged over Vyre's own). Each change to the tokens is
+  checked first and refused whole, naming each problem, when it breaks a rule: a text pair under
+  AA, the focus ring under 3:1, the attention colour reused, the status model, text under 12, a
+  touch target under 44. Surfaces read appearance.resolve or GET /v1/appearance/theme and repaint
+  on appearance.changed. The older config.theme.colors is folded in for one release.
+- docs/design/system/teams.md lists every open gap in the specs by the team that closes it.
+- The Install boards draw the real pairing code: 8 characters in two groups of four, valid 10
+  minutes.
+
+#### Design system: Design A v1, frozen
 
 - core/waiting reads planner.ringing only on the box. On a Mac the planner is the box's, reached
   over the link, and a Mac's vyred never asks its box on its own (test/federation-reads.test.js

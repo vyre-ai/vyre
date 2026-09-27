@@ -32,6 +32,7 @@
     "build.json",
     "core",
     "harness",
+    "lib",
     "local",
     "deck",
     "modules",
