@@ -146,15 +146,19 @@ context, computer use), not before.
 
 ## 7. Risks and open questions
 
-- **The local `vyred` socket's Windows security is unverified (security review, flagged LOW).**
-  The CLI always talks to a local `vyred`, per the federation model, never the remote server's
-  socket directly, so Tier A on a Windows PC needs a local daemon listening on
-  `config.socketPath()`'s plain filesystem path, which has no `win32` branch today.
-  `fs.chmodSync(socket, 0o600)` (`core/daemon/index.js`) does nothing meaningful on Windows, and
-  whether the resulting socket (AF_UNIX or a named pipe, depending on Node/libuv version) gets a
-  DACL that keeps a second local user off is unchecked. Needs real Windows hardware, before Tier A
-  is called done, not CI. Disabling local `vyred` on win32 is not a cheap mitigation: it would
-  break Tier A's CLI, not narrow it, since nearly every command needs the local daemon.
+- **RESOLVED without hardware, per the lead: the local `vyred` socket's Windows ACL is now proven
+  in CI, not left to a physical machine.** `config.socketPath()`'s `win32` branch puts the socket
+  under a per-user `%LOCALAPPDATA%\Vyre\sockets` folder; `config.ensureWindowsSocketDir` sets an
+  explicit `icacls` ACL on it (current user + `SYSTEM` only, inheritance stripped) before
+  `ensure()` returns and before `core/daemon/index.js` ever calls `listen()` (`fs.chmodSync` is
+  skipped there on `win32`, since it does nothing meaningful). `.github/workflows/node.yml`'s
+  `windows-socket-acl` job runs this for real on `windows-latest`: starts `vyred`, checks the
+  folder's and the socket file's ACL with `icacls` (parsed by `scripts/win-socket-acl-check.mjs`,
+  unit-tested in `test/win-socket-acl-check.test.js`), then proves an actual refusal, a second
+  local user's connection attempt fails while the owner's succeeds
+  (`scripts/win-connect-probe.mjs`). Not `continue-on-error`: if this job cannot be made to pass,
+  Tier A ships in 0.1.1 marked "preview" with the gap written down, per the lead's call, not
+  silently green.
 - Tier B WSL2 requires Docker Desktop (licensing cost at company scale) or bare WSL2 + Docker
   Engine, which does he want documented/supported?
 - Tier C native cost: Tauri vs WinUI 3 is a real fork in long-term maintenance burden (Rust+web vs

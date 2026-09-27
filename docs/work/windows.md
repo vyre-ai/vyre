@@ -63,40 +63,66 @@ this round; verification leans on windows-latest CI.
   (`new URL()`'s normalized form), not the raw `url` string, since a raw string can still carry
   leading/trailing whitespace or control characters that `href` strips. 6th test added
   (core/cli/kit.test.js) proving a `\u0000`-prefixed, trailing-whitespace URL reaches argv clean.
+- The lead's call on the reviewer's LOW: **no hardware needed, prove it on `windows-latest` CI.**
+  Implemented:
+  - `core/config/index.js`: `socketPath`'s `win32` branch now puts the socket under a per-user
+    `%LOCALAPPDATA%\Vyre\sockets` folder (never directly under an arbitrary `VYRE_HOME`), and new
+    `ensureWindowsSocketDir` sets an explicit `icacls` ACL on it, current user + `SYSTEM` only,
+    inheritance stripped, fails closed (throws) if `icacls` itself fails. Wired into `ensure()`,
+    which runs before `core/daemon/index.js` ever calls `listen()`. Tests: 4 new cases in
+    core/config/config.test.js (14 total), via injectable `platform`/`env`/`spawnSync`, same DI
+    pattern as `openInBrowser`.
+  - `core/daemon/index.js`: `fs.chmodSync(socket, 0o600)` now skips on `win32` (meaningless there;
+    the ACL above is what actually protects it).
+  - `.github/workflows/node.yml`: new `windows-socket-acl` job (NOT `continue-on-error`, per the
+    lead: fail loud if this can't be made to pass, don't ship it silently green). Starts a real
+    `vyred` on `windows-latest`, checks the socket folder's and file's ACL with `icacls`
+    (`scripts/win-socket-acl-check.mjs`), then proves a refusal: a `net user`-created second local
+    account fails to connect (`scripts/win-connect-probe.mjs`) while the owner succeeds.
+  - `scripts/win-socket-acl-check.mjs`'s icacls-output parser is unit-tested off Windows against
+    sample icacls text (`test/win-socket-acl-check.test.js`, 5 tests) since the real call only
+    runs in that CI job; `scripts/win-connect-probe.mjs` (a bare connect attempt, exit 0/1) was
+    smoke-tested by hand against a real POSIX socket on this Mac, both the connect and refuse
+    paths, since node:net's shape is the same cross-platform even though the job itself is not.
+  - Docs: ADR 0037's Consequences and windows-plan.md section 7 both rewritten from "open,
+    unresolved, needs hardware" to "resolved in CI, here's how"; docs/reference/* regenerated.
+  - **Not yet proven for real**: this is all unrun on an actual `windows-latest` runner. First CI
+    run on this branch is the real test. If the job fails or can't be made reliable, per the
+    lead's instruction Tier A ships in 0.1.1 marked "preview" with the gap documented, not
+    silently accepted as fixed.
 
 ## Doing
 - Asked e2e for a quick read of the role-default change (win32 now defaults to a device), per the
   lead. Waiting on that before sending cac517d4 onward.
-- Sending cac517d4 to the integrator for the first 0.1.1 batch, after rc.2, per the lead.
+- Sending cac517d4 (+ follow-ups) to the integrator for the first 0.1.1 batch, after rc.2, per the
+  lead.
+- Asking ci for the workflow slot on the new windows-socket-acl job, per the lead's instruction.
+- Will send the reviewer the sha once the CI job's first real run comes back, per their ask.
 
 ## Next
-- Once e2e and the integrator are clear: fix whatever the windows-latest job surfaces once it
-  runs on main (untested locally, no Windows/Windows-VM here).
-- Once test-windows is reliably green, drop `continue-on-error` and consider folding node/os into
-  one matrix if the two jobs' step lists converge.
+- Watch the first real `windows-socket-acl` run once pushed; the icacls output parsing, the
+  `net user` elevation, and the PSCredential-based `Start-Process` are all first-draft, unverified
+  PowerShell/CI mechanics -- expect at least one iteration.
+- Fix whatever `test-windows` (the broader suite) surfaces once it runs on main.
+- Once both windows jobs are reliably green, drop `test-windows`'s `continue-on-error` and
+  consider folding node/os into one matrix if the two jobs' step lists converge.
 - Tier B: a real hands-on WSL2 pass is still owed; docs/using/windows.md says so.
 - Tier C/D (0.2): prototype Tauri vs WinUI 3 for the Capsule shell before committing further.
-- **Blocking, needs the lead's call, not mine to resolve alone:** the reviewer's LOW. The local
-  `vyred` socket's Windows security (AF_UNIX vs named pipe, DACL) is unverified; `fs.chmodSync`'s
-  0600 has no meaning on `win32`. I can't check this without real Windows hardware, and the
-  reviewer's own fallback (disable local `vyred` on win32) would break Tier A's CLI outright, not
-  narrow it, since the CLI always talks to a local `vyred`, never the remote server directly. This
-  needs either a Windows box to test on, or the lead deciding Tier A ships with this documented as
-  a known gap rather than blocked on it. See docs/adr/0037-windows.md's Consequences and
-  docs/design/windows-plan.md section 7 for the full writeup.
 
 ## Needs from others
 - e2e: a read of the role-default change (core/config/index.js, win32 -> local) before it ships.
-- integrator: land cac517d4 (and the two follow-up commits) in the first 0.1.1 batch, after rc.2.
-- lead: a call on the reviewer's LOW (local vyred socket security on Windows, unverified, no
-  hardware here to check it) before Tier A is called fully done.
+- integrator: land cac517d4 (and the follow-up commits) in the first 0.1.1 batch, after rc.2.
+- ci: the workflow slot for windows-socket-acl (asked, per the lead).
+- reviewer: will send the sha once the CI job's first run is back, as asked.
 
 ## Changed contracts
 - docs/work/README.md: claimed ADR 0037 (windows).
-- .github/workflows/node.yml: added `test-windows` job (ci owns this file; coordinated by
-  message, landed since ci had not responded and the change is additive/non-blocking).
+- .github/workflows/node.yml: added `test-windows` and `windows-socket-acl` jobs (ci owns this
+  file; coordinated by message both times).
 - scripts/lib/docs/check.js: added `windows` to OWNERS.
 - core/cli/kit.js: new export `openInBrowser`; core/cli/commands/{up,box,connect,vault}.js now
   call it instead of their own `open`/`xdg-open` spawns. Signature now takes `platform` and
   `spawn` overrides too, for `core/cli/kit.test.js`.
-- core/config/index.js: `defaults()` role guess now also treats `win32` as a device (`local`).
+- core/config/index.js: `defaults()` role guess now also treats `win32` as a device (`local`);
+  `socketPath` takes an optional `platform` override; new exports `ensureWindowsSocketDir`.
+- core/daemon/index.js: skips `fs.chmodSync` on `win32`.

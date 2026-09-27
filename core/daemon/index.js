@@ -141,7 +141,10 @@ async function startLocked(opts, root, p, release) {
     catch { socket.destroy(); }
   });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
-  fs.chmodSync(p.socket, 0o600);
+  // No POSIX mode on win32: config.ensure() (called above, before listen()) already set an
+  // explicit ACL on the socket's folder (core/config/index.js's ensureWindowsSocketDir), which is
+  // what stands in for this chmod there.
+  if (process.platform !== "win32") fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 

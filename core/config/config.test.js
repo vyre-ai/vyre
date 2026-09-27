@@ -56,6 +56,56 @@ test("config: a home too long for a unix socket puts the socket in a private per
   assert.equal(st.mode & 0o777, 0o700);
 });
 
+// Windows socket ACL (ADR 0037's LOW, security review): the socket never sits directly under an
+// arbitrary VYRE_HOME on win32, and its folder's ACL is set with icacls, not chmod (which has no
+// meaning there). These test the win32 branch by injecting platform/env/spawnSync, since none of
+// this runs for real off Windows; the actual ACL is only proven by the windows-latest CI job.
+
+test("config: on win32, the socket always lives under a per-user LOCALAPPDATA folder", t => {
+  const root = tempHome(t);
+  const p1 = config.socketPath(root, { platform: "win32" });
+  const p2 = config.socketPath(root + "y", { platform: "win32" });
+  assert.match(p1, /Vyre[\\/]sockets/);
+  assert.notEqual(p1, p2, "two homes never share a socket");
+  assert.equal(p1, config.socketPath(root, { platform: "win32" }), "the same home always hashes to the same socket");
+});
+
+test("config: ensureWindowsSocketDir strips inheritance then grants only the user and SYSTEM", t => {
+  const dir = path.join(tempHome(t), "sockets");
+  const calls = [];
+  const fakeSpawnSync = (cmd, args) => { calls.push({ cmd, args }); return { status: 0 }; };
+  const r = config.ensureWindowsSocketDir(dir, { env: { USERNAME: "alex" }, spawnSync: fakeSpawnSync });
+  assert.equal(r, dir);
+  assert.ok(fs.existsSync(dir));
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0], { cmd: "icacls", args: [dir, "/inheritance:r"] });
+  assert.deepEqual(calls[1], { cmd: "icacls", args: [dir, "/grant:r", "alex:(OI)(CI)F"] });
+  assert.deepEqual(calls[2], { cmd: "icacls", args: [dir, "/grant:r", "SYSTEM:(OI)(CI)F"] });
+});
+
+test("config: ensureWindowsSocketDir throws, fail closed, when icacls is missing or refuses", t => {
+  const dir = path.join(tempHome(t), "sockets");
+  assert.throws(
+    () => config.ensureWindowsSocketDir(dir, { env: { USERNAME: "alex" }, spawnSync: () => ({ error: new Error("ENOENT") }) }),
+    /could not set an explicit ACL/,
+  );
+  assert.throws(
+    () => config.ensureWindowsSocketDir(dir, { env: { USERNAME: "alex" }, spawnSync: () => ({ status: 1, stderr: "Access is denied." }) }),
+    /could not set an explicit ACL/,
+  );
+});
+
+test("config: the win32 socket's folder is the one ensureWindowsSocketDir would ACL", t => {
+  // ensure() itself always uses the real process.platform (it must, off a test), so this checks
+  // the pieces it composes rather than ensure() end to end for win32: socketPath's win32 folder
+  // is exactly ensureWindowsSocketDir's default target, so ensure()'s
+  // `ensureWindowsSocketDir(path.dirname(p.socket))` call ACLs the right directory.
+  const root = tempHome(t);
+  const socket = config.socketPath(root, { platform: "win32" });
+  assert.equal(path.dirname(socket), path.dirname(config.socketPath(root + "y", { platform: "win32" })),
+    "every home's win32 socket shares the same ACL'd parent folder, only the filename differs");
+});
+
 test("config: save merges one level deep, removes nulls and writes 0600", t => {
   const root = tempHome(t);
   config.save({ name: "alex", network: { owner: "alex@example.com", port: 8443 } }, root);

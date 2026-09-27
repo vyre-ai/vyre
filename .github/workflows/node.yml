@@ -51,3 +51,76 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm test
+  # Windows LOW (security review, ADR 0037): the local vyred socket's ACL, verified on a real
+  # windows-latest runner rather than hardware. Not continue-on-error: the lead's call was that
+  # Tier A ships marked "preview" with the gap written down if this cannot be made to pass, not
+  # that it ships unverified and green. Runs config.ensureWindowsSocketDir (core/config/index.js)
+  # through a real vyred, then proves with icacls that only this user, SYSTEM and Administrators
+  # are on the ACL, and that a second local user's connection to the socket is refused while the
+  # owner's succeeds.
+  windows-socket-acl:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Start vyred and wait for its socket
+        id: start
+        shell: pwsh
+        run: |
+          $env:VYRE_HOME = "$env:RUNNER_TEMP\vyre-home"
+          $env:VYRE_NO_DIALOGS = "1"
+          New-Item -ItemType Directory -Force -Path $env:VYRE_HOME | Out-Null
+          $proc = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\vyred.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred.err" -WindowStyle Hidden
+          "pid=$($proc.Id)" >> $env:GITHUB_OUTPUT
+          $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
+          "sock=$sockPath" >> $env:GITHUB_OUTPUT
+          $found = $false
+          for ($i = 0; $i -lt 100; $i++) {
+            if (Test-Path $sockPath) { $found = $true; break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $found) {
+            Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
+            Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
+            throw "vyred did not create its socket at $sockPath"
+          }
+      - name: The socket's folder and the socket file carry an explicit, narrow ACL
+        shell: pwsh
+        run: |
+          $sock = "${{ steps.start.outputs.sock }}"
+          $dir = Split-Path $sock
+          node scripts/win-socket-acl-check.mjs "$dir" "$sock"
+          if ($LASTEXITCODE -ne 0) { throw "the socket's ACL named a principal beyond this user, SYSTEM and Administrators" }
+      - name: The owner can connect
+        shell: pwsh
+        run: |
+          node scripts/win-connect-probe.mjs "${{ steps.start.outputs.sock }}"
+          if ($LASTEXITCODE -ne 0) { throw "the owner could not connect to their own socket" }
+      - name: A second local user cannot connect
+        shell: pwsh
+        run: |
+          $pw = "Vy" + [guid]::NewGuid().ToString("N").Substring(0, 18) + "!1"
+          net user vyreacltest "$pw" /add
+          try {
+            $sec = ConvertTo-SecureString $pw -AsPlainText -Force
+            $cred = New-Object System.Management.Automation.PSCredential("vyreacltest", $sec)
+            $p = Start-Process -FilePath node -ArgumentList "scripts/win-connect-probe.mjs `"${{ steps.start.outputs.sock }}`"" `
+              -Credential $cred -NoNewWindow -PassThru -Wait -WorkingDirectory "$PWD" `
+              -RedirectStandardOutput "$env:RUNNER_TEMP\probe.out" -RedirectStandardError "$env:RUNNER_TEMP\probe.err"
+            Get-Content "$env:RUNNER_TEMP\probe.out","$env:RUNNER_TEMP\probe.err" -ErrorAction SilentlyContinue
+            if ($p.ExitCode -eq 0) { throw "a second local user connected to vyred's socket; the ACL is not private" }
+          } finally {
+            net user vyreacltest /delete
+          }
+      - name: Stop vyred
+        if: always()
+        shell: pwsh
+        run: |
+          $p = "${{ steps.start.outputs.pid }}"
+          if ($p) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }

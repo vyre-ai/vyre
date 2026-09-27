@@ -69,9 +69,11 @@ Four tiers, cheapest first:
   included. Replaces four near-duplicate, Mac-or-Linux-only implementations in `up.js`, `box.js`,
   `connect.js` and `vault.js`, the last of which only opened a browser on darwin at all, so this
   also fixes it on Linux, not just Windows. Tests: `core/cli/kit.test.js`.
-- `node.yml` (or an added job in it, see `docs/work/windows.md` for the exact shape once landed):
-  a `windows-latest` leg of the same `npm test`, to catch path/shell assumptions with no new
-  native code.
+- `node.yml`: a `test-windows` job, the same `npm test` on `windows-latest`, to catch path/shell
+  assumptions with no new native code; and a `windows-socket-acl` job (not `continue-on-error`)
+  proving the local socket ACL below.
+- `core/config/index.js`: `socketPath`'s `win32` branch and the new `ensureWindowsSocketDir`,
+  covered by the Consequences entry below.
 - `docs/using/windows.md`: the person-facing how-to for Tier A and Tier B.
 
 ## Consequences
@@ -85,16 +87,22 @@ Four tiers, cheapest first:
   status` and `vyre voice key` were never Mac-only to begin with and are untouched.
 - Tier B is undertested until someone runs it on real Windows hardware; `windows-latest` CI
   proves the Node suite, not WSL2 or Docker Desktop itself.
-- **Open, unresolved risk (security review, flagged LOW, not yet fixed):** the CLI on any device
-  role always talks to a *local* `vyred` (never the remote server socket directly, per the
-  federation model), so Tier A on a Windows PC needs a local `vyred` listening on
-  `core/config/index.js`'s `socketPath()`, same as a Mac. That path is a plain filesystem path
-  with no `win32` branch; `core/daemon/index.js`'s `fs.chmodSync(socket, 0o600)` has no POSIX
-  meaning on Windows either way. Whether the resulting Windows socket (a real AF_UNIX socket, or a
-  named pipe, depending on Node/libuv version) ends up with a DACL that keeps a second local user
-  off is **unverified**, and disabling local `vyred` on win32 to sidestep the question would break
-  Tier A's CLI entirely, not just narrow it, so it's not a small mitigation. This needs a real
-  Windows-hardware check before Tier A is called done, not just CI. Flagged to the lead.
+- **Security review's LOW, addressed without hardware (the lead's call: use `windows-latest` CI,
+  not a physical machine).** The CLI on any device role always talks to a *local* `vyred` (never
+  the remote server's socket directly, per the federation model), so Tier A on a Windows PC needs
+  a local `vyred`, same as a Mac, and `chmod` has no meaning there to fall back on.
+  `core/config/index.js` now puts the socket under a per-user `%LOCALAPPDATA%\Vyre\sockets`
+  folder (`socketPath`'s `win32` branch) whose ACL `ensureWindowsSocketDir` sets explicitly
+  before `ensure()` returns, and before `core/daemon/index.js` ever calls `listen()`: `icacls
+  /inheritance:r` strips whatever the folder inherited, then an explicit grant adds back only the
+  current user and `SYSTEM`. `.github/workflows/node.yml`'s `windows-socket-acl` job proves this
+  on a real `windows-latest` runner: it starts `vyred`, checks with `icacls`
+  (`scripts/win-socket-acl-check.mjs`, unit-tested off Windows against sample icacls text in
+  `test/win-socket-acl-check.test.js`) that only this user, `SYSTEM` and `Administrators` are on
+  the socket's folder *and* the socket file itself, then proves a refusal, not just the ACL text:
+  a second local user (`net user`) fails to connect (`scripts/win-connect-probe.mjs`) while the
+  owner succeeds. This job is **not** `continue-on-error`: per the lead, if it cannot be made to
+  pass, Tier A ships in 0.1.1 marked "preview" with the gap written down, not silently green.
 - Every future Windows-only module (`local/hands-win`, `local/screen-win`, a `vault` backend for
   Credential Manager, a Capsule shell) ships through the existing `local/*` module registry, with
   its own manifest and tests, no fork of `core`, no special-casing per file the way the four
