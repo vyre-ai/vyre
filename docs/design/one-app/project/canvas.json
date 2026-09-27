@@ -1,0 +1,476 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Agents-paper.dc.html": {
+      "h": 1120,
+      "title": "Agents and Glass computers \u00b7 paper",
+      "w": 2656,
+      "x": 7752,
+      "y": 4620
+    },
+    "Agents.dc.html": {
+      "h": 1120,
+      "title": "Agents and Glass computers",
+      "w": 2656,
+      "x": 7752,
+      "y": 3080
+    },
+    "Capsule-paper.dc.html": {
+      "h": 1200,
+      "title": "The Mac Capsule and the CLI \u00b7 paper",
+      "w": 2400,
+      "x": 7660,
+      "y": 12170
+    },
+    "Capsule.dc.html": {
+      "h": 1200,
+      "title": "The Mac Capsule and the CLI",
+      "w": 2400,
+      "x": 7660,
+      "y": 9720
+    },
+    "Composer-paper.dc.html": {
+      "h": 1340,
+      "title": "Session: the composer, like Claude Code \u00b7 paper",
+      "w": 2760,
+      "x": 9640,
+      "y": 7940
+    },
+    "Composer.dc.html": {
+      "h": 1340,
+      "title": "Session: the composer, like Claude Code",
+      "w": 2760,
+      "x": 9640,
+      "y": 6160
+    },
+    "Devices-paper.dc.html": {
+      "h": 1120,
+      "title": "Devices, network and VyreDrive \u00b7 paper",
+      "w": 2240,
+      "x": 15968,
+      "y": 4620
+    },
+    "Devices.dc.html": {
+      "h": 1120,
+      "title": "Devices, network and VyreDrive",
+      "w": 2240,
+      "x": 15968,
+      "y": 3080
+    },
+    "Directions.dc.html": {
+      "h": 1040,
+      "title": "Direction: three options, A chosen",
+      "w": 2200,
+      "x": 0,
+      "y": 0
+    },
+    "InstallLaptop-paper.dc.html": {
+      "h": 1090,
+      "title": "Install 1: Add your phone, from the laptop \u00b7 paper",
+      "w": 2360,
+      "x": 2780,
+      "y": 12170
+    },
+    "InstallLaptop.dc.html": {
+      "h": 1090,
+      "title": "Install 1: Add your phone, from the laptop",
+      "w": 2360,
+      "x": 2780,
+      "y": 9720
+    },
+    "InstallPhones-paper.dc.html": {
+      "h": 1600,
+      "title": "Install 2: on the phone \u00b7 paper",
+      "w": 2360,
+      "x": 5220,
+      "y": 12170
+    },
+    "InstallPhones.dc.html": {
+      "h": 1600,
+      "title": "Install 2: on the phone",
+      "w": 2360,
+      "x": 5220,
+      "y": 9720
+    },
+    "Layout.dc.html": {
+      "h": 1200,
+      "title": "Layout: breakpoints and navigation",
+      "w": 2200,
+      "x": 4560,
+      "y": 1460
+    },
+    "Main.dc.html": {
+      "h": 1120,
+      "title": "Principles",
+      "w": 2200,
+      "x": 0,
+      "y": 1460
+    },
+    "Memory-paper.dc.html": {
+      "h": 1120,
+      "title": "Memory and lessons \u00b7 paper",
+      "w": 2200,
+      "x": 5060,
+      "y": 7940
+    },
+    "Memory.dc.html": {
+      "h": 1120,
+      "title": "Memory and lessons",
+      "w": 2200,
+      "x": 5060,
+      "y": 6160
+    },
+    "Needs-paper.dc.html": {
+      "h": 1120,
+      "title": "Needs you (home) \u00b7 paper",
+      "w": 2200,
+      "x": 0,
+      "y": 4620
+    },
+    "Needs.dc.html": {
+      "h": 1120,
+      "title": "Needs you (home)",
+      "w": 2200,
+      "x": 0,
+      "y": 3080
+    },
+    "Onboarding-paper.dc.html": {
+      "h": 1360,
+      "title": "First run: the box, then your phone \u00b7 paper",
+      "w": 2700,
+      "x": 0,
+      "y": 7940
+    },
+    "Onboarding.dc.html": {
+      "h": 1360,
+      "title": "First run: the box, then your phone",
+      "w": 2700,
+      "x": 0,
+      "y": 6160
+    },
+    "Plan-paper.dc.html": {
+      "h": 1120,
+      "title": "Plan approval and modes \u00b7 paper",
+      "w": 2656,
+      "x": 5016,
+      "y": 4620
+    },
+    "Plan.dc.html": {
+      "h": 1120,
+      "title": "Plan approval and modes",
+      "w": 2656,
+      "x": 5016,
+      "y": 3080
+    },
+    "Planner-paper.dc.html": {
+      "h": 1120,
+      "title": "Planner \u00b7 paper",
+      "w": 2660,
+      "x": 10488,
+      "y": 4620
+    },
+    "Planner.dc.html": {
+      "h": 1120,
+      "title": "Planner",
+      "w": 2660,
+      "x": 10488,
+      "y": 3080
+    },
+    "Presence-paper.dc.html": {
+      "h": 1120,
+      "title": "Presence: sign in once, prove it rarely \u00b7 paper",
+      "w": 2660,
+      "x": 12920,
+      "y": 12170
+    },
+    "Presence.dc.html": {
+      "h": 1120,
+      "title": "Presence: sign in once, prove it rarely",
+      "w": 2660,
+      "x": 12920,
+      "y": 9720
+    },
+    "Projects-paper.dc.html": {
+      "h": 1120,
+      "title": "Projects \u00b7 paper",
+      "w": 2200,
+      "x": 2780,
+      "y": 7940
+    },
+    "Projects.dc.html": {
+      "h": 1120,
+      "title": "Projects",
+      "w": 2200,
+      "x": 2780,
+      "y": 6160
+    },
+    "Session-paper.dc.html": {
+      "h": 1120,
+      "title": "Session, terminal and ask cards \u00b7 paper",
+      "w": 2656,
+      "x": 2280,
+      "y": 4620
+    },
+    "Session.dc.html": {
+      "h": 1120,
+      "title": "Session, terminal and ask cards",
+      "w": 2656,
+      "x": 2280,
+      "y": 3080
+    },
+    "Settings-paper.dc.html": {
+      "h": 1120,
+      "title": "Settings \u00b7 paper",
+      "w": 2220,
+      "x": 7340,
+      "y": 7940
+    },
+    "Settings.dc.html": {
+      "h": 1120,
+      "title": "Settings",
+      "w": 2220,
+      "x": 7340,
+      "y": 6160
+    },
+    "Smooth.dc.html": {
+      "h": 800,
+      "title": "Direction: the smoothness bar",
+      "w": 2200,
+      "x": 2280,
+      "y": 0
+    },
+    "States-paper.dc.html": {
+      "h": 2030,
+      "title": "States \u00b7 paper",
+      "w": 2700,
+      "x": 0,
+      "y": 12170
+    },
+    "States.dc.html": {
+      "h": 2030,
+      "title": "States",
+      "w": 2700,
+      "x": 0,
+      "y": 9720
+    },
+    "System.dc.html": {
+      "h": 1200,
+      "title": "System: tokens, type, colour, buttons",
+      "w": 2200,
+      "x": 2280,
+      "y": 1460
+    },
+    "Takeover-paper.dc.html": {
+      "h": 1500,
+      "title": "Glass: take-over and hand-back states \u00b7 paper",
+      "w": 2700,
+      "x": 10140,
+      "y": 12170
+    },
+    "Takeover.dc.html": {
+      "h": 1500,
+      "title": "Glass: take-over and hand-back states",
+      "w": 2700,
+      "x": 10140,
+      "y": 9720
+    },
+    "Vault-paper.dc.html": {
+      "h": 1120,
+      "title": "Vault, autofill and authenticator \u00b7 paper",
+      "w": 2660,
+      "x": 13228,
+      "y": 4620
+    },
+    "Vault.dc.html": {
+      "h": 1120,
+      "title": "Vault, autofill and authenticator",
+      "w": 2660,
+      "x": 13228,
+      "y": 3080
+    },
+    "Teammates.dc.html": {
+      "x": 0,
+      "y": 14620,
+      "w": 2656,
+      "h": 1180,
+      "title": "Agents place: teammates"
+    },
+    "TeammatesNeeds.dc.html": {
+      "x": 2736,
+      "y": 14620,
+      "w": 2200,
+      "h": 1140,
+      "title": "Needs you: teammate kinds"
+    },
+    "Limits.dc.html": {
+      "x": 5016,
+      "y": 14620,
+      "w": 2700,
+      "h": 1200,
+      "title": "Teammates and usage (interactive)",
+      "is_interactive": true
+    },
+    "Teammates-paper.dc.html": {
+      "x": 0,
+      "y": 16240,
+      "w": 2656,
+      "h": 1180,
+      "title": "Agents place: teammates \u00b7 paper"
+    },
+    "TeammatesNeeds-paper.dc.html": {
+      "x": 2736,
+      "y": 16240,
+      "w": 2200,
+      "h": 1140,
+      "title": "Needs you: teammate kinds \u00b7 paper"
+    },
+    "Limits-paper.dc.html": {
+      "x": 5016,
+      "y": 16240,
+      "w": 2700,
+      "h": 1200,
+      "title": "Teammates and usage (interactive) \u00b7 paper",
+      "is_interactive": true
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-27T04:28:02Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "dark": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "Key screens, phone and desktop \u00b7 dark",
+      "w": 240,
+      "x": 0,
+      "y": 2780
+    },
+    "direction": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Direction A, inbox first: decided 27 Sep",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "more": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "States, install, the Capsule and CLI, Glass take-over, presence",
+      "w": 240,
+      "x": 0,
+      "y": 9420
+    },
+    "more2": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "States, install, Capsule, take-over, presence \u00b7 paper",
+      "w": 240,
+      "x": 0,
+      "y": 11870
+    },
+    "paper": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "Key screens \u00b7 paper",
+      "w": 240,
+      "x": 0,
+      "y": 4320
+    },
+    "places": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "First run, places and the composer \u00b7 dark",
+      "w": 240,
+      "x": 0,
+      "y": 5860
+    },
+    "places2": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "First run, places and the composer \u00b7 paper",
+      "w": 240,
+      "x": 0,
+      "y": 7640
+    },
+    "start": {
+      "kind": "title1",
+      "maxW": 6760,
+      "text": "Principles, system, layout",
+      "w": 240,
+      "x": 0,
+      "y": 1160
+    },
+    "team": {
+      "x": 0,
+      "y": 14320,
+      "text": "Teammates (ADR 0031): the Agents place, Needs kinds, usage limits",
+      "kind": "title1",
+      "maxW": 8000
+    },
+    "team2": {
+      "x": 0,
+      "y": 15940,
+      "text": "Teammates \u00b7 paper",
+      "kind": "title1",
+      "maxW": 8000
+    }
+  },
+  "order": [
+    "Directions.dc.html",
+    "Smooth.dc.html",
+    "Main.dc.html",
+    "System.dc.html",
+    "Layout.dc.html",
+    "Needs.dc.html",
+    "Session.dc.html",
+    "Plan.dc.html",
+    "Agents.dc.html",
+    "Planner.dc.html",
+    "Vault.dc.html",
+    "Devices.dc.html",
+    "Needs-paper.dc.html",
+    "Session-paper.dc.html",
+    "Plan-paper.dc.html",
+    "Agents-paper.dc.html",
+    "Planner-paper.dc.html",
+    "Vault-paper.dc.html",
+    "Devices-paper.dc.html",
+    "Onboarding.dc.html",
+    "Projects.dc.html",
+    "Memory.dc.html",
+    "Settings.dc.html",
+    "Composer.dc.html",
+    "Onboarding-paper.dc.html",
+    "Projects-paper.dc.html",
+    "Memory-paper.dc.html",
+    "Settings-paper.dc.html",
+    "Composer-paper.dc.html",
+    "States.dc.html",
+    "InstallLaptop.dc.html",
+    "InstallPhones.dc.html",
+    "Capsule.dc.html",
+    "Takeover.dc.html",
+    "Presence.dc.html",
+    "States-paper.dc.html",
+    "InstallLaptop-paper.dc.html",
+    "InstallPhones-paper.dc.html",
+    "Capsule-paper.dc.html",
+    "Takeover-paper.dc.html",
+    "Presence-paper.dc.html",
+    "Teammates.dc.html",
+    "TeammatesNeeds.dc.html",
+    "Limits.dc.html",
+    "Teammates-paper.dc.html",
+    "TeammatesNeeds-paper.dc.html",
+    "Limits-paper.dc.html"
+  ],
+  "pages": [],
+  "title": "Vyre one app"
+}

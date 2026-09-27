@@ -15,7 +15,7 @@ test("build: a release's stamp wins, a checkout asks git, and neither is nulls",
   const stamped = tempHome(t);
   pkg(stamped);
   fs.writeFileSync(path.join(stamped, "build.json"), JSON.stringify({ version: "9.9.9", commit: "1a2b3c4d5e6f", dirty: false }));
-  assert.deepEqual(build(stamped), { version: "9.9.9", commit: "1a2b3c4d5e6f", dirty: false });
+  assert.deepEqual(build(stamped), { version: "9.9.9", commit: "1a2b3c4d5e6f", dirty: false, stamped: true });
   assert.equal(label(build(stamped)), "9.9.9 · 1a2b3c4");
 
   const checkout = tempHome(t);

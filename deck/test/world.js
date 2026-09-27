@@ -27,7 +27,10 @@ const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-deck-")));
 if (path.resolve(root) === path.resolve(os.homedir(), ".vyre")) throw new Error("refusing to use the real ~/.vyre");
 // alex's folders sit beside the Vyre home, not in it: the files guard never shows anything inside
 // Vyre's own home, so Chat's folder browser and terminal would find nothing there.
-const alex = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-alex-")));
+// The folder is plainly "alex", so a shown path reads .../alex/Work, not a temp name.
+const alexTmp = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-alex-")));
+const alex = path.join(alexTmp, "alex");
+fs.mkdirSync(alex);
 const work = path.join(alex, "Work");
 const moved = SESSIONS.map(s => ({ ...s, cwd: s.cwd.replace(path.join(HOME, "Work"), work).replace(HOME, alex) }));
 for (const s of moved) fs.mkdirSync(s.cwd, { recursive: true });
@@ -171,7 +174,7 @@ server.listen(PORT, "127.0.0.1", async () => {
 // this process (Ctrl-C below, an uncaught exception, a thrown "vyred did not come up"), not just
 // a clean quit, so the temp dir does not outlive the process. fs.rmSync is sync, which "exit"
 // handlers require.
-process.on("exit", () => { for (const d of [root, alex]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
+process.on("exit", () => { for (const d of [root, alexTmp]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
 
 const quit = () => {
   server.close();

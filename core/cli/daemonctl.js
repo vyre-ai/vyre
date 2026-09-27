@@ -29,11 +29,19 @@ export async function ensureUp() {
 }
 
 /** @returns {Promise<{ ok: boolean, wasRunning: boolean, pid?: number }>} */
-export async function stop() {
+/**
+ * Stop this home's vyred. Only a pid that is Vyre's own: the pid file's, and when the caller
+ * read vyred's health first, that one too. A pid file left by a crash names a process that may
+ * be anything by now, so a mismatch stops nothing.
+ * @param {{ pid?: number }} [expect]
+ * @returns {Promise<{ ok: boolean, wasRunning: boolean, pid?: number, why?: string }>}
+ */
+export async function stop(expect = {}) {
   const p = config.paths();
   let pid = 0;
   try { pid = Number(fs.readFileSync(p.pid, "utf8")); } catch {}
   if (!pid || !(await ping(p.socket))) return { ok: true, wasRunning: false };
+  if (expect.pid && expect.pid !== pid) return { ok: false, wasRunning: true, pid, why: `vyred answers as pid ${expect.pid} but ${p.pid} says ${pid}; stopped nothing` };
   process.kill(pid, "SIGTERM");
   for (let i = 0; i < 50; i++) {
     await new Promise(r => setTimeout(r, 100));

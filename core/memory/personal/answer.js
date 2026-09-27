@@ -8,7 +8,7 @@
 //               kin:spouse) and read from personal facts, or from the graph for people outside
 //               the user's life ("who is Dana Reyes").
 //   2. meaning  the user's own first-person statements from recall.search (hybrid when Recall has
-//               vectors), filtered the way the Capsule's said.js does. A said line is never more
+//               vectors), filtered the way the Capsule's Said.swift does. A said line is never more
 //               than SAID_MAX sure.
 //   3. keyword  the same over keyword search only, when meaning found nothing.
 // A question that maps to a relation and has no fact gets no loose quote: only a sentence that

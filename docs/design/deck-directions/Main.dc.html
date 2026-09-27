@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Deck B, the system</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#0E0D0C}
+.sw { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; height: 40px; border-top: 1px solid var(--rule); }
+.sw:first-child { border-top: 0; }
+.sw i { width: 40px; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--rule-strong); }
+.ts { display: grid; grid-template-columns: 96px minmax(0, 1fr) 260px; align-items: baseline; gap: 16px; padding: 14px 0; border-top: 1px solid var(--rule); }
+.kr { display: flex; align-items: center; gap: 12px; height: 36px; border-top: 1px solid var(--rule); }
+.kr:first-child { border-top: 0; }
+</style>
+</helmet>
+<div class="vy t-dark" style="width: 2960px; height: 960px; flex-direction: column; padding: 64px 88px; gap: 40px;">
+
+  <div class="row" style="align-items: flex-end; gap: 48px;">
+    <div class="col" style="gap: 8px; max-width: 1500px;">
+      <span class="lbl">Vyre Deck · Direction B, second pass · 27 Sep 2026</span>
+      <h1 class="t28 w6">B's look, built for daily use: two fonts, five sizes, two weights, two colours.</h1>
+      <p class="t15 t2">Every screen now shows its real states: focused, selected, loading, empty with the action inline, failed with a way out, offline, many items and long names. Every action has a key, and the primary action always sits in the same place.</p>
+    </div>
+    <div class="col" style="margin-left: auto; gap: 4px; width: 560px;">
+      <span class="lbl">On this canvas</span>
+      <span class="t2">Now · Chat · Agents · Projects · Vault · Settings, each in dark and paper, then States and the attention colour. Direction A is retired.</span>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 24px; align-items: start;">
+
+    <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column;" aria-label="Type">
+      <div class="row" style="gap: 8px; padding-bottom: 12px;"><span class="t20 w6">Type</span><span class="t2" style="margin-left: auto;">Instrument Sans · JetBrains Mono for code only</span></div>
+      <div class="ts"><span class="mono t12 t3">28 / 34</span><span class="t28 w6 trunc">Good afternoon, alex</span><span class="t12 t2">Spec sheets and first-run heroes. Rare.</span></div>
+      <div class="ts"><span class="mono t12 t3">20 / 26</span><span class="t20 w6 trunc">Harlow Legal</span><span class="t12 t2">Page greeting, detail and sheet titles</span></div>
+      <div class="ts"><span class="mono t12 t3">15 / 22</span><span class="t15 trunc">Found it. The Estate branch skips contactFields.</span><span class="t12 t2">Messages, prose, card titles (600)</span></div>
+      <div class="ts"><span class="mono t12 t3">13 / 18</span><span class="trunc">Allow once · Harlow Legal · Intake form rebuild</span><span class="t12 t2">The default: rows, buttons, fields, the top bar</span></div>
+      <div class="ts"><span class="mono t12 t3">12 / 16</span><span class="t12 trunc">Needs you · kit · 14:21 · ⌘K</span><span class="t12 t2">Labels, meta, counts, shortcuts, rail</span></div>
+      <div class="ts"><span class="mono t12 t3">mono</span><span class="mono trunc">git push origin main · src/intake/schema.ts</span><span class="t12 t2">Commands, code, paths, IDs. 12 or 13.</span></div>
+      <div class="col" style="gap: 6px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule);">
+        <span class="t2"><span class="w6" style="color: var(--text);">Weights:</span> 400 to read, 600 for names, titles, labels and buttons. Nothing else.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Labels:</span> 12/600 sentence case in ash. No mono caps.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Phone:</span> +2 on the 15 and 20 steps (17 and 22). 12, 13 and 28 are shared.</span>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px;" aria-label="Colour">
+      <div class="row" style="gap: 8px;"><span class="t20 w6">Colour</span><span class="t2" style="margin-left: auto;">8 neutrals · lime · violet</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="vy t-dark" style="flex-direction: column; border-radius: 10px; padding: 8px 14px; border: 1px solid var(--rule);">
+          <div class="sw"><i style="background: var(--bg);"></i><span>bg</span><span class="mono t12 t3">#0E0D0C</span></div>
+          <div class="sw"><i style="background: var(--panel);"></i><span>panel</span><span class="mono t12 t3">#161513</span></div>
+          <div class="sw"><i style="background: var(--hover);"></i><span>hover</span><span class="mono t12 t3">#1E1C1A</span></div>
+          <div class="sw"><i style="background: var(--rule);"></i><span>rule</span><span class="mono t12 t3">#2B2926</span></div>
+          <div class="sw"><i style="background: var(--rule-strong);"></i><span>rule-strong</span><span class="mono t12 t3">#3A3733</span></div>
+          <div class="sw"><i style="background: var(--label);"></i><span>label</span><span class="mono t12 t3">#8C877D</span></div>
+          <div class="sw"><i style="background: var(--text-2);"></i><span>text-2</span><span class="mono t12 t3">#B3AEA4</span></div>
+          <div class="sw"><i style="background: var(--text);"></i><span>text</span><span class="mono t12 t3">#F1EEE6</span></div>
+          <div class="sw"><i style="background: var(--primary-bg);"></i><span class="w6">lime</span><span class="mono t12 t3">#C6F36B</span></div>
+          <div class="sw"><i style="background: var(--beacon-dot);"></i><span class="w6 bea">violet</span><span class="mono t12 t3">#B8A4FF</span></div>
+        </div>
+        <div class="vy t-light" style="flex-direction: column; border-radius: 10px; padding: 8px 14px; border: 1px solid var(--rule);">
+          <div class="sw"><i style="background: var(--bg);"></i><span>bg</span><span class="mono t12 t3">#F4F1EA</span></div>
+          <div class="sw"><i style="background: var(--panel);"></i><span>panel</span><span class="mono t12 t3">#FBFAF6</span></div>
+          <div class="sw"><i style="background: var(--hover);"></i><span>hover</span><span class="mono t12 t3">#EEEAE2</span></div>
+          <div class="sw"><i style="background: var(--rule);"></i><span>rule</span><span class="mono t12 t3">#DCD7CC</span></div>
+          <div class="sw"><i style="background: var(--rule-strong);"></i><span>rule-strong</span><span class="mono t12 t3">#C9C3B7</span></div>
+          <div class="sw"><i style="background: var(--label);"></i><span>label</span><span class="mono t12 t3">#6B665D</span></div>
+          <div class="sw"><i style="background: var(--text-2);"></i><span>text-2</span><span class="mono t12 t3">#4A463F</span></div>
+          <div class="sw"><i style="background: var(--text);"></i><span>text</span><span class="mono t12 t3">#141311</span></div>
+          <div class="sw"><i style="background: var(--focus);"></i><span class="w6">lime (focus)</span><span class="mono t12 t3">#46700C</span></div>
+          <div class="sw"><i style="background: var(--beacon-dot);"></i><span class="w6 bea">violet</span><span class="mono t12 t3">#5B3FC4</span></div>
+        </div>
+      </div>
+      <div class="col" style="gap: 6px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule);">
+        <span class="t2"><span class="w6" style="color: var(--text);">Lime:</span> the primary button, the focus ring, running, a selected row. On paper the button is ink and focus is deep lime.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Violet:</span> "needs you", as a dot, a label or a count. Never a card, a border or a wash.</span>
+        <span class="t2"><span class="w6" style="color: var(--text);">Everything else is neutral:</span> memory, success, info and errors are words plus an icon.</span>
+      </div>
+    </section>
+
+    <div class="col" style="gap: 24px; min-height: 0;">
+      <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 12px;" aria-label="Rules">
+        <span class="t20 w6">Placement</span>
+        <div class="col" style="gap: 8px;">
+          <span class="t2"><span class="w6" style="color: var(--text);">Page primary</span> at the right end of the top bar, after "need you", with its key (N). Now has none: its composer is the primary.</span>
+          <span class="t2"><span class="w6" style="color: var(--text);">In a card or sheet</span> the actions sit in the footer: primary first, then secondary; Cancel, Deny or Discard pushed right.</span>
+          <span class="t2"><span class="w6" style="color: var(--text);">Drafts</span> edit in place. Only Send and Discard.</span>
+          <span class="t2"><span class="w6" style="color: var(--text);">Cards</span> are panel plus a hairline. No box in a box, except code.</span>
+        </div>
+      </section>
+      <section class="card" style="padding: 24px 28px; display: flex; flex-direction: column; gap: 8px;" aria-label="Keyboard">
+        <span class="t20 w6" style="padding-bottom: 4px;">Keyboard</span>
+        <div class="col">
+          <div class="kr"><span class="grow">Jump to anything, run a command</span><span class="kbd">⌘K</span></div>
+          <div class="kr"><span class="grow">The page's primary action</span><span class="kbd">N</span></div>
+          <div class="kr"><span class="grow">Next and previous item</span><span class="kbd">J</span><span class="kbd">K</span></div>
+          <div class="kr"><span class="grow">Allow once</span><span class="kbd">A</span></div>
+          <div class="kr"><span class="grow">Deny or discard</span><span class="kbd">D</span></div>
+          <div class="kr"><span class="grow">Send, save, create</span><span class="kbd">⌘⏎</span></div>
+          <div class="kr"><span class="grow">Filter this list</span><span class="kbd">/</span></div>
+          <div class="kr"><span class="grow">Close, cancel, stop editing</span><span class="kbd">Esc</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2960,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

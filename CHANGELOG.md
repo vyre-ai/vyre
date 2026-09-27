@@ -37,6 +37,458 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - scripts/eval-answer.js replays the reads from test/eval/reads/<world>.json, so CI calls no
   model. `--record` records them with `claude -p` and `--no-model` scores the rules alone.
 
+#### Sessions: concurrency slots for teammates and subagents (the user's usage control)
+
+- core/sessions/slots.js: a ledger of two kinds of slot, `teammate` and `subagent`, each with a
+  box-wide limit (`sessions.limits` in config: `max_active_teammates` 6, `max_subagents` 8) and a
+  per-project one (person-only `sessions.limits.set {project, max_active, max_subagents}`). A take
+  with no room waits its turn: oldest first within a project, projects in turn across the box.
+  Events `slot.taken`, `slot.released`, `slot.queued {kind, project, owner, key, position}`. Reads:
+  `sessions.slots.status`, `sessions.limits.get`. Internal `sessions.slots` (take, release,
+  release-owner, status) for the Switchboard and for teammates (ADR 0031), which holds a teammate
+  slot for a summon.
+- A subagent (Claude Code's Agent or Task tool) in a session Vyre runs on the Agent SDK waits for
+  a subagent slot in an in-process PreToolUse hook (up to 10 minutes, then it is refused with the
+  reason). The slot comes back when the Agent call ends, the turn ends or the session stops.
+  Terminal sessions and sessions on the CLI runner take theirs through the plugin: harness.rules
+  refuses an Agent or Task call at once when there is no room, with its place in line (a hook
+  cannot wait); harness.learn (now also on Agent and Task in hooks.json) gives the slot back when
+  the call ends, and harness.stop at the turn's end.
+- Purposes `teammate` (opus) and `helper` (haiku) for ADR 0031.
+- The fake `claude` runs the host's PreToolUse hooks (hook_callback) before a tool, and has an
+  Agent tool ("subagent <task>").
+
+#### Sessions: a retried send is the same message; the queue and the mode can be read
+
+- `threads.send` takes the caller's Idempotency-Key (ADR 0029 R2, resilience's `keyUuid`) as the
+  message's uuid. A send whose uuid was already handed to Claude Code (new table `threads_sent`)
+  or queued answers `{sent: true, already: true}` and starts nothing, even after a restart.
+- `threads.queue {thread}`: the words queued and not handed over yet (queued, uuid, text, surface, at).
+- Thread records carry `mode` (default, acceptEdits, plan), kept by `threads.mode`.
+
+#### Sessions: the Agent SDK is the default driver (ADR 0030)
+
+- `sessions.driver` defaults to `sdk`: every session Vyre starts (Chat, agents, the Capsule, the
+  phone, the planner, learning jobs) runs on the Claude Agent SDK; terminal sessions stay plain
+  `claude`. `cli` keeps the runner by choice, and sessions fall back to it while the SDK is not
+  installed yet (the box image carries it; a Mac installs it on first use). Flipped after the
+  full suite passed on the SDK driver on testbox (2551 tests: 2499 pass, 45 skipped, 2 todo;
+  the five failures were stale generated docs, a test that wrote inside VYRE_HOME, now fixed, and
+  two journey tests that hit "database is locked" under load and pass on a rerun).
+- `ask.raised` carries `tool_use_id`, so an inline ask attaches to its tool row; `thread.steered`
+  carries `step`, the tool calls the turn had finished when Claude took the words in.
+- The fake `claude`'s error results list `errors`, as Claude Code's do; the SDK reads them.
+- core/cli/screen/screen-live.test.js runs its thread outside the temp home (the floor refuses
+  writes inside VYRE_HOME before anyone is asked).
+
+#### Sessions: an API key never reaches a session's Bash
+
+- Measured against the real bundled Claude Code 2.1.283 and a fake Messages API
+  (scripts/sessions-proof/env-leak.mjs, with cc-plugin's fake-api.mjs): Claude Code keeps
+  `CLAUDE_CODE_OAUTH_TOKEN` from the tools it runs, but a Bash tool call's `env` printed
+  `ANTHROPIC_API_KEY`, so a model could read the key and send it out. Claude Code's own
+  `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` needs bubblewrap and exits without it.
+- core/sessions/spawn.js now takes an API key out of the environment and writes it once to a pipe
+  on fd 3 (`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`), which Claude Code reads at start and its tools
+  do not see. Same measurement after: authenticated, not in Bash's environment; a control run
+  with no credential fails "Not logged in". Both drivers; tested in core/sessions.
+- Event gaps chat and the Capsule need: a tool call a turn left open when it was interrupted or
+  stopped is `thread.tool {status: "canceled"}`; a failed turn is `thread.state {state: "failed",
+  turn, error}` before the thread goes idle; `thread.state` carries `turn`. ADR 0030's event
+  table now says what is live.
+- `recover()` emits `thread.stopped {reason: "restart"}` for each thread a crash left live
+  (ADR 0029 R7), not only the row.
+- Merged main c8fb9aae; its threads.unqueue is folded into this branch's (a superset: uuid,
+  reason, a `denied` code).
+
+#### Sessions: rewind, as a double Esc does; a smoke for the bundled Claude Code
+
+- scripts/sessions-smoke.mjs: with `VYRE_SESSIONS_SDK_DIR` pointing at the pinned SDK installed
+  with its bundled binary, starts that Claude Code through the driver with no credentials and no
+  turn, and reports the spawn, init time and idle RSS and CPU (for CI's sdk-real job). On testbox:
+  spawned in 219 ms, 189 MB.
+
+- `threads.rewind {thread, uuid}` (a person's surface only): the session goes back to just before
+  that user message and carries on from there in the same thread and transcript (the CLI's
+  `--resume-session-at`, the SDK's `resumeSessionAt`); the message's words come back as `text` for
+  the composer. A running turn is stopped first. Emits `thread.rewound {uuid, at}`. Rewinding to
+  the first message says to start a new session instead. A user message's transcript uuid is the
+  one `thread.turn` gave, so a surface names it from the live stream or the history.
+
+#### Sessions: steering, turns, the queue, state and usage (ADR 0030, step 6's events)
+
+- Steering is the default (the user: Chat must feel like Claude Code in the terminal). A message
+  sent while a turn runs joins that turn at Claude's next step (`priority: "next"`), returns
+  `{steered: true, uuid, turn}`, emits `thread.sent {via: "steer"}`, and `thread.steered {uuid}`
+  when Claude Code takes it in (its `user_message_uuid` echo). Steered words a turn never reached
+  run as the next turn (`thread.turn {steered: true}`).
+- The queue is the alternative: `threads.send {mode: "queue"}` keeps the words until the turn
+  ends ("<name> is working on something", never "terminal" for a session Vyre runs), then hands
+  every row over as one turn, each announced first (`thread.sent {queued, uuid, via: "turn"}`) and
+  marked delivered in the same step. New `threads.unqueue` (the same shape as capsule-now's),
+  `threads.edit` (re-emits `thread.queued` with the same ids, `edited: true`) and
+  `threads.send-now` (steers a queued row in, `via: "now"`). Queued rows carry a `uuid`;
+  `threads.send` answers with `queued_id` and `uuid`.
+- Turns: `thread.turn {turn: "<thread>:<n>", uuid, text}` starts each turn, and every event of a
+  turn carries `turn`. `thread.state {state}` on every change (starting, running, waiting, idle,
+  stopped). `thread.usage {cost_usd, total_cost_usd, tokens}` per turn. `thread.finished` says
+  `canceled: true, reason: "interrupt"` after `threads.interrupt`.
+- Keys: `thread.text` carries `block` (the content block's place in its message across the lines
+  Claude Code writes, so live and transcript rows share `message:block`); `thread.tool` carries
+  `call` (= `id`), `name` and `status` (running, then completed or failed).
+- User messages carry their own `uuid` to Claude Code (runner.js `userLine`). The fake `claude`
+  folds steered messages into its next reply, stamps `user_message_uuid`, lists
+  `user_message_uuids` on its result, and runs unreached steered words as the next turn.
+
+#### Sessions: a turn's cost is its own
+
+- Claude Code reports `total_cost_usd` as the running total of a session's process (continued
+  from the transcript's saved total on a resume), not the turn's own cost. The Switchboard added
+  it up per turn, so a thread's cost, `threads.usage` and agents' API-key budgets counted every
+  earlier turn again. It now keeps the last total per thread (`cost_total`) and records the
+  difference; `thread.finished` says `cost_usd` (the turn's) and `total_cost_usd`. A fork starts
+  from its source's total. The fake `claude` reports a running total as Claude Code does.
+
+#### Sessions: adopting existing sessions, fork, and ADR 0030's settled contract
+
+- `threads.fork {thread, prompt?, name?}`: a new thread that carries on another session's
+  conversation as a copy, in its folder, never touching its process or transcript (the CLI's
+  `--resume <id> --fork-session --session-id <new>`, the SDK's `forkSession`). `thread.started`
+  says `forked_from`. For a session busy in a terminal, the way to go on without two writers.
+- Adopting: a session a terminal started (an older Claude Code's transcript included) is resumed
+  through Vyre on the first message from Chat, in its own folder, and stays one row; a session
+  live in a terminal is queued, never typed into. Tested on both drivers.
+- `threads.answer` with the same decision again returns the earlier outcome
+  (`{answered: true, already: true}`, ADR 0029 R2); a different one is still refused.
+- ADR 0030: the event contract agreed with chat, capsule-now and capsule-sight; the provider
+  contract as built; steering as the default with the queue as the alternative; security as
+  built for e2e's blockers; models per purpose; adopting existing sessions; the parity list with
+  Claude Code in the terminal (SDK-native or ours); decided and open questions.
+- The fake `claude` copies the source transcript on a fork.
+
+#### Sessions: security before the flip, models per purpose, providers as modules (ADR 0030)
+
+- Security (e2e's blockers). core/sessions/spawn.js spawns every session process, on either
+  driver, in its own process group and session, under `tini -s` where installed (the box image now
+  has tini), optionally as another uid/gid (`sessions.uid`, `sessions.gid`), and reports pid, pgid
+  and sid before the process can run anything. `threads.pids` returns `{ pids, pgids, sids }`; a
+  group stays listed until its last process is gone, so a detached orphan is still known. The
+  floor runs before any question is put to the person (the Switchboard refuses what it denies,
+  with a notice), and floor rule 1 now denies a session's writes (file tools and Bash write forms)
+  to Claude Code's settings files, `.mcp.json` and `.claude.json` (core/harness/rules.js, tests in
+  core/harness/floor.test.js). An answer never hands back a switch to bypassPermissions
+  (`safePermissions`); new person-only `threads.mode` (default, acceptEdits, plan; event
+  `mode.changed`).
+- Fixes. `Sessions.bind` walks past dash's `sh -c` to the claude above it (no session bound on
+  Linux before), and returns the pid it bound, which the hook uses for the key file.
+  `callerKind("mcp:thread:<id>")` is "mcp". Threads a restart cut say `restart` (ADR 0029 R7).
+- Models (the user's decision): each session has a purpose (chat, agent, project, capsule, job,
+  memory, planner, learn; inferred when not given: a lean or one-shot thread is a job). Opus for
+  chat, agent and project; haiku for the rest. `sessions.models` in config overrides a purpose;
+  person-only `sessions.models.set` overrides a purpose or a project; an agent's model and an
+  explicit one win. `sessions.models.get`, internal `sessions.models.resolve`, event
+  `model.changed`. `thread.started` says `provider`, `model`, `auth` and `purpose` for the chip;
+  records carry `provider` and `purpose`.
+- Providers: a module adds a session provider through its manifest (`does.providers`) and
+  `ctx.provider(name, driver)`, with no core change; `threads.start { provider }` runs a session on
+  it. The contract and the test every provider must pass are core/sessions/conformance.js; the
+  CLI runner and the SDK driver pass it, and a sample module's provider runs a session end to end.
+- The box image carries the pinned SDK with its bundled Claude Code in /opt/vyre-sessions-sdk
+  (`VYRE_SESSIONS_SDK_DIR`), so a box never downloads it; about 410 MB more. `.dockerignore` keeps
+  scripts/postinstall.mjs, without which `npm ci` in the image failed.
+- Tests: the switchboard and sessions tests keep their work folders outside the temp home (the
+  floor treats the home as Vyre's own, as on a real machine).
+
+#### Sessions: Vyre-owned sessions on the Claude Agent SDK (ADR 0030, steps 1 to 3)
+
+- core/sessions (new module `sessions`): the Claude driver on the Agent SDK (`claude.js`), with the
+  same contract as the CLI runner, so the Switchboard's stream, asks, "always in project", the
+  limit fallback and the watches work unchanged on either. Permission questions come through
+  `canUseTool` into the existing asks; a cancelled one becomes `ask.cancelled`.
+- `sessions.driver` (`cli` or `sdk`; `VYRE_SESSIONS_DRIVER` overrides it for a test run) picks the
+  driver. The SDK is not an npm dependency: it installs on first use into
+  `<VYRE_HOME>/sessions-sdk` (pinned 0.3.283; about 25 MB, plus 230 MB for the bundled Claude Code
+  where `sessions.claude` is `bundled`), never from a test run, and loads with the first session
+  (the import is about 40 MB). New tools `sessions.status` and `sessions.setup`.
+- The box's own credential: a session no agent runs uses `sessions.auth` (the box: the vault's
+  `claude-setup-token`, with `anthropic-api-key` as the limit fallback; the Mac: Claude Code's own
+  login). The vault is asked only once onboarding stored a token or `sessions.auth` is set. The
+  onboarding now grants both items to module `threads` as well as `agents`.
+- The system prompt at three levels (`assistant`, `agent:<name>`, `project:<slug>`), appended to
+  Claude Code's own by default, `replace` as a marked advanced option, every edit a version:
+  `sessions.prompt.get`, `set`, `history`, `revert`, `preview` (and internal `compose`). Event
+  `prompt.changed`. `set` and `revert` are person-only (core/presence PERSON_ONLY). The CLI runner
+  passes a replace as `--system-prompt`.
+- Idle close and a cap: `sessions.idle_minutes` (10) closes a session nobody is using
+  (`thread.stopped` reason `idle`), and the next message resumes it; `sessions.max_live` (box 6)
+  closes the longest-idle one to make room, or refuses a start with `busy`.
+- `threads.interrupt`: stop the running turn; its open questions are cancelled. Thread records say
+  their `driver`.
+- `vyre resume` hands an idle vyred session over to the terminal (stops it first) and leaves one
+  mid-turn alone.
+- Tests: core/sessions/sessions.test.js runs every case on both drivers (the SDK ones need
+  `VYRE_SESSIONS_SDK_DIR`, and skip without it); the switchboard, agents, learn, computers,
+  harness, presence, federation and onboarding suites pass on both. The fake `claude` logs a
+  launch at its initialize request, with what the SDK sends there added as the flags it stands
+  for, and handles an interrupt. Docs: docs/using/sessions.md.
+
+#### Sessions: ADR 0030, Vyre-owned sessions and the provider router (proposed)
+
+- docs/adr/0030-sessions.md (draft): Vyre runs the sessions it starts through the Claude Agent
+  SDK behind a provider router (Claude now, Codex and ACP later), with one session and event
+  model, `canUseTool` into the existing asks, swappable auth from the vault, idle close, and a
+  migration order per team. Joins the nav.
+- scripts/sessions-proof/: a prototype Claude driver and a proof run on testbox with the real
+  SDK driving the fake `claude` (start, stream, an ask answered, the floor, a question, a queued
+  message, resume), plus RSS and CPU of the real binary idle. Not wired into vyred; its SDK
+  dependency is installed only in the proof's own folder.
+- core/switchboard/testing/fake-claude.js reads `--flag=value` as well as `--flag value`, since
+  the Agent SDK passes `--session-id=<id>` and `--resume=<id>`.
+
+#### The answer eval runs without the Electron Capsule
+
+- scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
+  (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
+- test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+
+#### The design docs stay out of the package
+
+- package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at
+  run time reads it. release-check asserts the tarball has none of it. The install was over the
+  10 MB cap with docs/design/one-app (620 KB, 46 files) in it, and 10.3 MB without it, so
+  the cap is 12 MB now: the growth is code (memory/personal, apps, relay, resilience).
+
+
+#### Chat: matched to the sessions team's real Switchboard (work/sessions)
+
+- Steer now is `threads.send-now` (a dash) {thread, queued}. A queued send answers {queued: true,
+  queued_id, uuid}: the row is `queued_id`. The box mints every uuid: the send's answer and its
+  echo (same words) tie a steer or a row drawn under the Deck's uuid to the box's, so nothing shows
+  twice. threads.unqueue / send-now that find the row already handed over say so.
+- Steered words the turn never reached run as the next turn (thread.turn {steered: true}): their
+  "Steering" markers go and they read as one plain message with the joined words.
+- Rewind is not a fork: threads.rewind {thread, uuid} rewinds this thread. The message and
+  everything after it leave the view, its words come back to the composer, and {rewound: false,
+  note} (the first message) shows the note. Re-reads skip the abandoned branch: session-state
+  filters by thread.rewound (also read back from threads.get on open), and core/transcripts skips
+  a branch once the next message makes it one (two person's lines under one parentUuid).
+- Mode is `mode.changed` {mode} (heard on its own, not under thread.*); threads.mode answering
+  {mode: null, note} puts the chip back and shows the note. States are starting, running,
+  waiting, idle, stopped (no "failed"; a record's raw "working" reads running). thread.usage keeps
+  the turn's cost_usd and the session's total_cost_usd apart.
+- Mac asks (federation v2): person_session_required links to the box's /person/signin page and
+  Try again, instead of a passkey proof on the answer; "no ask <id>" no longer falls back to
+  "Answer it on <mac>" (only no_such_tool, bad_input, unsupported do).
+
+#### Chat: the composer speaks the final sessions contract
+
+- Queue rows are named by the box's row id (`queued`): Take back is threads.unqueue {thread,
+  queued}, Edit is threads.edit {thread, queued, text} (thread.queued comes back under the same
+  id), Steer now is threads.send_now {thread, queued} (was threads.steer). A row drawn on send has
+  its buttons off until threads.send answers {queued: <id>, uuid}. A hand-over at a turn's end
+  (thread.sent {queued, uuid, via: "turn"}) takes its words from the row.
+- thread.steered carries no step: the Deck counts the turn's finished tool calls when it arrives.
+  thread.sent via "steer" or "now" draws a steer; a steer the box took as a plain message loses
+  its marker.
+- Esc Esc lists your messages from the session and forks there (threads.rewind {thread, uuid} ->
+  thread.rewound {uuid, fork}): the fork opens with the words back in its composer; this session
+  keeps every word. No conversation / code / both choice, no threads.checkpoints.
+- Shift+Tab cycles default, acceptEdits and plan only. threads.start answering "busy" says "All
+  sessions are busy; one will free up shortly" with Try again. thread.started's purpose is kept.
+- Model, commands, shell, memory, thinking, killing a task and images on send start off
+  (core/caps.js NOT_OFFERED) instead of being learnt on first use.
+
+#### Chat: the composer works like Claude Code in the terminal
+
+- Typing while a turn runs steers it: Enter hands the words to the running turn at its next step
+  (threads.send mode "steer"), drawn at once as "Steering" and confirmed as "Steered at step N"
+  where they joined (thread.steered). Alt+Enter, a "Queue for after this turn" toggle, or a hold
+  on the send button queues them instead: a row above the composer with Edit, Take back and
+  Steer now. Up in an empty composer recalls the last message (per thread, the last 100) or takes
+  the newest queued one back to edit.
+- Esc stops at once; Esc Esc opens a rewind sheet (restore the conversation, the code or both;
+  the words come back to edit). Shift+Tab cycles the permission mode (a chip under the box: Asks
+  first, Accepts edits, Plan mode; Doesn't ask only when the session offers it); a model chip and
+  /model open a picker; a thinking chip turns thinking on or off; Ctrl+O hides or shows it.
+- "/" opens the session's commands with source badges (threads.commands, else a static list),
+  "@" files in the session's folder (files.search), "!" runs a shell command there with its
+  output as a row, "#" saves a memory to this project or about you. A pasted image is attached
+  (at most 4, 5 MB each). The live todo list is pinned above the composer; a tray lists
+  background shells and subagents with View output and Stop.
+- The rules live in deck/chat/core/composer-state.js (no DOM), with one key map the Deck and the
+  phone both read. Tools the sessions team has not shipped are learnt from their first "no such
+  tool" (deck/chat/core/caps.js): that control turns off and says "Needs the sessions update".
+- core/transcripts: a person's line inside an open turn (after a tool call, before the reply) is a
+  steer, `steered: true, step: <calls finished before it>`, and starts no turn, so a re-read shows
+  the same marker as live.
+
+#### Chat: long sessions and terminals that outlive vyred
+
+- Long sessions render windowed above 100 rows (deck/chat/core/window.js, deck/chat/window-view.js):
+  rows near the viewport are mounted, the rest are measured spacers; the reading position holds
+  while a reply streams and while history loads above. A 2,000-turn session keeps under 150 rows
+  mounted (46 at most in the test); a 3,500-block history page applies in 40 ms (was 817 ms).
+- The Deck terminal follows resilience's durable terminal (ADR 0029 R4): it counts the bytes it
+  drew and reattaches with from=<offset> after a vyred restart (1012), redraws under a line when
+  older output was cut, holds up to 4 KB of keys typed while away, and phones get a key bar (Esc,
+  Tab, Ctrl, Alt, arrows, Paste).
+
+#### Chat: a session reads as a native chat over the event stream (ADR 0030)
+
+- deck/chat/session.js renders from deck/chat/core/session-state.js: the transcript read and
+  live thread.* and ask.* events go into one keyed state, and only the rows whose keys changed
+  are patched. Runs of tool calls fold into one row ("Edited 3 files, ran 2 commands · 12 s")
+  that opens to the calls; a running call counts up ("Running npm run build · 0:42"); thinking
+  shows its length; a todo list is never folded. Replies stream paced to the display
+  (deck/chat/live-text.js, core/pace.js), frames only while the page is on screen, and only the
+  growing paragraph re-parses. Rows off screen use content-visibility.
+- The header shows the provider, model and auth ("Claude · opus · subscription") and the state
+  word; a session closed for idleness says "Resumes on your next message".
+- Stop (Esc) while a turn runs: threads.interrupt, or threads.stop on a Switchboard without it;
+  the turn reads "Stopped by you". Queued messages sit above the composer with Edit, Take back
+  and Send now, disabled ("Needs the sessions update") until the Switchboard has
+  threads.edit, threads.unqueue and threads.send `now`.
+- Permission cards: A allows once, D denies. An ask answered on another screen says so
+  ("Answered from the Capsule · 14:31").
+- deck/sw.js SHELL keeps the new modules. Tests in deck/chat/session.test.js and core tests.
+#### A stopped vyred leaves a removed home removed
+
+- core/term: the terminal table is not written when the home is gone, or when there is nothing to
+  hand over and no table yet. A vyred stopped after its home was removed made run/term/terms.json
+  (and the home) again (core/vault/stop.test.js).
+
+#### Planner: alarms ring on a device with the box out of reach (ADR 0029, R6)
+#### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
+#### A box keeps projects in /work/projects
+
+- On a box with a `/work` folder and no `projectsDir` in config.json, projects live in
+  `/work/projects`, where VyreDrive can share them. The first start moves homes out of
+  `~/Vyre/projects` once (copying across volumes), leaves a link at each old folder so Claude
+  sessions keyed by the old path still resume, rewrites the stored rows and markers, records the
+  outcome in `projects-moved.json`, and emits `projects.moved`. A Mac is unchanged.
+
+#### The hosted app may call the box from the owner's browser
+
+- The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
+  owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
+  `GET /v1/health` from it answers only `{ reachable: true }`; every other call and WebSocket
+  needs a web session (`deps.webSession`, e2e's rule), else `401 web_session_required`. The call
+  reaches the router with `peer.origin` and `peer.webSession`.
+- Tailscale docs: the iPhone DNS failure behind tailscale#19147 in "When a device cannot connect".
+
+#### VyreDrive: the name, a lighter secrets scan, no proof to switch a share, and no guest Glass
+
+- Users see the box shares as VyreDrive (built on Tailscale's Taildrive): tool descriptions, the
+  Deck row, docs. Tool names (`files.drive.*`) and config keys are unchanged.
+- The share scan skips real `node_modules`, `dist`, `.next`, `target`, `venv`, `.venv` folders
+  and `.git/objects`, which no longer count toward `SCAN_LIMIT`, and flags a `.git/config` holding
+  a credential (a remote URL with a user or token, or an `Authorization` extraheader).
+- `files.drive.access` moves from `HUMAN_ONLY` to `PERSON_ONLY`: the owner switches a share with
+  no proof; agents, models and guests are still refused.
+- `glass.open` is no longer guest-safe (`GUEST_SAFE` in `core/names/guests.js`): tailnet streams
+  are the owner's alone.
+
+#### vyred knows the box's Taildrive mount mode
+
+- apps.route reads no time itself any more: its duration, clock and reminder readers are gone
+  from local/apps/route.js. The rules pick the app and the kind; `planner.parse` reads when, for
+  the Planner and for Apple Clock and Reminders alike. Words no rule places ("5 min", "10 min
+  timer please") are asked of the planner too, so one grammar decides what a time is.
+- A timer, alarm or reminder for Apple's apps with no planner on this Vyre is code `setup`, "The
+  planner is not on this Vyre yet", rather than a second reading. A Planner add still goes
+  through, since `planner.add` reads its own words.
+- The Planner adapter's line, when the planner's answer has no words, is planner.parse's reading
+  ("Timer for 10 minutes"), or "Added to the planner: <words>".
+
+#### Apps: the planner by default, and a question instead of nothing (ADR 0022)
+
+- One ring key, `planner-<item>-<due>` (due in epoch seconds), on planner.fired, planner.acked,
+  planner.ringing and the push. The push uses it as its tag and carries item and due, so a device
+  that rang a moment from its own schedule shows the box's push once.
+- planner.upcoming: every ring the box expects in the next 48 hours (1 to 72), keyed, with
+  last_event, for devices to schedule as local notifications. A moment already answered or ringing
+  is left out.
+- planner.done, snooze and dismiss take `key`. A device answering a ring it rang itself sends it
+  by key; the box keeps the answer and never rings that moment, and the ack (`unrung: true`) goes
+  out as a planner-ack push so the other devices drop it too. An answer repeated is `already`.
+- planner.schedule event: the rings moved with no item changed (a zone or lead change, a calendar
+  sync that changed the copy).
+- last_event (ADR 0029, R1) on planner.agenda and planner.upcoming, and on planner.list and
+  planner.ringing with `cursor: true`.
+- A Vyre-owned session's thread (`mcp:thread:<id>`, ADR 0030) counts as the assistant, as an
+  unnamed terminal session does.
+- Tests: core/planner/planner.test.js, calendar.test.js, core/push/push.test.js.
+
+#### An idle planner no longer loads the time zone data
+
+- The planner reads its zone only when something needs placing. The first zoned Intl call loads
+  ICU's zone data, which cost about 7.5 MB of RSS in a planner with nothing to do. Measured on the
+  test box: the planner started on an empty store adds 4.0 MB (was 11.5 MB). Test in
+  core/planner/planner.test.js.
+
+#### The planner reads a time in words wherever it takes one
+
+- planner.add `at` (and a todo's `due`) takes words as people say them: "6pm" is the next 6pm in
+  the item's zone, "tomorrow at 9", "7:30", "in 20 minutes". ISO times and YYYY-MM-DD are read as
+  before. Date.parse is trusted only with a year in the text, since it reads "tomorrow at 9" as a
+  day in 2001; the same holds for planner.agenda from and to.
+- planner.parse reads a time said first as a reminder: "6pm call Harlow Legal", "at 6:30 pick up
+  juno". Only a time that cannot be a count leads (am/pm, a colon, noon), so "3 apples" is not one.
+
+#### The CLI gets the same 30-minute window for the vault as the Deck
+
+- `vyre vault get --reveal`, copy, one-time codes, approve and grant asked for a proof on every
+  call from a terminal. Now one Touch ID (or a Capsule or passkey proof) from a login terminal
+  covers that terminal's vault.reveal, vault.copy, vault.totp, vault.approve and vault.grant for
+  30 minutes, for items that do not ask every time. Nothing is written to disk: vyred keeps the
+  terminal in memory, named from the kernel (the socket peer's pid, its controlling terminal, and
+  `who`'s login list), gated on the peer ancestry check, so a process under `claude`, a detached
+  process, or a tmux/script pty never rides it. A terminal code proves one call and opens no
+  window. `core/presence/index.js` (`terminal` in verify), `core/daemon/index.js` (atTerminal),
+  `core/daemon/peer.js` (`controllingTty`), `core/modules/index.js`, `docs/concepts/presence.md`,
+  tests in `core/presence/presence.test.js`, `test/presence-cli.test.js`, `test/peer.test.js`.
+
+#### Memory and lesson changes ask nothing; vault sessions cover grants on the Deck; the Mac update line works
+
+- `vyre memory correct`, `merge` and `split` asked for the code on the terminal (or Touch ID) on
+  every correction, for the user's own memory. They no longer ask: memory.correct, memory.merge
+  and memory.split drop their presence declaration. The owner-surface allowlist stays, and a
+  session's MCP or a caller that names an agent is still refused, without a prompt.
+  `core/memory/index.js`, `core/cli/commands/memory.js`, `test/presence-cli.test.js`.
+- A presence session (Deck, Capsule) now also covers vault.approve and vault.grant, beside
+  reveal, copy and TOTP. For vault tools a session serves only the Deck and the Capsule: the CLI
+  proves every `vyre vault` reveal or grant afresh, since Claude's Bash is the CLI too, and MCP
+  and agents are refused. `core/presence/index.js`, `core/vault/index.js` (`session: () => true`
+  on approve and grant), `docs/concepts/presence.md`.
+- `vyre learn accept`, `retire` and `relax` ask no presence: learn.accept, learn.retire and
+  learn.relax leave the floor's list and drop their declarations. Their callers list (cli, deck,
+  capsule) and the Harness's shell check keep models and agents out. `core/learn/index.js`,
+  `docs/using/learning.md`.
+- `vyre box update` told a Mac older than its box to run `npm i -g vyre@latest && vyre up`, which
+  fails: Vyre is not on npm yet. It and doctor's install-size fix now print
+  `npm install -g https://vyre.run/box/vyre.tgz && vyre up` (one constant, `INSTALL` in
+  `core/cli/brand.js`). The known gap is closed in the docs.
+
+#### `vyre up` after an upgrade restarts the old vyred; the assistant is one command away
+
+- On a user's Mac, `npm i -g` over an install and then `vyre up` printed "vyred is already
+  running" and left the 44-minute-old vyred on the old code: both said 0.0.1. Now a release's
+  build.json commit is compared too; a vyred on another build, or a dirty or unknown one, is
+  restarted: "updated · restarted vyred (0.0.1 → 0.0.1 · 1a2b3c4)". vyred reads its build when it
+  starts, so a vyred left running over a new install cannot claim the new commit. A checkout with
+  no stamp still compares versions. `vyre up` stops only the pid that both the pid file and the
+  running vyred's health name; a mismatch stops nothing and says so. `core/cli/commands/up.js`,
+  `core/cli/daemonctl.js`, `core/daemon/build.js`.
+- "your assistant  not set up yet" was a dead end, and on a Mac it was always shown: the box's
+  health never names the assistant. The Mac now asks the box over the link, and when there is
+  none the ending says `vyre assistant <name>`. New `vyre assistant [name] [--json]`: who your
+  assistant is, or make it with the same input as the Deck's "Create your assistant" card; on a
+  paired Mac it asks the box. `core/cli/commands/assistant.js`, `core/cli/ending.js`,
+  `test/upgrade.test.js`.
+- Making the assistant needs the person, as agents.create now does everywhere: here the code on
+  this terminal or Touch ID (callAsPerson); from a Mac through the link, the Deck at the box's
+  address asks for the passkey, and `vyre assistant` says so. The home screen tests start vyred
+  with the test verifier, since they make an agent.
 #### Memory answers the user's own Claude Code session
 
 - A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session), and
@@ -60,6 +512,652 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `memory.answer` also takes `question` as another name for `q`. The three tools share one gate:
   the user's surfaces, their tailnet devices, modules, and the assistant or an agent granted
   every project. A project's agent is refused.
+#### The switchboard tests pass on the Mac
+
+- core/switchboard/switchboard.test.js: the work folder is realpath'd, so the Mac's /var and
+  /private/var name the same place in the Edit ask and the transcript path.
+
+#### The Google test counts only its own reads
+
+- core/google/module.test.js: "one call, one 401, one retry" counts the test's own calendar reads.
+  The planner's calendar mirror also reads a window on google.added, which made it 4, not 3, on
+  every run since the planner merge.
+#### Glass: an idle take-over goes back to the agent
+
+- core/computers/keyboard.js: a take-over with no input from its holder for the owner's idle
+  setting ends with why `idle` (`idle_ms` in `computer.handed-back`), releases the thread's lease
+  and posts "Handed back to <agent> after <n> min idle" to the agent's thread. A pong keeps the
+  lease but is not input. New event `computer.idle-warning { agent, surface, at }` 10 s before,
+  and again with `at: null` when input comes in time. One timer per take-over, armed once per
+  idle window, with the sweep as backstop; nothing runs without a take-over.
+- Config `computers.handbackIdleMin`: 0 (off), 2, 5 or 15; 5 by default. New tools
+  `computers.handback.status` and `computers.handback.set` (the owner's, refused to agents; live,
+  so a running take-over follows a change).
+- Deck: the control bar counts down "Handing back to <agent> in N s"; the hand-back says why.
+  Settings, Network: a "Glass hand-back" choice.
+#### presence.since: when this device last proved presence
+
+- presence.covered returns `{ covered, since, expires }` (ms since the epoch, null when no live
+  session). Held items (gate.held, gate.get) and asks (threads.asks, threads.get) carry
+  `presence: { required, covered, since }`, so a surface can say "confirmed 12 min ago".
+
+#### Security: the socket's person check
+
+- Any person action on the socket is traced (a presence-needing tool or a presence header, not
+  only PERSON_ONLY), an ancestry vyred cannot read to the top is refused, and macOS reads `ps`
+  once per check. The peer fd is passed by number so the person's keep-alive connection survives.
+#### Presence: the device method, a phone's own key
+
+- core/presence: a seventh method, `device`. A phone's P-256 key (Secure Enclave or StrongBox,
+  behind the biometric prompt) enrolls with `presence.enroll {kind: "device", alg: -7}` under a
+  passkey or one-time code and signs the Capsule's message with ES256; one code path and one
+  nonce set with the Capsule. It opens a presence session. Migration 3 widens
+  `presence_keys.kind`. For the native Android build and relay `device:<id>` callers (ADR 0026,
+  ADR 0027). ADR 0004 addendum; tests in core/presence/presence.test.js.
+#### CI: the native Capsule check cannot hang the job
+
+- scripts/capsule-native-check.mjs: the detail block (footprint, vmmap, heap) had landed inside
+  the helper that runs them, so each call ran them again until the stack overflowed, forever. It
+  runs once now, heap, vmmap and footprint get 60 s each and ps 10 s, the whole check has 4
+  minutes before it fails in words, and the workflow step stops at 6.
+- Measured on that run (macos-latest): hidden after use 24.3 MB footprint (target 60), 0.065%
+  CPU (target 0.1), open under 50 ms. RSS is 93.8 MB, most of it AppKit and SwiftUI pages
+  shared with every app; the "93 MB" reported earlier was that RSS.
+
+#### A WhatsApp or Slack send rides the presence session
+
+- apps.send joins the Capsule's sessionable tools: one Touch ID covers about 30 minutes of sends
+  on this Mac, as for gate.approve (the user's no-nag rule). Every send still shows its preview
+  and needs a second Enter.
+
+#### Fixes: the voice test's last check, and planner rings at the wall moment
+
+- local/voice/talk.test.js waits up to 5 s for the listen stream to close on vyred's side before
+  checking none is left open. On a slow CI runner the close lands after the last subtest.
+- The Capsule schedules local planner rings with a calendar trigger at `at`, not an interval
+  counted from the refresh.
+
+#### Planner rings by key, and the next 48 hours ring on the Mac
+
+- Capsule banners use each ring's key ("planner-<item>-<due>") as the notification identifier.
+  A box ring and a local ring of the same moment show once, and planner.acked removes the
+  banner and any pending ring by key.
+- On connect the Capsule asks planner.ringing {cursor: true} and follows events from its
+  last_event. It schedules planner.upcoming {hours: 48} as local notifications under the same
+  keys, and removes keys the box no longer lists. The schedule is read again on every planner
+  event except a firing, and on wake. A planner without planner.upcoming schedules nothing.
+- Done and Snooze (9 min) answer by key when the ring has one. An answer given while the box
+  is unreachable is kept and sent by key when the stream opens again.
+
+#### The Capsule on Vyre-owned sessions (ADR 0030)
+
+- Esc on a streaming answer calls threads.interrupt when vyred has it: the turn stops and the
+  session stays, so a follow-up resumes it. An older switchboard gets threads.stop as before.
+- thread.stopped with reason "idle" is not a failure: the answer stands and is marked idle.
+- threads.start refused with "busy" (the box's session cap) says so in words. "Not one vyred
+  runs" now names a terminal session, the only kind Vyre cannot type into.
+
+#### Making the signing identity never waits on a password it cannot ask for
+
+- createIdentity refuses with "needs a terminal" when stdin is not a TTY and no runner was given,
+  so a Deck or Capsule path cannot hang on `security add-trusted-cert`. CI passes its own runner.
+
+#### The Capsule reads the one tokens.json
+
+- Theme.swift takes its colours, the status model (needs you, failed, running, unread, done: word,
+  mark and colour key) and the card radius from `Sources/UI/Tokens.generated.swift`. That file is
+  written by app-design's scripts/gen-tokens from docs/design/one-app/tokens.json (work/app-design
+  99820a1, whose --check test covers it), so the Capsule, the app and the Deck cannot drift. The values
+  are unchanged; recall stays the Capsule's own. `Tests/ThemeTokensTests.swift`.
+
+#### CI: the Capsule signing step can no longer hang
+
+- capsule-mac.yml's signing step hung to the 45-minute job timeout on capsule-pro branches:
+  createIdentity's `security add-trusted-cert` asks for a password in the user domain. The step
+  now passes createIdentity a runner that trusts with `sudo -n ... -d` (admin domain, the path
+  proven in run 36282086841), gives every command /dev/null and a 60 s timeout, stops at
+  5 minutes, and signs a copy of vyre-launcher when Vyre.app did not build.
+
+#### One Touch ID in the Capsule covers about 30 minutes
+
+- Sending a held draft from the Capsule now asks for presence when vyred requires it: "Confirm
+  it's you" in the panel with words the person can read ("Send to dana@harlowlegal.com: Intake
+  follow-up"), then Touch ID. The proof goes with `x-vyre-presence-keep: 1`, and the session vyred
+  returns in `x-vyre-presence-session` covers the next gate.approve, vault.reveal, vault.copy and
+  vault.totp without asking. The session is kept in memory only. It is forgotten when vyred
+  refuses it, a minute before it ends, and when the Mac locks or sleeps (presence.session.close
+  ends it on vyred too). `local/capsule/native/Sources/Vyred/VyredClient.swift`.
+- Kit: `CapsuleHost.prove(tool:input:summary:)` and `VyredLink.call(_:_:presence:summary:)`, so an
+  extension (capsule-apps' sends) sets the words above Touch ID. `VyredResult.errorCode`.
+- A cancelled Touch ID on a held send says "Not approved. Nothing was done. It is still held."
+
+#### Esc takes back a queued message in the native Capsule
+
+- Esc on a reply queued for a terminal-busy session calls `threads.unqueue` with the send's
+  `queued_id` ("Taken back. <name> never got it."); handed over, Esc only stops following and
+  never calls threads.stop; a hand-over racing the key says "Too late" once (capsule-now rule 8).
+  `local/capsule/native/Sources/Host/CapsuleModel.swift` `stopReply`, `takeBack`;
+  `Vyred/State.swift` QueuedSend `id`, `withdrawn`; `UI/CapsuleView.swift`. Test in
+  Tests/CapsuleModelTests.swift.
+
+#### No orange in the Capsule
+
+- Beacon orange is gone from both Capsules. Things that need you (the held glyph in results, Kit's
+  tint, formerly `Tint.beacon`, now `Tint.attention`) are violet #B8A4FF. Errors and status lines
+  (Stopped., failed turns and tools, the sight panels' status) are neutral: Stone text, a crossed
+  circle and a word. A destructive action's confirm line is Bone. `local/capsule/native/Sources/`
+  UI, Kit, Providers/IconCache.swift, Extensions/sight; `local/capsule/app/capsule.css`, `capsule.js`.
+
+#### The Capsule tells `vyre doctor` why Control twice is off, and waiting is violet
+
+- The native Capsule calls capsule.report once after its hot keys start and again only when
+  Control twice turns on or off (asked for from the menu, or a tap macOS turned off for good). The
+  message names the cause and the chord that still works, for example "Input Monitoring is off,
+  so Control twice is off. ⌥Space still opens the Capsule." A report vyred missed goes again when
+  it is back. `local/capsule/native/Sources/Host/HotkeyReport.swift`, `Host/Hotkeys.swift`.
+- "Waiting on you" is violet (`Theme.attention`, #B8A4FF), as on the Deck and the phone: the list
+  label, dots, selected bar, source label, the hint under an empty box, and the menu-bar mark's
+  dot. The Electron Capsule's waiting label, dot, badge and tray dot match (`--attention`).
+#### Apps in the native Capsule: `@App`, then who, then Enter twice to send (ADR 0022)
+
+- A new extension, `Sources/Extensions/apps/AppsExtension.swift`, puts every Mac app behind `@`,
+  from vyred's `apps.list` (read once each time the Capsule shows, no mdfind) with the app's own
+  icon. With nothing typed after `@` it offers the apps Vyre has words for; any other app shows
+  once named, saying Vyre has no words for it yet. An app that holds people or notes is a chip,
+  and a second `@` lists what is inside it (`apps.targets`, read into memory on the pick and
+  refreshed once for the words typed).
+- Enter routes the words through `apps.route`, scoped to the chip, with the picked contact's id.
+  What sends nothing (a timer, a note, the weather) runs at once through `apps.act`, with no
+  prompt. A send is shown first ("WhatsApp → Juno Park: running late · Enter again to send"); a
+  second Enter within a minute, with the words and chip untouched, sends it through `apps.send`
+  with the person's proof. A send the Gate holds (Slack) runs through `apps.act` and is approved
+  with `gate.approve` as the proof; one that comes back not held stops there. Any key, a chip
+  change, a send, or hiding the Capsule forgets the preview, a route that lands after one of them
+  arms nothing, and an Enter while a route is in flight is not the second Enter.
+- Kit: `CapsuleExtension.boxChanged()` (default: nothing), called when the words or the chip
+  change, so an extension can drop what waited for a second Enter. A held Return key is one press
+  in the panel (`isARepeat` is ignored).
+- An unclear app or recipient is a question under the box ("Who should get this? Did you mean
+  Ammi jee on WhatsApp? Type @ to pick."), never nothing.
+- Words typed without `@` get a row too (`AppsWords.swift`): words that start like an app phrase
+  ("timer 10 min", "remind me to call juno at 6", "whatsapp kit: hi") go to `apps.route`, and what
+  it places is one row ("Timer for 10 minutes · Vyre's planner"). Enter runs the person's own
+  things at once; a row that sends uses the Capsule's confirm ("Enter again to send", forgotten on
+  any key) and then `apps.send` with the proof. An unclear app or recipient is a row that asks.
+  Other words never leave the Capsule, and half-typed ones show no row.
+
+#### `@` inside an app (native Capsule)
+
+- An extension's `@` target can nest (`MentionTarget.nests`): picked, it is a chip ("WhatsApp"),
+  and a second `@` asks only that extension for what it holds, through
+  `mentions(matching:context:)` with the chip as `MentionContext.parent`. The pick makes a
+  two-level chip ("WhatsApp › juno"); Enter calls `send(_:to:in:query:)` with the child and its
+  parent; delete on an empty box drops the child, then the chip. The chip shows the extension's
+  icon.
+- `refreshMentions(matching:context:)`: a slower second answer, asked once 120 ms after typing
+  pauses, cancelled by the next key and by hide, replacing the extension's rows only for the same
+  words, chip and search, only while the Capsule is shown, and only for extensions that say
+  `refreshesMentions`; several run side by side. `mentionPicked(_:context:)` is told once per pick. Every addition has a default, so
+  existing extensions are unchanged. `Sources/Kit/Extension.swift`, `Sources/Host/`,
+  `Sources/UI/CapsuleView.swift`, `Tests/ExtensionNestTests.swift`.
+#### The box's alarms and reminders ring on the Mac
+
+- The native Capsule keeps /v1/link/events open (hidden too: a timer on the box has to ring
+  here) and shows one banner per `planner.fired` firing, top right, with Done and Snooze; a later
+  ring replaces its banner, `planner.acked` from any device removes it, and one that fell due
+  offline says "Missed". Done and Snooze call planner.done and planner.snooze through vyred, or
+  link.call when this vyred does not carry the planner. On connect, planner.ringing shows what is
+  already ringing. `local/capsule/native/Sources/Host/Planner.swift` (ADR 0025).
+
+#### `vyre capsule install` builds; nothing is downloaded
+
+- The Vyre-mac.zip download is retired. `vyre capsule install` now builds the native Capsule on
+  this Mac (the same local build `vyre capsule` runs, with the signing-identity offer) without
+  opening it. `core/cli/commands/capsule-install.js` and its tests are removed, as is the
+  `box/Vyre-mac.sha256` pin.
+
+#### Memory as one line, and answers that read calmly
+
+- Memory shows one answer line or nothing: the answer, a three-bar cue for how sure memory is,
+  and "from N conversations"; the sources fold away behind a click or ⌘→. Loosely matching
+  quotes with no answer are not shown. Ready for memory.answer (`MemoryAnswer.conversations`);
+  said.js ranking stays the fallback.
+- Replies are labelled with the assistant's name from onboarding (agents.list), "Vyre" when
+  none is named, or the agent's or session's name; never a model's brand. The quick rows read
+  "Quick answer" and "Deeper answer", sending to the assistant's name.
+- Once an answer is in, it takes the whole area and scrolls; memory's sources fold into "from 2
+  of your sessions" under it; the footer says "Follow up ⏎ · Copy ⌘C · Deeper ⌘D" (⌘D is new).
+- Queries under three letters match only by prefix, word start or initials, as in Spotlight.
+- The typing timings are a warning, not a failure, on CI.
+
+#### Attachments on a send, for "with your screen"
+
+- Kit: `SendAttaching`, `SendAttachment` and `SendTargetKind`. An extension may offer something
+  to go with words headed to an agent, a session, a project or a quick Ask; the Capsule shows it
+  as a chip in the bar, ⌘⌫ or its x leaves it off for this send, and what is still on screen is
+  appended to the words (to a quick Ask's instructions, so the prompt stays the user's words).
+  For capsule-sight's screen context.
+
+#### Send a file to the box from the native Capsule
+
+- A file row has "Send to box" (⌘S, shown in the footer) when vyred has `files.send`: Taildrop
+  to the paired box's inbox. vyred's guard decides what may leave, and its refusal is shown in
+  its own words. ⌘S rather than Option-Return, which is sight's talk chord now.
+
+#### Touch ID in the panel, banners, and the menu-bar popover
+
+- Human-only calls from the native Capsule (ADR 0004, method `capsule`): the panel shows
+  "Confirm it's you" with the exact words and Touch ID drawn inside it (LAAuthenticationView;
+  the Mac's password where there is no Touch ID), then signs the call with the Capsule's
+  Ed25519 key. The key is made once, kept in the login keychain for the Capsule alone, and
+  enrolled with vyred's own Touch ID dialog. Esc cancels; nothing is done. Checked against
+  core/presence in Node: same canonical input, same hash, signature verifies.
+  `Sources/Host/Presence.swift`, `Sources/UI/PresenceView.swift`.
+- An answer that lands while the Capsule is hidden is a banner, top right
+  (UNUserNotificationCenter; macOS asks once, the first time there is one, never in tests).
+- The menu-bar mark carries a health dot (signal: vyred up and the box direct; recall: the box
+  through a relay; ash: vyred not running), and a click opens a popover with the same words
+  and the Capsule's actions; right-click keeps the plain menu. Nothing is polled: vyred's state
+  comes from the follower, the box's from link.health on open, at most once a minute.
+- `VYRE_CAPSULE_HEADLESS=1` runs the app with no hot keys and no menu-bar item, for footprint
+  checks: 16.1 MB physical footprint hidden (RSS 80 MB, most of it shared system libraries).
+- The contact-photo icon test drew its red in a colour space with no components; fixed.
+
+#### Extensions can be named with @
+
+- `CapsuleExtension.mentions(matching:)` and `send(_:to:query:)`: an extension lists targets
+  ("Notes", "Slack #general") for the words after `@`; they follow Vyre's own agents, projects
+  and sessions, become the chip when picked, and Enter sends through the extension, which says
+  what happened. For capsule-apps. `Sources/Kit/Extension.swift`, `Sources/Host/ExtensionHost.swift`.
+
+#### The native Capsule's design pass
+
+- Rows are inset and rounded; the selected one is a raised plate with the signal pill at its left
+  edge, easing in over 90 ms. Symbols sit on small tiles so they line up with app icons (26 pt,
+  32 for the top hit). App rows show only the name; every row says what it is at the right
+  ("Application", "PDF document", "Command"). The top hit is larger, and a calculator answer is
+  a card with the number in large rounded figures; Enter copies it.
+- A footer under the results says what Enter does ("Open ⏎"), the count, and the Capsule's
+  one-line notes and confirm questions. The destination in the bar is a small chip.
+- `@` rows are headed "Send to", and a session live in a terminal carries a signal badge. The
+  chip for a picked destination is a capsule with its icon.
+- The answer reads You and the question, then who answers (a breathing signal dot while it
+  works), the memory box with a recall rule down its side and quotes as quotes with who said
+  them, then the answer with room to breathe; an answer alone scrolls in the whole area.
+- The panel fades in over 110 ms. `Tests/SnapshotTests.swift` draws each state to PNGs off
+  screen (VYRE_CAPSULE_SNAP=<dir>).
+
+#### The session window for sight's side view
+
+- The Capsule-owned session window becomes key when its field is clicked, draws nothing under
+  the extension's view (its vibrancy shows), and moves on a curve the extension picks
+  (`setFrame(_:duration:curve:)`, ease-out for a slide in). `host.commandsChanged()` lets an
+  extension say its commands changed while the Capsule is open.
+- capsule-sight is merged in: the side view, the session panel and push-to-talk run in the
+  native Capsule. The native Capsule's ADR is 0017 (0015 is capsule-sight's).
+- The typing check asserts its timings only on the optimised build.
+
+#### @ finds sessions by their whole name
+
+- After a leading `@` the whole text is the name ("@computer use settings"), matched without
+  case, by prefix or by the start of each word; when the whole text names nothing, fewer words
+  are tried and the rest stays as the message ("@juno rebuild the menu"). Claude Code sessions
+  from `projects.catalog` are candidates, the recent ones read on show and older ones searched
+  by name as you type; one active in the last 15 minutes that vyred does not run is marked
+  "live in terminal" and listed first. The memory box stays quiet while the text starts with
+  `@`. Picking a live session makes it the chip, and Enter queues the message for it.
+
+#### A stable signing identity for the Capsule, with consent
+
+- On the person's own install only (the real ~/.vyre, dialogs allowed, a terminal), `vyre
+  capsule` asks once: "macOS keeps the Capsule's permissions only if every build is signed the
+  same way. Create a local signing identity in your login keychain? macOS may ask for your
+  password once." Yes makes a self-signed "Vyre Local" code-signing identity (openssl, then
+  `security import` for codesign and `add-trusted-cert` for code signing), removes the temp key
+  files, and rebuilds the app signed with it. No keeps ad hoc signing and says permissions may
+  need granting again after an update. The answer is kept in `<home>/capsule/signing.json`.
+  Never asked in tests or temp homes. `core/cli/commands/capsule-native.js`.
+
+#### Typing into the native Capsule no longer jumps or flickers
+
+- The area under the bar has one fixed height while anything is shown there, as Spotlight's
+  does, so results, memory and answers arriving in waves never resize the panel mid-word (14
+  size changes over 20 keys before, 0 after).
+- Apps and settings answer in the keystroke's own frame (`ImmediateResults`), and slower
+  providers keep their rows until their new ones land (or 300 ms pass), so rows no longer blink
+  out and back (7 flickers before, 0 after). Rows redraw only when what they show changes.
+- `Tests/TypingPerfTests.swift` types 20 keys into an off-screen panel with results in waves and
+  checks keystroke-to-paint p95 under 16 ms (7.9 ms, optimised build), no size change while
+  typing, no flicker, and no main-thread pass over 16 ms (longest 10.3 ms).
+
+#### The native Capsule loads extensions
+
+- The host makes each extension build.sh registers and routes to it: its rows and commands in
+  the list, chords with Option or Control while the panel is key (Option-Return is sight's
+  talk), its side panel beside the list, and show and hide. `Sources/Host/ExtensionHost.swift`.
+- `VyredLink.stream(path:onMessage:onClose:)` opens a WebSocket to a vyred stream as the
+  capsule caller, so an extension needs no socket code of its own. `Sources/Vyred/Stream.swift`.
+- `CapsuleHost.sessionWindow(owner:)`: the one Capsule-owned window an extension may use, for
+  the side view's session panel, animated by the Capsule. `Sources/Kit/Extension.swift`.
+
+#### The native Capsule reads memory and queues for a busy session
+
+- Typing three letters or more asks memory (memory.relevant and recall.search) a moment after
+  the last key. What answers sits above the results as the memory box: the fact first, then
+  quotes as quotes ("You said, 2 weeks ago: ..."), ranked like `lib/said.js`, with the question
+  echoed back and the Capsule's own threads left out. A quick question carries those lines,
+  and only those, in its system-prompt append. Rules 1, 2 and 7 in docs/work/capsule-now.md.
+  `local/capsule/native/Sources/Vyred/Said.swift`.
+- The reply reads You, then who answers and its state, then the memory box, then the answer. A
+  notice from vyred is one faint line under it, never part of the answer (rules 3 and 4).
+- `@` names an agent, project or thread (the catalog is read once per show), and it becomes a
+  chip. A thread busy in a terminal gets the message queued: the Capsule shows vyred's note and
+  "Queued for <name>", then "Handed over" when the Harness passes it on. Esc only stops
+  following it (rule 5). `Sources/Vyred/Catalog.swift`, `Sources/Host/CapsuleModel.swift`.
+
+#### The native Capsule, built on first run
+
+- `vyre capsule` on a Mac now opens the native Swift Capsule (ADR 0017). The first run builds it
+  with swiftc into `<home>/capsule/Vyre.app` (about 35 s), signs it (with a "Vyre Local" identity
+  when the keychain has one, ad hoc otherwise) and launches it; it rebuilds only when its source
+  changes. Without the Command Line Tools it says, in one line, to run `xcode-select --install`.
+  `--electron` (or `VYRE_CAPSULE=electron`) runs the Electron Capsule until it is retired.
+  `core/cli/commands/capsule-native.js`, `capsule.js`.
+- The app: a non-activating panel at Spotlight's size and place (680 wide, 56 px bar, results
+  grow down, top edge 22% down the screen) that opens over a full-screen app on its Space. Apps,
+  files, settings panes, dictionary, calculator, Mac commands, and Ask with the reply streamed
+  under the bar. Hot keys: ⌥Space with no permission, Control twice once Input Monitoring is
+  allowed (asked only from the menu-bar item). `local/capsule/native/Sources/Host`, `Sources/UI`.
+- Fixed a race in the apps scan: a waiting refresh now waits out a scan already running.
+#### The side view's terminal tabs follow live
+
+- capsule-sight: a terminal tab in the side view follows its session through chat's
+  `recall.watch` while it is the tab shown: the history from the index, then each new turn the
+  moment Claude Code writes it (rows keyed on the turn's id, so a replayed or doubled turn never
+  shows twice; tool calls as one line each under the reply), `session.state` for the working
+  dot, one renewal a minute, and `recall.unwatch` on another tab or the panel's close. A watch
+  that lapsed starts again from the newest turn drawn. Replies carry who they are from by chat's
+  rule: the agent's name, else the assistant's name from `system.info` (read once per show),
+  else "Vyre", never Claude.
+
+#### The screen chip in the Capsule's box
+
+- capsule-sight: SightExtension adopts capsule-pro's `SendAttaching`. An Ask, a message to an
+  agent or session, or a new project thread whose words point at the screen (or with text
+  selected in the app in front) shows "with your screen: <app> · <window>" in the bar, with the
+  app's icon; Command-Backspace or the x removes it, and the context goes only if it stayed.
+  Questions wait 150 ms for the words to rest and a newer one answers the older ones; hiding
+  cancels them. Blind places, secure fields and a failed read give no chip.
+
+#### Side view and voice from the terminal (ADR 0015)
+
+- Side view on macOS (`local/sideview`, `vyre sideview`): the front terminal session on the left at
+  29% of the display and Chrome filling the rest, edge to edge, in one call; `--glass` opens the
+  box's Glass page; `vyre sideview close` puts the windows back. The helper runs once per call and
+  never moves a password manager or a system dialog.
+- voice: `vyre voice` gives push-to-talk from the terminal (Enter to talk, words shown live,
+  `--send <thread>`), `vyre voice key` saves the speech key through the vault as a person without
+  echoing it, and `vyre voice status` prints the provider, key and online state.
+- hands: `hands.find {app|pid, window, role, name, near, limit}` and a `match` filter on
+  `hands.observe` pick controls by role, label and nearness from up to 500 read, without walking
+  the whole list. `settleMs` is clamped to 5000. A key to an app in the background is refused
+  with `needs_front` (held or committed) instead of vanishing; hands never raise an app.
+- capsule-sight: screen context on an Ask. Words that point at the screen ("summarize this",
+  "what's this error", "reply to this", "translate to French") or a selection in the app in front
+  get the app, window, URL, selection and a trimmed excerpt of the visible text attached, shown
+  first as a chip "with your screen: <app> · <window>" that its x or Command-Backspace at the start
+  of the box removes. Blind places get no chip, password fields leave their value out, and
+  token-looking URL queries are dropped. Live in the session panel's prompt; the Capsule's box
+  gets it through `SightExtension.screenAttachment(for:)` once capsule-pro's send path asks.
+- capsule-sight: the session panel slides in ease-out and out ease-in; its tabs and the "Side
+  view: <name>" rows follow session starts and stops (host.commandsChanged, no polling); live
+  terminal sessions get a tab with their history from the recall index, marked as possibly a few
+  seconds behind, and a prompt that queues through threads.send.
+- capsule-sight: the session panel. "Side view" slides the Capsule's own window in at the left
+  29% of the display with the assistant (or "Side view: <name>" for any session): tabs, the
+  conversation live from its events, a prompt that sends, the mic (Option-Return) and a status
+  line. Chrome or the box's Glass is fitted beside it through the new `sideview.open` `panel`
+  input, which moves only Chrome. "Close side view" slides it out and puts Chrome back.
+- capsule-sight: the sight extension for the native Capsule (`Sources/Extensions/sight`): Side
+  view, Side view with Glass and Close side view; Ask about my screen, with a side panel and the
+  window put in the box, blind places shown as off limits; Option-Return push-to-talk through
+  vyre-mic and the voice listen stream, words live in the box, stopped when the Capsule hides.
+  `voice.status` returns the built mic helper's path. Push-to-talk opens its stream through
+  `VyredLink.stream`, the Capsule's own WebSocket client.
+- screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
+#### Tokens: one JSON, rendered for the Capsule, the app and the Deck
+
+- scripts/gen-tokens (`npm run tokens`) is the one token generator (lead, 27 Sep; it replaces the
+  app's and the Capsule's own). It writes apps/app/src/theme/tokens.ts (byte-identical to the
+  app's current file: `tokens`, `Scheme`, `Colors`, `attention()`), the Capsule's
+  local/capsule/native/Sources/UI/Tokens.generated.swift and deck/css/tokens.css (the Deck's
+  selectors and role names, incl. --beacon-ink, --beacon-dot, --beacon-badge-ink). `--check` exits
+  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
+  now a list of sizes (12, 13), not a size and line pair; phone type steps get their own enum.
+  Tests in test/tokens.test.js.
+
+#### Design: teammates, usage limits, planner ring counts
+
+- New boards: the Agents place with teammates (ADR 0031), the teammate kinds in Needs you, and an
+  interactive "Teammates and usage" limits board (presets, custom steppers with live impact, the
+  box ceiling, usage pause, the slot queue). The Planner board counts rings as 1 + escalate_max
+  and ties "Live" to a connected stream.
+
+#### Design: one app for the web, iOS and Android
+
+- docs/design/one-app/: the one-app design sheet (principles, system, layout, key screens on phone
+  and desktop, states, the Capsule and the CLI, and device install with no Apple Developer
+  account), tokens.json as the one token source, and a render audit that reads each board's size
+  from the board. Design only; no code changes.
+- Direction A (inbox first) is the design of record (DIRECTION.md, decided 27 Sep): new boards
+  for plan approval and modes (ADR 0030), projects, memory and lessons, settings and first run;
+  the session board follows ADR 0030 (provider chip, Stop, queued words with take back and send
+  now); every key screen states how it meets the smoothness bar.
+#### Tests: the plugin's MCP calls go one at a time
+
+- test/cc-plugin.test.js's `mcp()` helper sent every request at once. The server answers calls
+  concurrently, so on the Mac `planner_list` answered before the `planner_add` sent ahead of it
+  and saw no todo. Each request now waits for the reply before it.
+
+#### Plugin: remember, then answer, from the user's own Claude Code session
+
+- test/cc-plugin.test.js: `memory_remember` then `memory_answer` through the copied plugin's MCP
+  server as bare "mcp" (the user's own session), from a project folder too; an agent's session
+  (VYRE_AGENT) is refused both. Skips, saying why, until memory-iq's gate (6f2c57c) is in the tree.
+
+#### Harness: a Read or a cat into the vault is denied with vyred up, not waved through
+
+- vyred's registry runs the floor on every call's input, so `harness.rules` for a tool call that
+  reaches into the vault was itself refused (`denied`), and the PreToolUse hook took that as "no
+  opinion": the Read went on to Claude Code's own permissions. The hook now runs the floor
+  locally on `denied`, as it does when vyred is down. Test in test/cc-plugin.test.js.
+- scripts/cc-plugin-parity/parity.mjs: the plugin installed with `claude -p`, through the Agent
+  SDK's `plugins` option (ADR 0030 phase 2), and both at once, on one Claude Code binary against a
+  fake Messages API. The three match: the MCP server, 220 tools, /vyre, about.md in the first
+  request, each hook once, the floor's deny before `canUseTool`.
+
+- A new vyred module `apps` (`local/apps/`, roles local) drives the Mac's apps. `apps.list` reads
+  the Applications folders (no mdfind; bundle ids from Info.plist, `plutil` only for a binary one
+  and only for the rows returned) and says how Vyre reaches each app: connector, intents, script,
+  or ax. `apps.targets` lists what is inside an app (notes, reminder lists). `apps.act` runs an
+  action that sends nothing as the person and emits `apps.acted {app, action}`, never the text.
+  `apps.send` runs one that does, declares presence with the action's preview as its summary
+  ("WhatsApp → juno: running late"), and so needs a person's proof per call from every caller
+  but a module. `apps.act` refuses a sending action with code `sends`.
+- Four adapters. Clock timers and alarms through two shortcuts the person imports once ("Vyre
+  Timer", "Vyre Alarm"; a missing one is code `setup` naming `vyre apps setup clock`). Notes
+  (new note, add to a note) and Reminders (new reminder with an alerting due time, set from
+  numbers so no locale reads it) through constant AppleScripts that take user text only as argv.
+  Weather from Open-Meteo, which needs no key, with the place from config or the time zone.
+- Every contact with the Mac goes through `local/apps/env.js`. Under tests or a throwaway home the
+  real osascript, shortcuts and `open` refuse with `no_dialog` before spawning anything; off a Mac
+  they refuse with `not_mac`. Starting the module runs nothing, and its caches expire on read.
+  Tests use a fake exec, a fake fetch and fake bundles only.
+- Adding to a note refuses a locked note or one with attachments (`not_supported`), since a body
+  rewrite would lose them. Note targets skip Recently Deleted (by name, configurable as
+  apps.notes.trash). A reminder's due time in the past is refused, and "today" is judged in the
+  Mac's time zone. An AppleScript that does not answer is `setup`, pointing at the Automation
+  consent. Weather requests time out after 10 s. `local/apps/mac.test.js` compiles the real
+  scripts with osacompile, only when VYRE_MAC_REAL=1 on a Mac.
+- `apps.send` rides the short presence session (ADR 0004): one Touch ID, Capsule or passkey proof
+  opens it, and a burst of messages from the Capsule then goes without asking each time, each
+  still previewed there. It is added to the floor's SESSIONABLE list (`core/presence/index.js`)
+  and declares `presence.session`. A tool off that list still refuses a session proof.
+- `apps.route {text, app?, model?}` turns words into one app action without running it: timers
+  ("10 minute timer", "timer for 2 hours and 5 minutes"), alarms ("wake me at 7"), notes,
+  reminders ("remind me to call juno at 6" is the next 6:00 or 18:00; "remind me on friday to
+  pay rent" is Friday 09:00; "in 20 min"), the weather ("is it cold in Lahore today") and
+  messages ("whatsapp juno: running late", sending). Rules only, in the Mac's time zone
+  (`local/apps/route.js`); `app` is the Capsule's @App scope. What the rules cannot place is
+  ambiguous, and config `apps.model` (a function) may try it when the caller passes `model:
+  true`; whether its answer sends comes from the adapter, never from the model.
+- `apps.setup {app}`: Clock's one-time setup. It writes the Vyre Timer and Vyre Alarm shortcuts
+  under the Vyre home, signs them with `shortcuts sign --mode anyone`, and opens each so
+  Shortcuts shows its Add button, with steps in words and a by-hand recipe
+  (`local/apps/setup.js`). Two action identifiers are unverified and marked so. The dialog gate
+  refuses it under tests before any file is written. Only the CLI, the Capsule and the Deck may
+  call it; a model or another module is denied.
+- `vyre apps`: the apps on this Mac; `vyre apps find <words>`, `vyre apps targets <app> [words]`,
+  `vyre apps setup clock`, and `vyre apps <words...>`, which routes the words and runs them
+  ("vyre apps timer 10 min" prints "Timer set for 10 minutes"). A send prints its preview, then
+  asks this terminal for a person's proof through apps.send. `--app`, `--model`, `--json`,
+  `--help`, and `vyre apps -- <words>` for words that start like a subcommand
+  (`core/cli/commands/apps.js`).
+- The router's review round. A message goes exactly as typed (punctuation and line breaks
+  kept), and its recipient must look like one name, #channel or @handle, else the words are
+  ambiguous ("tell mom I'm on slack now" sends nothing). A model-routed send's preview is built
+  from its args, never the model's own line. Reminder time words are taken after at, on or in,
+  or at the start or end, so "take my 3pm pill" keeps its words; "next friday" is next week's,
+  "tonight at 12" is midnight, the current minute counts as now, and "today" after 09:00 is a
+  plain reminder. More timer and alarm phrasings ("a 10-minute timer", "timer ten minutes",
+  "alarm 7.30"), stricter notes and weather questions, "weather this weekend", and weekday
+  names in the weather adapter. Text over 2000 characters is refused. Clock's setup removes a
+  stale file, signs both before opening either, and reports one that failed; `vyre apps setup`
+  waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
+  or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
+  (the Registry's callerAllowed), never a guest.
+#### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
+
+- The CLI's writes run once: `write()` in core/daemon/client.js sends an Idempotency-Key per
+  intent and retries with it for up to 20 s while vyred is unreachable or restarting, so
+  `vyre threads send`, `threads answer` and the live screen's send ride out a restart.
+- core/resilience/sse.js holds a chunk's trailing `\r` until the next chunk, so a CRLF split
+  across chunks no longer ends a frame early and drops its event (found by mobile).
+- core/resilience passes strict tsc (JSDoc types only).
+- The box image runs tini as init and `core/daemon/loop.sh` under it: vyred is restarted inside
+  the container (2 s; five exits in a minute leave it to Docker), so a vyred restart keeps the
+  dtach terminals. A deploy still ends them, and now says so: `term.closed` reason `box updated`,
+  and `term.attach` answers `terminal_closed` for a day instead of `not_found`.
+- Modules get `ctx.events.latestId()`, the cursor a read returns as `last_event` (R1).
+- Aligned with ADR 0030 (Vyre-owned sessions): a call's Idempotency-Key reaches the tool as
+  `meta.idempotencyKey`, and `keyUuid()` maps any key to a stable uuid for the Agent SDK message
+  id. On stop, every live thread ends with `thread.stopped` reason `restart`.
+- term (R4): the shell runs under dtach when it is on the PATH (the box image now installs it), so
+  it outlives a vyred restart; the next vyred picks it up from run/term/terms.json. No dtach: a
+  plain pty, and term.open says durable: false. term.attach and the pty stream take
+  `from=<offset>`: the box counts every byte and replays exactly the bytes after it from a 1 MB
+  ring trimmed at line ends, with `{"t":"cut"}` and `{"t":"at"}` text frames; without `from`, the
+  old replay. A disconnect never ends a terminal; one with nobody attached is kept for
+  `term.keep_hours` (default 12). A vyred stop closes a durable socket with 1012.
+- core/resilience/web.js: the browser side of the reference client. A fetch transport for
+  follow() and a fetch caller for the outbox (relay base paths and bearer headers work),
+  IndexedDB stores for the outbox, the stream cursor and a per-view snapshot cache (falling back
+  to localStorage, then memory, so a private window never throws), and lifecycle() wiring hidden
+  pages, the back/forward cache and online/offline to the stream and the new outbox.kick().
+- vyred's event stream sends `retry: 2000` and an `id:` with the cursor as it opens and with every
+  heartbeat, so a client that drops before its first event resumes from there, not from "latest".
+  A filtered stream's cursor moves with every event. A cursor ahead of the box's log gets a
+  `stream.reset` event instead of a silent stall. Event ids are AUTOINCREMENT (a migration copies
+  the table), so a pruned tail never hands an id out twice.
+- Tool calls take an `Idempotency-Key` header. The registry keeps (caller, tool, key) with the
+  input's hash and the answer for 24 h: a repeat gets the first answer (`replayed: true`) without
+  running again, an overlapping repeat waits for the same run, and other input under the same key
+  is a 409 `idempotency_conflict`. A crash (`failed`) is not kept, so it can be retried.
+- On stop, vyred turns new tool calls away with a 503 `restarting` and lets the running ones
+  finish and answer (up to 5 s) before it closes connections.
+- `core/resilience/`: the reference client every surface can use or copy. `follow()` holds the
+  cursor, drops doubles, calls a stream silent for 45 s dead, tries each path (LAN, tailnet,
+  relay) before waiting 2 s to 60 s with jitter, probes better paths and moves back, and pauses
+  while hidden. `outbox()` keeps writes made offline and delivers them in order, once.
+- `test/chaos/`: vyred behind fault proxies (drop, partition, refuse, delay, cut mid-event, two
+  paths, restart), with a test per rule of ADR 0029.
+#### The switchboard tests pass on the Mac
+
+- core/switchboard/switchboard.test.js: the work folder is realpath'd, so the Mac's /var and
+  /private/var name the same place in the Edit ask and the transcript path.
+
+#### The Google test counts only its own reads
+
+- core/google/module.test.js: "one call, one 401, one retry" counts the test's own calendar reads.
+  The planner's calendar mirror also reads a window on google.added, which made it 4, not 3, on
+  every run since the planner merge.
+#### Harness: a Read or a cat into the vault is denied with vyred up, not waved through
+
+- vyred's registry runs the floor on every call's input, so `harness.rules` for a tool call that
+  reaches into the vault was itself refused (`denied`), and the PreToolUse hook took that as "no
+  opinion": the Read went on to Claude Code's own permissions. The hook now runs the floor
+  locally on `denied`, as it does when vyred is down. Test in test/cc-plugin.test.js.
+- scripts/cc-plugin-parity/parity.mjs: the plugin installed with `claude -p`, through the Agent
+  SDK's `plugins` option (ADR 0030 phase 2), and both at once, on one Claude Code binary against a
+  fake Messages API. The three match: the MCP server, 220 tools, /vyre, about.md in the first
+  request, each hook once, the floor's deny before `canUseTool`.
+#### The relay: reach the box with a QR code, no Tailscale (ADR 0026, in progress)
+
+- A new box module, `relay` (core/relay/), off until the first pairing. The box dials out to a
+  relay and signs its route with an Ed25519 key; a device scans a QR code carrying the box's
+  X25519 key and a one-time secret (10 minutes, single use) and runs
+  Noise_IK_25519_AESGCM_SHA256 with it, in node:crypto alone and checked against the cacophony
+  test vector. Each direction has its own key and counter, so a replayed, reordered or reflected
+  frame closes the channel. Each stream in the channel becomes a real HTTP request to vyred's own
+  router through an in-memory duplex, so every route, the event stream and presence work as on
+  the tailnet.
+- A paired device is the caller `device:<id>`. The new `ownerDevice()` in core/modules counts it,
+  like `tailnet:<owner>`, as the owner on their own device for `callerAllowed` and the floor's
+  person check; presence still decides every human-only call. The socket can no longer claim a
+  `device:` label.
+- Tools: `relay.status`, `relay.enable`, `relay.disable`, `relay.pair.start` (presence),
+  `relay.pair.first` (onboarding only, before any person exists; Touch ID on a Mac),
+  `relay.devices.list|rename|remove` (remove needs presence and closes the device's connection
+  at once). Events: `relay.connected`, `relay.disconnected`, `device.paired`, `device.removed`.
+- relay/node/server.js: the relay in plain Node, for tests and self-hosting.
+- relay/worker/: the same relay as a Cloudflare Worker with one hibernating Durable Object per
+  route. It has no timers, and buffered frames sit in DO storage. Tested against a fake
+  runtime that rebuilds the object after every event, with the box's own link running
+  unchanged against it. Nothing is deployed.
+- relay/client/: the device side for the one app (web, iOS, Android), with no dependencies.
+  Noise runs over WebCrypto, where the device's private key is non-extractable, or over
+  @noble functions the app injects. The client reproduces the cacophony vector, multiplexes
+  streams byte-compatibly with the box, and reconnects with a fresh handshake. Event streams
+  resume with Last-Event-ID. A write whose answer was lost is retried once with the same
+  Idempotency-Key. It fails over between the tailnet and the relay (ADR 0029, R5).
+- WebSocket streams cross the relay: a `ws` stream (Glass's screen, the terminal) becomes a real
+  upgrade through vyred's stream router as `device:<id>`. The bridge answers the router's pings
+  itself, and each whole message is one data frame, never split.
+- Web devices (ADR 0026 section 10): a browser paired from the hosted web app is kind `web`.
+  Until the person trusts it from another device (`relay.devices.trust`, new, with presence), it
+  cannot mint pairings, change trust, enroll presence keys or take a secret out of the vault. It
+  expires after `relay.web_expiry_days` (30) without use. `device.paired` and the device list
+  carry its kind, its release and whether the build is one this box knows (core/relay/releases.json).
+- The box's bridge passes `Idempotency-Key`. A box replaced on its route by another copy of
+  itself waits 5 minutes before retrying, instead of trading places with the copy.
+- ADR 0026 accepted. It gains section 10, the hosted web app at app.vyre.run, and its trust
+  mitigations, and section 2 now matches the code (4429, the ticket, text pings).
+#### Onboarding: the first steps load the theme and fonts
+
+- core/onboard/loopback.js serves `/theme.css` and `/fonts/*` on the loopback onboarding link,
+  before any session, like the other static Deck files. Without them the steps before pairing
+  rendered in the browser's own font with the default colours. test/onboard.test.js checks all three.
+
+#### Docs: new screenshots, no passkey in Glass, the /vyre planner verbs
+
+- deck/test/world.js: alex's sample folders sit in a folder plainly named alex, so shown paths read
+  .../alex/Work, not a temp name.
+- Screenshots retaken on main; six new ones placed (Settings devices and connections, the pairing
+  card, a fresh box's Now, Find on a phone, the onboarding's last screen).
+- using/glass.md: take-over, hand-back and Sign in privately ask for no passkey. using/deck.md,
+  using/chat.md, concepts/presence.md: only a send, payment or deletion asks, and one proof covers
+  30 minutes. using/claude-code.md: `/vyre todo`, `remind`, `agenda`, `remember`, `lesson`.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
@@ -171,6 +1269,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
   test/federation-reads.test.js.
 
+#### The site has no Capsule zip, and a clean checkout stamps clean
+
 - The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
   `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
   redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
@@ -259,6 +1359,44 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
 - `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
   `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+#### vyred knows the box's Taildrive mount mode
+
+- The vyre service gets `VYRE_DRIVE_ACCESS` (default `ro`), the same value the tailscale service
+  mounts /work with, so `files.drive.access` says whether the .env step is needed instead of
+  "unknown" (box/compose.yml).
+
+#### Taildrive shares carry their own access, and a share refuses folders with secrets inside
+
+- `files.drive.shares` entries are a path or `{ path, access }`, access `"ro"` (default) or
+  `"rw"`; `{ access }` alone keeps a default share's path. A path alone, the old form, still
+  works, and takes the old global `files.drive.access` when that is set (`shareSpecs` in
+  `core/files/drive.js`). `files.drive.status` rows carry `access`, and the top-level `access`
+  is `"rw"` when any share is. `files.drive.share` answers the share's own access. The Mac mounts
+  a share read-only unless that share's access is `"rw"`, falling back to the top-level field
+  for an older box.
+- New tool `files.drive.access { name, mode }`, owner only and on the floor's human-only list
+  (`core/presence/index.js`), saves the share's access to config and answers `{ name, access,
+  mount }`. `mount` says whether the tailscale container's `/work` mount must change, with the
+  step (`Set VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env, then run docker compose up -d`, or back to
+  `ro`). It reads the current mode from `VYRE_DRIVE_ACCESS` when vyred sees it, else says
+  `unknown`. The Mac forwards it to the box for the owner's callers only.
+- `files.drive.share` scans the folder's tree first and refuses with `unsafe_share` (and
+  `detail.found`, up to 10 relative paths) when anything inside is a secret by the files guard's
+  own rules: a `.env`, a key by name or first line, a password store, a `secrets` folder, a
+  denied place such as the vault or an `.ssh` folder, or a link to one. More than 20,000 entries
+  is refused as too big to check. Dot folders such as `.git` are hidden from Vyre's tools but are
+  not secrets, so they are scanned, not refused. `files.drive.audit` scans every shared folder
+  again and reports `unsafe: [{ share, found }]` (`ok` false when any), also in the
+  `drive.exposed` payload. `core/files/safety.js` exports `secretName` and `HOME_DENIED`, and the
+  guard `isDenied`, so the scan and the guard share one list.
+- `box/compose.yml`: the comment on the `/work` mount says it is rw only while some share is.
+  docs/get-started/tailscale.md shows the new tool; the reference is regenerated, with a meaning
+  for `VYRE_DRIVE_ACCESS`. Deck fixture `deck/fixtures/files.json` has the new fields.
+- Tests (`core/files/drive.test.js`, 21): per-share access in status and in the Mac's mount,
+  legacy string config, `files.drive.access` owner-only with its step both ways and unknown,
+  `.env` and key files refused with their paths, a `.git` checkout shared, the 10-finding cap and
+  the too-big refusal, the audit on a shared folder a secret landed in.
+
 #### Streams over the tailnet are the owner's alone
 
 - The tailnet listener hands a WebSocket (`/v1/streams/...`: the terminal, Glass's screen) to
@@ -268,6 +1406,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   still opens no stream (`core/onboard/loopback.js`). Tests: owner allowed, guest and agent node
   refused (`core/names/service.test.js`), wrong Host and no session on loopback
   (`test/onboard.test.js`).
+
+#### `vyre capsule install` builds the Capsule on the Mac
 
 #### Taking over an agent's computer asks for no passkey
 
@@ -305,7 +1445,143 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
   brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
   still fetches the zip until capsule-pro retires it.
+#### "Needs you" is violet everywhere
+#### Esc takes back a message still queued for a terminal session
 
+- In the Electron Capsule, Esc on a queued reply calls `threads.unqueue` for that message
+  ("Taken back. <name> never got it."). Once the Harness has handed it over it is the session's,
+  so Esc only stops following, and nothing is stopped in the terminal (before this, Esc called
+  threads.stop on it). A hand-over racing the key says "Too late" once. `local/capsule/lib/bridge.js`
+  `unqueue`, `app/capsule.js`; test in local/capsule/lib/bridge.test.js.
+
+#### Sessions say when a terminal has them open, and queued words can be taken back
+
+- `threads.list` rows and `projects.catalog` sessions carry `live`: true when the session is
+  bound (its SessionStart hook ran) to a claude process that still runs and is not one of vyred's
+  own threads. One query and a signal-0 per bound pid, no ps, so it costs nothing per list. The
+  catalogue reads it through the new internal `threads.live`; without the Switchboard every row
+  says false. The native Capsule can drop its 15-minute guess for the badge.
+- `threads.unqueue {thread, queued?}` takes back words queued for a terminal-busy session before
+  the Harness hands them over: one (`queued_id`, now in the `threads.send` queued result) or all
+  of the thread's. Words already handed over stay. Person surfaces only; emits `thread.unqueued`.
+  `core/switchboard/index.js`, `sessions.js`, `module.json`, `core/projects/index.js`; tests in
+  core/switchboard/switchboard.test.js and core/projects/projects.test.js.
+
+- Coral is gone from the repo: the Deck, the CLI, the vault kit, the Capsule, the site, the docs
+  and the design boards all use violet (#B8A4FF dark, #5B3FC4 paper). The CLI's beacon comes from
+  `ATTENTION` in `core/config/palette.js`, so teal stays a one-line swap. deck.css, theme.js and
+  TOKENS.md take the same values as pwa's swap, `--beacon-badge-ink` included. test/hygiene.test.js
+  passes.
+
+#### Deck design: Direction B, second pass
+
+- The user picked B. docs/design/deck-directions/ now holds B only, redone on a reduced system:
+  Instrument Sans plus JetBrains Mono for code, five sizes, two weights, eight neutrals, lime and
+  violet. New States board (loading, empty, error, offline, many items, long names, button and
+  held-item states, keyboard). docs/design/deck.md writes the system down.
+- `core/config/palette.js` drops recall gold and the beacon wash and rule, adds `del-wash`, sets
+  paper `hover` to #EEEAE2 (it equalled `panel`), and keeps teal as the one alternative
+  attention colour (`withAttention`). Its test checks teal too and that no other hue role comes
+  back; the deck.css match is a `todo` until the attention swap lands.
+- The render audit fails text off the five sizes, the two weights or the two families, and any
+  colour outside the palette.
+
+#### Apps: the planner by default, and a question instead of nothing (ADR 0022)
+
+- Timers, alarms, "wake me", reminders, todos and notes now route to Vyre's own planner
+  (`Planner add {text, kind}`, which calls `planner.add`, ADR 0025), so they ring when the Mac is
+  shut. Apple's Clock, Notes and Reminders are opt-in: words like "in Apple Notes" or "notes app",
+  an `@Notes`, `@Clock` or `@Reminders` scope, or config `apps.planner = "apple"`. With no
+  planner module on this Vyre the answer is code `setup`, "The planner is not on this Vyre yet".
+  "todo buy milk" and "add call kit to my todos" are new words for a todo.
+- The time in a route is read by the planner's `planner.parse` (ADR 0025, the one reader of time
+  words, answering on the Mac): our rules say which app and kind, the planner says when. Its line
+  becomes the route's ("Reminder: call juno, today at 18:00"), and for Apple Clock and Reminders
+  its reading becomes their args. Its "cannot place that" is the answer, so the person is asked.
+  Words our rules refuse but the planner reads ("alarm 6pm every weekday") go to the planner. With
+  no planner on this Vyre our own reading stands, until the planner is on main.
+- When a message's app or recipient is unclear, `apps.route` asks rather than refusing or
+  guessing: `{needs: {app} | {recipient}, ask, text, app?, action, to?, didYouMean?}`, the words
+  kept as typed. The candidates are the messaging apps on this Mac, or the app's people ranked by
+  a fuzzy match (`local/apps/fuzzy.js`: a prefix, the first word, every word's start, a slip of a
+  letter or two), and a lone strong match adds "Did you mean Ammi jee on WhatsApp?". A send to a
+  name the app does not know is asked about the same way. "tell mom I'm on slack now" asks who
+  on Slack, keeping "I'm on slack now".
+- `apps.route {text, app, to}` is how an answer goes back: the app and who as picked (a
+  candidate's id, or a name typed), the words from the question. It is checked against the app's
+  people and asked again if still unclear; two people with the same name are asked about ("Which
+  one?"), never sent to whichever the app finds first. "in apple notes" inside a message stays in
+  the message, and "whatsapp juno running late" drops "juno" from the text only when juno is
+  someone in the app.
+- `apps.list` rows carry `actions` and `nests` (the app holds people or notes to pick) for an app
+  Vyre has words for, so the Capsule's `@App` picker can say so.
+- `vyre apps` asks on a terminal: the question, the Did you mean line and numbered candidates;
+  a number, a name, or Enter for the Did you mean, up to three rounds. An empty answer, "no" or
+  Ctrl-D sends nothing, and after a question the preview needs one more Enter before the send. Off a terminal, or with `--json`, it prints the question (as JSON with `--json`) and
+  exits 3, so a script can tell "asked" from "failed".
+
+#### Apps: timers, notes, reminders and the weather from the Capsule (ADR 0022, slice 1)
+
+- A new vyred module `apps` (`local/apps/`, roles local) drives the Mac's apps. `apps.list` reads
+  the Applications folders (no mdfind; bundle ids from Info.plist, `plutil` only for a binary one
+  and only for the rows returned) and says how Vyre reaches each app: connector, intents, script,
+  or ax. `apps.targets` lists what is inside an app (notes, reminder lists). `apps.act` runs an
+  action that sends nothing as the person and emits `apps.acted {app, action}`, never the text.
+  `apps.send` runs one that does, declares presence with the action's preview as its summary
+  ("WhatsApp → juno: running late"), and so needs a person's proof per call from every caller
+  but a module. `apps.act` refuses a sending action with code `sends`.
+- Four adapters. Clock timers and alarms through two shortcuts the person imports once ("Vyre
+  Timer", "Vyre Alarm"; a missing one is code `setup` naming `vyre apps setup clock`). Notes
+  (new note, add to a note) and Reminders (new reminder with an alerting due time, set from
+  numbers so no locale reads it) through constant AppleScripts that take user text only as argv.
+  Weather from Open-Meteo, which needs no key, with the place from config or the time zone.
+- Every contact with the Mac goes through `local/apps/env.js`. Under tests or a throwaway home the
+  real osascript, shortcuts and `open` refuse with `no_dialog` before spawning anything; off a Mac
+  they refuse with `not_mac`. Starting the module runs nothing, and its caches expire on read.
+  Tests use a fake exec, a fake fetch and fake bundles only.
+- Adding to a note refuses a locked note or one with attachments (`not_supported`), since a body
+  rewrite would lose them. Note targets skip Recently Deleted (by name, configurable as
+  apps.notes.trash). A reminder's due time in the past is refused, and "today" is judged in the
+  Mac's time zone. An AppleScript that does not answer is `setup`, pointing at the Automation
+  consent. Weather requests time out after 10 s. `local/apps/mac.test.js` compiles the real
+  scripts with osacompile, only when VYRE_MAC_REAL=1 on a Mac.
+- `apps.send` rides the short presence session (ADR 0004): one Touch ID, Capsule or passkey proof
+  opens it, and a burst of messages from the Capsule then goes without asking each time, each
+  still previewed there. It is added to the floor's SESSIONABLE list (`core/presence/index.js`)
+  and declares `presence.session`. A tool off that list still refuses a session proof.
+- `apps.route {text, app?, model?}` turns words into one app action without running it: timers
+  ("10 minute timer", "timer for 2 hours and 5 minutes"), alarms ("wake me at 7"), notes,
+  reminders ("remind me to call juno at 6" is the next 6:00 or 18:00; "remind me on friday to
+  pay rent" is Friday 09:00; "in 20 min"), the weather ("is it cold in Lahore today") and
+  messages ("whatsapp juno: running late", sending). Rules only, in the Mac's time zone
+  (`local/apps/route.js`); `app` is the Capsule's @App scope. What the rules cannot place is
+  ambiguous, and config `apps.model` (a function) may try it when the caller passes `model:
+  true`; whether its answer sends comes from the adapter, never from the model.
+- `apps.setup {app}`: Clock's one-time setup. It writes the Vyre Timer and Vyre Alarm shortcuts
+  under the Vyre home, signs them with `shortcuts sign --mode anyone`, and opens each so
+  Shortcuts shows its Add button, with steps in words and a by-hand recipe
+  (`local/apps/setup.js`). Two action identifiers are unverified and marked so. The dialog gate
+  refuses it under tests before any file is written. Only the CLI, the Capsule and the Deck may
+  call it; a model or another module is denied.
+- `vyre apps`: the apps on this Mac; `vyre apps find <words>`, `vyre apps targets <app> [words]`,
+  `vyre apps setup clock`, and `vyre apps <words...>`, which routes the words and runs them
+  ("vyre apps timer 10 min" prints "Timer set for 10 minutes"). A send prints its preview, then
+  asks this terminal for a person's proof through apps.send. `--app`, `--model`, `--json`,
+  `--help`, and `vyre apps -- <words>` for words that start like a subcommand
+  (`core/cli/commands/apps.js`).
+- The router's review round. A message goes exactly as typed (punctuation and line breaks
+  kept), and its recipient must look like one name, #channel or @handle, else the words are
+  ambiguous ("tell mom I'm on slack now" sends nothing). A model-routed send's preview is built
+  from its args, never the model's own line. Reminder time words are taken after at, on or in,
+  or at the start or end, so "take my 3pm pill" keeps its words; "next friday" is next week's,
+  "tonight at 12" is midnight, the current minute counts as now, and "today" after 09:00 is a
+  plain reminder. More timer and alarm phrasings ("a 10-minute timer", "timer ten minutes",
+  "alarm 7.30"), stricter notes and weather questions, "weather this weekend", and weekday
+  names in the weather adapter. Text over 2000 characters is refused. Clock's setup removes a
+  stale file, signs both before opening either, and reports one that failed; `vyre apps setup`
+  waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
+  or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
+  (the Registry's callerAllowed), never a guest.
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
@@ -520,7 +1796,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a list whose rows swipe to approve or deny and open a detail sheet with Open session. Colour
   roles use the Deck's names (deck/css/deck.css). Native approvals are a device-key signature
   after Face ID (ADR 0018), the PWA's a passkey; both are the same box-checked presence proof.
-  Docs only; no code changes.
+  Attention is violet (no coral or red anywhere), errors and destructive actions carry no colour,
+  and every mockup text node was measured at WCAG AA. Docs only; no code changes.
 
 #### docs.vyre.run, round 2: screenshots, a terms index, interactive pages (ADR 0019)
 

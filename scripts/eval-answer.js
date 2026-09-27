@@ -30,7 +30,7 @@
 // recall.search and recall.thread, curates, and then asks every question in
 // test/eval/answer-gold.json of two answerers:
 //
-//   before   today's Capsule path (local/capsule/lib/bridge.js recall()): memory.relevant, then the
+//   before   today's Capsule path (the Capsule's recall()): memory.relevant, then the
 //            user's own words through recall.search, rankSaid and yourAnswer.
 //   answer   the memory module's memory.answer tool. Reported as unsupported, never thrown, when
 //            the module has no such tool yet.
@@ -56,8 +56,7 @@ import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
 import { claudeOnce, modelFor, VERSION } from "../core/memory/personal/reader.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
-import { rankSaid, yourAnswer } from "../local/capsule/lib/said.js";
-import { words } from "../local/capsule/lib/route.js";
+import { rankSaid, yourAnswer, words } from "./lib/said.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const GOLD_FILE = path.join(ROOT, "test/eval/answer-gold.json");
@@ -214,7 +213,7 @@ const now = () => Number(process.hrtime.bigint()) / 1e6;
 
 /**
  * The answerers. Each takes a question and returns { answer, confidence, ms }. `before` is the
- * Capsule's recall() in local/capsule/lib/bridge.js, step for step, minus the page.
+ * Electron Capsule's recall() (bridge.js), step for step, minus the page.
  * @typedef {(q: string) => Promise<{ answer: string|null, confidence: number|null, ms: number, via?: string|null }>} Answerer
  */
 function answerers(mem, scratch = SCRATCH) {

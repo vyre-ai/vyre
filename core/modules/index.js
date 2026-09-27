@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
+import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY } from "../presence/index.js";
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
@@ -46,6 +47,9 @@ export function validate(m) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
   for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+  // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
+  const providers = m.does && m.does.providers;
+  if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
   return out;
 }
 
@@ -118,7 +122,8 @@ export function checkInput(schema, value, where = "input") {
  */
 export const callerKind = caller => {
   const c = String(caller);
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
+  // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
+  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -129,7 +134,8 @@ export const callerKind = caller => {
  * @param {string[]|null|undefined} callers
  */
 export const callerAllowed = (callers, caller) => !callers || callers.includes(callerKind(caller))
-  || (callers.includes("deck") && ownerOverTailnet(caller));
+  || (callers.includes("deck") && ownerDevice(caller))
+  || (callers.includes("tailnet") && ownerDevice(caller));
 
 /**
  * The box's owner on their own device at the box's address: the tailnet listener names only the
@@ -137,6 +143,14 @@ export const callerAllowed = (callers, caller) => !callers || callers.includes(c
  * agent's node `tailnet:agent:`. The owner's Deck and phone always arrive this way on a box.
  */
 export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(caller));
+
+/**
+ * The owner on one of their own devices, however it reached the box: over the tailnet
+ * (`tailnet:<owner>`), or a device paired through the relay (`device:<id>`, ADR 0026), which only
+ * the relay module's listener names. A person who may ask; presence still decides every
+ * human-only call. A guest, an agent's node and a socket label are never one.
+ */
+export const ownerDevice = caller => ownerOverTailnet(caller) || /^device:[a-z2-7]{16}$/.test(String(caller));
 
 export class Registry {
   /**
@@ -156,6 +170,10 @@ export class Registry {
     this.upgrades = new Map();
     /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
     this.routes = new Map();
+    /** @type {Map<string, { module: string, driver: any }>} session providers (ADR 0030), by name */
+    this.providers = new Map();
+    /** A retried write runs once (ADR 0029, R2). */
+    this.idempotency = deps && deps.db ? new Idempotency(deps.db) : null;
   }
 
   /** Start every discovered module that is enabled for this machine's role. */
@@ -221,6 +239,9 @@ export class Registry {
         },
         on: (pattern, fn) => events.on(pattern, fn),
         since: (id, opts) => events.since(id, opts),
+        // The cursor a read is current to (ADR 0029 R1): a view that loads through a tool, then
+        // follows the stream from this id, has no gap.
+        latestId: () => events.latestId(),
         // Delete this module's own redundant events (see Events.prune): only types it declares
         // under watches.emits, and only rows it emitted itself.
         prune: (type, opts = {}) => {
@@ -298,6 +319,19 @@ export class Registry {
         if (this.routes.has(at)) throw new Error(`route ${at} is already registered`);
         this.routes.set(at, fn);
       },
+      // A session provider: a driver the Switchboard runs sessions on (core/sessions/provider.js).
+      // Declared under does.providers; it must pass core/sessions/conformance.js.
+      provider: (name, driver) => {
+        const mine = (m.does && m.does.providers) || [];
+        if (!mine.includes(name)) throw new Error(`${m.name} registered provider ${name}, which its manifest does not declare under does.providers`);
+        if (this.providers.has(name)) throw new Error(`provider ${name} is already registered`);
+        if (!driver || typeof driver.run !== "function") throw new Error(`provider ${name} needs a run function`);
+        this.providers.set(name, { module: m.name, driver });
+      },
+      providers: {
+        get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
+        list: () => [...this.providers.keys()],
+      },
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -326,7 +360,7 @@ export class Registry {
    *   input is not verified and must not be treated as if it were. `proof` is the presence proof
    *   the request carried, checked here and not passed on.
    */
-  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, ...meta } = {}) {
+  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -348,23 +382,31 @@ export class Registry {
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
     if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
-      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null });
+      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
     }
-    // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try {
-      const data = await def.run(input, { ...meta, caller });
-      // keep: the person asked that this proof also open a presence session on their device, so
-      // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong
-      // proof opens one (presence.openSession refuses the rest); the secret goes back once.
-      if (keep && presence && meta.presence && meta.presence.method !== "session") {
-        try { return { data, session: presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer || null }) }; }
-        catch { /* a code or tty proof: the call still succeeded, with no session */ }
-      }
-      return { data };
+    // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
+    // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses
+    // it as the Agent SDK message uuid, ADR 0030), and a retry after a restart is still one turn.
+    const run = () => this.run(def, input, { ...meta, caller, ...(idempotencyKey ? { idempotencyKey } : {}) });
+    const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
+    // keep: the person asked that this proof also open a presence session on their device, so
+    // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong
+    // proof opens one (presence.openSession refuses the rest); the secret goes back once, and a
+    // replayed answer never carries one (it is outside what the idempotency record keeps).
+    if (keep && !result.error && presence && meta.presence && meta.presence.method !== "session") {
+      try { return { ...result, session: presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer || null }) }; }
+      catch { /* a code or tty proof: the call still succeeded, with no session */ }
     }
+    return result;
+  }
+
+  /** @param {any} def @param {any} input @param {any} meta */
+  async run(def, input, meta) {
+    // The caller is passed on, so a tool like vault.release can check which module is asking.
+    try { return { data: await def.run(input, meta) }; }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".

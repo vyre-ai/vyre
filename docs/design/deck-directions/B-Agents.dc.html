@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Deck B, Agents</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy dB {{theme}}" style="flex: none; width: 1440px; height: 900px;">
+
+<nav class="rail" aria-label="Deck">
+  <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg></a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">4</span></a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+  <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+  <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+    <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+    <span class="av av-32 av-me">a</span>
+  </div>
+</nav>
+
+<main class="main">
+  <header class="top">
+    <div class="top-l"><h1 class="t15 w6">Agents</h1><span class="count">5</span></div>
+    <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or type a command</span><span class="kbd">⌘K</span></div>
+    <div class="top-r"><a class="needs" href="#"><span class="dot dot-need"></span>4 need you</a><button class="btn btn-p btn-sm"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>New agent<span class="k">N</span></button></div>
+  </header>
+
+  <div class="page">
+    <div class="col" style="flex: none; width: 836px; gap: 24px;">
+
+      <section class="col" style="gap: 10px;" aria-label="All agents">
+        <div class="row" style="gap: 8px;">
+          <button class="chip chip-on">All<span class="t3">5</span></button>
+          <button class="chip">Working<span class="t3">1</span></button>
+          <button class="chip">Needs you<span class="t3">1</span></button>
+          <button class="chip">Paused<span class="t3">1</span></button>
+          <button class="chip">Failed<span class="t3">1</span></button>
+          <span class="t12 t3" style="margin-left: auto;"><span class="kbd">J</span> <span class="kbd">K</span> move · <span class="kbd">⏎</span> open · <span class="kbd">P</span> pause</span>
+        </div>
+
+        <div class="list">
+          <div class="list-h">
+            <span class="lbl" style="flex: none; width: 96px;">Agent</span>
+            <span class="lbl grow">Job</span>
+            <span class="lbl" style="flex: none; width: 140px;">Projects</span>
+            <span class="lbl" style="flex: none; width: 112px;">Wakes on</span>
+            <span class="lbl" style="flex: none; width: 128px;">Status</span>
+            <span class="lbl" style="flex: none; width: 56px; text-align: right;">Last run</span>
+          </div>
+
+          <div class="li">
+            <div class="row" style="flex: none; width: 96px; gap: 8px;"><span class="av">j</span><span class="w6 trunc">juno</span></div>
+            <span class="grow trunc t2">Writes the monthly reports and client updates</span>
+            <span class="trunc t2" style="flex: none; width: 140px;">Harlow Legal, Northwind Bakery</span>
+            <span class="trunc t2" style="flex: none; width: 112px;">Weekdays 08:00</span>
+            <div class="row" style="flex: none; width: 128px; gap: 8px;"><span class="dot dot-run"></span><span class="trunc">Working · 12 min</span></div>
+            <span class="t12 t3" style="flex: none; width: 56px; text-align: right;">Now</span>
+          </div>
+
+          <div class="li li-sel is-focus">
+            <div class="row" style="flex: none; width: 96px; gap: 8px;"><span class="av">k</span><span class="w6 trunc">kit</span></div>
+            <span class="grow trunc t2">Fixes and ships the client websites</span>
+            <span class="trunc t2" style="flex: none; width: 140px;">Harlow Legal, Northwind Bakery</span>
+            <span class="trunc t2" style="flex: none; width: 112px;">Push or chat</span>
+            <div class="row" style="flex: none; width: 128px; gap: 8px;"><span class="dot dot-need"></span><span class="trunc bea w6">Waiting on you</span></div>
+            <span class="t12 t3" style="flex: none; width: 56px; text-align: right;">14:21</span>
+          </div>
+
+          <div class="li">
+            <div class="row" style="flex: none; width: 96px; gap: 8px;"><span class="av">l</span><span class="w6 trunc">ledger</span></div>
+            <span class="grow trunc t2">Reconciles Harlow Legal invoices against the bank feed</span>
+            <span class="trunc t2" style="flex: none; width: 140px;">Harlow Legal</span>
+            <span class="trunc t2" style="flex: none; width: 112px;">Mondays 07:00</span>
+            <div class="row" style="flex: none; width: 128px; gap: 8px;"><span class="dot dot-idle"></span><span class="trunc t2">Paused</span></div>
+            <span class="t12 t3" style="flex: none; width: 56px; text-align: right;">22 Sep</span>
+          </div>
+
+          <div class="li">
+            <div class="row" style="flex: none; width: 96px; gap: 8px;"><span class="av">c</span><span class="w6 trunc">crumb</span></div>
+            <span class="grow trunc t2">Reads the Northwind Bakery wholesale and holiday catering inbox, logs each order in the sheet and flags anything over 50 loaves</span>
+            <span class="trunc t2" style="flex: none; width: 140px;">Northwind Bakery wholesale and holiday catering</span>
+            <span class="trunc t2" style="flex: none; width: 112px;">New mail</span>
+            <div class="row" style="flex: none; width: 128px; gap: 8px;"><span class="dot"></span><span class="trunc t2">Idle</span></div>
+            <span class="t12 t3" style="flex: none; width: 56px; text-align: right;">13:05</span>
+          </div>
+
+          <div class="li">
+            <div class="row" style="flex: none; width: 96px; gap: 8px;"><span class="av">r</span><span class="w6 trunc">rig</span></div>
+            <span class="grow trunc t2">Deploys Northwind Bakery to staging after each merge</span>
+            <span class="trunc t2" style="flex: none; width: 140px;">Northwind Bakery</span>
+            <span class="trunc t2" style="flex: none; width: 112px;">Merge to main</span>
+            <div class="row" style="flex: none; width: 128px; gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg><span class="trunc">Failed at 09:12</span></div>
+            <a class="t12 t2 w6" href="#" style="flex: none; width: 56px; text-align: right;">Retry</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="list" aria-label="Runs today">
+        <div class="list-h"><span class="lbl">Runs today</span><span class="count">9</span><span class="t12 t3" style="margin-left: auto;">$3.42 spent of $20 a day</span></div>
+        <div class="dense">
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">juno</span><span class="grow trunc">Holiday menu copy</span><span class="t12 t3" style="flex: none; width: 120px;">Sonnet 5</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">12 min</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.42</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">14:30</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">kit</span><span class="grow trunc">Intake form rebuild, held for your OK to push</span><span class="t12 t3" style="flex: none; width: 120px;">Opus 5.5</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">41 min</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$1.86</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">13:40</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">crumb</span><span class="grow trunc">Logged 3 wholesale orders</span><span class="t12 t3" style="flex: none; width: 120px;">Haiku 4.5</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">2 min</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.03</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">13:05</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">juno</span><span class="grow trunc">Weekly Northwind update sent</span><span class="t12 t3" style="flex: none; width: 120px;">Sonnet 5</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">6 min</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.21</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">12:10</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">kit</span><span class="grow trunc">Harlow site: fixed the broken contact link</span><span class="t12 t3" style="flex: none; width: 120px;">Sonnet 5</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">9 min</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.38</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">11:48</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">crumb</span><span class="grow trunc">Answered nothing, memory had the order cut-off</span><span class="t12 t3" style="flex: none; width: 120px;">No model</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">1 s</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.00</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">10:22</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">rig</span><span class="grow trunc">Deploy to Northwind staging failed: build step timed out</span><span class="t12 t3" style="flex: none; width: 120px;">Haiku 4.5</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">4 min</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.50</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">09:12</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">juno</span><span class="grow trunc">Drafted three subject lines for the holiday menu email</span><span class="t12 t3" style="flex: none; width: 120px;">Haiku 4.5</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">3 min</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.02</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">08:40</span></div>
+          <div class="li"><span class="w6" style="flex: none; width: 56px;">juno</span><span class="grow trunc">Morning check of Harlow Legal inbox, nothing new</span><span class="t12 t3" style="flex: none; width: 120px;">No model</span><span class="t12 t2" style="flex: none; width: 64px; text-align: right;">2 s</span><span class="t12 t2" style="flex: none; width: 48px; text-align: right;">$0.00</span><span class="t12 t3" style="flex: none; width: 48px; text-align: right;">08:00</span></div>
+          <div class="li"><a class="t12 t2 w6" href="#">Show all runs</a><span class="t12 t3" style="margin-left: auto;">Kept for 30 days</span></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<aside class="sheet" style="position: absolute; top: 56px; right: 0; bottom: 0; width: 480px; border-radius: 12px 0 0 12px; display: flex; flex-direction: column;" aria-label="New agent">
+  <div class="card-h" style="height: 52px; border-bottom: 1px solid var(--rule);">
+    <h2 class="t15 w6">New agent</h2>
+    <span class="t12 t3" style="margin-left: auto;"><span class="kbd">Esc</span> close</span>
+    <button class="ibtn ibtn-sm" aria-label="Close"><svg class="ic" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button>
+  </div>
+
+  <div class="col" style="flex: 1 1 auto; min-height: 0; padding: 16px; gap: 20px; overflow: hidden;">
+    <div class="fl" style="gap: 8px;">
+      <span class="lbl">1 · Describe the job</span>
+      <div class="ta t15" style="min-height: 112px;">Watch the Northwind orders inbox and draft replies to wholesale questions. Ask me before anything is sent.</div>
+      <div class="row t12 t3" style="gap: 6px;">
+        <svg class="ic ic-12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
+        <span>Vyre drafted this from your sentence</span>
+        <span style="margin-left: auto;">Edit the sentence to redraft</span>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="row" style="gap: 8px; padding-bottom: 8px;"><span class="lbl">2 · Check the draft</span><span class="t12 t3" style="margin-left: auto;">Click a line to change it</span></div>
+      <div class="df"><span class="t12 t3">Name</span><span class="df-v w6">sprout</span></div>
+      <div class="df"><span class="t12 t3">Job</span><span class="df-v editing">Answer wholesale questions from the Northwind orders inbox with drafts for alex to approve<span class="caret"></span></span></div>
+      <div class="df" style="align-items: center;"><span class="t12 t3">Projects</span><span class="df-v row" style="gap: 6px; flex-wrap: wrap;"><span class="chip">Northwind Bakery</span><span class="chip">Northwind Bakery wholesale and holiday catering</span></span></div>
+      <div class="df" style="align-items: center;"><span class="t12 t3">Tools</span><span class="df-v row" style="gap: 6px;"><span class="tag mono">gmail.read</span><span class="tag mono">gmail.draft</span><span class="tag mono">sheets.read</span></span></div>
+      <div class="df"><span class="t12 t3">Wakes on</span><span class="df-v">New mail in orders@northwindbakery.com</span></div>
+      <div class="df"><span class="t12 t3">Rules</span><span class="df-v col" style="gap: 4px;"><span>Ask before sending mail</span><span>Never touch billing</span></span></div>
+      <div class="df"><span class="t12 t3">Model</span><span class="df-v row" style="gap: 6px;">Sonnet 5<svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg><span class="t12 t3">Memory is checked first</span></span></div>
+      <div class="df"><span class="t12 t3">Budget</span><span class="df-v">$5 a day<span class="t12 t3"> · stops and asks at the limit</span></span></div>
+    </div>
+
+    <div class="col" style="gap: 10px; margin-top: auto;">
+    <div class="row t2" style="gap: 8px; align-items: flex-start;">
+      <svg class="ic t3" viewBox="0 0 16 16" style="margin-top: 1px;"><circle cx="8" cy="8" r="6"></circle><path d="M6.5 5.5l4 2.5-4 2.5z"></path></svg>
+      <span>A test runs sprout on the 38 messages from last week. It drafts, sends nothing, and costs about $0.40.</span>
+    </div>
+    <div class="row t2" style="gap: 8px; align-items: flex-start;">
+      <svg class="ic t3" viewBox="0 0 16 16" style="margin-top: 1px;"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>
+      <span>sprout needs read access to orders@northwindbakery.com. You approve it once, in Vault, after you create the agent.</span>
+    </div>
+    </div>
+  </div>
+
+  <div class="card-f">
+    <button class="btn btn-p">Create agent<span class="k">⌘⏎</span></button>
+    <button class="btn">Test on last week's mail</button>
+    <button class="btn btn-g" style="margin-left: auto;">Cancel</button>
+  </div>
+</aside>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

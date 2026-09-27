@@ -1,0 +1,12 @@
+{
+  "name": "relay",
+  "version": "0.1.0",
+  "description": "A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.",
+  "roles": ["box"],
+  "requires": [],
+  "does": { "tools": ["relay.status", "relay.enable", "relay.disable", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.rename", "relay.devices.remove", "relay.devices.trust"] },
+  "watches": { "emits": ["relay.connected", "relay.disconnected", "device.paired", "device.removed"] },
+  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

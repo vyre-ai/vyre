@@ -4,7 +4,6 @@
 // Everything shown here came from memory rather than a model, so it is drawn in the Recall gold.
 // --project <slug> reads (or corrects) one project's room; "unfiled" is the room of no project.
 
-import { callAsPerson } from "../presence.js";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, recall, beacon } from "../style.js";
 import { json, emit, failTool, usage, fail as failed } from "../kit.js";
@@ -51,7 +50,7 @@ function said(c) {
   if (c.note) out(dim(`      ${c.note}`));
 }
 
-/** The sub-commands that change memory. Each is the user's own call, from their own terminal. */
+/** The sub-commands that change memory: the user's own, so no presence prompt (an agent is refused). */
 async function change(sub, args) {
   const { rest, opt } = flags(args, ["project", "at", "note", "all", "off"]);
   const project = typeof opt.project === "string" ? { project: opt.project } : {};
@@ -61,7 +60,7 @@ async function change(sub, args) {
     // The CLI prints the fact as it now reads, so it waits for the graph to have it.
     const input = { fact, action, wait: true, ...project, ...(obj.length ? { object: obj.join(" ") } : {}),
       ...(typeof opt.at === "string" ? { at: opt.at } : {}), ...(typeof opt.note === "string" ? { note: opt.note } : {}) };
-    const r = await callAsPerson("memory.correct", input);
+    const r = await call("memory.correct", input);
     if (r.error) return fail(r);
     if (json()) return emit(r.data);
     out(`  ${recall("corrected")} ${dim("· undo with vyre memory uncorrect " + r.data.correction.id)}`);
@@ -79,7 +78,7 @@ async function change(sub, args) {
   if (sub === "uncorrect") {
     const id = Number(rest[0]);
     if (!Number.isInteger(id) || id < 1) return usage("vyre memory uncorrect needs a correction number", "vyre memory corrections lists them");
-    const r = await callAsPerson("memory.uncorrect", { id });
+    const r = await call("memory.uncorrect", { id });
     if (r.error) return fail(r);
     if (json()) return emit(r.data);
     said(r.data);
@@ -88,7 +87,7 @@ async function change(sub, args) {
   if (sub === "merge") {
     const [node, into] = rest;
     if (!node || !into) return usage(USAGE.merge, "vyre help memory");
-    const r = await callAsPerson("memory.merge", { node, into });
+    const r = await call("memory.merge", { node, into });
     if (r.error) return fail(r);
     if (json()) return emit(r.data);
     out(`  ${recall("merged")} ${dim("· undo with vyre memory uncorrect " + r.data.correction.id)}`);
@@ -97,7 +96,7 @@ async function change(sub, args) {
   if (sub === "split") {
     const [node, other] = rest;
     if (!node || (!other && !project.project)) return usage("vyre memory split <node> --project <slug> | <other>", "vyre help memory");
-    const r = await callAsPerson("memory.split", { node, ...(other ? { other } : project) });
+    const r = await call("memory.split", { node, ...(other ? { other } : project) });
     if (r.error) return fail(r);
     if (json()) return emit(r.data);
     out(`  ${recall("split")} ${dim("· undo with vyre memory uncorrect " + r.data.correction.id)}`);
@@ -106,7 +105,7 @@ async function change(sub, args) {
   // pin, mute: steering, everywhere or in one project's folder.
   const node = rest.join(" ").trim();
   if (!node) return usage(`vyre memory ${sub} needs a node`, `vyre memory ${sub} <node> [--off]`);
-  const r = await callAsPerson(`memory.${sub}`, { node, ...(opt.off === true ? { off: true } : {}) });
+  const r = await call(`memory.${sub}`, { node, ...(opt.off === true ? { off: true } : {}) });
   if (r.error) return fail(r);
   if (json()) return emit(r.data);
   out(`  ${recall(r.data.label)} ${dim(r.data.mode ? r.data.mode + "ned" : "back to normal")}`);

@@ -97,15 +97,16 @@ export default {
 
     /** Does approving this item need a proof? Anything the Gate cannot find asks. */
     const needsProof = id => { try { return OUTBOUND.has(gate.get({ id }).kind); } catch { return true; } };
-    /** Whether the caller's device has a live presence session (presence.covered). */
-    const covered = async peer => {
+    /** Whether the caller's device has a live presence session, and since when (presence.covered). */
+    const coverage = async peer => {
       const r = await ctx.call("presence.covered", peer ? { peer } : {});
-      return Boolean(r.data && r.data.covered);
+      const d = r.data || {};
+      return { covered: Boolean(d.covered), since: d.since ?? null };
     };
     /** Each item with what approving it takes, for this caller's device. */
     const withPresence = async (items, peer) => {
-      const c = items.length ? await covered(peer) : false;
-      return items.map(it => ({ ...it, presence: { required: OUTBOUND.has(it.kind), covered: c } }));
+      const c = items.length ? await coverage(peer) : { covered: false, since: null };
+      return items.map(it => ({ ...it, presence: { required: OUTBOUND.has(it.kind), ...c } }));
     };
 
     ctx.tool("gate.request", {
