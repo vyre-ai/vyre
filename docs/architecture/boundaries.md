@@ -16,13 +16,14 @@ switched off without breaking the rest.
   and `core/daemon`. Any part may import it.
 - **A part** is `core/<name>` (a folder, or a single file such as `core/quiet.js`),
   `local/<name>` or `modules/<name>`.
-- **Shared pure helpers**, code with no feature state, go in a kernel folder or in their own
-  small lib, named in the boundary test.
+- **A lib** is `lib/<name>`: shared pure code with no feature state (ADR 0033). Any part may
+  import a lib. A lib imports only the kernel and other libs, never a feature, and no lib edge
+  can be frozen.
 
 `test/boundaries.test.js` scans every runtime `.js`, `.mjs` and `.cjs` file under `core/`,
-`local/` and `modules/` for relative imports (static, dynamic and `require`). Tests, `testing/`
-folders and fixtures are out of scope, since a test may reach into what it tests. The test fails
-on:
+`local/`, `modules/` and `lib/` for relative imports (static, dynamic and `require`). Tests,
+`testing/` folders and fixtures are out of scope, since a test may reach into what it tests. The
+test fails on:
 
 - an import into another part that is not in its allowlist, or a new file behind a frozen edge;
 - an allowlist entry that nothing imports any more (the list only shrinks);
@@ -35,7 +36,7 @@ A new exception needs the lead's OK.
 Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one should go:
 
 - **ctx.call**: call a tool through the registry instead.
-- **lib**: the imported file is a pure helper; move it to a kernel folder or its own small lib.
+- **lib**: the imported file is a pure helper; move it to `lib/<name>`.
 - **surface**: the CLI is a surface, and keeps its command-side helpers.
 
 | Edge | Files | Why | Becomes |

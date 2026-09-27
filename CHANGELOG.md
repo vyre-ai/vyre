@@ -85,6 +85,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   modules, presence, daemon) is open to all. Today's 26 other edges are frozen in an allowlist,
   down to the files imported; a new edge or a new file behind one fails, and so does an entry
   nothing uses any more (the list only shrinks). Tests, testing/ and fixtures are out of scope.
+- lib/<name> (ADR 0033) is shared pure code: any part may import it; a lib may import only the
+  kernel and other libs, and no lib edge can be frozen.
 - docs/architecture/boundaries.md: the rule, and each frozen edge with why it exists and what it
   becomes (17 lib, 8 ctx.call, 1 surface). In the nav; reference regenerated.
 
