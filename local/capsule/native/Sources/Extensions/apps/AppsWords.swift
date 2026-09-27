@@ -84,10 +84,12 @@ final class AppsWordsProvider: ResultProvider, @unchecked Sendable {
     }
 
     /// A held message, approved with the person's proof (`prove`), never posted twice. An item
-    /// whose earlier approval failed (`tried`), or an approval whose answer comes back failed (the
-    /// app's server dropped mid-send), may have gone out: the app's `sent` check reads it first,
-    /// and "It went out" is the answer when it did. Otherwise the message waits at the Gate, and
-    /// Enter again finds that same item (apps.act answers `again`), so nothing is held twice.
+    /// whose earlier approval failed (`tried`), or an approval that comes back failed with
+    /// `reached: "maybe"` (the app's server dropped mid-send), may have gone out: the app's `sent`
+    /// check reads it first, and when the words are there the item is settled as sent at the Gate
+    /// (gate.settle, with what the app showed) and "It went out" is the answer. `reached: "no"`
+    /// means it did not go. Either way an unsent message waits at the Gate, and Enter again finds
+    /// that same item (apps.act answers `again`), so nothing is held twice.
     nonisolated static func approveHeld(_ data: Any?, input: [String: Any], app: String, said: String, vyred: VyredLink,
                                         prove: (String) async -> VyredResult) async -> ActionOutcome {
         guard let held = (data as? [String: Any])?["held"] as? [String: Any], let id = VJ.nonEmpty(held["id"]) else {
@@ -99,13 +101,20 @@ final class AppsWordsProvider: ResultProvider, @unchecked Sendable {
             if let thread = args["thread"] { check["thread"] = thread }
             if let at = VJ.num(held["at"]) { check["since"] = at }
             let s = await vyred.call("apps.act", ["app": app, "action": "sent", "args": check])
-            return VJ.bool((s.data as? [String: Any])?["sent"]) == true
+            guard let d = s.data as? [String: Any], VJ.bool(d["sent"]) == true else { return false }
+            var evidence: [String: Any] = ["app": app]
+            if let ts = VJ.nonEmpty(d["ts"]) { evidence["ts"] = ts }
+            _ = await vyred.call("gate.settle", ["id": id, "outcome": "sent", "evidence": evidence])
+            return true
         }
         if VJ.bool(held["tried"]) == true, await wentOut() { return .said("It went out already: \(said)") }
         let g = await prove(id)
         if let why = g.error { return .failed(why) }
         let d = (g.data as? [String: Any]) ?? [:]
         guard (d["state"] as? String) == "failed" else { return .said(VJ.nonEmpty(d["said"]) ?? "Sent through \(app).") }
+        if (d["reached"] as? String) == "no" {
+            return .failed("\(app) could not be reached, so nothing went. It waits at the Gate: press Enter to try again.")
+        }
         if await wentOut() { return .said("It went out: \(said)") }
         return .failed("\(app) did not answer, so it may not have gone. It waits at the Gate: press Enter to try again.")
     }
