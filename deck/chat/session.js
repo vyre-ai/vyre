@@ -283,6 +283,7 @@ export function mountSession(container, opts) {
       for (const a of data.asks) upsertAsk(a);
     }
     booted = true;
+    report();
     layout();
     drawHead();
     drawQueued();
@@ -1262,6 +1263,19 @@ export function mountSession(container, opts) {
   }
 
   // ---- shared pieces ------------------------------------------------------------------------
+
+  /**
+   * Tell the box which thread is open here (cohesion's context.report), so "what am I working on"
+   * follows the screen. Once per open; a box without the tool answers no_such_tool and nothing
+   * changes. Only a person's surface calls it (the tool refuses a model).
+   */
+  let reported = false;
+  function report() {
+    if (reported || recorded.on) return;
+    reported = true;
+    const rec = record.current;
+    attempt("context.report", { surface: "chat", view: "chat", thread, ...(rec?.project ? { project: rec.project } : {}), ...(rec?.cwd ? { cwd: rec.cwd } : {}) });
+  }
 
   /** To the bottom now, and stuck there (Jump to latest, open, a sent message). */
   function toBottom() { stick.stick(); jump.hidden = true; }

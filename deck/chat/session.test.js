@@ -239,6 +239,8 @@ test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn 
   // The composer (composer.js, not this view's) is left out: its hint names the terminal's commands.
   assert.doesNotMatch(everything($(container, ".session-head")) + everything($(container, ".thread-view")) + everything($(container, ".lease-bar")), /claude/i);
   assert.ok(calls.some(c => c.tool === "recall.transcript" && c.input.session === SID && c.input.limit === 400));
+  // The open thread is reported once (cohesion's context.report), with its folder.
+  assert.deepEqual(calls.filter(c => c.tool === "context.report").map(c => c.input), [{ surface: "chat", view: "chat", thread: SID, cwd: fx.session.cwd }]);
 });
 
 test("live: text streams, a tool card runs, then the transcript's blocks replace them in place", async () => {
