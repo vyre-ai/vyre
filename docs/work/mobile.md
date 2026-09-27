@@ -104,9 +104,14 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
 
 ## One app: Doing
 - The real-iPhone run: steps in "iPhone test steps" below, after tonight's deploy.
-- Design-system adoption, remaining: vault TrustCard and the Rows AskCard still draw their own
-  card box (move to <Card>); icons, icon button, key hint, tabs, sheet, settings row are "not
-  built" in docs/design/system/README.md; waiting on app-design's per-team spec list for order.
+- Design-system adoption: ask and trust cards on <Card> (CardCode for commands), IconButton +
+  Icon (send, stop, check, x drawn as bars; no react-native-svg), composer Send/Stop as 44 circles.
+  Settings row not built on purpose: the app shows no registry keys yet (ListRow's group variant
+  covers Settings). Remaining: key hint, tabs, sheet, the list row chevron, the Back control as
+  chev-l (visible change, ask app-design), icon size 16 vs 20 in the composer (spec vs board, ask
+  app-design), react-native-svg for exact paths (a dependency decision).
+- BLOCKER for the iPhone run: main 53cd1326 has no apps/ (batch 4) and nothing packs
+  apps/app/dist into vyre.tgz or the box image, so /app/ is 404 no_app on the box. Told the lead.
 
 ## iPhone test steps (for the lead to hand the user)
 1. iPhone: Tailscale on, same tailnet as the box.
