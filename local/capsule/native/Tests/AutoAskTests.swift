@@ -155,6 +155,21 @@ let autoAskSuite = Suite("auto ask") { t in
                  "and in Greece?", "starts 1", "thinking on q1"])
     }
 
+    t.test("⌘⏎ has one meaning: words that are not a question think deeper, never computer use") {
+        let v = quietVyred(); defer { v.stop() }
+        v.tool("hands.stop") { _ in ["stopped": true] }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp }
+            await MainActor.run { m.text = "open Notes and add milk"; _ = m.handleReturn(command: true) }
+            _ = await until { !v.callsOf("threads.start").isEmpty }
+            let s = v.callsOf("threads.start").first
+            let doing = await MainActor.run { m.doing }
+            return [VJ.s(s?["prompt"]), VJ.s(s?["model"]), VJ.s(s?["purpose"]), "\(doing)"]
+        }
+        t.eq(r, ["open Notes and add milk", CapsuleModel.deeperModel, "capsule", "false"])
+    }
+
     t.test("voice: partial words ask nothing; the final words are asked at once, as ⏎ would") {
         let v = quietVyred(); defer { v.stop() }
         let r: [String]? = t.wait {

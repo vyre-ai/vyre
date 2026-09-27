@@ -9,7 +9,8 @@
 //   or an exact app or file match never asks.
 // - ⏎ keeps the answer and turns the box into the follow-up box ("Ask a follow-up"); ⏎ there
 //   continues the same thread. ↓ into the results first makes ⏎ open that row instead.
-// - ⌘⏎ asks the same question (or the follow-up typed) on the deeper model, in the SAME thread:
+// - ⌘⏎ always means think deeper: the same question (or the follow-up typed, or any words of
+//   two or more) on the deeper model, in the SAME thread when there is one:
 //   threads.model switches it and threads.thinking turns thinking on, so the conversation is
 //   already there. With a vyred that has no threads.model, it is a new thread told what was said.
 // - ⌘O opens the answer's thread in Vyre chat on the box. Esc clears back to plain search.
@@ -124,9 +125,10 @@ extension CapsuleModel {
         let top = topLocal
         let onScreen = answerOnTop && autoKey == Self.autoKey(text)
         let question = onScreen || (Self.wantsAnswer(words, topKind: top?.kind, topScore: top?.score ?? 0) && quickFirst(words))
-        // ⌘⏎ on words that ask for something to be done, not answered: computer use.
-        if command && !question && !words.isEmpty && words.split(separator: " ").count >= 2 { startComputerUse(words); return true }
-        guard question else { return false }
+        // ⌘⏎ has one meaning: think deeper, on any words of two or more (computer use starts only
+        // from "do ...", above). One word, or a row the user moved to, keeps the row's own ⌘⏎.
+        let deepAnyway = command && !question && !userMoved && words.split(separator: " ").count >= 2
+        guard question || deepAnyway else { return false }
         autoTask?.cancel()
         if command {
             deeper(onScreen ? (asked ?? words) : words)

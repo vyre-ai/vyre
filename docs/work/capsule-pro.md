@@ -181,7 +181,7 @@ box, and every key below passed through or kept.
 | A in the waiting list | Allow or accept the highlighted row | Capsule |
 | D in the waiting list | Deny the highlighted ask (a held send or a lesson says no on its card) | Capsule |
 | ⌥⏎ | Talk into the box: hold to talk while down, or tap to start and tap to stop (sight) | extension |
-| "do …" then ⏎, or ⌘⏎ on an action | Computer use: an agent session with hands and screen, tool rows live, Esc stops the hands | Capsule |
+| "do …" then ⏎ | Computer use (only this way in): an agent session with hands and screen, tool rows live, Esc stops the hands | Capsule |
 | ⌥Space, Control twice | Open or hide the Capsule from anywhere | hot keys |
 
 ### The footer (Design A, capsule.md)

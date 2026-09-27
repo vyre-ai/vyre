@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ⌘⏎ means one thing: think deeper
+
+- ⌘⏎ on words that are not a question (two words or more) now thinks deeper too, instead of
+  starting computer use. Computer use starts only from "do ..." then ⏎. A row the user moved to
+  keeps its own ⌘⏎. `Sources/Host/AutoAsk.swift`; `Tests/AutoAskTests.swift`.
+
 #### The Capsule no longer answers personal questions itself
 
 - The user's bug: "what is my wife's name" answered "Jordan" from a Vyre dev session's test text.
