@@ -250,6 +250,10 @@ not a rule:
    index for offline search.
 5. **Turning it off** deletes that Mac's synced files and everything derived from them on the box,
    and says how much went.
+5a. **A one-time import** (onboarding's "Import these now", docs/design/import.md) follows the same
+   rules: the person chooses what goes and confirms once with a person session, and revoking the
+   device deletes it the same way. It sends only what was chosen, once; new sessions go only if
+   the person also turns sync on. Discovery on the device reads file metadata and sends nothing.
 6. **Security conditions** (e2e's review, 28 Sep; they hold before 0.2 is built):
    - *Transport.* The box takes `<machine>` from the verified link peer, never from the request
      body or path. It accepts a file only while its own record of that Mac's switch is on (the box
