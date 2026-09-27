@@ -267,6 +267,10 @@ Plan (to the lead before building):
   forms (MCP server, hooks, CLI, Capsule, Deck, app, fake-claude checked). 402/0/13 on testbox;
   sent to the integrator for rc.2. Worktree ../vyre-e2e-label (branches e2e-label, e2e-surfaces,
   e2e-agentclaim).
+- rc.1 ac60d3c5 GATE FAIL (box-deploy's rc-smoke, confirmed): vyred never up; module.js imports
+  packages/module-sdk/manifest.js, not in package.json files (platform a79d58f1). Deploy held;
+  rerun on the fixed tgz. cohesion 4b9c0c0d SIGNED OFF (sight.watch + sight.frame guarded).
+  Slip: started one sight run at load 7.3 (rule: under 6); check uptime first.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
