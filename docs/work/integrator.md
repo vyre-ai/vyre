@@ -59,8 +59,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - Fixes on pre/rc: 75148174 onboard reserve test waits for its claim (tmp-guard leak), ae6fe249
   switchboard fake key built at run time (hygiene), 2913b069 drift allowlist shrinks. Targeted run
   after them: 1129 tests, only the drift allowlist failed, now 2/2.
-- Launch: 342e02f5 merged (b662d5da, same tree as d61fd341; the lead said keep it). Next: launch's
-  violet-fill follow-up (.dest.do, .held-chip in site/styles.css) on top when it arrives.
+- Launch: 342e02f5 merged (b662d5da, same tree as d61fd341; the lead said keep it). Follow-up 57eebd9f
+  merged (violet fills gone).
 
 ## Done after Logout 3 (2026-09-27)
 
