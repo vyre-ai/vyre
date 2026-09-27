@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Apps in the native Capsule: `@App`, then who, then Enter twice to send (ADR 0022)
+
+- A new extension, `Sources/Extensions/apps/AppsExtension.swift`, puts every Mac app behind `@`,
+  from vyred's `apps.list` (read once each time the Capsule shows, no mdfind) with the app's own
+  icon. With nothing typed after `@` it offers the apps Vyre has words for; any other app shows
+  once named, saying Vyre has no words for it yet. An app that holds people or notes is a chip,
+  and a second `@` lists what is inside it (`apps.targets`, read into memory on the pick and
+  refreshed once for the words typed).
+- Enter routes the words through `apps.route`, scoped to the chip, with the picked contact's id.
+  What sends nothing (a timer, a note, the weather) runs at once through `apps.act`, with no
+  prompt. A send is shown first ("WhatsApp → Juno Park: running late · Enter again to send"); a
+  second Enter on the same words within two minutes sends it through `apps.send` with the
+  person's proof. A send the Gate holds (Slack) runs through `apps.act` and is approved with
+  `gate.approve` as the proof. Other words, a send, or hiding the Capsule forget the preview.
+- An unclear app or recipient is a question under the box ("Who should get this? Did you mean
+  Ammi jee on WhatsApp? Type @ to pick."), never nothing.
+
 #### `@` inside an app (native Capsule)
 
 - An extension's `@` target can nest (`MentionTarget.nests`): picked, it is a chip ("WhatsApp"),
