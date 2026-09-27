@@ -240,6 +240,12 @@ green, sent to the integrator. memory-iq keeps its recall-side fix (I review it)
 polish-cli, native-core; learn done by me (lead OK): 399ca89f; the skills write guard keeps refusing the real ~/.claude too. Branch sent at 399ca89f. Other defaults to route through one kernel helper:
 learn/skills.js:414, switchboard/index.js:1333, cli statusline.js:22, native-core settings claudeDir.
 
+Split with sessions 501ca3fc (lead, 27 Sep): image from 501ca3fc merged with main 53cd1326.
+check.sh 30/30. New scripts/e2e-split/thread.sh (vyred starts a session through the spawner, CLI
+runner, VYRE_CLAUDE_BIN = a stand-in in /work): 6/7. FAIL `vyre call` inside a session: callAsPerson
+(core/cli/presence.js:47) pins root, so VYRE_SOCKET is ignored. Sent to sessions with the fix. Low:
+MCP offers 258 tools incl. person-only. NOT yet cleared for the integrator; rerun both on their sha.
+
 Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
 not_found; `vyre link signin` at a terminal waits on the event stream and says "signed in on the
 box until <date>" (test/daemon.test.js, test/link-person.test.js; 115/115 + 88/88 on testbox).
