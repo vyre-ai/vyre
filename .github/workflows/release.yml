@@ -1,23 +1,22 @@
 # A Vyre release (ADR 0033, section 4). A tag vX.Y.Z publishes a GitHub Release on the stable
-# channel; vX.Y.Z-beta.N and vX.Y.Z-rc.N publish a prerelease on beta. The assets are what
+# channel; vX.Y.Z-beta.N publishes a prerelease on beta. The assets are what
 # scripts/build-site.sh makes for the box (install-box.sh, compose.yml, compose.build.yml,
 # vyre.env.example, vyre, Dockerfile, dockerignore, vyre.tgz, VERSION), the unsigned Android APK
 # (as android-<version>-<sha7>.apk) and android.json from app.yml's run on the same commit when there is one, and release.json
 # { version, channel, commit, date, min_from, notes }. SHA256SUMS covers them all, and each gets
 # a build provenance attestation (keyless: the workflow's OIDC identity, no key and no secret).
-# notes is this version's CHANGELOG section ("## X.Y.Z" or "## X.Y.Z-beta.N"; an rc without its own
-# section takes "## X.Y.Z"), also the release
+# notes is this version's CHANGELOG section ("## X.Y.Z" or "## X.Y.Z-beta.N"), also the release
 # body. Nothing is published until the repo variable VYRE_RELEASES is "go". min_from is "0.1.0" unless release/min_from says otherwise. The tag must match
 # package.json's version. Clients read the Releases API: stable is the newest non-prerelease,
 # beta the newest of any. Run by hand with a tag to build and check everything without publishing.
 name: release
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "The tag to build (vX.Y.Z, vX.Y.Z-beta.N or vX.Y.Z-rc.N); a dry run, nothing is published"
+        description: "The tag to build (vX.Y.Z or vX.Y.Z-beta.N); a dry run, nothing is published"
         required: true
 permissions:
   contents: read
@@ -42,9 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # A tag push builds the tag; a dry run builds the branch it was dispatched on, so a release
-          # candidate is checked before anything is tagged.
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'push' && github.ref || inputs.tag }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -52,7 +49,7 @@ jobs:
       - name: Version, channel and notes
         run: |
           case "$TAG" in
-            v*-beta.*|v*-rc.*) channel=beta ;;
+            v*-beta.*) channel=beta ;;
             v*) channel=stable ;;
             *) echo "not a release tag: $TAG"; exit 1 ;;
           esac
@@ -60,13 +57,10 @@ jobs:
           pkg=$(node -p 'require("./package.json").version')
           [ "$pkg" = "$version" ] || { echo "the tag says $version but package.json says $pkg: bump it first"; exit 1; }
           mkdir -p dist
-          # This version's CHANGELOG section: from its "## <version>" heading to the next "## ". A
-          # release candidate (X.Y.Z-rc.N) without its own section takes the X.Y.Z one it previews.
+          # This version's CHANGELOG section: from its "## <version>" heading to the next "## ".
           node -e '
             const [v] = process.argv.slice(1), lines = require("fs").readFileSync("CHANGELOG.md", "utf8").split("\n");
-            const find = want => lines.findIndex(l => l.startsWith("## ") && l.replace(/^##\s+v?/, "").split(/\s/)[0] === want);
-            let at = find(v);
-            if (at < 0 && /-rc\.\d+$/.test(v)) at = find(v.replace(/-rc\.\d+$/, ""));
+            const at = lines.findIndex(l => l.replace(/^##\s+v?/, "").split(/\s/)[0] === v && l.startsWith("## "));
             if (at < 0) { console.error(`CHANGELOG.md has no "## ${v}" section`); process.exit(1); }
             let end = lines.findIndex((l, i) => i > at && l.startsWith("## "));
             if (end < 0) end = lines.length;
