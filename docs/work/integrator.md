@@ -57,7 +57,9 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - rc.2 also: memory-iq 4ff57bb6, pack fix 607fcca0. capsule-pro 4022d388 merged; launch bb2ef63e merged;
   vault f3d39f3f + 17dd7a05 and connectors 8be461a9 merged Six edges frozen as 0.1.1 debt
   (lead OK, 30416e64 + boundaries.md), Capsule IQ model names in the drift list. Waiting only on glass-live.
-- Also for rc.2 once e2e OKs it: memory-iq aaf4fcb5 (58397f56 + e2e's MEDIUM fix; supersedes 58397f56).
+- memory-iq aaf4fcb5 merged (9cac53a0). main's two node reds fixed (09f5e02a).
+- rc.2 waits on: glass 14f1824c (HIGH fixes only; its latency badge 47d90b0c is 0.1.1) and e2e's fix
+  sha for the macOS hang in 1941f2cf's per-connection peer check (ps or perl).
   MUST also take glass-live's rebased sha (two e2e HIGHs: container Env secrets, unfenced CDP), via
   e2e; its computer image rollout goes with box-deploy. Waiting: vault-next
   (HELD for e2e's sign-off on the send_mail takeover fix) + connectors 8be461a9, then ci bumps to rc.2.
