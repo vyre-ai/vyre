@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sentence case, no letter-spaced mono captions
+
+- deck/onboard/onboard.css: `.progress .state` was JetBrains Mono, uppercase, `+0.16em`, the same
+  stale "Label (engraved)" pattern site/styles.css's `.lbl` had (docs/design/system/copy.md:
+  "Sentence case everywhere: titles, buttons, labels, menus. No caps labels and no letter-spaced
+  mono captions"; TOKENS.md's older role is being retired). Changed to the meta step in Sans
+  (12/16, no tracking), matching the rest of the file's `.progress .x span + span`. The text it
+  shows ("failed", or a timing string) was already sentence case.
+
 #### The real Capsule hotkey, everywhere it was wrong
 
 - README.md, deck/onboard/onboard.js said "Control twice" as if it were the only way to open the

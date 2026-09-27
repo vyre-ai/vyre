@@ -103,6 +103,14 @@ Filled in as each lands.
   (engraved)", as mono/uppercase/`+0.16em`, and no component doc overrides it the way button.md
   overrides `.btn`. Flagged below rather than changing ~15 eyebrow labels against the written
   spec.
+- The lead resolved it: `docs/design/system/copy.md` ("Sentence case everywhere... no caps
+  labels and no letter-spaced mono captions") is current, TOKENS.md is the stale doc (app-design
+  to update it post-RC). Changed `.lbl` to Sans meta (12/16, no tracking) in `site/styles.css` and
+  `site/404.html`, plus `.page .over` (the fifth uppercase rule the lead counted) and
+  `deck/onboard/onboard.css`'s `.progress .state` (same stale pattern, same file family). Every
+  label's underlying text was already sentence case, so this was CSS-only, no copy rewrites
+  needed. Screenshotted the single theme the landing page has (it's dark-only, no light/paper
+  mode in site/ at all, unlike the docs/brand art or the app itself).
 
 ## Doing
 
@@ -113,13 +121,6 @@ Filled in as each lands.
 - Nothing blocking.
 
 ## Needs from others
-
-- lead: confirm whether `.lbl` (eyebrow/meta labels: "OPEN SOURCE · APACHE 2.0", "02 MEMORY",
-  "SENDS TO", section numbers, etc.) should also drop uppercase, or stay as documented in
-  TOKENS.md's "Label (engraved)" role. If it should change, that's a bigger, more visible pass
-  (~15 call sites across index.html/404.html/start) I'd rather do deliberately than rush before
-  the deadline on an assumption. Everything else from this ask (`.btn`/`.chip`/`.dtab`/
-  `.held-chip`) is done and verified against the current component docs.
 
 - lead: which of Vyre IQ, Capsule auto-answer, voice, "do" computer use and the settings hub are in the RC. Until answered, anything not on main shows "coming".
 - sessions: pending onboard changes, if any.
