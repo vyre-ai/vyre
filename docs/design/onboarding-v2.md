@@ -1,6 +1,6 @@
 ---
 title: "Onboarding v2: a step per import"
-summary: Onboarding leads for 0.1.1. Every import and setup gets its own dedicated, interactive, skippable, resumable step, each ending in a small celebration, with a summary at the end. The step-shell every team's engine plugs into, the nine steps, their owners and sizes, and how one onboarding serves every device.
+summary: Onboarding leads for 0.1.1. Every import and setup gets its own dedicated, interactive, skippable, resumable step, each ending in a small celebration, with a summary at the end. The step-shell every team's engine plugs into, the ten steps, their owners and sizes, and how one onboarding serves every device.
 audience: builders, agents
 owner: launch
 status: draft
@@ -16,7 +16,7 @@ the frame they sit inside, and the spec for the steps that do not have one yet.
 
 ## The step-shell (launch owns; every step plugs into it)
 
-One shell, reused by all nine steps:
+One shell, reused by all ten steps:
 
 - **Skippable.** Every step has a visible "Skip for now" that never blocks the next step. A
   skipped step can be finished later from Settings or a `vyre` command (existing convention,
@@ -34,7 +34,7 @@ One shell, reused by all nine steps:
 - **A small celebration per step.** Not a modal, not confetti: a one-line, specific win in the
   step's own voice when it finishes ("Vyre now manages 14 keys", not "Done!"). Silent for a
   skipped step. Off under `prefers-reduced-motion` same as the rest of onboarding.
-- **A summary at the end.** After step 9, one screen totalling what happened: sessions imported,
+- **A summary at the end.** After the last step, one screen totalling what happened: sessions imported,
   keys imported, accounts connected, drives synced, devices paired, what was skipped and where
   to finish it later. Read from each step's own final state, not tracked separately by the shell.
 
@@ -52,7 +52,7 @@ actually prints, not with this doc's wording).
 ## One onboarding for every device
 
 The lead's decision (29 Sep), resolving federation's question about the second-device flow: one
-onboarding-v2, not a second experience. A new Mac or PC runs the exact same nine steps.
+onboarding-v2, not a second experience. A new Mac or PC runs the exact same steps.
 
 - **Step 2 detects an existing server.** If this device finds one it can pair to, the step
   becomes "Add this device to your Vyre server" instead of the first-server flow. Steps already
@@ -68,19 +68,28 @@ onboarding-v2, not a second experience. A new Mac or PC runs the exact same nine
 - Only the upload wiring (federation's transport, `import.start`) waits on e2e's review; the
   design and the UI for all of this can proceed now.
 
-## The nine steps
+## The ten steps
 
 | # | Step | Owner(s) | Size | Status |
 |---|---|---|---|---|
 | 1 | Name Vyre, and set who you are | launch | S | mostly exists (`core/onboard`'s `you` step), terminology pass |
 | 2 | Pair this device with the server (detects an existing server; see above) | launch, tailnet, federation | S | mostly exists (`name`/`tailscale` steps), terminology pass, existing-server detection to add |
 | 3 | Sign in to Claude, through the vault | launch, sessions, vault | S | mostly exists (`claude` step), wire to vault |
-| 4 | Import your sessions: discover, choose, watch Vyre IQ learn | memory-iq (leads), federation | M | built, provisional: `docs/design/import.md` (work/memory-iq); board: `Import.dc.html`/-paper (work/app-design, e7aab867, owed a revision for the real 5-stage shapes) |
-| 5 | Import your secrets, from several sources | vault (leads) | L | board ready: `VaultImport.dc.html`/-paper (work/app-design, 19a96abd); tool shapes still needed from vault |
+| 4 | Import your sessions: discover, choose, watch Vyre IQ learn | memory-iq (leads), federation | M | built, real memory-iq shapes: `docs/design/import.md` (work/memory-iq); board: `Import.dc.html`/-paper (work/app-design, e7aab867, owed a revision for the real 5-stage shapes) |
+| 5 | Import your secrets, from several sources | vault (leads) | L | stubbed (`secrets`, a "Coming soon" card); board ready: `VaultImport.dc.html`/-paper (work/app-design, 19a96abd); tool shapes still needed from vault |
 | 6 | Connect accounts: Google and email, MCP servers | vault, connectors | M | board available: `Connections.dc.html`/-paper (work/app-design, db3dbbfa), sent to vault; spec needed |
-| 7 | Vyre Drive | federation (leads) | ? | new (lead, 29 Sep); federation drafting the options (see below); design once the lead brings back the user's choices |
-| 8 | Your phone: pair it, swipe-to-approve | mobile | S | later, per the lead; stub/skippable for 0.1.1 |
-| 9 | A tour of the Capsule: press &#8997;Space | capsule-pro | S | can reuse the landing page's Capsule demo pattern (`site/index.html`'s hero demo) as a starting shape |
+| 7 | Agent computers: Off / Browser only / Browser + desktops | glass-live (backend) | S | built (`computers`); server-size numbers are placeholders ("still measuring") until `docs/design/agent-browsers.md` and e2e's measurements land |
+| 8 | Vyre Drive | federation (leads) | ? | stubbed (`drive`, a "Coming soon" card); federation drafting the options (see below); design once the lead brings back the user's choices |
+| 9 | Your phone: pair it, swipe-to-approve | mobile | S | later, per the lead; stub/skippable for 0.1.1 |
+| 10 | A tour of the Capsule: press &#8997;Space | capsule-pro | S | can reuse the landing page's Capsule demo pattern (`site/index.html`'s hero demo) as a starting shape |
+
+The client's actual `STEPS` array (`deck/onboard/onboard.js`) has 9 entries today, not 10: steps
+1-3 above map onto the three existing `you`/`claude`/`tailscale`+`name` screens (address and
+Tailscale are still two separate screens client-side, not yet merged into one "pair" step), and
+steps 9-10 above (phone, Capsule tour) are still one combined `devices` screen, as they always
+have been. `secrets`, `computers` and `drive` were added as their own new entries between
+`history` and `devices`. Reconciling the two numberings (splitting or merging screens to match
+this table 1:1) is a `Next`, not done yet.
 
 ### Step 4: Import your sessions
 
@@ -93,42 +102,55 @@ choice with neither preselected, and the note that Claude Code keeps sessions 30
 now, Vyre never changes Claude Code's own settings; confirms with `import.start {plan, mode,
 pace}`), **Watch it fill** (`import.status`, polled every 5 s since the loopback's event stream
 carries only `onboard.*`, in three plain-language stages: Searchable now, Understood, The graph
-growing; a question box wired to `memory.answer` as soon as the first sessions are searchable).
-`import.start`'s `pace` field is new, not in memory-iq's original spec; flagged to them. This step
-replaces today's "Your history" step rather than extending it, keeping the step's id and CLI
-label ("Your history") unchanged so `test/journey.test.js`'s CLI-output assertion still holds.
+growing; a question box wired to `memory.ask` (not `memory.answer`, which can't see freshly
+imported sessions) as soon as the first sessions are searchable, showing the answer and sources,
+or "Not sure yet." plus known facts when it abstains). `import.start`'s `pace` field is confirmed
+correct by memory-iq. This step replaces today's "Your history" step rather than extending it,
+keeping the step's id and CLI label ("Your history") unchanged so `test/journey.test.js`'s
+CLI-output assertion still holds.
 
 ### Step 5: Import your secrets
 
-Lead's spec (28 Sep): discover keys on the device, recognise their providers, show them masked
-and grouped by project, one Touch ID for the batch, animate each key into the vault with its
-connection created, end on "Vyre now manages N keys". Each source is its own card inside the
-step: `.env` files, shell exports (`~/.zshrc` and the like), password managers (1Password,
-Bitwarden, Apple Passwords), Chrome passwords, SSH keys, and the MCP and Claude settings env.
-Asked vault for the discover/import tool shapes per source (mirroring memory-iq's
-scan/plan/start/progress pattern) before designing the masked list and the animate-in; nothing
-built against a guess yet.
+Stubbed for now (`secrets` in `deck/onboard/onboard.js`'s `STEPS`, a "Coming soon" card,
+Skip/Continue, no backend call). Lead's spec (28 Sep): discover keys on the device, recognise
+their providers, show them masked and grouped by project, one Touch ID for the batch, animate
+each key into the vault with its connection created, end on "Vyre now manages N keys". Each
+source is its own card inside the step: `.env` files, shell exports (`~/.zshrc` and the like),
+password managers (1Password, Bitwarden, Apple Passwords), Chrome passwords, SSH keys, and the
+MCP and Claude settings env. The board is ready (`VaultImport.dc.html`, work/app-design 19a96abd);
+asked vault for the discover/import tool shapes per source before building the real screen.
 
 ### Step 6: Connect accounts
 
 Google and email, MCP servers, through vault and connectors. Spec needed; likely close to
 existing connectors flows, reframed as its own step with the shell's progress/celebration.
 
-### Step 7: Vyre Drive
+### Step 7: Agent computers
 
-New (lead, 29 Sep), added after connecting accounts and before the phone. federation is drafting
-the options the user will decide between: what to sync, how (on demand, offline, server only),
-where it shows up (the Finder sidebar, a Windows drive, the Capsule, the phone), agent access per
-folder, receiving from the server, conflicts, and a "drag a file in and watch it appear on your
-phone" delight moment. Not designed yet; waiting on the lead to bring the user's choices back,
-then this section gets the same treatment as steps 4 and 5.
+Built (`computers` in `deck/onboard/onboard.js`'s `STEPS`). The lead's choice (29 Sep): Off /
+Browser only / Browser + desktops, a warm one-line explanation of what each gives an agent (a
+browser to look things up in, live to watch; a full desktop for anything a browser alone can't
+do), and the server size each needs. glass-live owns the backend
+(`docs/design/agent-browsers.md`, not written yet) and the real size numbers; both are placeholder
+"still measuring" text for now, since e2e hasn't measured them. No server call yet: the choice is
+kept locally only, same degrade-gracefully shape as every stub step here.
 
-### Step 8: Your phone
+### Step 8: Vyre Drive
+
+Stubbed for now (`drive` in `deck/onboard/onboard.js`'s `STEPS`, a "Coming soon" card,
+Skip/Continue). New (lead, 29 Sep), added after connecting accounts and before the phone.
+federation is drafting the options the user will decide between: what to sync, how (on demand,
+offline, server only), where it shows up (the Finder sidebar, a Windows drive, the Capsule, the
+phone), agent access per folder, receiving from the server, conflicts, and a "drag a file in and
+watch it appear on your phone" delight moment. Not designed yet; waiting on the lead to bring the
+user's choices back, then this section gets the same treatment as steps 4 and 7.
+
+### Step 9: Your phone
 
 Lead: "later". A stub for 0.1.1: shown, explained, skippable, no engine yet, so the step order
 and the summary screen are correct once mobile's swipe-to-approve pairing lands.
 
-### Step 9: A tour of the Capsule
+### Step 10: A tour of the Capsule
 
 Press &#8997;Space (the corrected default hotkey, `docs/work/launch-surfaces.md`). The landing
 page's hero Capsule demo (`site/index.html`, `site/app.js`'s `.keys`/demo wiring) is sample-data
@@ -140,8 +162,13 @@ open/close handling are a reasonable starting point for capsule-pro's real, sign
 - vault: tool shapes for step 5 and step 6.
 - connectors: confirm step 6's scope (which of today's connector flows this step wraps).
 - app-design: the step-shell's progress/celebration board (shared by every step); still owed.
-- mobile: confirm step 8 is fine as a stub for 0.1.1.
-- federation: step 7's drafted options, once the lead brings the user's decisions back; step 2's
+- glass-live: `docs/design/agent-browsers.md` (not written yet), and the real server-size numbers
+  for step 7, once e2e measures them.
+- mobile: confirm step 9 is fine as a stub for 0.1.1.
+- federation: step 8's drafted options, once the lead brings the user's decisions back; step 2's
   existing-server detection contract.
 - windows: confirm `docs/using/windows.md` covers what step 2 needs to point a fresh Windows PC
   at for install, once that guide exists.
+- launch: reconcile the client `STEPS` array (9 entries) with this doc's numbering (10 steps,
+  `name`/`tailscale` split and `devices` combining phone+Capsule differently than the table
+  above); not done yet, noted under "The ten steps".
