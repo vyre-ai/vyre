@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The answer eval runs without the Electron Capsule
+
+- scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
+  (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
+- test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+
 #### The design docs stay out of the package
 
 - package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at
