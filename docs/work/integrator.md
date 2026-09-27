@@ -52,8 +52,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   list, onboard.css raw tokens, voice usage exit, plugin version, thread.status), 3 todo. Fixed in
   8ff0d6d5 + ac60d3c5; those files plus onboard, docs, hygiene and boundaries rerun green with
   tmp-guard before/after clean.
-- rc.2 queue: vault-next (HELD for e2e's sign-off on the send_mail takeover fix) + connectors
-  8be461a9, launch 4d3b808f, then ci bumps to rc.2.
+- rc.2 on pre/rc: e2e-surfaces 5a646023, launch 4d3b808f merged (targeted 144/0). Waiting: vault-next
+  (HELD for e2e's sign-off on the send_mail takeover fix) + connectors 8be461a9, then ci bumps to rc.2.
 
 ## Earlier: the RC batch on pre/rc (2026-09-27 ~19:00 UTC)
 
