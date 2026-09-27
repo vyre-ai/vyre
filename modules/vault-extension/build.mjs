@@ -17,12 +17,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Scripts the manifest does not name but the worker injects or registers by file name: fill.js
- * and inline.js (executeScript, registerContentScripts), passkey-page.js and passkey-bridge.js
+ * Scripts the manifest does not name but the worker injects or registers by file name: fill.js,
+ * cards.js and inline.js (executeScript, registerContentScripts), passkey-page.js and passkey-bridge.js
  * (registered for every page while passkeys are on). A package without one of them loads fine
  * and then fails on a page, so the build refuses instead.
  */
-export const INJECTED = ["fill.js", "inline.js", "passkey-page.js", "passkey-bridge.js"];
+export const INJECTED = ["fill.js", "cards.js", "inline.js", "passkey-page.js", "passkey-bridge.js"];
 
 /** The files a package carries. Tests, this script and dist/ stay behind. */
 export function packageFiles(dir = HERE) {

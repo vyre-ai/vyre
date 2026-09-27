@@ -336,6 +336,13 @@ extension loads in Firefox; see `modules/vault-extension/README.md`.
 `vyre vault devices` lists paired browsers; `vyre vault devices revoke <id>` ends one at once. The
 design is in [ADR 0010](../adr/0010-vault-autofill.md).
 
+### Cards and addresses
+
+In a checkout or address form, the extension offers your cards and addresses as it offers
+logins; the popup lists them too. They are not tied to a site. A card asks every time by default:
+fill it within a minute of unlocking, or unlock again. The PIN is never filled. Card fields inside
+a payment provider's own frame (Stripe Elements and the like) are not filled yet.
+
 ### Passkeys
 
 With the extension paired, a site that offers a passkey asks Vyre first: "Save a passkey for

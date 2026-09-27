@@ -54,9 +54,14 @@ mobile and the Capsule (through their owners).
   mediation, prf/largeBlob, Android/iOS providers.
 - Full set on testbox: 531 pass, 0 fail, 14 skipped.
 
+- Step 11 cards + addresses: fill routes cards / card.fill (reprompt = session under 60 s, no PIN)
+  / address.fill; extension cards.js detection (autocomplete + English heuristics, split expiry,
+  country selects), inline chooser, popup section. Gap: payment-provider iframes.
+- Full set on testbox: 539 pass, 0 fail, 14 skipped.
+
 ## Doing
 
-- Step 11 cards + addresses fill in the extension; then 12 emergency access, 13 Android service.
+- Step 12 emergency access; then 13 (Android AutofillService in the Expo APK, with mobile).
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 

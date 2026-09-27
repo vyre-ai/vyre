@@ -14,6 +14,8 @@
 //   - Only the page's origin is sent to vyred, never its path, query or content.
 //   - inline.js (opt-in, or once per keyboard fill) may ask for names, a fill, a code or a save
 //     for its own page only; which page is the browser's word (sender), never the message's.
+//   - Cards and addresses are not tied to a site: inline.js and the popup may list them anywhere
+//     and fill one into their own page's top frame (cards.js), again for the sender's origin.
 //   - passkey-bridge.js (on by default once paired and allowed on pages) may ask for this site's
 //     passkey names, a new passkey or a sign-in, from any frame. The origin vyred signs for is
 //     the frame's, from the sender; a framed request says so (crossOrigin, topOrigin from the
@@ -117,9 +119,9 @@ async function state() {
   return { data: { ...base, unlocked: st.data.unlocked, expires: st.data.expires || null, canUnlock: st.data.canUnlock } };
 }
 
-/** Run fill.js in a tab's top frame and call one of its functions with `arg`. */
-async function inject(tabId, fn, arg) {
-  await ext.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: ["fill.js"] });
+/** Run fill.js (or cards.js) in a tab's top frame and call one of its functions with `arg`. */
+async function inject(tabId, fn, arg, file = "fill.js") {
+  await ext.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: [file] });
   const [res] = await ext.scripting.executeScript({
     target: { tabId, frameIds: [0] },
     func: (f, c) => /** @type {any} */ (globalThis)[f](c),
@@ -156,6 +158,38 @@ async function otpInto(tab, name) {
   }
 }
 
+/** The words a person sees when a card asks for a fresh proof. */
+const REPROMPT = "This card asks every time. Unlock again from the toolbar button.";
+
+/**
+ * Fill a card or an address into a tab's top frame, for the origin the caller worked out (the
+ * sender's or the active tab's). The values go from vyred to cards.js and are dropped here.
+ * @param {{ id: number, origin: string }} tab @param {"card"|"address"} kind @param {string} name
+ */
+async function cardInto(tab, kind, name) {
+  const r = await api("POST", kind === "card" ? "card.fill" : "address.fill", { name, url: tab.origin }, { session: true });
+  if (r.error) return r.error.code === "reprompt" ? { error: { code: "reprompt", message: REPROMPT } } : r;
+  /** @type {any} */
+  let values = { ...r.data, origin: tab.origin };
+  r.data = null;
+  try {
+    const out = await inject(tab.id, kind === "card" ? "vyreFillCard" : "vyreFillAddress", values, "cards.js");
+    return { data: { filled: out.filled || [], why: out.why || null } };
+  } catch {
+    return { error: { code: "inject_failed", message: "could not fill this page" } };
+  } finally {
+    values = null;
+  }
+}
+
+/** Cards and addresses, names and descriptions only; the same list on every page. @param {string|null} origin */
+async function cardList(origin) {
+  const r = await api("POST", "cards", { url: origin || "" });
+  if (r.error) return r;
+  const pick = (/** @type {any} */ x) => (Array.isArray(x) ? x : []).map(c => ({ name: String(c.name), description: String(c.description || "") }));
+  return { data: { cards: pick(r.data.cards), addresses: pick(r.data.addresses) } };
+}
+
 async function fill(name) {
   const tab = await activeTab();
   if (!tab) return { error: { code: "no_page", message: "this tab is not a web page" } };
@@ -165,6 +199,8 @@ async function fill(name) {
 // ---- in-page suggestions, one-time codes and save on submit (inline.js) -------------------
 
 const INLINE_ID = "vyre-inline";
+/** What the suggestions script is: cards.js first, so inline.js can tell a card field from a login field. */
+const INLINE_JS = ["cards.js", "inline.js"];
 const PAGES = ["https://*/*", "http://*/*"];
 const PENDING_MS = 2 * 60_000;
 /** A login typed into a page, waiting for the person's Save. Memory only, per tab. @type {Map<number, any>} */
@@ -174,10 +210,20 @@ async function inlineOn() {
   try { return (await ext.scripting.getRegisteredContentScripts({ ids: [INLINE_ID] })).length > 0; } catch { return false; }
 }
 
+/** A registration from before cards.js existed is replaced by the current one. */
+async function inlineCurrent() {
+  try {
+    const [r] = await ext.scripting.getRegisteredContentScripts({ ids: [INLINE_ID] });
+    if (!r || JSON.stringify(r.js || []) === JSON.stringify(INLINE_JS)) return;
+    await ext.scripting.unregisterContentScripts({ ids: [INLINE_ID] });
+    await ext.scripting.registerContentScripts([{ id: INLINE_ID, matches: PAGES, js: INLINE_JS, runAt: "document_idle", allFrames: false, persistAcrossSessions: true }]);
+  } catch { /* the old one keeps offering logins */ }
+}
+
 async function setInline(on) {
   if (on) {
     if (!(await ext.permissions.contains({ origins: PAGES }))) return { error: { code: "no_permission", message: "the browser did not allow suggestions on pages" } };
-    if (!(await inlineOn())) await ext.scripting.registerContentScripts([{ id: INLINE_ID, matches: PAGES, js: ["inline.js"], runAt: "document_idle", allFrames: false, persistAcrossSessions: true }]);
+    if (!(await inlineOn())) await ext.scripting.registerContentScripts([{ id: INLINE_ID, matches: PAGES, js: INLINE_JS, runAt: "document_idle", allFrames: false, persistAcrossSessions: true }]);
   } else if (await inlineOn()) {
     await ext.scripting.unregisterContentScripts({ ids: [INLINE_ID] });
   }
@@ -332,6 +378,12 @@ async function inline(msg, page) {
       return r;
     }
     case "inline-dismiss": pending.delete(page.id); return { data: { dismissed: true } };
+    case "inline-cards": {
+      if (!(await getSession())) return { error: { code: "locked", message: "Vyre is locked" } };
+      return cardList(page.origin);
+    }
+    case "inline-card-fill": return cardInto(page, "card", String(msg.name || ""));
+    case "inline-address-fill": return cardInto(page, "address", String(msg.name || ""));
     default: return { error: { code: "bad_message", message: "unknown request" } };
   }
 }
@@ -347,7 +399,7 @@ ext.commands.onCommand.addListener(async command => {
   if (m.error || !m.data.logins.length) return;
   if (m.data.logins.length === 1) { await fillInto(tab, m.data.logins[0].name); return; }
   try {
-    await ext.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, files: ["inline.js"] });
+    await ext.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, files: INLINE_JS });
     await ext.tabs.sendMessage(tab.id, { type: "show-chooser" }, { frameId: 0 });
   } catch { /* a page the browser does not let extensions touch */ }
 });
@@ -388,6 +440,12 @@ async function route(msg) {
       return api("POST", "match", { url: tab.origin });
     }
     case "fill": return fill(String(msg.name || ""));
+    case "cards": { const tab = await activeTab(); return cardList(tab ? tab.origin : null); }
+    case "card-fill": case "address-fill": {
+      const tab = await activeTab();
+      if (!tab) return { error: { code: "no_page", message: "this tab is not a web page" } };
+      return cardInto(tab, msg.type === "card-fill" ? "card" : "address", String(msg.name || ""));
+    }
     case "inline-state": return { data: { inline: await inlineOn() } };
     case "inline-enable": { const r = await setInline(true); await syncPasskeys(); return r; }
     case "inline-disable": return setInline(false);
@@ -409,7 +467,8 @@ async function route(msg) {
   }
 }
 
-const INLINE_TYPES = ["inline-match", "inline-fill", "inline-otp", "inline-offer-save", "inline-pending", "inline-save", "inline-dismiss"];
+const INLINE_TYPES = ["inline-match", "inline-fill", "inline-otp", "inline-offer-save", "inline-pending", "inline-save", "inline-dismiss",
+  "inline-cards", "inline-card-fill", "inline-address-fill"];
 
 ext.runtime.onMessage.addListener((msg, sender, reply) => {
   const failed = () => reply({ error: { code: "internal", message: "the extension failed" } });
@@ -435,6 +494,7 @@ ext.runtime.onMessage.addListener((msg, sender, reply) => {
 // Registered scripts outlive the worker; bring them in line with pairing and page access on start
 // and whenever page access changes.
 syncPasskeys();
+inlineCurrent();
 for (const ev of ["onAdded", "onRemoved"]) {
   const e = /** @type {any} */ (ext.permissions)[ev];
   if (e && typeof e.addListener === "function") e.addListener(() => { syncPasskeys(); });

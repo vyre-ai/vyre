@@ -1,6 +1,6 @@
 # Vyre Vault extension
 
-A small MV3 extension that fills logins and answers passkey requests from your own Vyre Vault in Chrome, Arc, Edge, Brave and
+A small MV3 extension that fills logins, cards and addresses and answers passkey requests from your own Vyre Vault in Chrome, Arc, Edge, Brave and
 Firefox, from one source. It talks to one address only, the vyred fill listener you configure,
 and it never reads or sends page content. The design and threat model are in
 `docs/adr/0010-vault-autofill.md`; the fill window and the per-browser plan are in
@@ -62,6 +62,31 @@ shorter, never longer.
   worker's memory for two minutes and asks "Save this login?" (or "Update the password?"). Only
   your click saves it, through `/v1/fill/save`: a new login gets this page's origin as its only
   host; an update keeps the replaced password in the item's sealed history (the last 5).
+
+## Cards and addresses
+
+Items of kind `card` and `address` fill checkout and address forms. They are not tied to a site,
+so the list is the same on every page (`/v1/fill/cards`, names and descriptions only; the page's
+origin goes to the audit row and nowhere else).
+
+- **Popup.** Under **Cards and addresses**, each card and address has a **Fill** for the active
+  tab's top frame (`/v1/fill/card.fill`, `/v1/fill/address.fill`).
+- **Suggestions on pages.** With suggestions on, focusing a payment field offers "Fill card:
+  Northwind Bakery Visa", and focusing a field of an address form (one with a street, city or
+  postal code field) offers the addresses. Same closed shadow root, same trusted-click rule.
+- **A card asks every time.** A card is `reprompt` unless set otherwise, so its fill needs a proof
+  made in the last 60 seconds, not just an open fill window. Otherwise the answer is "This card
+  asks every time. Unlock again from the toolbar button." Addresses fill inside the window.
+- **What goes where.** Holder, number, expiry (as MM/YY, and month and year apart) and security
+  code. A card's PIN never leaves the vault for a page.
+- **Finding fields** (`cards.js`). The `autocomplete` attribute first (`cc-number`, `cc-exp-month`,
+  `postal-code` and the rest), then English words in the field's name, id, label and placeholder
+  (card number, expiry, MM/YY, CVC, security code, zip, postcode, city, state, province...). A
+  split expiry is handled whether the month select says "07", "7" or "July" and the year "2029"
+  or "29"; a country select matches by ISO code or by name. One field per kind is filled, in the
+  form you were in. Hidden, disabled and read-only fields are skipped.
+- **Known gap: payment iframes.** Card fields inside another site's frame (a payment processor's
+  hosted fields) are not filled. Fills go to the page's top frame only.
 
 ## Passkeys
 

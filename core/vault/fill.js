@@ -26,6 +26,7 @@ import { canonical, same } from "./crypto.js";
 import { totp } from "./totp.js";
 import { otpRoute, saveRoute } from "./fill-save.js";
 import * as passkeys from "./fill-passkey.js";
+import * as cards from "./fill-cards.js";
 
 export const FILL_MIGRATION = `CREATE TABLE vault_devices (
      id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
@@ -237,6 +238,9 @@ export class Fill {
       case "POST passkeys": return passkeys.listRoute(this, b, h);
       case "POST passkey.create": return passkeys.createRoute(this, b, h);
       case "POST passkey.get": return passkeys.getRoute(this, b, h);
+      case "POST cards": return cards.listRoute(this, b, h);
+      case "POST card.fill": return cards.cardRoute(this, b, h);
+      case "POST address.fill": return cards.addressRoute(this, b, h);
       default: return fail(404, "not_found", `no route ${route}`);
     }
   }
@@ -470,7 +474,7 @@ export class Fill {
 // ---- the listener -----------------------------------------------------------------------
 
 const ROUTES = { pair: "POST", unlock: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST",
-  passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST" };
+  passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST", cards: "POST", "card.fill": "POST", "address.fill": "POST" };
 
 class HttpError extends Error {
   /** @param {number} status @param {string} code @param {string} message */

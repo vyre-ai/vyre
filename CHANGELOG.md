@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Card and address autofill: `/v1/fill/cards`, `card.fill` and `address.fill`, and the extension fills checkout and address forms
+
+- New `core/vault/fill-cards.js` routes and `modules/vault-extension/cards.js` field detection (autocomplete tokens, then English name/label heuristics, split expiry and country selects); popup "Cards and addresses", inline "Fill card: ..." on trusted clicks; a card (reprompt by default) fills only within 60 seconds of a proof, and no value reaches an audit row.
+
 #### Passkeys in the browser extension: Vyre answers a site's passkey request, on the person's click
 
 - "Use Vyre for passkeys" (popup, on by default once paired and allowed on pages) registers two

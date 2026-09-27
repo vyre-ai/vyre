@@ -1,6 +1,6 @@
 // @ts-check
-// popup: settings, unlock, the list of logins for this page and the two page toggles
-// (suggestions, passkeys). It never holds a password:
+// popup: settings, unlock, the list of logins for this page, the vault's cards and addresses,
+// and the two page toggles (suggestions, passkeys). It never holds a password or a card number:
 // it asks the background worker to fill a login by name, and the worker hands the value
 // straight to the page. The passphrase typed here goes to the worker once and is not kept.
 
@@ -53,6 +53,44 @@ async function refresh() {
   input("passkeys").disabled = Boolean(pk.data && !pk.data.supported);
   if (pk.data && !pk.data.supported) $("passkeys-row").title = "Passkeys need Firefox 128 or later.";
   await listLogins();
+  await listCards();
+}
+
+/** Cards and addresses: the same on every page, each with a Fill for the active tab. */
+async function listCards() {
+  const list = $("cards");
+  list.replaceChildren();
+  const r = await ask({ type: "cards" });
+  if (r.error) { $("cards-box").hidden = true; return; }
+  const rows = [...r.data.cards.map(c => ({ ...c, kind: "card" })), ...r.data.addresses.map(a => ({ ...a, kind: "address" }))];
+  $("cards-box").hidden = rows.length === 0;
+  for (const c of rows) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = c.description || c.name;
+    const d = document.createElement("small");
+    d.textContent = c.kind === "card" ? `Card · ${c.name}` : `Address · ${c.name}`;
+    label.append(d);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Fill";
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      const f = await ask({ type: c.kind === "card" ? "card-fill" : "address-fill", name: c.name });
+      b.disabled = false;
+      if (f.error) {
+        // A card that asks every time needs a fresh proof: the unlock box, then Fill again.
+        if (f.error.code === "reprompt") { show("unlock"); input("passphrase").focus(); return say(f.error.message, true); }
+        say(f.error.message, true);
+        if (/session/.test(f.error.code)) await refresh();
+        return;
+      }
+      if (!f.data.filled.length) return say(f.data.why || "nothing to fill here", true);
+      window.close();
+    });
+    li.append(label, b);
+    list.append(li);
+  }
 }
 
 async function listLogins() {

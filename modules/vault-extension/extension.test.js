@@ -214,7 +214,7 @@ test("build.mjs writes dist/chrome and dist/firefox with every file the manifest
     const dirs = build(out);
     for (const [target, d] of Object.entries(dirs)) {
       const m = JSON.parse(fs.readFileSync(path.join(d, "manifest.json"), "utf8"));
-      const named = [m.action.default_popup, ...(m.background.scripts || [m.background.service_worker]), "fill.js", "inline.js", "passkey-page.js", "passkey-bridge.js", "popup.js", "popup.css"];
+      const named = [m.action.default_popup, ...(m.background.scripts || [m.background.service_worker]), "fill.js", "cards.js", "inline.js", "passkey-page.js", "passkey-bridge.js", "popup.js", "popup.css"];
       for (const f of named) assert.ok(fs.existsSync(path.join(d, f)), `${target}: ${f}`);
       assert.ok(!fs.existsSync(path.join(d, "extension.test.js")), `${target}: no tests in the package`);
       assert.ok(!fs.existsSync(path.join(d, "passkey.test.js")), `${target}: no tests in the package`);
