@@ -19,7 +19,11 @@ import { installed } from "./sdk.js";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
 import { resume } from "../cli/commands/projects.js";
-import { safePermissions, MODES, MIGRATIONS } from "../switchboard/index.js";
+import { safePermissions, MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
+import { conform } from "./conformance.js";
+import { claudeProvider } from "./providers.js";
+import { load as loadSdk } from "./sdk.js";
+import crypto from "node:crypto";
 import { Sessions, shellCommand } from "../switchboard/sessions.js";
 import { callerKind, callerAllowed } from "../modules/index.js";
 import { open as openStore } from "../store/index.js";
@@ -46,7 +50,7 @@ const until = async (fn, what, ms = 15_000) => {
  * A vyred in a temp home, on `driver`. `sessions` is config.json's sessions block; `vault` items
  * are put and granted to module threads (the box's own credential) unless `grant` is false.
  */
-async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box" } = {}) {
+async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [] } = {}) {
   const root = tempHome(t);
   const log = path.join(root, "claude.log");
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG,
@@ -64,6 +68,7 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
       ctx.tool("probe.pids", { input: { type: "object" }, run: async () => (await ctx.call("threads.pids", {})).data });
       return { async stop() {} };
     } };`);
+  for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
@@ -141,6 +146,47 @@ test("callers: a Vyre-owned session's MCP caller is an mcp caller, like an agent
   assert.equal(callerKind("mcp:agent:juno"), "mcp");
   assert.equal(callerAllowed(["cli", "mcp"], "mcp:thread:0f3a-11"), true);
   assert.equal(callerAllowed(["cli", "deck"], "mcp:thread:0f3a-11"), false);
+});
+
+test("models: Opus for real work, the fast model for quick answers and jobs; purpose from the launch", () => {
+  assert.equal(purposeOf({}, null), "chat");
+  assert.equal(purposeOf({}, "harlow-legal"), "project");
+  assert.equal(purposeOf({ agent: "kit" }, null), "agent");
+  assert.equal(purposeOf({ lean: true }, null), "job");
+  assert.equal(purposeOf({ once: true, tools: "none" }, "harlow-legal"), "job");
+  assert.equal(purposeOf({ purpose: "capsule", lean: true }, null), "capsule");
+});
+
+test("conformance: the CLI runner passes the provider contract", async t => {
+  const cwd = fs.mkdtempSync(path.join(SCRATCH, "vyre-conform-"));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const fails = await conform(claudeProvider({ sdk: null, bin: FAKE }), { id: crypto.randomUUID(), cwd, env: { ...process.env } });
+  assert.deepEqual(fails, []);
+});
+
+test("conformance: the Agent SDK driver passes the provider contract", { skip: noSdk }, async t => {
+  const cwd = fs.mkdtempSync(path.join(SCRATCH, "vyre-conform-"));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const module = await loadSdk(SDK);
+  const fails = await conform(claudeProvider({ sdk: { module, bin: null }, bin: FAKE }), { id: crypto.randomUUID(), cwd, env: { ...process.env } });
+  assert.deepEqual(fails, []);
+});
+
+test("providers: a module adds one through its manifest, with no core change, and a session runs on it", async t => {
+  const runner = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "runner.js");
+  const w = await boot(t, { modules: [{ name: "echo-provider", manifest: { does: { providers: ["echo"] } }, source: `
+    import { argsFor, run } from ${JSON.stringify(runner)};
+    export default { async start(ctx) {
+      ctx.provider("echo", { id: "echo", capabilities: { streaming: true }, run: o => run({ ...o, bin: ${JSON.stringify(FAKE)}, args: argsFor(o) }) });
+      return { async stop() {} };
+    } };` }] });
+  const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", provider: "echo" })).data;
+  await w.finished(th.id);
+  const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
+  assert.deepEqual([rec.provider, rec.driver], ["echo", "echo"]);
+  assert.deepEqual(await w.said(th.id), ["echo: hello"]);
+  const none = await w.tool("threads.start", { cwd: w.work, prompt: "hello", provider: "codex" });
+  assert.match(none.error.message, /no session provider codex; this machine has claude, echo/);
 });
 
 // ------------------------------------------------------------ on either driver
@@ -320,6 +366,28 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!after.pids.includes(launch.ppid), "the session itself is gone");
     assert.ok(after.pgids.includes(launch.ppid), "its group is still reported while the orphan runs");
     await until(async () => !(await w.tool("probe.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
+  });
+
+  test(`${driver}: the model comes from the purpose map, a project override and an agent, and the chip says it`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { models: { capsule: "claude-haiku-4-5" } } });
+    const a = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(a.id);
+    const started = (await w.events(a.id)).find(e => e.type === "thread.started").payload;
+    assert.deepEqual([started.provider, started.model, started.purpose, started.auth], ["claude", "opus", "chat", "ambient"]);
+    assert.equal(w.launches().at(-1).argv[w.launches().at(-1).argv.indexOf("--model") + 1], "opus");
+    const q = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", lean: true, purpose: "capsule" })).data;
+    assert.equal(q.model, "claude-haiku-4-5", "config overrides a purpose");
+    const job = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", lean: true })).data;
+    assert.equal(job.model, "haiku", "a lean thread is a job, on the fast model");
+    assert.ok(!(await w.tool("projects.create", { name: "Harlow Legal", home: w.work })).error);
+    assert.equal((await w.tool("sessions.models.set", { scope: "project:harlow-legal", model: "sonnet" })).data.model, "sonnet");
+    assert.equal((await w.tool("sessions.models.set", { scope: "project:harlow-legal", model: "opus" }, "mcp")).error.code, "denied", "a model never picks models");
+    const p = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello" })).data;
+    assert.equal(p.model, "sonnet");
+    const e = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", model: "haiku" })).data;
+    assert.equal(e.model, "haiku", "an explicit model wins");
+    const map = (await w.tool("sessions.models.get", {})).data;
+    assert.deepEqual([map.purposes.chat.model, map.purposes.memory.model, map.purposes.capsule.model, map.projects["harlow-legal"]], ["opus", "haiku", "claude-haiku-4-5", "sonnet"]);
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

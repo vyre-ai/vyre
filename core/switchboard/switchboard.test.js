@@ -955,7 +955,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   for (const l of lines) { assert.equal(l.sessionId, id); assert.equal(l.cwd, work); assert.ok(!Number.isNaN(Date.parse(l.timestamp))); }
   const blocks = lines.flatMap(l => l.message.content instanceof Array ? l.message.content.map(b => ({ type: l.type, b, l })) : []);
   assert.deepEqual(blocks.map(x => x.b.type), ["thinking", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "text"]);
-  for (const x of blocks.filter(x => x.type === "assistant")) { assert.equal(x.l.message.model, "fake-model"); assert.ok(x.l.message.usage.output_tokens > 0); }
+  for (const x of blocks.filter(x => x.type === "assistant")) { assert.equal(x.l.message.model, "opus", "a chat session runs on the work model (sessions.models)"); assert.ok(x.l.message.usage.output_tokens > 0); }
   const todo = blocks.find(x => x.b.name === "TodoWrite").b.input.todos;
   assert.deepEqual(todo.map(t => t.status), ["completed", "in_progress", "pending"]);
   const bashResult = blocks.filter(x => x.b.type === "tool_result")[2];

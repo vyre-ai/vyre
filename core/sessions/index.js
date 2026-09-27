@@ -14,7 +14,11 @@
 // agent is told, its own prompt least of all (core/presence PERSON_ONLY).
 
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
-import { sessionsConfig, sdkDir, claudeBin } from "./config.js";
+import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
+
+/** Per-purpose and per-project model overrides a person set from a surface. */
+const MODELS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_models (scope TEXT PRIMARY KEY, model TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
+const MODEL = /^[A-Za-z0-9._:\[\]-]{1,80}$/;
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -23,7 +27,21 @@ const scope = { type: "string", description: "assistant, agent:<name> or project
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION]);
+    const db = ctx.store.db;
+    const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
+    /**
+     * The model a session runs on: an explicit one, else its agent's, else its project's override,
+     * else its purpose's (a surface's override, then config, then the default).
+     * @param {{ purpose?: string, project?: string|null, model?: string|null }} i
+     */
+    const modelFor = i => {
+      if (i.model) return { model: i.model, from: "explicit" };
+      if (i.project) { const m = override(`project:${i.project}`); if (m) return { model: m, from: `project:${i.project}` }; }
+      const purpose = PURPOSES.includes(String(i.purpose)) ? String(i.purpose) : "chat";
+      const m = override(`purpose:${purpose}`);
+      return m ? { model: m, from: `purpose:${purpose}` } : { model: configModel(ctx.config, purpose), from: `config:${purpose}` };
+    };
     const prompts = new Prompts(ctx.store.db);
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, ...(callers ? { callers } : {}), ...extra });
@@ -76,6 +94,32 @@ export default {
     tool("sessions.prompt.preview", "The system prompt a session would start with, for an agent and a project: the levels used and how they combine. Without Vyre's own launch text, which the Switchboard adds.",
       { type: "object", properties: { agent: str, agent_kind: str, project: str } },
       async i => prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
+
+    tool("sessions.models.get", "What each kind of session runs on: the model per purpose (chat, agent, project, capsule, job, memory, planner, learn) and per project, and where each comes from. An agent's own model (agents.update) wins over these.",
+      { type: "object", properties: {} },
+      async () => ({ purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),
+        projects: Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)])) }));
+
+    tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|capsule|job|memory|planner|learn>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",
+      { type: "object", required: ["scope"], properties: { scope: str, model: { type: ["string", "null"] } } },
+      async (i, { caller }) => {
+        const m = /^(purpose|project):([A-Za-z0-9._-]{1,64})$/.exec(String(i.scope || ""));
+        if (!m || (m[1] === "purpose" && !PURPOSES.includes(m[2]))) throw Object.assign(new Error(`scope must be purpose:<${PURPOSES.join("|")}> or project:<slug>`), { code: "bad_input" });
+        if (i.model == null || i.model === "") { db.prepare("DELETE FROM sessions_models WHERE scope = ?").run(i.scope); }
+        else {
+          if (!MODEL.test(String(i.model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
+          db.prepare("INSERT INTO sessions_models (scope, model, by, at) VALUES (?,?,?,?) ON CONFLICT(scope) DO UPDATE SET model = excluded.model, by = excluded.by, at = excluded.at")
+            .run(i.scope, String(i.model), String(caller || ""), Date.now());
+        }
+        ctx.events.emit("model.changed", { scope: i.scope, model: i.model || null });
+        return { scope: i.scope, model: i.model || null };
+      }, PEOPLE);
+
+    ctx.tool("sessions.models.resolve", {
+      description: "The model a session starting now runs on, and where that comes from.", internal: true,
+      input: { type: "object", properties: { purpose: str, project: str, model: str } },
+      run: async i => modelFor(i),
+    });
 
     ctx.tool("sessions.prompt.compose", {
       description: "The system prompt for a session starting now: the levels around Vyre's own launch text.", internal: true,

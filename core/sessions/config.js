@@ -21,6 +21,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { bundledBinary } from "./sdk.js";
 
+/**
+ * What each kind of session runs on (the user's decision, 27 Sep): Opus for real work, a fast,
+ * cheap model for quick answers and background jobs. `sessions.models` in config.json overrides a
+ * purpose; sessions.models.set overrides a purpose or a project from a surface; an agent's own
+ * model and a launch's explicit model win over both.
+ */
+export const DEFAULT_MODELS = { chat: "opus", agent: "opus", project: "opus", capsule: "haiku", job: "haiku", memory: "haiku", planner: "haiku", learn: "haiku" };
+export const PURPOSES = Object.keys(DEFAULT_MODELS);
+
+/** The model for a purpose from config and the defaults. @param {any} config @param {string} purpose */
+export function configModel(config, purpose) {
+  const m = config && config.sessions && config.sessions.models;
+  const v = m && typeof m[purpose] === "string" && m[purpose] ? m[purpose] : null;
+  return v || /** @type {any} */ (DEFAULT_MODELS)[purpose] || DEFAULT_MODELS.chat;
+}
+
 /** The vault items the Claude credentials live in (as core/onboard stores them). */
 export const CREDENTIALS = { "setup-token": "claude-setup-token", "api-key": "anthropic-api-key" };
 

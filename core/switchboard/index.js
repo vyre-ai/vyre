@@ -17,8 +17,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
-import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
-import { run as runOnSdk } from "../sessions/claude.js";
+import { userLine, answerLine, run as defaultRun } from "./runner.js";
+import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
 import { findSubreaper, groupAlive } from "../sessions/spawn.js";
 import { rules as floorRules } from "../harness/rules.js";
@@ -76,6 +76,10 @@ export const MIGRATIONS = [
    ALTER TABLE threads_asks ADD COLUMN event INTEGER;`,
   // Which driver runs a thread (ADR 0030): "sdk" (the Claude Agent SDK) or "cli" (runner.js).
   `ALTER TABLE threads_runs ADD COLUMN driver TEXT;`,
+  // Which provider runs a thread (claude, or one a module registered) and what kind of session it
+  // is (chat, agent, project, capsule, job, memory, planner, learn), which picks its model.
+  `ALTER TABLE threads_runs ADD COLUMN provider TEXT;
+   ALTER TABLE threads_runs ADD COLUMN purpose TEXT;`,
 ];
 
 /**
@@ -135,7 +139,15 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose"];
+
+/** The kind of session a launch is, when the caller does not say: it picks the model (sessions.models). */
+export function purposeOf(o, project) {
+  if (o.purpose) return String(o.purpose);
+  if (o.once || o.lean || o.tools === "none") return "job";
+  if (o.agent) return "agent";
+  return project ? "project" : "chat";
+}
 
 /** Partial text is sent at most this often per thread: 20 a second, not one event per token. */
 export const TEXT_EVERY_MS = 50;
@@ -276,6 +288,7 @@ export class Switchboard {
     if (!r) return null;
     const holder = this.leases.holder(id);
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
+      provider: r.provider || "claude", purpose: r.purpose || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -327,9 +340,21 @@ export class Switchboard {
       const w = await this.where(o);
       id = crypto.randomUUID();
       const now = Date.now();
+      const provider = String(o.provider || "claude");
+      if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) {
+        throw Object.assign(new Error(`no session provider ${provider}; this machine has ${["claude", ...(this.deps.providers ? this.deps.providers.list() : [])].join(", ")}`), { code: "bad_input" });
+      }
+      const purpose = purposeOf(o, w.project);
+      // The model: explicit (a launch, an agent's own), else the project's or the purpose's.
+      if (!o.model) {
+        const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
+        if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
+      }
+      o = { ...o, provider, purpose };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
+      this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ? WHERE id = ?").run(o.provider, o.purpose, id);
       const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
@@ -344,7 +369,10 @@ export class Switchboard {
     }
     o = { ...o, system: await this.systemPrompt(rec, o) };
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
-    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume) };
+    const fresh = this.must(id);
+    // What a surface's chip says: "Claude · opus · subscription".
+    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume),
+      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
     // agent asked something) is typed without taking the lease, so no surface is locked out.
@@ -446,10 +474,10 @@ export class Switchboard {
     const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
-    const driver = this.sdk ? "sdk" : "cli";
-    state.proc = this.sdk
-      ? runOnSdk(this.sdk.module, { ...lo, bin: this.deps.bin || process.env.VYRE_CLAUDE_BIN || this.sdk.bin, cwd: rec.cwd, env, ...on })
-      : this.run({ bin: this.bin, args: argsFor(lo), cwd: rec.cwd, env, ...on });
+    const other = o.provider && o.provider !== "claude" && this.deps.providers ? this.deps.providers.get(o.provider) : null;
+    const provider = other || claudeProvider({ sdk: this.sdk, bin: this.sdk ? this.deps.bin || process.env.VYRE_CLAUDE_BIN || "" : this.bin, run: this.run });
+    const driver = other ? String(o.provider) : this.sdk ? "sdk" : "cli";
+    state.proc = provider.run({ ...lo, cwd: rec.cwd, env, ...on });
     this.set(id, { status: "starting", pid: state.proc.pid || null, stopped_reason: null, driver });
     this.touch(id, state);
   }
@@ -1089,7 +1117,7 @@ export default {
       transcripts: (ctx.config && ctx.config.transcripts) || [],
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
-      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth,
+      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,
       subreaper: cfg.subreaper === false ? null : typeof cfg.subreaper === "string" ? cfg.subreaper : findSubreaper(),
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
@@ -1132,6 +1160,8 @@ export default {
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
+        purpose: { type: "string", enum: ["chat", "agent", "project", "capsule", "job", "memory", "planner", "learn"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
+        provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
       async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
 
@@ -1265,7 +1295,7 @@ export default {
     ctx.tool("threads.launch", {
       description: "Start or resume a thread for an agent, with its credentials set only in that child.", internal: true,
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
-        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
+        agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },

@@ -4,6 +4,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: security before the flip, models per purpose, providers as modules (ADR 0030)
+
+- Security (e2e's blockers). core/sessions/spawn.js spawns every session process, on either
+  driver, in its own process group and session, under `tini -s` where installed (the box image now
+  has tini), optionally as another uid/gid (`sessions.uid`, `sessions.gid`), and reports pid, pgid
+  and sid before the process can run anything. `threads.pids` returns `{ pids, pgids, sids }`; a
+  group stays listed until its last process is gone, so a detached orphan is still known. The
+  floor runs before any question is put to the person (the Switchboard refuses what it denies,
+  with a notice), and floor rule 1 now denies a session's writes (file tools and Bash write forms)
+  to Claude Code's settings files, `.mcp.json` and `.claude.json` (core/harness/rules.js, tests in
+  core/harness/floor.test.js). An answer never hands back a switch to bypassPermissions
+  (`safePermissions`); new person-only `threads.mode` (default, acceptEdits, plan; event
+  `mode.changed`).
+- Fixes. `Sessions.bind` walks past dash's `sh -c` to the claude above it (no session bound on
+  Linux before), and returns the pid it bound, which the hook uses for the key file.
+  `callerKind("mcp:thread:<id>")` is "mcp". Threads a restart cut say `restart` (ADR 0029 R7).
+- Models (the user's decision): each session has a purpose (chat, agent, project, capsule, job,
+  memory, planner, learn; inferred when not given: a lean or one-shot thread is a job). Opus for
+  chat, agent and project; haiku for the rest. `sessions.models` in config overrides a purpose;
+  person-only `sessions.models.set` overrides a purpose or a project; an agent's model and an
+  explicit one win. `sessions.models.get`, internal `sessions.models.resolve`, event
+  `model.changed`. `thread.started` says `provider`, `model`, `auth` and `purpose` for the chip;
+  records carry `provider` and `purpose`.
+- Providers: a module adds a session provider through its manifest (`does.providers`) and
+  `ctx.provider(name, driver)`, with no core change; `threads.start { provider }` runs a session on
+  it. The contract and the test every provider must pass are core/sessions/conformance.js; the
+  CLI runner and the SDK driver pass it, and a sample module's provider runs a session end to end.
+- The box image carries the pinned SDK with its bundled Claude Code in /opt/vyre-sessions-sdk
+  (`VYRE_SESSIONS_SDK_DIR`), so a box never downloads it; about 410 MB more. `.dockerignore` keeps
+  scripts/postinstall.mjs, without which `npm ci` in the image failed.
+- Tests: the switchboard and sessions tests keep their work folders outside the temp home (the
+  floor treats the home as Vyre's own, as on a real machine).
+
 #### Sessions: Vyre-owned sessions on the Claude Agent SDK (ADR 0030, steps 1 to 3)
 
 - core/sessions (new module `sessions`): the Claude driver on the Agent SDK (`claude.js`), with the
