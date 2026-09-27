@@ -545,3 +545,10 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .composer-stop { flex-shrink: 0; }
 .composer-stop[hidden] { display: none; }
 .cv-from { margin-top: 4px; font-size: 12px; color: var(--label); }
+
+/* Windowed rows (window-view.js): above 100 rows only those near the viewport are mounted, and the
+   view keeps its own reading position, so the browser's anchoring stays out of it and every
+   mounted row lays out (a measured height is a real one, not content-visibility's placeholder). */
+.cv-timeline.cv-windowed { overflow-anchor: none; }
+.cv-timeline.cv-windowed > .cv-row:not(.cv-live) { content-visibility: visible; contain-intrinsic-size: none; }
+.cv-spacer { flex-shrink: 0; pointer-events: none; }

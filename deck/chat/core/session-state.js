@@ -356,11 +356,14 @@ const identOf = (b, ord) => `${b.seq}:${b.kind}:${b.kind === "tool" ? b.id : ord
 /**
  * The live item a new transcript block stands for, or null. Only live items (no seq yet) match,
  * each once, first in order.
- * @param {Session} s @param {any} b @param {Set<string>} taken @param {any[]} later the blocks after this one in the read
+ * @param {Session} s @param {any} b @param {Set<string>} taken @param {any[]} list the read's blocks @param {number} i this block's place in it (the blocks after it are "later")
  */
-function matchLive(s, b, taken, later) {
+function matchLive(s, b, taken, list, i, anyLive = true) {
   const live = (/** @type {Item} */ it) => it.seq === undefined && !taken.has(it.key);
   if (b.kind === "tool") return s.byKey.get(`t:${b.id}`) ?? null;
+  // Nothing on screen came from live events (a page of history, a session opened from its file):
+  // only a turn read earlier can stand for this block, so no search of the items per block.
+  if (!anyLive && b.kind !== "turn") return null;
   if (b.kind === "user") {
     if (b.command) return null;
     const same = s.items.find(it => it.kind === "user" && live(it) && sameText(/** @type {UserItem} */ (it).text, b.text));
@@ -370,7 +373,7 @@ function matchLive(s, b, taken, later) {
     // line past everything on screen from the file: a page of older history never matches.
     if (s.items.some(it => it.seq !== undefined && it.seq >= b.seq)) return null;
     return s.items.find(it => it.kind === "user" && live(it) && (!b.ts || it.at === undefined || b.ts >= it.at - 60000)
-      && !later.some(x => x && x.kind === "user" && sameText(/** @type {UserItem} */ (it).text, x.text))) ?? null;
+      && !laterNames(list, i, /** @type {UserItem} */ (it).text)) ?? null;
   }
   if (b.kind === "text") {
     if (b.message == null) return null;
@@ -384,9 +387,15 @@ function matchLive(s, b, taken, later) {
       if (it.kind === "turn" && it.open && it.seq !== undefined && it.seq <= b.seq && !taken.has(it.key)) return it;
       if (it.kind === "turn" && it.seq !== undefined) break;
     }
-    return s.items.find(it => it.kind === "turn" && live(it)) ?? null;
+    return anyLive ? s.items.find(it => it.kind === "turn" && live(it)) ?? null : null;
   }
   return null;
+}
+
+/** Does a user line after `i` in the read name this text? (No copy of the rest of the read per block.) @param {any[]} list @param {number} i @param {string} text */
+function laterNames(list, i, text) {
+  for (let j = i + 1; j < list.length; j++) { const x = list[j]; if (x && x.kind === "user" && sameText(text, x.text)) return true; }
+  return false;
 }
 
 /** A key for a block no live item stands for. @param {Session} s @param {any} b @param {number} ord */
@@ -445,19 +454,22 @@ export function applyBlocks(s, blocks) {
   // First pass: which item each block is (or null for a new one), so a new block can be placed
   // before the next block that is already on screen.
   const list = blocks.filter(b => b && typeof b === "object" && typeof b.seq === "number");
+  const anyLive = s.items.some(it => it.seq === undefined);
   const plan = list.map((b, i) => {
     const ok = `${b.seq}:${b.kind}`;
     const ord = ords.get(ok) ?? 0;
     ords.set(ok, ord + 1);
     const ident = identOf(b, ord);
     const known = s.meta.idents.get(ident);
-    const item = known ? s.byKey.get(known) ?? null : matchLive(s, b, taken, list.slice(i + 1));
+    const item = known ? s.byKey.get(known) ?? null : matchLive(s, b, taken, list, i, anyLive);
     if (item) taken.add(item.key);
     return { b, ord, ident, item };
   });
 
   /** @type {string|null} the item the previous block became */
   let prev = null;
+  /** Where `prev` was last seen in the items: a hint, so a long read is not a search per block. */
+  const hint = { at: -1 };
   plan.forEach((step, i) => {
     const { b, ord, ident } = step;
     const f = fieldsOf(b);
@@ -484,7 +496,9 @@ export function applyBlocks(s, blocks) {
     if (made.kind === "reasoning") made.message = null;
     if (made.kind === "text" || made.kind === "reasoning") made.block = b.kind === "text" && b.message != null ? Number(key.split(":").pop()) : ord;
     if (made.kind === "tool" && !made.status) made.status = "running";
-    insert(s, made, placeOf(s, plan, i, prev));
+    const at = placeOf(s, plan, i, prev, hint.at);
+    insert(s, made, at);
+    hint.at = at >= 0 && at < s.items.length && s.items[at] === made ? at : s.items.length - 1;
     s.meta.idents.set(ident, key);
     out.add(key);
     prev = key;
@@ -497,9 +511,11 @@ export function applyBlocks(s, blocks) {
  * read that is already on screen; else before the first item later in the file; else after the
  * last item from the file and the live items that happened before this block (by time).
  * @param {Session} s @param {{ b: any, item: Item|null }[]} plan @param {number} i @param {string|null} prev
+ * @param {number} [hint] where `prev` probably is (checked before a search)
  */
-function placeOf(s, plan, i, prev) {
+function placeOf(s, plan, i, prev, hint = -1) {
   if (prev) {
+    if (hint >= 0 && s.items[hint]?.key === prev) return hint + 1;
     const at = s.items.findIndex(it => it.key === prev);
     if (at >= 0) return at + 1;
   }

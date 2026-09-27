@@ -59,6 +59,8 @@ import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow
 import { textItemRow } from "./live-text.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks } from "./core/session-state.js";
 import { groupItems } from "./core/grouping.js";
+import { isAtBottom } from "./core/window.js";
+import { createWindowView } from "./window-view.js";
 
 const PAGE = 400;
 const MAC_PAGE = 80;
@@ -115,7 +117,7 @@ export function mountSession(container, opts) {
   const cards = new Map();
   /** Gate cards by id, placed by time; memory facts after the turn they name. */
   const gates = new Map();
-  const facts = /** @type {{ el: HTMLElement, n: number }[]} */ ([]);
+  const facts = /** @type {{ el: HTMLElement, n: number, id: string }[]} */ ([]);
   const shownFacts = new Set();
   /** Turn keys this screen stopped. */
   const byMe = new Set();
@@ -125,9 +127,12 @@ export function mountSession(container, opts) {
   let following = true;
   const jump = h("button", { class: "jump-latest", type: "button", hidden: true, onclick: () => toBottom() }, icon("chevron", 12), "Jump to latest");
   timeline.addEventListener("scroll", () => {
-    following = timeline.scrollTop + timeline.clientHeight >= timeline.scrollHeight - 40;
+    following = isAtBottom(timeline.scrollTop, timeline.clientHeight, timeline.scrollHeight);
     if (following) jump.hidden = true;
+    win.schedule(true);
   }, { passive: true });
+  /** Long sessions mount only the rows near the viewport (window-view.js); the bottom anchor is kept there. */
+  const win = createWindowView(timeline, { following: () => following, onUnmount: (k, el) => unmounted(k, el) });
   const head = h("div", { class: "session-head" });
   const leaseBar = h("div", { class: "lease-bar" });
   const queuedBox = h("div", { class: "cv-queued", role: "status", hidden: true });
@@ -358,14 +363,16 @@ export function mountSession(container, opts) {
     const r = await transcript({ before: first });
     if (r.error) { put(earlier, h("span", { class: "cv-note" }, "Could not load earlier.")); return; }
     const older = r.data.blocks.filter(b => first == null || b.seq < first);
-    const h0 = timeline.scrollHeight;
+    // What loads above keeps the reading position: the row at the top of the viewport is put back
+    // from the new offsets (window-view.js), windowed or not, after this line has gone too.
+    const keep = win.anchor();
     applyBlocks(S, older);
     layout();
     first = typeof r.data.first === "number" ? r.data.first : older.length ? older[0].seq : 0;
     if (!older.length) first = 0;
     drawEarlier();
+    win.restore(keep);
     rawSoon();
-    timeline.scrollTop += timeline.scrollHeight - h0;
   }
 
   // ---- rows from items -----------------------------------------------------------------------
@@ -389,11 +396,11 @@ export function mountSession(container, opts) {
   const sig = it => JSON.stringify(it.kind === "tool" ? [it.status, it.summary, it.output, it.input, it.duration_ms, it.error, it.patch]
     : it.kind === "ask" ? [it.state, it.decision, it.answers] : asBlock(it) || it);
 
-  /** "Thinking · 8 s": until the next row began, when that is known. */
-  function thinkLabel(it) {
+  /** "Thinking · 8 s": until the next row began, when that is known. `i`: where it is in the items, when the caller knows. */
+  function thinkLabel(it, i = S.items.indexOf(it)) {
     if (it.streaming) return "Thinking…";
-    const i = S.items.indexOf(it);
-    const nx = S.items.slice(i + 1).find(x => x.at !== undefined);
+    let nx = null;
+    for (let j = i + 1; j < S.items.length; j++) if (S.items[j].at !== undefined) { nx = S.items[j]; break; }
     const ms = it.at !== undefined && nx ? nx.at - it.at : null;
     if (ms == null || ms < 1000 || ms >= 3_600_000) return "Thinking";
     return `Thinking · ${ms < 60_000 ? Math.round(ms / 1000) + " s" : duration(ms)}`;
@@ -484,7 +491,7 @@ export function mountSession(container, opts) {
 
   function upsertGate(id, live, at) {
     let g = gates.get(id);
-    if (!g) { const el = gateCard({ id }); /** @type {any} */ (el)._kind = "card"; g = { el, at: at ?? null }; gates.set(id, g); }
+    if (!g) { const el = gateCard({ id }); /** @type {any} */ (el)._kind = "card"; g = { id, el, at: at ?? null }; gates.set(id, g); }
     else if (live && /** @type {any} */ (g.el).refresh) /** @type {any} */ (g.el).refresh();
     return g;
   }
@@ -552,60 +559,91 @@ export function mountSession(container, opts) {
     while (cur) { const n = cur.nextSibling; cur.remove(); cur = n; }
   }
 
-  /** The timeline's rows in order: day rules, a header per reply, items and fold rows, gates by time, facts after their turn. */
+  /**
+   * The timeline's rows in order: day rules, a header per reply, items and fold rows, gates by
+   * time, facts after their turn. Each row is a key and a way to make it; window-view.js mounts
+   * only the rows near the viewport once there are more than 100, so a row's element is made (or
+   * brought up to date) only when it is mounted.
+   */
   function layout() {
     if (mode !== "blocks") return;
     const rows = groupItems(S.items);
     runOf.clear();
-    const want = [earlier, rawBox];
+    /** @type {import("./window-view.js").Row[]} */
+    const want = [];
     const days = new Set();
     let lastDay = null, prevSide = null, turns = 0, running = false;
     const byTime = [...gates.values()].filter(g => g.at != null).sort((a, b) => a.at - b.at);
     let gi = 0;
     const usedHeads = new Set();
+    /** Where each item is, for a thought's length (the next row's time), without a search per thought. */
+    const where = new Map(S.items.map((it, i) => [it.key, i]));
+    const gateRow = g => ({ key: "g:" + g.id, kind: "gate", make: () => g.el });
+    const factRow = f => ({ key: "f:" + f.id, kind: "fact", make: () => f.el });
     const day = at => {
       if (!at) return;
       const d = dayLabel(at);
       if (d === lastDay || days.has(d)) { lastDay = d; return; }
       lastDay = d; days.add(d);
-      let el = dayEls.get(d);
-      if (!el) { el = dayRule(d); dayEls.set(d, el); }
-      want.push(el);
+      want.push({ key: "d:" + d, kind: "day", make: () => { let el = dayEls.get(d); if (!el) { el = dayRule(d); dayEls.set(d, el); } return el; } });
     };
-    if (recorded.on && !S.items.length) want.push(waitNote);
     for (const r of rows) {
       const firstItem = S.byKey.get(r.type === "run" ? r.keys[0] : r.key);
       if (!firstItem) continue;
       const at = firstItem.at;
-      while (gi < byTime.length && at !== undefined && byTime[gi].at < at) want.push(byTime[gi++].el);
+      while (gi < byTime.length && at !== undefined && byTime[gi].at < at) want.push(gateRow(byTime[gi++]));
       const side = r.type === "run" ? "assistant" : sideOfItem(firstItem);
       if (side === "user") day(at);
       if (side === "assistant" && prevSide !== "assistant") {
         day(at);
-        let hd = headEls.get(r.key);
-        if (!hd) { hd = headFor(at); headEls.set(r.key, hd); }
-        usedHeads.add(r.key);
-        want.push(hd);
+        const rk = r.key;
+        usedHeads.add(rk);
+        want.push({ key: "h:" + rk, kind: "head", make: () => { let hd = headEls.get(rk); if (!hd) { hd = headFor(at); headEls.set(rk, hd); } return hd; } });
       }
       if (side) prevSide = side;
       if (r.type === "run") {
         for (const k of r.keys) runOf.set(k, r.key);
-        want.push(runEl(r));
+        want.push({ key: r.key, kind: "run", make: () => runEl(r) });
         if (r.running) running = true;
         continue;
       }
-      const el = itemEl(firstItem);
-      if (firstItem.kind === "reasoning") el.set(firstItem.text, thinkLabel(firstItem));
-      if (firstItem.kind === "tool" && firstItem.status === "running") running = true;
-      want.push(el);
-      if (firstItem.kind === "turn") { turns++; for (const f of facts) if (f.n === turns) want.push(f.el); }
+      const it = firstItem;
+      want.push({ key: it.key, kind: it.kind, make: () => {
+        const el = itemEl(it);
+        if (it.kind === "reasoning") el.set(it.text, thinkLabel(it, where.get(it.key)));
+        return el;
+      } });
+      if (it.kind === "tool" && it.status === "running") running = true;
+      if (it.kind === "turn") { turns++; for (const f of facts) if (f.n === turns) want.push(factRow(f)); }
     }
-    while (gi < byTime.length) want.push(byTime[gi++].el);
-    for (const g of gates.values()) if (g.at == null) want.push(g.el);
-    for (const f of facts) if (f.n > turns || !f.n) want.push(f.el);
+    while (gi < byTime.length) want.push(gateRow(byTime[gi++]));
+    for (const g of gates.values()) if (g.at == null) want.push(gateRow(g));
+    for (const f of facts) if (f.n > turns || !f.n) want.push(factRow(f));
     for (const k of [...headEls.keys()]) if (!usedHeads.has(k)) headEls.delete(k);
-    reconcile(timeline, want);
+    win.set(recorded.on && !S.items.length ? [earlier, rawBox, waitNote] : [earlier, rawBox], want);
     if (running) ticker();
+  }
+
+  /**
+   * A row that left the window: let it go, unless it holds something a rebuild would lose (an
+   * ask's card, a reply still streaming). It is made again from its item when it comes back.
+   */
+  function unmounted(key, el) {
+    if (key.startsWith("h:")) { headEls.delete(key.slice(2)); return; }
+    if (key.startsWith("d:") || key.startsWith("g:") || key.startsWith("f:")) return;
+    if (runEls.get(key) === el) {
+      runEls.delete(key);
+      for (const k of /** @type {any} */ (el)._row?.keys || []) forget(k);
+      return;
+    }
+    forget(key);
+  }
+  function forget(key) {
+    const it = S.byKey.get(key);
+    const el = els.get(key);
+    if (!el || !it || it.kind === "ask" || (it.kind === "text" && it.streaming)) return;
+    el.stop?.();
+    els.delete(key);
   }
 
   /** Running rows count up once a second, while one runs and the page is on screen. */
@@ -936,11 +974,20 @@ export function mountSession(container, opts) {
     const num = v => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
     return { at: opts.at ?? num(q?.get("at")), ask: opts.ask ?? (q?.get("ask") || null), tool: opts.tool ?? (q?.get("tool") || null) };
   }
-  /** An item's row, its fold opened first when it is inside one. */
+  /**
+   * An item's row, its fold opened first when it is inside one. In a long session the row may not
+   * be mounted: its stretch is mounted first (window-view.js), and the reader is no longer
+   * following the tail, so the view stays on it.
+   */
   function reveal(key) {
+    if (mode !== "blocks") return legacyRows.get(key.replace(/^t:/, "tool:")) || null;
     const rk = runOf.get(key);
     if (rk && !openRuns.has(rk)) { openRuns.add(rk); runEls.get(rk)?.draw(); }
-    return els.get(key) || legacyRows.get(key.replace(/^t:/, "tool:")) || null;
+    const was = following;
+    following = false;
+    const row = win.reveal(rk || key);
+    if (!row) { following = was; return els.get(key) || null; }
+    return els.get(key) || row;
   }
   /** Scroll to the linked row and flash it: an ask's card (or its anchored tool call), a tool call, else the first row at or after `at`. */
   let sought = false;
@@ -952,8 +999,9 @@ export function mountSession(container, opts) {
     const card = want.ask ? cards.get(want.ask) : null;
     const anchor = card?._ask?.anchor?.tool_use_id || askInfo.get(want.ask)?.anchor?.tool_use_id || want.tool;
     let el = card && card.isOpen?.() ? card : null;
+    if (el) reveal("a:" + want.ask);
     if (!el && anchor) el = reveal("t:" + anchor);
-    if (!el && card) el = card;
+    if (!el && card) { reveal("a:" + want.ask); el = card; }
     if (!el && want.at != null) {
       if (mode === "blocks") { const it = S.items.find(i => i.at !== undefined && i.at >= /** @type {number} */ (want.at)); if (it) el = reveal(it.key) || els.get(runOf.get(it.key)); }
       else for (const n of timeline.children) { if (n._ts && n._ts >= want.at) { el = n; break; } }
@@ -967,7 +1015,7 @@ export function mountSession(container, opts) {
 
   // ---- shared pieces ------------------------------------------------------------------------
 
-  function toBottom() { timeline.scrollTop = timeline.scrollHeight; following = true; jump.hidden = true; }
+  function toBottom() { following = true; win.follow(); timeline.scrollTop = timeline.scrollHeight; jump.hidden = true; }
   function grew() { if (following) toBottom(); else jump.hidden = false; }
 
   function noticeMsg(text, at) {
@@ -994,7 +1042,7 @@ export function mountSession(container, opts) {
     const refs = f.refs || (f.ref ? [f.ref] : []);
     const n = refs.reduce((m, r) => Math.max(m, r.seq || 0), 0);
     const el = factCard(f);
-    if (mode === "blocks") { facts.push({ el, n }); return; }
+    if (mode === "blocks") { facts.push({ el, n, id: String(f.id) }); return; }
     const marker = n ? turnMarkers.get(n) : null;
     if (marker && marker.parentNode === timeline) timeline.insertBefore(el, /** @type {any} */ (marker).nextSibling); else timeline.append(el);
   }
