@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### app.yml's unsigned release step runs again
+
+- The apostrophe in "owner's key", inside the step's single-quoted `node -e`, ended the quote, and
+  bash failed with "unexpected EOF" before gradle ran. The comment it writes says "owner key".
+
 #### vyre.tgz ships the web app at /app/
 
 - scripts/build-app.sh exports apps/app for the web (`npm ci`, `expo export -p web`, then
