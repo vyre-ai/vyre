@@ -212,7 +212,9 @@ Plan (to the lead before building):
 
 Audit reported to the lead (above); waiting for go on the person session and the two decisions
 (uid split on the box; Mac CLI person session). ADR 0030 notes sent to sessions. presence.since
-done. Next: the headscale run on the next deployed sha. Two switchboard.test.js cases fail on the
+done. HIGH 2 fixed (link.call, this commit). Lead GO: a) person session, b) Capsule/Mac CLI
+person session through link, then the uid split on the box (tini -s meanwhile, sessions team),
+vault fill Origin pin + callers. Then the headscale run on the next deployed sha. Two switchboard.test.js cases fail on the
 Mac only on main too (/var vs /private/var), not ours.
 
 ## Earlier (27 Sep, after the restart)
@@ -258,6 +260,8 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- link.call / ctx.remote refuse PERSON_ONLY and HUMAN_ONLY box tools: `person_session_required`.
 
 - core/modules: `callerAllowed(callers, caller)`. A `tailnet:<login>` caller (the names listener
   admits only the owner) may use any tool whose callers list names `deck`; `tailnet:agent:*` and

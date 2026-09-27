@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Security: the person's actions never ride the link
+
+- link.call and ctx.remote on a Mac refuse PERSON_ONLY and HUMAN_ONLY tools on the box
+  (`person_session_required`): the box took them as the owner's device, so a model on the Mac
+  could answer its own ask on the box. The socket's person check now looks at the tool link.call
+  carries. The Mac CLI gets them back through a Mac person session (next).
+
 #### presence.since: when this device last proved presence
 
 - presence.covered returns `{ covered, since, expires }` (ms since the epoch, null when no live

@@ -98,6 +98,10 @@ test("peer: a person-only call from under a claude is refused silently; the same
   // Tools that are not person-only are not traced at all.
   const list = await client(dir, socket, "agents.list", {}, { underClaude: true });
   assert.equal(list.status, 200, JSON.stringify(list));
+  // link.call is traced by what it carries: a person's tool inside it is refused as that tool is.
+  const carried = await client(dir, socket, "link.call", { tool: "threads.answer", input: {} }, { underClaude: true });
+  assert.equal(carried.status, 403, JSON.stringify(carried));
+  assert.match(carried.body.error.message, /inside a Claude session/);
   // A human-only tool with a proof (a presence session, say) from inside is an agent's: refused before the proof is read.
   const held = await client(dir, socket, "presence.session.open", {}, { underClaude: true, headers: { "x-vyre-presence": "session id=abc secret=def" } });
   assert.equal(held.status, 403, JSON.stringify(held));

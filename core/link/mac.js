@@ -22,6 +22,7 @@ import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js"
 import { createHealth, unknown } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 
 const MAX_BACKOFF = 30_000;
 /** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
@@ -113,6 +114,13 @@ export function macSide(ctx, seam = {}) {
     if (saved.revoked) return { error: { code: "unpaired", message: "the box no longer knows this Mac; pair again" } };
     // The link's own tools on the box are for the link, not for other modules to drive.
     if (String(tool).startsWith("link.")) return { error: { code: "denied", message: "link tools on the box are not callable through the link" } };
+    // The box takes this Mac's calls as its owner's device, not as the person: a person's own
+    // action (answering an ask, approving, a terminal, a vault secret) needs the person's session,
+    // which this Mac does not carry yet. Refused here, whoever asked: a model on the Mac would
+    // otherwise answer its own ask on the box through the link.
+    if (PERSON_ONLY.has(String(tool)) || HUMAN_ONLY.has(String(tool))) {
+      return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: do it in the Deck, the Capsule or the phone` } };
+    }
     if (!state.reachable && Date.now() < state.nextTry) return { error: { code: "box_unreachable", message: state.error || "the box is not reachable" } };
     return boxCall(tool, input);
   }

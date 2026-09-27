@@ -18,7 +18,7 @@ import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
 import { build } from "./build.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, parse as parsePresence } from "../presence/index.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude } from "./peer.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -272,7 +272,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);
+    // link.call carries another tool to the box: what it carries is what counts.
+    const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
     const personal = PERSON_ONLY.has(name) || Boolean(req.headers["x-vyre-presence"])
+      || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && !MODEL_LABEL.test(caller)) {
       const why = await fromClaude(req.socket, registry);

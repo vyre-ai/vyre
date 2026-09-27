@@ -29,6 +29,12 @@ test("link: pairing, box tools from the Mac, a federated search and a fetch", as
   assert.deepEqual(echo.data, { text: "hi" });
   const linkTool = await s.macCall("link.call", { tool: "link.peers", input: {} });
   assert.match(linkTool.error.message, /not callable through the link/);
+  // The person's own actions never ride the link: a model on the Mac would answer its own ask on
+  // the box, or approve a held send, as the owner's device.
+  for (const tool of ["threads.answer", "gate.approve", "gate.reject", "term.open", "agents.create", "vault.reveal"]) {
+    const r = await s.macCall("link.call", { tool, input: {} });
+    assert.equal(r.error && r.error.code, "person_session_required", `${tool}: ${JSON.stringify(r)}`);
+  }
 
   fs.writeFileSync(path.join(s.boxWork, "plan-box.md"), "the box's plan");
   fs.writeFileSync(path.join(s.macWork, "plan-mac.md"), "the Mac's plan");
