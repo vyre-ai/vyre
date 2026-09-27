@@ -41,6 +41,13 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
 - The presence-keep response header is not read by the web client (web.js caller cannot see
   headers); the app takes presence.session.open's body instead.
 
+- Native signer (modules/vyre-signer) + person.native.ts; Android debug APK builds (arm64, 55.5
+  MB, 10 min under the build lock); iOS Swift not compiled yet. 53/53 app tests. Merged
+  work/capsule-pro-tokens (gen-tokens writes the Capsule's Swift too).
+- BLOCKED on e2e: presence.person.start refuses a `vyre://` return (needs the app scheme allowed,
+  or https App Links / universal links); the box ignores the `human` key and `x-vyre-human`
+  (human prompt is off until e2e maps it to presence).
+
 ## One app: Doing
 - Plan the one-week spike with pwa (Now, a session, the approve swipe) and scaffold apps/app.
 

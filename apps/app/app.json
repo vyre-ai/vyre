@@ -23,7 +23,11 @@
       "backgroundColor": "#0E0D0C",
       "themeColor": "#0E0D0C"
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      "expo-web-browser",
+      "expo-secure-store"
+    ],
     "experiments": {
       "baseUrl": "/app",
       "typedRoutes": false

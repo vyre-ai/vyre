@@ -3,6 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "paths": {
       "@vyre/resilience/*": ["../../core/resilience/*"]
     }

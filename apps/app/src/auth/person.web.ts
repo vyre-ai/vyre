@@ -10,7 +10,7 @@
 // Where IndexedDB is refused (a private window), both live in memory for the page: the person
 // signs in again on the next load, and nothing weaker is written anywhere.
 
-import { memorySlot, personSession, pkce, type PersonSession, type Slot } from "./person";
+import { memorySlot, personSession, pkce, type PersonSession, type Slot } from "./person.ts";
 
 const DB = "vyre-person";
 const STORE = "person";

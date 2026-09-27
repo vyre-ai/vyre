@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: a native signer for the person session
+
+- apps/app/modules/vyre-signer: a local Expo module. Android Keystore P-256 (StrongBox when
+  present, else the TEE) and the iOS Secure Enclave, non-exportable, SHA-256 ECDSA; keys
+  `vyre.person` (every request's proof) and `vyre.human` (biometric-bound, for human-only calls,
+  off until the box verifies it). Also random bytes, since Hermes has no WebCrypto.
+- src/auth/person.native.ts: the same person session as the web on the module (DER signatures
+  turned into P1363, the token in expo-secure-store, sign-in through the system browser).
+  src/auth/person.ts gains a plain-JS SHA-256, derToP1363 and jwkFromXY. Fixed: person.web.ts
+  imported itself on the web instead of person.ts. Tests in src/auth/signer.test.js.
+- New app dependencies: expo-web-browser (the sign-in browser) and expo-secure-store (the token).
+- Merged work/capsule-pro-tokens: scripts/gen-tokens also writes the Capsule's Tokens.generated.swift.
+
 #### One app: the resilience client, the person session, and ADR 0027 on auth and alarms
 
 - apps/app runs ADR 0029's client from core/resilience (Metro and TypeScript resolve it; one
