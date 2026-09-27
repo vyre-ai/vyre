@@ -56,6 +56,179 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   needs the keyboard. Queued rows carry `kind` (new column), and `thread.queued` and
   `thread.sent` say it.
 
+
+#### `vyre up` never asks a box to pair on its own
+
+- `vyre up` on a Mac sends a box a pairing request only when the person asked for that box:
+  `--connect <address>` (onboarding's "I already set up a box" too), a yes to its question on a
+  terminal, or `vyre link pair`. A box named in config, or the one found on the tailnet, gets
+  nothing just because Vyre started; `vyre up` says how to pair instead.
+- A home other than ~/.vyre never talks to a real box (not even to check it answers) unless
+  VYRE_ALLOW_REAL_BOX=1; VYRE_ALLOW_DIALOGS=1 no longer counts for boxes. A box on this machine's
+  loopback (a dev world) is always fine.
+
+#### The floor follows links
+
+- Every write target is checked as named and as the kernel walks it: a symlink anywhere on the
+  way, and `..` after one (`x/../settings.json` where x links into `.claude`), are resolved with
+  realpath(3) from the raw string; a file not there yet by its folder's real path. This covers
+  rule 1 (Claude Code's settings, .mcp.json, ~/.claude.json) and rule 8 (VYRE_HOME, other agents'
+  folders), for the file tools and Bash write forms. A write to an existing file with more than
+  one link is compared by inode with the settings files and with VYRE_HOME outside the places a
+  model may work; a hard link to one of them is refused. It runs in the PreToolUse floor, so it
+  holds in every permission mode, bypassPermissions included.
+
+#### One socket per Vyre-owned session (ADR 0030 phase 3, option A)
+
+- core/daemon/threadsock.js: `openThreadSocket({ handler: ctx.handler, thread, agent, pids, dir })`
+  opens a socket for one session, at a random name in /run/vyre-threads (vyre:vyre-work, 2710:
+  the agent can pass through, not list). vyred binds the caller (`mcp:thread:<id>`,
+  `harness:thread:<id>`, or `mcp:agent:<name>` / `harness:agent:<name>`; the client picks only
+  mcp or harness), the thread and the agent, and asks for no key; the kernel's peer pid must belong
+  to the session (its process, group, session or a descendant); person-only and human-only tools
+  and presence routes are refused. `close()` removes it. The router takes `thread` and `agent`
+  from a listener's policy.
+
+#### Phones over the relay: vault sessions, and the same key signing in again
+
+- A presence session serves vault reveal and copy for a device paired over the relay
+  (`device:<id>`) as it does for the Deck over the tailnet; the person session gate runs first.
+- The native trade with a biometric key that is enrolled already answers `human: { key }` with
+  its id (the key's fingerprint), not an error.
+
+#### The uid split, wired: sessions start through the spawner on the box
+
+- Off by default: `sessions.spawner` is "off" until ADR 0030 phase 3 (sessions reach Vyre's tools
+  in process); "on", or VYRE_SESSIONS_SPAWNER=on, turns it on. ADR 0032 records the gap, dated.
+- The spawner changes directory as the agent (root there cannot enter the agent's home), allows
+  programs by real path, and finds the Agent SDK's binary in the image or /opt/vyre-sessions-sdk.
+
+- core/sessions/spawn.js starts every session through the box's spawner when its socket is there
+  (as uid vyre-agent, under the spawner's `tini -s`, its own group and session), and directly
+  elsewhere. The handle looks like a ChildProcess at once; the pid, group and session reach
+  onSpawn before anything written to stdin does; the API key goes on fd 3 (the spawner writes it
+  there), never in the environment; kill goes to the spawner, which signals the whole group. An
+  agent's folder under VYRE_HOME maps to the same place in the agent's own home, which the spawner
+  makes as the agent. The spawner allows the Agent SDK's bundled Claude Code binary. The runner's
+  pid is a getter.
+- scripts/e2e-split/check.sh adds: a session runs as vyre-agent in its own home with the key on
+  fd 3 only, cannot reach vyred's socket, and the SDK's binary runs through the spawner.
+
+#### The Mac proves human-only actions to its box (Secure Enclave)
+
+- `vyre link signin` also makes a P-256 key in the Mac's Secure Enclave (core/link/se, CryptoKit,
+  usable only with Touch ID, Apple Watch or the password; vyred keeps only an opaque handle that
+  works on this Mac alone) and sends its public half with the sign-in; the box enrolls it as a
+  device presence key. A human-only tool through link.call is then signed on the Mac after Touch
+  ID and carried with the person session, so `vyre phone add`, vault reveals and the like work from
+  the Mac's CLI and Capsule. Only the person's callers ask for the signature; a model or module
+  never does. `vyre link` shows `touchId`. The helper is built on first use and hash-checked.
+
+#### A relayed browser's passkey
+
+- presence.enroll takes `device` (a relay device id) from the relay module only: a passkey the
+  browser made at pairing, for an allowed app's name (app.vyre.run), bound to that device
+  (presence_key_devices) and checked against that app's origin. A challenge from that device
+  offers only its own passkey; every other caller is offered only the passkeys bound to no
+  device. presence.person.start from a relayed device takes that passkey or its device key.
+  Removing a key removes its binding.
+
+#### The phone's biometric key proves presence
+
+- The native app's token trade (vyre://) may carry `human`, the public JWK of its biometric-bound
+  P-256 key (Keystore, Secure Enclave). The box enrolls it as a device presence key and answers
+  `human: { key }`; the phone then proves HUMAN_ONLY calls with `x-vyre-presence: device key=..
+  ts=.. nonce=.. sig=..` (DER ECDSA over vyre-presence-v1, tool, input hash, ts, nonce), and one
+  proof opens the same 30-minute presence session as Touch ID.
+
+#### Floor rule 8: an agent's own folder
+
+- An agent without a project runs in VYRE_HOME/agents/<name>. Its session may now read and write
+  there (files, shell, globs inside it), as in watchers/. Only for the agent vyred vouched for
+  (harness:agent:<name> with its key, or VYRE_AGENT in the hook when vyred is down); another
+  agent's folder, the vault, config, keys and the store stay internal.
+
+#### Security: batch 3 reconcile (main, tailnet, relay, one init)
+
+- The person gate covers relayed devices (`device:<id>`, ownerDevice) as it covers tailnet nodes.
+  A relayed device signs in with its enrolled device key over the channel and gets a token bound
+  to its request-signing key, pinned to its device id (relay.device.presence, relay to add).
+- From the hosted app's origin, nothing without a person session: no tool, tool list, events,
+  stream or module list; /v1/health says only `reachable`; the token trade is the one exception.
+- The native app's `vyre://person/signin` return, for PKCE only; the trade needs no Origin and
+  must be signed by the key it registers.
+- The router reads a request's body once (a signed session covers it); main's CLI terminal
+  resolver is `terminalOf`; resilience's drain and idempotency stay.
+- One init: tini is PID 1, the spawner runs the restart loop (loop.sh) as vyre, sessions run
+  under `tini -s` as vyre-agent. No `init: true` on any service on the vyre image.
+  scripts/e2e-split/check.sh: 24 checks, including ci's smoke (PID 1, kill-restart, drain), as
+  root with the split and as a plain `docker run`.
+
+#### Security: the headscale run of the person session; orphans
+
+- The socket's person check refuses a caller whose chain tops out, under init, in a process that
+  does not lead its own group: a `nohup .. &` left behind by a shell that is gone. Apps, terminals,
+  sshd and tmux servers lead their own group and pass. Checked on the stand-in Mac: the person's
+  shell passes, a call under a claude and its orphan are refused.
+- The Deck's service worker leaves /person/ alone, as it does /onboard: it served the shell for
+  the sign-in page, and would have cached the page as the shell.
+- scripts/e2e-headscale runs the box in the split (0:0, three capabilities, vyre-agent-home).
+
+#### Security: the uid split on the box (ADR 0032 part 3)
+
+- The box container's first process is the spawner (core/spawner), root with only SETUID,
+  SETGID and KILL. It runs vyred as uid vyre (umask 002) and, when vyred asks over
+  /run/vyre/spawner.sock (root:vyre, 2750, so vyre-agent cannot enter), starts a Vyre-owned
+  session's claude as uid vyre-agent under tini as a subreaper, in /work, with a cut-down
+  environment, handing stdio back as connections (core/spawner/client.js spawnAsAgent). Only
+  allowed programs start. vyre-agent cannot open vyred's socket or enter /home/vyre (now 700).
+- /work is shared through the vyre-work group (2775, setgid); an older volume is converted once
+  on start, as vyre. vyre-agent's home is its own volume (vyre-agent-home), readable by vyred.
+- `vyre` inside the container drops from root to uid vyre by itself, so `docker compose exec`
+  and the healthcheck work as before. compose.yml: the vyre service runs as 0:0 with
+  cap_drop ALL and no-new-privileges. The image gains tini.
+- .dockerignore lets scripts/postinstall.mjs through: `docker build -f box/Dockerfile .` from a
+  checkout failed at npm ci since the postinstall landed.
+- scripts/e2e-split/check.sh: 15 checks in a throwaway container (uids, homes, sockets, /work,
+  environment, refusals, an old volume, a clean stop).
+
+#### Security: a Mac's person session; the fill listener's pairing
+
+- `vyre link signin` (link.signin, link.signout): the Mac's command line and Capsule answer asks
+  and approve on the box after the person confirms with a passkey on the box's page, for 30 days.
+  The Mac's vyred listens on a one-time loopback address, trades the code with its PKCE verifier
+  and a new ES256 key, and signs every person call it forwards. Only the person's callers (cli,
+  local, capsule, deck) carry it through link.call; a model, a module or a guest never does, and
+  human-only tools stay the Deck's. `vyre link` says whether the Mac is signed in.
+- The vault fill listener: `vault.fill.extensions` lists the extension origins that may pair; a
+  paired extension's Origin is kept and another extension's is refused; an extension that sends
+  an ES256 `key` when it pairs must sign every request (`x-vyre-proof`), so a copied token is not
+  enough. vault.devices and vault.device.revoke are the person's surfaces only.
+- The socket's person check also catches an orphan by its process group or session: a thread
+  vyred spawns as its own group keeps what it leaves behind after its parent ends. ADR 0032, the
+  person and the device.
+
+#### Security: the person session over the tailnet
+
+- A node signed in as the owner is the owner's device, not the person. Over the tailnet,
+  PERSON_ONLY, HUMAN_ONLY and presence-needing tools answer 401 `person_session_required` until
+  the browser signs in with a passkey (`presence.person.start`). The Deck gets an HttpOnly,
+  Secure, SameSite=Strict cookie `__Host-vyre_person`, pinned to the node, 30 days from last use
+  and 90 at most. The hosted app gets a one-time code on the box's page (`cc`, PKCE S256), trades
+  it at POST /v1/person/token with the verifier and an ES256 public key, and signs every request
+  (`authorization: Vyre <token>`, `x-vyre-proof: t n sig`). POST /v1/person/end signs out;
+  `presence.person.sessions`, `presence.person.revoke` and `presence.person.status` list, revoke
+  and check. The Deck signs in by itself the first time a call needs it. core/presence/person.js.
+- The hosted app's code goes back only to an allowed app (`network.origins`, default
+  https://app.vyre.run), with `return` checked by the box and the code bound to that origin. The
+  box's own sign-in page is /person/signin?cc=..&return=.. (plain; pwa styles it).
+
+#### Security: the person's actions never ride the link
+
+- link.call and ctx.remote on a Mac refuse PERSON_ONLY and HUMAN_ONLY tools on the box
+  (`person_session_required`): the box took them as the owner's device, so a model on the Mac
+  could answer its own ask on the box. The socket's person check now looks at the tool link.call
+  carries. The Mac CLI gets them back through a Mac person session (next).
 #### Sessions: concurrency slots for teammates and subagents (the user's usage control)
 
 - core/sessions/slots.js: a ledger of two kinds of slot, `teammate` and `subagent`, each with a
@@ -380,19 +553,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
 #### A box keeps projects in /work/projects
 
-- On a box with a `/work` folder and no `projectsDir` in config.json, projects live in
-  `/work/projects`, where VyreDrive can share them. The first start moves homes out of
-  `~/Vyre/projects` once (copying across volumes), leaves a link at each old folder so Claude
-  sessions keyed by the old path still resume, rewrites the stored rows and markers, records the
-  outcome in `projects-moved.json`, and emits `projects.moved`. A Mac is unchanged.
+- Projects on a box: nothing moves on its own. A new box (no homes in `~/Vyre/projects`) keeps
+  projects in `/work/projects`, where VyreDrive can share them; an existing box stays on
+  `~/Vyre/projects` until the owner runs `projects.move` (`vyre projects move [--dry-run]`,
+  PERSON_ONLY). The dry run answers what would move, what would be skipped and why, and the
+  marker and row rewrites, and changes nothing. The real move runs once, only with
+  `VYRE_PROJECTS_MOVE=1` or config `projects.move` set to `"enabled"` (off until box-deploy
+  validates it on a copy), leaves a link at each old folder so Claude sessions still resume,
+  records `projects-moved.json`, emits `projects.moved`, and asks for a vyred restart. It refuses
+  a Mac (`not_box`), agents, a second run (`already_moved`) and a box without `/work`
+  (`no_work_folder`).
 
 #### The hosted app may call the box from the owner's browser
 
 - The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
   owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
-  `GET /v1/health` from it answers only `{ reachable: true }`; every other call and WebSocket
-  needs a web session (`deps.webSession`, e2e's rule), else `401 web_session_required`. The call
-  reaches the router with `peer.origin` and `peer.webSession`.
+  Allowed headers: content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key,
+  last-event-id (the same set the relay path carries). `GET /v1/health` from it answers
+  only `{ reachable: true }`. Every other request goes to vyred's router untouched (the body
+  unread) with `peer.origin`, where e2e's person session decides (`401 person_session_required`
+  without one). WebSockets from it are the owner's (every stream needs a ticket a tool minted).
+- Guests: GUEST_SAFE is `threads.list` only (`glass.close` dropped too).
 - Tailscale docs: the iPhone DNS failure behind tailscale#19147 in "When a device cannot connect".
 
 #### VyreDrive: the name, a lighter secrets scan, no proof to switch a share, and no guest Glass

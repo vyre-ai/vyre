@@ -124,7 +124,8 @@ export function run(o) {
   write({ type: "control_request", request_id: "vyre-init", request: { subtype: "initialize" } });
 
   return {
-    pid: child.pid,
+    // A getter: through the box's spawner the pid is known a moment after the call.
+    get pid() { return child.pid; },
     write,
     get alive() { return !exited; },
     /**

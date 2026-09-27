@@ -77,7 +77,8 @@
       "adr/0025-planner.md",
       "adr/0026-relay.md",
       "adr/0029-resilience.md",
-      "adr/0030-sessions.md"
+      "adr/0030-sessions.md",
+      "adr/0032-person-and-device.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
