@@ -60,30 +60,30 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   c8fb9aae (batch 2: relay, native Capsule, resilience, tokens, docs; eval said.js),
   fb1ed1d1 (3a: sessions 4311fca5 with the SDK default, chat fb0694d, chat contract 6182766).
 
-## Doing (after Logout 4, 2026-09-27 14:15 UTC)
+## Doing (after Logout 4, 2026-09-27 14:30 UTC)
 
-- rooms.test.js on main 7880dfa6: 10/10 on the test box. memory-iq's failure was its branch (213
-  behind main) or a run under claude on the Mac (peer.js refuses person-only calls there). Routed
-  back to memory-iq.
-- DEPLOY GATE: box-image on faee38c9 was a skip (detect), not a build. On main 7880dfa6 it builds
-  and FAILS: box/Dockerfile imported a lone copy of core/sessions/sdk.js, which now imports
-  core/config/dialogs.js. Fix on int/box-sdk-pin, pushed as work/integrator-box: ccffa0ac (pin in
-  core/sessions/sdk-pin.js, no imports; sdk.js re-exports) + d95c34c8 (guard test in
-  test/box-init.test.js). Targeted on the test box: 131 tests, 0 fail. box-image run 36324676019
-  queued (Actions saturated). ci (work/ci-sdkver) and e2e (work/e2e-sdk) pushed the same fix;
-  land whichever is green first, then box-deploy and e2e headscale get the new sha.
-- idle RSS on main 7880dfa6 (test box, Node 22, started under load 10, rough): mean 119.8 MB, max
-  158.9 MB FAIL. So the jump is mostly in 3a/3b, not batch 4. Sent to ci (bisecting on
-  work/ci-rss-bisect).
-- BATCH 4 staging: pre/batch4b on int/box-sdk-pin, at 2eeda1e7: docs 3ddc281d, capsule-now 28246cd0
-  (Electron copies out), capsule-agent 42e8da05 (State.swift: queued-turn rule plus main's
-  per-reply turn after the hand-over), app-design be98d494, capsule-apps e99b09d, teammates
-  b5934a4f, platform e8e3d902, memory-iq 5985f489, e2e 0856b9b9, polish-cli 5ac697c8, tailnet
-  a7365a99 (hostedOrigins in core/config, main's presence lists kept). Full suite running on the
-  test box: ~/vyre-ci/int-b4.log.
+- rooms.test.js on main: 10/10 on the test box; memory-iq's failure was its own branch or a run
+  under claude on the Mac (peer.js). Routed back to memory-iq.
+- DEPLOY GATE: box-image on faee38c9 had skipped the build (detect); on 7880dfa6 it built and
+  failed (a lone copy of core/sessions/sdk.js imported config/dialogs.js). The fix landed on
+  origin main as 65cbc02a (pushed by another team, same design as my ccffa0ac, which is dropped).
+  Local main fast-forwarded to it. box-image on main 65cbc02a running; when green, the lead,
+  box-deploy and e2e (headscale) get 65cbc02a. ci's 6b16be62 fixes detect (builds from the npm
+  pack list).
+- idle RSS on main 7880dfa6 (test box, rough, under load): mean 119.8 MB, max 158.9 MB. ci bisects
+  3a/3b (work/ci-rss-bisect). Batch 4 does not land until that is fixed.
+- BATCH 4 staging: pre/batch4b at 5ca7af66 = main 65cbc02a + docs 3ddc281d, capsule-now
+  28246cd0, capsule-agent 42e8da05, app-design be98d494, capsule-apps e99b09d, teammates b5934a4f,
+  platform e8e3d902, memory-iq 5985f489, e2e 0856b9b9, polish-cli 5ac697c8, tailnet a7365a99, plus
+  fixes: the CLI vault-window CHANGELOG entry polish-cli's branch lost, --popover out of deck.css.
+  Full suite on the test box (before the popover fix): 3021 tests, 2941 pass, 3 fail (tokens:
+  fixed; vault watch and memory p95 7.1 ms: load flakes, 38/38 on rerun), 74 skipped, 3 todo.
+- Check with memory-iq: 5985f489 removes most of core/memory/personal/model.js and its test (the
+  reader 07f5c3ca replaces the model pass adc1a94b?).
 - Parked: federation 98048454 (conflicts in daemon, link, switchboard; its owner merges main).
-- Waiting for ready shas: mobile, capsule-pro (capsule-mac green), pwa. Then ci, ci-boundaries last.
-- State.swift after the capsule-agent merge is not compiled yet: run capsule-mac on the batch.
+- Waiting for ready shas: mobile, capsule-pro (capsule-mac green), pwa, ci. ci-boundaries LAST
+  (it has not merged main).
+- State.swift after the capsule-agent merge is not compiled yet: capsule-mac on the batch.
 
 ## Needs from others
 
