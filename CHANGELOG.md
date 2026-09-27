@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Four Capsule tests hardened for loaded CI runners
+
+- The pause test rests 400 ms, the stream test holds off ask-on-pause, the queued-session test
+  says the hand-over again until heard, and the hide-mid-wait screen test rests 500 ms. Each had
+  failed capsule-mac once on timing alone. Tests only.
+
 #### A missing key is added in the panel, never through a terminal
 
 - The user's feedback: "No speech key is saved. Run: vyre voice key" is gone. With no speech
