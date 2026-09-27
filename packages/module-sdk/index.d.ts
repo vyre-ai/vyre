@@ -41,6 +41,17 @@ export interface SettingDef {
   /** live: at once; session: from the next session; restart: when vyred next starts. */
   apply: "live" | "session" | "restart";
   advanced?: boolean;
+  /** The setting can loosen what Vyre allows; the Deck marks it. */
+  security?: "loosens";
+  /** What it loosens, in a few words. */
+  loosens?: string;
+  /** Ask the person before a change: always, or only for these values. */
+  confirm?: true | { values: unknown[] };
+  /** Where the value is kept. Omitted: Vyre's settings table. "$value" and "$project" fill a tool store's input. */
+  store?:
+    | { config: string }
+    | { claude: string }
+    | { tool: { get: { tool: ToolName; input?: unknown; read?: string }; set: { tool: ToolName; input?: unknown } } };
 }
 
 export interface Manifest {
@@ -214,6 +225,15 @@ export interface ModuleContext {
   upgrade(name: string, handler: (req: any, socket: any, head: any, caller: Caller) => void): void;
   /** A raw HTTP route at /v1/<module>/<name>, for what a tool can't carry. */
   route(name: string, fn: (req: any, res: any, at: { caller: Caller; url: URL }) => unknown): void;
+  /**
+   * Register a session driver declared under does.providers (ADR 0030). The driver's full shape is
+   * core/sessions/provider.js, and it must pass core/sessions/conformance.js.
+   */
+  provider(name: string, driver: SessionDriver): void;
+  /** @internal The registered drivers, for the Switchboard. */
+  providers: { get(name: string): SessionDriver | null; list(): string[] };
+  /** @internal Every running module's declared settings, tagged with its module. For the settings module. */
+  declaredSettings(): (SettingDef & { module: string })[];
   /** @internal The whole merged config.json. Modules move to ctx.settings. */
   readonly config: any;
   /** @internal A tool on the linked box, from a module on the Mac. */
@@ -223,6 +243,9 @@ export interface ModuleContext {
   /** @internal The stream router, for the same. */
   upgrader(policy: unknown): unknown;
 }
+
+/** A session driver (ADR 0030). run() is required; the rest is defined by core/sessions/provider.js. */
+export interface SessionDriver { run(...args: any[]): unknown; [k: string]: unknown }
 
 export interface Module {
   start(ctx: ModuleContext): Promise<{ stop(): Promise<void> | void } | void> | { stop(): Promise<void> | void } | void;

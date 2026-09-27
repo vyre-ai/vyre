@@ -17,7 +17,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   ctx. Nothing loads it yet; the loader adopts it in phase 1.
 - test/module-sdk.test.js: every module.json in the repo passes the schema, and the types name every
   manifest key and every ctx member the loader hands a module. A new manifest key goes in the
-  schema first; `x-` keys are free.
+  schema first; `x-` keys are free. It knows native-core's setting fields (store, security, confirm,
+  loosens) and the ctx members sessions and settings add (provider, providers, declaredSettings).
 - Docs drift: SPEC's `requires` example named the store and events (never modules), its entry file
   imported a type that didn't exist, `ctx.events.latestId` was undocumented, and module-contract
   said the Deck reads `shows.deck` (it doesn't yet).

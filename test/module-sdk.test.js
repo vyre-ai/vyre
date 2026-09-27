@@ -37,7 +37,12 @@ const full = () => ({
   },
   watches: { emits: ["order.placed"], on: ["planner.*", "order.placed"] },
   shows: { deck: ["now:bakery.orders", "renderer:bakery.orders", "settings"], capsule: { "results:bakery.orders": { title: "Orders" } }, cli: ["bakery"], streams: [] },
-  settings: [{ key: "bakery.opens", group: "bakery", label: "Opening hour", type: "int", min: 0, max: 23, default: 7, levels: ["account", "project"], apply: "live" }],
+  settings: [
+    { key: "bakery.opens", group: "bakery", label: "Opening hour", type: "int", min: 0, max: 23, default: 7, levels: ["account", "project"], apply: "live" },
+    { key: "bakery.fax", label: "Fax orders", type: "bool", levels: ["account"], apply: "live", security: "loosens", loosens: "outbound fax", confirm: { values: [true] }, store: { config: "bakery.fax" } },
+    { key: "bakery.oven", label: "Oven", type: "string", levels: ["project"], apply: "session", confirm: true, store: { tool: { get: { tool: "bakery.orders", input: { project: "$project" }, read: "oven" }, set: { tool: "bakery.order", input: { oven: "$value" } } } } },
+    { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session", store: { claude: "model" } },
+  ],
   needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"] },
   teaches: { memory: ["order.habit"], prompt: [{ level: "project", file: "prompt/bakery.md" }] },
   "x-bakery": { anything: true },
@@ -81,6 +86,11 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.settings[0].key = "opens"; }), /must look like module\.key/);
   has(bad(m => { m.settings[0].key = "oven.opens"; }), /setting "oven\.opens" must start with "bakery\."/);
   has(bad(m => { m.settings[0].levels = []; }), /levels needs at least 1/);
+  has(bad(m => { m.settings[1].levels = ["project"]; }), /a config\.json setting is account only/);
+  has(bad(m => { m.settings[3].key = "bakery.opens"; }), /setting bakery\.opens is declared twice/);
+  has(bad(m => { m.settings[1].store = { config: "a", claude: "b" }; }), /store/);
+  has(bad(m => { m.settings[2].store.tool.set = {}; }), /set\.tool is required/);
+  has(bad(m => { m.settings[0].security = "tightens"; }), /security must be one of loosens/);
   has(bad(m => { m.settings[0].apply = "never"; }), /apply must be one of live, session, restart/);
   has(bad(m => { m.replaces = "memory"; }), /a replacement takes the name of the module it replaces/);
   has(bad(m => { m.teaches.prompt[0].file = "/etc/passwd"; }), /must be a relative path to a \.md file/);

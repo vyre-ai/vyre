@@ -11,8 +11,8 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - P0 written: packages/module-sdk (manifest.schema.json, manifest.js checkManifest, index.d.ts, package.json private, README), test/module-sdk.test.js, docs drift fixes in docs/architecture/spec.md and docs/build/module-contract.md.
 
 ## Doing
-- P0 GREEN on testbox (test/module-sdk.test.js + test/docs-*.test.js: 69/69). Sent to the integrator for batch 4.
-- ADR 0033 gained: the box's `vyre update` fetches, checks and signs the APK (lead, 2026-09-27; platform owns it, mobile owns signer/route); app-design's slot rules; pwa's Deck seam (deck/js/slots.js, /m/ network-only); release assets + release.json + min_from for ci; `--restore-data` asks a typed confirm (data loss).
+- P0 green (69/69 on testbox) at the sha in the last commit; it also passes over work/native-core 42dcb98c's tree (module-sdk test 8/8), which carries sessions' provider ctx. Integrator: take this sha, not 2e6997dd (that one fails once native-core merges).
+- native-core's module-declared settings are in (42dcb98c): manifest `settings` with optional store {config}|{claude}|{tool}, security/confirm/loosens; loader validates via core/config/settings.js validateDecls; ctx.declaredSettings(). settings.set is PEOPLE-only: P1's ctx.settings.set needs a narrow internal path limited to the module's own prefix, never confirm/loosens keys.
 
 ## Next
 1. P1 once native-core's settings are on main: registry.status() rows (GET /v1/modules) gain `commands` from the manifest while running (polish-cli's dispatcher reads them; input schemas come from the existing tools listing); loader adopts packages/module-sdk/manifest.js (add packages/module-sdk to package.json files); apiVersion; ctx.api, ctx.log levels, ctx.paths.data, ctx.settings; watches.on and needs.tools for home modules; replaces (name == replaces) and disable; `vyre module new/list/check/disable/enable`.

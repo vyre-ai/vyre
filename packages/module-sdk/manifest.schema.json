@@ -151,8 +151,34 @@
         "default": {},
         "levels": { "type": "array", "items": { "enum": ["account", "project"] }, "minItems": 1, "uniqueItems": true },
         "apply": { "enum": ["live", "session", "restart"] },
-        "advanced": { "type": "boolean" }
+        "advanced": { "type": "boolean" },
+        "security": { "enum": ["loosens"], "description": "The setting can loosen what Vyre allows; the Deck marks it." },
+        "loosens": { "type": "string", "description": "What it loosens, in a few words." },
+        "confirm": {
+          "description": "Ask the person before a change: always, or only for these values.",
+          "anyOf": [{ "const": true }, { "type": "object", "required": ["values"], "additionalProperties": false, "properties": { "values": { "type": "array" } } }]
+        },
+        "store": { "$ref": "#/$defs/settingStore" }
       }
+    },
+    "settingStore": {
+      "description": "Where the value is kept. Omitted: Vyre's settings table.",
+      "anyOf": [
+        { "type": "object", "required": ["config"], "additionalProperties": false, "properties": { "config": { "type": "string", "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$", "x-message": "must be a dotted path into config.json" } } },
+        { "type": "object", "required": ["claude"], "additionalProperties": false, "properties": { "claude": { "type": "string", "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$", "x-message": "must be a dotted path into Claude Code's settings" } } },
+        {
+          "type": "object", "required": ["tool"], "additionalProperties": false,
+          "properties": {
+            "tool": {
+              "type": "object", "required": ["get", "set"], "additionalProperties": false,
+              "properties": {
+                "get": { "type": "object", "required": ["tool"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool" }, "input": {}, "read": { "type": "string" } } },
+                "set": { "type": "object", "required": ["tool"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool" }, "input": {} } }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

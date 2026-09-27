@@ -109,8 +109,14 @@ export function checkManifest(m) {
       Object.entries(TYPES.object(a) && TYPES.object(a.actions) ? a.actions : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.apps.${app}.actions.${k}`, t]))),
   ];
   for (const [where, t] of mapped) if (typeof t === "string" && !tools.includes(t)) out.push(`${where} names ${t}, which is not under does.tools`);
+  // The same rules as the loader's settings check (core/config/settings.js validateDecls).
+  const seen = new Set();
   for (const s of Array.isArray(m.settings) ? m.settings : []) {
-    if (s && typeof s.key === "string" && !own(s.key)) out.push(`setting "${s.key}" must start with "${m.name}."`);
+    if (!s || typeof s.key !== "string") continue;
+    if (!own(s.key)) out.push(`setting "${s.key}" must start with "${m.name}."`);
+    if (seen.has(s.key)) out.push(`setting ${s.key} is declared twice`);
+    seen.add(s.key);
+    if (s.store && s.store.config !== undefined && Array.isArray(s.levels) && s.levels.includes("project")) out.push(`setting ${s.key}: a config.json setting is account only`);
   }
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.
