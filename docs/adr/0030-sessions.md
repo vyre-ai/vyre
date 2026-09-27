@@ -412,7 +412,19 @@ takes, and who provides it:
 `threads.edit` and `threads.unqueue` act on queued rows only; editing a message Claude already
 has is a rewind to it.
 
-### 12. Spec changes
+### 12. Concurrency slots
+
+The user, 27 Sep: limits on how many teammates (ADR 0031) and subagents run at once, per project
+and for the box, enforced in this layer so nothing routes around them. A ledger in
+`core/sessions/slots.js` holds `teammate` and `subagent` slots; a take with no room waits in a fair
+line (oldest first in a project, projects in turn); every change is an event with the position.
+Subagents in SDK-driven sessions wait in an in-process PreToolUse hook on the Agent and Task tools
+and give the slot back when the call ends, the turn ends or the session stops; teammates take and
+release theirs through `sessions.slots`. Terminal sessions get a plugin PreToolUse that refuses at
+once with the position (next). The process cap (`sessions.max_live`) stays separate: it bounds
+memory, the slots bound usage.
+
+### 13. Spec changes
 
 - Principle 1 becomes "public Claude Code surfaces only: the plugin system, documented CLI flags
   and the Claude Agent SDK". The risk note about `--permission-prompt-tool stdio` goes: the SDK

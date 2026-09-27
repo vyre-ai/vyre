@@ -31,6 +31,35 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   tool event. Given the changed keys it regroups from the row before the first change and stops
   at the first old row boundary past the last one; unchanged rows stay the same objects.
   groupItems stays the pure full pass, and a test checks both agree on random sequences.
+#### Sessions: concurrency slots for teammates and subagents (the user's usage control)
+
+- core/sessions/slots.js: a ledger of two kinds of slot, `teammate` and `subagent`, each with a
+  box-wide limit (`sessions.limits` in config: `max_active_teammates` 6, `max_subagents` 8) and a
+  per-project one (person-only `sessions.limits.set {project, max_active, max_subagents}`). A take
+  with no room waits its turn: oldest first within a project, projects in turn across the box.
+  Events `slot.taken`, `slot.released`, `slot.queued {kind, project, owner, key, position}`. Reads:
+  `sessions.slots.status`, `sessions.limits.get`. Internal `sessions.slots` (take, release,
+  release-owner, status) for the Switchboard and for teammates (ADR 0031), which holds a teammate
+  slot for a summon.
+- A subagent (Claude Code's Agent or Task tool) in a session Vyre runs on the Agent SDK waits for
+  a subagent slot in an in-process PreToolUse hook (up to 10 minutes, then it is refused with the
+  reason). The slot comes back when the Agent call ends, the turn ends or the session stops.
+  Terminal sessions and sessions on the CLI runner take theirs through the plugin: harness.rules
+  refuses an Agent or Task call at once when there is no room, with its place in line (a hook
+  cannot wait); harness.learn (now also on Agent and Task in hooks.json) gives the slot back when
+  the call ends, and harness.stop at the turn's end.
+- Purposes `teammate` (opus) and `helper` (haiku) for ADR 0031.
+- The fake `claude` runs the host's PreToolUse hooks (hook_callback) before a tool, and has an
+  Agent tool ("subagent <task>").
+
+#### Sessions: a retried send is the same message; the queue and the mode can be read
+
+- `threads.send` takes the caller's Idempotency-Key (ADR 0029 R2, resilience's `keyUuid`) as the
+  message's uuid. A send whose uuid was already handed to Claude Code (new table `threads_sent`)
+  or queued answers `{sent: true, already: true}` and starts nothing, even after a restart.
+- `threads.queue {thread}`: the words queued and not handed over yet (queued, uuid, text, surface, at).
+- Thread records carry `mode` (default, acceptEdits, plan), kept by `threads.mode`.
+
 #### Sessions: the Agent SDK is the default driver (ADR 0030)
 
 - `sessions.driver` defaults to `sdk`: every session Vyre starts (Chat, agents, the Capsule, the

@@ -37,7 +37,7 @@ function inbox() {
  * The SDK's options for a launch. The same launch the CLI runner turns into flags (argsFor).
  * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           system?: { mode: "append"|"replace", text: string }|null, append?: string|null, budgetUsd?: number|null,
- *           tools?: "none"|null, settings?: boolean, bin?: string|null, cwd: string, env: Record<string, string|undefined> }} o
+ *           tools?: "none"|null, settings?: boolean, bin?: string|null, cwd: string, env: Record<string, string|undefined>, hooks?: any }} o
  */
 export function optionsFor(o) {
   const system = o.system && o.system.mode === "replace" && o.system.text
@@ -59,6 +59,7 @@ export function optionsFor(o) {
     ...(o.name && !o.resume ? { extraArgs: { name: o.name } } : {}),
     ...(typeof o.budgetUsd === "number" && o.budgetUsd > 0 ? { maxBudgetUsd: o.budgetUsd } : {}),
     ...(o.bin ? { pathToClaudeCodeExecutable: o.bin } : {}),
+    ...(o.hooks ? { hooks: o.hooks } : {}),
   };
 }
 
