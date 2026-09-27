@@ -75,7 +75,17 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 - Testbox HOLD (sessions' full suite). Untested since eecfb59c: 8c7bcdb1 (threads fork,
   threads.send-now, /pair QR, push.seen device). Queued: threads-sessions, switchboard-cli, phone.
-- `vyre config`: native-core commits its draft (lead's preference), I take it over; waiting on the sha.
+- `vyre config` (native-core 77faf1e3): once it is on main I make 9 of my 10 review fixes, with tests:
+  kit parse (unknown flags exit 2, --project with --account refused), --project defaults to the
+  folder's project (projects.of) and the view is named, failTool with the "denied" next step,
+  closest() for unknown keys and groups, the loosens confirm (typed key, --yes; callAsPerson),
+  typed usage and --file/- for JSON values, help and GROUPS, `vyre config keys`, the restart hint as
+  a next: line. Native-core does #3 only (settings.set enforcing "loosens" with presence).
+- platform (ADR 0033): does.commands [{verb, tool, summary, args?}] is in their manifest schema
+  (work/platform 2e6997dd). I write the P4 dispatcher in core/cli/index.js (unknown command ->
+  a module's does.commands -> the tool, args from its input schema). I review their module.js (P1)
+  and update.js (P2): `vyre modules` becomes an alias; plain --rollback asks nothing,
+  --rollback --restore-data asks a typed confirm (or --yes with --json).
   Lead's rules: set/reset are person-only with no Touch ID, except keys marked security:"loosens"
   (permission allow/bypass, the Gate, vault lock, presence length, new devices): a fresh proof plus
   a typed confirm line. --project defaults to the current directory's project.
