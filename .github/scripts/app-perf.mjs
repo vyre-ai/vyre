@@ -1,7 +1,8 @@
 // @ts-check
 // The app's web perf guard for CI (ADR 0027, section 6): apps/app/dist served at /app/ on the same
 // origin as apps/test/world.js, opened at /app/?perf=1 in headless Chromium at 390x844 with the
-// CPU throttled 4x. It waits for Now, switches tabs 5 times, opens a session and scrolls it,
+// CPU throttled 4x. It waits for Now, switches tabs 5 times, approves an ask by the swipe, opens
+// a session from Chats and scrolls it,
 // then reads window.__vyrePerf.report(). Numbers of record come from real phones; this only
 // guards against regressions: a tracked measure more than 20% worse than the last green run
 // fails, and a measure with no samples is "not measured", never a failure.
@@ -83,25 +84,43 @@ async function first(page, selectors) {
 
 async function drive(page) {
   const notes = [];
+  // An open ask (a fake claude asking to write a file): a Now row that approves without presence.
+  await fetch(`http://127.0.0.1:${WORLD_PORT}/__test/ask`, { method: "POST" }).catch(() => notes.push("could not start an ask"));
   await page.goto(`http://127.0.0.1:${PORT}/app/?perf=1`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => /** @type {any} */ (window).__vyrePerf, null, { timeout: 60_000 });
   // Now is drawn when open.cold has a sample (it is marked when Needs is drawn).
   await page.waitForFunction(() => (/** @type {any} */ (window).__vyrePerf.report().metrics?.["open.cold"]?.n || 0) > 0, null, { timeout: 60_000 })
     .catch(() => notes.push("open.cold never marked: Now did not draw"));
   for (let i = 0; i < 5; i++) {
-    for (const name of ["Chats", "Agents", "Now"]) {
-      const tab = await first(page, [`[data-testid="tab-${name.toLowerCase()}"]`, `role=tab[name=/${name}/]`, `text="${name}"`]);
+    for (const name of ["chats", "agents", "now"]) {
+      const tab = await first(page, [`[data-testid="tab-${name}"]`, `role=tab[name=/${name}/i]`]);
       if (!tab) { notes.push(`no ${name} tab`); continue; }
       await tab.click(); await sleep(300);
     }
   }
-  const row = await first(page, ['[data-testid="now-row"]', '[data-testid="session-row"]']);
-  if (row) {
-    await row.click();
-    const list = await first(page, ['[data-testid="transcript"]']);
-    if (list) { for (let i = 0; i < 10; i++) { await list.hover(); await page.mouse.wheel(0, 600); await sleep(100); } }
-    else notes.push("no transcript to scroll");
-  } else notes.push("no now-row or session-row to open");
+  // The approve swipe, as mobile's recipe has it: the row rests at scrollLeft === clientWidth, and
+  // scrolling it to 0 commits an approve (scrollend, or 90 ms after the last scroll). Only a row
+  // that needs no presence commits, so try each until approve.collapse has a sample.
+  const swipes = page.locator('[data-testid="now-row-swipe"]');
+  const count = await swipes.count();
+  for (let i = 0; i < count; i++) {
+    await swipes.nth(i).evaluate(el => el.scrollTo({ left: 0, behavior: "instant" })).catch(() => {});
+    await sleep(400);
+    if ((await page.evaluate(() => /** @type {any} */ (window).__vyrePerf.report().metrics?.["approve.collapse"]?.n || 0)) > 0) break;
+  }
+  if (!count) notes.push("no now-row-swipe to approve");
+  // A transcript for sure: the Chats tab, then its first row.
+  const chats = await first(page, ['[data-testid="tab-chats"]']);
+  if (chats) {
+    await chats.click(); await sleep(500);
+    const row = await first(page, ['[data-testid="chat-row"]', '[data-testid="session-row"]', 'main [role="button"]', 'main a[href*="session"]']);
+    if (row) {
+      await row.click(); await sleep(800);
+      const list = await first(page, ['[data-testid="transcript"]']);
+      if (list) { for (let i = 0; i < 10; i++) { await list.hover(); await page.mouse.wheel(0, 600); await sleep(100); } }
+      else notes.push("no transcript to scroll (no data-testid=transcript on the web)");
+    } else notes.push("no chat row to open");
+  }
   await sleep(1000);
   return { report: await page.evaluate(() => /** @type {any} */ (window).__vyrePerf.report()), notes };
 }
