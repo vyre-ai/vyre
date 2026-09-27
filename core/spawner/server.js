@@ -11,7 +11,9 @@
 // capability but SETUID, SETGID and KILL.
 //
 // Protocol, one JSON line to open each connection:
-//   {"op":"spawn","argv":[...],"env":{...},"cwd":"/work/..."}  -> {"id","pid"} then later {"exit":code,"signal":s}
+//   {"op":"spawn","argv":[...],"env":{...},"cwd":"/work/...","fd3":"..."}  -> {"id","pid"} then later {"exit":code,"signal":s}
+//                                                                 fd3: written once to the child's fd 3 and closed
+//                                                                 (an API key: Claude Code reads it there, its tools never see it)
 //                                                                 the client may send {"kill":"SIGTERM"}
 //   {"op":"io","id":"...","stream":"stdio"|"stderr"}            -> raw bytes: stdin in, stdout out; or stderr out
 // The child starts once both io connections are attached; a spawn nobody attaches to in 10 s ends.
@@ -30,15 +32,21 @@ const MAX_LIVE = 16;
 
 /**
  * @param {{ socket: string, mode?: number, allow: string[], agent: { uid: number, gid: number, groups: number[] },
- *   work?: string, home?: string, wrap?: (argv: string[]) => string[], log?: (m: string) => void }} o
+ *   work?: string, home?: string, wrap?: (argv: string[], cwd: string) => string[], makeDir?: (dir: string) => void, log?: (m: string) => void }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as the agent;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
  */
 export async function serve(o) {
   const log = o.log || (() => {});
   const work = path.resolve(o.work || "/work");
-  const wrap = o.wrap || (argv => ["/usr/bin/setpriv", `--reuid=${o.agent.uid}`, `--regid=${o.agent.gid}`, `--groups=${o.agent.groups.join(",")}`,
-    "--inh-caps=-all", "--", "/bin/sh", "-c", 'umask 002; exec "$@"', "sh", "/usr/bin/tini", "-s", "--", ...argv]);
+  // The default changes directory as the agent, after setpriv: root here has no right to enter the
+  // agent's home (no DAC capabilities), so the spawn itself starts in /.
+  const custom = Boolean(o.wrap);
+  const wrap = o.wrap || ((argv, cwd) => ["/usr/bin/setpriv", `--reuid=${o.agent.uid}`, `--regid=${o.agent.gid}`, `--groups=${o.agent.groups.join(",")}`,
+    "--inh-caps=-all", "--", "/bin/sh", "-c", 'umask 002; cd "$1" || exit 126; shift; exec "$@"', "sh", cwd, "/usr/bin/tini", "-s", "--", ...argv]);
+  // Programs by their real path, so a symlink (/bin/sh to dash) is the program it names.
+  const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
+  const allowed = new Set(o.allow.map(real));
   /** @type {Map<string, { req: any, control: net.Socket, stdio?: net.Socket, stderr?: net.Socket, child?: import("node:child_process").ChildProcess, timer: NodeJS.Timeout }>} */
   const live = new Map();
 
@@ -61,9 +69,12 @@ export async function serve(o) {
   /** Is this a spawn we will run? Returns why not, or null. */
   function refuse(req) {
     if (!Array.isArray(req.argv) || !req.argv.length || !req.argv.every(a => typeof a === "string" && !a.includes("\0"))) return "argv must be strings";
-    if (!o.allow.includes(req.argv[0])) return `${req.argv[0]} is not a program the spawner starts`;
+    if (!path.isAbsolute(req.argv[0]) || !allowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program the spawner starts`;
+    if (req.fd3 !== undefined && (typeof req.fd3 !== "string" || req.fd3.length > 4096)) return "fd3 must be a short string";
     const cwd = path.resolve(String(req.cwd || work));
-    if (cwd !== work && !cwd.startsWith(work + path.sep)) return `cwd must be under ${work}`;
+    const under = dir => dir && (cwd === dir || cwd.startsWith(dir + path.sep));
+    // The work folder, or the agent's own home (an agent without a project works there).
+    if (!under(work) && !under(o.home ? path.resolve(o.home) : null)) return `cwd must be under ${work}${o.home ? ` or ${o.home}` : ""}`;
     if (live.size >= MAX_LIVE) return "too many sessions are running";
     return null;
   }
@@ -75,8 +86,16 @@ export async function serve(o) {
     const env = {};
     for (const [k, v] of Object.entries(s.req.env || {})) if (ENV_KEYS.test(k) && typeof v === "string" && !v.includes("\0")) env[k] = v;
     if (o.home) { env.HOME = o.home; env.USER = "vyre-agent"; }
-    const argv = wrap(s.req.argv);
-    const child = spawn(argv[0], argv.slice(1), { cwd: path.resolve(String(s.req.cwd || work)), env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    const cwd = path.resolve(String(s.req.cwd || work));
+    const argv = wrap(s.req.argv, cwd);
+    // A folder in the agent's home is made as the agent, which owns that home (mkdir -p: root
+    // here cannot even look inside it).
+    if (o.home && cwd.startsWith(path.resolve(o.home) + path.sep) && o.makeDir) {
+      try { o.makeDir(cwd); } catch (e) { log(`spawner: cannot make ${cwd}: ${/** @type {Error} */ (e).message}`); }
+    }
+    const fd3 = typeof s.req.fd3 === "string";
+    const child = spawn(argv[0], argv.slice(1), { cwd: custom ? cwd : "/", env, stdio: fd3 ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"], detached: true });
+    if (fd3 && child.stdio[3]) { const p3 = /** @type {any} */ (child.stdio[3]); p3.on("error", () => {}); p3.end(s.req.fd3); }
     s.child = child;
     child.on("error", e => { try { s.control.end(JSON.stringify({ error: e.message }) + "\n"); } catch {} });
     s.stdio.pipe(/** @type {any} */ (child.stdin)).on("error", () => {});

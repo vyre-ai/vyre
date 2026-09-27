@@ -52,8 +52,18 @@ if (!process.getuid || process.getuid() !== 0) {
   } catch (e) { log(`spawner: ${WORK} is not fully shared: ${/** @type {Error} */ (e).message}`); }
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
 
-  const allow = ["/usr/local/bin/claude", ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
-  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home: env.VYRE_AGENT_HOME || "/home/vyre-agent", log });
+  // Claude Code: the global install, and the Agent SDK's own binary (ADR 0030) where it is bundled.
+  // It lives in the image's own node_modules, or where sessions installs it (/opt/vyre-sessions-sdk).
+  const bundled = [];
+  for (const base of [path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".."), "/opt/vyre-sessions-sdk", env.VYRE_SESSIONS_SDK_DIR || ""].filter(Boolean)) {
+    const sdk = path.join(base, "node_modules", "@anthropic-ai");
+    try { for (const n of fs.readdirSync(sdk)) if (/^claude-agent-sdk-linux-/.test(n) && fs.existsSync(path.join(sdk, n, "claude"))) bundled.push(path.join(sdk, n, "claude")); } catch {}
+  }
+  const allow = ["/usr/local/bin/claude", ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
+  const home = env.VYRE_AGENT_HOME || "/home/vyre-agent";
+  const makeDir = dir => execFileSync("/usr/bin/setpriv", [`--reuid=${AGENT.uid}`, `--regid=${AGENT.gid}`, `--groups=${SHARED}`, "--inh-caps=-all", "--",
+    "/bin/sh", "-c", 'umask 002; exec mkdir -p "$1"', "sh", dir], { stdio: "ignore" });
+  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, log });
 
   // The loop, and so vyred, as uid vyre, in the shared group, with no capabilities, and knowing
   // where to ask. Its umask is 002, so what it writes in /work the agent can change too; its own

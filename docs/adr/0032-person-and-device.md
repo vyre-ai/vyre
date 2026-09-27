@@ -117,6 +117,14 @@ the restart loop and vyred run as vyre under the spawner, and each session runs 
 `tini -s`, a subreaper for that session's tree, never a second PID 1; the spawner adds no init
 of its own. scripts/e2e-split/check.sh proves it in a throwaway container, with ci's smoke.
 
+**Known gap (27 Sep 2026): the split is built but off.** `sessions.spawner` is "off" by default,
+so Vyre-owned sessions on the box still run as uid vyre, as before the split, and peer.js's
+ancestry check (with the process group and session) is what refuses their person-only calls.
+Under the split they could not reach vyred's socket, and so would lose the Vyre MCP tools and the
+hooks that call vyred, until sessions reach them in process (ADR 0030 phase 3). The split turns on
+in the same landing as phase 3. `sessions.spawner: "on"` (or VYRE_SESSIONS_SPAWNER=on) turns it
+on before that, for testing.
+
 ### 4. On the Mac, the residual is accepted
 
 A split uid is not practical on a person's Mac. A process of the same user can read what the
