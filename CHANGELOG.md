@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A box container replaced by an update no longer finds its own old lock held
+
+- vyred.lock named the old container's vyred pid, and in the new container (the same boot) that pid
+  can belong to the spawner or the loop, both under /opt/vyre, so vyred refused to start "already
+  running" and the loop kept retrying (rc-smoke on 0.1.0-rc.1, now and then after `vyre update`).
+  The lock now records when its process started; a live pid that started at another time does not
+  hold it (core/daemon/lock.test.js).
+
+#### In the box's container, `vyre` waits for vyred instead of starting a second one
+
+- A `vyre` command run with docker exec while the box's vyred was restarting (the loop's 2 s gap,
+  or right after the container started) started a vyred of its own, without the spawner. The
+  loop's vyred then exited "already running" until the loop gave up, and the stray one died with
+  the exec: later calls said "vyred is not running" and vault writes made meanwhile were lost
+  (rc-smoke on 0.1.0-rc.1, now and then). With VYRE_SUPERVISOR=docker, ensureUp waits up to 20 s
+  for the supervisor's vyred and never starts one (test/client-socket.test.js).
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
