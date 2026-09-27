@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Five sessions and switchboard edges frozen until after 0.1.0
+
+- test/boundaries.test.js and docs/architecture/boundaries.md freeze core/sessions -> spawner,
+  switchboard and transcripts, and core/switchboard -> harness and sessions: the sessions and
+  switchboard split (ADR 0030). Sessions owes the cleanup after 0.1.0 (one module, or ctx.call).
+
 #### A bare "tailnet" label is never a caller
 
 - core/modules callerAllowed: a tool whose callers list says "tailnet" opens to the owner's
