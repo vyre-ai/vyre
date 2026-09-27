@@ -98,6 +98,10 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   person, presence). Headless Chrome over CDP: renders, badge on with ?perf=1, kept on /app/,
   off after ?perf=0.
 
+- READY sha for batch 4 / 0.1.0: 2f1ccfff (16010a34 + the node_modules symlink untracked; ci
+  flagged it breaking every app job on a runner). Sent to the integrator. Pushes are paused (lead)
+  except to hand over a finished sha.
+
 ## One app: Doing
 - The real-iPhone run: steps in "iPhone test steps" below, after tonight's deploy.
 - Design-system adoption, remaining: vault TrustCard and the Rows AskCard still draw their own
@@ -219,6 +223,9 @@ down after):
 - Later: share sheet, Taildrop, widgets, Live Activities.
 
 ## Needs from others
+- cohesion (docs/design/cohesion.md, work/cohesion 199120b5): agreed to items 7, 8, 9, 3 and 1, after
+  0.1.0, in the order 8, 7, 9, 1, 3 as each tool lands. For 8 they need to send the /v1/tools field
+  names for human_only and sessionable.
 - STANDING RULE (user, 27 Sep): Vyre must not nag. Face ID (device proof) only for pairing a new
   device, vault secrets, and sending, posting or paying outside; one Face ID covers about 30
   minutes. Creating or editing an agent needs NO Face ID: a person caller is enough. Keep the
