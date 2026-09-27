@@ -72,9 +72,11 @@ mobile and the Capsule (through their owners).
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-9. vault.agent.fill (M, needs computers).
-11. Cards + addresses (M). 13. Autofill: extension, Android service,
-   Glass, simulator-only iOS/macOS providers (L).
+9. vault.agent.fill (M): waits on computers.fill.begin/end (glass-live/computers).
+13. Autofill (L): the Android AutofillService + CredentialProviderService (Kotlin) in the Expo APK
+   (waits on mobile's native module layout); iOS/macOS ASCredentialProvider targets built in the
+   simulator/CI only (no Apple Developer team); a real-browser check of the extension (passkeys,
+   cards) when the lead says the Mac is free.
 
 ## Needs from others
 
