@@ -79,7 +79,7 @@ function theme() {
     background: v("--panel", "#161513"), foreground: v("--text", "#F1EEE6"),
     cursor: v("--focus", "#C6F36B"), cursorAccent: v("--panel", "#161513"),
     selectionBackground: v("--rule-strong", "#3A3733"),
-    red: v("--beacon-ink", "#FF7A59"), brightRed: v("--beacon-dot", "#FF7A59"),
+    red: v("--beacon-ink", "#B8A4FF"), brightRed: v("--beacon-dot", "#B8A4FF"),
     green: v("--focus", "#C6F36B"), brightGreen: v("--signal-hover", "#D4F88A"),
     yellow: v("--recall-ink", "#EBC76B"), brightYellow: v("--recall", "#EBC76B"),
     brightBlack: v("--label", "#8C877D"),

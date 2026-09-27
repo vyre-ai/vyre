@@ -352,6 +352,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
   brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
   still fetches the zip until capsule-pro retires it.
+#### "Needs you" is violet everywhere
+
+- Coral is gone from the repo: the Deck, the CLI, the vault kit, the Capsule, the site, the docs
+  and the design boards all use violet (#B8A4FF dark, #5B3FC4 paper). The CLI's beacon comes from
+  `ATTENTION` in `core/config/palette.js`, so teal stays a one-line swap. deck.css, theme.js and
+  TOKENS.md take the same values as pwa's swap, `--beacon-badge-ink` included. test/hygiene.test.js
+  passes.
+
+#### Deck design: Direction B, second pass
+
+- The user picked B. docs/design/deck-directions/ now holds B only, redone on a reduced system:
+  Instrument Sans plus JetBrains Mono for code, five sizes, two weights, eight neutrals, lime and
+  violet. New States board (loading, empty, error, offline, many items, long names, button and
+  held-item states, keyboard). docs/design/deck.md writes the system down.
+- `core/config/palette.js` drops recall gold and the beacon wash and rule, adds `del-wash`, sets
+  paper `hover` to #EEEAE2 (it equalled `panel`), and keeps teal as the one alternative
+  attention colour (`withAttention`). Its test checks teal too and that no other hue role comes
+  back; the deck.css match is a `todo` until the attention swap lands.
+- The render audit fails text off the five sizes, the two weights or the two families, and any
+  colour outside the palette.
 
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
