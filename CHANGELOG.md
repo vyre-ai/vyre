@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Only a person changes a setting, and settings speaks for them only to setting tools
+
+- core/presence: settings.set and settings.reset are person-only. A model never gets them, a
+  model's Bash on the socket is refused (403), and the owner's device over the tailnet or the relay
+  needs the person's session (401 person_session_required). `confirm: true` is not proof of a
+  person: it only says the person saw what widens.
+- core/settings: a caller labelled as an agent ("cli agent:kit", "mcp:agent:kit") is refused
+  whatever surface it rides on.
+- core/modules: settings may pass the person on (CALL_AS) only to the getter and setter tools that
+  first-party modules name in their settings, never to any other tool (e2e review, 2 HIGH).
+- docs/using/claude-code.md: the backup file is described without a stale name.
+
 #### A home module's settings stay inside its own rows
 
 - core/config/settings.js validateDecls and core/modules validate: a module from outside Vyre (not

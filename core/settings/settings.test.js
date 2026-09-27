@@ -255,3 +255,37 @@ export default { async start(ctx) {
   assert.ok(r.data.seen.length >= 2, JSON.stringify(r.data.seen));
   assert.deepEqual([...new Set(r.data.seen.slice(0, -1))], ["module:settings"], "the settings module, never the person, reached the home module's tools");
 });
+
+test("only a person changes a setting: agent labels, mcp, anonymous and an unsigned owner device are refused, and confirm is no proof", async t => {
+  const { d } = await world(t);
+  const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, caller);
+  for (const tool of ["settings.set", "settings.reset"]) {
+    const input = tool === "settings.set" ? { key: "sessions.mode", value: "bypassPermissions", confirm: true } : { key: "sessions.mode" };
+    for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "deck agent:kit", "unknown", "module:bakery", "tailnet:agent:kit"]) {
+      const r = await as(caller, tool, input);
+      assert.equal(r.error && r.error.code, "denied", `${tool} from ${caller}: ${JSON.stringify(r)}`);
+    }
+    // The owner's own device over the tailnet still needs the person's session.
+    assert.equal((await as("tailnet:alex", tool, input)).error.code, "person_session_required", tool);
+    assert.equal((await as("device:abcdefghijklmnop", tool, input)).error.code, "person_session_required", tool);
+  }
+  const mode = (await d.registry.call("settings.get", { key: "sessions.mode" }, "cli")).data;
+  assert.notEqual(mode.value, "bypassPermissions", "no refused call changed the mode");
+  // A person with confirm goes through.
+  assert.ok(!(await as("cli", "settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true })).error);
+});
+
+test("settings passes the person on only to the getters and setters first-party settings declare", async t => {
+  const { d } = await world(t);
+  const rec = d.registry.modules.get("settings");
+  const ctx = d.registry.context(rec.manifest);
+  // A tool no setting names is refused as the person, even one the person may call.
+  for (const tool of ["threads.answer", "agents.create", "vault.reveal", "settings.set"]) {
+    assert.throws(() => ctx.call(tool, {}, { as: "cli" }), /settings may not call .* as cli/, tool);
+  }
+  // A declared setter and getter still hear the person.
+  const r = await ctx.call("push.settings", {}, { as: "deck" });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.ok(d.registry.settingTools().has("sessions.models.set"));
+  assert.ok(!d.registry.settingTools().has("threads.answer"));
+});
