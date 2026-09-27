@@ -19,10 +19,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
+| [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
-| [`computers`](#computers) | `core/computers` | `box` | 21 | 14 | cli, deck |
-| [`files`](#files) | `core/files` | `box`, `local` | 16 | 3 | capsule, cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
@@ -33,13 +34,13 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 19 | 12 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 14 | 4 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 18 | 5 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
-| [`planner`](#planner) | `core/planner` | `box`, `local` | 14 | 5 | capsule, cli, deck |
+| [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 7 | 4 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 7 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -70,6 +71,17 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Shows on: cli
 - Needs vault: `per-agent`
 
+## apps
+
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders and the weather. Actions that send as the person go through apps.send, with a proof per call.
+
+- Folder: `local/apps`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [6](tools.md#apps)
+- Emits: [2 events](events.md#apps)
+- Shows on: no surface
+
 ## capsule
 
 The Mac command bar: press Control twice and talk to the assistant, any agent or any session.
@@ -95,8 +107,8 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [21](tools.md#computers), 5 of them only for other modules
-- Emits: [14 events](events.md#computers)
+- Tools: [23](tools.md#computers), 5 of them only for other modules
+- Emits: [15 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`
 - Needs vault: `tailscale-agent-authkey`
@@ -108,7 +120,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#files)
+- Tools: [17](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 
@@ -219,8 +231,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#memory), 1 of them only for other modules
-- Emits: [4 events](events.md#memory)
+- Tools: [18](tools.md#memory), 1 of them only for other modules
+- Emits: [5 events](events.md#memory)
 - Shows on: capsule, cli, deck
 
 ## names
@@ -260,8 +272,8 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/planner`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#planner)
-- Emits: [5 events](events.md#planner)
+- Tools: [15](tools.md#planner)
+- Emits: [6 events](events.md#planner)
 - Shows on: capsule, cli, deck
 
 ## presence
@@ -279,7 +291,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [8](tools.md#projects)
-- Emits: [4 events](events.md#projects)
+- Emits: [5 events](events.md#projects)
 - Shows on: cli
 
 ## push

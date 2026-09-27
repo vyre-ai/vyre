@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** @typedef {{ version: string, commit: string | null, dirty: boolean | null }} Build */
+/** @typedef {{ version: string, commit: string | null, dirty: boolean | null, stamped?: boolean }} Build */
 
 /** @type {Build | null} */
 let memo = null;
@@ -24,7 +24,7 @@ export function build(repo = REPO) {
   let b = { version, commit: null, dirty: null };
   try {
     const s = JSON.parse(fs.readFileSync(path.join(repo, "build.json"), "utf8"));
-    b = { version, commit: typeof s.commit === "string" ? s.commit : null, dirty: typeof s.dirty === "boolean" ? s.dirty : null };
+    b = { version, commit: typeof s.commit === "string" ? s.commit : null, dirty: typeof s.dirty === "boolean" ? s.dirty : null, stamped: true };
   } catch {
     if (fs.existsSync(path.join(repo, ".git"))) {
       const git = (/** @type {string[]} */ ...a) => execFileSync("git", ["-C", repo, ...a], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim();

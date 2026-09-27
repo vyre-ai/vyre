@@ -4,6 +4,9 @@
 
 import { painters } from "./style.js";
 
+/** The line that installs or upgrades Vyre. It is not on npm yet, so it names the published package. */
+export const INSTALL = "npm install -g https://vyre.run/box/vyre.tgz";
+
 /** The mark for a stream. @param {{ isTTY?: boolean }} [stream] */
 export function mark(stream = process.stdout) {
   const p = painters(stream);

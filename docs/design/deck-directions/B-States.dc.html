@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Deck B, States</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+/* Spec sheet furniture and two state looks, tokens only. */
+.st-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 24px; row-gap: 32px; align-items: start; }
+.st-cell { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.st-cap { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.vy .btn.is-hover { background: var(--hover); }
+.vy .btn-p.is-hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.vy .btn-p .spin { box-shadow: none; border: 1.5px solid var(--primary-hover); border-top-color: var(--primary-ink); }
+.vy .btn-p[disabled] .k { color: var(--label); }
+.st-sticky { position: sticky; top: 0; background: var(--panel); }
+</style>
+</helmet>
+<div class="vy dB {{theme}}" style="width: 1440px; height: 1400px; flex-direction: column; padding: 48px; gap: 32px;">
+
+<header class="col" style="gap: 6px;">
+  <span class="lbl">States</span>
+  <h1 class="t28 w6">Every surface, in every state</h1>
+  <p class="t15 t2">Each cell is the real component at product size. Nothing waits on a blank page, and nothing uses colour alone to say what happened.</p>
+</header>
+
+<div class="st-grid">
+
+  <!-- 1 Loading -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Loading</span><span class="note trunc">Skeleton rows match the rows they replace</span></div>
+    <div class="list" aria-busy="true">
+      <div class="list-h"><span class="lbl">Sessions</span><span class="row t12 t3" style="margin-left: auto; gap: 8px;"><span class="spin"></span>Loading sessions</span></div>
+      <div class="li"><span class="sk sk-shine" style="width: 24px; height: 24px; border-radius: 6px;"></span><div class="col grow" style="gap: 6px;"><span class="sk sk-shine" style="width: 62%;"></span><span class="sk sk-shine" style="width: 38%; height: 8px;"></span></div><span class="sk sk-shine" style="width: 32px; height: 8px;"></span></div>
+      <div class="li"><span class="sk sk-shine" style="width: 24px; height: 24px; border-radius: 6px;"></span><div class="col grow" style="gap: 6px;"><span class="sk sk-shine" style="width: 80%;"></span><span class="sk sk-shine" style="width: 30%; height: 8px;"></span></div><span class="sk sk-shine" style="width: 32px; height: 8px;"></span></div>
+      <div class="li"><span class="sk sk-shine" style="width: 24px; height: 24px; border-radius: 6px;"></span><div class="col grow" style="gap: 6px;"><span class="sk sk-shine" style="width: 48%;"></span><span class="sk sk-shine" style="width: 44%; height: 8px;"></span></div><span class="sk sk-shine" style="width: 32px; height: 8px;"></span></div>
+      <div class="li"><span class="sk sk-shine" style="width: 24px; height: 24px; border-radius: 6px;"></span><div class="col grow" style="gap: 6px;"><span class="sk sk-shine" style="width: 70%;"></span><span class="sk sk-shine" style="width: 26%; height: 8px;"></span></div><span class="sk sk-shine" style="width: 32px; height: 8px;"></span></div>
+    </div>
+    <span class="note">After 10 s the line changes to "Still loading, alex-box is slow" with Cancel.</span>
+  </section>
+
+  <!-- 2 Empty -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Empty, action inline</span><span class="note trunc">The first step sits in the empty state</span></div>
+    <div class="card empty" style="padding: 28px 24px;">
+      <span class="empty-ic"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span>
+      <div class="col" style="gap: 4px;">
+        <h3 class="t15 w6">No projects yet</h3>
+        <p class="t2">A project keeps one client's files, memory and rules together.</p>
+      </div>
+      <div class="row" style="gap: 8px; width: 100%; max-width: 320px;">
+        <span class="inp inp-focus grow">Harlow Legal<span class="caret"></span></span>
+        <button class="btn btn-p">Create<span class="k">⏎</span></button>
+      </div>
+      <button class="btn btn-g"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Start from a folder</button>
+    </div>
+    <div class="card row" style="padding: 14px 16px;">
+      <span class="empty-ic" style="width: 32px; height: 32px; border-radius: 8px;"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg></span>
+      <div class="col grow" style="gap: 2px;">
+        <span class="w6">Nothing sealed yet</span>
+        <span class="t12 t3 trunc">Keys agents can use, sealed on alex-box</span>
+      </div>
+      <button class="btn btn-sm">Add item</button>
+    </div>
+  </section>
+
+  <!-- 3 Error -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Error, in place</span><span class="note trunc">Plain words, the detail, and a way out</span></div>
+    <div class="list">
+      <div class="list-h"><span class="lbl">Sessions</span><span class="t12 t3" style="margin-left: auto;">alex-box</span></div>
+      <div class="empty" style="padding: 32px 24px;">
+        <span class="empty-ic"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg></span>
+        <div class="col" style="gap: 4px; align-items: center;">
+          <h3 class="t15 w6">Couldn't reach alex-box</h3>
+          <p class="t2">Sessions didn't load. Nothing on the box has changed.</p>
+          <span class="t12 t3 mono">timed out after 10 s</span>
+        </div>
+        <div class="row" style="gap: 8px;">
+          <button class="btn is-focus">Retry<span class="k">R</span></button>
+          <button class="btn btn-g">Open doctor</button>
+        </div>
+      </div>
+    </div>
+    <span class="note">Retry keeps focus, so a second R tries again. The rest of the page stays usable.</span>
+  </section>
+
+  <!-- 4 Offline -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Offline</span><span class="note trunc">Work queues here and sends on reconnect</span></div>
+    <div class="banner" role="status" style="align-items: flex-start;">
+      <span class="dot dot-idle" style="margin-top: 5px;"></span>
+      <div class="col grow" style="gap: 2px;">
+        <span>alex-box is offline. Your changes wait here and send when it's back.</span>
+        <span class="t12 t3">Last seen 14:08 · trying again every 30 s</span>
+      </div>
+      <button class="btn btn-sm">Reconnect</button>
+    </div>
+    <div class="list">
+      <div class="list-h"><span class="lbl">Waiting to send</span><span class="count" style="margin-left: auto;">2</span></div>
+      <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v3l2 1.5"></path></svg><span class="grow trunc">Reply to juno: use the flatlay photo</span><span class="t12 t3">14:11</span></div>
+      <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v3l2 1.5"></path></svg><span class="grow trunc">Allow kit to push to main</span><span class="t12 t3">14:12</span></div>
+      <div class="li"><span class="dot dot-idle"></span><span class="grow trunc t2">kit · Intake form rebuild</span><span class="t12 t3">Paused</span></div>
+    </div>
+  </section>
+
+  <!-- 5 Long names -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Long names</span><span class="note trunc">Full name on hover and in the title attribute</span></div>
+    <div class="row" style="gap: 6px;" aria-label="Breadcrumb">
+      <a class="t2" href="#">Projects</a><span class="t3">/</span>
+      <a class="t2 trunc" href="#" style="max-width: 190px;" title="Northwind Bakery wholesale and holiday catering">Northwind Bakery wholesale and holiday catering</a><span class="t3">/</span>
+      <span class="w6 trunc" title="Holiday menu copy for the wholesale catering launch">Holiday menu copy for the wholesale catering launch</span>
+    </div>
+    <div class="list">
+      <div class="li"><span class="av">k</span><span class="grow trunc w6" title="Allow kit to read orders/sheet.csv in Northwind Bakery wholesale and holiday catering">Allow kit to read orders/sheet.csv in Northwind Bakery wholesale and holiday catering</span><span class="t12 t3">11:02</span></div>
+    </div>
+    <div class="row" style="gap: 8px;">
+      <span class="chip" style="max-width: 240px;" title="Northwind Bakery wholesale and holiday catering"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg><span class="trunc">Northwind Bakery wholesale and holiday catering</span></span>
+      <span class="chip">Harlow Legal</span>
+    </div>
+    <article class="card">
+      <div class="card-h"><span class="dot dot-run"></span><h3 class="t15 w6 trunc grow" title="Northwind Bakery wholesale and holiday catering">Northwind Bakery wholesale and holiday catering</h3><span class="t12 t3" style="white-space: nowrap;">3 sessions</span></div>
+      <p class="t2 trunc" style="padding: 0 16px 14px;">juno is writing the holiday menu copy for the wholesale launch</p>
+    </article>
+    <div class="list">
+      <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10h-8z"></path><path d="M9 1.5v3h3"></path></svg><span class="grow trunc mono t12" title="clients/northwind-bakery/wholesale-and-holiday-catering/2026/q4-menu-final.pdf">clients/northwind-bakery/wholesale-and-holiday-catering/2026/q4-menu-final.pdf</span><span class="t12 t3" style="white-space: nowrap;">1.2 MB</span></div>
+    </div>
+  </section>
+
+  <!-- 6 Many items -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Many items</span><span class="note trunc">Dense rows, a count, a sticky group</span></div>
+    <div class="list dense">
+      <div class="row" style="gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--rule);">
+        <span class="w6">1,248 sessions</span>
+        <span class="chip chip-on" style="margin-left: auto;">All</span>
+        <span class="chip">Needs you<span class="t3">4</span></span>
+        <span class="chip">kit</span>
+      </div>
+      <div class="list-h st-sticky"><span class="lbl">Today</span><span class="t12 t3">38</span></div>
+      <div class="li"><span class="dot dot-need"></span><span class="grow trunc w6">Allow kit to push to main?</span><span class="t12 t3">14:21</span></div>
+      <div class="li"><span class="dot dot-run"></span><span class="grow trunc">Holiday menu copy</span><span class="t12 t3">14:02</span></div>
+      <div class="li"><span class="dot"></span><span class="grow trunc">Weekly Northwind update</span><span class="t12 t3">12:10</span></div>
+      <div class="li"><span class="dot"></span><span class="grow trunc">Harlow site contact link</span><span class="t12 t3">11:48</span></div>
+      <div class="li"><span class="t12 t2 grow">Showing 40 of 1,248</span><a class="t12 t2 w6" href="#">Load 40 more</a></div>
+    </div>
+    <div class="row" style="gap: 12px;">
+      <a class="rb rb-on" href="#" title="132 need you"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">99+</span></a>
+      <span class="note">Over 99 the badge reads 99+. The exact count is in the tooltip.</span>
+    </div>
+  </section>
+
+  <!-- 7 Buttons -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Buttons</span><span class="note trunc">Width holds while working; the label says what is happening</span></div>
+    <div class="card">
+      <div class="row" style="padding: 0 16px; height: 36px; border-bottom: 1px solid var(--rule);"><span class="t12 t3" style="width: 72px;">State</span><span class="lbl" style="width: 140px;">Primary</span><span class="lbl">Secondary</span></div>
+      <div class="row" style="padding: 10px 16px;"><span class="t12 t3" style="width: 72px;">Default</span><span style="width: 140px;"><button class="btn btn-p">Allow once<span class="k">A</span></button></span><button class="btn">Retry<span class="k">R</span></button></div>
+      <div class="row" style="padding: 10px 16px; border-top: 1px solid var(--rule);"><span class="t12 t3" style="width: 72px;">Hover</span><span style="width: 140px;"><button class="btn btn-p is-hover">Allow once<span class="k">A</span></button></span><button class="btn is-hover">Retry<span class="k">R</span></button></div>
+      <div class="row" style="padding: 10px 16px; border-top: 1px solid var(--rule);"><span class="t12 t3" style="width: 72px;">Focus</span><span style="width: 140px;"><button class="btn btn-p is-focus">Allow once<span class="k">A</span></button></span><button class="btn is-focus">Retry<span class="k">R</span></button></div>
+      <div class="row" style="padding: 10px 16px; border-top: 1px solid var(--rule);"><span class="t12 t3" style="width: 72px;">Disabled</span><span style="width: 140px;"><button class="btn btn-p" disabled>Create<span class="k">⏎</span></button></span><button class="btn" disabled>Retry</button></div>
+      <div class="row" style="padding: 10px 16px; border-top: 1px solid var(--rule);"><span class="t12 t3" style="width: 72px;">Working</span><span style="width: 140px;"><button class="btn btn-p" aria-busy="true"><span class="spin"></span>Allowing</button></span><button class="btn" aria-busy="true"><span class="spin"></span>Retrying</button></div>
+    </div>
+    <span class="note">Disabled says why next to it: "Name the project to create it."</span>
+  </section>
+
+  <!-- 8 Held item lifecycle -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Held item lifecycle</span><span class="note trunc">Colour only while it needs you</span></div>
+    <article class="card">
+      <div class="col" style="padding: 12px 16px; gap: 2px;">
+        <div class="need-h"><span class="dot dot-need"></span><span class="lbl bea">Permission</span><span class="t12 t3" style="margin-left: auto;">kit · 14:21</span></div>
+        <span class="w6 trunc">Allow kit to push to main?</span>
+      </div>
+      <div class="card-f" style="padding: 10px 16px;"><button class="btn btn-p btn-sm">Allow once<span class="k">A</span></button><button class="btn btn-g btn-sm" style="margin-left: auto;">Deny<span class="k">D</span></button></div>
+    </article>
+    <article class="card row" style="padding: 12px 16px; align-items: flex-start;">
+      <svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><path d="M3 8.5l3 3 7-7"></path></svg>
+      <div class="col grow" style="gap: 2px;"><span class="trunc">Allow kit to push to main?</span><span class="t12 t3">Allowed once by you · 14:22</span></div>
+    </article>
+    <article class="card row" style="padding: 12px 16px; align-items: flex-start;">
+      <svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><circle cx="8" cy="8" r="6"></circle><path d="M3.8 12.2l8.4-8.4"></path></svg>
+      <div class="col grow" style="gap: 2px;"><span class="trunc">Allow kit to read orders/sheet.csv?</span><span class="t12 t3">Denied by you · 11:05</span></div>
+    </article>
+    <article class="card">
+      <div class="row" style="padding: 12px 16px; align-items: flex-start;">
+        <svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v3l2 1.5"></path></svg>
+        <div class="col grow" style="gap: 2px;"><span class="trunc">Allow juno to email office@harlowlegal.example?</span><span class="t12 t3">Expired after 24 h · kit moved on</span></div>
+      </div>
+      <div class="card-f" style="padding: 10px 16px;"><button class="btn btn-sm">Ask again</button></div>
+    </article>
+  </section>
+
+  <!-- 9 Focus and keyboard -->
+  <section class="st-cell">
+    <div class="st-cap"><span class="lbl">Focus and keyboard</span><span class="note trunc">Every action has a key; focus is always visible</span></div>
+    <div class="list">
+      <div class="li"><span class="av">j</span><span class="grow trunc">Holiday menu copy</span><span class="t12 t3">juno</span></div>
+      <div class="li is-focus"><span class="av">k</span><span class="grow trunc w6">Intake form rebuild</span><span class="t12 t3">kit</span></div>
+      <div class="li"><span class="av">k</span><span class="grow trunc">Harlow site contact link</span><span class="t12 t3">kit</span></div>
+    </div>
+    <span class="t12 t3"><span class="kbd">J</span> <span class="kbd">K</span> move · <span class="kbd">⏎</span> open · <span class="kbd">⌘K</span> commands · <span class="kbd">Esc</span> back</span>
+    <div class="sheet" role="dialog" aria-label="Command bar">
+      <div class="row" style="gap: 10px; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--rule);">
+        <svg class="ic t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg>
+        <span class="t15 grow">push<span class="caret"></span></span>
+        <span class="kbd">Esc</span>
+      </div>
+      <div class="li li-sel" style="border-top: 0;"><span class="dot dot-need"></span><span class="grow trunc">Allow kit to push to main</span><span class="kbd">A</span></div>
+      <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg><span class="grow trunc">Push Harlow Legal to staging</span><span class="kbd">⌘⇧P</span></div>
+      <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow trunc">Search sessions for "push"</span><span class="kbd">⌘F</span></div>
+      <div class="li"><svg class="ic t3" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg><span class="grow trunc">Rules: Ask before pushing</span><span class="kbd">⌘,</span></div>
+    </div>
+  </section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

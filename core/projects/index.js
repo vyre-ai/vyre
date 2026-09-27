@@ -3,8 +3,11 @@
 // ctx.call and are not listed under requires, because projects must still start, list and
 // brief without them; it only searches less and says so.
 
+import path from "node:path";
 import { Projects, MIGRATIONS } from "./projects.js";
 import { label } from "./brief.js";
+import { moveProjects } from "./move.js";
+import { boxProjectsDir, oldProjectsDir, home as vyreHome } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 
 const str = { type: "string" };
@@ -42,6 +45,14 @@ function resolvePicks(ctx, rows, answers) {
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
+    // On a box whose projects folder is the work folder's, homes still in ~/Vyre/projects move
+    // there once (./move.js). Nothing happens on a Mac, or where config.json names the folder.
+    if (ctx.config.role === "box" && path.resolve(String(ctx.config.projectsDir || "")) === boxProjectsDir()) {
+      try {
+        moveProjects({ db: ctx.store.db, from: oldProjectsDir(), to: boxProjectsDir(), root: ctx.paths ? ctx.paths.root : vyreHome(),
+          log: m => ctx.log(m), emit: (type, payload) => ctx.events.emit(type, payload) });
+      } catch (e) { ctx.log("could not move the projects: " + /** @type {Error} */ (e).message); }
+    }
     const P = new Projects({
       db: ctx.store.db, config: ctx.config, call: ctx.call,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),

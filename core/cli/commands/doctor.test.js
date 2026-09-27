@@ -80,7 +80,7 @@ test("doctor: each thing the user tripped on is a cross with the one thing to do
   assert.match(c.passkey.fix, /vyre up/);
   assert.deepEqual([c.claude.ok, c.claude.detail], [false, "not signed in"]);
   assert.equal(c.install.ok, false);
-  assert.match(c.install.fix, /npm i -g vyre@latest/);
+  assert.match(c.install.fix, /npm install -g https:\/\/vyre\.run\/box\/vyre\.tgz/);
   const text = lines(c.passkey).map(stripAnsi);
   assert.match(text[0], /^  ✗ A passkey for the box's address · passkeys exist/);
   assert.match(text[1], /^      on the box: vyre up/);

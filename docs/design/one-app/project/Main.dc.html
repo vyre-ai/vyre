@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vyre one app, principles</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2200px; height: 1120px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1400px;">
+      <div class="row" style="gap: 12px;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="lbl">Vyre one app · design sheet · 27 Sep 2026 · app-design</span></div>
+      <h1 class="t28 w6">One app for the phone, the tablet and the desktop. The Capsule and the CLI speak the same words.</h1>
+      <p class="t15 t2">One Expo codebase for iOS, Android and the web, served by your own box. It covers what Paseo covers (coding agents with a real terminal) and the rest of Vyre: operating agents, their computers in Glass, the planner, the vault, devices, Tailscale and VyreDrive. It installs with no Apple Developer account.</p>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px;">
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">1</span><h2 class="t20 w6">Needs you comes first</h2><p class="t2">Every surface opens on what waits for you, oldest first, one tap or one key from an answer. Violet marks it and nothing else.</p></section>
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">2</span><h2 class="t20 w6">One tree, three shapes</h2><p class="t2">Phone, tablet and desktop are the same screens at different widths: swiped pages under 720, list and detail above, a side panel from 1400. No third layout.</p></section>
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">3</span><h2 class="t20 w6">Quiet chrome, loud content</h2><p class="t2">Two fonts, five sizes, two weights, eight neutrals, one accent. Hierarchy comes from weight and tone. Tool calls are grey one-liners between readable prose.</p></section>
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">4</span><h2 class="t20 w6">The phone is a full client</h2><p class="t2">Sessions, a real terminal with a key bar, Glass take-over, the vault and the planner all work on the phone. Nothing is desktop-only except window chrome.</p></section>
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">5</span><h2 class="t20 w6">No nagging</h2><p class="t2">Face ID or Touch ID only to pair a device, release a vault secret, or send, post, pay or delete outside. One proof lasts 30 minutes and the screen says so.</p></section>
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">6</span><h2 class="t20 w6">Survive the network</h2><p class="t2">Content stays on screen while one pill says "Reconnecting". Sends queue in an outbox and replay once. The app switches between Tailscale and the relay without asking.</p></section>
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">7</span><h2 class="t20 w6">Your box serves the app</h2><p class="t2">The phone installs Vyre from your own address. No hosted page reaches into your machine, and no store or developer account stands between you and an update.</p></section>
+    <section class="card col" style="padding: 24px; gap: 10px;"><span class="lbl">8</span><h2 class="t20 w6">Written rules, shared parts</h2><p class="t2">One tokens.json exports to Expo, the web and Swift. One row, one ask card, one status model, five buttons. A one-off needs a design review.</p></section>
+  </div>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px;">
+    <section class="list" aria-label="On this canvas">
+      <div class="list-h"><span class="lbl">On this canvas</span><span class="t12 t3" style="margin-left: auto;">dark shown; paper on every key screen</span></div>
+      <div class="li"><span class="w6" style="width: 160px;">System</span><span class="t2 grow">tokens.json, type, colour, space, radius, motion, icons, status, the five buttons</span></div>
+      <div class="li"><span class="w6" style="width: 160px;">Layout</span><span class="t2 grow">breakpoints, the three shapes, navigation on each</span></div>
+      <div class="li"><span class="w6" style="width: 160px;">Key screens</span><span class="t2 grow">Needs you · a session with the terminal · Agents and Glass · Planner · Vault · Devices</span></div>
+      <div class="li"><span class="w6" style="width: 160px;">States</span><span class="t2 grow">empty, loading, offline, error, many items, long names, decided</span></div>
+      <div class="li"><span class="w6" style="width: 160px;">Install</span><span class="t2 grow">Add your phone from the laptop, then on iPhone and Android, with honest trade-offs</span></div>
+      <div class="li"><span class="w6" style="width: 160px;">Capsule and CLI</span><span class="t2 grow">the same concepts on the Mac panel and in the terminal</span></div>
+    </section>
+    <section class="card col" style="padding: 20px 24px; gap: 12px;" aria-label="Decisions">
+      <span class="lbl">Decisions for alex</span>
+      <div class="row" style="align-items: flex-start;"><span class="dot dot-need" style="margin-top: 5px;"></span><span class="t2">Attention colour: violet (shown) or teal. One line per theme either way.</span></div>
+      <div class="row" style="align-items: flex-start;"><span class="dot dot-need" style="margin-top: 5px;"></span><span class="t2">iPhone default: the installed web app over Tailscale, with the relay as fallback. Native iOS waits for a paid Apple account.</span></div>
+      <div class="row" style="align-items: flex-start;"><span class="dot dot-need" style="margin-top: 5px;"></span><span class="t2">Android default: the APK installed by <span class="mono">vyre phone add</span> over USB or wireless adb, self-updating from the box.</span></div>
+      <div class="row" style="align-items: flex-start;"><span class="dot dot-need" style="margin-top: 5px;"></span><span class="t2">Planner joins the desktop rail. On the phone it lives in Today on Now and in the Places sheet.</span></div>
+    </section>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2200,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>
