@@ -75,28 +75,19 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing (RESUME 5, after the deploy; box runs 53cd1326)
-- work/ci tip for batch 4 (merge LAST): box-image pack-list detect; hygiene node_modules guard;
-  idle gate on heap after a forced GC (proof 36326469056, and 36332059074 green on 22 and 24);
-  onboard-page temp-home fix (tmp-guard green); vyre.tgz ships the web app:
-  scripts/build-app.sh (expo export -p web, Metro's dist/assets/node_modules icons moved to
-  dist/assets/nm/ since npm never packs node_modules, then precache.mjs), called by build-site.sh
-  and box-image's pack step; package.json files += apps/app/dist; apps/app/.npmignore (the app's
-  .gitignore drops dist/ from the pack); box-image smokes /app, /app/, entry js, /app/now,
-  sw.js build id, every precached path, the manifest; release-check requires all of dist and
-  caps the install at 16 MB (12.7 MB without the app, over the old 12 MB already).
-  Proof on throwaway work/ci-appship (work/ci + work/mobile 2f1ccfff): release-check 36332466998
-  and box-image 36332467006 GREEN; dist 2.6 MB / 26 files / 23 precached; vyre.tgz 3.8 MB;
-  installed 16 MB (under the 16384 KB cap, so little headroom).
-- Batch 4c (work/integrator-b4c 91f34bae on 53cd1326): box-image + design green. Red, routed:
-  node: mobile world presence vs person_session_required (mobile/e2e); vyre update curls on a
-  checkout (platform 54180bb5); pwa ios pins vs chat 553017a1 (chat+pwa); pwa sideways bare query
-  in settings-keys.css (native-core) and term.js (chat f697d345); temp home reads ~/.claude at
-  core/config/settings.js:97 (native-core/platform). app: ci's own apostrophe bug, fixed 2c1ac9aa.
-  android Md.kt animateFloat, ios DetailSheet FactRow redeclared (mobile). capsule-mac: capsule-pro
-  170dac3b. sessions-sdk: FIXED by sessions d7924a1d (test-only); GitHub driver job 249/0 (run 36333524676).
-- box-image prints vyre.tgz / installed / app sizes against the 16 MB cap (42372d6a).
-- testbox keeps vyre-box:gate and ~/vyre-ci/{ci,ci-gate,sdk-js,gate1.sh}.
+## Doing (SAVE before restart, 2026-09-27 evening)
+- Batch 4 landed on main bc751624 (+ notes 68463d04). Workflows: GREEN box-image 36341827099
+  (the /app/ smoke passes; install 16980 KB), sessions-sdk, design, ios, android. STILL RUNNING at
+  save: node 36341827061 (68463d04), capsule-mac 36341805778, app 36341805838 (bc751624). After
+  the restart, read them and report red/green + owner to the lead and the integrator.
+- RC dry run: release.yml dispatched on work/ci-rc 1d8ae652, tag v0.1.0-rc.1 (dry run, nothing
+  published), run 36342106246. When green, send e2e the run id + sha (artifact
+  release-dry-run-v0.1.0-rc.1, holds vyre.tgz with apps/app/dist, SHA256SUMS, release.json).
+- Handed to the integrator: work/ci 35bfed5f for batch 5 (app-perf pointer drag, cap 20 MB).
+  HELD: work/ci-rc 1d8ae652, the last item of the RC batch (rebase on that main then).
+- Asked docs whether anything at runtime reads docs/index.json or docs/reference (0.1.1 task).
+- mobile will say when build-app.sh's assets/node_modules rewrite can go (after 0.1.0).
+- testbox: nothing of mine is running. Leftovers: image vyre-box:gate, ~/vyre-ci/{ci,ci-gate,ci-loop,sdk-js,gate1.sh}.
 
 ## Next
 - 0.1.1 (lead): move the generated docs/index.json (1 MB) and docs/reference (0.8 MB) out of the
