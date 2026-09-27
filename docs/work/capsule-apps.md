@@ -104,7 +104,7 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   local/apps + cli apps 214 pass, 0 fail, 5 skipped (whatsapp.test.js: a fake WhatsApp window in
   a Registry with the real apps and hands modules).
 
-## Doing (2026-09-27, resumed)
+## Doing (none: stopped 2026-09-27; see Next)
 - T4 done (main merged at abd1e79): planner by default, needs prompts on the route and tool side,
   apps.route {text, app, to} for answers (sendTo in route.js), the `vyre apps` prompt loop (TTY:
   numbered pick, Enter for a lone Did you mean, 3 rounds; else exit 3, JSON with --json),
@@ -140,15 +140,16 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   The presence summary is still defaultSummary until capsule-pro's host.prove(summary:) lands.
 - Lead (2026-09-27): the real-Mac check runs after the integrator merges work/planner.
 
-## Next
-1. DONE: handed 7423c8c to capsule-pro. Was: send capsule-pro the hash to merge. Then run capsule-mac CI on
-   4d40355 (the AppsExtension) and hand that over too (it changes Kit, CapsuleModel,
-   ExtensionHost and Panel by one line each: see Changed contracts).
-2. DONE (native a8859f0, Swift 284/284): sends prove via host.prove / link.call(summary:). capsule-pro merged
-   7423c8c at 6ff7185 and fixed the CI signing hang. capsule-pro merged a8859f0 (d9e42018) and added
-   apps.send to VyredClient.sessionable (a8dd925a): one Touch ID covers a burst of sends.
-3. DONE: Slack adapter (slice 3), see Done. Next: WhatsApp over hands (slice 4: hands.find,
-   settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
+## Next (STOPPED 2026-09-27: the user refocused on the native core; resume from here)
+State: work/capsule-apps e99b09d (pushed, queued for the integrator in place of 430d8eb).
+Native: capsule-pro merged 7423c8c, a8859f0, 7b08a18 and 95aad5f (work/capsule-pro 58a2c497).
+1. Slice 5: a generic "any app" adapter over hands (observe, find, act; sends through apps.send
+   and hands.commit), after the real-Mac checks below.
+2. The WhatsApp real-Mac check (below) with the user: confirm WhatsApp's real names and roles,
+   put any that differ in config apps.whatsapp, then one real message to the user's own chat.
+3. The 11-step apps real-Mac check (below), whenever the lead schedules it with the user.
+4. Until 430d8eb (gate.settle) is on main, the Capsule's gate.settle answers no_such_tool and is
+   ignored: the user hears "It went out" and the item stays held on the Deck. Fixed by the merge.
 
 ### Real-Mac check (planner default; the lead with the user, on the Mac, in the user's own terminal)
 Before: the planner module (work/planner, ADR 0025) must be on the branch under test, or steps 4
