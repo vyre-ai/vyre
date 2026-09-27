@@ -325,7 +325,7 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   const reg = new Registry({ db, events: new Events(db), config: {}, log: () => {}, presence });
   await reg.start(discover([path.join(home, "mods")]), { role: "local" });
   const r = await reg.call("notes.add", {}, "cli", { proof: { method: "capsule", sig: "secret" }, thread: "t1" });
-  assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
+  assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli", firstParty: false });
 });
 
 test("modules: the owner's Deck at the box's tailnet address may use what the Deck may", () => {
