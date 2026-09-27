@@ -57,7 +57,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `relay.device.presence` (internal, modules only): the presence key a relayed device enrolled at
   pairing, so presence.person.start (ADR 0032) signs a relayed device in only with its own key.
 - Fixed: the pairing offer named the box by the machine's hostname when no box name was set, so a
-  real host's name reached QR codes and screenshots. It now uses the configured name, else "your box".
+  real host's name reached QR codes and screenshots. It now uses the box's name (config.name, as the names module has it), else "Vyre box".
 - Fixed: a box could stay off the relay until vyred restarted. On Node 22 a refused WebSocket
   fires only `error`, never `close`, and the relay link retried only on `close`. Now an error
   before open counts as a failed dial (handled once), and a control socket not ready in 30 s is

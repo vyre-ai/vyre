@@ -98,9 +98,9 @@ export default {
     let keys = null;
     const k = () => (keys = keys || loadKeys(ctx.paths.root));
     const route = () => routeId(k().route.pub);
-    // The name the person gave the box, never the machine's hostname: it rides in QR codes and
+    // The box's name as the names module knows it (config.name), never the machine's hostname: it rides in QR codes and
     // shows in screenshots.
-    const boxName = () => String((ctx.config.network && ctx.config.network.name) || ctx.config.name || "your box").slice(0, 64);
+    const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
 
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
     /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */

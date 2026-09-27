@@ -270,7 +270,7 @@ test("relay: the pairing offer names the box as configured, never the machine's 
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
-  for (const [cfg, want] of [[{ name: "Northwind Bakery" }, "Northwind Bakery"], [{}, "your box"]]) {
+  for (const [cfg, want] of [[{ name: "Northwind Bakery" }, "Northwind Bakery"], [{}, "Vyre box"]]) {
     const root = tempHome(t);
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], ...cfg, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
     const d = await start({ presence: lenient, root, log: () => {} });
