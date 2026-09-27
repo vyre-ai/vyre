@@ -3,8 +3,8 @@
 // not answer, driven by the event stream's state (api.js "deck:stream", follow()'s onState).
 //
 //   hidden while the stream is open;
-//   shown only after the first failed retry (attempt 2), so a blip that heals on the first try
-//   shows nothing;
+//   shown from attempt 4 (SHOW_FROM: about 2 s down, after the three quick retries), so a blip
+//   that heals on those shows nothing;
 //   "Reconnecting", and 60 s after the box last answered "Reconnecting since 14:32", changed once
 //   by one timer started when the pill shows and cleared when it goes (no interval);
 //   "This phone is offline." while the device says it has no network.
@@ -12,6 +12,10 @@
 // No DOM here: the shell passes show and hide, so the timing is tested with fake timers.
 
 import { clock } from "./fmt.js";
+
+/** The attempt from which the pill shows. api.js retries after 250 ms, 500 ms and 1 s, so this is
+ * about 2 s after the box went: a blip that heals within the first retries shows nothing. */
+export const SHOW_FROM = 4;
 
 /** How long the box may be gone before the pill says since when. */
 export const SINCE_AFTER = 60_000;
@@ -35,7 +39,7 @@ export function reconnectPill({ show, hide, online = () => typeof navigator === 
     /** follow()'s state. @param {{ state: string, attempt: number, since: number|null }} s */
     state(s) {
       if (s.state === "open" || s.state === "stopped") return off();
-      if (s.state !== "reconnecting" || s.attempt < 2) return;
+      if (s.state !== "reconnecting" || s.attempt < SHOW_FROM) return;
       since = s.since ?? since ?? now();
       if (!shown) {
         shown = true;

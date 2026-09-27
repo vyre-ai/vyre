@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck's stream is back within a second of the box (native-core's budget 8)
+
+- deck/js/api.js follows the stream with short first waits: 250 ms, 500 ms, 1 s, then doubling to
+  60 s (was 2 s to 60 s). Any tool call the box answers while the stream is backing off
+  reconnects it at once: sockets cut in front of the box never fire "online". Measured before:
+  3.24 s from the box coming back to caught up.
+- The Reconnecting pill shows from attempt 4 (js/reconnect.js SHOW_FROM, about 2 s down, as
+  before), so the quick retries of a blip show nothing.
+
 #### What each agent's computer is doing now, on Now (glass-mini.md, ADR 0036)
 
 - deck/js/glass-mini.js draws one line per running agent computer on Now (desktop and phone),
