@@ -49,7 +49,7 @@ const d = await start({ root, log: () => {} });
 try {
   // What a fresh home does on its own and on first use: index, curate, the memory and learn views.
   for (const [tool, input] of [["recall.index", {}], ["recall.status", {}], ["recall.sessions", {}], ["memory.curate", {}],
-    ["memory.facts", {}], ["settings.get", {}], ["learn.lessons", {}], ["threads.list", {}], ["projects.list", {}]]) {
+    ["memory.facts", {}], ["settings.get", {}], ["learn.lessons", {}], ["learn.skills", {}], ["learn.stats", {}], ["sessions.models.get", {}], ["threads.list", {}], ["projects.list", {}]]) {
     await call(tool, input, { root, timeout: 20_000 }).catch(() => null);
   }
   await new Promise(r => setTimeout(r, 1500));
