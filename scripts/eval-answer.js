@@ -10,6 +10,9 @@
 //            and test/eval/answer-heldout.json), written before reading the rules
 //   node scripts/eval-answer.js --world blind  the blind world (test/fixtures/personal-blind.js and
 //            test/eval/answer-blind.json), written without seeing the rules or the other worlds
+//   node scripts/eval-answer.js --world fresh  the fresh world (test/fixtures/personal-fresh.js and
+//            test/eval/answer-fresh.json), sealed: written without the rules or any other world's
+//            body, and not to be read by whoever tunes the rules
 //
 // Exits non-zero when memory.answer misses the bar: overall 0.9 or more, no confident wrong
 // answer, p95 under 150 ms.
@@ -39,6 +42,7 @@ import { seedRecall } from "../test/fixtures/corpus.js";
 import { PERSONAL_SESSIONS, ME, NOW, SCRATCH } from "../test/fixtures/personal-world.js";
 import * as heldout from "../test/fixtures/personal-heldout.js";
 import * as blind from "../test/fixtures/personal-blind.js";
+import * as fresh from "../test/fixtures/personal-fresh.js";
 import { search, thread } from "../core/recall/search.js";
 import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
@@ -50,6 +54,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const GOLD_FILE = path.join(ROOT, "test/eval/answer-gold.json");
 export const HELDOUT_GOLD_FILE = path.join(ROOT, "test/eval/answer-heldout.json");
 export const BLIND_GOLD_FILE = path.join(ROOT, "test/eval/answer-blind.json");
+export const FRESH_GOLD_FILE = path.join(ROOT, "test/eval/answer-fresh.json");
 
 /**
  * The worlds the evaluation knows: the one the rules were written against, and a held-out one.
@@ -59,6 +64,7 @@ export const WORLDS = {
   personal: () => ({ gold: JSON.parse(fs.readFileSync(GOLD_FILE, "utf8")), sessions: PERSONAL_SESSIONS, me: ME, now: NOW, scratch: SCRATCH }),
   heldout: () => ({ gold: JSON.parse(fs.readFileSync(HELDOUT_GOLD_FILE, "utf8")), sessions: heldout.HELDOUT_SESSIONS, me: heldout.ME, now: heldout.NOW, scratch: heldout.SCRATCH }),
   blind: () => ({ gold: JSON.parse(fs.readFileSync(BLIND_GOLD_FILE, "utf8")), sessions: blind.BLIND_SESSIONS, me: blind.ME, now: blind.NOW, scratch: blind.SCRATCH }),
+  fresh: () => ({ gold: JSON.parse(fs.readFileSync(FRESH_GOLD_FILE, "utf8")), sessions: fresh.FRESH_SESSIONS, me: fresh.ME, now: fresh.NOW, scratch: fresh.SCRATCH }),
 };
 /** An answer at this confidence or more is one the user is told as a fact. */
 export const CONFIDENT = 0.5;
