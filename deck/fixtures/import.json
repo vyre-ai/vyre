@@ -72,7 +72,7 @@
     "sessions": 270,
     "bytes": 21900000,
     "folders": ["/Users/alex/Work/harlow-site", "/Users/alex/Work/northwind", "/Users/alex/Work/harlow-site-old"],
-    "pace": { "turns": 1095, "usd": 0.33, "fast": { "hours": 1 }, "gentle": { "days": 2 } }
+    "pace": { "turns": 1095, "fast": { "hours": 1 }, "gentle": { "days": 2 } }
   },
   "import.start": { "run": "run_sample", "sessions": 270, "mode": "once", "pace": "fast" },
   "import.status": {
