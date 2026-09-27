@@ -35,8 +35,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   sessions by source (projects, the archive, folders the person adds) and by the folder each ran
   in, with counts, sizes and dates, and suggests only the person's own work (never work on Vyre
   itself, Vyre's own sessions or temporary folders). It reads file names, sizes, times and each
-  session's folder, never a turn, and a model cannot call it. `import.plan {include, exclude?}`
-  says exactly what an import would take; `import.status` gives each stage's progress, and the
+  session's folder, never a turn, within caps, and a model cannot call it. Work on Vyre itself,
+  folders the person excluded and credential folders are left out before anything is listed. `import.plan {include, exclude?}`
+  says exactly what an import would take, with how long understanding it would take at each pace
+  (fast or gentle, the person's choice); `import.status` gives each stage's progress, and the
   `import.progress` event says so as it happens (after Recall indexes or embeds and after memory's
   passes, at most every 2 s, counts only). Recall emits `recall.embedded {done, total}`.
   `memory.graph-grew {nodes, edges, new: {person, org, ...}, updated}` says the graph gained people,

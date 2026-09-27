@@ -22,19 +22,26 @@ events and the graph.
    - any folder the person adds.
    Folders that look like development of Vyre itself, test fixtures, `<home>/quick` and the
    Capsule's ask folder are listed but not ticked, with the reason shown.
-2. **Choose.** The person ticks folders or projects and sees exactly what will go to their box:
-   "412 sessions, 38 MB of text, from these 9 folders". They confirm once, and choose between
-   "Import these now" (one time) and "Keep them in sync" (new sessions go too). Neither is chosen
-   for them. On a device with no box, nothing moves: the device indexes what was chosen itself.
+2. **Choose.** The person ticks folders or projects and sees exactly what will go to their server:
+   "412 sessions, 38 MB of text, from these 9 folders". On the same screen, neither preselected
+   (the user's decisions, 28 Sep):
+   - "Import now", and next to it "Keep them in sync" (new sessions go too), unticked;
+   - how fast to understand them: "Fast: understood in a few hours (uses more of your Claude plan
+     today)" or "Gentle: over a few days (barely touches your plan)", each with its estimate from
+     `import.plan`'s `pace`, and the plain line that search works immediately either way;
+   - where it is true (`claude_keeps_days` from the scan), "Claude Code keeps sessions for 30 days;
+     import now so they're kept in Vyre". Vyre never changes Claude Code's settings.
+   They confirm once. On a device with no server, nothing moves: the device indexes what was
+   chosen itself.
 3. **Import, in stages, each usable when it lands.**
 
 | Stage | What happens | Where | Cost | Usable when |
 |---|---|---|---|---|
-| a. Upload | Session files go to the box over federation's transport, scrubbed of secrets at ingest | device to box | none | per session |
-| b. Search | Recall indexes the session's turns (keywords) | box | CPU, seconds | that session is indexed |
-| c. Meaning | Embeddings for each turn (local model) | box | CPU, paced | its turns are embedded |
-| d. Graph | People, orgs, projects and relations by rules | box | CPU | the next curator pass |
-| e. Personal facts | The model reader reads the person's own turns | box | the Claude login, paced by the daily cap | read, in the background |
+| a. Upload | Session files go to the server over federation's transport, scrubbed of secrets at ingest | device to server | none | per session |
+| b. Search | Recall indexes the session's turns (keywords) | server | CPU, seconds | that session is indexed |
+| c. Meaning | Embeddings for each turn (local model) | server | CPU, paced | its turns are embedded |
+| d. Graph | People, orgs, projects and relations by rules | server | CPU | the next curator pass |
+| e. Personal facts | The model reader reads the person's own turns | server | the Claude login, paced by the daily cap | read, in the background |
 
    Stages b to d need no model and no money. A session is searchable, and Vyre IQ can answer from
    it, as soon as stage b has it. Stage e runs on the person's Claude subscription at the reader's
@@ -46,18 +53,23 @@ events and the graph.
 ### On the device (module `import`, device role; owner: memory-iq, with federation)
 
 - `import.scan { folders? }` -> `{ sources: [{ id, path, kind: "claude"|"archive"|"folder",
-  sessions, bytes, from, to, projects: [{ slug?, name?, cwd, sessions }], suggested: boolean,
-  why? }] }`. Reads file names, sizes, times and the first line of each session (its folder)
-  only. Never reads turns. Person callers only.
+  sessions, bytes, from, to, folders: [{ cwd, sessions, bytes, from, to, project?, name?,
+  suggested, why? }] }], left_out: { vyre, excluded }, capped, claude_keeps_days }`. Reads file
+  names, sizes, times and the first lines of each session (its folder) only, within caps (20,000
+  files, 64 MB of first lines). Never reads turns. Left out before anything is listed (e2e): work on
+  Vyre itself, folders the person excluded, and credential folders (`~/.ssh` and the like), which
+  are never walked. Person surfaces only; no model or agent can call it.
 - `import.plan { include: string[], exclude?: string[] }` -> `{ plan, sessions, bytes, folders,
-  box }`: exactly what would go, for the confirm screen.
-- `import.start { plan, mode: "once"|"sync" }`: person-only with a person session (ADR 0032),
-  never an agent. It records the consent (`sync.sessions.<machine>.on` for "sync", a one-time
-  grant for "once") in the settings hub and hands the plan to federation's sender.
-- `import.stop {}`: stops sending at once. Undoing an import is revoking the device
-  (ADR 0008, amendment item 5), which deletes what it sent and everything derived from it.
-
-### On the box (owner: memory-iq)
+  pace: { turns, usd, fast: { hours }, gentle: { days } } }`: exactly what would go, and how long
+  understanding it would take at each pace.
+- `import.start { plan, mode: "once"|"sync", pace: "fast"|"gentle" }`: person-only with a person
+  session (ADR 0032), never an agent. It records the consent in the settings hub
+  (`sync.sessions.<machine>.on`) with the plan's hash, so a changed plan needs new consent, and
+  hands the plan to federation's `sync.send` (module-only). "fast" sizes a one-time reading pool
+  to the estimate; "gentle" keeps the daily cap.
+- `import.stop {}` stops sending. `import.cancel {}` stops and deletes the partial import the same
+  way revoking the device does (ADR 0008, amendment item 5).
+### On the server (owner: memory-iq)
 
 - Ingest: federation lands files in `<home>/synced/<machine>/`. Recall reads that root like any
   transcript folder, with `source: "mac-sync"` and the machine on every session row, and passes
@@ -81,9 +93,16 @@ events and the graph.
 
 ## Consent and security
 
-The same rules as session sync (ADR 0008, amendment "session sync to the box"), which covers a
+e2e's conditions for the import (28 Sep), on top of ADR 0008's: caps on the scan and first lines
+only; nothing but folders and counts in a plan; exclusions applied before listing; the server refuses
+files unless its own record of the switch is on for that machine, and consent carries the plan's
+hash; cancel deletes the partial import like revoke; the secret scrub runs at ingest, before
+indexing, with the quarantined count shown to the person; the machine on every derived row,
+IQ caches and fixes included; and no agent sees or starts a scan, a plan or progress.
+
+The same rules as session sync (ADR 0008, amendment "session sync to the server"), which covers a
 one-time import too: per device, off by default, turned on only by a person with a person
-session, excluded folders never leave the device, the box names the machine from the verified
+session, excluded folders never leave the device, the server names the machine from the verified
 peer and keeps its own copy of the switch, the secret scrub runs at ingest, trust is the lower of
 the folder rule and `mac-sync`, and revoking or unpairing deletes everything that device sent and
 everything derived from it. Discovery reads metadata only and sends nothing. e2e reviews the scan,
@@ -110,16 +129,24 @@ What the imported history makes possible, largest value for the size first.
 |---|---|---|---|
 | import.scan, import.plan, import.start, import.stop on the device | memory-iq (+ federation for start) | M | yes |
 | Upload channel, cursor, consent record, delete on revoke | federation | L | if federation lands it; else local-only import |
-| Box ingest: synced root, machine on every derived row, `import.status`, `import.progress`, `memory.graph-grew` | memory-iq | M | yes |
+| Server ingest: synced root, machine on every derived row, `import.status`, `import.progress`, `memory.graph-grew` | memory-iq | M | yes |
 | Onboarding and install steps (discover, choose, watch it fill) | launch | M | yes |
 | Import screen and graph view designs | app-design | M | yes |
 | Live graph view | Deck | M | relaunch after 0.1.1 unless the Deck is free |
 | Security review | e2e | S | yes |
 
 Without federation's upload in 0.1.1, the same screens import on the device itself (a Mac
-without a box, or the box's own sessions), and "Send to your box" arrives when the transport does.
+without a server, or the server's own sessions), and "Send to your server" arrives when the transport does.
 
-## Decisions for the user
+## Decided (the user, 28 Sep)
+
+1. "Keep them in sync" is offered on the first screen, unticked, next to "Import now".
+2. The first read's pace is the person's choice on the import screen, neither preselected, with
+   estimates: Fast (a few hours, more of the plan today) or Gentle (a few days).
+3. Vyre never touches Claude Code's settings; where true, it says "Claude Code keeps sessions for
+   30 days; import now so they're kept in Vyre".
+
+## Decisions that were open
 
 1. After the first import, should "Keep them in sync" be offered on the same screen, unticked (the
    proposal), or only later in Settings?

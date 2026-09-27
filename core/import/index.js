@@ -8,6 +8,7 @@
 // transport lands). A home that is not the person's own never reads their ~/.claude
 // (transcriptFolders), and nothing here polls: status is read when asked.
 
+import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { transcriptFolders, claudeHome } from "../config/index.js";
@@ -47,7 +48,7 @@ export default {
     };
 
     ctx.tool("import.scan", {
-      description: "The Claude Code sessions on this device, by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (work on Vyre itself, Vyre's own sessions and temporary folders are not). Reads file names, sizes, times and each session's folder only; nothing leaves the device. folders: more folders to look in (absolute paths).",
+      description: "The Claude Code sessions on this device, by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).",
       input: { type: "object", properties: { folders: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
       run: async ({ folders } = {}) => {
@@ -57,14 +58,17 @@ export default {
           for (const p of ps) for (const f of p.folders) if ((cwd === f || cwd.startsWith(f.replace(/\/+$/, "") + "/")) && (!best || f.length > best.len)) best = { slug: p.slug, name: p.name, len: f.length };
           return best ? { slug: best.slug, name: best.name } : null;
         };
-        const r = scan(roots(folders), { projectOf, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
+        // Left out before anything is listed (e2e): Vyre's own folders, and folders the person
+        // excluded from memory (memory.personal.skipCwds) or from imports (import.exclude).
+        const exclude = [...(ctx.config.memory?.personal?.skipCwds || []), ...(ctx.config.import?.exclude || [])].filter(x => typeof x === "string");
+        const r = scan(roots(folders), { projectOf, exclude, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
         last = { at: Date.now(), files: r.files };
-        return { sources: r.sources };
+        return { sources: r.sources, left_out: r.left_out, capped: r.capped, claude_keeps_days: keepsDays() };
       },
     });
 
     ctx.tool("import.plan", {
-      description: "Exactly what an import of these folders would take: { plan, sessions, bytes, folders }. include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.",
+      description: "Exactly what an import of these folders would take: { plan, sessions, bytes, folders, pace: { turns, usd, fast: { hours }, gentle: { days } } } (pace: how long understanding them would take at each speed; search works at once either way). include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.",
       input: { type: "object", required: ["include"], properties: { include: { type: "array", items: { type: "string" } }, exclude: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
       run: async ({ include, exclude = [] }) => {
@@ -81,7 +85,7 @@ export default {
         const plan = { at: t, files: chosen.map(f => f.file), sessions: chosen.length, bytes: chosen.reduce((n, f) => n + f.bytes, 0),
           folders: [...new Set(chosen.map(f => f.cwd).filter(Boolean))].sort() };
         plans.set(id, plan);
-        return { plan: id, sessions: plan.sessions, bytes: plan.bytes, folders: plan.folders };
+        return { plan: id, sessions: plan.sessions, bytes: plan.bytes, folders: plan.folders, pace: await paces(plan.bytes) };
       },
     });
 
@@ -91,6 +95,27 @@ export default {
       callers: [...PEOPLE, "module"],
       run: async () => statusNow(),
     });
+    /**
+     * How long reading personal facts would take at each pace (the person chooses, docs/design/import.md).
+     * Search works at once either way. An estimate from the size: about one of the person's turns
+     * with something personal in it per 20 KB of session file, at what reading has cost so far.
+     */
+    const paces = async bytes => {
+      const m = (await ctx.call("memory.stats", {}).catch(() => null))?.data?.personal?.model || {};
+      const turns = Math.max(1, Math.round(bytes / 20_000));
+      const per = Number(m.usd_per_1000_turns) > 0 ? Number(m.usd_per_1000_turns) / 1000 : 0.0003;
+      const usd = Math.round(turns * per * 100) / 100;
+      const daily = Number(m.cap_usd) > 0 ? Number(m.cap_usd) : 0.25;
+      // Fast: one batch of 20 a minute, paid from a one-time pool sized to the history.
+      return { turns, usd, fast: { hours: Math.max(1, Math.ceil(turns / 20 / 60)) }, gentle: { days: Math.max(1, Math.ceil(usd / daily)) } };
+    };
+    /** How long Claude Code keeps sessions here (cleanupPeriodDays, default 30), read, never changed. */
+    const keepsDays = () => {
+      if (!claude) return null;
+      try { const j = JSON.parse(fs.readFileSync(path.join(claude, "settings.json"), "utf8")); return Number.isInteger(j.cleanupPeriodDays) ? j.cleanupPeriodDays : 30; }
+      catch { return 30; }
+    };
+
     /** Each stage's counts, from Recall and memory. */
     async function statusNow() {
         const [rs, ms] = await Promise.all([ctx.call("recall.status", {}), ctx.call("memory.stats", {})]);
