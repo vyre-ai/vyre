@@ -75,3 +75,10 @@ test("safe git: nothing but lib/git-safe.js starts git", () => {
   for (const d of ["core", "local", "modules", "lib"]) walk(path.join(REPO, d));
   assert.deepEqual(bad, []);
 });
+
+test("safe git: a failed call carries git's own explanation", t => {
+  const { dir } = planted(t);
+  const r = gitSync(dir, ["rev-parse", "--verify", "no-such-branch-northwind"]);
+  assert.equal(r.ok, false);
+  assert.match(r.stderr, /./, "stderr says why");
+});
