@@ -4,7 +4,7 @@ Branch: work/chat · Worktree: ../vyre-chat · ADR 0024 · Owner session: chat (
 
 ## Scope
 
-The user, on the Deck: start a new chat from Chat, see the box's folders and open a terminal in
+The user, on the Deck: start a new chat from Chat, see the server's folders and open a terminal in
 one, a Claude Code session rendered better than the terminal, replies that read "Vyre" (or the
 agent's name), and first-class question and permission cards.
 
@@ -172,7 +172,38 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
-## Doing (27 Sep, evening)
+## Doing (28 Sep, restart after cohesion's hand-over)
+
+- Merged origin/main clean (4032bf03; no conflicts). ADR 0038 (server, not box): renamed the
+  user-facing "box" strings in files chat/core-term own (composer.js, term.js, folders.js,
+  index.js, newsession.js, pickers.js, core/term/index.js + core/term/term.test.js incl. the
+  term.closed reason "box updated" -> "server updated"); left `ctx.config.role === "box"` (the
+  stored config value, out of scope per the ADR) and every other team's files alone. node --check
+  clean on every touched file; a real testbox run is next once the lead clears the box (rebooting).
+- Cohesion's hand-over (docs/design/interaction.md, one-product-audit finding 6): read
+  newsession.js and session.js end to end. A plain session already opens in the right project
+  (context.now's nowProject feeds state.where, newsession.js:113-114). An agent/teammate session
+  (agents.ask via startCall) never sends `project` at all - by design, an agent "works in its own
+  thread and its own projects" - and session.js's header (drawHead) shows only the agent name and
+  folder path, no project chip anywhere. So there is no visible sign of which project a teammate's
+  thread landed in once it opens - confirmed, not yet fixed. Reported to the lead, asked to build
+  once testbox is clear rather than land a header change untested.
+- Next once the lead clears testbox: `node --test "deck/chat/**/*.test.js" "core/term/**/*.test.js"`
+  to confirm the terminology rename broke nothing, then build the project chip in session.js's
+  drawHead (record.current.project, name from projects.list when loaded else the slug).
+
+## Doing (27 Sep, late; saved for restart)
+- Handed off: integrator has 0b6f9091 (batch 5 / RC). Nothing uncommitted. Resume: merge main, then perf
+  (fling, cold open) when testbox load < 2, then cohesion 5 when cohesion says P1 + Render are on main.
+- Batch 4 landed (main bc751624, notes 68463d04), merged into work/chat; next sha 0b6f9091 (pushed):
+  plan card, tips line, cohesion 1 and 9, raw relative paths, send-to-row, shots on vyre-chrome
+  --headless=new. Tests: 598/598 targeted (1 skipped) after the merge. Shots: team/chat-shots/2026-09-27/after/.
+- The integrator's d49d535e: chat.css/term.css use the 719 phone query (dom.js PHONE_QUERY) and radius
+  roles (--r-* is gone); answers go through pwa's queued() outbox. New chat CSS must follow both.
+- Waiting: perf timing (fling, cold open) until testbox load < 2; cohesion 5 (platform P1 382a8574
+  and the Render shape on main, cohesion says when).
+
+## Before (27 Sep, evening)
 - UNTESTED (testbox held by the lead until batch 4 reports): 00b7a269 plan card (deck/chat/plan-card.js,
   core/plan.js parser, fake claude `plan`, world's third live session, chat-shots 8-plan, switchboard
   test), 942047c2 cohesion 1 (context.report on open, context.now project default), a3e31c67 tips

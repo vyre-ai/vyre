@@ -477,7 +477,7 @@ export function mountComposer(opts) {
     const r = await viaOutbox("threads.send", input, { onWait: () => {
       waited = true; sending = false; send.disabled = false;
       note.classList.add("soft");
-      put(note, icon("clock", 12), " Sending when your box answers: ", h("span", { class: "faint" }, text.length > 60 ? text.slice(0, 59) + "…" : text));
+      put(note, icon("clock", 12), " Sending when your server answers: ", h("span", { class: "faint" }, text.length > 60 ? text.slice(0, 59) + "…" : text));
     } });
     sending = false;
     send.disabled = false;
@@ -513,7 +513,7 @@ export function mountComposer(opts) {
       const id = d.queued_id ?? (d.queued === true ? null : d.queued);
       // A session busy in a terminal queued it anyway: the box kept the words, not the images.
       // They go back in the box, so they can be sent once the turn ends.
-      if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back in the box to send after this turn."); }
+      if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back on the server to send after this turn."); }
       if (drawn && mode !== "queue") patch(dropLocal(/** @type {any} */ (S), uuid));
       if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
