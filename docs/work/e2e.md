@@ -209,19 +209,33 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
-## Doing (27 Sep, LOGOUT 4 save)
+## Doing (27 Sep, after logout 4)
 
-Branches:
-- work/e2e (this worktree): all my work. Tip = the save commit. Contains: person session, Mac signin,
-  Secure Enclave key, relay device sign-in and web passkey, vyre:// + human key, the uid split (off
-  by default, sessions.spawner), per-thread socket (efb02b2c), floor follows links (3f2babe2),
-  no auto-pair on vyre up (f81bb184/9fc65458), phone vault sessions (e5aaf881). Last sent to the
-  integrator: bb0415f8 (batch 3b); 9fc65458 queued for batch 4.
-- work/e2e-sdk (worktree ../vyre-e2e-sdk): the journey 4 fix 8aed4887 on pre/3b 6df7efb9 (SDK
-  auto-install only in ~/.vyre; npm in its own group, aborted on stop). Sent to the integrator.
+Done this session:
+- Merged main 7880dfa6 into work/e2e (0856b9b9; changelog union, generated docs regenerated).
+- The candidate image did not build: box/Dockerfile imports core/sessions/sdk.js on its own to read
+  the SDK pin, and 8aed4887 gave it an import. Fixed in work/e2e-sdk 65cbc02a (pin in
+  core/sessions/sdk-pin.js, imports nothing; test on the Dockerfile's COPY line). Sent to the
+  integrator, box-deploy and the lead.
+- Headscale gate on main + 65cbc02a: PASS, 16 items (list sent to box-deploy). Glass not rerun.
+  Low: unknown ids at gate.get/agents.delete answer 500, not 404; `vyre link signin` prints nothing
+  on success. Harness: the image needs a build.json stamp, or the Deck's service worker keeps the
+  last run's files (same "v0.0.1" cache name) and the passkey page breaks on a stale api.js.
+- rooms.test.js:227 passes alone on testbox; asked the integrator for the failing text (likely a
+  run under a `claude` process, since agents.create is PERSON_ONLY on the socket).
+- Batch 4 sha sent: work/e2e 0856b9b9.
+- native-core re-review of 62abf2cf (tip 87fb03d7): HIGH 1 and 2 fixed, store limits right, 60/60
+  on testbox. NOT signed off: new HIGH, settings.get has no callers, so mcp and agents read
+  sessions.env values (Claude Code's env, API keys). Asked for masked values for non-person
+  callers plus a test. MEDIUMs sent: firstParty = "under the repo" (dev home in a checkout),
+  env/plugins/deny-removal without confirm, asPerson's "deck" fallback. Waiting on their sha.
+
+Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
+not_found; `vyre link signin` at a terminal waits on the event stream and says "signed in on the
+box until <date>" (test/daemon.test.js, test/link-person.test.js; 115/115 + 88/88 on testbox).
 
 Next, in order:
-1. The headscale gate on tonight's candidate sha (box-deploy forwards it). Setup kept in
+1. DONE (see above). To rerun the headscale gate on a new sha: Setup kept in
    /srv/vyre-e2e (CA, NSS db). Build `docker build -t vyre-e2e:local -f box/Dockerfile .` from that
    sha on testbox, then `./run1.sh`, `./run2.sh <link>`, `./run3.sh` (run3 uses `vyre up --connect`),
    then the person-session checks (curl from the Mac node gets 401; the Deck's first action signs in;

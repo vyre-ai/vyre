@@ -71,7 +71,7 @@ export default {
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
       model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread) });
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
-    const must = name => { const a = get(name); if (!a) throw new Error(`no agent ${name}`); return a; };
+    const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name}`), { code: "not_found" }); return a; };
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
     /** Tool results unwrapped; an error becomes a throw with its message. */

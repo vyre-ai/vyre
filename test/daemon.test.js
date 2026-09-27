@@ -387,3 +387,23 @@ test("daemon: /theme.css serves config's theme.colors, read on every request", {
   fs.writeFileSync(cfgPath, JSON.stringify({ ...cur, theme: { colors: { dark: { signal: "#B4E35A" } } } }));
   assert.match(/** @type {any} */ (await get()).body, /--signal: #B4E35A;/);
 });
+
+test("daemon: asking for something that is not there is a 404 not_found, not a 500", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { paths } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const post = (/** @type {string} */ tool, /** @type {any} */ body) => new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: paths(root).socket, path: "/v1/tools/" + tool, method: "POST", agent: false,
+      headers: { "content-type": "application/json", "x-vyre-caller": "cli" } }, res => {
+      let b = ""; res.setEncoding("utf8"); res.on("data", c => (b += c)); res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(b) }));
+    });
+    req.on("error", reject); req.end(JSON.stringify(body));
+  });
+  for (const [tool, body] of [["gate.get", { id: "x" }], ["agents.delete", { agent: "x" }]]) {
+    const r = /** @type {any} */ (await post(tool, body));
+    assert.equal(r.status, 404, `${tool}: ${JSON.stringify(r.body)}`);
+    assert.equal(r.body.error.code, "not_found");
+  }
+});
