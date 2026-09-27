@@ -55,7 +55,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - rc.2 on pre/rc: e2e-surfaces 5a646023, launch 4d3b808f, hotfix a3a844e4, e2e-agentclaim 1ff45c03,
   cohesion 4b9c0c0d (targeted 144/0). cl.py now checks headings across the whole CHANGELOG.
 - rc.2 also: memory-iq 4ff57bb6, pack fix 607fcca0. capsule-pro 4022d388 merged; launch bb2ef63e merged;
-  vault f3d39f3f + 17dd7a05 and connectors 8be461a9 merged (boundaries red: 6 new edges, asked the lead).
+  vault f3d39f3f + 17dd7a05 and connectors 8be461a9 merged Six edges frozen as 0.1.1 debt
+  (lead OK, 30416e64 + boundaries.md), Capsule IQ model names in the drift list. Waiting only on glass-live.
   MUST also take glass-live's rebased sha (two e2e HIGHs: container Env secrets, unfenced CDP), via
   e2e; its computer image rollout goes with box-deploy. Waiting: vault-next
   (HELD for e2e's sign-off on the send_mail takeover fix) + connectors 8be461a9, then ci bumps to rc.2.
@@ -120,7 +121,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 
 ## Next: 0.1.1 batch 1 (right after rc.2 lands)
 
-- federation aa9cb40c (e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
+- federation 9338a6a5 (supersedes aa9cb40c; e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
