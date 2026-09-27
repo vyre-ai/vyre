@@ -94,8 +94,16 @@ the Deck in a browser. Every surface should be able to add, snooze and finish th
 ## Contract
 
 Tools: `planner.add`, `planner.list`, `planner.get`, `planner.update`, `planner.done`,
-`planner.snooze`, `planner.dismiss`, `planner.delete`, `planner.agenda`, `planner.parse`,
-`planner.settings`, `planner.calendar.sync`, `planner.calendar.create`.
+`planner.snooze`, `planner.dismiss`, `planner.delete`, `planner.agenda`, `planner.upcoming`,
+`planner.parse`, `planner.settings`, `planner.calendar.sync`, `planner.calendar.create`,
+`planner.ringing`.
+
+The ring key (ADR 0029, R6): `planner-<item>-<due>`, `due` in epoch seconds, names one ring of an
+item at one moment. `planner.fired`, `planner.acked`, `planner.ringing`, `planner.upcoming` and the
+push all carry it. `planner.done`, `planner.snooze` and `planner.dismiss` take `{ key }` as well as
+`{ firing }` or `{ item }`: a device that rang a moment from its own schedule while the box was out
+of reach answers by key, and the box records the answer (`unrung: true` on the ack) and never rings
+that moment. A repeat answered by key again is `{ already: true }`.
 
 Events (all carry `item`, the item id; titles are the user's own words and stay on their devices):
 
@@ -104,8 +112,9 @@ Events (all carry `item`, the item id; titles are the user's own words and stay 
 | `planner.added` | `{ item, kind, title, at? }` |
 | `planner.changed` | `{ item, kind, fields }` |
 | `planner.removed` | `{ item, kind }` |
-| `planner.fired` | `{ firing, item, kind, title, due, ring, missed, actions: ["done","snooze"] }`; a connected calendar's event also carries `account` and `start`, and its `item` is the cache row id (`c_...`) |
-| `planner.acked` | `{ firing, item, action: "done"\|"snooze"\|"dismiss", by, until? }` |
+| `planner.fired` | `{ firing, key, item, kind, title, due, ring, missed, actions: ["done","snooze"] }`; a connected calendar's event also carries `account` and `start`, and its `item` is the cache row id (`c_...`) |
+| `planner.acked` | `{ firing, key, item, due, action: "done"\|"snooze"\|"dismiss", by, until?, unrung? }` |
+| `planner.schedule` | `{ reason: "settings" \| "calendar" }`: the rings moved without an item changing (a zone or lead change, a calendar sync that changed the copy) |
 
 Calendar tools and the agenda:
 
@@ -113,17 +122,23 @@ Calendar tools and the agenda:
 |---|---|---|
 | `planner.calendar.sync` | `{}` | `{ synced_at, accounts: [name], events, added, changed, removed, errors?: [{ account, error }] }` |
 | `planner.calendar.create` | `{ title, start, end?, where?, attendees?, account?, tz?, why?, project?, thread? }` | no account: the planner's own event (an item of kind `event`); with account: what `google.calendar.create` returns, `{ event }` or `{ held, message }` |
-| `planner.agenda` | `{ from?, to?, busy?, next? }` | `{ tz, from, to, entries, todos }`; `busy: true` gives `{ tz, from, to, busy: [{ start, end }] }`; `next: n` gives `{ tz, from, entries }` (the next n from now) |
+| `planner.upcoming` | `{ hours? }` (48 by default, 1 to 72) | `{ tz, from, to, last_event, entries: [{ key, item, kind, title, due (s), at (ms), loud, snoozed?, start?, account?, added_by? }] }`: every ring the box expects, less what is answered or ringing. A device schedules these as local notifications and refreshes on any planner event but `planner.fired`, and on foreground |
+| `planner.agenda` | `{ from?, to?, busy?, next? }` | `{ tz, from, to, entries, todos, last_event }`; `busy: true` gives `{ tz, from, to, busy: [{ start, end }] }`; `next: n` gives `{ tz, from, entries }` (the next n from now) |
 
 An agenda entry: `{ source: "planner" | <account name>, item, kind, title, at, start, end, all_day,
 where, url, ... }`; a calendar entry also has `account` and `event` (Google's id). People may use
 `planner.calendar.create` in full; an agent may only ask for an invite (an account and attendees),
 which the google module holds at the Gate.
 
-Push payload (kind `planner`): `{ kind: "planner", title, path: "/planner/<firing>", tag:
-"planner-<firing>", at, actions: ["done", "snooze"], body? }` (body only with planner_label on).
-A notification action posts `planner.done` or `planner.snooze` with `{ firing }`. On an ack:
-`{ kind: "planner-ack", tag: "planner-<firing>", at }`, normal urgency, sent once per pushed firing.
+`planner.list` and `planner.ringing` take `cursor: true` and then return `{ items, last_event }`
+and `{ ringing, last_event }`: the event cursor the read is current to (ADR 0029, R1).
+
+Push payload (kind `planner`): `{ kind: "planner", title, path: "/planner/<firing>", tag: <key>,
+item, due (s), at, actions: ["done", "snooze"], body? }` (body only with planner_label on). Native
+pushes use the key as `apns-collapse-id` and the Android notification tag. A notification action
+posts `planner.done` or `planner.snooze` with `{ firing }` (or `{ key }` for a local ring). On an
+ack: `{ kind: "planner-ack", tag: <key>, at }`, normal urgency, sent once per pushed firing and for
+every `unrung` answer.
 
 ## Consequences
 

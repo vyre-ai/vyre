@@ -7,7 +7,7 @@
 // (account, event, start), however often the cache is refreshed. All-day events never ring.
 
 import crypto from "node:crypto";
-import { newId } from "./store.js";
+import { newId, ringKey } from "./store.js";
 import { parseDate, toUTC } from "./time.js";
 
 export const SYNC_EVERY = 15 * 60_000;
@@ -164,6 +164,8 @@ export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, can
     }
     const synced_at = now();
     st.state.set("calendar", { synced_at, from, to, accounts: names, errors });
+    // Devices keep their own 48 hours of rings (ADR 0029, R6): tell them the calendar's moved.
+    if (counts.added || counts.changed || removed) emit("planner.schedule", { reason: "calendar" });
     if (errors.length) ctx.log(`planner: calendar sync had errors for ${errors.map(e => e.account).join(", ")}`);
     return { synced_at, accounts: names, events, ...counts, removed, ...(errors.length ? { errors } : {}) };
   };
@@ -202,7 +204,7 @@ export function calendarCache({ ctx, db, st, scheduler, settings, now, emit, can
       db.prepare("UPDATE planner_firings SET state = 'superseded', next_ring = NULL WHERE item = ? AND state = 'ringing'").run(r.id);
       const f = { id: newId("f"), item: r.id, kind: "event", due, ring: 1, missed: t - meant > LATE_MS, state: "ringing", fired_at: t, next_ring: null };
       st.insertFiring(f);
-      emit("planner.fired", { firing: f.id, item: r.id, kind: "event", title: r.title ?? "", due, ring: 1, missed: f.missed,
+      emit("planner.fired", { firing: f.id, key: ringKey(r.id, due), item: r.id, kind: "event", title: r.title ?? "", due, ring: 1, missed: f.missed,
         actions: ["done", "snooze"], account: r.account, start: r.start });
     }
   };

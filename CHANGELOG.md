@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Planner: alarms ring on a device with the box out of reach (ADR 0029, R6)
+
+- One ring key, `planner-<item>-<due>` (due in epoch seconds), on planner.fired, planner.acked,
+  planner.ringing and the push. The push uses it as its tag and carries item and due, so a device
+  that rang a moment from its own schedule shows the box's push once.
+- planner.upcoming: every ring the box expects in the next 48 hours (1 to 72), keyed, with
+  last_event, for devices to schedule as local notifications. A moment already answered or ringing
+  is left out.
+- planner.done, snooze and dismiss take `key`. A device answering a ring it rang itself sends it
+  by key; the box keeps the answer and never rings that moment, and the ack (`unrung: true`) goes
+  out as a planner-ack push so the other devices drop it too. An answer repeated is `already`.
+- planner.schedule event: the rings moved with no item changed (a zone or lead change, a calendar
+  sync that changed the copy).
+- last_event (ADR 0029, R1) on planner.agenda and planner.upcoming, and on planner.list and
+  planner.ringing with `cursor: true`.
+- A Vyre-owned session's thread (`mcp:thread:<id>`, ADR 0030) counts as the assistant, as an
+  unnamed terminal session does.
+- Tests: core/planner/planner.test.js, calendar.test.js, core/push/push.test.js.
+
 #### An idle planner no longer loads the time zone data
 
 - The planner reads its zone only when something needs placing. The first zoned Intl call loads

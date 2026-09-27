@@ -76,14 +76,31 @@ the contract in ADR 0025.
   parser, read in the item's zone; Date.parse only with a year. parse reads "6pm call Harlow
   Legal" as a reminder. 65 of 65 on the test box. Main merged (650a1e5).
 
+## Done (2026-09-27, session 4)
+- RSS trim (6a04bc8, a5b8f44): the zone is read lazily, so an idle planner never loads ICU's
+  zone data. The planner started on an empty store adds 4.0 MB RSS (was 11.5 MB), measured in
+  isolation on the test box. perf-check at load 9.3: CPU p95 0.00%, RSS mean 131.9 MB, max
+  154.2 MB (FAIL at max as before; the planner's share is now 4 MB, the rest is other modules).
+- Resilience (ADR 0029, R6 and R1): ring key `planner-<item>-<due s>` on fired, acked, ringing,
+  upcoming and the push tag (+ item, due); planner.upcoming (48 h of keyed rings, last_event);
+  done/snooze/dismiss by key, including a ring the box never rang (recorded answered, never rung,
+  ack `unrung: true` pushed as planner-ack); planner.schedule event on zone/lead change and a
+  calendar sync that changed the copy; last_event on agenda/upcoming, list/ringing with cursor.
+- Sessions (ADR 0030): `mcp:thread:<id>` counts as the assistant in the planner's ownership rule.
+  The registry's callerKind does not strip `:thread:` yet (sessions owns it).
+- Tests on the test box: 80 of 80 (core/planner/*, push, deck planner + pwa, cc-plugin), docs 61 of 61.
+
 ## Doing
 - Nothing in flight. Resume from Next.
 
 ## Next
-1. Wait for answers from pwa, capsule-apps, cc-plugin (sent 2026-09-27).
-2. If the user wants it: CLI prints the parser's `reason` on ambiguous words (today: "not understood").
-3. Email/SMS fallback (later, needs the user's go and the Gate).
-4. Known limit: the planner-ack push is only sent for firings pushed since vyred started.
+1. Answers from resilience, sessions, pwa, capsule-pro, mobile (sent 2026-09-27, session 4).
+2. If sessions wants it: a planner rules text for the session's append prompt, and the in-process
+   MCP tool list (planner.add/list/agenda/done/snooze/dismiss/upcoming; never settings).
+3. CLI prints the parser's `reason` on ambiguous words (if the user wants it).
+4. Email/SMS fallback (later, needs the user's go and the Gate).
+5. Known limit: a planner-ack push goes out only for firings pushed since vyred started (and every
+   unrung answer).
 
 ## Contracts owed
 - None open. Sent: cc-plugin shapes, capsule-apps parse branch + hash, pwa presence + ack + label.
@@ -133,6 +150,9 @@ the contract in ADR 0025.
 - planner.agenda (own): a calendar entry's `source` is the Google account name, no longer
   "calendar"; entries gain start, all_day, where, url on planner entries too. ADR 0025 contract
   table updated. planner.fired for a calendar event adds `account` and `start`.
+- Session 4: planner (own) ring key on fired/acked/ringing, planner.upcoming, `key` on
+  done/snooze/dismiss, planner.schedule event, last_event / cursor. core/push (switchboard): the
+  planner push tag is the ring key, with item and due; planner-ack by key and for unrung answers.
 - core/push/index.js (switchboard owns push): `planner.fired` maps to kind `planner` with a fixed
   title per item kind (alarm "Alarm", timer "Timer finished", reminder "Reminder", event "Starting
   soon", todo "Todo due"), path `/planner/<firing>`, tag `planner-<firing>`, `actions: ["done",
