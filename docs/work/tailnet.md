@@ -179,7 +179,13 @@ Later the same day (lead and e2e answers):
   <mac>"), pwa (push for a Mac ask opens /needs/<ask>, which the box cannot load), sessions
   (review the switchboard hunks; threads.asks on the box does not list open Mac asks). Side
   effect for sessions: on a box /v1/tools lists threads.answer with presence: true.
-- Next for whoever resumes: box-deploy's validation of `projects.move` on a copy; the "Verify on
+- Sessions reviewed 06441c6f and 334270d1: fine, applies cleanly after batch 3a. Sessions
+  DECIDED: threads.asks on the box merges the Macs' open asks (add "threads.asks" to ALLOW in
+  core/link/allow.js, rows labelled source:"mac" and machine via mergeRows, as threads.list does
+  in core/switchboard/index.js). Not built: send sessions the hunk. Chat's Deck side is
+  work/chat b524397 (untested; told them no flag is needed and that a passkey proof is not a
+  person session).
+- Next for whoever resumes: that threads.asks hunk on work/federation first; then box-deploy's validation of `projects.move` on a copy; the "Verify on
   first real run" list below; the egress authenticating front (Next 4).
 
 Waiting: e2e (merges work/tailnet and tests the app flow end to end), relay (origin list, and whether the
