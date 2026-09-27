@@ -49,10 +49,10 @@ jobs:
     if: needs.detect.outputs.present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      D: ${{ runner.temp }}/sessions-sdk-js
     steps:
       - uses: actions/checkout@v4
+      # runner.temp is not available at job level.
+      - run: echo "D=$RUNNER_TEMP/sessions-sdk-js" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -83,10 +83,10 @@ jobs:
     if: needs.detect.outputs.present == 'true' && (needs.detect.outputs.real == 'true' || github.event_name != 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      D: ${{ runner.temp }}/sessions-sdk-full
     steps:
       - uses: actions/checkout@v4
+      # runner.temp is not available at job level.
+      - run: echo "D=$RUNNER_TEMP/sessions-sdk-full" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
