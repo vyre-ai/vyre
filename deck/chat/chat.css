@@ -151,7 +151,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   border-radius: var(--radius-card, 12px); background: var(--panel); }
 .composer textarea { flex-grow: 1; min-width: 0; min-height: 32px; max-height: 200px; field-sizing: content; background: transparent; border: none; outline: none; resize: none;
   color: var(--text); font: inherit; font-size: 14px; line-height: 20px; padding: 6px 0; }
-.composer-hint { font-size: 11px; color: var(--label); padding: 0 2px; }
+.composer-hint { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 11px; color: var(--label); padding: 0 2px; }
 .composer-menu { position: absolute; bottom: 100%; left: 20px; right: 20px; margin-bottom: 6px; background: var(--panel);
   border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); box-shadow: var(--popover); max-height: 240px; overflow: auto; padding: 6px; z-index: 20; }
 .composer-menu button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border: none; background: transparent;
@@ -779,3 +779,59 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (pointer: coarse) { .composer-chip .kbd, .cv-rewind-acts .btn .kbd { display: none; } }
 .composer-attach { width: 36px; height: 44px; flex-shrink: 0; }
 .composer-attach[hidden] { display: none; }
+
+/* Plan card (plan-card.md, plan-card.js): the ask card's frame and header; the body a short
+   document (title, numbered steps, what it will not touch, the files it expects), the mode it
+   continues in as a segmented control, then Start building, Revise and Keep planning. */
+.cv-plan-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 16px; }
+.cv-plan-title { font-size: 15px; line-height: 22px; font-weight: 600; }
+.cv-plan-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 22px; color: var(--text); }
+.cv-plan-steps li::marker { color: var(--label); }
+.cv-plan-code { font-family: var(--mono); font-size: 13px; padding: 0 4px; border-radius: 4px; background: var(--hover); }
+.cv-plan-not { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.cv-plan-not .cv-plan-code { font-size: 12px; }
+.cv-plan-rest { font-size: 13px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; }
+.cv-plan-more { align-self: flex-start; }
+.cv-plan-fileset { display: flex; flex-direction: column; gap: 4px; }
+.cv-plan-files-head { display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 0; border: 0; background: none; font: inherit; font-size: 12px;
+  line-height: 16px; color: var(--text-2); text-align: left; }
+.cv-plan-lbl { font-weight: 600; color: var(--label); }
+.cv-plan-counts { margin-left: auto; font-size: 12px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cv-plan-file { display: flex; align-items: center; gap: 10px; min-height: 20px; }
+.cv-plan-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--text); }
+.cv-plan-then { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cv-plan-then-l { font-size: 12px; color: var(--text-2); }
+.cv-plan-seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--rule); border-radius: 8px; height: 32px; box-sizing: border-box; }
+.cv-plan-opt { height: 26px; padding: 0 12px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.cv-plan-opt[aria-checked="true"] { background: var(--hover); color: var(--text); font-weight: 600; }
+.cv-plan-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cv-plan-actions { padding: 12px 16px; border-top: 1px solid var(--rule); }
+.cv-plan-revise-row { padding: 0 16px 8px; }
+.cv-plan-building { display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 13px; font-weight: 600; }
+.cv-plan-err { padding: 0 16px 8px; font-size: 12px; color: var(--text); }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+  .cv-plan-title, .cv-plan-steps { font-size: 17px; line-height: 24px; }
+  .cv-plan-then, .cv-plan-seg { width: 100%; }
+  .cv-plan-seg { height: 40px; }
+  .cv-plan-opt { flex: 1; height: 34px; }
+  .cv-plan-file { min-height: 24px; }
+  .cv-plan-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cv-plan-actions > [data-act="start"] { grid-column: 1 / -1; min-height: 54px; }
+  .cv-plan-actions > .btn:not([data-act="start"]) { min-height: 44px; }
+}
+
+/* The tip on the composer's hint line (tip.md, tip-line.js): left, the key hints right. Muted,
+   never the attention colour, never in the tab order; gone while anything else wants you. */
+.composer-keys { margin-left: auto; flex-shrink: 0; }
+.composer-tip { min-width: 0; flex: 1 1 auto; }
+.composer-tip[hidden] { display: none; }
+.cv-tip { display: flex; align-items: center; gap: 8px; min-height: 28px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--label);
+  animation: cv-tip-in 150ms ease-out; }
+.cv-tip-icon { display: inline-flex; flex-shrink: 0; }
+.cv-tip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-tip-code { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+.cv-tip-key { margin: 0 2px; }
+.cv-tip-show { flex-shrink: 0; height: 24px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cv-tip-x { flex-shrink: 0; width: 24px; height: 24px; color: var(--label); }
+@keyframes cv-tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cv-tip { animation: none; } }

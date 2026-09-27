@@ -140,7 +140,9 @@ export function mountComposer(opts) {
   let busyName = "";
   function drawQueued() { opts.onQueue?.(waiting.size, busyName); }
   const note = h("div", { class: "composer-note", role: "status" });
-  const hint = h("div", { class: "composer-hint" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"]));
+  // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
+  const tipSlot = h("div", { class: "composer-tip", hidden: true });
+  const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"])));
   const root = h("div", { class: "composer" }, note, thumbs, wrap, chips, hint);
 
   // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
@@ -429,8 +431,10 @@ export function mountComposer(opts) {
     put(note); note.classList.remove("soft");
     remember(hist, text); saveHistory();
     queueToggle = false;
-    const drawn = !machine && !!mode && !!S;
-    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode, at: Date.now(), ...(imgs.length ? { images: imgs.length } : {}) }));
+    // Drawn at once (a steer, a queued row, or a plain send's words), except a / command, which the
+    // transcript shows its own way.
+    const drawn = !machine && !!S && (!!mode || !text.startsWith("/"));
+    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs.length } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
       : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
@@ -477,7 +481,7 @@ export function mountComposer(opts) {
       // A session busy in a terminal queued it anyway: the box kept the words, not the images.
       // They go back in the box, so they can be sent once the turn ends.
       if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back in the box to send after this turn."); }
-      if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
+      if (drawn && mode !== "queue") patch(dropLocal(/** @type {any} */ (S), uuid));
       if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
       if (id != null && !machine) return;
@@ -642,7 +646,7 @@ export function mountComposer(opts) {
   drawChips();
 
   return {
-    el: root, key, editQueued, draw: drawChips, value: () => String(ta.value ?? ""),
+    el: root, key, editQueued, draw: drawChips, value: () => String(ta.value ?? ""), tipSlot, input: ta,
     focus: () => ta.focus(),
     setMachine: m => { machine = m || null; drawChips(); },
     setBusy: v => {
