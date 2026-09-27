@@ -31,7 +31,7 @@ async function engine(t) {
     const buf = Buffer.concat(chunks);
     const tar = req.headers["content-type"] === "application/x-tar";
     const body = tar ? buf : buf.length ? JSON.parse(buf.toString("utf8")) : undefined;
-    seen.push({ method: String(req.method), path: String(req.url), body });
+    seen.push({ method: String(req.method), path: String(req.url), body, authorization: req.headers.authorization });
     const send = (status, b) => { res.writeHead(status, { "content-type": "application/json" }); res.end(b === undefined ? "" : JSON.stringify(b)); };
     const url = new URL(String(req.url), "http://d");
     let m;
@@ -71,13 +71,14 @@ const spec = {
 
 test("docker: create sends exactly the container Vyre means, and nothing is published", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   const { id } = await d.create(spec);
   assert.equal(id, "c3");
   assert.equal(e.seen.length, 1);
   const r = e.seen[0];
   assert.equal(r.method, "POST");
   assert.equal(r.path, "/v1.43/containers/create?name=vyre-computer-kit");
+  assert.equal(r.authorization, "Bearer test-bearer", "every request to the proxy carries the bearer");
   assert.deepEqual(r.body, {
     Image: "vyre/computer:0.1",
     Hostname: "kit",
@@ -110,7 +111,7 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
 
 test("docker: never privileged, never a host mount, never host network or PID, always read-only", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   await d.create(spec);
   const body = e.seen[0].body;
   assert.equal(body.HostConfig.Privileged, false);
@@ -134,15 +135,15 @@ test("docker: never privileged, never a host mount, never host network or PID, a
 
 test("docker: a computer is refused the host network, whatever config or a caller asks for", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre" });
   await assert.rejects(d.create({ ...spec, network: "host" }), /never runs on the host network/);
-  const onHost = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "host" });
+  const onHost = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "host" });
   await assert.rejects(onHost.create({ ...spec, network: undefined }), /never runs on the host network/);
 });
 
 test("docker: run.vyre=1 marks every container and its volume, alongside the prefix labels", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
   await d.create({ ...spec, labels: { "run.vyre.computers.computer": "kit", "run.vyre.computers.managed": "true" } });
   const body = e.seen[0].body;
   assert.equal(body.Labels["run.vyre"], "1");
@@ -152,7 +153,7 @@ test("docker: run.vyre=1 marks every container and its volume, alongside the pre
 
 test("docker: every operation reads the labels first, then acts", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   const { id } = await d.create(spec);
   e.seen.length = 0;
   await d.start(id);
@@ -175,7 +176,7 @@ test("docker: every operation reads the labels first, then acts", async t => {
 
 test("docker: a container without both labels is refused, whatever the proxy would allow", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}` });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}` });
   for (const id of ["db1", "half"]) {
     for (const op of ["start", "pause", "unpause", "stop", "remove", "inspect"]) {
       await assert.rejects(/** @type {any} */ (d)[op](id), /refuses to touch it/, `${op} ${id}`);
@@ -187,7 +188,7 @@ test("docker: a container without both labels is refused, whatever the proxy wou
 
 test("docker: list returns only managed computers, with the agent from the label", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}` });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}` });
   const { id } = await d.create(spec);
   e.seen.length = 0;
   assert.deepEqual(await d.list(), [{ id, agent: "kit", state: "exited" }]);
@@ -201,18 +202,23 @@ test("docker: list returns only managed computers, with the agent from the label
 
 test("docker: an Engine error names the request, never the body with the passwords", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}` });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}` });
   await assert.rejects(d.start("nope"), /no such container: nope/);
   await assert.rejects(d.create({ ...spec, agent: "Bad Name" }), /not an agent name/);
-  const bad = new DockerDriver({ url: `unix://${path.join(os.tmpdir(), "no-such-vyre-docker.sock")}` });
+  const bad = new DockerDriver({ bearer: "test-bearer", url: `unix://${path.join(os.tmpdir(), "no-such-vyre-docker.sock")}` });
   await assert.rejects(bad.create(spec), err => { assert.doesNotMatch(String(err), /abcdefgh|t0ken/); return true; });
 });
 
 test("docker: needs a proxy URL, http or unix, and never assumes the raw socket", () => {
   assert.throws(() => new DockerDriver(/** @type {any} */ ({})), /computers.docker/);
-  assert.throws(() => new DockerDriver({ url: "https://proxy:2375" }), /http:\/\/host:port or unix/);
-  const d = new DockerDriver({ url: "http://docker-proxy:2375" });
+  assert.throws(() => new DockerDriver({ bearer: "test-bearer", url: "https://proxy:2375" }), /http:\/\/host:port or unix/);
+  const d = new DockerDriver({ bearer: "test-bearer", url: "http://docker-proxy:2375" });
   assert.deepEqual(d.target, { host: "docker-proxy", port: 2375 });
+});
+
+test("docker: needs a bearer -- there is no unauthenticated mode", () => {
+  assert.throws(() => new DockerDriver({ url: "http://docker-proxy:2375" }), /needs a bearer/);
+  assert.throws(() => new DockerDriver({ url: "http://docker-proxy:2375", bearer: "" }), /needs a bearer/);
 });
 
 test("docker: works over TCP to a proxy too", async t => {
@@ -221,14 +227,14 @@ test("docker: works over TCP to a proxy too", async t => {
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => server.close());
   const addr = /** @type {import("node:net").AddressInfo} */ (server.address());
-  const d = new DockerDriver({ url: `http://127.0.0.1:${addr.port}` });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `http://127.0.0.1:${addr.port}` });
   assert.deepEqual(await d.list(), []);
   assert.match(seen[0], /^GET \/v1\.43\/containers\/json\?all=true/);
 });
 
 test("docker: the secrets never go in Env; seed() puts them in the computer's volume as a .boot tar", async t => {
   const e = await engine(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
   await assert.rejects(d.create({ ...spec, env: { SCREEN: "1440x900", COMPUTERD_TOKEN: "x".repeat(43) } }), /must not be in a computer's Env/);
   await assert.rejects(d.create({ ...spec, env: { VNC_PASSWORD: "abcdefgh" } }), /must not be in a computer's Env/);
   const { id } = await d.create(spec);
@@ -236,6 +242,7 @@ test("docker: the secrets never go in Env; seed() puts them in the computer's vo
   const put = e.seen.at(-1);
   assert.equal(put.method, "PUT");
   assert.equal(put.path, `/v1.43/containers/${id}/archive?path=%2Fvar%2Flib%2Fvyre`);
+  assert.equal(put.authorization, "Bearer test-bearer", "the secrets themselves travel behind the bearer too");
   assert.deepEqual(allowBootTar(put.body), { ok: true });
   assert.match(put.body.toString("latin1"), /COMPUTERD_TOKEN=T{43}\nVNC_PASSWORD=Ab-_1234\n/);
   // Only our containers: someone else's database is never written to.
