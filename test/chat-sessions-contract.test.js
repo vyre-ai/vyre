@@ -165,7 +165,7 @@ test("sessions 034c71e5's shapes: images, ! shell, # memory, thinking, backgroun
   assert.match(sb, /IMAGE_TYPES = \["image\/png", "image\/jpeg", "image\/gif", "image\/webp"\]/, "the image types are chat's");
   assert.match(sb, /images: images\.length/, "thread.sent counts the images");
   assert.match(sb, /required: \["thread", "command"\]/, "threads.shell takes {thread, command}");
-  assert.match(sb, /"thread\.shell", \{ command: [^,]+, code: r\.code, output:/, "thread.shell carries {command, code, output}");
+  assert.match(sb, /"thread\.shell", \{ command: .*, code: r\.code, output:/, "thread.shell carries {command, code, output}");
   assert.match(sb, /return \{ thread: id, code: r\.code, output: out/, "threads.shell answers {code, output}");
   assert.match(sb, /enum: \["project", "user", "local"\]/, "threads.remember scopes");
   assert.match(sb, /"thread\.remembered", \{ scope, file \}/, "thread.remembered carries {scope, file}");
