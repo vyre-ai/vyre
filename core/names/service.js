@@ -23,7 +23,7 @@ const HSTS = "max-age=31536000";
 export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
 /** What the hosted app may send. Anything else fails its preflight. */
 const CORS_METHODS = "GET, POST";
-const CORS_HEADERS = "content-type, authorization, x-vyre-proof";
+const CORS_HEADERS = "content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key, last-event-id";
 const DAY = 86_400_000;
 
 /** Is this a name someone can have? Pure, so the Deck's check and the claim agree. */

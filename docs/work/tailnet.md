@@ -158,6 +158,12 @@ Later the same day (lead and e2e answers):
   frozen for the integrator's suite. Queued run: core/names/service.test.js test/guests.test.js
   test/daemon.test.js core/presence/presence.test.js test/hygiene.test.js test/docs-build.test.js.
 
+- Relay (27 Sep): the only origin is https://app.vyre.run (no previews). The relay path needs no
+  CORS (one WebSocket to relay.vyre.run, requests rebuilt in-process by bridge.js with caller
+  device:<id> and no Origin), so this CORS serves only the direct tailnet path. Its allowed
+  headers now match the relay's: content-type, authorization, x-vyre-proof, x-vyre-presence,
+  idempotency-key, last-event-id.
+
 Waiting: e2e (merges work/tailnet and tests the app flow end to end), relay (origin list, and whether the
 hosted app ever reaches the box through the relay), sessions (threads.answer contract for
 Mac-owned sessions, below).

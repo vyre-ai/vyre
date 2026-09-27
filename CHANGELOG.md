@@ -21,7 +21,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
   owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
-  Allowed headers: content-type, authorization, x-vyre-proof. `GET /v1/health` from it answers
+  Allowed headers: content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key,
+  last-event-id (the same set the relay path carries). `GET /v1/health` from it answers
   only `{ reachable: true }`. Every other request goes to vyred's router untouched (the body
   unread) with `peer.origin`, where e2e's person session decides (`401 person_session_required`
   without one). WebSockets from it are the owner's (every stream needs a ticket a tool minted).

@@ -297,7 +297,7 @@ test("names: the hosted app's origin gets CORS for the owner, and its calls reac
   const send = async (ip, url, method, headers) => { const r = fakeRes(); await w.svc.onRequest(fakeReq(ip, url, method, headers), r); return r; };
   // The preflight: exact origin, the allowed methods and headers, and Chrome's private-network ask.
   const pre = await send("100.101.1.2", "/v1/tools/threads.list", "OPTIONS", { origin: app, "access-control-request-method": "POST",
-    "access-control-request-headers": "content-type, authorization, x-vyre-proof", "access-control-request-private-network": "true" });
+    "access-control-request-headers": "content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key, last-event-id", "access-control-request-private-network": "true" });
   assert.equal(pre.status, 204);
   assert.equal(pre.headers["access-control-allow-origin"], app);
   assert.equal(pre.headers["access-control-allow-private-network"], "true");
