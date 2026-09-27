@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A stopped vyred leaves a removed home removed
+
+- core/term: the terminal table is not written when the home is gone, or when there is nothing to
+  hand over and no table yet. A vyred stopped after its home was removed made run/term/terms.json
+  (and the home) again (core/vault/stop.test.js).
+
 #### Planner: alarms ring on a device with the box out of reach (ADR 0029, R6)
 #### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
 #### A box keeps projects in /work/projects
