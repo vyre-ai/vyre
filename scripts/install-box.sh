@@ -210,6 +210,9 @@ unpack() {
   $x rm -rf "$DIR/src.new"
   $x mkdir -p "$DIR/src.new"
   $x tar -xzf "$TMP/vyre.tgz" -C "$DIR/src.new" --strip-components=1
+  # npm pack pins every mtime to 1985, and BuildKit skips a changed file whose size and mtime
+  # match what it synced before, so the image would keep stale files: give them today's.
+  $x find "$DIR/src.new" -exec touch {} +
   if [ "$DRY" = 0 ] && [ ! -f "$DIR/src.new/box/Dockerfile" ]; then
     $x rm -rf "$DIR/src.new"
     die "vyre.tgz has no box/Dockerfile"

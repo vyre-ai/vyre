@@ -36,16 +36,23 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   c4bf9ea cc-plugin, 7a97230 polish-cli, 439f35a security (registry rules for every non-person
   caller; vault.caps reveal described as it is, with a real-presence test) plus two flake fixes.
 
+## Tonight (2026-09-27), all pushed to origin
+- 244a643 pwa, 48f8a01 e2e (+ ownerOverTailnet shared by callerAllowed and registryRules),
+  d962b04 federation, 12dc0c9 glass-live, d51dd69 ci, d6bb815 node 24 isClaude fix,
+  8be1c52 polish-cli, 3d0295f connectors, 7b54493 onboard.finish api-key auth.
+
+- Later: 86bcf0a polish-cli (CLI presence), 205387e e2e, dee1028 pwa, 22443e3 tailnet,
+  796bdcb phone-design, 246af82 docs, f3b5e36 SPEC 5.2 ctx.call. Full suite at f3b5e36 on the
+  test box: 1917 tests, 0 fail, exit 0.
+
 ## Doing
 
-- Waiting on docs to name a head for work/docs (asked; head was a wip with uncommitted edits).
+- Nothing queued. Every approved branch is in main and pushed.
 
 ## Next
 
-- Merge work/docs, then amend the spec (it moves to docs/architecture/spec.md in that branch):
-  SPEC 5.2 ctx.projects does not exist (modules read projects through ctx.call("projects.list")),
-  and ADR 0008's `vyre box update` row (the code prints the Mac's update command; check
-  core/cli/commands/box.js before choosing amend or implement).
+- Merge each team's tip when it says ready; push main after each merge and tell the lead the sha.
+- The live box's stale "probe" computers row is box-deploy's (a /srv/vyre action).
 
 ## Needs from others
 

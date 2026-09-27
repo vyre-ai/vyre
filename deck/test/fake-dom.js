@@ -91,6 +91,7 @@ class Element extends Node {
   }
   focus() {}
   blur() {}
+  select() { this.selected = true; }
   scrollIntoView() {}
   querySelector(sel) { return all(this, sel)[0] || null; }
   querySelectorAll(sel) { return all(this, sel); }

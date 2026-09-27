@@ -219,7 +219,9 @@ export default {
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       return { mode, role: ctx.config.role, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
-        current, finished: Boolean(ob().finished), steps, detail };
+        // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
+        // loopback page is done with and `vyre box add` may close its tunnel.
+        current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
     }
 
     /** How the name step serves: what it already uses, else a vyre.run claim when a zone token or own domain is here, else ts.net. */
@@ -254,32 +256,41 @@ export default {
         if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
         const c = checkName(p);
-        save({ ...(c.valid && !ctx.config.name ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // Continue is the person confirming this name, so it replaces any earlier candidate, unless
+        // an address already serves under the old one.
+        save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
         return stepOf("you", caller);
       },
     });
 
     ctx.tool("onboard.name", {
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
-      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] } }),
-      run: async ({ name, action = "check" }, { caller }) => {
+      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
+      run: async ({ name, action = "check", confirm }, { caller }) => {
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           // No zone token and no own domain: the address is this machine's ts.net name, so there
           // is nothing on vyre.run to check and every valid name is free.
           const n = await tryCall("names.status");
           if (!n.__error && via(n) === "ts.net") {
+            // A check only answers. It saves nothing: a name typed in step 1 and then skipped must
+            // not become the address (step 4 claims only a name the person confirmed).
             const v = checkName(name), dns = n.tailscale && n.tailscale.node && n.tailscale.node.dnsName;
-            if (v.valid) save({ name: v.name });
-            await status(caller);
             return { name: v.name, valid: v.valid, available: v.valid, why: v.why, via: "ts.net", address: dns ? `https://${String(dns).replace(/\.$/, "")}` : null };
           }
-          const c = await call("names.check", { name });
-          if (c.valid && c.available) save({ name: c.name });
-          await status(caller);
-          return c;
+          return call("names.check", { name });
         }
         if (action === "reserve" && via(await call("names.status")) === "ts.net") action = "ts.net";
+        if (action === "reserve" || action === "claim") {
+          // A vyre.run name is public DNS. It is claimed only when the person typed it and pressed
+          // Continue in step 1 (onboard.you saved it), or confirmed it here with confirm: true.
+          const want = checkName(name || ctx.config.name || "");
+          if (!want.valid) throw Object.assign(new Error("pick a name first, or use this machine's tailnet name"), { code: "confirm_name" });
+          if (confirm === true) save({ name: want.name });
+          else if (!(ob().person && ctx.config.name === want.name)) {
+            throw Object.assign(new Error(`${want.name}.vyre.run is a public name: confirm it first, or use this machine's tailnet name`), { code: "confirm_name" });
+          }
+        }
         if (action !== "status") await call(action === "ts.net" ? "names.fallback" : "names.claim", action !== "ts.net" && name ? { name } : {});
         return progress(await stepOf("name", caller));
       },
@@ -365,7 +376,8 @@ export default {
           const name = slug(display);
           const person = ob().person ? ` You work for ${ob().person}.` : "";
           a = await call("agents.create", { name, kind: "assistant", projects: "*",
-            auth: { vault: VAULT_ITEM[auth === "api-key" ? "api-key" : "subscription"], ...(auth === "api-key" ? {} : { fallback: VAULT_ITEM["api-key"] }) },
+            // agents reads auth.vault as a subscription token and auth.fallback as an API key.
+            auth: auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] },
             instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
         }
         const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });

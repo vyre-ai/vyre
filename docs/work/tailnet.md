@@ -19,6 +19,17 @@ Round 1 (parts 1 to 6):
 - Tailnet Lock read, onboarding card, Settings row (ff5111c, fc30220).
 - Glass egress through the Mac (7f2519b, 8502ce4, 0097f64, 273b30b).
 
+Egress fixes from the e2e run (27 Sep 2026):
+- Fail closed in every case: `core/computers/egressgate.js`, a SOCKS5 gate in front of the
+  sidecar that refuses (REP 0x02) unless the sidecar's tailscaled shows the Mac in use as the exit
+  node; `computers.egress.status` shows its verdict as `gate`. A key that survives restarts: OAuth
+  client secret or reusable ephemeral key, with `--advertise-tags=tag:vyre-egress` (62ebce3).
+  Test box: 63 of 63 on
+  `core/computers/egressgate.test.js core/computers/egress.test.js core/computers/computers.test.js
+  core/computers/pool.test.js test/hygiene.test.js` (the gate's own file 12 of 12), and
+  `docker compose -f box/compose.yml -f box/compose.egress.yml --profile computers config` passes
+  with dummy values.
+
 Round 2 (parts 7 to 10 and integration):
 - One whois parser with tags and app capabilities (9ddba0f).
 - Caller classes owner, guest, agent node in the names listener (526dc43); the router limits
@@ -68,9 +79,10 @@ Targeted run for the merged branch (one command, from the worktree root):
 
 After the merge. The lead's decisions of 27 Sep 2026, to build in this order:
 
-1. **link.health on the box: modules and the owner only.** In `core/link/box.js`, refuse
-   `tailnet-guest:*` and `tailnet:agent:*`, and any tailnet login that is not the owner. Today any
-   caller may ask about itself or a paired Mac. Add a test.
+1. Done: **link.health on the box: modules and the owner only.** `core/link/box.js` refuses
+   guests, agent nodes, agents at the box, MCP, anonymous callers and any tailnet login that is not
+   `network.owner`; test in test/link.test.js. Tests on the test box: link, link-federation,
+   guests, health, glass, hygiene 33/33.
 2. **Taildrive:**
    - Read-only by default, with a per-share read-write switch that needs presence: a tool
      `files.drive.access { name, mode: "ro"|"rw" }`, added to HUMAN_ONLY.
@@ -85,8 +97,9 @@ After the merge. The lead's decisions of 27 Sep 2026, to build in this order:
 3. **Taildrop:** the box stays a tagged server. The user step is the file-sharing grant to the
    box's tag (already under "Steps for the user"). Drop the "sign in as the owner" alternative.
 4. **Egress:**
-   - Renew with a Tailscale OAuth client (tag-scoped, no expiry): `VYRE_EGRESS_AUTHKEY` holds
-     `tskey-client-...?ephemeral=true&preauthorized=true`, with `--advertise-tags=tag:vyre-egress`.
+   - Done: renew with a Tailscale OAuth client (`--advertise-tags=tag:vyre-egress` is set), and
+     the gate that fails closed when the Mac stops offering its exit node. The authenticating
+     front below can live in the same gate (`egressgate.js`) rather than a new service.
    - Only the computer that has egress turned on may use the proxy. Per-computer credentials,
      handed out like the other bootstrap secrets (not in container Env), plus a network policy
      if compose allows.
@@ -115,8 +128,21 @@ only read-only checks on the test box.
   box, and the file-sharing grant's exact form.
 - **Health:** the peer-relay `ping` line.
 - **Egress:** containerboot with `read_only` and `cap_drop: ALL`, in-memory state, an OAuth
-  client secret as the key, Chrome with a `data:` PAC over SOCKS5, and `docker compose config`
-  on both files.
+  client secret as the key (with `--advertise-tags`), Chrome with a `data:` PAC over SOCKS5 (the
+  computer image's Chromium, never headless-shell), and `docker compose config` on both files.
+  The gate on a real tailnet:
+  - containerboot puts the socket at `TS_SOCKET` in the `egress-sock` volume, and uid 1000 in
+    the gate can open it through the read-only mount (tailscaled makes it 0666; a status read
+    needs no operator).
+  - The status fields: `BackendState`, `Peer[*].ExitNode`, `ExitNodeOption`, `Online`,
+    `ExitNodeStatus.Online`, in each of the e2e cases: Mac serving (allowed, bytes on the Mac's
+    tailscale0), Mac stops offering, route unapproved, Mac off the tailnet (all REP 0x02, the
+    gate's log says why, `computers.egress.status` shows it).
+  - The recovery: offering again is allowed within 2 s, with no restart.
+  - A sidecar restart with an OAuth client secret and with a reusable key comes back; the gate
+    refuses while it is down.
+  - A long-lived connection when the Mac stops offering mid-way: expected to break, not to move
+    to a direct route, since the flow lives in tailscaled's netstack. Unverified.
 - **Grants:** a `vyre.run/cap/vault` or `vyre.run/cap/guest` grant appears in whois `CapMap`,
   including for a shared-in node from another tailnet.
 - **Funnel:**
@@ -226,7 +252,10 @@ Save both disablement secrets in the Vault.
 1. On the Mac: Tailscale menu, Exit Node, Run as Exit Node.
 2. Admin console: Machines, alex-mac, Edit route settings, Use as exit node. Settings, OAuth
    clients: Generate, scope Auth Keys (write), tag `tag:vyre-egress`. The client secret does not
-   expire, so nothing needs renewing.
+   expire, so nothing needs renewing. A reusable, ephemeral, pre-approved auth key tagged
+   `tag:vyre-egress` also works (it expires). Never a single-use key: the sidecar keeps its state
+   in memory and logs in again on every restart, so a single-use key fails the first restart with
+   "authkey already used" and the sidecar never comes back.
 3. Policy:
    ```json
    {
@@ -236,8 +265,13 @@ Save both disablement secrets in the Vault.
    ```
 4. On the box, in `/srv/vyre/.env` (not `vyre.env`): `VYRE_EGRESS_AUTHKEY=tskey-client-...?ephemeral=true&preauthorized=true`,
    `VYRE_EGRESS_EXIT_NODE=alex-mac`, and `COMPOSE_FILE=box/compose.yml:box/compose.egress.yml`.
+   (A reusable ephemeral key goes in the same variable as it is. Not a single-use key: see 2.)
    Then `docker compose up -d` and
    `vyre call --tty computers.egress.set '{"enabled":true,"sites":["portal.northwind.example"]}'`.
+5. Check: `vyre call computers.egress.status`. Its `gate` says whether listed sites can go out now
+   (`allowed`) and why not (`reason`, for example the Mac is not offering its exit node).
+   `docker compose logs egress` shows each change once. Test the PAC with the computer image's
+   Chromium only: chromedp/headless-shell ignores every PAC, `data:` or http.
 
 ### Vault passes authorized by the policy (grants)
 
@@ -342,7 +376,16 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **capsule**: IPC `capsule:send-file`, preload `sendFile`, option-return on a file row,
   `SEND_TIMEOUT`, the box dot, Taildrive-first open.
 - **box**: the tailscale service mounts `vyre-work:/work:${VYRE_DRIVE_ACCESS:-ro}`; new
-  `box/compose.egress.yml`.
+  `box/compose.egress.yml`. Its services: `egress` is now the gate (vyre image, `node
+  /opt/vyre/core/computers/egressgate.js`, alias `egress` on `computers`, also on `egress`),
+  and the tailscaled sidecar is `egress-node` (SOCKS5 `:1056`, `TS_SOCKET` in the new volume
+  `egress-sock`, networks `default` and `egress` only, `--advertise-tags=tag:vyre-egress`). New
+  internal network `egress` (`vyre-egress`) and the project's `default` network. `PROXY`
+  (`egress:1055`) is unchanged, so computers and the PAC need nothing new.
+- **computers (egress)**: new `core/computers/egressgate.js` (env `VYRE_EGRESS_GATE_HOST`,
+  `_PORT`, `_STATUS_PORT`, `VYRE_EGRESS_UPSTREAM`, `VYRE_EGRESS_SOCKET`; GET /status on 1057);
+  `egress.gateStatus()` and `GATE_STATUS_PORT` (test override `VYRE_EGRESS_GATE_STATUS`);
+  `computers.egress.status` gains `gate: { answers, allowed, reason } | { answers: false, why }`.
 - **perf-check** (scripts/perf-check): waits for `memory.curate` after indexing, before the idle
   window, so Memory's startup pass is not counted as idle work.
 - **config**: defaults for `glass.egress`, `computers.tailnet`, `hooks`, `network.guests`.
