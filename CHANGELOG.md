@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One shared agent-claim parser, instead of eight copies of the same regex
+
+- `agentClaim` (core/modules): the agent name a caller claims, under any transport shape
+  ("mcp:agent:kit", "harness:agent:kit", "cli agent:kit", "module:agent:kit", ...), or null.
+  computers, hands-desktop, sight, network, relay and planner each wrote their own copy of this
+  regex; two of them (computers' `resolve()` and `computers.list`'s self-only filter, and
+  hands-desktop's `resolveAgent`) matched only the narrower "mcp:agent:" shape, so a caller
+  vouched under another transport fell through to full trust - naming any agent's computer, or
+  seeing every agent's computer in a list, as if it were the CLI itself (e2e review, 2026-09-28).
+  All six now import the one parser; the two real gaps are closed with it.
+
 #### Two cohesion audit fixes: a real caller check and a real pairing timestamp
 
 - `sight.watch` and `sight.frame` now check their own caller before forwarding to `computers.watch`

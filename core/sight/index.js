@@ -16,6 +16,8 @@
 // path, never its query or fragment; from hands.acted only the control's role is kept, never its
 // name or identifier; and a blind place (the floor) stays blind in every part.
 
+import { agentClaim } from "../modules/index.js";
+
 export const KEEP = 500;
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const SUMMARY_MAX = 200;
@@ -71,25 +73,24 @@ export function parseTarget(t) {
  */
 export const offMac = meta => Boolean(meta && (meta.peer || /^(tailnet|tailnet-guest|device):/.test(String(meta.caller || ""))));
 
-/** A caller claiming to be an agent, in any of the forms vyred recognizes: "mcp:agent:kit", "harness:agent:kit". */
-const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
-
 /**
  * The agent name this call's real caller claims to be, when it is not the assistant, or null.
  * sight.watch forwards to computers.watch as "module:sight" (core/modules/index.js's call
  * wrapper), so computers.js's own ownSurface floor (which refuses an ordinary agent claiming a
  * person's surface) never sees who really called; from computers' side every sight-proxied watch
  * looks like the same trusted module, whoever asked. sight still has meta.caller before that
- * relabeling happens, so it checks the same thing itself and refuses before forwarding.
+ * relabeling happens, so it checks the same thing itself and refuses before forwarding. The claim
+ * parse itself is `agentClaim` (core/modules, shared with computers.js's ownSurface and
+ * hands-desktop's resolveAgent, 2026-09-28: one parser instead of three copies of the regex).
  * @param {any} ctx @param {any} meta
  */
 export const agentCaller = async (ctx, meta) => {
-  const claim = AGENT_CLAIM.exec(String((meta && meta.caller) || ""));
+  const claim = agentClaim((meta && meta.caller) || "");
   if (!claim) return null;
   const r = await ctx.call("agents.list", {});
-  if (r.error) return claim[1]; // can't tell who this is: fail closed, treat it as an ordinary agent
-  const a = (r.data || []).find(x => x && x.name === claim[1]);
-  return a && String(a.kind) === "assistant" ? null : claim[1];
+  if (r.error) return claim; // can't tell who this is: fail closed, treat it as an ordinary agent
+  const a = (r.data || []).find(x => x && x.name === claim);
+  return a && String(a.kind) === "assistant" ? null : claim;
 };
 
 /**
