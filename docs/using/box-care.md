@@ -143,7 +143,7 @@ type `restore`. Off a terminal, pass `--yes` instead.
 
 The image carries the Claude Agent SDK that Vyre's own sessions run on, with the Claude Code it
 bundles, in `/opt/vyre-sessions-sdk` ([ADR 0030](../adr/0030-sessions.md)). The box never
-downloads it at runtime. Its version is pinned as `VERSION` in `core/sessions/sdk.js`: a bump there
+downloads it at runtime. Its version is pinned as `VERSION` in `core/sessions/sdk-pin.js`: a bump there
 rebuilds the image, and `vyre update` brings it in like any other change.
 
 `vyre update` refreshes the box files and the wrapper. Running the installer again does too, and
