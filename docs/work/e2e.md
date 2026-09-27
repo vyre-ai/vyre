@@ -250,9 +250,12 @@ Reviews (27 Sep, testbox on hold at load 20 per the lead):
   and reads mail as the Capsule; asked for registry meta.firstParty. MEDIUM on_behalf person=true
   skips MCP scope; check on_behalf.thread against threads.get.
 - e2e-noclaude bf35f8ea: switchboard remember's user CLAUDE.md via claudeHome (sessions agreed).
-  UNTESTED: run core/sessions/sessions.test.js + switchboard + the guard when testbox is free.
+  TESTED 147 pass / 0 fail / 28 skip; sent to the integrator as the sha to land.
 Next when testbox is free: that test run, then rebuild 501ca3fc (+ sessions' callAsPerson fix) and
 run check.sh + thread.sh.
+
+- native-core ac34c322: my 3 MEDIUMs fixed (98412a66). Hub step 1 OK; MEDIUM secret non-store keys
+  would go to hub.json in clear (and backup); LOW same-uid edits of plain settings, file rev lags.
 
 Split with sessions 501ca3fc (lead, 27 Sep): image from 501ca3fc merged with main 53cd1326.
 check.sh 30/30. New scripts/e2e-split/thread.sh (vyred starts a session through the spawner, CLI
