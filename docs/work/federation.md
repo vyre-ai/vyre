@@ -243,6 +243,34 @@ box.
 
 ## Doing
 
+28 Sep 2026: merged origin/main (a3a844e4, 0.1.0-rc.1 plus the post-rc `packages/module-sdk` fix)
+into work/federation (cd646008). Conflicts: CHANGELOG.md (append, both sides kept),
+core/daemon/index.js (FORBIDDEN_LABEL gained both `link:` and main's new `device:`; kept main's
+new `callId` export), core/link/mac.js (import merge only — checkAnswer/Nonces/gatedAsk plus
+main's HUMAN_ONLY/PERSON_ONLY/inputHash/enclave/signed/PEOPLE, no functional overlap),
+core/link/module.json (tool/event lists unioned: ours plus main's link.signin/signout and
+ask.raised/answered events), core/switchboard/index.js (threads.answer: Mac-forward check first,
+then main's `device` param on sb.answer; callers list unions `tailnet` (main) with `link:box`
+(ours); `stop()` runs both cleanups), core/switchboard/testing/fake-claude.js (comment-only,
+implementations for both sides were already present unconflicted). docs/reference/* and
+docs/index.json taken from main then regenerated with `npm run docs:ref` against the merged code.
+Ran node --check on every touched core file.
+
+Compat check for the per-thread socket (e9a6bebd) and the caller-label fix (1941f2cf): `sb.send`,
+`queuesFor`, `fromLink`, `surfaceOf`, `guard` all merged with no conflicts (git's line-level merge
+succeeded cleanly, confirming the two branches touched adjacent, non-overlapping parts of the
+same functions) — reviewed by hand too. Tests on the test box (nice -n 15, load 2.9-4.4, under
+the RULES cap of 6): test/link.test.js, test/link-federation.test.js,
+test/federation-reads.test.js, test/federation-send.test.js, core/link/transport.test.js,
+core/switchboard/switchboard.test.js, core/harness/floor.test.js, core/harness/harness.test.js,
+test/harness.test.js, test/hygiene.test.js, core/modules/federate.test.js: 129/129. Separately:
+test/docs-build.test.js, test/docs-index.test.js, test/onboard.test.js,
+core/projects/projects.test.js, core/recall/recall.test.js, core/recall/module.test.js:
+105/106 (1 skipped, none failed).
+
+Sent to e2e for security review (presence gates on threads.answer's Mac forward,
+person_session_required, gatedOnMac) before the integrator, targeted for 0.1.x after rc.2.
+
 27 Sep 2026: answering a Mac's ask from the box is built (Done, above). Before that, the Mac-send
 loose ends (below); next is rich Mac transcripts (chat's ask), then Taildrive on work/tailnet.
 
