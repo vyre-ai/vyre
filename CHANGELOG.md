@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Mail rows in the Capsule (connectors 8be461a9)
+
+- A mail account to send from shows a pencil and a message an envelope; the sub is mail.find's
+  as written ("IMAP · alex@harlow.example · to dana@northwind-bakery.example"). "Write it" on an
+  account says "Waiting for you: Send from ... Nothing is sent until you send it from Needs you."
+  (mail.compose held it at the Gate), never "Done."; on a message it says its subject and sender.
+- `Sources/Vyred/ModuleProviders.swift`; `Tests/ModuleProvidersTests.swift`. Swift 325/325.
+
 #### The empty Capsule is compact: the input, what waits on you, the footer
 
 - app-design 305fc07b: with nothing typed the panel is the input, the waiting list ("Needs you",
