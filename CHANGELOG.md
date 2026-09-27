@@ -210,6 +210,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   for plan approval and modes (ADR 0030), projects, memory and lessons, settings and first run;
   the session board follows ADR 0030 (provider chip, Stop, queued words with take back and send
   now); every key screen states how it meets the smoothness bar.
+#### Tests: the plugin's MCP calls go one at a time
+
+- test/cc-plugin.test.js's `mcp()` helper sent every request at once. The server answers calls
+  concurrently, so on the Mac `planner_list` answered before the `planner_add` sent ahead of it
+  and saw no todo. Each request now waits for the reply before it.
+
 #### Plugin: remember, then answer, from the user's own Claude Code session
 
 - test/cc-plugin.test.js: `memory_remember` then `memory_answer` through the copied plugin's MCP
