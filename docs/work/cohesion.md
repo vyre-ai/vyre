@@ -14,7 +14,7 @@ that belong to another team.
 - docs/design/cohesion.md: opportunity map, 15 ranked items, 6 cross-cutting contracts.
 
 ## Doing
-- Top 10 sent to team-lead; next: agree each item with its owners by SendMessage.
+- Top 10 sent to team-lead (decisions asked: ADR number, restart vault+connectors?, item 4 with the wife-name fix). Owner asks sent to capsule-pro, chat, sessions, memory-iq, platform, polish-cli, native-core, pwa, mobile, app-design; waiting on replies. vault and connectors held until the lead answers.
 
 ## Next
 1. Owner agreement on items 1-10 (record yes/no/changes per owner below).
