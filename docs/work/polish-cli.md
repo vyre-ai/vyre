@@ -72,6 +72,11 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 ## Doing
 
 - Session verbs (ADR 0030) on the sessions team's event model: asked sessions for the contract.
+  work/sessions 0bae485d has threads.interrupt and sessions.status/setup/prompt.*; queue edit,
+  take back and send now are still on their Next list.
+- TESTBOX FREEZE (lead): nothing run since 8005e473. Queued once it lifts: presence, peer,
+  presence-cli, cli, vault-cli(-totp), core/cli/**, switchboard, docs-*. Merge main first (the
+  integrator changed test/upgrade.test.js:79: agents.create asks no proof now; keep that).
 
 ## Next
 
