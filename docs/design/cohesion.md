@@ -271,6 +271,11 @@ caution both apply. Once moved, memory-iq re-scopes that session's context onto 
 facts and entities, the same join a session started inside a project gets from the start - this is
 memory-iq's design to write, cohesion is not proposing memory internals here.
 
+**Attach is person-only (decided by the lead, 2026-09-28).** `dryRun` is not an option, it is the
+first step every time: a preview of what moves where, then one confirm, no Touch ID (a person
+setting, per the no-nag rule - approving a Touch ID dialog for this is not the pattern). An agent
+may suggest attaching a session to a project; it may never call the tool that does it.
+
 **3. Vyre Drive gets credit. Owner: federation (owns Vyre Drive and Mac-box file access).** Whatever
 tool or event the router (part 1) or the attach (part 2) uses to say "this file moved" needs to
 carry *how* alongside *where* - a share, a Taildrop (`files.received`, core/files/drop.js), a
@@ -284,10 +289,10 @@ Capsule) always send thread context with a file, never a bare upload; wherever c
 project's files it can now credit the Drive; the attach flow (part 2) needs a chat-facing entry
 point - "move this chat into a project" - but building it waits for chat's relaunch, per the lead.
 
-**Open, for federation and memory-iq to resolve first.** The router's exact contract (call shape,
-which module a surface actually calls); whether "attach" is instant or asks for confirmation given
-it moves real files; what "the project's graph" means precisely for a session that already has its
-own memory before attaching. This spec sets direction and owners; it does not fix the tool names.
+**Open, for federation and memory-iq to resolve.** The router's exact contract (call shape, which
+module a surface actually calls); what "the project's graph" means precisely for a session that
+already has its own memory before attaching. This spec sets direction and owners; it does not fix
+the tool names.
 
 ## One service, both sides
 
