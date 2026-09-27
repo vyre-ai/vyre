@@ -117,7 +117,7 @@ test("tailnet: on, a started computer joins with the key in one POST body, and t
   assert.ok(!JSON.stringify(s.bodies[0]).includes(KEY), "the key was in the create body");
   assert.ok(!s.bodies[0].Env.some(e => /TAILSCALE|AUTHKEY|TS_/.test(e)), "a tailnet variable reached the container's env");
   const spec = [...s.driver.containers.values()][0].spec;
-  assert.deepEqual(Object.keys(spec.env).sort(), ["COMPUTERD_TOKEN", "SCREEN", "VNC_PASSWORD"]);
+  assert.deepEqual(Object.keys(spec.env).sort(), ["SCREEN"]);
   assert.ok(!JSON.stringify(spec).includes(KEY));
   assert.ok(!JSON.stringify(s.events).includes(KEY) && !s.logs.join("\n").includes(KEY), "the key was in an event or a log line");
 });

@@ -97,11 +97,9 @@ for pid in node:
     rc = libc.ptrace(16, pid, None, None)  # PTRACE_ATTACH
     traced[pid] = 'attached' if rc == 0 else ctypes.get_errno()
 leaks = []
-# docker exec gives every process it starts the container's create-time env, this one included;
-# the agent's own processes (xterm and what it starts) never had it.
-mine = {str(os.getpid()), str(os.getppid())}
+# docker exec gives every process it starts the container's Env, this one included: so the Env
+# must never hold a secret (they come by /var/lib/vyre/.boot), and this very process is checked.
 for f in glob.glob('/proc/[0-9]*/environ'):
-    if f.split('/')[2] in mine: continue
     try: data = open(f, 'rb').read()
     except Exception: continue
     if b'COMPUTERD_TOKEN=' in data or b'VNC_PASSWORD=' in data: leaks.append(f)
@@ -110,12 +108,16 @@ for d in ('/var/lib/vyre', '/var/lib/vyre/chromium'):
     try: os.listdir(d); home[d] = 'readable'
     except PermissionError: home[d] = 'denied'
     except FileNotFoundError: home[d] = 'missing'
-print(json.dumps({"env": env, "mem": mem, "traced": traced, "leaks": leaks, "home": home}))`));
+try: open('/var/lib/vyre/.boot').read(); boot = 'readable'
+except PermissionError: boot = 'denied'
+except FileNotFoundError: boot = 'missing'
+print(json.dumps({"env": env, "mem": mem, "traced": traced, "leaks": leaks, "home": home, "boot": boot}))`));
   assert.ok(Object.keys(r.env).length > 0, "found no computerd to check");
   for (const how of Object.values(r.env)) assert.equal(how, "denied", "the agent read computerd's environment");
   for (const how of Object.values(r.mem)) assert.notEqual(how, "readable", "the agent read computerd's memory");
   for (const how of Object.values(r.traced)) assert.notEqual(how, "attached", "the agent attached ptrace to computerd");
-  assert.deepEqual(r.leaks, [], "a process the agent can read carries COMPUTERD_TOKEN or VNC_PASSWORD");
+  assert.deepEqual(r.leaks, [], "a process the agent can read (an exec'd one included) carries COMPUTERD_TOKEN or VNC_PASSWORD");
+  assert.equal(r.boot, "denied", "the agent can read /var/lib/vyre/.boot");
   assert.equal(r.home["/var/lib/vyre"], "denied", "the agent can list vyre's volume (the Chrome profile)");
 });
 

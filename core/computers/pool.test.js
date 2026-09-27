@@ -41,17 +41,21 @@ test("pool: a computer is made on first need, not before", async t => {
   assert.equal(driver.containers.size, 0);
   const r = await pool.checkout("kit", { thread: "th-1" });
   assert.deepEqual(r, { agent: "kit", screen: 1, thread: "th-1" });
-  assert.deepEqual(driver.calls.map(c => c.op), ["create", "start"]);
+  assert.deepEqual(driver.calls.map(c => c.op), ["create", "seed", "start"]);
   const spec = [...driver.containers.values()][0].spec;
-  assert.deepEqual(Object.keys(spec.env).sort(), ["COMPUTERD_TOKEN", "SCREEN", "VNC_PASSWORD"]);
+  // No secret in Env (every docker exec inherits it); seed() hands them over as a file instead.
+  assert.deepEqual(Object.keys(spec.env).sort(), ["SCREEN"]);
   assert.equal(spec.env.SCREEN, "1440x900");
-  assert.equal(spec.env.VNC_PASSWORD.length, 8);
+  const boot = [...driver.containers.values()][0].boot;
+  assert.equal(boot.vnc_password.length, 8);
+  assert.equal(boot.vnc_password, pool.row("kit").vnc_password);
+  assert.equal(boot.computerd_token, pool.row("kit").helper_token);
   assert.deepEqual(spec.labels, { "vyre.computer": "kit", "vyre.managed": "true" });
   assert.equal(spec.volume, "vyre-home-kit");
   assert.deepEqual(types(), ["computer.created", "computer.checked-out"]);
   // Checking out again only touches it.
   assert.deepEqual(await pool.checkout("kit"), { agent: "kit", screen: 1, thread: "th-1" });
-  assert.equal(driver.calls.length, 2);
+  assert.equal(driver.calls.length, 3);
   assert.equal(pool.view("kit").state, "running");
 });
 
@@ -109,7 +113,7 @@ test("pool: a checkout notices its container vanished, and the next one rebuilds
   const id = [...driver.containers.keys()][0];
   // Well within verifyMs: touching alone never asks the driver anything.
   clock.t += 500; await pool.checkout("kit");
-  assert.deepEqual(driver.calls.map(c => c.op), ["create", "start"]);
+  assert.deepEqual(driver.calls.map(c => c.op), ["create", "seed", "start"]);
   await driver.remove(id); // an operator, or the box, removes it out from under vyred
   clock.t += 1_000;
   const r = await pool.checkout("kit"); // past verifyMs: this call notices and rebuilds

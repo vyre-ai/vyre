@@ -358,7 +358,8 @@ export class Pool {
       const { w, h } = this.opts.size;
       const { id } = await d.create({
         agent, image: this.opts.image, network: this.opts.network, ...this.limitsOf(r), size: this.opts.size,
-        env: { VNC_PASSWORD: r.vnc_password, COMPUTERD_TOKEN: r.helper_token, SCREEN: `${w}x${h}`, ...egress },
+        // No secret in Env: every docker exec inherits it. They go in by seed() below.
+        env: { SCREEN: `${w}x${h}`, ...egress },
         labels: { [`${this.opts.prefix}.computer`]: agent, [`${this.opts.prefix}.managed`]: "true" },
         volume: `${this.opts.prefix}-home-${agent}`,
         browserVolume: `${this.opts.prefix}-browser-${agent}`,
@@ -374,6 +375,9 @@ export class Pool {
       await d.unpause(id);
       this.emit("computer.thawed", { agent });
     } else if (st.state === "exited") {
+      // The secrets, as a file only vyre's uid reads, before every start (policy.js bootTar).
+      const s = this.row(agent);
+      await d.seed(id, { computerd_token: String(s.helper_token), vnc_password: String(s.vnc_password) });
       await d.start(id);
     }
     await this.boot(agent, id);

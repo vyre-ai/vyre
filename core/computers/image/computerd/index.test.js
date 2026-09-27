@@ -251,3 +251,16 @@ test("computerd: the shield tells the freezer to stop the agent's processes, and
   await until("cont\n");
   assert.equal(got, "stop\ncont\n");
 });
+
+test("computerd: the token comes from COMPUTERD_TOKEN_FILE (the .boot file), never from its environment in the image", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-boot-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const fileToken = "F".repeat(43);
+  const boot = path.join(dir, ".boot");
+  fs.writeFileSync(boot, `COMPUTERD_TOKEN=${fileToken}\nVNC_PASSWORD=Ab-_1234\n`, { mode: 0o400 });
+  // The file wins over a stale COMPUTERD_TOKEN, which the image never sets.
+  const c = await computerd(t, { COMPUTERD_TOKEN_FILE: boot });
+  assert.equal((await req(c.base, "GET", "/cdp/json/version", { token: fileToken })).status, 200);
+  assert.equal((await req(c.base, "GET", "/cdp/json/version")).status, 401, "the environment's token is not the one");
+  assert.ok(!c.output().includes(fileToken) && !c.output().includes("Ab-_1234"), "a secret reached the log");
+});

@@ -77,9 +77,18 @@ RUN groupadd -g 1000 agent \
 # No extensions of any kind: one would run in the same page as a password the Vault fills.
 # DevTools stay allowed: DeveloperToolsAvailability 2 also refuses CDP attach ("Not allowed"), which
 # is how the agent's hands and the Vault fill work; the agent already has CDP through its hands.
+# Chrome runs as vyre (1001), so no page may open file:// (the Chrome profile, the VNC password),
+# chrome:// or devtools:// (the browser's own pages) or an extension's, however the navigation
+# starts; computerd refuses the same at the CDP call (cdpmux.js). Downloads go to the agent's own
+# folder only, and the new tab is blank (chrome://newtab is blocked with the rest).
 RUN mkdir -p /etc/chromium/policies/managed \
-    && printf '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false, "ExtensionInstallBlocklist": ["*"]}\n' \
-       > /etc/chromium/policies/managed/vyre.json
+    && printf '%s\n' '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false,' \
+       ' "ExtensionInstallBlocklist": ["*"],' \
+       ' "URLBlocklist": ["file://*", "chrome://*", "devtools://*", "chrome-extension://*", "chrome-untrusted://*", "view-source:*"],' \
+       ' "DownloadDirectory": "/home/agent/Downloads", "PromptForDownloadLocation": false,' \
+       ' "NewTabPageLocation": "about:blank", "HomepageLocation": "about:blank", "HomepageIsNewTabPage": false}' \
+       > /etc/chromium/policies/managed/vyre.json \
+    && python3 -c 'import json; json.load(open("/etc/chromium/policies/managed/vyre.json"))'
 
 # root-owned and read-only (the root filesystem is read-only too): neither user can change them.
 COPY computerd /opt/computerd

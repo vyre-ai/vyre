@@ -46,7 +46,9 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   and says so. A new vyred with the old image: works, but none of the isolation holds.
 - Existing computers: computers.restart (or a stop/start) makes the new container; the one-time
   migration carries Cookies and Local Storage from ~/.chromium, then deletes it.
-- The Docker proxy now requires exec User 1000:1000 (nothing in vyred uses exec).
+- The Docker proxy now requires exec User 1000:1000 (nothing in vyred uses exec), and it must be
+  the new proxy: vyred seeds each computer's secrets through its new archive route before start,
+  and the new image refuses to start with secrets in its Env.
 
 ## Done (27 Sep, after the testbox freeze)
 - Targeted tests green on testbox: computerd + hands-chrome 44 (38 pass, 6 Mac-only skipped),
@@ -116,30 +118,28 @@ Events (never a value, a username or a token)
 A take-over (computers.takeover, glass.take) during a fill is refused `busy`; a person's shield
 and a fill's never replace each other.
 
-## e2e security review of 70a72036 (27 Sep): to fix before or right after it ships
-- HIGH 1: COMPUTERD_TOKEN and VNC_PASSWORD are still in the container's Config.Env
-  (driver/docker.js), so any docker exec (even as 1000) gets them; the VNC password is a trusted
-  RFB session. Fix: not in Env; a 0400 file for uid 1001 (vyre volume or written by the root
-  entrypoint), read by computerd and never put in its env. Isolation test: an exec'd environ has
-  neither.
-- HIGH 2: CDP is a denylist. The agent can read cookies (Storage.getCookies, Network.getAllCookies),
-  open file:// as 1001 (/var/lib/vyre: VNC passwd, profile DBs), drive chrome:// pages, and
-  aim Browser.setDownloadBehavior anywhere. Fix: managed URLBlocklist file://*, chrome://*,
-  devtools://*, chrome-extension://*; refuse cookie/storage dumps for kind "agent"; pin downloads
-  to /home/agent/Downloads.
-- MEDIUM: 3 dockerproxy refuses exec for a shielded agent, and the freezer re-sweeps every ~100 ms
-  until cont; 4 on shield computerd raises and focuses Chrome and unmaps untrusted top-level
-  windows (keys queued to an agent window); 5 take-over and fill require frozen:true;
-  6 Chrome as a third uid, token out of computerd's env.
-- LOW: 7 trusted cookie via `xauth source -` not argv; 8 stage the agent cookie under
-  /var/lib/vyre, not /tmp; 9 migration copies regular files only; 10 fd 9 close-on-exec;
-  11 the PAC list in Chrome's argv (hidepid=2, or accept).
-- Isolation tests to add: no XTEST/RECORD/XInput/XKB/MIT-SHM/GLX/X-Resource/RANDR under the
-  agent cookie; GetImage on root refused; no reading trusted selections; no keymap changes or
-  device grabs; timeout 0 after an idle.
-- Both HIGHs also exist on main today (everything as one uid): the branch fixes more than it leaves.
+## e2e security review of 70a72036 (27 Sep)
+- HIGH 1 FIXED: secrets out of Env, as /var/lib/vyre/.boot seeded through the archive API
+  (driver seed(), policy bootTar/allowBootTar, proxy PUT archive route), computerd reads
+  COMPUTERD_TOKEN_FILE. Unit-tested; stack validation pending.
+- HIGH 2 FIXED: agent cookie dumps refused, agent navigations http(s)/about:blank/data: only,
+  downloads pinned, Chrome URLBlocklist + DownloadDirectory. Unit-tested; stack validation pending.
+- Both also existed on main before this branch.
 
 ## Next (after the native core)
+0. Throwaway-stack validation of the HIGH fixes, only after the integrator says testbox is open
+   and after the chat deploy: build vyre/computer:glass-uid (never :0.1), run isolation.test.js
+   (exec env and .boot unreadable), check file:// and chrome:// are blocked and a download lands
+   in /home/agent/Downloads, tear down.
+0b. e2e MEDIUM: (3) dockerproxy refuses exec for a shielded agent, and the freezer re-sweeps every
+   ~100 ms until cont; (4) on shield, computerd raises and focuses Chrome and unmaps untrusted
+   top-level windows, remapping after; (5) take-over and fill require frozen:true; (6) Chrome on a
+   third uid.
+0c. e2e LOW: (7) trusted cookie via `xauth source -`, not argv; (8) stage the agent cookie under
+   /var/lib/vyre, not /tmp; (9) migration copies regular files only; (10) fd 9 close-on-exec;
+   (11) the PAC list in Chrome's argv (hidepid=2, or accept).
+0d. More isolation tests (e2e): no RECORD/XInput/XKB/MIT-SHM/GLX/X-Resource/RANDR under the agent
+   cookie, no reading trusted selections, no keymap changes or device grabs, cookie after an idle.
 1. The vault wires vault.agent.fill to the contract above; glass-live answers questions.
 2. perf-check under low load (the idle hand-back run's RSS max 156.2 MB was taken at load 8.9).
 3. Check the untrusted X cookie survives a long idle with no client (xauth `timeout 0`).
