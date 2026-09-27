@@ -23,41 +23,26 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
 - 201c417 sideview: `local/sideview` + `vyre-tile` + `vyre sideview`. the test box 21 pass, 1 skip (real Mac).
 - 9245826 voice: `vyre voice`, `vyre voice key`, `vyre voice status`. the test box 20 pass, 1 skip.
 - ADR 0015 written (docs/adr/0015-capsule-sight.md).
+- Terminal tabs on chat's recall.watch (work/chat 10604b9 shapes): history from recall.thread,
+  then recall.watch from the last turn id, rows deduped on id (text and "tool:<id>"), tool turns
+  as tool lines settled by the next turn or busy false, session.state drives the dot, renew every
+  60 s while shown (restart from the last id on not_found), recall.unwatch on tab switch or close.
+  Reply labels by chat's labelFor rule (ReplyLabel.of; system.info read once per show). Combined
+  tree = work/capsule-pro 834b28e + this branch: 242 pass / 0 fail. Also fixed an ordering flake
+  in the screen attach collapse test (async let has no start order).
+  Perf: not measured on a live Capsule (no app launch without the lead); cost is one
+  recall.watch call a minute while a terminal tab is shown, nothing when hidden.
 - 9033c47 sight extension in Sources/Extensions/sight: side view commands, Ask about my screen,
   Option-Return push-to-talk. 12/12 sight tests in a combined scratch copy of capsule-pro's tree
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
 ## Doing
-- SendAttaching adopted (capsule-pro c61e3af): the screen chip in the Capsule's box. Combined on
-  c61e3af: 218 pass, 0 fail; app links. Waiting on capsule-pro to merge it.
-- Adopted capsule-pro 3882f65's seams in the sight extension: the panel slides in ease-out and out
-  ease-in (SessionWindowCurve); the "Side view: <name>" rows and the panel's tabs re-read the
-  session list on thread.started / thread.stopped and call host.commandsChanged() only when it
-  changed (following stops on hide unless the panel is open); live terminal sessions (from
-  projects.catalog, active in the last 15 min, not run by the switchboard) get a tab whose
-  history is read from recall.thread and marked "History from the index, may be a few seconds
-  behind"; words to them go through threads.send, which queues. Combined tree on 3882f65:
-  208 pass, 1 fail (capsule-pro's contact-photo icon test).
-- Screen context on Ask (ScreenAttach.swift): done in the sight extension and the session panel;
-  combined tree 203 pass, 1 fail (capsule-pro's icon test). Waiting on capsule-pro's host hook
-  (proposed SendAttaching / SendAttachment in Kit) to show the chip in the Capsule's own box;
-  the adapter wraps `SightExtension.screenAttachment(for:) async -> (id, chip, bundle, body)?`.
-- hands asks from capsule-apps (WhatsApp ax adapter): hands.find + observe match, settleMs cap
-  5000, needs_front for a key to a background app. hands tests on the test box: 53 pass, 6 skip.
-- e263e22 + f7830bd: session panel in the sight extension (Capsule-owned window slides in at 29%,
-  Chrome fitted by sideview.open `panel`). Combined tree 191 pass, 1 fail (capsule-pro's icon
-  test); the test box: sideview 15 pass, 1 skip. Builds only against capsule-pro's UNCOMMITTED host
-  (ExtensionHost.swift, Stream.swift, sessionWindow(owner:)): waiting on their commit.
-- 35b22ad: Talk uses capsule-pro's public VyredLink.stream; own WebSocket code deleted (-275/+59).
-  Combined vs 4b15618: 190 pass, 1 fail (their icon test). Builds against COMMITTED 4b15618 now.
-- Real-Mac test skipped per lead: the user tries `vyre sideview` himself.
+- Nothing in flight (2026-09-27). Last: terminal tabs on recall.watch (see Done).
 
 ## Next
-1. When capsule-pro commits extension loading: rebuild combined, then push for a capsule-mac.yml build.
-   Next after the panel (lead): voice push-to-talk inside the native Capsule, verified in the app.
-2. Real-Mac side view test when the lead says the Mac is free:
-   `VYRE_MAC_REAL=1 nice -n 15 node --test local/sideview/real.test.js` (needs screen-mac testwin built).
-3. perf-check numbers for sideview (one-shot) and voice idle.
+1. When chat's recall.watch reaches main, try the terminal tab against a real vyred in a temp
+   home (lead's go-ahead for the Mac) and put CPU/RSS for a shown watching panel in this doc.
+2. capsule-apps slice 4 (WhatsApp over hands): answer any further hands asks.
 
 ## Try it (the user, own terminal, a vyred from this worktree in a separate home)
     cd <vyre-dir>/vyre-capsule-sight
@@ -69,13 +54,23 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
     ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
-- chat team: `recall.watch {session, from?}` + `session.turn` events (+ optional `session.state`) for
-  live terminal tabs in the session panel. Asked 2026-09-27; wire it up when it lands.
-- capsule-pro: the native Capsule host (Sources/Host, UI) so the extension can run in the app.
-  Until then the extension compiles and tests but does not run. Also asked of capsule-pro:
-  `VyredLink.stream(path:)` for WebSocket streams (sight reuses the internal VySock today),
-  confirm Option-Return as the talk chord, and a contract for a Capsule-owned session panel
-  window (the side view's left side for the assistant, animated tiling).
+- LANDED: chat's recall.watch on work/chat 10604b9. Final shapes: recall.watch {session, from?, watch?}
+  -> {watch:"w_<hex>", session, from|null, busy}; renew by passing watch (renewed:true); expires 3 min
+  unrenewed, 30 min idle; not_found. recall.unwatch {watch} -> {watch, ended:true}. session.turn
+  (thread = session id) {session, id, seq (transcript LINE), turn?, role, text, tool?, at, replay?}:
+  dedupe on id (text turn id = recall seq as string, tool turn "tool:<id>"; recall.thread items now
+  carry id and at). session.state {session, busy} only on change. Callers include capsule.
+- chat: `recall.watch {session, from?, watch?}` (renew by id; expires 3 min after last renew,
+  30 min idle, recall.unwatch), `session.turn` {session, id, seq, role, text, tool?, at},
+  `session.state` {session, busy}; system.info.assistant.name (work/chat 45557bf). Being built.
+- capsule-pro: 911c270 merged (834b28e). Their tip does not compile alone:
+  Sources/Agent/AgentDestinations.swift:47 calls askItem(q), gone since 013e4e6 (b491743 brought
+  the call back). I dropped the line in my scratch copy only.
+
+## Standing rule (user, 2026-09-27)
+- Vyre must not nag: the user runs on bypass permissions. No prompt or Touch ID for the person's
+  own actions. Touch ID only for pairing a new device, vault secrets, and sending, posting or
+  paying outside; one Touch ID lasts about 30 minutes per device.
 
 ## Changed contracts
 - hands: new tool hands.find; hands.observe takes match; hands.act/commit can fail needs_front.

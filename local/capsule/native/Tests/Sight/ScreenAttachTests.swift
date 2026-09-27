@@ -233,10 +233,13 @@ let screenAttachSuite = Suite("screen attach") { t in
             out.append("same for a thread \(t2?.body == a?.body)")
             // Typed fast: s, su, sum... only the last one is looked at, and every caller gets its answer.
             let before = link.calls("screen.context").count
-            async let x1 = e.attachment(for: "what", to: .ask)
-            async let x2 = e.attachment(for: "what's", to: .ask)
-            async let x3 = e.attachment(for: "what's this", to: .ask)
-            let (r1, r2, r3) = await (x1, x2, x3)
+            // Started in typing order (async let has none), each inside the one before's 150 ms rest.
+            let x1 = Task { @MainActor in await e.attachment(for: "what", to: .ask) }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            let x2 = Task { @MainActor in await e.attachment(for: "what's", to: .ask) }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            let x3 = Task { @MainActor in await e.attachment(for: "what's this", to: .ask) }
+            let (r1, r2, r3) = (await x1.value, await x2.value, await x3.value)
             out.append("collapsed \(r1?.chip == r3?.chip && r2?.chip == r3?.chip && r3 != nil)")
             out.append("no extra reads \(link.calls("screen.context").count == before)")
             e.capsuleDidHide()

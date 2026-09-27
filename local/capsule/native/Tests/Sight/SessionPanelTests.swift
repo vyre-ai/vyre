@@ -339,4 +339,102 @@ let sessionPanelSuite = Suite("session panel") { t in
         t.eq(r?[0], "following true tabs [\"juno\", \"Harlow Legal\", \"Northwind Bakery\"]")
         t.eq(r?[1], "after close false")
     }
+
+    t.test("reply labels: chat's rule, the agent's name, else the assistant's, else Vyre, never Claude") {
+        t.eq(ReplyLabel.of(agent: nil, assistant: nil), "Vyre")
+        t.eq(ReplyLabel.of(agent: nil, assistant: "juno"), "juno")
+        t.eq(ReplyLabel.of(agent: "kit", assistant: "juno"), "kit")
+        t.eq(ReplyLabel.of(agent: "claude", assistant: "juno"), "juno")
+        t.eq(ReplyLabel.of(agent: nil, assistant: "Claude"), "Vyre")
+        t.eq(ReplyLabel.of(agent: "  ", assistant: " "), "Vyre")
+    }
+
+    t.test("terminal tab: recall.watch from the newest turn, rows keyed on id, session.state drives the dot, another tab unwatches") {
+        let link = terminalWorld()
+        let r = t.wait { @MainActor () -> [String] in
+            let (_, ext) = panelExt(link)
+            _ = await ext.openPanel(nil, glass: false)
+            let tab = ext.panel.sessions.first { $0.isTerminal }!
+            await ext.panel.show(tab)
+            let p = ext.panel
+            var got = ["watching \(p.isWatching) label \(p.replyLabel)"]
+            // A replay of the last drawn turn, then new ones; another session's turn is not ours.
+            link.emit(ev(40, "session.turn", "s-live", ["session": "s-live", "id": "69", "seq": 140, "turn": 69, "role": "assistant", "text": "turn 69", "at": 1, "replay": "w_1"]))
+            link.emit(ev(41, "session.state", "s-live", ["session": "s-live", "busy": true]))
+            link.emit(ev(42, "session.turn", "s-live", ["session": "s-live", "id": "70", "seq": 141, "role": "user", "text": "what is on the Northwind Bakery menu", "at": 2]))
+            link.emit(ev(43, "session.turn", "s-live", ["session": "s-live", "id": "tool:tu_1", "seq": 142, "role": "tool", "text": "Read menu.md", "tool": ["name": "Read", "summary": "Read menu.md"], "at": 3]))
+            link.emit(ev(44, "session.turn", "s-other", ["session": "s-other", "id": "71", "seq": 9, "role": "assistant", "text": "not this one", "at": 4]))
+            got.append("busy \(p.dm.busy) count \(p.dm.messages.count) tool \(p.dm.messages.last?.tools?.first?.done ?? true)")
+            link.emit(ev(45, "session.turn", "s-live", ["session": "s-live", "id": "71", "seq": 143, "role": "assistant", "text": "Rye and sourdough.", "at": 5]))
+            link.emit(ev(46, "session.turn", "s-live", ["session": "s-live", "id": "71", "seq": 143, "role": "assistant", "text": "Rye and sourdough.", "at": 5]))
+            link.emit(ev(47, "session.state", "s-live", ["session": "s-live", "busy": false]))
+            let ids = p.dm.messages.suffix(3).map(\.id)
+            got.append("busy \(p.dm.busy) count \(p.dm.messages.count) ids \(ids) tool \(p.dm.messages.suffix(2).first?.tools?.first?.done ?? false)")
+            // Back on the assistant: the watch ends and a late turn draws nothing.
+            await p.show(p.sessions[0])
+            link.emit(ev(48, "session.turn", "s-live", ["session": "s-live", "id": "72", "seq": 144, "role": "assistant", "text": "late", "at": 6]))
+            got.append("watching \(p.isWatching) late \(p.dm.messages.contains { $0.text == "late" }) label \(p.replyLabel)")
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            return got
+        }
+        t.eq(r?[0], "watching true label juno")
+        t.eq(r?[1], "busy true count 60 tool false")
+        t.eq(r?[2], "busy false count 60 ids [\"70\", \"tool:tu_1\", \"71\"] tool true")
+        t.eq(r?[3], "watching false late false label juno")
+        let w = link.calls("recall.watch")
+        t.eq(w.count, 1); t.eq(w.first?["session"] as? String, "s-live"); t.eq(w.first?["from"] as? String, "69")
+        t.eq(link.calls("recall.unwatch").first?["watch"] as? String, "w_1")
+        t.eq(link.calls("system.info").count, 1, "the names are read once per show")
+    }
+
+    t.test("terminal tab: renews its watch while shown, starts again when it lapsed, and closing the panel stops it") {
+        let link = terminalWorld()
+        let lapse = Names([])
+        link.answer("recall.watch") { input in
+            if let w = input["watch"] as? String {
+                if lapse.list.isEmpty { lapse.add(["w": w]); return .failure(code: "not_found", message: "no watch \(w)") }
+                return .success(["watch": w, "session": "s-live", "from": NSNull(), "busy": false, "renewed": true])
+            }
+            return .success(["watch": "w_\(lapse.list.count + 1)", "session": "s-live", "from": NSNull(), "busy": false])
+        }
+        let r = t.wait { @MainActor () -> [String] in
+            let (_, ext) = panelExt(link)
+            ext.panel.renewEvery = .milliseconds(15)
+            _ = await ext.openPanel(nil, glass: false)
+            await ext.panel.show(ext.panel.sessions.first { $0.isTerminal }!)
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            _ = await ext.closeSideView()
+            let n = link.calls("recall.watch").count
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            return ["\(ext.panel.isWatching)", "\(link.calls("recall.watch").count == n)"]
+        }
+        t.eq(r?[0], "false"); t.eq(r?[1], "true", "nothing renews after close")
+        let w = link.calls("recall.watch")
+        t.ok(w.count >= 4, "\(w.count) calls")
+        t.eq(w[1]["watch"] as? String, "w_1")
+        t.eq(w[2]["watch"] as? String, nil, "a lapsed watch starts again"); t.eq(w[2]["from"] as? String, "69")
+        t.eq(w[3]["watch"] as? String, "w_2")
+        t.eq(link.calls("recall.unwatch").last?["watch"] as? String, "w_2")
+    }
+}
+
+/// world() plus a live terminal session s-live with 70 indexed turns and chat's recall.watch.
+private func terminalWorld() -> PanelLink {
+    let link = world()
+    let now = vyNowMs()
+    link.answer("projects.catalog") { _ in .success(["sessions": [["id": "s-live", "label": "northwind menu", "last": now - 1000]]]) }
+    link.answer("system.info") { _ in .success(["assistant": ["name": "juno"]]) }
+    link.answer("recall.thread") { input in
+        let from = input["from"] as? Int ?? 0
+        let all: [[String: Any]] = (0..<70).map { (i: Int) -> [String: Any] in
+            let at: Double = 1_700_000_000_000 + Double(i)
+            let role: String = i % 2 == 0 ? "user" : "assistant"
+            return ["id": String(i), "seq": i, "role": role, "ts": at, "at": at, "text": "turn \(i)"]
+        }
+        let limit = input["limit"] as? Int ?? 200
+        return .success(["session": ["id": "s-live", "turns": 70], "turns": Array(all[min(from, 70)..<min(from + limit, 70)])])
+    }
+    link.answer("recall.watch") { input in .success(["watch": "w_1", "session": "s-live", "from": input["from"] ?? NSNull(), "busy": false]) }
+    link.answer("recall.unwatch") { input in .success(["watch": input["watch"] ?? "", "ended": true]) }
+    return link
 }
