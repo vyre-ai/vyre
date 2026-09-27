@@ -156,3 +156,29 @@ test("reminders: a connection stuck at needs_credential gets a todo, closed once
   assert.deepEqual(closed.closed, [`connection:${reg}`]);
   assert.equal(todo.state, "done");
 });
+
+test("reminders: a pass nearing its end gets a heads-up before it lapses", async t => {
+  const day = 86400_000;
+  const planner = fakePlanner();
+  const { run, vault } = await recorded(t, { reminders: false }, { call: planner.call });
+  const now = Date.now();
+  await run("vault.put", { name: "harlow-api", kind: "api-key", fields: { value: hex(16) } });
+  const card = (await vault.card()).card;
+  const soon = await vault.createPass({ holder: "Dana", card, items: ["harlow-api"], mode: "sealed", expires: new Date(now + 3 * day).toISOString() }, "cli");
+  const far = await vault.createPass({ holder: "Dana", card, items: ["harlow-api"], mode: "sealed", expires: new Date(now + 60 * day).toISOString() }, "cli");
+
+  const first = await remindTick(vault, planner.call, { clock: () => now });
+  assert.deepEqual(first.added, [`pass:${soon.pass.id}`], "only the one ending soon");
+  const todo = [...planner.items.values()][0];
+  assert.match(todo.title, /^Renew or revoke the pass for Dana: it ends \d{4}-\d{2}-\d{2} \(harlow-api\)$/);
+
+  // A second tick raises nothing new.
+  assert.deepEqual((await remindTick(vault, planner.call, { clock: () => now })).added, []);
+
+  // Revoked: the heads-up is done.
+  await run("vault.pass.revoke", { id: soon.pass.id });
+  const revoked = await remindTick(vault, planner.call, { clock: () => now });
+  assert.deepEqual(revoked.closed, [`pass:${soon.pass.id}`]);
+  assert.equal(todo.state, "done");
+  void far;
+});
