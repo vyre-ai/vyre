@@ -16,6 +16,21 @@ not a rewrite. It does not repeat `docs/design/one-app/DIRECTION.md` (the smooth
 the install path) or `docs/design/system/components/*` (the built card and control vocabulary); it
 says which of those already answer a question, and adds only what neither covers yet.
 
+## 0. The exact numbers and shared states (app-design, confirmed 2026-09-28)
+
+Every rule below cashes out to these, so a team implements against numbers, not a feeling.
+Motion tokens (`tokens.md`): tap 120 ms, panel 220, sheet 280, text reveal 150, hold 600, Undo
+4000 ms, ease (0.25, 0.1, 0.25, 1). Reduced motion drops shine/spin/slide; a state change still
+shows some way, since motion never carries information alone. Card and row states are one shared
+vocabulary, not a per-component invention: hover (desktop, fill `--hover`), pressed (phone, no
+transition, fill `--hover`), focus (2px `--focus` outline, offset -2), selected (fill
+`--signal-wash`), swiping (phone only, the rule below), committed (row height to 0 over the tap
+token, an Undo toast in its place) - plus the seven list-level states in `states.md` (empty,
+loading, offline, error, many items, long names, decided). One thread runs through all of it:
+violet is text-only, never a fill (a dot, a label, a count), lime is the one primary per surface
+and never decorative, and nothing optimistic is silent - every reversible action gets an Undo,
+every irreversible one gets a hold, never a confirm dialog.
+
 ## 1. Streaming: show progress under 100 ms, never a blank card
 
 DIRECTION.md's bar already sets the number: first content under 100 ms switching places, streaming
@@ -52,16 +67,28 @@ outside the phone yet:
   is what should travel: reversible and cheap -> optimistic with Undo; irreversible or secret ->
   confirm, and Touch ID only for the latter.
 
+The swipe rule (`needs-row.md`, `layout.md`), exactly: a scroll-snap strip on the compositor, never
+pointer-events JS. It commits at a full 100pt reveal, or a 0.5px/ms fling past 24pt; 40-100pt rests
+open, under 40pt closes. Right is the row's primary action (Approve, Send - `--primary-bg` fill, a
+check), left is the secondary (`--hover` fill). A presence-gated primary shows the Face ID or
+fingerprint glyph in the reveal instead of committing blind - the swipe still happens, the biometric
+step rides inside it rather than blocking it with a separate dialog. Every commit gets the Undo
+toast (`toast.md`): 4 s, one at a time, in-place (takes the row's own 44pt slot) or floating (above
+the Capsule or the safe area) when there is no row to hold it. Undo is always ghost styling, never
+lime.
+
 ## 4. Keyboard first, one motion vocabulary, same gestures on phone and Deck
 
 Already specced and built: DIRECTION.md principles 2-4 (one row/card/status model, quiet chrome),
-`system/components/key-hint.md` (the shortcut chip, desktop only), `command-bar.md` (⌘K, and the
-phone's Find). The gesture set (row swipe = scroll-snap, page swipe = the same trick) is one
-implementation for both phone and Deck already, per DIRECTION.md's "gestures on the compositor"
-section - a team building a new swipeable row (needs-row, device-row) should reuse that pattern,
-not invent a second one. Glass's take-over/give-back and Vault's approve/deny are the two places a
-key-and-swipe pair isn't confirmed built yet; both should read as "the same A/D, the same swipe" as
-`needs-row.md`, not their own shape.
+`system/components/key-hint.md` (the shortcut chip, desktop only, 720px+ with a keyboard and a
+fine pointer, never on phone - one chip per chord, modifiers first, no plus sign: "⌘K", never
+"⌘"+"K"), `command-bar.md` (⌘K, and the phone's Find). The gesture set (row swipe = scroll-snap,
+page swipe = the same trick) is one implementation for both phone and Deck already, per
+DIRECTION.md's "gestures on the compositor" section - a team building a new swipeable row
+(needs-row, device-row) should reuse that pattern and the swipe rule above, not invent a second
+one. Glass's take-over/give-back and Vault's approve/deny are the two places a key-and-swipe pair
+isn't confirmed built yet; both should read as "the same A/D, the same swipe" as `needs-row.md`,
+not their own shape.
 
 ## 5. Voice where natural
 
@@ -75,11 +102,19 @@ Windows' Tier D voice port (windows-plan.md) should inherit this rule rather tha
 
 Memory-iq's source chips (⌘1..⌘3, iq-everywhere.md) and its "Wrong?" correction label (quiet,
 inline, no modal, `memory.correct`) are the built pattern for "here's my answer, here's where it
-came from, here's how to fix it if it's wrong." The same shape should cover: sight's "what's on
-screen" strip (it already names the tool call and thread behind a step, cohesion item 1); Render's
-command results (a table or card should always be one click from the raw call it came from); and
-federation's session-sync status (name the machine and the time, never just "synced"). "Show the
-source" is what stops a fast, cutting-edge surface from also feeling opaque.
+came from, here's how to fix it if it's wrong." The Answer card's confirmed shape (app-design,
+not yet written into `result-card.md`): no header row, the answer text first; a plain meta line
+("confidence 0.8 - from 2 sessions", never colour-coded, confidence is never a traffic light);
+sources as chips (`--rule-strong` border, no fill, mono meta), tap opens the turn; abstain reads
+"Not sure yet." plus what memory does know, in the same shell. Correct-in-place: quiet "Wrong?"
+text (not a chip) after the meta line, expands in place - two ghost buttons and a prefilled field,
+Enter sends - and after a fix, "you corrected this" with an untimed Undo (not the 4 s toast: this
+card can sit unnoticed in a scrolled-past result, unlike a swipe commit). The same shape should
+cover: sight's "what's on screen" strip (it already names the tool call and thread behind a step,
+cohesion item 1); Render's command results (a table or card should always be one click from the
+raw call it came from); and federation's session-sync status (name the machine and the time, never
+just "synced"). "Show the source" is what stops a fast, cutting-edge surface from also feeling
+opaque.
 
 ---
 
@@ -176,15 +211,16 @@ already on that team's list.
 1. **Federation's session sync vs. everyone else's live events.** Federation is explicitly
    batched, idle-only, never faster than 60 s (federation-plan.md's own words), while sight,
    context, waiting and IQ are all event-driven. Left silent, a Mac session on a paired box would
-   be the one place in Vyre that goes quiet instead of showing progress. **Fix:** federation emits
-   one lightweight event when a sync completes (name, machine, count), and every surface renders it
-   through the same "show the source" line as everything else - see section 6.
+   be the one place in Vyre that goes quiet instead of showing progress. **Fix, decided by the
+   lead 2026-09-28:** federation's sync emits a "synced" status event, so nothing goes silent;
+   every surface renders it through the same "show the source" line as everything else, section 6.
 
 2. **Vault's confirm-everything vs. the rest of Vyre's optimistic+Undo.** DIRECTION.md's no-nagging
    rule (Touch ID only to pair, release a secret, or send/post/pay/delete outside) already draws
    the line; vault's current Next list reads as if every action sits on the Touch ID side of it.
-   **Fix:** section 3's split - reversible and cheap gets Undo, irreversible or secret keeps the
-   dialog - applied item by item to vault's own list, not vault inventing a second confirm pattern.
+   **Fix, decided by the lead 2026-09-28:** vault splits its confirms by reversibility - Touch ID
+   stays only for pairing, secrets and anything sent outside; everything else is optimistic with
+   Undo, per section 3.
 
 3. **Glass's snapshot-at-open badge vs. sight's continuous events.** Every other "what's happening
    now" surface (context, waiting, sight.stepped itself) updates live; Glass's own latency badge
@@ -195,11 +231,12 @@ already on that team's list.
 4. **Windows-plan's silence on the interaction language.** windows-plan.md is a careful, thorough
    tiering document that never mentions streaming, Render, sight, or DIRECTION.md's bar. Built as
    written, a Windows Capsule could ship functionally complete and feel like a different, flatter
-   product. **Fix:** add this page and DIRECTION.md as acceptance criteria to the windows-plan's
-   Tier C/D scope now, before any UI code is written, not as a retrofit after.
+   product. **Fix, decided by the lead 2026-09-28:** this page becomes the acceptance criteria for
+   Windows Tiers A and B now, before any UI code is written, not a retrofit after.
 
 5. **Memory-iq's streaming vs. capsule-pro's and chat's current blank-then-done answers.** Until
    `stream:true` lands everywhere it's called, a person moving from chat (which streams once IQ
    ships there) to the Capsule (still Said.swift, whole-answer) mid-conversation sees two different
-   affordances for what should be one feature. **Fix:** one shared cutover date for every caller of
-   `memory.ask`, not each surface migrating on its own schedule. <!-- terms: ignore -->
+   affordances for what should be one feature. **Fix, decided by the lead 2026-09-28:**
+   `memory.ask {stream:true}` becomes the default everywhere in 0.1.1, one shared cutover date;
+   memory-iq coordinates it. <!-- terms: ignore -->
