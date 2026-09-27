@@ -75,26 +75,32 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing
-- node on main d3ed622 (run 36278222482) is red on 5 code failures, not env: home.test.js:169,
-  floor.test.js:150, rooms.test.js:217, and docs-check + docs-index (stale generated docs, env
-  count 73 committed vs 72 made). They reproduce on testbox with Node 22. Sent to the integrator
-  on 2026-09-27. capsule-mac, ios and android were green on main.
-- Signing proof: run 36275719507 never proved anything. Its app step failed because work/ci-sign
-  had no Sources/Extensions and build.sh's `find` aborts under `set -e` (capsule-pro has that
-  dir now). The signing step then hung 40 min on `security add-trusted-cert`: in the user domain
-  that call asks for a password. work/ci-sign 1a4931b merges work/capsule-pro and swaps only that
-  step for `sudo security add-trusted-cert -d` (5 min step timeout). Run 36282004237 proved
-  createIdentity on the runner: openssl, import and trust all exit 0, `{"ok":true}`, and
-  find-identity lists 1 valid "Vyre Local". codesign then failed because Vyre.app did not
-  compile: work/capsule-pro tip AgentDestinations.swift:47 `cannot find 'askItem' in scope`
-  (capsule-pro's bug). ci-sign 0066ed2 signs a copy of vyre-launcher when the app is missing;
-  run 36282086841 signed it and passed `codesign --verify --strict`, so signing is proven. capsule-pro has the result, and work/ci-sign is deleted from origin.
+## Doing (2026-09-27, after logout 3)
+- Workflows now: node, capsule-mac, ios, android, plus new box-image, sessions-sdk, app (all on
+  work/ci, not on main until the integrator merges).
+- box-image.yml builds box/Dockerfile from the `npm pack` tarball (what a deploy builds; a
+  checkout build fails on .dockerignore dropping scripts/postinstall.mjs, fix given to
+  resilience), then: health over the socket, tini PID 1, SIGKILL vyred -> loop.sh restarts it,
+  `docker stop` exits 0 fast. Proven green on resilience c8f5654 (run 36315578355: image 609 MB,
+  pid 9 -> 85, stopped in 0 s exit 0). Throwaway branches work/ci-box, work/ci-box-main (main
+  15e82dd7 + workflow) and work/ci-diag: delete from origin once box-image is on main.
+- Node 22 hang: every branch's node (22) job hangs to its 30-min timeout after hands-chrome
+  tests fail at random (runner image sets CHROME_BIN, so Chrome tests run). Proxy-pipe fix
+  aac42f8 was not enough. work/ci-diag runs the chrome file alone and the suite with
+  --test-timeout to name the stuck test.
+- onboard-page leaked a temp home (tmp-guard red on Node 24): fixed 1e614150, unproven in CI.
+- capsule-mac signing step: sudo -n -d trust, /dev/null, 5-min timeout (d8ecff6a); capsule-pro
+  may cherry-pick.
+- sessions-sdk.yml (gated on the SDK in package.json) and --omit=optional in node/capsule-mac;
+  asked sessions for dependency kind, test paths and smoke command.
+- app.yml for apps/app agreed with mobile. The Playwright perf job (4x throttle, world.js,
+  >20% regression vs last green artifact) waits for mobile's ping.
 
 ## Next
-- Recheck node on main after the integrator's fix: `gh run list -R vyre-ai/vyre --branch main --workflow node.yml`.
-- Guard hooks: pre-push and commit-msg are in the shared hooks dir. On 2026-09-27 commit-msg
-  rejected a private name and passed a clean message.
+- Report box-image on main (work/ci-box-main) to lead + integrator.
+- Read work/ci-diag, fix the Node 22 hang, then push work/ci and confirm node green on both.
+- Recheck: `gh run list -R vyre-ai/vyre --branch <b> --workflow <wf>`. In zsh, `set -- $var`
+  does not split: wrap loops in `bash -c`.
 
 ## Needs from others
 - None.
