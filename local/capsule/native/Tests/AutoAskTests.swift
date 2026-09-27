@@ -42,7 +42,8 @@ let autoAskSuite = Suite("auto ask") { t in
     t.test("the pause: typing on waits, and only the words at rest are asked, once") {
         let v = quietVyred(); defer { v.stop() }
         let r: [String]? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            // A pause long enough that a slow CI machine's 30 ms between keys never counts as rest.
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.autoDelay = 0.4; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp }
             await MainActor.run { m.text = "what is arch" }
             try? await Task.sleep(nanoseconds: 30_000_000)
