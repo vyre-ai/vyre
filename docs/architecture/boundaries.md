@@ -51,10 +51,11 @@ Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one s
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/files -> core/link` | transport.js | Mac to box file transfer over the tailnet transport | lib |
 | `core/files -> core/names` | tailscale.js | runs the tailscale CLI (Taildrive) | lib |
-| `core/google -> core/connectors` | auth.js | the connectors' shared credential library (ADR 0016, decision 2) | lib |
+| `core/google -> core/connectors` | auth.js, message.js, behalf.js | the connectors' shared credential and mail-message libraries (ADR 0016, decisions 2 and 8), and the on_behalf thread check | lib |
 | `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
 | `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
-| `core/mcp -> core/connectors` | auth.js | the connectors' shared credential library | lib |
+| `core/mail -> core/connectors` | message.js, auth.js, behalf.js | mail's shared message helpers, credentials, and the on_behalf thread check (ADR 0016, decision 8) | lib |
+| `core/mcp -> core/connectors` | auth.js, behalf.js | the connectors' shared credential library and the on_behalf thread check (ADR 0016, decision 2) | lib |
 | `core/names -> core/link` | transport.js | names and link import each other; the transport belongs in a lib both use | lib |
 | `core/network -> core/names` | guests.js, identity.js, tailscale.js | the listeners identify tailnet peers (ADR 0002) | lib |
 | `core/onboard -> core/names` | service.js, tailscale.js | onboarding reserves the name and starts the tailnet listener in-process | ctx.call |
