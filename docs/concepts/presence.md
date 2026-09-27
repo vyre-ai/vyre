@@ -70,6 +70,21 @@ vyre presence remove <id>
 
 Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 5 minutes idle and 30 minutes at most, bound to the tailnet node that opened it.
 
+## One proof lasts about 30 minutes
+
+After Touch ID, a Capsule signature or a passkey for revealing, copying, a one-time code,
+approving or granting a vault item, the same device asks nothing more for those for 30 minutes:
+`vyre vault get` twice in a row asks once. vyred keeps the window in memory, per device (this
+machine, or the tailnet node that proved it), so restarting vyred ends it. It serves your own
+surfaces only: the CLI, the Deck and the Capsule. A Claude session's MCP tools, an agent and a
+guest are refused as before, and an item marked to ask every time still asks. A terminal code
+proves one call and opens no window.
+
+> [!WHY] Why can Claude's own Bash ride the window?
+> Claude Code runs as you, on your Mac, and `vyre` in its Bash is the CLI. Nothing a program on
+> that Mac can do tells the two apart, so a window on the device covers both. The window starts
+> only from a proof Claude cannot make, and lasts 30 minutes.
+
 ## What a tool sees
 
 A tool that ran after a proof gets `presence: { method, keyId }` in its second argument. The proof itself never reaches the tool. Events `presence.proved` and `presence.refused` carry the tool, the method and the caller, never a code or a key.

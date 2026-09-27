@@ -48,17 +48,15 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- Vault reveal and grant: one proof lasting about 30 minutes from the CLI. Asked the lead where
-  the window may live (Claude's Bash is the same user, so a secret file or claimed tty is
-  readable or spoofable). Proposal: the existing presence session, opened by Touch ID, passkey or
-  Capsule, held per device by vyred, covering vault.reveal/copy/totp and vault.approve/grant, only
-  for cli, deck and capsule callers; a tty code stays one per call.
+- Vault window built as proposed to the lead (answer pending): Presence.windows, WINDOWED =
+  reveal/copy/totp/approve/grant, 30 min per device from touchid/capsule/passkey, cli/deck/capsule/
+  local only. presence tests 24/24; vault+modules suites running on the test box.
+- Stress: warmup is now half the run (the 20 min rerun: heap flat 0.69 MB/10min, RSS 81 -> 94 MB
+  by 15 min then flat for 5). A 40 min confirmation run is at ~/vyre-ci/stress-polish3.json.
 
 ## Next
 
-- Stress-drive memory: 30 min run had 0 failures but RSS 80 -> 88.5 MB in the first 15 min, then
-  flat. A 20 min rerun on the test box is at ~/vyre-ci/stress-polish2.json: read it, fix a heap
-  leak if there is one, or document the cache warmup.
+- Read stress-polish3.json: pass if the second-half slope is under 1 MB/10min.
 - capsule-now to call capsule.report from the app (asked); then doctor's Capsule line is real.
 
 ## Needs from others

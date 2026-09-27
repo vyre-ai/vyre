@@ -322,6 +322,41 @@ test("presence: a session proves reveal, copy and TOTP for a while, on one devic
   assert.equal((await p.verify({ ...reveal, proof: { method: "session", id: s3.session, secret: s3.secret } })).ok, false, "closed");
 });
 
+test("presence: one strong proof lasts 30 minutes on its device for reveal and grant; never a terminal code, an agent or MCP", async t => {
+  const touchid = { available: async () => true, authenticate: async () => ({ ok: true }) };
+  const { p, tick, written } = setup(t, { platform: "darwin", touchid });
+  const def = { presence: { session: i => !i.reprompt } };
+  const reveal = { tool: "vault.reveal", input: { name: "bank" }, caller: "cli", def };
+  // Nothing open yet: a call with no proof is refused, and a terminal code opens no window.
+  assert.equal((await p.verify({ ...reveal, proof: null })).ok, false);
+  const c = await p.challenge({ tool: "vault.reveal", input: { name: "bank" }, method: "tty", tty: "/dev/ttys003" });
+  assert.ok((await p.verify({ ...reveal, proof: { method: "tty", id: c.challenge, code: codeFrom(written.at(-1).text) } })).ok);
+  assert.equal((await p.verify({ ...reveal, proof: null })).ok, false, "a terminal code is one per call");
+  // Touch ID opens it: reveal, copy, TOTP, approve and grant ask nothing for 30 minutes.
+  assert.equal((await p.verify({ ...reveal, proof: { method: "touchid" } })).method, "touchid");
+  for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant"]) {
+    assert.deepEqual(await p.verify({ ...reveal, tool, input: { name: "mail-token" }, proof: null }), { ok: true, method: "window", keyId: null }, tool);
+  }
+  for (const caller of ["deck", "capsule", "local"]) assert.ok((await p.verify({ ...reveal, caller, proof: null })).ok, caller);
+  // Never for an MCP session, a caller that names an agent, a guest, an item that asks every
+  // time, a tool outside the list, or another device.
+  for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "harness", "tailnet-guest:sam@harlow.example"]) {
+    assert.equal((await p.verify({ ...reveal, caller, proof: null })).ok, false, caller);
+  }
+  assert.equal((await p.verify({ ...reveal, input: { name: "card", reprompt: true }, proof: null })).ok, false, "reprompt");
+  assert.equal((await p.verify({ ...APPROVE, caller: "cli", proof: null })).ok, false, "gate.approve");
+  assert.equal((await p.verify({ ...reveal, proof: null, peer: { stableId: "phone" } })).ok, false, "another device");
+  tick(29 * 60_000);
+  assert.ok((await p.verify({ ...reveal, proof: null })).ok, "within 30 minutes");
+  tick(61_000);
+  assert.equal((await p.verify({ ...reveal, proof: null })).ok, false, "30 minutes at most");
+  // A passkey from the phone opens the phone's, not this Mac's.
+  const phone = setup(t);
+  phone.p.windows.set("phone", phone.now() + 1000);
+  assert.ok((await phone.p.verify({ ...reveal, caller: "tailnet:alex@example.com", proof: null, peer: { stableId: "phone" } })).ok);
+  assert.equal((await phone.p.verify({ ...reveal, proof: null })).ok, false);
+});
+
 test("presence: under tests the real Touch ID is never offered or tried; the refusal says no_dialog", async t => {
   // touchid left undefined is the real helper, which shows a system dialog.
   const { p } = setup(t, { platform: "darwin", touchid: undefined });
