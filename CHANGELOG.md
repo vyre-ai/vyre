@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### App: the Glass mini-view on Now and in the thread, from sight.frame stills
+
+- `apps/app/src/state/glass-model.js` (pure, node-tested) folds `sight.targets`, `sight.steps` and
+  `sight.stepped` into one view per agent's computer (the Mac never shows), with the step line,
+  the shield pause, the 30 s done card then pill, and "Stopped. N steps done." for 4 s.
+- `src/state/glass.ts` follows the light rule with no interval timer: one still when a card shows,
+  then one per `sight.stepped` at most every 2 s per target, only on screen, in front and off the
+  relay; `maxWidth` is the card's device pixels rounded to 80 in 160..1280.
+- `src/ui/GlassMini.tsx`: the Card (16:10, radius 8, `codeBg`, letterboxed, the Live badge) and the
+  Pill, one button "Open Glass for kit's computer" that opens the step's thread, the picture hidden
+  from assistive tech and a polite live region at most every 5 s.
+- Now draws a card per acting agent after the waiting rows; the session draws its agent's under
+  the header, collapsible to the Pill ("Hide screen", "Show screen"). A box without
+  `sight.targets` draws nothing.
+- The connection store knows its path (`usePath`, from relay/client's `onstate`), so stills pause
+  over the relay with "Picture paused · steps still live".
+
 #### App: icons generated from icons.txt, and Back as the chevron with the page's name
 
 - `apps/app/scripts/gen-icons.mjs` (`npm run icons`, `-- --check` in CI) writes
