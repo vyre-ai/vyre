@@ -45,14 +45,23 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   796bdcb phone-design, 246af82 docs, f3b5e36 SPEC 5.2 ctx.call. Full suite at f3b5e36 on the
   test box: 1917 tests, 0 fail, exit 0.
 
-## Doing
+## Doing (2026-09-27, after Logout 2)
 
-- Nothing queued. Every approved branch is in main and pushed.
+- main (local, not pushed) = 42460e5: d3ed622 + docs d5659d9 (c48959b) + site hygiene b8d98f0
+  (no Capsule zip in build-site/release, site/_redirects untracked, clean dirty stamp,
+  release-check asserts both redirects, no zip, /start as committed, no node_modules, size cap
+  16 MB since the docs make the install 11 MB). release-check --skip-tests passes on the test box.
+- Waiting for e2e's agents no-passkey reversal (e2e worktree has it uncommitted). Don't take baf6f30.
+  Then: merge on main, FULL suite once on the test box (nice -n 15), push, sha to lead, box-deploy, e2e.
+- Trial merge of chat 65ce976 (brings federation 2379a0c) on pre/chat 9bd1cf4: only CHANGELOG
+  conflicted (kept both); its 21 test files + presence-bypass: 245/245 on the test box.
 
 ## Next
 
-- Merge each team's tip when it says ready; push main after each merge and tell the lead the sha.
-- The live box's stale "probe" computers row is box-deploy's (a /srv/vyre action).
+- After the deploy push: chat (redo the pre/chat merge on the new main), cc-plugin 9ce2f18,
+  planner e4fbc70, docs tip, capsule-pro when asked. Not mobile until its coral tokens are swapped.
+- Route to capsule-pro: `vyre capsule install` still fetches Vyre-mac.zip, which the site no
+  longer serves; scripts/build-mac-zip.sh can go with it.
 
 ## Needs from others
 
