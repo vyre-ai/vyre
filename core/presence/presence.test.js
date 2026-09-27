@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import path from "node:path";
-import { Presence, HUMAN_ONLY, canonical, inputHash, parse } from "./index.js";
+import { Presence, HUMAN_ONLY, PERSON_ONLY, canonical, inputHash, parse } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { discover, Registry } from "../modules/index.js";
@@ -38,9 +38,11 @@ const codeFrom = text => /command: ([A-Z0-9]{6})/.exec(text)[1];
 const APPROVE = { tool: "gate.approve", input: { id: "a1" } };
 
 test("presence: the floor's list holds every human-only tool", () => {
-  for (const t of ["gate.approve", "gate.revise", "gate.reject", "threads.answer", "vault.put", "vault.approve", "vault.unlock",
+  for (const t of ["gate.approve", "gate.revise", "gate.reject", "vault.put", "vault.approve", "vault.unlock",
     "vault.offboard", "learn.accept", "learn.retire", "presence.enroll", "presence.remove", "presence.code"]) assert.ok(HUMAN_ONLY.has(t), t);
-  assert.ok(HUMAN_ONLY.size >= 13);
+  assert.ok(HUMAN_ONLY.size >= 12);
+  // The owner's own actions ask no proof (no nagging), but stay off a model's shell (PERSON_ONLY).
+  for (const t of ["threads.answer", "term.open"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
 });
 
 test("presence: canonical JSON sorts keys at every depth, and the hash follows it", () => {

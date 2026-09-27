@@ -31,6 +31,8 @@
 .fd-right { display: flex; align-items: center; }
 .fd-title, .fd-sub, .fd-snip { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fd-title { font-size: 15px; line-height: 20px; font-weight: 500; }
+.fd-tline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fd-tline > .tag.machine { flex: none; }
 .fd-sub { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); }
 .fd-snip { font-size: 13px; line-height: 18px; color: var(--text-2); }
 .fd-m { background: var(--signal-wash); color: var(--text); border-radius: 2px; padding: 0 1px; }

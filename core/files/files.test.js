@@ -121,7 +121,7 @@ test("files: the manifest loads and offers its four tools to every caller", asyn
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
   // Taildrive's tools (files.drive.*) have their own tests in drive.test.js.
   const names = reg.listTools("mcp").map(x => x.name).filter(n => !n.startsWith("files.drive.")).sort();
-  assert.deepEqual(names, ["files.fetch", "files.preview", "files.search", "files.stat"]);
+  assert.deepEqual(names, ["files.dirs", "files.fetch", "files.preview", "files.recent", "files.search", "files.stat"]);
 });
 
 test("files: box search finds by name and by content, and never returns what the guard refuses", async t => {

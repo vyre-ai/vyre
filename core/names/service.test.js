@@ -29,7 +29,7 @@ function selfSigned(cn, days = 90) {
 }
 
 /** A world of fakes, and the service built on it. */
-function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false } = {}) {
+function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined } = {}) {
   const root = tempHome(t);
   const cfg = config.load(root);
   cfg.network.port = 0;
@@ -45,7 +45,8 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
   const ts = {
     status: async () => ({ installed: true, running: true, backend: "Running", loginUrl: null, tun: true, why: null,
       node: { name: "box", dnsName: "box.example.ts.net", ips, stableId: "n1", tagged }, owner: tagged ? null : owner, certDomains: ["box.example.ts.net"] }),
-    whois: async ip => ({ "100.101.1.2": { login: "alex@example.com", tagged: false, node: "phone" }, "100.101.1.3": { login: "sam@example.com", tagged: false, node: "laptop" } })[ip] || null,
+    whois: async ip => ({ "100.101.1.2": { login: "alex@example.com", tagged: false, node: "phone" }, "100.101.1.3": { login: "sam@example.com", tagged: false, node: "laptop" },
+      "100.101.3.1": { login: null, tagged: true, node: "kit", stableId: "nKIT", tags: ["tag:vyre-agent"], caps: {} } })[ip] || null,
     up: async () => ({ loginUrl: "https://login.tailscale.com/a/x" }),
     cert: async (host, crt, key) => { const c = selfSigned(host); fs.writeFileSync(crt, c.cert); fs.writeFileSync(key, c.key); },
     operator: async () => ({ ok: true, fix: null }),
@@ -59,7 +60,7 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     set: async () => "txt", clear: async () => {},
   };
   let issued = 0;
-  const deps = { ctx, ts, certs, save: p => config.save(p, root, cfg), dns: async () => dns,
+  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
     issue: async ({ names: list }) => { issued++; return selfSigned(list[0]); } };
   const svc = names(deps);
   t.after(() => svc.close());
@@ -260,7 +261,8 @@ test("names: the listener takes WebSocket upgrades itself rather than routing th
 });
 
 test("names: the owner's WebSockets reach vyred's streams as the owner; nobody else's do", async t => {
-  const w = world(t);
+  const w = world(t, { agentOf: async id => id === "nKIT" ? "kit" : null });
+  w.cfg.computers = { ...(w.cfg.computers || {}), tailnet: { enabled: true, tag: "tag:vyre-agent" } };
   w.cfg.name = "alex";
   await w.svc.tailscale();
   const host = "alex.vyre.run:0";
@@ -277,9 +279,11 @@ test("names: the owner's WebSockets reach vyred's streams as the owner; nobody e
   assert.equal(await up("100.101.1.2", { host: "evil.example" }), "HTTP/1.1 421 Misdirected Request", "another host name");
   assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "someone else on the tailnet");
   assert.equal(await up("100.101.9.9", {}), "HTTP/1.1 403 Forbidden", "an address whois does not know");
-  // A guest's stream is a guest's, never the owner's.
+  // Streams are the owner's alone: a guest gets none, even one listed for Glass, and nor does an
+  // agent's node, though both are callers the listener knows.
   w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["glass.open"] } } };
-  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 101 Switching Protocols", "a guest listed for Glass");
+  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "a guest listed for Glass");
+  assert.equal(await up("100.101.3.1", {}), "HTTP/1.1 403 Forbidden", "an agent's node");
   assert.deepEqual(w.calls.filter(c => c.startsWith("stream")),
-    ["stream tailnet:alex@example.com", "stream tailnet:alex@example.com", "stream tailnet-guest:sam@example.com"]);
+    ["stream tailnet:alex@example.com", "stream tailnet:alex@example.com"]);
 });
