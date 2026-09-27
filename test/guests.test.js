@@ -34,12 +34,12 @@ const lenient = {
 };
 
 async function box(t, { guests = { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list", "glass.close", "glass.take", "glass.open"] } } },
-  agentOf = async id => (id === "nKIT" ? "kit" : null), person = undefined } = {}) {
+  agentOf = async id => (id === "nKIT" ? "kit" : null) } = {}) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { tailscale: true, owner: "alex@example.com", port: 0, guests }, computers: { tailnet: { enabled: true, tag: "tag:vyre-agent" } },
     modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {}, ...(person ? { person } : {}) });
+  const d = await start({ presence: lenient, root, log: () => {} });
   t.after(() => d.stop());
   const ctx = d.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
   const svc = names({ ctx, agentOf, ts: { whois: async ip => WHO[ip] || null, status: async () => ({}) }, save: p => config.save(p, root, d.config),
@@ -218,22 +218,15 @@ process.stderr.write("no"); process.exit(1);
   assert.deepEqual(off.peers.map(p => [p.login, p.served, p.why]), [["sam@harlow.example", false, "not the owner"], ["pat@northwind.example", false, "not the owner"]]);
 });
 
-test("hosted app: the owner's calls from app.vyre.run reach vyred only with a person session", async t => {
-  let ok = false;
-  const person = { sessionOf: async (req, peer) => (ok && peer.origin === "https://app.vyre.run" ? { ok: true, id: "p1", kind: "bearer" } : null) };
-  const { send, call } = await box(t, { person });
+test("hosted app: the owner's calls from app.vyre.run are marked cross-origin; a guest's are refused", async t => {
+  const { send, call } = await box(t);
   const app = { origin: "https://app.vyre.run" };
   assert.equal((await send(OWNER_IP, "OPTIONS", "/v1/tools/threads.list", undefined, { ...app, "access-control-request-method": "POST" })).status, 204);
   assert.deepEqual(await send(OWNER_IP, "GET", "/v1/health", undefined, app), { status: 200, data: { reachable: true } });
-  // No session: every call is refused, reads too; only the token exchange gets past the gate.
+  // The router refuses a tool call from the hosted origin without a person session (e2e's rule).
   const bare = await call(OWNER_IP, "threads.list", {}, app);
   assert.deepEqual([bare.status, bare.error.code], [401, "person_session_required"]);
-  assert.equal((await send(OWNER_IP, "GET", "/v1/tools", undefined, app)).status, 401);
-  assert.notEqual((await send(OWNER_IP, "POST", "/v1/person/token", {}, app)).status, 401);
-  ok = true;
-  assert.equal((await call(OWNER_IP, "threads.list", {}, app)).status, 200);
-  // A guest from the same page gets nothing, session or not; the owner's own page needs none.
+  // A guest from the same page gets nothing; the owner's own page needs no session.
   assert.equal((await call(SAM_IP, "threads.list", {}, app)).status, 403);
-  ok = false;
   assert.equal((await call(OWNER_IP, "threads.list", {}, { origin: "https://alex.vyre.run:0" })).status, 200);
 });

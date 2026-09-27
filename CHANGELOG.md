@@ -22,11 +22,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
   owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
   Allowed headers: content-type, authorization, x-vyre-proof. `GET /v1/health` from it answers
-  only `{ reachable: true }`. Every other call reaches the router with `peer.origin`, and the
-  router refuses it with `401 person_session_required` unless `core/presence/person.js`
-  (`personSessions(db).sessionOf`, e2e's; a stub that finds none for now) finds a person session;
-  only `POST /v1/person/token` passes without one. WebSockets from it are the owner's (every
-  stream needs a ticket a tool minted).
+  only `{ reachable: true }`. Every other request goes to vyred's router untouched (the body
+  unread) with `peer.origin`, where e2e's person session decides (`401 person_session_required`
+  without one). WebSockets from it are the owner's (every stream needs a ticket a tool minted).
 - Guests: GUEST_SAFE is `threads.list` only (`glass.close` dropped too).
 - Tailscale docs: the iPhone DNS failure behind tailscale#19147 in "When a device cannot connect".
 
