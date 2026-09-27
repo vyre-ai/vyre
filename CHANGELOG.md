@@ -40,6 +40,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (active teammates, subagents), a box-wide ceiling, a fair queue and a usage-aware pause. The
   user's decisions: an integrator teammate auto-merges green branches, teammates can be shared
   with other projects or assigned to the assistant, Balanced is the default preset.
+#### Gate: settle a send whose answer was lost; the hub says whether a call may have reached the server
+
+- `gate.settle {id, outcome: "sent", evidence}` marks an approved item whose send failed as sent,
+  once, with what the app showed (a Slack message's ts), and emits `gate.settled`. Only for an
+  item that was approved and failed, and only by a person or the module whose sender holds it.
+- An MCP hub error carries `detail.reached`: "no" when the request never reached the server or it
+  refused, "maybe" when it dropped mid-call. A failed gate.approve says `reached` too, so a
+  surface looks in the app only when the send may have gone out.
+
 #### Apps: Slack replies in threads, and a Slack send is never posted twice (ADR 0022, ADR 0029)
 
 - Slack `reply {to, thread, text}` answers in a thread (the server's reply tool, or its post tool

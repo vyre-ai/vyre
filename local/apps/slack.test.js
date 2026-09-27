@@ -213,6 +213,7 @@ test("slack: the server drops mid-send; the answer is lost, the item waits, and 
   process.kill(pid, "SIGKILL");
   const out = (await approving).data;
   assert.equal(out.state, "failed", JSON.stringify(out));
+  assert.equal(out.reached, "maybe", "the hub says the post may have reached Slack");
   const item = (await cli("gate.get", { id: held.held.id })).data;
   assert.equal(item.state, "held", "the approved message waits at the Gate with its error, never dropped");
   assert.ok(item.error);
@@ -223,5 +224,13 @@ test("slack: the server drops mid-send; the answer is lost, the item waits, and 
   const again = (await capsule("apps.act", { app: "Slack", action: "send", args })).data;
   assert.equal(again.held.id, held.held.id, "sending the same words again finds the waiting item");
   assert.equal(again.held.tried, true, "and says an approval of it already failed, so a surface checks sent first");
+  assert.equal(posts().length, 1);
+
+  // It went out: settle it as sent, with what Slack showed. Only a person or the item's own module.
+  assert.equal((await d.registry.call("gate.settle", { id: held.held.id, outcome: "sent" }, "module:apps")).error.code, "failed");
+  const settled = await capsule("gate.settle", { id: held.held.id, outcome: "sent", evidence: { ts: sent.ts } });
+  assert.deepEqual(settled.data, { id: held.held.id, state: "sent", settled: true }, JSON.stringify(settled));
+  assert.equal((await cli("gate.held")).data.length, 0);
+  assert.notEqual((await capsule("gate.approve", { id: held.held.id })).data?.state, "sent");
   assert.equal(posts().length, 1);
 });
