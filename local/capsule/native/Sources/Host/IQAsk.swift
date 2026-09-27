@@ -59,11 +59,23 @@ extension CapsuleModel {
     /// takes the old path.
     func askIQ(_ words: String) async -> ActionOutcome? {
         guard vyred.has("memory.ask") else { return nil }
-        // The screen chip may still be settling for these words (sight waits 150 ms): let it.
-        if let t = attachTask { _ = await vyWithin(1) { await t.value } }
-        // Words about the screen, or a selection: memory cannot see it. The fast model with the
-        // screen context answers instead (the lead, 2026-09-27: the Capsule always knows the screen).
-        if attachments.contains(where: \.aboutIt) { return nil }
+        // Only words that may be about the screen (they point at it, or text may be selected) wait
+        // for its chip; any other question goes to memory.ask at once.
+        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        let asking = attachers.filter { $0.mayBeAbout(w) }
+        if !asking.isEmpty {
+            // The chips already asked for these words, else ask now (⏎ can beat the search, and the
+            // follow-up box empties the words as this runs).
+            var got = attachedWords == w ? attachments : []
+            if got.isEmpty {
+                for a in asking {
+                    if let x = await a.attachment(for: w, to: .ask), !removedAttachments.contains(x.id) { got.append(x) }
+                }
+            }
+            // Words about the screen, or a selection: memory cannot see it. The fast model with the
+            // screen context answers instead (the lead, 2026-09-27: the Capsule always knows the screen).
+            if got.contains(where: \.aboutIt) { attachments = got; return nil }
+        }
         asked = words
         askedMemory = nil
         pending = true

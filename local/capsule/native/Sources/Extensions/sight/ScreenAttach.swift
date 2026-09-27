@@ -254,6 +254,8 @@ final class ScreenAttacher {
     init(vyred: VyredLink, log: @escaping (String) -> Void = { _ in }) { self.vyred = vyred; self.log = log }
 
     var available: Bool { vyred.has("screen.context") }
+    /// Text may be selected: the light read says so, or has not come back yet.
+    var selectionPossible: Bool { available && (light.map(\.hasSelection) ?? true) }
 
     /// The cheap read, started now so the first keystroke does not wait on it.
     func prime() {

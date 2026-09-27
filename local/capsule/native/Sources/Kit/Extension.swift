@@ -179,6 +179,13 @@ public enum SendTargetKind: Sendable { case agent, thread, project, ask }
 @MainActor
 public protocol SendAttaching: AnyObject {
     func attachment(for words: String, to: SendTargetKind) async -> SendAttachment?
+    /// At once, with no reads: could these words' attachment be about them (`aboutIt`)? False lets
+    /// a quick question go to memory.ask without waiting for the chip.
+    func mayBeAbout(_ words: String) -> Bool
+}
+
+extension SendAttaching {
+    public func mayBeAbout(_ words: String) -> Bool { false }
 }
 
 /// Something `@` can name that an extension sends to: an app, a service, a person in it.

@@ -144,9 +144,11 @@ public final class CapsuleModel: ObservableObject {
     /// Chips for what extensions attach to this send ("sees: Safari · Northwind Bakery"), and the ones the user
     /// removed for it.
     @Published var attachments: [SendAttachment] = []
-    private var removedAttachments = Set<String>()
+    var removedAttachments = Set<String>()
     var attachers: [SendAttaching] = []
     var attachTask: Task<Void, Never>?
+    /// The words the chips were last asked for.
+    var attachedWords = ""
     /// The memory line's sources, shown (a click or ⌘→) or folded.
     @Published var memoryExpanded = false
     /// A human-only call waiting for the person to prove they are here (Presence.swift).
@@ -269,6 +271,7 @@ public final class CapsuleModel: ObservableObject {
     func refreshAttachments(_ words: String, to kind: SendTargetKind) {
         attachTask?.cancel()
         let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        attachedWords = w
         guard !attachers.isEmpty, !w.isEmpty else { if !attachments.isEmpty { attachments = [] }; return }
         let t = token
         attachTask = Task { @MainActor in

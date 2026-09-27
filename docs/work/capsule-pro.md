@@ -278,6 +278,8 @@ If a step fails, note its number and what the screen said. Screenshots of the Ca
 ## Changed contracts
 - core/daemon GET /v1/health: `cli` [node, <repo>/bin/vyre], additive, so the Capsule runs the same
   vyred's CLI for `vyre ...` typed in the box (by argv, with --view).
+- Kit: `SendAttaching.mayBeAbout(_:)` (default false): at once, could the chip be about these
+  words; false lets a question go to memory.ask without waiting for the chip.
 - Kit: `SendAttachment.aboutIt` (default false): the words are about the attachment, so a
   question skips memory.ask for the fast model (sight sets it for screen words and selections).
 - Kit: `CapsuleHost.askCredential(_:saved:)` and `CredentialNeed` (default does nothing, so fakes conform).

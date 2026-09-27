@@ -152,6 +152,11 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         return (ScreenChip.id, c.chip, c.bundle, c.body, c.pointedAt)
     }
 
+    /// SendAttaching, at once: the words point at the screen, or text may be selected.
+    func mayBeAbout(_ words: String) -> Bool {
+        attacher.available && (ScreenAttach.refersToScreen(words) || attacher.selectionPossible)
+    }
+
     /// SendAttaching: the host asks as the words change. Waits for them to rest, then answers from
     /// the snapshot; a newer question supersedes an older one, which gets the newer answer. The
     /// same chip for every kind of send.

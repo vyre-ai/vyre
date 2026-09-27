@@ -21,8 +21,12 @@ private func until(_ cond: @escaping @MainActor () -> Bool) async -> Bool {
 /// own check) or when text is "selected".
 @MainActor private final class FakeScreen: SendAttaching {
     var selected = false
+    /// How long the chip takes to settle (sight's debounce and read).
+    var slow: UInt64 = 0
+    func mayBeAbout(_ words: String) -> Bool { selected || ScreenAttach.refersToScreen(words) }
     func attachment(for words: String, to: SendTargetKind) async -> SendAttachment? {
-        SendAttachment(id: "sight:screen", chip: "sees: Safari · Northwind Bakery", body: "Screen: Safari, Northwind Bakery orders",
+        if slow > 0 { try? await Task.sleep(nanoseconds: slow) }
+        return SendAttachment(id: "sight:screen", chip: "sees: Safari · Northwind Bakery", body: "Screen: Safari, Northwind Bakery orders",
                        aboutIt: selected || ScreenAttach.refersToScreen(words))
     }
 }
@@ -65,6 +69,33 @@ let iqAskSuite = Suite("iq ask") { t in
                     "\(sel.iq)", "\(sel.start != nil)", "\(mem.iq)", "\(mem.start == nil)"]
         }
         t.eq(r, ["0", "haiku", "true", "0", "true", "1", "true"])
+    }
+
+    t.test("a memory question does not wait for the screen chip; a screen question does") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("memory.ask") { _ in ["answer": "You drive a blue Volvo XC40.", "confidence": 0.9, "abstained": false, "known": [Any](), "sources": [Any]()] }
+        v.tool("threads.start") { _ in ["id": "q10"] }
+        let screen = MainActor.assumeIsolated { () -> FakeScreen in let s = FakeScreen(); s.slow = 600_000_000; return s }
+        let r: [Double]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.attachers = [screen]; m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
+            // ⏎ at once, while the chip is still settling (600 ms).
+            await MainActor.run { m.text = "which car do I drive" }
+            let t0 = vyNowMs()
+            _ = await MainActor.run { m.handleReturn(command: false) }
+            _ = await until { !v.callsOf("memory.ask").isEmpty }
+            let iq = vyNowMs() - t0
+            await MainActor.run { m.dropAuto(); m.followUp = false; m.text = "what is this error" }
+            let t1 = vyNowMs()
+            _ = await MainActor.run { m.handleReturn(command: false) }
+            _ = await until { !v.callsOf("threads.start").isEmpty }
+            let screenQ = vyNowMs() - t1
+            await MainActor.run { m.didHide() }
+            return [iq, screenQ, Double(v.callsOf("memory.ask").count)]
+        }
+        t.ok((r?[0] ?? 9999) < 300, "memory.ask at once, not after the chip: \(r?[0] ?? -1) ms")
+        t.ok((r?[1] ?? 0) >= 500, "the screen question waited for its chip: \(r?[1] ?? -1) ms")
+        t.eq(r?[2], 1, "the screen question did not go to memory.ask")
     }
 
     t.test("memory.ask's three answers, as drawn") {

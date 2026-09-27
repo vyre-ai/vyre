@@ -13,7 +13,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A question about the screen ("what is this error", "what am I looking at", "the selected
   text") or with text selected goes to the fast model with the screen context, not memory.ask,
   which cannot see it. Sight marks its chip `aboutIt` (Kit `SendAttachment.aboutIt`, additive);
-  the Capsule waits up to 1 s for the chip to settle before choosing.
+  only words that may be about the screen (a local word check, or text may be selected: Kit
+  `SendAttaching.mayBeAbout`, default false) wait for the chip; any other question goes to
+  memory.ask at once (a test holds the chip 600 ms and memory.ask is still called under 300 ms).
 - A follow-up or ⌘⏎ after an IQ answer starts a session told the conversation. The old path
   (threads.start, lean) runs only when vyred has no memory.ask (no_such_tool).
 - `Sources/Host/IQAsk.swift` (new), `Sources/Host/CapsuleModel.swift`, `Sources/Host/AutoAsk.swift`,
