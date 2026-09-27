@@ -70,6 +70,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_AGENT_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
+| `VYRE_ALLOW_REAL_TRANSCRIPTS` | Not described yet. | `core/recall/index.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
 | `VYRE_BOX_PAIR_WAIT_MS` | Not described yet. | `core/cli/commands/box.js` |
 | `VYRE_BOX_POLL_MS` | How often `vyre box` checks on an install in progress. Default 5000. | `core/cli/commands/box.js` |
