@@ -110,11 +110,14 @@ const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "the Capsule"
 
 /**
  * @param {HTMLElement} container
- * @param {{ thread: string, project: string|null, recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null,
+ * @param {{ thread: string, project: string|null, projects?: any[], recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null,
  *   at?: number|null, ask?: string|null, tool?: string|null, shown?: () => boolean, onBack: () => void }} opts
  * recorded: the list already knows the Switchboard has no record of it, so skip threads.get.
  * known: the list had a row for it. turns: its turn count, so an older box's read opens at its end.
  * source, machine: the list's label for it; "mac" is a paired Mac's session.
+ * projects: projects.list's rows (name lookup only), so the header can show which project this
+ * thread is in - the one visible sign for an agent's own thread, whose project the composer never
+ * chose (cohesion's one-product-audit finding 6).
  * at, ask, tool: a deep link (?at=<ms>&ask=<id>&tool=<tool_use_id>; read from the address when not
  * given): the row to scroll to and flash. An ask's anchor (its tool call) wins over `at`.
  * shown: whether this page is the one on screen (index.js's ctx.shown); keys and frames only then.
@@ -341,18 +344,31 @@ export function mountSession(container, opts) {
     return [prov, m, auth].filter(Boolean).join(" · ");
   }
 
+  /**
+   * The project this thread is in, by name when known: threads.get's own read (most current, and
+   * the only source for an agent's thread, whose own project the New session sheet never chose)
+   * over the route/list's slug. Null with no project (a folder-only or project-less session).
+   */
+  function projectName() {
+    const slug = record.current?.project || opts.project;
+    if (!slug) return null;
+    return (opts.projects || []).find(p => p.slug === slug)?.name || slug;
+  }
+
   function drawHead() {
     const rec = record.current;
     const ses = recorded.session;
     const sb = switchboard();
     const chip = chipText();
     const ctx = contextLabel(S.usage);
+    const proj = projectName();
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
       h("div", { class: "cv-head-text" },
         h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
       ),
+      proj ? h("span", { class: "tag cv-project", title: `In ${proj}` }, proj) : null,
       machineChip(where),
       mac.offline ? h("span", { class: "tag machine off cv-offline", title: `${mac.offline} is not reachable` }, `${mac.offline} offline`) : null,
       chip ? h("span", { class: "tag cv-chip" }, chip) : null,

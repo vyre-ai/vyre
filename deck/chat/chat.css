@@ -178,7 +178,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .session-head { flex-wrap: wrap; height: auto; min-height: 56px; padding-top: 4px; padding-bottom: 8px; column-gap: 10px; row-gap: 2px; }
   .session-head > .cv-head-text { flex: 1 1 calc(100% - 64px); }
   .session-head > :not(.session-back):not(.cv-head-text) { flex-shrink: 0; }
-  .session-head .cv-chip, .session-head .cv-context, .session-head .cv-state { font-size: 12px; }
+  .session-head .cv-chip, .session-head .cv-context, .session-head .cv-state, .session-head .cv-project { font-size: 12px; }
   .composer-menu { left: 16px; right: 16px; }
   /* The header keeps the title: the phone's 44 buttons stay 44 tall but read at base size, and the
      model chip (the composer names the model too) and the state word give way. */
@@ -640,6 +640,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-run-body { padding-left: 8px; margin-left: 7px; }
 }
 
+/* The project a thread is in (cv-project): the one visible sign for an agent's own thread, whose
+   project the composer never chose (cohesion's one-product-audit finding 6). Quiet, not a status. */
+.cv-project { flex-shrink: 0; max-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
 .cv-chip { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context.high { color: var(--beacon-ink); }
