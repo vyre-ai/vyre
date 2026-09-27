@@ -267,7 +267,8 @@ RC SMOKE (lead, 27 Sep): scripts/rc-smoke.sh <tgz> + scripts/rc-smoke/ (e62b0d22
 npm pack of pre/batch4b 63d943f5: 19 pass, 2 FAIL (/app/ no_app: npm pack has no built app; a
 build-site tgz must pass), 3 skip (phone enrol needs a tailnet; mail and appearance not in b4).
 Mail step written (daf63e22: vault.connect, made-up hosts, mail.send held; on with vault-next +
-connectors). Next: run on ci's release tarball (with apps/app/dist), asked ci where it is.
+connectors). Next: ci sends the run id of release-dry-run-v0.1.0-rc.1 after batch 4 + the rc.1 bump;
+`gh run download <id> -R vyre-ai/vyre -n release-dry-run-v0.1.0-rc.1 -D <dir>`, check SHA256SUMS, run rc-smoke.
 Cleared: native-core fa349d31 + platform d62792d0; cohesion 0f4d1105 (Chromium 8/8).
 
 SPLIT VALIDATED on sessions db4af9c3 (callAsPerson ed2715ae) + main 53cd1326: check.sh 30/30,
