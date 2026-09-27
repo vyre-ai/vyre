@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule's tokens come from the one tokens.json
+
+- scripts/gen-tokens also writes `local/capsule/native/Sources/UI/Tokens.generated.swift`: both
+  schemes' colours as exact sRGB, the status rows (needs you, failed, running, unread, done) in
+  order with their marks and words, radius, control heights, space, motion and the desktop type
+  scale. `--check` covers it, and test/tokens-swift.test.js checks every colour key in both
+  schemes and the status words.
+
 #### One app: ADR 0027 and the smoothness meter
 
 - docs/adr/0027-one-app.md (draft): one Expo codebase for the iPhone web app, the Android APK,
