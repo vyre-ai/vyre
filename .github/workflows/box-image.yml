@@ -62,6 +62,9 @@ jobs:
           sh scripts/build-app.sh
           tgz=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
           tar -xzf "$RUNNER_TEMP/$tgz" -C "$RUNNER_TEMP/src" --strip-components=1
+          # Growth on record: release-check.sh fails an install over 16 MB.
+          npm i -g --prefix "$RUNNER_TEMP/prefix" --no-audit --no-fund "$RUNNER_TEMP/$tgz" >/dev/null
+          echo "vyre.tgz $(du -k "$RUNNER_TEMP/$tgz" | cut -f1) KB; installed $(du -sk "$RUNNER_TEMP/prefix" | cut -f1) KB of the 16384 KB cap; apps/app/dist $( [ -d apps/app/dist ] && du -sk apps/app/dist | cut -f1 || echo 0) KB" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
       - name: Build box/Dockerfile
         uses: docker/build-push-action@v6

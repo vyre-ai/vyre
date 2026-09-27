@@ -18,6 +18,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   missing precached file stops /app/sw.js installing); box-image fetches every precached path.
 - release-check's install cap is 16 MB: 12.7 MB without the app (over the old 12 MB already), plus
   2.6 MB for apps/app/dist; vyre.tgz is about 3.8 MB.
+- box-image.yml's pack step installs the tarball into a temp prefix and prints vyre.tgz's size, the
+  installed size against the 16 MB cap and the app's, in the job summary, so growth shows per run.
 
 #### The onboard page test cleans its home last
 
