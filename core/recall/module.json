@@ -7,5 +7,17 @@
   "watches": { "emits": ["session.indexed", "session.turn", "session.state"] },
   "shows": { "cli": ["recall", "index"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "search-meaning", "text": "Run `vyre recall stripe webhook retries` to search every past session by meaning and by words.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre recall <query>", "docs": "using/memory.md#search-past-sessions"},
+      {"id": "resume-hit", "text": "Each hit prints its session id. Pick it up with `vyre resume <thread>`, or `claude --resume <id>`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre resume <thread>", "docs": "using/memory.md#search-past-sessions"},
+      {"id": "here-and-user", "text": "Add `--here` to search only sessions run in this folder, and `--user` for only what you typed.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "--here", "docs": "using/cli.md#find-something-you-said"},
+      {"id": "keyword-only", "text": "Hunting an exact error or id? `--keyword` matches the words alone, with no search by meaning.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "--keyword", "docs": "using/cli.md#find-something-you-said"},
+      {"id": "index-now", "text": "Just finished a session? `vyre index` indexes new sessions now, instead of waiting for the 5-minute pass.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre index", "docs": "using/memory.md#keep-the-index-up-to-date"},
+      {"id": "slash-recall", "text": "Inside a Claude Code session, type `/vyre recall <query>` to bring back what was said in an older one.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "/vyre recall <query>", "docs": "using/memory.md#search-past-sessions"},
+      {"id": "mac-from-box", "text": "On a box paired with your Mac, a Deck search asks the Mac too. Its hits carry a chip with the Mac's name.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/memory.md#search-your-macs-sessions-from-the-box"},
+      {"id": "status-no-words", "text": "Run `vyre recall` with no words to see how many sessions and turns are indexed, and whether search by meaning is on.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre recall", "docs": "using/memory.md#keep-the-index-up-to-date"},
+      {"id": "setup-model", "text": "Search by meaning needs a 23 MB model. `vyre recall --setup` installs it now instead of on first use.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre recall --setup", "docs": "using/memory.md#keep-the-index-up-to-date"}
+    ]
+  }
 }

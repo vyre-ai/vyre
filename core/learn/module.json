@@ -9,5 +9,19 @@
     "lesson.dormant", "lesson.allowed", "skill.proposed", "skill.installed", "skill.retired", "distill.finished"] },
   "shows": { "deck": ["panel:memory/lessons"], "capsule": ["waiting:lesson.proposed"], "cli": ["learn"] },
   "needs": {},
-  "teaches": { "memory": ["preference"] }
+  "teaches": {
+    "memory": ["preference"],
+    "tips": [
+      {"id": "list-lessons", "text": "Run `vyre learn` to see your active lessons with their counts, then the proposed ones waiting for your yes.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre learn", "docs": "using/learning.md#lessons-accept-edit-retire"},
+      {"id": "accept-retire", "text": "Keep a proposed lesson with `vyre learn accept 7`, or drop it with `vyre learn retire 7`.", "surfaces": ["cli", "deck", "capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre learn accept <id>", "docs": "using/learning.md#lessons-accept-edit-retire"},
+      {"id": "raise-level", "text": "Raising a lesson is free: `vyre learn level 7 block` denies the tool call next time instead of asking you.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre learn level <id> block", "docs": "using/learning.md#escalation"},
+      {"id": "stats", "text": "`vyre learn stats` says whether each lesson works, comparing how often you repeated a correction before it with escapes since.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre learn stats", "docs": "using/learning.md#escalation"},
+      {"id": "scope-all", "text": "`vyre learn scope 7 all` widens a lesson to everywhere for free. Narrowing it to one project is yours alone.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre learn scope <id> all", "docs": "using/learning.md#escalation"},
+      {"id": "relax-cap", "text": "`vyre learn relax 7 max ask` caps a lesson so a repeat never climbs it to block.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre learn relax <id> max <level>", "docs": "using/learning.md#escalation"},
+      {"id": "add-rule", "text": "Tell Vyre a rule outright: `vyre learn add \"never push to main\"` makes a lesson, and so does `/vyre remember` in a session.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre learn add <text>", "docs": "using/learning.md#signals-what-vyre-hears"},
+      {"id": "skills-drafted", "text": "Repeat a procedure in three sessions and Vyre drafts a skill. Read it with `vyre learn skills show 3` before you install it.", "surfaces": ["cli", "deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre learn skills", "docs": "using/learning.md#skills-from-what-you-repeat"},
+      {"id": "signals", "text": "Run `vyre learn signals` to see what Learning heard, as counts by kind. It never keeps the text.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre learn signals", "docs": "using/learning.md#signals-what-vyre-hears"},
+      {"id": "deck-lessons-tab", "text": "The Lessons tab under Memory in the Deck groups lessons as Proposed, Active, Retired and Proposed skills.", "surfaces": ["deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/learning.md#lessons-accept-edit-retire"}
+    ]
+  }
 }

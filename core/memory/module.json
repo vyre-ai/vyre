@@ -8,5 +8,17 @@
   "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered"] },
   "shows": { "deck": ["panel:memory"], "capsule": ["answer:memory.relevant"], "cli": ["memory", "why"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "about-one-thing", "text": "Run `vyre memory \"Harlow Legal\"` to see every fact memory holds about it, each with its age, confidence and source.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre memory <about>", "docs": "using/memory.md#see-what-memory-holds"},
+      {"id": "why-a-fact", "text": "Each fact line prints its own `vyre why` command. Run it to read the turns the fact came from.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre why <fact>", "docs": "using/memory.md#see-what-memory-holds"},
+      {"id": "gold-means-source", "text": "Text in gold came from memory or the search index, not a model, so Vyre can show you the turn behind it.", "surfaces": ["cli", "deck", "chat", "capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/memory.md#the-gold-marking"},
+      {"id": "correct-wrong", "text": "Fix a fact with `vyre memory correct '<fact id>' wrong`, or `ended --at 2026-08-01` when it stopped being true.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre memory correct <fact> wrong", "docs": "using/memory.md#correct-a-fact"},
+      {"id": "pin-mute", "text": "`vyre memory pin \"Harlow Legal\"` ranks it first wherever it is relevant; `vyre memory mute` stops a name being offered.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre memory pin <node>", "docs": "using/memory.md#steer-what-memory-offers"},
+      {"id": "one-room", "text": "Add `--project harlow-legal` to read one project's room alone, or `--project unfiled` for sessions in no project.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "--project", "docs": "using/memory.md#how-projects-keep-memory-apart"},
+      {"id": "ask-your-life", "text": "Ask about your own life with `vyre memory ask \"what car do I drive\"`. Add `--sources` to see the turns behind the answer.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre memory ask <question>", "docs": "reference/cli.md#vyre-memory"},
+      {"id": "floor-plan", "text": "Open Memory in the Deck to see the graph as a floor plan: one room per project, each fact a gold dot you can trace.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/memory.md#see-what-memory-holds"},
+      {"id": "learned-today", "text": "The Deck's Now page lists what memory learned today, each fact beside the thread it came from.", "surfaces": ["deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/memory.md#see-what-memory-holds"}
+    ]
+  }
 }

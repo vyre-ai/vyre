@@ -8,5 +8,17 @@
   "watches": { "emits": ["prompt.changed", "model.changed", "slot.taken", "slot.released", "slot.queued"] },
   "shows": { "cli": [] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "check-driver", "text": "Run `vyre call sessions.status` to see which driver, sign-in and Claude Code your sessions run on.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.status", "docs": "using/sessions.md#what-runs-them"},
+      {"id": "idle-close", "text": "A session nobody uses closes after 10 minutes and comes back on your next message. Set `idle_minutes` to change it.", "surfaces": ["chat", "deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#closed-when-idle-back-on-the-next-message"},
+      {"id": "model-per-purpose", "text": "Pick the model per purpose with `sessions.models.set`, for example scope `purpose:capsule` and model `sonnet`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.models.set '{\"scope\":\"purpose:capsule\",\"model\":\"sonnet\"}'", "docs": "using/sessions.md#which-model"},
+      {"id": "project-prompt", "text": "Give every Northwind Bakery session a house rule: `sessions.prompt.set` with scope `project:northwind-bakery`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#the-system-prompt"},
+      {"id": "prompt-preview", "text": "See what a Harlow Legal session will be told before it starts: `sessions.prompt.preview` with that project.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.prompt.preview '{\"project\":\"harlow-legal\"}'", "docs": "using/sessions.md#the-system-prompt"},
+      {"id": "prompt-revert", "text": "Undo a prompt edit with `sessions.prompt.revert` to an older version. Going back is a version too, so it undoes.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call sessions.prompt.history '{\"scope\":\"assistant\"}'", "docs": "using/sessions.md#the-system-prompt"},
+      {"id": "sdk-setup", "text": "Install the Agent SDK now instead of on first use with `vyre call sessions.setup`.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre call sessions.setup", "docs": "using/sessions.md#what-runs-them"},
+      {"id": "api-key-fallback", "text": "Keep an API key in the vault and a session that hits your subscription limit carries on under it, and says so.", "surfaces": ["chat", "deck", "cli"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/sessions.md#what-runs-them"},
+      {"id": "prompt-next-session", "text": "A prompt edit applies from the next session, never to one in the middle of a conversation.", "surfaces": ["cli", "chat"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/sessions.md#the-system-prompt"}
+    ]
+  }
 }

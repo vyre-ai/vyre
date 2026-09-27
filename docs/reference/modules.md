@@ -51,6 +51,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
+| [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
@@ -75,6 +76,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## apps
 
@@ -86,6 +88,7 @@ Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and a
 - Tools: [6](tools.md#apps)
 - Emits: [2 events](events.md#apps)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## capsule
 
@@ -97,6 +100,7 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Tools: [3](tools.md#capsule)
 - Emits: [2 events](events.md#capsule)
 - Shows on: capsule, cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## chrome
 
@@ -106,6 +110,7 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Tools: [5](tools.md#chrome)
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## computers
 
@@ -128,6 +133,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Tools: [17](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## gate
 
@@ -139,6 +145,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Shows on: capsule, cli, deck
 - Needs vault: `per-sender`
 - Teaches memory: `draft.edited`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## glass
 
@@ -148,6 +155,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Tools: [13](tools.md#glass)
 - Emits: [8 events](events.md#glass)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## google
 
@@ -158,6 +166,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Emits: [7 events](events.md#google)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## hands
 
@@ -169,6 +178,7 @@ Computer use on macOS through the accessibility tree: observe an app, act on one
 - Tools: [5](tools.md#hands)
 - Emits: [3 events](events.md#hands)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## hands-desktop
 
@@ -178,6 +188,7 @@ Computer use on macOS through the accessibility tree: observe an app, act on one
 - Tools: [4](tools.md#hands-desktop)
 - Emits: [1 events](events.md#hands-desktop)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## harness
 
@@ -199,6 +210,7 @@ Inbound webhooks from the public internet through Tailscale Funnel: one route at
 - Emits: [3 events](events.md#hooks)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-route`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## learn
 
@@ -209,6 +221,7 @@ Inbound webhooks from the public internet through Tailscale Funnel: one route at
 - Emits: [13 events](events.md#learn)
 - Shows on: capsule, cli, deck
 - Teaches memory: `preference`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## link
 
@@ -220,6 +233,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Tools: [21](tools.md#link), 2 of them only for other modules
 - Emits: [14 events](events.md#link)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## mcp
 
@@ -230,6 +244,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [9 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## memory
 
@@ -239,6 +254,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Tools: [18](tools.md#memory), 1 of them only for other modules
 - Emits: [5 events](events.md#memory)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## names
 
@@ -249,6 +265,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [6 events](events.md#names)
 - Shows on: cli
 - Needs vault: `cloudflare-vyre-token`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## network
 
@@ -260,6 +277,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Tools: [5](tools.md#network)
 - Emits: [2 events](events.md#network)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## onboard
 
@@ -280,6 +298,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [15](tools.md#planner)
 - Emits: [6 events](events.md#planner)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## presence
 
@@ -289,6 +308,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [11](tools.md#presence), 1 of them only for other modules
 - Emits: [6 events](events.md#presence)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## projects
 
@@ -298,6 +318,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [9](tools.md#projects)
 - Emits: [5 events](events.md#projects)
 - Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## push
 
@@ -317,6 +338,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [10](tools.md#recall)
 - Emits: [3 events](events.md#recall)
 - Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## relay
 
@@ -328,6 +350,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Tools: [13](tools.md#relay), 1 of them only for other modules
 - Emits: [5 events](events.md#relay)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## screen
 
@@ -339,6 +362,7 @@ Screen context on macOS: the front app, window, focused control, URL and visible
 - Tools: [2](tools.md#screen)
 - Emits: no events
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## sessions
 
@@ -350,6 +374,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Tools: [15](tools.md#sessions), 3 of them only for other modules
 - Emits: [5 events](events.md#sessions)
 - Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## sideview
 
@@ -361,6 +386,7 @@ The side view on macOS: a session on the left and Chrome (or Glass on the box) f
 - Tools: [3](tools.md#sideview)
 - Emits: no events
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## statusline
 
@@ -372,6 +398,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Tools: [1](tools.md#statusline)
 - Emits: no events
 - Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## system
 
@@ -391,6 +418,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Emits: [2 events](events.md#term)
 - Shows on: no surface
 - Streams: `pty`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## threads
 
@@ -401,6 +429,19 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Emits: [26 events](events.md#threads)
 - Shows on: cli
 - Needs vault: `claude-setup-token`, `anthropic-api-key`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## tips
+
+One short tip at a time about the part of Vyre you are using, the parts you have not tried, and what an update brought. Each module ships its own tips; this one chooses, never nags, and turns off in Settings.
+
+- Folder: `core/tips`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [7](tools.md#tips)
+- Emits: [1 events](events.md#tips)
+- Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## vault
 
@@ -410,6 +451,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Tools: [80](tools.md#vault), 1 of them only for other modules
 - Emits: [31 events](events.md#vault)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## voice
 
@@ -423,6 +465,7 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Shows on: capsule
 - Streams: `listen`
 - Needs vault: `voice-deepgram-key`, `voice-openai-key`, `voice-elevenlabs-key`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## watchers
 
@@ -434,3 +477,4 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Shows on: capsule, cli, deck
 - Needs vault: `per-watcher`
 - Teaches memory: `watcher.item`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

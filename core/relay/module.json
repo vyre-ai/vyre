@@ -8,5 +8,16 @@
   "watches": { "emits": ["relay.connected", "relay.disconnected", "device.paired", "device.removed", "device.moved"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "pair", "text": "Run `vyre relay pair` and scan the QR code with your phone's camera to reach the box without Tailscale.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay pair", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "status", "text": "Run `vyre relay` to see whether the relay is on and connected, and how many devices are paired.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "devices", "text": "Run `vyre relay devices` to see which paired devices are connected, and whether through the relay or direct.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay devices", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "trust", "text": "Run `vyre relay trust <id>` to give a browser paired from the web app its full powers; `--off` limits it again.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay trust <id>", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "remove", "text": "Run `vyre relay remove <id>` for a lost phone: it is unpaired and its open connections close.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay remove <id>", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "pin", "text": "Run `vyre relay pin <release>` to hold the web app at one build, and `vyre relay unpin` to follow the newest.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre relay pin <release>", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "rename", "text": "Run `vyre relay rename <id> alex iphone` so the device list says which phone is which.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre relay rename <id> <name>", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "off", "text": "Run `vyre relay off` to stop the relay; paired devices stay paired for when you run `vyre relay on`.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre relay off", "docs": "reference/cli.md#vyre-relay"}
+    ]
+  }
 }

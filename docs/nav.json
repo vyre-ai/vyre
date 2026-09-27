@@ -28,7 +28,7 @@
       "using/connectors.md",
       "using/tailscale.md",
       "using/mobile.md",
-      "using/box-care.md"
+      "using/box-care.md", "using/tips.md"
     ]},
     { "title": "Concepts", "pages": [
       "concepts/box-and-mac.md",
@@ -40,7 +40,7 @@
     { "title": "Build on Vyre", "pages": [
       "build/module-contract.md",
       "build/tools-and-events.md",
-      "build/writing-a-module.md",
+      "build/writing-a-module.md", "build/tips.md",
       "build/mcp-hub.md"
     ]},
     { "title": "Reference", "pages": [
