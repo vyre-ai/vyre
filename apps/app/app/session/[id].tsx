@@ -6,7 +6,7 @@
 
 import { memo, useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Queued } from "@vyre/chat-core/session-state.js";
 import { modeLabel } from "@vyre/chat-core/composer-state.js";
@@ -18,11 +18,17 @@ import { TranscriptRowView } from "../../src/session/Rows";
 import { sessionStore, type SessionStore } from "../../src/session/store";
 import { Transcript } from "../../src/session/Transcript";
 import { useOutbox } from "../../src/state/connection";
+import { useGlassFor } from "../../src/state/glass";
+import { useNeeds } from "../../src/state/needs";
+import { COPY } from "../../src/state/glass-model.js";
 import { useThread } from "../../src/state/threads";
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
 import { type } from "../../src/theme/type";
+import { BackButton } from "../../src/ui/BackButton";
 import { Button } from "../../src/ui/Button";
+import { GlassCard, GlassPill, useScreenFocused } from "../../src/ui/GlassMini";
+import { IconButton } from "../../src/ui/IconButton";
 import { SignInBar } from "../../src/ui/SignInBar";
 import { StatusMark } from "../../src/ui/StatusMark";
 
@@ -37,7 +43,6 @@ export default function SessionScreen() {
   const { id } = useLocalSearchParams<{ id: string; ask?: string }>();
   const thread = String(id);
   const store = useMemo(() => sessionStore(thread), [thread]);
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { color } = useTheme();
   useLayoutEffect(() => store.opened(), [store]);
@@ -62,7 +67,7 @@ export default function SessionScreen() {
   return (
     <View style={[styles.page, { backgroundColor: color.bg, paddingTop: insets.top }]}>
       <View style={[styles.header, { borderBottomColor: color.rule }]}>
-        <Button kind="ghost" label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} />
+        <BackButton />
         <View style={styles.headCol}>
           <Text numberOfLines={1} accessibilityRole="header" style={[type.readStrong, { color: color.text }]}>{title}</Text>
           <View style={styles.stateLine}>
@@ -78,6 +83,7 @@ export default function SessionScreen() {
           </View>
         </View>
       </View>
+      <ThreadGlass agent={listed?.agent ?? rec.agent} thread={thread} />
       <SignInBar />
       <Frame
         transcript={<TranscriptHost store={store} />}
@@ -99,6 +105,30 @@ export default function SessionScreen() {
           </View>
         }
       />
+    </View>
+  );
+}
+
+/**
+ * The thread's agent's computer under the header (glass-mini.md): the Card, collapsible to the Pill
+ * by its own icon button ("Hide screen", "Show screen"). Nothing when the agent has no computer.
+ */
+function ThreadGlass({ agent, thread }: { agent: string | null; thread: string }) {
+  const view = useGlassFor(agent);
+  const focused = useScreenFocused();
+  const [open, setOpen] = useState(true);
+  const needs = useNeeds();
+  if (!view) return null;
+  const waiting = needs.find((n) => n.thread === thread || (!n.thread && n.agent === agent))?.title ?? null;
+  return (
+    <View style={styles.glass}>
+      <View style={styles.glassBody}>
+        {open ? <GlassCard view={view} waiting={waiting} visible={focused} here={thread} /> : <GlassPill view={view} waiting={waiting} here={thread} />}
+      </View>
+      {/* The icon set has no chev-u: Hide is chev-d turned over. */}
+      <View style={open ? styles.flip : null}>
+        <IconButton icon="chev-d" size="touch" accessibilityLabel={open ? COPY.hide : COPY.show} onPress={() => setOpen((o) => !o)} testID="glass-toggle" />
+      </View>
     </View>
   );
 }
@@ -218,4 +248,7 @@ const styles = StyleSheet.create({
   pendingText: { flex: 1 },
   sheet: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: G, paddingVertical: tokens.space[3], gap: tokens.space[2] },
   jump: { position: "absolute", bottom: tokens.space[4], alignSelf: "center" },
+  glass: { flexDirection: "row", alignItems: "flex-start", gap: tokens.space[3], paddingLeft: G, paddingRight: G - tokens.space[3], paddingVertical: tokens.space[3] },
+  glassBody: { flex: 1, minWidth: 0, justifyContent: "center", minHeight: tokens.control.touch },
+  flip: { transform: [{ rotate: "180deg" }] },
 });

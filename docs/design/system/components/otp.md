@@ -64,7 +64,9 @@ left, restarted at each period, never a per-second redraw. The copied wash fades
 - "Authenticator", "next 031 775", "18 s", "Copy code", "Copied · clears in 30 s",
   "Tap a code to copy", "Locked · Face ID to open", "Unlocked · 24 min left".
 - Seconds always with a space: "18 s", never "18s". Never "OTP", "TOTP" or "2FA code" in the UI.
-- Pairing code (Add your phone) uses the same current-code style with its own status: "Used 14:31",
+- Pairing code (Add your phone) uses the same current-code style, but 8 characters in two groups of
+  four joined by a hyphen ("7KQM-4P2X", alphabet ABCDEFGHJKMNPQRSTUVWXYZ23456789, no 0, O, 1, I or L),
+  never wrapping, with its own status: "Used 14:31",
   and "Single use, valid 10 min. Treat this code like a password."
 
 ## Accessibility

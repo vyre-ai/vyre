@@ -451,7 +451,9 @@ step 6.
 3. **harness** and **security/e2e**: the plugin passed through the SDK; the floor inside
    `canUseTool`; tests that an owned session's Bash cannot call a PERSON_ONLY tool, and that an
    agent cannot answer its own ask. Then phase 3: in-process hooks and MCP with the caller set
-   by the driver.
+   by the driver. Phase 3 decided 27 Sep 2026 (the lead): option A, one socket per session
+   (core/daemon/threadsock.js, the caller bound by vyred), handed to the session as VYRE_SOCKET;
+   the spawner is on by default on a box. Built on work/sessions 501ca3fc.
 4. **agents** and **learn**: the preamble becomes `append`, credentials become an auth mode,
    `budget_usd` becomes `maxBudgetUsd`; jobs keep `once`, `tools: "none"` and no settings.
 5. **onboard**, **box** and **vault**: the vault's `claude-setup-token` and `anthropic-api-key`

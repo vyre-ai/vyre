@@ -134,7 +134,7 @@ extension CapsuleModel {
         guard !t.isEmpty else { return false }
         Self.replyBoard.clearContents()
         Self.replyBoard.setString(t, forType: .string)
-        line = "Copied."
+        flash("Copied.")
         return true
     }
 

@@ -28,8 +28,13 @@ $ mkdir -p "$VYRE_HOME/modules/bake"
 $ cd "$VYRE_HOME/modules/bake"
 ```
 
-A temporary home never raises a Touch ID or keychain dialog. When the module works, step 9 puts
+A temporary home never raises a Touch ID or keychain dialog. When the module works, step 10 puts
 it in your real home.
+
+This tutorial writes every file by hand, so you see what each one does. For your next module,
+`vyre module new <name>` writes a smaller starting point in `<home>/modules/<name>/`: a
+`module.json` with one tool and one event, an `index.js`, a test and a README, all of which pass
+`vyre module check` and `node --test` as they are.
 
 ## 2. Pick a name
 
@@ -111,8 +116,8 @@ module.json is valid
 
 A problem prints as one line, such as `tool "log" must start with "bake."`.
 
-> [!NOTE] Coming in phase 1
-> `vyre module check <path>` runs the same check from the CLI. Not built yet. <!-- terms: ignore -->
+`vyre module check` runs the same check from the CLI, together with the loader's own rules and a
+look at the entry file. Step 4 ends with it, once `index.js` is there.
 
 ## 4. Write index.js
 
@@ -194,6 +199,29 @@ find the package. Node ignores it.
 > `ctx.api` and `ctx.settings` do not exist yet, so `unit()` returns `loaves` today. From phase 1,
 > `ctx.api.has("settings")` is true and `ctx.settings.get("bake.unit")` returns alex's choice.
 > The `?.` keeps the same file working on both.
+
+### Check the module
+
+From the module folder:
+
+```console
+$ vyre module check .
+```
+
+```output
+  bake /tmp/tmp.alex/modules/bake
+  ok     module.json reads
+  ok     matches the module API schema
+  ok     passes the loader's rules
+  ok     index.js is there
+  ok     index.js parses
+  next: vyre down && vyre up loads it
+```
+
+It reads `module.json` against the schema and the loader's rules, checks that the entry file
+(`main`, or `index.js`) is in the folder, and runs `node --check` on it, so a syntax error shows
+here with its line instead of as a failed module after a restart. It exits 0 when every check
+passes and 1 when one fails. `--json` prints `{ ok, module, dir, problems }` on one line.
 
 ## 5. Start vyred and see the module
 
@@ -419,20 +447,32 @@ $ unset VYRE_HOME
 
 ## 10. Install it for real
 
-Copy the folder into your own home and restart:
+With `VYRE_HOME` unset, add the folder to your own home:
 
 ```console
-$ cp -R <path-to>/bake ~/.vyre/modules/
-$ vyre down && vyre up
+$ vyre module add <path-to>/bake
 ```
+
+`vyre module add` checks the folder the way `vyre module check` does and refuses it on any
+problem. It shows what the module asks for (its tools, its events, the vault items, hosts and
+credentials it names) and asks you to confirm. It then copies the folder into
+`~/.vyre/modules/bake/` (without a `.git` folder), restarts vyred and says whether `bake` is
+running. Pass `--yes` where there is no terminal to ask on. It also takes a git URL
+(`https://`, `git@` or `file://`), cloned with `--depth 1` into a folder inside your home first.
+
+A module runs inside vyred with Vyre's own access to your machine, so add only code you trust.
+`vyre module add` refuses a name that is already in `~/.vyre/modules/` or is one of Vyre's own
+modules. Replacing one of Vyre's own needs `"replaces"` set to that name in `module.json` and
+`--yes` on the command line: your explicit consent. In the box's container, vyred restarts from
+the host (`docker compose restart vyre`), and `vyre module add` says so.
 
 juno can now call `bake.log` when alex says "log 24 sourdough", and `bake.today` when alex asks
 what came out of the oven today.
 
-> [!NOTE] Coming in phase 1 and phase 3
-> `vyre module new <name>` (phase 1) scaffolds a module like this one from `templates/module/` <!-- terms: ignore -->
-> (phase 3): the manifest, `index.js`, a test and a `jsconfig.json` for autocomplete. Not built
-> yet; write the files by hand as above.
+> [!NOTE] Coming in phase 3
+> `vyre module new` writes its files from the CLI today. In phase 3 it scaffolds from
+> `templates/module/`, which also carries a `jsconfig.json` for autocomplete, and its test uses
+> `@vyre/module-sdk/testing`. Not built yet.
 
 ## What a module will not do
 

@@ -211,7 +211,7 @@
 /* Passes (board: DeckVault's Passes section) */
 .vt-waiting { padding: 14px 16px; margin-bottom: 28px; }
 .vt-wait-top { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; }
-.vt-wait-row { display: flex; align-items: center; gap: 12px; min-height: 48px; border-top: 1px solid var(--beacon-rule); }
+.vt-wait-row { display: flex; align-items: center; gap: 12px; min-height: 48px; border-top: 1px solid var(--rule); }
 .vt-wait-row:first-child { border-top: none; }
 .vt-wait-t { flex-grow: 1; min-width: 0; font-size: 14px; line-height: 20px; color: var(--text); }
 .vt-wait-t b { font-weight: 500; }

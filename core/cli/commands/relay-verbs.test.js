@@ -157,3 +157,31 @@ test("relay cli verbs: with the real verifier and no terminal, a change is refus
   assert.equal(JSON.parse(j.stdout).error.code, "no_terminal");
   assert.equal(JSON.parse((await run(root, ["relay", "status", "--json"])).stdout).enabled, false, "nothing changed");
 });
+
+test("relay cli verbs: vyre commands lists every verb run() handles", async t => {
+  const root = tempHome(t);
+  const r = await run(root, ["commands", "relay", "--json"]);
+  assert.equal(r.code, 0, r.out);
+  const verbs = JSON.parse(r.stdout).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["status", "pair", "devices", "remove", "rename", "trust", "on", "off", "pin", "unpin"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["status", "devices"]);
+  assert.ok(verbs.filter(v => !v.read).every(v => v.person), "every change asks for a person");
+  assert.deepEqual(verbs.find(v => v.verb === "rename").args, [{ name: "id", required: true }, { name: "name", required: true, repeat: true }]);
+  assert.deepEqual(verbs.find(v => v.verb === "on").flags.map(f => f.name), ["url"]);
+});
+
+test("relay cli verbs: --view pair is a qr frame of the address, with the same data as --json", async t => {
+  const { root, url } = await world(t);
+  assert.equal((await run(root, ["relay", "on", "--url", url])).code, 0);
+  const r = await run(root, ["relay", "pair", "--view"]);
+  assert.equal(r.code, 0, r.out);
+  const f = r.stdout.trim().split("\n").map(l => JSON.parse(l));
+  assert.equal(f.length, 2, "one frame, then done: no QR blocks drawn as text");
+  assert.equal(f[0].cmd, "relay pair");
+  assert.equal(f[0].view.kind, "qr");
+  assert.equal(f[0].view.text, f[0].data.url);
+  assert.match(f[0].view.caption, /works once, for 10 minutes/);
+  assert.deepEqual(f[1], { v: 1, done: true, exit: 0 });
+  const s = JSON.parse((await run(root, ["relay", "status", "--view"])).stdout.split("\n")[0]);
+  assert.deepEqual([s.view.kind, s.view.title, s.data.enabled], ["card", "Relay", true]);
+});
