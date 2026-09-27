@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <string name="vyre_autofill_label">Vyre</string>
+  <string name="vyre_credential_subtitle">Passwords and passkeys</string>
 
   <!-- The unlock activity: nothing of its own on screen, only the system's biometric sheet. -->
   <style name="Theme.VyreAutofill.Translucent" parent="@android:style/Theme.Translucent.NoTitleBar">

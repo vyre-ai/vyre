@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Merged into the app's manifest. The service is bound only by the system (BIND_AUTOFILL_SERVICE);
-     the unlock activity is not exported, so only our own PendingIntents reach it. -->
+<!-- Merged into the app's manifest. The services are bound only by the system
+     (BIND_AUTOFILL_SERVICE, BIND_CREDENTIAL_PROVIDER_SERVICE); the activities are not exported, so
+     only our own PendingIntents reach them. The credential provider needs Android 14; older
+     systems do not know its action and never bind it. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.USE_BIOMETRIC" />
@@ -21,6 +23,26 @@
 
     <activity
       android:name="sh.vyre.autofill.VyreAuthActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:theme="@style/Theme.VyreAutofill.Translucent" />
+
+    <service
+      android:name="sh.vyre.autofill.VyreCredentialService"
+      android:label="@string/vyre_autofill_label"
+      android:enabled="true"
+      android:exported="true"
+      android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.credentials.CredentialProviderService" />
+      </intent-filter>
+      <meta-data
+        android:name="android.credentials.provider"
+        android:resource="@xml/vyre_credential_provider" />
+    </service>
+
+    <activity
+      android:name="sh.vyre.autofill.VyreCredentialActivity"
       android:exported="false"
       android:excludeFromRecents="true"
       android:theme="@style/Theme.VyreAutofill.Translucent" />

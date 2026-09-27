@@ -1,6 +1,7 @@
-// Vyre autofill on Android (ADR 0028, decision 6): an AutofillService, its unlock activity, and
-// the Expo module the app pairs through. The device key lives in the Android Keystore,
-// StrongBox where the phone has one, behind BiometricPrompt, as in modules/vyre-signer.
+// Vyre autofill on Android (ADR 0028, decision 6): an AutofillService, a CredentialProviderService
+// (Android 14 and later), their unlock activities, and the Expo module the app pairs through.
+// The device key lives in the Android Keystore, StrongBox where the phone has one, behind
+// BiometricPrompt, as in modules/vyre-signer.
 plugins {
   id 'com.android.library'
   id 'expo-module-gradle-plugin'
@@ -28,6 +29,8 @@ dependencies {
   // InlineSuggestionUi: the keyboard's suggestion chips on Android 11 and later.
   implementation "androidx.autofill:autofill:1.1.0"
   implementation "androidx.annotation:annotation:1.9.1"
+  // The Credential Manager provider API (CredentialProviderService, PendingIntentHandler).
+  implementation "androidx.credentials:credentials:1.3.0"
 
   testImplementation "junit:junit:4.13.2"
 }

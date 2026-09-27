@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- modules/vault-android is also a Credential Manager provider on Android 14 and later: passwords and
+  passkeys from `identities`, an "Unlock Vyre" action without a fill window, `passkey.assert` and
+  `passkey.register` over the platform's clientDataHash or Vyre's own clientDataJSON
+  (`android:apk-key-hash:` for apps, with an assetlinks.json check), and `save` for passwords. New
+  dependency androidx.credentials 1.3.0, for the provider API. Type-checked, not run on a device.
+
 #### iOS and macOS AutoFill provider, and passkeys for platforms that hash their own client data
 
 - modules/vault-apple/ holds the iOS and macOS credential provider: passwords, passkeys and
