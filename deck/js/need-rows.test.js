@@ -4,7 +4,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,
-  release, questionAnswers, changesLine, pushTarget, swipeActions } from "./need-rows.js";
+  release, questionAnswers, changesLine, pushTarget, swipeActions, swipeCommit, sheetPrimary, toastFor, heldFor, sheetWho, factRows,
+  deferred, snoozes, LATER_MS, SWIPE_HINT } from "./need-rows.js";
 
 const NOW = 1_800_000_000_000;
 
@@ -65,10 +66,13 @@ test("need-rows: the presence word follows the device", () => {
   assert.equal(presenceWord("Mozilla/5.0 (X11; Linux x86_64)"), "passkey");
 });
 
-test("need-rows: Open session goes to the exact moment", () => {
-  assert.equal(sessionHref({ kind: "ask", at: 5, thread: "t1", anchor: { tool_use_id: "toolu_1", event: 9 } }), "/chat/thread/t1?at=5&tool=toolu_1");
-  assert.equal(sessionHref({ kind: "ask", at: 5, thread: "t1", anchor: { tool_use_id: null, event: 9 } }), "/chat/thread/t1?at=5&event=9");
-  assert.equal(sessionHref({ kind: "draft", at: 5, thread: null, anchor: { thread: "t2", at: 7, event: null } }), "/chat/thread/t2?at=7");
+test("need-rows: Open session goes to the exact moment, in Chat's own query words", () => {
+  // chat/session.js reads ?at=&ask=&tool=; chat/lib/routes.js spells the two paths.
+  assert.equal(sessionHref({ kind: "ask", id: "a1", at: 5, thread: "t1", project: "harlow-legal", anchor: { tool_use_id: "toolu_1", event: 9 } }),
+    "/chat/harlow-legal/t1?at=5&ask=a1&tool=toolu_1");
+  assert.equal(sessionHref({ kind: "question", id: "q 1", at: 5, thread: "t1", anchor: { tool_use_id: null, event: 9 } }), "/chat/thread/t1?at=5&ask=q%201");
+  // A held draft: no ask id; its anchor's thread and time.
+  assert.equal(sessionHref({ kind: "draft", id: "g1", at: 5, thread: null, anchor: { thread: "t2", at: 7, event: null } }), "/chat/thread/t2?at=7");
   assert.equal(sessionHref({ kind: "draft", at: 5, thread: null }), null);
 });
 
@@ -98,4 +102,112 @@ test("need-rows: changes and push targets", () => {
   assert.deepEqual(pushTarget("git push origin q3-report"), { remote: "origin", branch: "q3-report" });
   assert.deepEqual(pushTarget("git push -u origin HEAD:q3-report"), { remote: "origin", branch: "q3-report" });
   assert.equal(pushTarget("npm test"), null);
+});
+
+test("need-rows: a committed swipe, by kind and side (the no-nag rule)", () => {
+  const ask = { kind: "ask", at: 0 }, draft = { kind: "draft", at: 0, gate: { kind: "send" } }, q = { kind: "question", at: 0 }, pair = { kind: "pair", at: 0 };
+  assert.equal(swipeCommit(ask, "right"), "approve");
+  assert.equal(swipeCommit(ask, "left"), "deny");
+  // A draft goes out as the person: the right swipe shows the final words first.
+  assert.equal(swipeCommit(draft, "right"), "sheet");
+  assert.equal(swipeCommit(draft, "left"), "discard");
+  assert.equal(swipeCommit(q, "right"), "sheet");
+  assert.equal(swipeCommit(q, "left"), "later");
+  assert.equal(swipeCommit(pair, "right"), "sheet");
+  assert.equal(swipeCommit(pair, "left"), "deny");
+  assert.equal(SWIPE_HINT, "Swipe right to approve, left to deny.");
+  assert.deepEqual(swipeActions({ kind: "draft", at: 0, gate: { kind: "spend" } }), ["Approve", "Discard"]);
+  assert.deepEqual(swipeActions(ask), ["Approve", "Deny"]);
+});
+
+test("need-rows: the sheet's primary words", () => {
+  assert.equal(sheetPrimary({ kind: "ask", at: 0 }, "Face ID"), "Approve");
+  assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "send" } }, "Face ID"), "Send with Face ID");
+  assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "send" } }, "Face ID", true), "Send edited");
+  assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "spend" } }, "fingerprint"), "Approve with fingerprint");
+  assert.equal(sheetPrimary({ kind: "question", at: 0 }, "Face ID"), "Answer");
+  assert.equal(sheetPrimary({ kind: "pair", at: 0 }, "Touch ID"), "Pair with Touch ID");
+});
+
+test("need-rows: toasts are honest about Undo", () => {
+  assert.deepEqual(toastFor("approve"), { text: "Approved", undo: false });
+  assert.deepEqual(toastFor("deny"), { text: "Denied", undo: true });
+  assert.deepEqual(toastFor("discard"), { text: "Discarded", undo: true });
+  assert.equal(toastFor("later").undo, true);
+  assert.equal(toastFor("send").undo, false);
+});
+
+test("need-rows: held for, who asks, and fact rows", () => {
+  assert.equal(heldFor(NOW - 4 * 60_000, NOW), "Held 4 min");
+  assert.equal(heldFor(NOW - 10_000, NOW), "Held just now");
+  assert.equal(heldFor(NOW - 2 * 3_600_000, NOW), "Held 2 h");
+  assert.equal(heldFor(NOW - 86_400_000 * 3, NOW), "Held 3 days");
+  assert.equal(sheetWho({ kind: "ask", at: 0, agent: "kit", projectName: "Harlow Legal" }), "kit asks · Harlow Legal");
+  assert.equal(sheetWho({ kind: "draft", at: 0 }), "An agent asks");
+  assert.deepEqual(factRows({ kind: "ask", at: 0, detail: { command: "git push origin q3-report", totals: { files: 6, added: 412, removed: 38 } }, rule: "pushes ask first" }), [
+    { label: "Remote", value: "origin" }, { label: "Branch", value: "q3-report" }, { label: "Changes", value: "6 files", counts: "+412 -38" },
+    { label: "Held by", value: "Your rule: pushes ask first" }]);
+  assert.deepEqual(factRows({ kind: "ask", at: 0, command: "curl https://api.example.com", destination: "https://api.example.com" }), [{ label: "Where", value: "https://api.example.com" }]);
+});
+
+/** Timers the test moves by hand. */
+function clock() {
+  let now = 0, seq = 0;
+  /** @type {Map<number, { at: number, f: () => void }>} */ const q = new Map();
+  return {
+    setTimeout: (/** @type {() => void} */ f, /** @type {number} */ ms) => { const id = ++seq; q.set(id, { at: now + ms, f }); return id; },
+    clearTimeout: (/** @type {number} */ id) => { q.delete(id); },
+    tick(/** @type {number} */ ms) { now += ms; for (const [id, t] of [...q]) if (t.at <= now) { q.delete(id); t.f(); } },
+    get pending() { return q.size; },
+  };
+}
+
+test("need-rows: a deny waits out its Undo toast, and Undo means it never ran", async () => {
+  const t = clock();
+  let ran = 0;
+  const d = deferred(() => { ran++; return "ok"; }, 4000, t);
+  t.tick(3999);
+  assert.equal(ran, 0);
+  assert.equal(d.cancel(), true);
+  t.tick(10);
+  assert.equal(ran, 0);
+  assert.deepEqual(await d.done, { ran: false });
+  assert.equal(t.pending, 0);
+
+  const e = deferred(() => { ran++; return "sent"; }, 4000, t);
+  t.tick(4000);
+  assert.deepEqual(await e.done, { ran: true, value: "sent" });
+  assert.equal(ran, 1);
+  assert.equal(e.cancel(), false, "too late to undo once it ran");
+});
+
+test("need-rows: flush sends at once, once; a failure is reported, not thrown", async () => {
+  const t = clock();
+  let ran = 0;
+  const d = deferred(() => { ran++; throw new Error("the box refused"); }, 4000, t);
+  d.flush(); d.flush();
+  t.tick(5000);
+  const r = await d.done;
+  assert.equal(ran, 1);
+  assert.equal(r.ran, true);
+  assert.equal(r.error.message, "the box refused");
+  assert.equal(d.state, "ran");
+});
+
+test("need-rows: Later hides a question on this device for an hour", () => {
+  const mem = new Map();
+  const store = { getItem: (/** @type {string} */ k) => mem.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => { mem.set(k, v); } };
+  const s = snoozes(store);
+  s.snooze("q1", NOW);
+  assert.equal(s.has("q1", NOW + LATER_MS - 1), true);
+  assert.equal(s.has("q2", NOW), false);
+  assert.equal(s.has("q1", NOW + LATER_MS), false, "back after an hour");
+  assert.equal(JSON.parse(mem.get("vyre.needs.later")).q1, undefined, "the expired entry is dropped");
+  s.snooze("q3", NOW); s.wake("q3");
+  assert.equal(s.has("q3", NOW), false);
+  // A private window whose storage throws: nothing is hidden, and nothing throws.
+  const broken = snoozes({ getItem: () => { throw new Error("SecurityError"); }, setItem: () => { throw new Error("SecurityError"); } });
+  broken.snooze("q1");
+  assert.equal(broken.has("q1"), false);
+  assert.equal(snoozes(null).has("x"), false);
 });

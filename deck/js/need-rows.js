@@ -4,7 +4,7 @@
 // time, the accessibility label, the Face ID word for this device, where Open session goes, and
 // what a released swipe does. deck/js/now-phone.js and deck/js/need-sheet.js draw with these.
 
-/** @typedef {{ kind: string, at: number, agent?: string|null, projectName?: string|null, threadName?: string|null, title?: string,
+/** @typedef {{ kind: string, at: number, id?: string, project?: string|null, rule?: string, destination?: string|null, agent?: string|null, projectName?: string|null, threadName?: string|null, title?: string,
  *   command?: string, tool?: string, detail?: any, questions?: any[], why?: string, thread?: string|null, anchor?: any,
  *   gate?: { kind?: string, via?: string, to?: string[], toName?: string, summary?: string, draft?: Record<string, any>|null } | null,
  *   pair?: { name: string, node?: string|null, login?: string, expires: number } }} Item */
@@ -119,10 +119,142 @@ export function agoLong(/** @type {number} */ t, now = Date.now()) {
 
 /** The two swipe actions of a row, by kind: [right, left]. */
 export function swipeActions(/** @type {Item} */ n) {
-  if (n.kind === "draft") return n.gate?.kind && n.gate.kind !== "send" ? ["Approve", "Discard"] : ["Send", "Discard"];
+  if (n.kind === "draft") return isSend(n) ? ["Send", "Discard"] : ["Approve", "Discard"];
   if (n.kind === "question") return ["Answer", "Later"];
   if (n.kind === "pair") return ["Pair", "Deny"];
   return ["Approve", "Deny"];
+}
+
+/** A held item that goes out as a message (the default kind), not a spend or a delete. */
+const isSend = (/** @type {Item} */ n) => !n.gate?.kind || n.gate.kind === "send";
+
+/**
+ * What committing a swipe does (the no-nag rule): an ask is approved or denied at once, as the
+ * owner's own act. A draft goes outside as the person, so a right swipe only opens the sheet on
+ * its final words, and Send there proves presence. A question has no one-swipe answer; its left
+ * swipe is Later. A Mac asking to pair needs its code, so it opens too.
+ * @param {Item} n @param {"right"|"left"} side
+ * @returns {"approve"|"deny"|"discard"|"later"|"sheet"}
+ */
+export function swipeCommit(n, side) {
+  if (side === "right") return n.kind === "ask" ? "approve" : "sheet";
+  if (n.kind === "draft") return "discard";
+  if (n.kind === "question") return "later";
+  return "deny";
+}
+
+/** Under the Needs you card until the first swipe. The approve side proves nothing (no-nag). */
+export const SWIPE_HINT = "Swipe right to approve, left to deny.";
+
+/**
+ * The sheet's primary button. An ask: "Approve" (no proof). A draft: "Send with Face ID" (it goes
+ * out as the person), "Send edited" once a field changed, "Approve with Face ID" for a spend or
+ * a delete. A question: "Answer". A pair: "Pair with Face ID".
+ * @param {Item} n @param {string} word presenceWord() @param {boolean} [edited]
+ */
+export function sheetPrimary(n, word, edited = false) {
+  if (n.kind === "draft") return !isSend(n) ? `Approve with ${word}` : edited ? "Send edited" : `Send with ${word}`;
+  if (n.kind === "question") return "Answer";
+  if (n.kind === "pair") return `Pair with ${word}`;
+  return "Approve";
+}
+
+/** The toast after a commit: what happened, and whether Undo is honest for it. */
+export function toastFor(/** @type {"approve"|"deny"|"discard"|"later"|"send"|"answer"} */ what) {
+  const words = { approve: "Approved", deny: "Denied", discard: "Discarded", later: "Hidden here for an hour", send: "Sent", answer: "Answered" };
+  return { text: words[what] || "Done", undo: what === "deny" || what === "discard" || what === "later" };
+}
+
+/** "Held 4 min", "Held 2 h", "Held 3 days": the sheet's third row. */
+export function heldFor(/** @type {number} */ t, now = Date.now()) {
+  const m = Math.max(0, Math.floor((now - t) / 60_000));
+  if (m < 1) return "Held just now";
+  if (m < 60) return `Held ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `Held ${h} h`;
+  const d = Math.floor(h / 24);
+  return `Held ${d} day${d === 1 ? "" : "s"}`;
+}
+
+/** The sheet's first row: "kit asks · Harlow Legal". */
+export function sheetWho(/** @type {Item} */ n) {
+  if (n.kind === "pair") return [n.pair?.name || "A Mac", "wants to pair"].join(" ");
+  const who = n.agent || (n.kind === "draft" ? "An agent" : "A session");
+  return [`${who} asks`, n.projectName || n.threadName].filter(Boolean).join(" · ");
+}
+
+/**
+ * An ask's fact rows (section 5): Remote and Branch for a push, Changes when the box sent a diff
+ * summary, Where for a destination, Held by for the rule or reason that stopped it.
+ * @param {Item & { destination?: string|null, rule?: string, totals?: any, changes?: any[] }} n
+ * @returns {{ label: string, value: string, counts?: string }[]}
+ */
+export function factRows(n) {
+  /** @type {{ label: string, value: string, counts?: string }[]} */
+  const out = [];
+  const cmd = String(n.detail?.command || n.command || "");
+  const push = pushTarget(cmd);
+  if (push?.remote) out.push({ label: "Remote", value: push.remote });
+  if (push?.branch) out.push({ label: "Branch", value: push.branch });
+  const ch = changesLine({ totals: n.detail?.totals || n.totals, changes: n.detail?.changes || n.changes });
+  if (ch) out.push({ label: "Changes", value: ch.files, counts: ch.counts });
+  if (n.destination && !push) out.push({ label: "Where", value: String(n.destination) });
+  if (n.rule) out.push({ label: "Held by", value: `Your rule: ${n.rule}` });
+  return out;
+}
+
+/**
+ * A call that waits out its Undo toast: `run` goes after `ms` unless `cancel` comes first, and
+ * `flush` sends it at once (the page is being left, or the next commit needs the toast). Each
+ * resolves once: a cancelled one never runs, a run one cannot be cancelled.
+ * @param {() => any} run @param {number} ms
+ * @param {{ setTimeout: (f: () => void, ms: number) => any, clearTimeout: (t: any) => void }} [timers]
+ */
+export function deferred(run, ms, timers = globalThis) {
+  let state = /** @type {"waiting"|"ran"|"cancelled"} */ ("waiting");
+  /** @type {(v: any) => void} */ let settle = () => {};
+  const done = new Promise(r => { settle = r; });
+  const go = () => {
+    if (state !== "waiting") return;
+    state = "ran";
+    timers.clearTimeout(t);
+    Promise.resolve().then(run).then(v => settle({ ran: true, value: v }), e => settle({ ran: true, error: e }));
+  };
+  const t = timers.setTimeout(go, ms);
+  return {
+    done,
+    get state() { return state; },
+    cancel() { if (state !== "waiting") return false; state = "cancelled"; timers.clearTimeout(t); settle({ ran: false }); return true; },
+    flush: go,
+  };
+}
+
+/** How long Later hides a question on this device. */
+export const LATER_MS = 3_600_000;
+
+/**
+ * Later, on this device only: threads.answer's deny is a decline, so Later answers nothing. It
+ * hides the question here for an hour, in localStorage (every read and write guarded: a private
+ * window can throw), and it shows again after that or on another device.
+ * @param {Pick<Storage, "getItem"|"setItem">|null} store @param {string} [key]
+ */
+export function snoozes(store, key = "vyre.needs.later") {
+  const read = () => { try { const v = JSON.parse(store?.getItem(key) || "{}"); return v && typeof v === "object" ? v : {}; } catch { return {}; } };
+  const write = (/** @type {Record<string, number>} */ v) => { try { store?.setItem(key, JSON.stringify(v)); } catch {} };
+  return {
+    /** Hide one until now + LATER_MS. */
+    snooze(/** @type {string} */ id, now = Date.now()) { const v = read(); v[id] = now + LATER_MS; write(v); },
+    /** Show it again (Undo). */
+    wake(/** @type {string} */ id) { const v = read(); delete v[id]; write(v); },
+    /** Is it hidden right now? Expired entries are dropped as they are read. */
+    has(/** @type {string} */ id, now = Date.now()) {
+      const v = read();
+      let dirty = false;
+      for (const [k, until] of Object.entries(v)) if (!(Number(until) > now)) { delete v[k]; dirty = true; }
+      if (dirty) write(v);
+      return id in v;
+    },
+  };
 }
 
 /**
@@ -155,18 +287,22 @@ export function presenceWord(ua, touch = 0) {
 }
 
 /**
- * Where Open session goes: the exact session, at the moment it was raised (section 15 anchors).
- * @param {Item} n @returns {string | null}
+ * Where Open session goes: the exact session in Chat, at the moment it was raised (section 15
+ * anchors). Chat's routes are /chat/<project>/<thread> and /chat/thread/<thread> (chat/lib/routes.js),
+ * and chat/session.js reads ?at=<ms>&ask=<id>&tool=<tool_use_id>: an ask's card or its tool call
+ * wins, else the first row at or after `at`. A held draft has no ask id, so it lands by tool or time.
+ * @param {Item & { id?: string, project?: string|null }} n @returns {string | null}
  */
 export function sessionHref(n) {
   const a = n.anchor || {};
   const thread = n.thread || a.thread || null;
   if (!thread) return null;
-  const at = Number(a.at || n.at || 0);
-  let q = `?at=${encodeURIComponent(String(at))}`;
-  if (a.tool_use_id) q += `&tool=${encodeURIComponent(String(a.tool_use_id))}`;
-  else if (a.event != null) q += `&event=${encodeURIComponent(String(a.event))}`;
-  return `/chat/thread/${encodeURIComponent(thread)}${q}`;
+  const enc = encodeURIComponent;
+  const path = n.project ? `/chat/${enc(n.project)}/${enc(thread)}` : `/chat/thread/${enc(thread)}`;
+  const q = [`at=${enc(String(Number(a.at || n.at || 0)))}`];
+  if ((n.kind === "ask" || n.kind === "question") && n.id) q.push(`ask=${enc(n.id)}`);
+  if (a.tool_use_id) q.push(`tool=${enc(String(a.tool_use_id))}`);
+  return `${path}?${q.join("&")}`;
 }
 
 /** The commit point and the width of a revealed action, in px (section 4). */
