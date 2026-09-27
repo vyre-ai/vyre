@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Mail over IMAP and SMTP: the mail module (ADR 0028, decision 9c)
+
+- core/mail: `mail.accounts`, `mail.test`, `mail.search`, `mail.read`, `mail.send` and the internal
+  `mail.release`, over a small IMAP4rev1 client (LOGIN or AUTHENTICATE PLAIN, EXAMINE, UID SEARCH,
+  UID FETCH with literals) and a small SMTP client (TLS or STARTTLS, AUTH PLAIN or LOGIN,
+  dot-stuffing, an RFC 5322 message in quoted-printable with RFC 2047 subjects). No new dependency.
+- An account is an env-set of provider `imap-smtp` granted to mail. Every tool asks
+  `vault.connections.allowed` first and refuses on anything but yes, a missing tool included.
+  `mail.send` holds at the Gate as `mail:<account>`; only the Gate's call to `mail.release` sends.
+  Events `mail.sent`, `mail.send-failed` and `mail.tested` carry names only.
+- docs/using/mail.md. Tests run against fake IMAP and SMTP servers on 127.0.0.1.
+
 #### Connecting a key: needs.credentials, vault.need and vault.connect (ADR 0028, decision 9a)
 
 - A manifest may declare `needs.credentials`: `{id, kind, provider, purpose, item?, optional?,
