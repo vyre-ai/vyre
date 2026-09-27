@@ -116,6 +116,11 @@ The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, n
 1. app-design 305fc07b left: tip.md (tips.next, ⌘. dismisses), credential-sheet.md check
    against the row built, glass-mini.md step pill; "three recent items" on open (capsule.md).
 2. A held mail from "Write it" could open its card at once (today: words, then ↑).
+3a. (0.1.1) IQ corrections, memory-iq 95b2b891: answer_id on every memory.ask reply; a quiet
+   "Wrong?" line opens "That's wrong" (memory.correct {answer, action:"wrong"}), "Forget this"
+   (action:"forget"), and a field prefilled with the answer (Enter: action:"replace", object).
+   Not sure card: the field only, "Know it? Tell me". Reply {fix:{id}}: show the fix at once with
+   Undo (memory.uncorrect {fix}). via "corrected": the answer with "you corrected this", no chips.
 3. DONE for rc.2 without streaming (IQAsk.swift). Left for 0.1.1: stream:true with memory.thinking
    stages, ⌘1..⌘3 on source chips. memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
    {question, stream:true, id:"cap_<n>", context:{project}}; memory.thinking {id, stage} then
