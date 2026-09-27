@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The switchboard tests pass on the Mac
+
+- core/switchboard/switchboard.test.js: the work folder is realpath'd, so the Mac's /var and
+  /private/var name the same place in the Edit ask and the transcript path.
+
 #### The Google test counts only its own reads
 
 - core/google/module.test.js: "one call, one 401, one retry" counts the test's own calendar reads.
