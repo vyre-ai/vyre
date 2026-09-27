@@ -151,14 +151,14 @@ export async function runIq(opts = {}) {
       // memory.ask: right (an acceptable answer, or an abstention where there is none),
       // confident-wrong, abstained, ungrounded, and the same answer when asked again.
       let right = 0, cw = 0, abst = 0, ungrounded = 0, incons = 0, usd = 0;
-      const ms = [], kinds = {};
+      const ms = [], kinds = {}, whys = {};
       for (const q of questions) {
         const r = await mem.call("memory.ask", { question: q.q });
         ms.push(r.latency_ms); usd += r.cost_usd || 0;
         const ok = q.expect ? correct(r.answer, q.expect) : !r.answer;
         if (ok) right++;
         if (r.answer && !ok && r.confidence >= CONFIDENT) cw++;
-        if (r.abstained) abst++;
+        if (r.abstained) { abst++; const w = String(r.why || "abstained").replace(/: .*$/, ""); whys[w] = (whys[w] || 0) + 1; }
         if (r.answer && !(r.sources || []).length) ungrounded++;
         const again = await mem.call("memory.ask", { question: q.q });
         if (again.answer !== r.answer || JSON.stringify((again.sources || []).map(x => `${x.session}:${x.seq}`)) !== JSON.stringify((r.sources || []).map(x => `${x.session}:${x.seq}`))) incons++;
@@ -166,7 +166,7 @@ export async function runIq(opts = {}) {
       }
       answered = { accuracy: round(right / questions.length), confident_wrong: cw, abstain_rate: round(abst / questions.length), ungrounded, inconsistent: incons,
         p50_ms: round(pct(ms, 0.5)), p95_ms: round(pct(ms, 0.95)), cost_usd: round(usd * 1e3) / 1e3, cost_per_question: round(usd / questions.length * 1e4) / 1e4,
-        by_kind: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, round(v.ok / v.n)])) };
+        by_kind: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, round(v.ok / v.n)])), abstained_why: whys };
       if (opts.record) {
         const replies = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT hash, reply FROM memory_iq_asks WHERE v = ? ORDER BY hash").all(ASK_VERSION)).map(r => [String(r.hash), String(r.reply)]));
         fs.mkdirSync(path.dirname(asksFile), { recursive: true });
@@ -201,6 +201,7 @@ function print(r) {
     out.push(`  memory.ask: accuracy ${a.accuracy}, confident-wrong ${a.confident_wrong}, abstained ${a.abstain_rate}, ungrounded ${a.ungrounded}, inconsistent ${a.inconsistent}`);
     out.push(`    latency p50/p95 ${a.p50_ms} / ${a.p95_ms} ms (replayed replies take no model time), cost $${a.cost_usd} ($${a.cost_per_question} a question)`);
     out.push(`    by kind: ${Object.entries(a.by_kind).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+    out.push(`    abstained because: ${Object.entries(a.abstained_why).map(([k, v]) => `${k} ${v}`).join(", ")}`);
   }
   const full = r.ablations.full;
   if (full) out.push(`  full, by kind: ${Object.entries(full.by_kind).map(([k, v]) => `${k} ${v}`).join(", ")}`);

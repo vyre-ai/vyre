@@ -166,7 +166,8 @@ export async function startMemory(db, { me, embedder, dense, runner = null, iqRu
   const ctx = {
     name: "memory",
     // VYRE_EVAL_PASSES: readings per batch when recording (config.memory.model.passes).
-    config: { me, role: "local", memory: { model: { passes: Number(process.env.VYRE_EVAL_PASSES) || 2 } } },
+    // askDailyUsd: an evaluation asks every question at once, far past a day's cap for a person.
+    config: { me, role: "local", memory: { model: { passes: Number(process.env.VYRE_EVAL_PASSES) || 2, askDailyUsd: 5 } } },
     paths: {},
     store: { db, migrate: () => {} },
     log: () => {},

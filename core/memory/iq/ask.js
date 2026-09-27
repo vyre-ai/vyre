@@ -115,7 +115,8 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     const prompt = askPrompt(q, passages);
     const hash = askHash(prompt);
     let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0;
-    if (text == null && runner && budget.allow(MAX_USD)) {
+    if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "today's question budget is spent" });
+    if (text == null && runner) {
       try {
         const r = await runner({ system: SYSTEM, prompt, model: model(), maxUsd: MAX_USD });
         text = r.text; usd = r.usd || 0;
@@ -126,7 +127,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     if (text == null) return done({ via: "retrieval", known: [], why: runner ? "the model did not answer" : "no model" });
     // 4. Code checks what it said.
     const c = checkAsk(parseAsk(text), passages);
-    if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd });
+    if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
     const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).map(p => ({ session: p.session, seq: p.seq, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }));
     return done({ answer: c.answer, confidence: c.confidence, abstained: false, known: c.known, sources, via: "retrieval", cost_usd: usd });
   };
