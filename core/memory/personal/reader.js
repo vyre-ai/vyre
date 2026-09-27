@@ -414,7 +414,13 @@ export function createReader(deps) {
   const spentOn = k => /** @type {any} */ (db.prepare("SELECT usd, calls FROM memory_me_budget WHERE day = ?").get(k)) || { usd: 0, calls: 0 };
   const charge = (k, usd) => db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
     ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(k, usd);
-  const turnQ = db.prepare("SELECT text, role FROM recall_turns WHERE session = ? AND seq = ?");
+  // Recall's table may not exist yet when memory starts (Recall starts later, or not at all):
+  // prepared on first use, and no turn at all until it does.
+  let turnStmt = null;
+  const turnQ = { get: (session, seq) => {
+    if (!turnStmt) { try { turnStmt = db.prepare("SELECT text, role FROM recall_turns WHERE session = ? AND seq = ?"); } catch { return undefined; } }
+    return turnStmt.get(session, seq);
+  } };
   let timer = null, running = false, stopped = false, waiting = null;
 
   /** The people memory knows: first name, lower case -> role (spouse, daughter, dog, friend). */

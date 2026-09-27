@@ -34,14 +34,14 @@ export default {
     // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
     const personal = new Personal(ctx.store.db, { log: ctx.log });
     /** Read every unread turn for personal facts, then derive if anything changed. */
-    // memory.profile.changed: the about-you lines moved, so a session rebuilds its note on resume.
+    // memory.profile-changed: the about-you lines moved, so a session rebuilds its note on resume.
     // Counts only; the lines themselves are read with memory.profile.
     let lastProfile = null;
     const profileChanged = () => {
       try {
         const lines = profile(personal, { limit: 12 }).facts.map(f => f.text);
         const key = lines.join("\n");
-        if (lastProfile !== null && key !== lastProfile) ctx.events.emit("memory.profile.changed", { facts: lines.length });
+        if (lastProfile !== null && key !== lastProfile) ctx.events.emit("memory.profile-changed", { facts: lines.length });
         lastProfile = key;
       } catch (e) { ctx.log("memory profile check: " + /** @type {Error} */ (e).message); }
     };
