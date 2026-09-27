@@ -5,20 +5,24 @@
 // "ready <pid>" line), so a vyred restart or crash does not take the shell with it. The holder owns
 // the `script` pty (pty.js), keeps the byte-offset ring (ring.js), and listens on a unix socket
 // in a folder only this user can open. vyred connects to it:
-//  - an attach connection (one per browser socket) says HELLO {mode: "attach", from}, gets AT
-//    {from, cut, end, cols, rows}, the ring's bytes after `from`, then live output. It sends keys
+//  - an attach connection (one per browser socket) says HELLO {mode: "attach", from, tail?}, gets
+//    AT {from, cut, end, cols, rows}, the ring's bytes after `from`, then live output. With no
+//    `from` and a `tail`, the replay is the last `tail` bytes (an older client's 64 KB). It sends keys
 //    (IN) and sizes (SIZE). A connection that reads slowly holds the shell's output back.
 //  - a control connection (vyred's own, one per terminal) says HELLO {mode: "control"} and can
-//    QUERY (answered with INFO) or CLOSE.
+//    QUERY (answered with INFO) or CLOSE. INFO carries `meta`, what vyred handed the holder at
+//    start (folder, screen, owner key, when), so a restarted vyred can find its terminals again
+//    from their sockets alone.
 // Every connection hears EXIT {reason} before the holder goes: "exited" (the shell ended),
 // "closed" (CLOSE, or SIGTERM), "detached" (no attach connection for keepMs), "failed".
 //
 // With no attach connection the holder keeps the shell for keepMs, then ends itself. It writes
 // nothing a terminal prints anywhere but its socket: no log, no file.
 
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { Pty } from "./pty.js";
 import { Ring, Reader, T, frame, outFrames, json } from "./ring.js";
 
@@ -27,7 +31,7 @@ const SLOW = 256 * 1024;
 
 /**
  * @param {{ id: string, cwd: string, cols?: number, rows?: number, shell?: string, login?: boolean,
- *   sock: string, ring?: number, keepMs?: number }} o
+ *   sock: string, ring?: number, keepMs?: number, meta?: object }} o
  */
 export function hold(o) {
   const ring = new Ring(o.ring || 1024 * 1024);
@@ -62,7 +66,7 @@ export function hold(o) {
     if (slow) pty.child.stdout?.pause();
   }
 
-  const info = () => ({ id: o.id, pid: process.pid, cols: pty.cols, rows: pty.rows, end: ring.end, start: ring.start, attached: attached.size, until });
+  const info = () => ({ id: o.id, meta: o.meta || {}, pid: process.pid, pty: pty.pid, leader: pty.leader, cols: pty.cols, rows: pty.rows, end: ring.end, start: ring.start, attached: attached.size, until });
 
   /** @param {string} reason */
   async function end(reason) {
@@ -106,7 +110,9 @@ export function hold(o) {
           mode = m.mode;
           if (mode === "attach") {
             // since() and joining `attached` happen in one turn, so no byte falls between them.
-            const r = ring.since(m.from);
+            const tail = Number(m.tail);
+            const from = m.from == null && Number.isInteger(tail) && tail >= 0 ? Math.max(ring.start, ring.end - tail) : m.from;
+            const r = ring.since(from);
             c.write(frame(T.AT, { from: r.from, cut: r.cut, end: ring.end, cols: pty.cols, rows: pty.rows }));
             for (const x of outFrames(r.bytes)) c.write(x);
             attached.add(c);
@@ -138,7 +144,72 @@ export function hold(o) {
   server.on("error", () => { end("failed"); });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+const HOLDER = fileURLToPath(import.meta.url);
+
+/**
+ * Start a holder detached from this process (its own session, no stdio after "ready"), and wait
+ * until it listens. Resolves {pid, sock}.
+ * @param {Parameters<typeof hold>[0]} o
+ * @param {{ timeoutMs?: number }} [opts]
+ * @returns {Promise<{ pid: number, sock: string }>}
+ */
+export function spawnHolder(o, { timeoutMs = 5000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [HOLDER, JSON.stringify(o)], { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+    let out = "", done = false;
+    /** @param {Error|null} err @param {any} [v] */
+    const finish = (err, v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { child.stdout?.destroy(); } catch {}
+      child.unref();
+      if (err) reject(err); else resolve(v);
+    };
+    const timer = setTimeout(() => { try { if (child.pid) process.kill(child.pid, "SIGKILL"); } catch {} finish(new Error("the terminal holder did not start")); }, timeoutMs);
+    child.stdout?.on("data", b => { out += b; const m = /ready (\d+)/.exec(out); if (m) finish(null, { pid: Number(m[1]), sock: o.sock }); });
+    child.stdout?.on("error", () => {});
+    child.on("error", e => finish(e));
+    child.on("exit", code => finish(new Error(`the terminal holder exited (${code})`)));
+  });
+}
+
+/**
+ * Connect to a holder and say HELLO. Frames from it go to onFrame. Resolves once connected.
+ * @param {string} sock @param {{ mode: "attach"|"control", from?: number|null, tail?: number }} hello
+ * @param {(f: { type: number, body: Buffer }) => void} onFrame
+ * @returns {Promise<net.Socket>}
+ */
+export function dial(sock, hello, onFrame, timeoutMs = 2000) {
+  return new Promise((resolve, reject) => {
+    const c = net.connect(sock);
+    const rd = new Reader();
+    const timer = setTimeout(() => { c.destroy(); reject(new Error("the terminal holder did not answer")); }, timeoutMs);
+    c.on("connect", () => { clearTimeout(timer); c.write(frame(T.HELLO, hello)); resolve(c); });
+    c.on("error", e => { clearTimeout(timer); reject(e); });
+    c.on("data", chunk => {
+      let fr;
+      try { fr = rd.push(chunk); } catch { c.destroy(); return; }
+      for (const f of fr) onFrame(f);
+    });
+  });
+}
+
+/** Ask a holder who it is: its INFO, or null when nothing live answers on that socket. @param {string} sock */
+export async function query(sock, timeoutMs = 2000) {
+  /** @type {net.Socket|null} */ let c = null;
+  try {
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(null), timeoutMs);
+      dial(sock, { mode: "control" }, f => { if (f.type === T.INFO) { clearTimeout(timer); resolve(json(f.body)); } }, timeoutMs)
+        .then(s => { c = s; s.on("close", () => { clearTimeout(timer); resolve(null); }); s.write(frame(T.QUERY, "")); }, e => { clearTimeout(timer); reject(e); });
+    });
+  } catch { return null; }
+  finally { try { /** @type {any} */ (c)?.destroy(); } catch {} }
+}
+
+const isMain = () => { try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(HOLDER); } catch { return false; } };
+if (isMain()) {
   let o;
   try { o = JSON.parse(process.argv[2] || ""); } catch { process.exit(2); }
   process.chdir("/");
